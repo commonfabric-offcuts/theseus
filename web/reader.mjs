@@ -795,7 +795,7 @@ export class Reader {
     }
     const inEditor = target === this.field;
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
-      event.preventDefault(); navigator.clipboard.writeText(this.source.body).catch(() => this.notice('Could not copy. Select the text and use Copy.')); return;
+      event.preventDefault(); navigator.clipboard.writeText(this.source.body).catch(error => this.notice(Error('Could not copy. Select the text and use Copy.', { cause: error }))); return;
     }
     const where = Object.keys(STEPPING).find(at => STEPPING[at].key === event.key);
     if (!inEditor && event.metaKey && !event.shiftKey && where) {

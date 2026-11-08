@@ -27,7 +27,7 @@ import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
 import { SessionRenewal } from '../web/session-renewal.mjs';
-import { AttemptError } from '../web/api.mjs';
+import { Api as RealApi, AttemptError, unreached } from '../web/api.mjs';
 import { showLine, lineText, clearUnreached } from '../web/lines.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
@@ -98,7 +98,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, ...times, SessionRenewal, AttemptError, showLine, lineText, clearUnreached, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, ...times, SessionRenewal, AttemptError, unreached, showLine, lineText, clearUnreached, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -168,7 +168,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -639,6 +639,93 @@ test('a line that says only that Theseus could not be reached goes once the page
   await f.openSource({ kind: 'message', id: 'm1' });
   live.emit({ kind: 'state', state: 'live' }); await drain();
   assert.equal(f.get('app-status').textContent, 'Source could not open', 'a refusal Core answered stays');
+});
+
+// However a failure to reach Theseus was put into words on its way to a line
+// (a Notebook page's read, a mark, an attachment, the composer), the line goes
+// once the page reaches Theseus, and what the page could not do for want of it
+// is done again. Theseus is down behind Tailscale Serve, which answers 502
+// with an empty body, or nothing answers; the real Api says what came back.
+test('a line a caller put into words goes once the page reaches Theseus, and a page read or a composer that met no Theseus is done again', async () => {
+  const down = {
+    proxy: new RealApi('fixture-session', async () => new Response('', { status: 502 })),
+    nothing: new RealApi('fixture-session', async () => { throw new TypeError('Failed to fetch'); }),
+  };
+  const theseus = new RealApi('fixture-session', async () => new Response(JSON.stringify({ recorded: false, error: { code: 'CONFLICT', message: 'Core refused this.' } }), { status: 409 }));
+  for (const [name, api] of Object.entries(down)) {
+    const renewals = [], { f, live, answers } = restartable(renewals);
+    await f.initialize(); await drain();
+    const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
+    const back = async how => { if (how === 'renewed') answers.push('renewed'), live.emit({ kind: 'refused' }); else live.emit({ kind: 'state', state: 'live' }); await drain(); await drain(); };
+    const command = f.api.command, view = f.api.view;
+    for (const how of ['live', 'renewed']) {
+      // A mark pressed in the Reader.
+      f.registry.current = { source: { source_ref: { kind: 'message', id: 'm5' }, topic_id: 't1', seq: 5 }, mark: { marked: false, mark_revision: 0 }, editors: { reply: {}, note: {} } };
+      f.owners().marks.learn('m5', 0, { topicId: 't1', seq: 5 });
+      f.api.command = envelope => api.command(envelope);
+      await f.toggleMark(); await drain();
+      assert.match(said('reader-notice'), /whether the mark was saved is unknown/, `${name}: the mark says so`);
+      f.api.command = command;
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: the reader notice still says what the restart did`);
+      // An attachment opened in the Reader.
+      const shown = { source: { source_ref: { kind: 'message', id: 'm6' }, topic_id: 't1', attachments: [{ id: 'a1', name: 'photo.png' }] }, editors: { reply: {}, note: {} } };
+      f.registry.current = shown; f.get('source-attachments').replaceChildren();
+      f.api.media = (...args) => api.media(...args);
+      f.sourceAttachments(shown);
+      await f.get('source-attachments').children[0].children[0].onclick(); await drain();
+      assert.match(said('reader-notice'), /^photo\.png: /, `${name}: the attachment says so`);
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: the attachment's line still says what the restart did`);
+      // A Notebook page that came forward: read again once Theseus is back, and what changed since is shown.
+      const page = { source: { source_ref: { kind: 'memory', id: 'n1', revision: 3 }, body: 'Now' }, editors: { reply: {}, note: {} } };
+      f.registry.current = page;
+      const reads = [], changes = [];
+      f.reader.showChanges = (since, before, after) => changes.push([since, before, after]);
+      f.api.command = envelope => { reads.push(envelope.kind); return api.command(envelope); };
+      await f.readPage(page); await drain();
+      assert.match(said('reader-notice'), /this page may still show as changed/, `${name}: the page read says so`);
+      f.api.command = async envelope => { reads.push(envelope.kind); return { recorded: true, status: 'committed', operation_id: envelope.operation_id, result: { previous_revision: 2 } }; };
+      f.api.view = async (viewName, args) => viewName === 'source' ? { instance_id: 'fixture', body: 'Before' } : view(viewName, args);
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: the page read's notice still says what the restart did`);
+      assert.deepEqual([reads, changes], [['memory.read', 'memory.read'], [[2, 'Before', 'Now']]], `${name}, ${how}: the page is read again once Theseus is back`);
+      // Read, but what changed since could not be read: the same.
+      reads.length = 0; changes.length = 0;
+      f.api.view = (viewName, args) => viewName === 'source' ? api.view(viewName, args) : view(viewName, args);
+      await f.readPage(page); await drain();
+      assert.match(said('reader-notice'), /^What changed since revision 2 could not be read\. /, `${name}: what changed since says so`);
+      f.api.view = async (viewName, args) => viewName === 'source' ? { instance_id: 'fixture', body: 'Before' } : view(viewName, args);
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: what changed since still says what the restart did`);
+      assert.deepEqual([reads, changes], [['memory.read', 'memory.read'], [[2, 'Before', 'Now']]], `${name}, ${how}: what changed since is read again once Theseus is back`);
+      f.api.command = command; f.api.view = view; delete f.api.media;
+      // The composer's access, checked again by Retry access.
+      f.registry.current = null; f.registry.inline = f.p; f.owners().inline.show(f.p);
+      f.api.view = (viewName, args) => api.view(viewName, args);
+      await f.get('inline-retry').onclick(); await drain();
+      assert.match(said('inline-notice'), /^Could not confirm topic access\. Your writing is kept\. /, `${name}: the composer's access says so`);
+      f.api.view = view;
+      await back(how);
+      assert.equal(said('inline-notice'), '', `${name}, ${how}: the composer's access line still says what the restart did`);
+      // The topic's composer.
+      let tries = 0;
+      f.registry.inline = null;
+      f.registry.initializeInline = async () => { if (++tries === 1) await api.view('topic', {}); f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+      await f.initializeInlineComposer(); await drain();
+      assert.match(said('inline-notice'), /^New message is unavailable\./, `${name}: the composer says so`);
+      await back(how);
+      assert.deepEqual([said('inline-notice'), tries], ['', 2], `${name}, ${how}: the composer is loaded again once Theseus is back`);
+    }
+    // Theseus answered: the line stays, and nothing is done again.
+    f.registry.current = { source: { source_ref: { kind: 'memory', id: 'n2', revision: 3 }, body: 'Now' }, editors: { reply: {}, note: {} } };
+    let reads = 0;
+    f.api.command = envelope => { reads++; return theseus.command(envelope); };
+    await f.readPage(f.registry.current); await drain();
+    await back('live');
+    assert.deepEqual([said('reader-notice'), reads], ['Core refused this. It may still show as changed.', 1], `${name}: a refusal Theseus answered stays, and is not read again`);
+    f.api.command = command;
+  }
 });
 
 test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {

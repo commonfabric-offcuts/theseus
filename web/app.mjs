@@ -1,4 +1,4 @@
-import { Api, AttemptError } from './api.mjs';
+import { Api, AttemptError, unreached } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -437,16 +437,18 @@ function notePageRead() {
 // A read Core did not record says so in the Reader, and the page keeps its
 // light. A page the person read at an older revision shows what changed
 // since then.
+// One that met no Theseus is read again once the page reaches it.
 async function readPage(presentation) {
   const current = () => registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable;
+  const again = error => owe(error, 'page read', () => { if (current()) { pageShown = presentation; notePageRead(); } });
   let since;
   try { since = await pageReads.opened(presentation.source); }
-  catch (error) { if (current()) reader.notice(error); return; }
+  catch (error) { if (current()) { reader.notice(error); again(error); } return; }
   if (since === null || !current()) return;
   const ref = { ...presentation.source.source_ref, revision: since };
   let earlier;
   try { earlier = checkedView(await registry.cleanup.list(options => api.view('source', ref, options)), bootstrap.instance_id); }
-  catch (error) { if (current()) reader.notice([`What changed since revision ${since} could not be read.`, error]); return; }
+  catch (error) { if (current()) { reader.notice([`What changed since revision ${since} could not be read.`, error]); again(error); } return; }
   if (current()) reader.showChanges(since, earlier.body ?? '', presentation.source.body ?? '');
 }
 // A reply to someone else's message in this topic goes to its author unless
@@ -675,7 +677,7 @@ function paintAgentColors() {
 // The picker for one agent's color, under its name (anchor); closing it gives
 // the focus to back. The choices are read first if the page has not read them.
 async function pickColor(agent, anchor, back = anchor) {
-  if (!colors.loaded) await colors.load('foreground').catch(() => { throw Error('The agent colors could not be read. Try again.'); });
+  if (!colors.loaded) await colors.load('foreground').catch(error => { throw Error('The agent colors could not be read. Try again.', { cause: error }); });
   return openColorPicker({ anchor, back, agent, palette: colors.palette, chosen: colors.chosen(agent), own: agentColor(agent),
     choose: color => colors.choose(agent, color) });
 }
@@ -850,8 +852,8 @@ async function toggleMark() {
   if (!state) return;
   let receipt;
   try { receipt = await marks.send(ref.id, !state.marked, state.mark_revision); }
-  catch {
-    if (registry.isSourceCurrent(p)) reader.notice('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.');
+  catch (error) {
+    if (registry.isSourceCurrent(p)) reader.notice(Error('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.', { cause: error }));
     return;
   }
   // An explicit Mark read places the New line afresh, wherever the oldest
@@ -1068,7 +1070,8 @@ async function checkInlineAvailability(read, current) {
 }
 async function initializeInlineComposer() {
   try { await registry.initializeInline(topic); }
-  catch (error) { inline.fail(error); return; }
+  // A composer that met no Theseus is retried once the page reaches it, as Retry composer would.
+  catch (error) { inline.fail(error); owe(error, 'composer', retryInline); return; }
   // Recovery discovery reads in the background lane, which any foreground read
   // defers. The optional rail reads that follow wait for it, so a saved copy
   // that Core already acknowledges is retired rather than left for review.
@@ -1087,7 +1090,7 @@ async function retryInline() {
     if (current()) {
       const failure = readFailure(error);
       if (failure.kind === 'authority') { await registry.parkAuthority(bindingOf(bootstrap), failure.code); updateStatus(failure); }
-      inline.notice(['Could not confirm topic access. Your writing is kept.', failure]);
+      inline.notice(['Could not confirm topic access. Your writing is kept.', error]);
     }
   } finally { foreground.release(); }
 }
@@ -1197,11 +1200,17 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   freshness.setVisible(document.visibilityState === 'visible');
 }
 // The page reaches Theseus with the session it holds: a renewal, the session
-// it has confirmed, or the live feed up again. Whatever the status line said
-// about not reaching it is over, and replies it did not take go on.
+// it has confirmed, or the live feed up again. Whatever a line said about not
+// reaching it is over, replies it did not take go on, and what could not be
+// done for want of it is done again.
+// Each is named, so the latest of one kind is the one done.
+const untilReached = new Map();
+const owe = (error, name, again) => { if (unreached(error)) untilReached.set(name, again); };
 function reached() {
   clearUnreached(document);
   registry?.resumeHeld();
+  const again = [...untilReached.values()]; untilReached.clear();
+  for (const action of again) run(action);
 }
 // A restarted server (every deploy) refuses this page's session. The page
 // reads the server's new one (session-renewal.mjs) when the live feed is

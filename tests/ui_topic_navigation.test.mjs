@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TopicPages, TopicNavigation, topicPosition } from '../web/topic-navigation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
+import { AttemptError, unreached } from '../web/api.mjs';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 // Earlier letters were active later, so a list in letter order is latest first.
@@ -74,6 +75,22 @@ for (const failure of ['rejected', 'unknown', 'transport', 'unavailable']) test(
   await assert.rejects(f.navigation.open('b'), /stay|stayed|save|saved/i);
   assert.deepEqual(f.visits, []); assert.ok(f.kept.includes(f.registry.inline)); assert.equal(f.editors[0].localVersion, 1);
 });
+// The navigation line says why the page stayed; it goes once the page reaches
+// Theseus only when what stopped the departure was about reaching it.
+test('a departure stopped by a save that met no Theseus says so as such; one Core refused, or writing this device could not keep, does not', async () => {
+  const lost = () => new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+  const refused = () => new AttemptError('This topic is closed.', 409, { error: { code: 'CONFLICT' } });
+  for (const [name, save, keep, about] of [['no answer', lost, null, true], ['Core refused', refused, null, false],
+    ['no answer, and this device could not keep the writing', lost, Error('Quota exceeded'), false]]) {
+    const f = fixture();
+    f.registry.flush = async e => { if (e === f.editors[0]) throw save(); e.ackVersion = e.localVersion; return { recorded: true, status: 'committed' }; };
+    if (keep) f.registry.keepLocal = async () => { throw keep; };
+    const stopped = await f.navigation.open('b').then(() => assert.fail('the departure was meant to stop'), error => error);
+    assert.equal(unreached(stopped), about, `${name}: ${stopped.message}`);
+    assert.deepEqual(f.visits, []);
+  }
+});
+
 test('topic navigation rejects new typing, replaced owners and unrelated unprotected work while saving', async () => {
   for (const change of [f => f.editors[0].localVersion++, f => f.registry.sessions.delete('inline'),
     f => f.registry.sessions.set('inline', { editor: f.editors[0], sends: new Map() }),

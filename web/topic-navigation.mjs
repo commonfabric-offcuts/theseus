@@ -198,7 +198,8 @@ export class TopicNavigation {
         const { editor, needsSave, version } = snapshots[n], result = results[n];
         if (result.status === 'rejected' || needsSave && (editor.unavailable || editor.authorityRecovery || editor.conflict ||
             editor.dirty || editor.ackVersion < version || result.value && (result.value.recorded !== true || result.value.status !== 'committed'))) {
-          throw Error('Your writing is not confirmed saved to Theseus. Stayed here; check the saved-writing status and retry the topic when it is saved.');
+          // A save that failed goes on as the cause, so the line knows whether it was about reaching Theseus.
+          throw Error('Your writing is not confirmed saved to Theseus. Stayed here; check the saved-writing status and retry the topic when it is saved.', { cause: result.reason });
         }
       }
       await registry.keepEditorsLocal(editors);
@@ -215,7 +216,9 @@ export class TopicNavigation {
       // Preserve through the same registry even after a refused or offline save.
       const kept = await Promise.allSettled([registry.keepEditorsLocal(editors)]);
       if (request !== this.serial) return false;
-      if (kept.some(r => r.status === 'rejected')) { this.departureChoice = null; throw Error('Keep this page open: some writing or image bytes could not be saved on this device.'); }
+      // What failed is keeping them on this device, which reaching Theseus does not mend.
+      const unkept = kept.find(r => r.status === 'rejected');
+      if (unkept) { this.departureChoice = null; throw Error('Keep this page open: some writing or image bytes could not be saved on this device.', { cause: unkept.reason }); }
       // Arm only as the rejection reaches the app's visible notice. A second
       // click while preservation is pending has not seen an informed choice.
       this.departureChoice = nextChoice;

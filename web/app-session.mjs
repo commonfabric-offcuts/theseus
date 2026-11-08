@@ -190,7 +190,7 @@ export class EditorRegistry {
     catch (error) {
       if (error instanceof ImageHeld) throw error;
       console.warn('Step: this device could not keep the writing', error);
-      throw Error('Not opened: this device could not keep your writing. It stays here; keep this page open.');
+      throw Error('Not opened: this device could not keep your writing. It stays here; keep this page open.', { cause: error });
     }
   }
 

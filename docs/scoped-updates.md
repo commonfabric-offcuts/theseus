@@ -121,14 +121,22 @@ check for the same commit runs beside them rather than after them.
   A refused live stream starts the same renewal. **Reconnect** does it on
   demand; while the server is not answering, the page says so. It never
   reloads itself or erases its journal.
-- A line that says only that Theseus could not be reached (nothing answered,
-  or the server refused the page's session) goes once the page reaches
-  Theseus again, wherever it was written: the page's status line, the
-  Reader's notice, the composer's notice or the navigation line. The line
-  works this out from the failure itself (`web/lines.mjs`), so every writer
-  hands it the error, not its words. A line that also says what could not be
-  done, or offers its own way on (Reload this page, Retry composer), or that
-  carries an answer Core gave, stays.
+- A line whose every failure was about reaching Theseus goes once the page
+  reaches Theseus again, wherever it was written: the page's status line, the
+  Reader's notice, the composer's notice or the navigation line. A failure is
+  about reaching Theseus when the attempt got no answer of Theseus's own
+  (nothing answered, or only something in front of it did, such as the 502
+  with an empty body Tailscale Serve gives while the server restarts; Theseus
+  answers every request it reads with JSON) or the server refused the page's
+  session. The line works this out from the failures it shows (`web/api.mjs`
+  `unreached`, `web/lines.mjs`), never from its writer: every writer hands it
+  the error itself, and code that puts a failure into words of its own makes
+  them an error whose cause is that failure, which is judged in its place.
+  Words beside such a failure say what it stopped, and the page does that
+  again once it reaches Theseus (a Notebook page's read and what changed
+  since, the topic's composer) or the person asks again (a mark, an
+  attachment). A line that carries an answer Theseus gave, words with no
+  failure, or a control of its own (Reload this page) stays.
 - **Review saved writing** handles a changed runtime authority. Automatic
   updates pause; recovery proceeds through the existing review controls.
 - If a topic becomes unavailable, its lists are hidden and sending to it is

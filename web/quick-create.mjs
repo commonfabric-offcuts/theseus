@@ -22,7 +22,7 @@ function envelope(bootstrap, kind, target, expected, args) {
 async function sent(api, request, keep) {
   let receipt;
   try { receipt = await api.command(copy(request)); }
-  catch (error) { keep(); throw Error(`Not confirmed: ${error.message}.${AGAIN}`); }
+  catch (error) { keep(); throw Error(`Not confirmed: ${error.message}.${AGAIN}`, { cause: error }); }
   const exact = receipt?.instance_id === request.instance_id && receipt.operation_id === request.operation_id && receipt.kind === request.kind;
   if (exact && receipt.recorded === true && receipt.status === 'committed') return receipt.result;
   const message = receipt?.error?.message ?? 'Theseus did not confirm this.';
@@ -73,7 +73,7 @@ export class TopicStart {
       catch (error) {
         if (!error.message.endsWith(AGAIN)) this.save = null;
         // Its topic identity is taken (a lost first save landed elsewhere): start afresh.
-        if (error.code === 'REVISION_CONFLICT' && this.revision === 0) { this.renew(); throw Error('That did not start. Press Return to start it now.'); }
+        if (error.code === 'REVISION_CONFLICT' && this.revision === 0) { this.renew(); throw Error('That did not start. Press Return to start it now.', { cause: error }); }
         if (error.code === 'OPENING_CLOSED') { const topic = await this.published(); if (topic) return topic; }
         throw error;
       }
