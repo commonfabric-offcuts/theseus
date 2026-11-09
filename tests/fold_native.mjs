@@ -34,6 +34,7 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       assert.equal((await unread())?.id, everyone, width + ': the oldest unread is the message to everyone, not the one between others');
 
       const p = await page('fold-' + width, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
+        q.recordResponses();
         await q.send('Emulation.setDeviceMetricsOverride', metrics);
         if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
       } });
@@ -94,9 +95,10 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       await until(async () => !(await state()).cardShown, width + ': Enter folds it again');
 
       // Read on screen, everything for the person is read; the message between
-      // others never was unread. The line fades where it was placed, under the
-      // message to everyone; opening the topic again places it afresh, and with
-      // nothing unread there is none, so none under the fold either.
+      // others never was unread. Reading on screen is not reading for the line:
+      // it holds where it was placed, under the message to everyone, for the
+      // visit. Opening the topic again places it afresh, and with nothing
+      // unread there is none, so none under the fold either.
       const drawn = () => p.evaluate(`(()=>{const l=document.querySelector('#messages .new-line');return l?l.previousElementSibling?.dataset?.id??'':null})()`);
       const faded = () => p.evaluate(`document.querySelector('#messages .new-line')?.classList.contains('new-line-read')??null`);
       assert.equal(await drawn(), everyone, width + ': placed under the oldest unread, the message to everyone');
@@ -106,7 +108,9 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
         await until(async () => (await unread())?.id !== oldest.id, width + ': read ' + oldest.id);
       }
       assert.equal(await drawn(), everyone, width + ': read during the visit, the line stays where it was placed');
-      await until(async () => await faded() === true, width + ': nothing above it unread, it fades');
+      await until(() => p.responses.some(r => r.payload?.name === 'topic_unread' && r.body?.oldest_unread === null), width + ': the page heard that nothing is unread');
+      await p.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+      assert.equal(await faded(), false, width + ': read on screen, the line holds, showing');
       await p.send('Page.navigate', { url: facts.origin + '/?topic=' + topic });
       await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready === 'true' && Boolean(document.querySelector('#messages [data-id="${between}"]'))`); } catch { return false; } }, width + ': the topic opened again');
       await until(async () => await drawn() === null, width + ': opened again with everything read, no New line, none under the fold');

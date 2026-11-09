@@ -42,7 +42,7 @@ const TITLES = {
 // its label ("New above · 4:40 AM", docs/times.md), the label and the time each in
 // a span of their own, inside one span of words.
 //
-// held is false once nothing at or above the line is unread: the line stays
+// held is false once nothing holds the line (TopicViews.held): the line stays
 // in its place but fades out (.new-line-read, a CSS transition), and is inert
 // meanwhile, so neither a pointer, Tab nor a screen reader finds it; held
 // again, it fades back in wherever it is placed.

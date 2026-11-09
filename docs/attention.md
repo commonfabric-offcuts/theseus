@@ -359,19 +359,53 @@ they follow reading live.
 
 The line is placed from that answer when the topic opens and when the reader
 presses Mark read in this page. During the visit it never jumps to a new
-place while they read; it is a marker of where they were, not a count. Once
-nothing at or above it is unread, it fades out where it is:
+place while they read; it is a marker of where they were, not a count.
 
-- Reading on screen, here or in another tab, never moves the line up. As soon
-  as no message at or above the line is unread for the reader (read on
-  screen, opened in the Reader, replied to, or marked read, here or
-  anywhere), the line fades out in place, a short opacity transition (none
-  when the reader's system asks for reduced motion). It keeps its space, so
-  nothing below it shifts, and once faded it is inert: no pointer, Tab or
-  screen reader finds it. The same answer drives the counts, the Unread
-  pills and the fade, read after each announced commit; no timer is
-  involved. Opening the topic again places it afresh: under the oldest
-  message still unread, or nowhere.
+For the line, a message is read when the reader opens it or answers it, not
+while they scroll past it. So the line holds while a message at or above it
+is unread, or while this page has read one on screen since the line held and
+the reader has not acted on it since. Acting is opening a message at or
+above the line in this page's Reader, replying (a message of their own
+arriving in the topic, from this page or another), or pressing Mark read in
+this page. Once neither holds it, it fades out where it is:
+
+- Reading on screen, here or in another tab, never moves the line up, and
+  reading on screen in this page never fades it: the cards it reads stay
+  above a line that shows them as new. When the reader opens one of them, or
+  any message at or above the line, in the Reader, replies, or presses Mark
+  read, and nothing at or above the line is unread, the line fades out in
+  place, a short opacity transition (none when the reader's system asks for
+  reduced motion). Read in another tab or device, where this page did not
+  see it, it fades as soon as nothing at or above it is unread. It keeps its
+  space, so nothing below it shifts, and once faded it is inert: no pointer,
+  Tab or screen reader finds it, and reading on screen never brings it back.
+  The same answer drives the counts, the Unread pills and the fade, read
+  after each announced commit; no timer is involved. Opening the topic again
+  places it afresh: under the oldest message still unread, or nowhere.
+- What this page read on screen is each range of cards it saw on screen
+  while the line held that reaches the line, counted from the moment it saw
+  them, so an act releases every card seen before it, even one whose report
+  goes out after the act (reports leave one at a time). A range stops
+  holding only when its report is known to have settled nothing: Core's
+  receipt for the report that carries it says it was committed and settled
+  no delivery (read already, here or elsewhere), or the range was already
+  reported or waiting to be, so cards still on screen after an act do not
+  hold the line again. So a first screen another tab had read already holds
+  nothing. A report whose answer is lost (the connection drops, a phone puts
+  the page in the background, the server restarts) keeps its range: the
+  page cannot tell an answer lost after Core recorded the report from a
+  report Core never saw, and in the second case its cards are still unread,
+  so keeping the range costs nothing. The message the Reader shows is reported
+  read too, but showing it is an open, an act, never a range read on screen,
+  however it came to show: stepping with the Reader's arrows, a message that
+  arrived while the Reader was open, or a message's link. Its report goes out
+  after the open, while the message is still unread, and holds nothing.
+  `TopicViews` in `web/topic-views.mjs` keeps it (`held`, `sighted`, `seen`,
+  `acted`, `opened`), with each report's receipt from `ReadThrough.seen` in
+  `web/read-through.mjs`. `tests/new_line_native.mjs` checks it in Chrome for
+  Testing (the release check's `native-colors`), and the release check's
+  `native-webkit-new-line` (`tests/webkit_native.mjs --new-line`) runs the
+  same checks of the line staying in Safari's engine.
 - A message that arrives during the visit lands above the line and is shown
   as new there; the line stays where it is, holding it, so it does not fade.
   A message marked unread at or above the line holds it the same way.
@@ -383,11 +417,12 @@ nothing at or above it is unread, it fades out where it is:
   then claim messages the reader has read.
 - The reader's own Mark read in this page (pressing Marked unread in the
   Reader) places the line afresh at once, wherever the oldest unread message
-  now is; when nothing is left unread, the line fades where it is. Their own
+  now is; when nothing is left unread, the line fades where it is, whatever
+  this page read on screen. Their own
   Mark unread is a mark like any other: it moves the line only when the
   message is further back. A mark cleared in another tab, or by opening the
-  message to read it, leaves the line where it is, faded once nothing at or
-  above it is unread.
+  message to read it, leaves the line where it is, faded once nothing holds
+  it.
 - "More new below" (below) fades the same way when the message it leads to is
   read elsewhere, and More messages comes back in its place.
 - An ask to the reader that they have read is past the line once it is placed

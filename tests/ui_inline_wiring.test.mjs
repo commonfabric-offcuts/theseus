@@ -78,6 +78,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
     closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
+    // Where it is on screen: wholly in view, unless a check places it (box).
+    getBoundingClientRect() { return this.box ?? { top: 0, bottom: 40, height: 40 }; }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
@@ -116,13 +118,13 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     runtime: { current: bootstrap.authority },
   };
   const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
-  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
+  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, HealthLight, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, HealthLight, IntersectionObserver, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -1593,6 +1595,178 @@ test('nothing is read while the version review covers the page; closing it reads
   assert.deepEqual(ranges(), [[24, 25]]);
 });
 
+// The New line holds for what the page read on screen until the reader acts on
+// it (TopicViews.held): opens a message at or above it in the Reader, replies,
+// or presses Mark read. What counts is what the page saw before the act, not
+// when its report goes out: ReadThrough sends one report per topic at a time,
+// a microtask after it is asked, so a report can leave after an act. The page
+// here is real (noteRead, ReadThrough, TopicViews); only Core is held, each
+// receipt answered by the check.
+test('an act on what the New line marks releases every card read on screen before it, whenever its report goes out; the Reader\'s own report never holds the line', async () => {
+  const start = async () => {
+    const { f, card } = await readingPage();
+    const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', reader: 'fixture-person', paint: kind => f.paintViews(kind), invalidate() {} });
+    f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+    const sends = [];
+    f.api.command = envelope => {
+      assert.equal(envelope.kind, 'topic.read_through');
+      const answer = defer();
+      sends.push({ range: [envelope.args.from_seq, envelope.args.seq], settles: n => answer.resolve({ recorded: true, status: 'committed', result: { topic_id: 't1', acknowledged: n } }) });
+      return answer.promise;
+    };
+    // #20..#26 loaded; #22 is the oldest unread, so the line is under it.
+    views.messagesPage({ ...page(20, 26, null), oldest_unread: { seq: 22, id: 'm22' }, commit_seq: 5 }, { initial: true }); await settle();
+    const show = (seqs, hidden = []) => f.observers[0].callback([...seqs.map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })),
+      ...hidden.map(seq => ({ target: card(seq), isIntersecting: false, intersectionRatio: 0, intersectionRect: { height: 0 }, rootBounds: { height: 600 } }))]);
+    const reader = seq => { f.registry.current = { source: { source_ref: { kind: 'message', id: 'm' + seq }, topic_id: 't1', seq, author: 'agent-a' }, editors: {}, mode: 'reply' }; show([]); };
+    // Core then says nothing is unread, at a later commit.
+    const allRead = async () => { await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: null, commit_seq: 50 })); return views.held; };
+    return { f, views, sends, show, reader, allRead };
+  };
+  const sent = sends => sends.map(s => s.range);
+
+  // Opened in the Reader one by one, down to the line, each its own report: the
+  // first screen's cards were acted on, and the Reader's reports hold nothing.
+  {
+    const { sends, show, reader, allRead } = await start();
+    show([25, 26]); await settle();
+    sends[0].settles(2); await settle();
+    for (const seq of [26, 25, 24, 23, 22]) {
+      const before = sends.length;
+      reader(seq); await settle();
+      if (sends.length > before) sends.at(-1).settles(1);
+      await settle();
+    }
+    assert.deepEqual(sent(sends), [[25, 26], [24, 24], [23, 23], [22, 22]], 'the first screen, then each message the Reader showed that was not reported yet');
+    assert.equal(await allRead(), false, 'every message at or above the line opened in the Reader: the line fades');
+  }
+
+  // The Reader is open when a message arrives and the faded line comes back
+  // under it; the Reader then shows it. Its report goes out after the open,
+  // while it is unread: an open, never a range read on screen.
+  {
+    const { views, sends, reader, allRead } = await start();
+    assert.equal(await allRead(), false, 'read elsewhere, the line has faded');
+    views.messagesPage({ ...page(27, 27, null), items: [{ id: 'm27', seq: 27, author_id: 'agent-a', body: 'Arrives', topic_id: 't1' }] }, { live: true, cursor: 26 });
+    await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: { seq: 27, id: 'm27' }, commit_seq: 60 }));
+    assert.deepEqual([views.line?.seq, views.held], [27, true], 'the line comes back under the message that arrived');
+    reader(27); await settle();
+    assert.deepEqual(sent(sends).at(-1), [27, 27], 'the Reader reports it read');
+    sends.at(-1).settles(1); await settle();
+    await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: null, commit_seq: 70 }));
+    assert.equal(views.held, false, 'shown in the Reader, the line fades once nothing is unread');
+  }
+
+  // Cards read on screen while another report is in flight wait in
+  // ReadThrough, and go out after the act: they were read before it, so they
+  // hold nothing. Without an act they hold the line, so the check can fail.
+  for (const act of ['none', 'open', 'reply', 'mark read']) {
+    const { views, sends, show, reader, allRead } = await start();
+    show([25, 26]); await settle();
+    show([22, 23, 24]); await settle();
+    assert.deepEqual(sent(sends), [[25, 26]], act + ': the second range waits behind the first');
+    if (act === 'open') reader(26);
+    if (act === 'reply') views.messagesPage({ ...page(27, 27, null), items: [{ id: 'm27', seq: 27, author_id: 'fixture-person', body: 'A reply', topic_id: 't1' }] }, { live: true, cursor: 26 });
+    if (act === 'mark read') views.placeAfresh();
+    await settle();
+    sends[0].settles(2); await settle();
+    assert.deepEqual(sent(sends), [[25, 26], [22, 26]], act + ': the waiting range goes out after the act');
+    sends[1].settles(3); await settle();
+    assert.equal(await allRead(), act === 'none', act === 'none' ? 'read on screen with no act, the line holds' : act + ': read on screen before the act, the line fades once nothing is unread');
+  }
+
+  // Read in two pieces before the act, one in flight and one waiting, and on
+  // screen together after it: nothing in the range is new, so it holds nothing.
+  for (const act of ['none', 'reply', 'mark read']) {
+    const { views, sends, show, allRead } = await start();
+    show([25, 26]); await settle();
+    show([22, 23, 24], [25, 26]); await settle();
+    if (act === 'reply') views.messagesPage({ ...page(27, 27, null), items: [{ id: 'm27', seq: 27, author_id: 'fixture-person', body: 'A reply', topic_id: 't1' }] }, { live: true, cursor: 26 });
+    if (act === 'mark read') views.placeAfresh();
+    show([25, 26]); await settle();
+    sends[0].settles(2); await settle();
+    sends[1].settles(3); await settle();
+    assert.deepEqual(sent(sends), [[25, 26], [22, 24]], act + ': each piece once, and nothing again');
+    assert.equal(await allRead(), act === 'none', act === 'none' ? 'read on screen with no act, the line holds' : act + ': seen again after the act, cards read before it hold nothing');
+  }
+});
+
+// A report whose answer is lost after Core recorded it (the connection drops,
+// a phone puts the page in the background, the server restarts): the page
+// cannot tell it from a report Core never saw, so its cards keep holding the
+// line, which reading on screen never fades. The page here is real (noteRead,
+// ReadThrough, TopicViews); Core records the report and the answer is lost.
+test('a report whose answer is lost after Core recorded it keeps the New line until the reader acts', async () => {
+  for (const act of ['none', 'open']) {
+    const { f, card } = await readingPage();
+    const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', reader: 'fixture-person', paint: kind => f.paintViews(kind), invalidate() {} });
+    f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+    const recorded = [];
+    f.api.command = async envelope => {
+      assert.equal(envelope.kind, 'topic.read_through');
+      recorded.push([envelope.args.from_seq, envelope.args.seq]);
+      throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+    };
+    views.messagesPage({ ...page(20, 21, null), oldest_unread: { seq: 20, id: 'm20' }, commit_seq: 5 }, { initial: true }); await settle();
+    f.observers[0].callback([20, 21].map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })));
+    await settle(); await settle();
+    assert.deepEqual(recorded, [[20, 21]], act + ': Core recorded the first screen; its answer was lost');
+    if (act === 'open') { f.registry.current = { source: { source_ref: { kind: 'message', id: 'm21' }, topic_id: 't1', seq: 21, author: 'agent-a' }, editors: {}, mode: 'reply' }; f.observers[0].callback([]); await settle(); }
+    // Core then says nothing is unread, at a later commit.
+    await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: null, commit_seq: 50 }));
+    assert.equal(views.held, act === 'none', act === 'none' ? 'read on screen and recorded, its answer lost: the line still holds' : 'opened in the Reader, the line fades');
+  }
+});
+
+// What is drawn above the messages after they paint, in their column
+// (docs/agents.md): the marks line, and on a conversation page its Show row
+// and header, which land with the conversation's read. Each would push the
+// cards down, so no card is read on screen until each has had its first
+// answer, read or refused; then the cards on screen are. The outcome rail is
+// never above them (beside the topic, or in the phone's drawer), so a read of
+// the rail, held, holds no card back. Each read is held in turn, alone.
+test('no card is read on screen until every fill drawn above the messages has had its first answer, read or refused, and a fill of the rail holds none back', async t => {
+  const fills = [
+    { fill: 'the marks line', page: 'topic', holds: name => name === 'marks', above: true },
+    { fill: 'the conversation\'s Show row', page: 'conversation', holds: name => name === 'conversation', above: true },
+    { fill: 'the topics rail', page: 'topic', holds: name => name === 'workspace_topics', above: false },
+    { fill: 'the outcome Notebook', page: 'topic', holds: (name, args) => name === 'memory_items' && args.owner_scope?.kind === 'workspace', above: false },
+    { fill: 'the conversation row', page: 'topic', holds: name => name === 'conversation', above: false },
+    { fill: 'the Pipeline row', page: 'topic', holds: name => name === 'pipeline_row', above: false },
+    { fill: '← Outcomes with its light', page: 'topic', holds: (name, args) => name === 'attention' && args.workspace_id === 'w1', above: false },
+    { fill: 'the conversation page\'s topics rail', page: 'conversation', holds: name => name === 'workspace_topics', above: false },
+  ];
+  for (const { fill, page: kind, holds, above } of fills) {
+    for (const answer of ['read', 'refused']) await t.test(`${fill}, ${answer}`, async () => {
+      const label = `${fill} on a ${kind} page, ${answer}`;
+      const f = fixture('https://fixture/?topic=t1', { history: { state: null, replaceState() {} } }); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+      if (kind === 'conversation') f.topic.kind = 'conversation';
+      f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+      Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+      const view = f.api.view, held = [];
+      f.api.view = (name, args, options) => {
+        if (!holds(name, args ?? {}) || held.length) return view(name, args, options);
+        const release = defer(); held.push(release);
+        return release.promise.then(() => { if (answer === 'refused') throw new AttemptError('Refused.', 503); return view(name, args, options); });
+      };
+      const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
+      await f.initialize(); await settle();
+      assert.equal(held.length, 1, label + ': the page asked for it once, and it is held');
+      assert.equal(f.document.body.classList.contains('conversation-page'), kind === 'conversation', label + ': the page is the kind it says');
+      for (let seq = 20; seq <= 22; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body ' + seq, topic_id: 't1' });
+      f.views.newest = 22; f.paintViews('messages'); await settle();
+      const card = seq => f.observers[0].targets.find(target => target.dataset.seq === seq);
+      f.observers[0].callback([21, 22].map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })));
+      for (const handler of f.events.filter(e => e[0] === 'window-handler' && e[1] === 'focus')) handler[2]();
+      await settle(); await settle();
+      assert.deepEqual(ranges(), above ? [] : [[21, 22]], above ? label + ': while it is unanswered, no card on screen is read'
+        : label + ': it is not above the messages, so the cards on screen are read while it is unanswered');
+      held[0].resolve(); await settle(); await settle(); await settle();
+      assert.deepEqual(ranges(), [[21, 22]], label + ': once it has its answer, the cards on screen are read, once');
+    });
+  }
+});
+
 // A model of IntersectionObserver for vertical scrolling: an entry is queued
 // when a target's threshold index or isIntersecting changes, and an edge-
 // adjacent (zero-area) intersection counts as intersecting.
@@ -2775,7 +2949,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   const list = f.get('messages'), cards = () => list.children.filter(child => child.dataset.seq);
   f.document.querySelectorAll = () => cards();
   f.document.querySelector = selector => selector === '#messages > [data-seq]' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
-  const layout = () => { for (const child of list.children) child.getBoundingClientRect ??= () => {
+  const layout = () => { for (const child of list.children) child.getBoundingClientRect = () => {
     let top = listTop; for (const before of list.children.slice(0, list.children.indexOf(child))) top += before.dataset.line ? 30 : 100;
     return { top, bottom: top + (child.dataset.line ? 30 : 90) }; }; };
   views.messagesPage({ ...page(20, 26, null), oldest_unread: { seq: 22, id: 'm22' }, commit_seq: 5 }, { initial: true }); await settle(); layout();
@@ -2873,7 +3047,7 @@ test('at the top of a topic a new message comes into view; read further down, th
   f.document.querySelectorAll = () => cards();
   f.document.querySelector = selector => selector === '#messages > [data-seq]' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
   const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
-  const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect ??= () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
+  const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect = () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
   for (let seq = 20; seq <= 25; seq++) add(seq);
   paint();
   listTop = 120; add(26); paint();

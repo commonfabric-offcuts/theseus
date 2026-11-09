@@ -126,6 +126,14 @@ activity first, done topics apart ([topic-list.md](topic-list.md)).
   covers it, the message the Reader shows, or else the range of message cards
   on screen (at least half of the card, or half of the viewport, which a card
   of any height covers exactly when it crosses the viewport's middle line).
+  A card counts as on screen only once everything drawn above the messages
+  in their column after they paint has had its first fill, read or refused,
+  since each would push the cards down: the marks line ("1 marked unread ·
+  Read it") and, on an outcome's conversation page, its Show row and header,
+  which land with the conversation's read. The outcome rail is never above
+  them (beside the topic, or on a phone in the drawer behind "☰ Topics"), so
+  its reads hold no card back. A card counts only where it is when the page
+  reports, measured then.
   Loaded messages form contiguous runs: a page joins the run it continues or
   overlaps, and a newest page that does neither (as the first read after
   a reload) starts its own. Each

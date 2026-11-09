@@ -45,7 +45,7 @@ NativeStep = collections.namedtuple("NativeStep", "name harness flags results")
 PERSISTENCE = "tests/reader_persistence_native.mjs"
 READER = "tests/reader_native.mjs"
 WEBKIT = "tests/webkit_native.mjs"
-WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device")
+WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line")
 # Every mode of every native entry point. tests/test_tools_release_check.py
 # reads the harnesses and fails when a mode or an entry point is missing here.
 NATIVE_STEPS = tuple(
