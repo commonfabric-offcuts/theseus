@@ -136,22 +136,137 @@ class StagesCase(PipelineCase):
         self.committed(self.move(3, undo_of=restore, underway_confirmed=True))
         self.assertEqual((self.item(3)["section"], self.entries(piece)), ("dropped", [("build", 1, "dropped", 1)]))
 
-    def test_an_item_being_built_stays_in_now_until_it_is_dropped(self):
+    def test_an_item_being_built_stays_in_now_until_it_is_dropped_or_set_aside_with_a_note(self):
         # D26: Now always holds every piece's items, so the light's work in Now covers them.
         to_now = self.committed(self.move(4, section="now"))["event"]
-        self.committed(self.start(numbers=(4,), size="small"))
+        piece = self.committed(self.start(numbers=(4,), size="small"))["piece_id"]
+        words = {"next": "Next", "later": "Later", "candidates": "Candidates"}
         for section in ("next", "later", "candidates"):
             for confirmed in (False, True):
                 with self.subTest(section=section, confirmed=confirmed):
                     refused = self.move(4, section=section, **({"underway_confirmed": True} if confirmed else {}))
-                    self.rejected(refused, "ITEM_IN_PIECE")
-                    self.assertIn("being built", refused["error"]["message"])
-        self.rejected(self.move(4, undo_of=to_now), "ITEM_IN_PIECE")
-        self.assertEqual((self.item(4)["section"], 4 in self.section("now"), self.section("next")), ("now", True, []))
+                    self.rejected(refused, "NOTE_REQUIRED")
+                    self.assertEqual(refused["error"]["message"],
+                                     "4 is being built now, so moving it to %s sets its piece aside: say why in a short note" % words[section])
+        refused = self.move(4, undo_of=to_now)
+        self.rejected(refused, "ITEM_IN_PIECE")
+        self.assertEqual(refused["error"]["message"], "4 is being built now, and an Undo never sets its piece aside: move it with a note to set the piece aside")
+        self.assertEqual((self.item(4)["section"], 4 in self.section("now"), self.section("next"), self.entries(piece)),
+                         ("now", True, [], [("build", 1, None, 0)]))
         # It is still ordered within Now, and an item not being built still moves out.
         self.committed(self.move(4, above=1))
         self.committed(self.move(3, section="later"))
         self.assertEqual((self.section("now"), self.section("later")), ([4, 1, 2], [3]))
+
+    ASIDE = "The tests miss the real case; rethink them"
+
+    def test_moving_an_item_being_built_out_of_now_with_a_note_sets_its_whole_piece_aside(self):
+        # Item 183: work that misses lands, or goes to Later to rethink its spec or tests. Its piece closes, every item of
+        # it moves (an item is never half in a piece), and its stages so far and the note stay with each item.
+        piece = self.committed(self.start())["piece_id"]
+        self.committed(self.enter(piece, "review"))
+        waiting = self.add("Later 5", section="later")
+        moved = self.committed(self.move(2, section="later", above=waiting, note=self.ASIDE))
+        self.assertEqual((moved["section"], moved.get("set_aside", {}).get("piece_id"), moved.get("set_aside", {}).get("numbers")), ("later", piece, [2, 1]))
+        self.assertEqual((self.section("now"), self.section("later")), ([3], [2, 1, waiting]), "the item moved goes where it is put, the rest of its piece below it")
+        self.assertEqual(self.entries(piece), [("build", 1, "approved", 1), ("review", 1, "dropped", 1)])
+        self.assertEqual(self.sql("SELECT number,left_ms IS NOT NULL FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (piece,)),
+                         [(1, 1), (2, 1)])
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["pieces"], [], "the piece has closed")
+        for number in (1, 2):
+            record = self.item(number)
+            [past] = record["pieces"]
+            self.assertEqual([(entry["name"], entry["left_outcome"], entry["left_note"]) for entry in past["stages_so_far"]],
+                             [("Build, round 1", "approved", ""), ("Review", "set aside", "Set aside: " + self.ASIDE)])
+            [event] = [event for event in record["events"] if event["kind"] == "moved"]
+            self.assertEqual(event["payload"].get("set_aside"), {"piece": piece, "note": self.ASIDE, "stages": ["Build, round 1", "Review"], "numbers": [2, 1]})
+            self.assertEqual((record["section"], record["piece"], record["stage"]), ("later", None, None))
+        shown = {item["number"]: item for item in self.store.view("owner", "pipeline", {"workspace_id": "w1", "section": "later"})["items"]}
+        self.assertEqual((shown[1]["placed"].get("set_aside") or {}).get("note"), self.ASIDE, "the pipeline page's row says why")
+        # Back in Now, an item starts a new piece; the one set aside stays as it was.
+        self.committed(self.move(1, section="now"))
+        again = self.committed(self.start(numbers=(1,), stage="review", size="large"))["piece_id"]
+        self.assertNotEqual(again, piece)
+        self.assertEqual([other["id"] for other in self.item(1)["pieces"]], [piece, again])
+        self.assertEqual(self.entries(piece)[-1], ("review", 1, "dropped", 1))
+        # A stage left by setting work aside is not a time that stage took.
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["pieces"][0]["stage"]["typical"], {"too_few": 0, "min": 3})
+
+    def test_undo_of_a_set_aside_puts_the_item_back_in_now_and_leaves_its_piece_closed(self):
+        piece = self.committed(self.start())["piece_id"]
+        moved = self.committed(self.move(1, section="next", note=self.ASIDE))
+        self.assertEqual(self.section("next"), [4, 1, 2])
+        back = self.committed(self.move(1, undo_of=moved["event"]))
+        self.assertEqual((back["section"], back.get("set_aside_stays")), ("now", piece))
+        self.assertEqual((self.section("now"), self.section("next")), ([3, 1], [4, 2]), "only the item undone comes back, last in Now")
+        self.assertEqual((self.item(1)["piece"], self.entries(piece)), (None, [("build", 1, "dropped", 1)]), "no piece is opened again")
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["pieces"], [])
+        self.assertEqual(self.item(1)["placed"].get("set_aside_stays"), piece)
+
+    def test_a_piece_is_set_aside_only_with_a_note_by_whoever_steers_and_a_note_goes_with_nothing_else(self):
+        self.committed(self.move(4, section="now"))
+        piece = self.committed(self.start(numbers=(4, 3)))["piece_id"]
+        before = (self.positions(), self.entries(piece), self.sql("SELECT count(*) FROM pipeline_events"))
+        for note in ({}, {"note": "  "}):
+            refused = self.move(4, section="later", **note)
+            self.rejected(refused, "NOTE_REQUIRED")
+            self.assertEqual(refused["error"]["message"], "4 is being built now, so moving it to Later sets its piece aside, with 3: say why in a short note")
+        self.rejected(self.move(4, section="later", note="x" * 2049), "INVALID_ARGUMENT")
+        self.rejected(self.move(4, section="later", note=self.ASIDE, actor="agent-b"), "FORBIDDEN")
+        self.rejected(self.move(4, section="later", note=self.ASIDE, actor="outsider"), "FORBIDDEN")
+        for args in ({"section": "dropped", "underway_confirmed": True}, {"above": 3}):
+            refused = self.move(4, note=self.ASIDE, **args)
+            self.rejected(refused, "INVALID_ARGUMENT")
+            self.assertEqual(refused["error"]["message"], "A note goes only with moving an item being built out of Now, which sets its piece aside")
+        refused = self.move(1, section="later", note=self.ASIDE)
+        self.rejected(refused, "INVALID_ARGUMENT")
+        self.assertEqual((self.positions(), self.entries(piece), self.sql("SELECT count(*) FROM pipeline_events")), before, "nothing changed")
+        self.assertEqual([shown["you_set_aside"] for shown in self.store.view("owner", "pipeline", {"workspace_id": "w1"})["pieces"]], [True])
+        self.assertEqual([shown["you_set_aside"] for shown in self.store.view("agent-b", "pipeline", {"workspace_id": "w1"})["pieces"]], [False])
+
+    def test_the_coordinator_sets_aside_only_what_the_owner_did_not_place_and_not_while_the_owner_holds_it(self):
+        self.topic("t2")
+        mine = self.add("The coordinator's", section="now", actor="agent-a", size="small")
+        held = self.add("The coordinator's, held", section="now", actor="agent-a", size="small")
+        with_owners = self.committed(self.start(numbers=(mine, 3), actor="agent-a"))["piece_id"]
+        on_the_owners_word = self.committed(self.start(numbers=(held,), topic="t2", actor="agent-a"))["piece_id"]
+        ask = self.post("@owner would you read it?", actor="agent-a", topic="t2", addressees=["owner"], intent="ask")
+        self.committed(self.enter(on_the_owners_word, "tony-reads", actor="agent-a", ask_message_id=ask))
+        aside = lambda actor: {shown["id"]: shown["you_set_aside"] for shown in self.store.view(actor, "pipeline", {"workspace_id": "w1"})["pieces"]}
+        self.assertEqual(aside("owner"), {with_owners: True, on_the_owners_word: True})
+        self.assertEqual(aside("agent-a"), {with_owners: False, on_the_owners_word: False})
+        before = (self.positions(), self.entries(with_owners), self.entries(on_the_owners_word))
+        refused = self.move(mine, section="later", note=self.ASIDE, actor="agent-a")
+        self.rejected(refused, "OWNER_PLACED")
+        self.assertIn("owner placed 3, which is built with %d," % mine, refused["error"]["message"])
+        refused = self.move(held, section="later", note=self.ASIDE, actor="agent-a")
+        self.rejected(refused, "STAGE_GATED")
+        self.assertEqual(refused["error"]["message"], "Only owner leaves this stage")
+        self.assertEqual((self.positions(), self.entries(with_owners), self.entries(on_the_owners_word)), before, "nothing changed")
+        # Once the owner's item has left the piece, the coordinator sets the rest aside.
+        self.committed(self.move(3, section="dropped", underway_confirmed=True))
+        self.assertEqual((aside("agent-a")[with_owners], aside("agent-b")[with_owners]), (True, False), "a member steers nothing")
+        self.committed(self.move(mine, section="later", note=self.ASIDE, actor="agent-a"))
+        self.assertEqual(self.sql("SELECT left_outcome,left_note,left_by FROM pipeline_stage_entries WHERE piece_id=?", (with_owners,)),
+                         [("dropped", "Set aside: " + self.ASIDE, "agent-a")])
+        # The owner sets aside work waiting on their word.
+        self.committed(self.move(held, section="later", note=self.ASIDE))
+        self.assertEqual(self.entries(on_the_owners_word)[-1], ("tony-reads", 1, "dropped", 1))
+
+    def test_a_release_pipeline_sets_a_piece_aside_but_never_the_release_and_a_record_naming_its_item_ships_it(self):
+        self.release_stages(*STAGES[:3], self.CHECKS)
+        self.topic("t2")
+        release = self.committed(self.combine([self.committed(self.start(stage="wait"))["piece_id"]], commit_sha="5" * 40))["piece_id"]
+        refused = self.move(1, section="later", note=self.ASIDE)
+        self.rejected(refused, "ITEM_IN_PIECE")
+        self.assertEqual(refused["error"]["message"], "1 is in release 23, being put together, so it stays in Now until it ships, goes back to building or is dropped")
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["release_piece"]["you_set_aside"], False)
+        piece = self.committed(self.start(numbers=(3,), topic="t2"))["piece_id"]
+        self.committed(self.move(3, section="later", note=self.ASIDE))
+        self.assertEqual(self.entries(piece), [("build", 1, "dropped", 1)])
+        # What a record names has shipped wherever it is: the piece set aside shipped it after all.
+        self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": "2026-11-07T08:00:00-08:00", "items": [1, 2, 3], "source": "deploy"})
+        self.assertEqual((self.entries(release)[-1][2], self.entries(piece)[-1][2], self.item(3)["shipped"]["release"]), ("shipped", "shipped", 23))
 
     def test_finishing_a_piece_marks_its_items_done_and_a_release_pipeline_finishes_by_its_record(self):
         piece = self.committed(self.start())["piece_id"]

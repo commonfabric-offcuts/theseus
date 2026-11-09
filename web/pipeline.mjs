@@ -41,11 +41,11 @@ const SECTION_ORDER = ['now', 'next', 'later', 'candidates'];
 export class PipelinePage {
   constructor({ host, header, reader, instanceId, workspace, item = null, read, send }) {
     Object.assign(this, { host, header, reader, instanceId, workspace, itemNumber: item, read, send });
-    this.open = new Set(); this.closed = new Set(); this.menu = null; this.confirming = null; this.errors = new Map();
+    this.open = new Set(); this.closed = new Set(); this.menu = null; this.confirming = null; this.asiding = null; this.errors = new Map();
     this.answer = null; this.serial = 0; this.editing = false; this.chain = Promise.resolve();
     // The one-line add's text per section, the words being written per item, the
-    // item whose words and size are open, and what was just added.
-    this.addDrafts = {}; this.wordDrafts = new Map(); this.details = null; this.added = null; this.savedWords = null;
+    // item whose words and size are open, what was just added, and the why being typed per piece being set aside.
+    this.addDrafts = {}; this.wordDrafts = new Map(); this.details = null; this.added = null; this.savedWords = null; this.asideDrafts = new Map();
     // Change stages in place: what is being typed per stage line ("<stage>:<field>"),
     // the new stage's line, the quiet note per stage, and the stage just removed (for Undo).
     this.stageDrafts = new Map(); this.newStage = ''; this.stageNote = null; this.removed = null;
@@ -197,13 +197,15 @@ export class PipelinePage {
       const item = known ?? { number, title: piece.titles?.[String(number)] ?? '', glyph: 'building', sources: null, raised_by: null, raised_note: '', size: null, asks: [] };
       const ring = index === 0 && piece.topic?.work?.observed
         ? el('span', { class: 'topic-work', 'aria-hidden': 'true', title: workNote(piece.topic.work, this.reader) }) : null;
-      // Each item being built keeps its own ⋯ (9.1.3, D3): Open its record, and Drop…, which asks first.
+      // Each item being built keeps its own ⋯ (9.1.3, D3): Open its record, Set aside to Later… (183) when the server would
+      // take it from this reader, and Drop…, which asks first.
       const key = `item:${number}`;
       const lines = el('div', { class: 'pl-piece-item', 'data-key': key, 'data-number': String(number) },
         this.head(item, item.glyph === 'decide' ? 'decide' : 'building', ring), this.meta(item, pipeline, now), ...this.origin(item));
       if (this.confirming === number) lines.append(this.dropConfirm(item));
+      if (this.asiding === number && piece.you_set_aside) lines.append(this.asideLine(item, piece));
       if (this.errors.get(key)) lines.append(el('p', { class: 'pl-error', role: 'status', text: this.errors.get(key) }));
-      if (known && pipeline.you_steer) lines.append(...this.steer(item, [item], 0, pipeline, { underway: true }));
+      if (known && pipeline.you_steer) lines.append(...this.steer(item, [item], 0, pipeline, { underway: true, piece }));
       card.append(lines);
     });
     if (piece.topic) {
@@ -295,7 +297,7 @@ export class PipelinePage {
 
   row(item, list, index, pipeline, now) {
     const key = `item:${item.number}`;
-    const placed = placedWords(item.placed, this.reader, pipeline.section_words, now);
+    const placed = placedWords(item.placed, this.reader, pipeline.section_words, now, item.number);
     const moved = item.placed?.kind === 'moved' && !item.placed.undo_of && item.section !== 'dropped' && (now - item.placed.ms) < 24 * 3600 * 1000;
     const li = el('li', { class: 'pl-row' + (moved ? ' moved' : ''), 'data-key': key, 'data-number': String(item.number) });
     const more = [];
@@ -303,7 +305,8 @@ export class PipelinePage {
     const stageWords = item.stage ? [' · ', `${item.stage.name} since ${shownTime(item.stage.entered_ms, now)}`] : [];
     const body = el('div', { class: 'pl-body' }, this.head(item), this.meta(item, pipeline, now, [...more, ...stageWords]), ...this.origin(item));
     for (const ask of item.asks ?? []) body.append(el('p', { class: 'pl-note' }, `“${ask.excerpt}” In `, el('a', { href: topicHref(ask.topic_id), text: ask.topic_title }), '.'));
-    if (placed && (now - item.placed.ms) < 7 * 24 * 3600 * 1000) {
+    // A move shows for a week; why a piece was set aside shows for as long as the item stays where it was put.
+    if (placed && ((now - item.placed.ms) < 7 * 24 * 3600 * 1000 || item.placed.set_aside)) {
       const undo = item.placed.by === this.reader && !item.placed.undo_of
         ? el('button', { type: 'button', 'data-role': 'undo', text: item.section === 'dropped' ? 'Restore' : 'Undo',
           onclick: () => this.act(key, () => this.command('pipeline.item_move', { workspace_id: this.workspace, number: item.number }, { undo_of: item.placed.event }, { item_revision: item.version })) })
@@ -333,17 +336,30 @@ export class PipelinePage {
       el('button', { type: 'button', 'data-role': 'drop-keep', text: 'Keep it', onclick: () => { this.confirming = null; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="steer"]`)?.focus(); } }));
   }
 
+  // Set aside to Later… asks why in one line (the form rule): Return sets the whole piece aside, Escape keeps it as it is.
+  asideLine(item, piece) {
+    const key = `item:${item.number}`, one = piece.items.length === 1, later = this.answer?.pipeline?.section_words?.later ?? 'Later';
+    // The why being typed is kept per piece, as the add lines keep theirs, so a live repaint leaves its words alone;
+    // a piece set aside is closed for good, so its words are never offered for another.
+    const close = () => { this.asiding = null; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="steer"]`)?.focus(); };
+    return titleLine({ key: `aside:${item.number}`, role: 'aside-note', label: `Why set ${listWords(piece.items)} aside to ${later}`, placeholder: 'Why set it aside?',
+      hint: `Return sets ${listWords(piece.items)} aside to ${later}, with ${one ? 'its' : 'their'} stages so far · Escape keeps ${one ? 'it' : 'them'}`,
+      value: this.asideDrafts.get(piece.id) ?? '', input: value => { this.asideDrafts.set(piece.id, value); },
+      submit: note => { this.asiding = null; this.act(key, () => this.move(item, { section: 'later', note })); }, cancel: close });
+  }
+
   // The ⋯ button and, while it is open, its menu.
-  steer(item, list, index, pipeline, { underway = false } = {}) {
+  steer(item, list, index, pipeline, { underway = false, piece = null } = {}) {
     const key = `item:${item.number}`;
     const button = el('button', { type: 'button', class: 'pl-steer', 'data-role': 'steer', 'aria-label': `Steer ${item.number}`, 'aria-haspopup': 'menu',
       'aria-expanded': this.menu === item.number ? 'true' : 'false', text: '⋯',
       onclick: () => { this.menu = this.menu === item.number ? null : item.number; this.paint(); this.host.querySelector(`[data-key="${key}"] .pl-menu button`)?.focus(); } });
-    return this.menu === item.number ? [button, this.steerMenu(item, list, index, pipeline, underway)] : [button];
+    return this.menu === item.number ? [button, this.steerMenu(item, list, index, pipeline, underway, piece)] : [button];
   }
 
-  // An item being built (`underway`) is not ordered or moved from here: its menu is Open its record and Drop….
-  steerMenu(item, list, index, pipeline, underway = false) {
+  // An item being built (`underway`) is not ordered or moved from here: its menu is Open its record, Set aside to Later…
+  // when its piece's view says this reader may (`you_set_aside`, the server's own rule), and Drop….
+  steerMenu(item, list, index, pipeline, underway = false, piece = null) {
     const words = pipeline.section_words ?? {};
     const button = (label, keys, action) => el('button', { type: 'button', role: 'menuitem', onclick: () => { this.menu = null; action(); } },
       el('span', { text: label }), keys ? el('kbd', { text: keys }) : null);
@@ -358,6 +374,9 @@ export class PipelinePage {
       menu.append(el('hr'));
     }
     menu.append(button('Open its record', null, () => location.assign(pipelineHref(this.workspace, item.number))));
+    if (underway && piece?.you_set_aside) menu.append(button(`Set aside to ${words.later ?? 'Later'}…`, null, () => {
+      this.asiding = item.number; this.paint(); this.host.querySelector(`[data-key="item:${item.number}"] [data-role="aside-note"]`)?.focus();
+    }));
     menu.append(button('Drop…', null, () => {
       if (item.stage) { this.confirming = item.number; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="drop-keep"]`)?.focus(); }
       else this.act(key, () => this.move(item, { section: 'dropped' }));
@@ -774,7 +793,7 @@ export class PipelinePage {
     }
     const progress = item.events.find(event => event.payload?.progress?.length);
     if (progress) page.push(el('p', { class: 'pl-note', text: `Progress noted by hand before the pipeline was part of Theseus: ${progress.payload.progress.join(' ')}` }));
-    page.push(section('What happened to it', null, el('ol', { class: 'pl-events' }, ...item.events.map(event => el('li', { text: eventWords(event, this.reader, pipeline.section_words, now) })))));
+    page.push(section('What happened to it', null, el('ol', { class: 'pl-events' }, ...item.events.map(event => el('li', { text: eventWords(event, this.reader, pipeline.section_words, now, item.number) })))));
     this.host.replaceChildren(...page);
   }
 }
@@ -784,8 +803,8 @@ const isField = node => node instanceof HTMLInputElement || node instanceof HTML
 // One line for a title (the form rule): placeholder "Add an item…", Return submits it,
 // Escape clears it (and then `cancel` hears whether it held text). The pipeline page's
 // sections and a message's Add to pipeline both use it.
-export function titleLine({ key, value = '', label, hint, placeholder = 'Add an item…', input, submit, cancel }) {
-  const field = el('input', { type: 'text', class: 'pl-line-input', 'data-role': 'add-title', placeholder, 'aria-label': label, autocomplete: 'off',
+export function titleLine({ key, value = '', label, hint, placeholder = 'Add an item…', role = 'add-title', input, submit, cancel }) {
+  const field = el('input', { type: 'text', class: 'pl-line-input', 'data-role': role, placeholder, 'aria-label': label, autocomplete: 'off',
     enterkeyhint: 'done', maxlength: '500', spellcheck: 'true' });
   field.value = value;
   field.oninput = () => input?.(field.value);

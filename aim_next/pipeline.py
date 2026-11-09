@@ -722,15 +722,14 @@ class Pipeline:
     def _command_pipeline_item_move(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"workspace_id", "number"} or set(args) - {"section", "above", "below", "underway_confirmed", "undo_of",
-                                                                    "because_message_id", "candidate_group"}:
+                                                                    "because_message_id", "candidate_group", "note"}:
             raise Refusal("INVALID_ARGUMENT", "Move an item to a section, above or below another, or undo a move")
         workspace = self._steerer(db, actor, target["workspace_id"])
         pipeline = self._pipeline_on(db, workspace["id"])
         item = self._item_row(db, workspace["id"], target["number"])
         self._check_revision(envelope, "item_revision", item["version"])
         number = item["number"]
-        placed = db.execute("SELECT seq,by,ms FROM pipeline_events WHERE workspace_id=? AND number=? AND kind IN ('added','moved') "
-                            "ORDER BY seq DESC LIMIT 1", (workspace["id"], number)).fetchone()
+        placed = self._placement(db, workspace["id"], number)
         owner = workspace["owner_id"]
         # D3: what the owner placed stays where the owner put it.
         if actor != owner and placed is not None and placed["by"] == owner:
@@ -738,15 +737,15 @@ class Pipeline:
                           "Theseus does not move it back." % (owner, _clock(placed["ms"])))
         if self._shipped(db, pipeline, item, self._shipped_numbers(db)):
             raise Refusal("ITEM_SHIPPED", "A shipped item stays where it shipped")
-        before = self._neighbours(db, item)
-        undo_of = args.get("undo_of")
+        undo_of, undone = args.get("undo_of"), None
         if undo_of is not None:
             if isinstance(undo_of, bool) or not isinstance(undo_of, int) or placed is None or placed["seq"] != undo_of:
                 raise Refusal("UNDO_STALE", "This item has moved since; nothing was undone")
             event = db.execute("SELECT * FROM pipeline_events WHERE seq=? AND kind='moved'", (undo_of,)).fetchone()
             if event is None:
                 raise Refusal("UNDO_STALE", "Only a move can be undone")
-            back = json.loads(event["payload"])["before"]
+            undone = json.loads(event["payload"])
+            back = undone["before"]
             section, group = back["section"], back.get("group", "")
             # Back where it was: above the item it was above, else below the one it was below, else last.
             above = back.get("above") if back.get("above") is not None and self._in_place(db, workspace["id"], back["above"], section, group) else None
@@ -760,33 +759,99 @@ class Pipeline:
             above, below = args.get("above"), args.get("below")
         piece = self._open_piece_of(db, workspace["id"], number)
         entry = self._open_entry(db, piece["id"]) if piece is not None else None
-        # An item being built stays in Now (D26), whether it is moved by section or by an Undo:
-        # it leaves only by being dropped, which stops work under way and so is confirmed (D3).
+        note, aside = args.get("note"), None
+        # An item being built stays in Now (D26) while its piece is under way. It leaves by being dropped, which stops work
+        # under way and so is confirmed (D3), or, moved to another section with a note, its whole piece is set aside (183).
         if section != item["section"] and entry is not None:
-            if section != "dropped":
-                raise Refusal("ITEM_IN_PIECE", "%d is being built now, so it stays in %s until it is dropped or its piece is done"
-                              % (number, item["section"].capitalize()))
-            if args.get("underway_confirmed") is not True:
-                raise Refusal("ITEM_UNDERWAY", "%d is being built now, so dropping it stops work under way. Confirm to drop it." % number)
+            if section == "dropped":
+                if args.get("underway_confirmed") is not True:
+                    raise Refusal("ITEM_UNDERWAY", "%d is being built now, so dropping it stops work under way. Confirm to drop it." % number)
+            elif undo_of is not None:
+                raise Refusal("ITEM_IN_PIECE", "%d is being built now, and an Undo never sets its piece aside: move it with a note to set "
+                              "the piece aside" % number)
+            else:
+                refused = self._set_aside_refusal(db, actor, workspace, piece, entry, number)
+                if refused is not None:
+                    raise refused
+                aside = [number] + [other for other in self._members(db, piece["id"]) if other != number]
+                if not isinstance(note, str) or not note.strip():
+                    words = _loads(pipeline["section_words"], SECTION_WORDS).get(section, SECTION_WORDS[section])
+                    raise Refusal("NOTE_REQUIRED", "%d is being built now, so moving it to %s sets its piece aside%s: say why in a short note"
+                                  % (number, words, ", with " + _and(aside[1:]) if aside[1:] else ""))
+                note = _text(note, "The note", limit=2048)
+        if note is not None and aside is None:
+            raise Refusal("INVALID_ARGUMENT", "A note goes only with moving an item being built out of Now, which sets its piece aside")
         because = args.get("because_message_id")
         if because is not None:
             because = self._message_access(db, actor, because)["id"]
         ms = _now_ms()
-        position = self._place(db, workspace["id"], number, section, group, above, below)
-        db.execute("UPDATE pipeline_items SET section=?,candidate_group=?,position=?,version=version+1 WHERE workspace_id=? AND number=?",
-                   (section, group, position, workspace["id"], number))
-        moved = self._item_row(db, workspace["id"], number)
-        after = self._neighbours(db, moved)
-        relative = {"above": above} if above is not None else {"below": below} if below is not None else None
-        seq = self._event(db, workspace["id"], number, "moved", actor,
-                          {"before": before, "after": after, "relative": relative, "undo_of": undo_of, "because_message_id": because}, ms)
-        if section == "dropped" and item["section"] != "dropped":
+        payload = {"undo_of": undo_of, "because_message_id": because}
+        if aside is not None:
+            # Every item of the piece goes, the one moved first and the rest below it, each with its own event (and Undo).
+            names = []
+            for row in db.execute("SELECT stage_id,round FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (piece["id"],)).fetchall():
+                stage = self._stage(db, workspace["id"], row["stage_id"], current=False)
+                names.append(outcome_rules.stage_name(stage["name"], stage["rounds"], row["round"]))
+            payload["set_aside"] = {"piece": piece["id"], "note": note, "stages": names, "numbers": aside}
+        elif undone is not None and undone.get("set_aside"):
+            # The item comes back alone and not being built: its piece stays set aside, and a new piece builds it.
+            payload["set_aside_stays"] = undone["set_aside"]["piece"]
+        events = {}
+        for moving in aside or [number]:
+            row = self._item_row(db, workspace["id"], moving)
+            before = self._neighbours(db, row)
+            if moving != number:
+                above, below = None, aside[aside.index(moving) - 1]
+            position = self._place(db, workspace["id"], moving, section, group, above, below)
+            db.execute("UPDATE pipeline_items SET section=?,candidate_group=?,position=?,version=version+1 WHERE workspace_id=? AND number=?",
+                       (section, group, position, workspace["id"], moving))
+            after = self._neighbours(db, self._item_row(db, workspace["id"], moving))
+            relative = {"above": above} if above is not None else {"below": below} if below is not None else None
+            events[moving] = self._event(db, workspace["id"], moving, "moved", actor,
+                                         dict({"before": before, "after": after, "relative": relative}, **payload), ms)
+        if (section == "dropped" and item["section"] != "dropped") or aside is not None:
             # A drop, by a move or an Undo, is a fact (D25): the item leaves the piece under way (a finished piece keeps it),
-            # or ends the line of work it was in.
-            self._fact(db, workspace["id"], "drop", ms, actor, {"number": number})
+            # or ends the line of work it was in. Setting a piece aside drops each of its items, saying so.
+            for moving in aside or [number]:
+                self._fact(db, workspace["id"], "drop", ms, actor, dict({"number": moving}, **({"aside": note} if aside is not None else {})))
             self._settle(db, workspace["id"])
         version = self._bump(db, workspace["id"], number)
-        return {"workspace_id": workspace["id"], "number": number, "section": section, "event": seq, "pipeline_revision": version}, []
+        answer = {"workspace_id": workspace["id"], "number": number, "section": section, "event": events[number], "pipeline_revision": version}
+        if aside is not None:
+            answer["set_aside"] = {"piece_id": piece["id"], "numbers": aside, "events": {str(moving): seq for moving, seq in events.items()}}
+        if "set_aside_stays" in payload:
+            answer["set_aside_stays"] = payload["set_aside_stays"]
+        return answer, []
+
+    def _placement(self, db, workspace_id, number):
+        """An item's newest added or moved event: who placed it, and the move an Undo undoes."""
+        return db.execute("SELECT seq,by,ms FROM pipeline_events WHERE workspace_id=? AND number=? AND kind IN ('added','moved') "
+                          "ORDER BY seq DESC LIMIT 1", (workspace_id, number)).fetchone()
+
+    def _set_aside_refusal(self, db, actor, workspace, piece, entry, number=None):
+        """Why the actor may not set this piece under way aside (183), as a Refusal, or None. The move and the piece's view
+        (`you_set_aside`) both ask here, so the page offers only what the move accepts. Those who steer set work aside, and
+        never the release; the coordinator neither leaves a stage that waits on the owner's word (D24) nor moves an item the
+        owner placed (D3), and a set-aside moves every item of the piece."""
+        owner = workspace["owner_id"]
+        if not self._steers(workspace, actor):
+            return Refusal("FORBIDDEN", "Only this outcome's owner or coordinator may do this")
+        members = self._members(db, piece["id"])
+        if piece["kind"] != "piece":
+            return Refusal("ITEM_IN_PIECE", "%d is in release %d, being put together, so it stays in Now until it ships, goes back to "
+                           "building or is dropped" % (number if number is not None else members[0], self._next_release(db)))
+        if actor == owner:
+            return None
+        if self._stage(db, workspace["id"], entry["stage_id"], current=False)["gate"].get("owner"):
+            return Refusal("STAGE_GATED", _OWNERS_WORD["STAGE_GATED"] % owner)
+        for member in members:
+            placed = self._placement(db, workspace["id"], member)
+            if placed is not None and placed["by"] == owner:
+                others = [other for other in members if other != member]
+                return Refusal("OWNER_PLACED", "%s placed %d%s at %s. Setting the piece aside moves it too: say so once in this "
+                               "outcome's conversation." % (owner, member, ", which is built with " + _and(others) + "," if others else "",
+                                                             _clock(placed["ms"])))
+        return None
 
     def _in_place(self, db, workspace_id, number, section, group):
         row = db.execute("SELECT section,candidate_group FROM pipeline_items WHERE workspace_id=? AND number=?", (workspace_id, number)).fetchone()
@@ -1065,9 +1130,11 @@ class Pipeline:
 
         def entry_view(entry):
             stage = by_id.get(entry["stage_id"], {"name": entry["stage_id"], "rounds": "none", "gate": {}, "scope": "piece", "stage_id": entry["stage_id"]})
+            # A piece set aside (183) is stored as dropped with the person's words; it is read as what it was.
+            aside = entry["left_outcome"] == "dropped" and entry["left_note"].startswith(pipeline_state.SET_ASIDE)
             return {"stage_id": entry["stage_id"], "name": outcome_rules.stage_name(stage["name"], stage["rounds"], entry["round"]),
                     "round": entry["round"], "entered_ms": entry["entered_ms"], "entered_by": entry["entered_by"],
-                    "left_ms": entry["left_ms"], "left_outcome": entry["left_outcome"], "left_note": entry["left_note"],
+                    "left_ms": entry["left_ms"], "left_outcome": "set aside" if aside else entry["left_outcome"], "left_note": entry["left_note"],
                     "note": entry["note"], "progress": _loads(entry["progress"], None)}
         current = next((entry for entry in entries if entry["left_ms"] is None), None)
         members = self._members(db, piece["id"])
@@ -1077,7 +1144,8 @@ class Pipeline:
                 "titles": {str(number): titles.get(number) for number in members},
                 "started": {"by": entries[0]["entered_by"], "ms": entries[0]["entered_ms"]} if entries else None,
                 "stages_so_far": [entry_view(entry) for entry in entries if entry["left_ms"] is not None],
-                "stage": None, "ahead": [], "ahead_ids": [], "version": piece["version"]}
+                "stage": None, "ahead": [], "ahead_ids": [], "version": piece["version"],
+                "you_set_aside": current is not None and self._set_aside_refusal(db, actor, workspace, piece, current) is None}
         topic = db.execute("SELECT id,substr(CAST(title AS BLOB),1,257) AS title_prefix,state FROM topics WHERE id=?", (piece["topic_id"],)).fetchone()
         if topic is not None:
             title, _ = _prefix(topic["title_prefix"], 256)
@@ -1164,7 +1232,8 @@ class Pipeline:
         return {"kind": row["kind"], "by": row["by"], "ms": row["ms"], "relative": payload.get("relative"), "event": row["seq"],
                 "section": (payload.get("after") or {}).get("section", payload.get("section")),
                 "from_section": (payload.get("before") or {}).get("section"), "undo_of": payload.get("undo_of"),
-                "progress": payload.get("progress"), "because": because}
+                "progress": payload.get("progress"), "because": because, "set_aside": payload.get("set_aside"),
+                "set_aside_stays": payload.get("set_aside_stays")}
 
     def _item_view(self, db, actor, workspace, pipeline, row, releases, asks, pieces, cache, full=False):
         number = row["number"]
@@ -1192,7 +1261,8 @@ class Pipeline:
                               for event in db.execute("SELECT * FROM pipeline_events WHERE workspace_id=? AND number=? ORDER BY seq",
                                                       (workspace["id"], number))]
             item["pieces"] = []
-            for other in db.execute("SELECT DISTINCT piece_id FROM pipeline_piece_members WHERE workspace_id=? AND number=?", (workspace["id"], number)):
+            # Every piece the item was in, in the order they took it.
+            for other in db.execute("SELECT piece_id FROM pipeline_piece_members WHERE workspace_id=? AND number=? ORDER BY rowid", (workspace["id"], number)):
                 prow = db.execute("SELECT * FROM pipeline_pieces WHERE id=?", (other[0],)).fetchone()
                 item["pieces"].append(self._piece_view(db, actor, workspace, prow, self._stages(db, workspace["id"]), {}, cache, {}))
             if piece:
@@ -1412,6 +1482,12 @@ class Pipeline:
                 "shipped": {"count": shipped, "last_release_ms": newest} if shipped else None,
                 "last_now_work": ({"by": last["work"]["by"], "how": last["work"]["how"], "item": last["number"],
                                    "title": last["title"], "topic_title": last["topic_title"], "ms": last["work"]["seen_ms"]} if last else None)}
+
+def _and(numbers):
+    """"3", "3 and 4", "3, 4 and 5"."""
+    words = [str(number) for number in numbers]
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
 
 def _words(text):
     return set(re.findall(r"[a-z0-9']+", text.lower().replace("\u2019", "'")))

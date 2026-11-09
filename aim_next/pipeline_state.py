@@ -21,6 +21,9 @@ the commands accept.
 import json
 from collections import namedtuple
 
+# How the end of a piece set aside begins (item 183): a set-aside is a drop of every item of a piece under way, with the
+# words the person gave, so the piece's last entry is left `dropped` saying "Set aside: <their words>".
+SET_ASIDE = "Set aside: "
 # One piece: its id, 'piece' or 'release', its topic, and whether that topic is an ordinary one (not the outcome's
 # conversation, which never ends).
 Piece = namedtuple("Piece", "id kind topic_id ordinary_topic")
@@ -86,6 +89,8 @@ class _Play(object):
         self.act_end, self.combined_into, self.combine_ms = {}, {}, {}
         self.ended, self.shipped_by, self.emptied_next, self.shipped_in = {}, {}, {}, {}
         self.ships = False
+        # The words each piece was set aside with (a drop whose fact says `aside`).
+        self.aside = {}
         # The releases whose combine has been played: a release that a later fact combines is not there yet.
         self.begun = set()
         # Records the log does not mention were written before the outcome had a pipeline: the first turn on takes them.
@@ -150,6 +155,8 @@ class _Play(object):
                 return  # a finished piece, or the release it shipped in, keeps it
             row = self.rows[(piece, number)]
             self._leave(row, "dropped", fact.ms)
+            if fact.payload.get("aside") is not None:
+                self.aside[piece] = fact.payload["aside"]
             self.tentative[number] = {"row": row, "held": True, "rows": self.line.pop(number, [])}
         elif self.line.get(number):
             # Dropped where no piece holds it (it went back to building when its release shipped without it): the drop
@@ -328,7 +335,7 @@ class _Play(object):
                 end = None
             else:
                 shipped = [part[1] for part in (self._part(row) for row in self.rows_of[piece]) if part[0] == "shipped"]
-                end = ("shipped", "Shipped in release %d" % max(shipped)) if shipped else ("dropped", "")
+                end = ("shipped", "Shipped in release %d" % max(shipped)) if shipped else ("dropped", SET_ASIDE + self.aside[piece] if piece in self.aside else "")
             ends[piece] = None if end is None else end + self.ended[piece]
         done = {}
         by_topic = {}
