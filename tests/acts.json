@@ -727,9 +727,9 @@
    "act": "Replies gather into a stack under the message they answer",
    "break": [
     [
-     "web/app.mjs",
-     "arrangeStacks($('messages'), views.messages, { enabled: !here?.page,",
-     "arrangeStacks($('messages'), views.messages, { enabled: false,"
+     "web/reply-stacks.mjs",
+     "export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) {",
+     "export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) { return;"
     ]
    ],
    "check": {

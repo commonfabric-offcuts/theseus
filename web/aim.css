@@ -299,8 +299,12 @@ textarea.whispering,textarea.whispering:focus{border:1px dashed var(--whisper-li
 .filter-chip{min-height:2.2rem;padding:.15rem .75rem;border-radius:1.2rem;font-size:.8rem;color:var(--muted)}
 .filter-chip[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--ink);font-weight:650}
 .conversation-empty{padding:.5rem 0 1rem;display:flex;flex-direction:column;gap:.4rem;max-width:40rem}.conversation-empty p{margin:0}
-/* Only new: every card but an item nothing has settled is left out, the New line with them. */
-#messages.only-new>:not([data-item=new]){display:none}
+/* Only new: every card but an item nothing has settled is left out, the New line and a stack's line with them. A reply
+   stack draws nothing of its own here: its boxes give way, so each card it shows lays out as a card on its own does,
+   whatever else of its stack shows. */
+#messages.only-new :is(.reply-stack,.stack-replies){display:contents}
+#messages.only-new>:not([data-item=new],.reply-stack),#messages.only-new>.reply-stack>:not([data-item=new],.stack-replies),
+#messages.only-new>.reply-stack>.stack-replies>:not([data-item=new]){display:none}
 .message-card .about-line{display:block;font-size:.78rem;opacity:.85;margin-bottom:.3rem}
 .message-card .item-tags{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;margin-top:.55rem;font-size:.76rem}
 .message-card .item-tag-group{display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%}
@@ -565,9 +569,9 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 /* Beside the time on the author line, clear of the message bar over the card's top corner; a finger's 44px target overhangs the line rather than growing it. */
 @media(pointer:coarse){.replied-mark{width:2.75rem;height:2.75rem;margin:-.9rem -.4rem -.9rem 0}}
 .reply-stack{margin-bottom:.75rem}
-.reply-stack>.message-card,.reply-stack>.message-fold{margin:0}
 .stack-replies{display:flex;flex-direction:column;gap:.4rem;margin:.4rem 0 0 1.5rem}
-.stack-replies>.message-card,.stack-replies>.message-fold{margin:0}
+/* A stacked card leaves its spacing to its stack while the stack draws; under Only new it draws nothing (above). */
+:is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
 .stack-toggle{align-self:flex-start;min-height:2.5rem;padding:.2rem .7rem;border-color:transparent;background:transparent;color:var(--muted);font-size:.82rem}
 @media(hover:hover){.stack-toggle:hover{background:var(--soft);color:var(--ink)}}@media(hover:none){.stack-toggle:hover{background:transparent}}
 /* A tap shows its own state; no browser flash over a quiet line, the arrow or a stack's line. */

@@ -7,7 +7,9 @@ import { readFile } from 'node:fs/promises';
 // live; an ask back answers the item and brings "Asks you" and "Waiting on
 // you", and a reply in the Reader clears both; Answered by in the writing box is one tap on a name; the
 // Reader on a message in a topic sends the writing to the conversation by one
-// tap on To; a link to the conversation's topic opens as ?conversation=;
+// tap on To; replies stack as in any topic, with each stacked card's tags,
+// "Asks you", links, keys, menu and Only new at work (item 227, at 1280 wide,
+// light and dark); a link to the conversation's topic opens as ?conversation=;
 // Only new leaves out what is settled; and the page at 390 wide, light and
 // dark. Run by reader_persistence_native.mjs with --conversation;
 // screenshots are kept as conversation-*.png for review.
@@ -22,6 +24,21 @@ export async function conversationChecks({ check, page, until, control, view, fa
   const tags = (p, id) => quiet(p, `(c=>c&&{tags:[...c.querySelectorAll('.item-tag')].map(t=>t.textContent),
     mine:[...c.querySelectorAll('.item-tag.mine')].map(t=>t.textContent), detail:[...c.querySelectorAll('.item-detail')].map(d=>d.textContent),
     asks:c.querySelector('.asks-you')?.textContent??null, shown:c.getClientRects().length>0})(document.querySelector(${JSON.stringify(card(id))}))`);
+  // Under Only new every card shown lays out as a card standing on its own does, whatever stack it is in and whatever else of
+  // that stack shows: in line with the list on both sides, and the space under it, before the next card shown, is the space
+  // between two cards that stand alone. Each card shown, in order: [id, left inset, right inset, space to the next].
+  const onlyNewLayout = async (p, label) => {
+    const cards = await p.evaluate(`(l=>{const b=l.getBoundingClientRect(),r=v=>Math.round(v*10)/10;
+      const shown=[...l.querySelectorAll(':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]')].filter(e=>e.getClientRects().length);
+      return shown.map((e,i)=>{const c=e.getBoundingClientRect(),n=shown[i+1];
+        return {id:e.dataset.id,alone:e.parentElement===l&&n?.parentElement===l,row:[e.dataset.id,r(c.left-b.left),r(b.right-c.right),n?r(n.getBoundingClientRect().top-c.bottom):null]}})})(document.querySelector('#messages'))`);
+    const lone = cards.find(card => card.alone);
+    assert.ok(lone, `${label}: two cards that stand alone, one after the other ${JSON.stringify(cards)}`);
+    const space = lone.row[3];
+    assert.ok(space > 0, `${label}: cards that stand alone have space between them (${space})`);
+    assert.deepEqual(cards.map(card => card.row), cards.map((card, i) => [card.id, 0, 0, i < cards.length - 1 ? space : null]), `${label}: every card shown lays out as one standing alone`);
+    return cards.map(card => card.id);
+  };
   const row = p => quiet(p, `(r=>r&&{current:r.getAttribute('aria-current'),waiting:r.querySelector('.topic-state')?.textContent??null,
     unread:r.querySelector('.unread-count')?.textContent??null,shown:r.getClientRects().length>0})(document.querySelector('#conversation-row a'))`);
   const chip = p => quiet(p, `(h=>({hidden:h.hidden||h.getClientRects().length===0,text:h.querySelector('button')?.textContent??null,
@@ -431,6 +448,126 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  await check('conversation replies stack under the message they answer, as in any topic, and what the conversation paints on a card works on a stacked one', async () => {
+    // An item answered, followed up (a new item of its own), asked back about
+    // and noted, all read before the page opens; then one more reply, unread.
+    const item = await post('conversation-stack-item', 'Is the venue booked?');
+    const answered = await answer('conversation-stack-answer', 'Yes, since Monday.', { reply_to: item });
+    const followUp = await post('conversation-stack-follow', 'And the caterer?', { reply_to: answered });
+    const ask = await answer('conversation-stack-ask', `@${person} which room?`, { reply_to: item, addressees: [person], intent: 'ask' });
+    const noted = await answer('conversation-stack-noted', 'Noted.', { reply_to: answered, read: true });
+    const late = await answer('conversation-stack-late', 'The menu is set too.', { reply_to: noted });
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const desk = theme => ({ beforeNavigate: async q => {
+      await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+      await q.send('Emulation.setDeviceMetricsOverride', DESK);
+    } });
+    // The stack that holds the answer: its head, each reply (newest first) and whether it shows, its line, and what follows it.
+    const stack = q => quiet(q, `(s=>s&&{head:s.querySelector(':scope > [data-id]')?.dataset.id??null,
+      replies:[...s.querySelectorAll(':scope > .stack-replies > [data-id]')].map(e=>[e.dataset.id,e.getClientRects().length>0]),
+      line:(t=>t&&t.getClientRects().length?t.textContent:null)(s.querySelector(':scope > .stack-replies > .stack-toggle')),
+      after:s.nextElementSibling?.dataset?.line??null})(document.querySelector(${JSON.stringify(card(answered))})?.closest('.reply-stack'))`);
+    // The page draws its messages, then the conversation's read brings the tags and the asks that wait: the state each check reads is the one it settles in.
+    const settles = async (probe, expected, label) => {
+      let last;
+      await until(async () => { last = await probe(); return JSON.stringify(last) === JSON.stringify(expected); }, label).catch(() => {});
+      assert.deepEqual(last, expected, label);
+    };
+    const p = await open('conversation-stacks', '/?conversation=w1', desk('light'));
+    await settles(() => stack(p), { head: item, replies: [[late, true], [noted, false], [ask, true], [followUp, true], [answered, false]], line: '2 earlier replies', after: 'new' },
+      'the replies gather into the stack of the message they answer, folded to the newest, with the New item and the ask waiting on you kept in view, and the New line under the stack');
+    const seen = [await tags(p, item), await tags(p, followUp), await tags(p, ask)];
+    assert.deepEqual([seen[0].mine, seen[1].tags, seen[1].shown, seen[2].asks, seen[2].shown], [['Waiting on you'], ['New'], true, 'Asks you', true],
+      'the stacked New item shows its tag, the stacked ask its "Asks you", and its item waits on you');
+    await shot(p, 'conversation-stack-1280-light');
+    // Every commit paints each card's tags again; one that changes nothing on a card leaves its links, so a press on one lands.
+    await p.evaluate(`(window.tagLink=document.querySelector(${JSON.stringify(card(item) + ' .item-tags .item-link')}),true)`);
+    const another = await post('conversation-stack-another', 'Another question.');
+    await until(async () => (await tags(p, another))?.tags[0] === 'New', 'a new item lands, and the page paints every card\'s tags');
+    assert.equal(await p.evaluate('window.tagLink.isConnected'), true, 'the stacked item\'s tag link is the one that was there');
+    // The Answered tag's link to the reply the stack folds away opens the stack and lands on it, in the Reader.
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(item))}).scrollIntoView({block:'center'})`);
+    await p.point(`${card(item)} .item-tags .item-tag-group:first-child .item-link`);
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Yes, since Monday.')`), 'the Reader shows the reply');
+    // In view as scrolling brings it, to the pixel it rounds to.
+    const landed = await p.evaluate(`(c=>{const b=c.getBoundingClientRect();return {shown:c.getClientRects().length>0,inView:b.top>=-1&&b.bottom<=innerHeight+1,
+      open:c.closest('.reply-stack').querySelector('.stack-toggle').getAttribute('aria-expanded'),top:b.top,bottom:b.bottom,height:innerHeight,scroll:scrollY}})(document.querySelector(${JSON.stringify(card(answered))}))`);
+    assert.deepEqual([landed.shown, landed.inView, landed.open], [true, true, 'true'], 'its stack opened and the reply is in view ' + JSON.stringify(landed));
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    // The keys light what the focus is on: the pointer rests where no message is, so it lights none.
+    const focusOn = async id => {
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: DESK.height - 4 });
+      await p.evaluate(`(document.activeElement?.blur(),document.querySelector(${JSON.stringify(card(id))}).focus(),true)`);
+    };
+    // ↓ moves the light through the stack, a folded reply opened included, and Return replies to the lit one.
+    await focusOn(item);
+    const litId = () => quiet(p, `document.querySelector('#messages .lit[data-id]')?.dataset.id??null`);
+    await until(async () => await litId() === item, 'the focused card lights');
+    for (const id of [late, noted, ask]) { await p.key('ArrowDown'); await until(async () => await litId() === id, `↓ lights ${id}`); }
+    await p.key('Enter');
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('which room?') && document.activeElement?.id==='writing-body'`),
+      'Return opens the lit stacked ask in the Reader, ready to reply');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    // The bar's ⋯ on a stacked reply opens its menu.
+    await focusOn(ask);
+    await until(async () => await litId() === ask && await quiet(p, `!document.querySelector('.message-bar').hidden`), 'the stacked ask is lit, with its bar');
+    await p.point('.message-bar [data-act=more]');
+    assert.deepEqual(await until(() => quiet(p, `(l=>l&&[...l.querySelectorAll('button')].map(b=>b.textContent))(document.querySelector('.message-menu-list'))`), 'the menu opens'),
+      ['Copy Link', 'Mark unread']);
+    await p.key('Escape'); await until(() => quiet(p, `!document.querySelector('.message-menu-list')`), 'Escape closes it');
+    // A stack whose top message is the New item and no reply under it is New: the person adds to their own question, and the coordinator answers only that.
+    const screen = await post('conversation-stack-screen', 'Can we add a second screen?');
+    const sideRoom = await post('conversation-stack-side-room', 'For the side room, I mean.', { reply_to: screen });
+    const sideAnswer = await answer('conversation-stack-side-answer', 'The side room has one already.', { reply_to: sideRoom });
+    // Its stack: the head, each reply and whether it shows, and the stack's line.
+    const topStack = () => quiet(p, `(s=>s&&{head:s.querySelector(':scope > [data-id]')?.dataset.id??null,
+      replies:[...s.querySelectorAll(':scope > .stack-replies > [data-id]')].map(e=>[e.dataset.id,e.getClientRects().length>0]),
+      line:(t=>t&&t.getClientRects().length?t.textContent:null)(s.querySelector(':scope > .stack-replies > .stack-toggle'))})(document.querySelector(${JSON.stringify(card(sideRoom))})?.closest('.reply-stack'))`);
+    await settles(async () => [(await tags(p, screen))?.tags, (await tags(p, sideRoom))?.tags, (await topStack())?.head], [['New'], ['Answered'], screen],
+      'the New question heads its stack, and the reply under it is answered');
+    // A stack holding more than one New card: the person adds to their own question before anyone answers (a New message on top
+    // and a New reply), and asks two more things under an answer (two New replies under a settled message). Then two items alone.
+    const badges = await post('conversation-stack-badges', 'Can we get name badges?');
+    const lanyards = await post('conversation-stack-lanyards', 'And lanyards, if there is time.', { reply_to: badges });
+    const parking = await post('conversation-stack-parking', 'Is parking free?');
+    const parked = await answer('conversation-stack-parked', 'Yes, for the day.', { reply_to: parking });
+    const cloakroom = await post('conversation-stack-cloakroom', 'Is there a cloakroom?', { reply_to: parked });
+    const quietRoom = await post('conversation-stack-quiet-room', 'And a quiet room?', { reply_to: parked });
+    const flowers = await post('conversation-stack-flowers', 'Who brings the flowers?');
+    const menus = await post('conversation-stack-menus', 'Who prints the menus?');
+    await settles(async () => Promise.all([badges, lanyards, parking, cloakroom, quietRoom, flowers, menus].map(async id => (await tags(p, id))?.tags)),
+      [['New'], ['New'], ['Answered'], ['New'], ['New'], ['New'], ['New']], 'the badges and their lanyards are New, the parking answered and the two asks under it New');
+    // Only new shows each New item alone: a stacked one without the settled message it hangs under, nor the other replies or their line, and with no indent;
+    // a New one on top of its stack without the settled replies under it.
+    const pressOnlyNew = async () => { await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`); await p.point('#conversation-show button'); };
+    await pressOnlyNew();
+    await until(async () => (await chip(p)).pressed === 'true', 'Only new is pressed');
+    const filtered = await stack(p);
+    assert.deepEqual([(await tags(p, item)).shown, filtered.replies, filtered.line],
+      [false, [[late, false], [noted, false], [ask, false], [followUp, true], [answered, false]], null], 'only the stacked New item shows');
+    const onTop = await topStack();
+    assert.deepEqual([(await tags(p, screen)).shown, onTop.replies, onTop.line], [true, [[sideAnswer, false], [sideRoom, false]], null],
+      'the New item on top of its stack shows, and the settled replies under it do not');
+    const indent = id => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect().left-document.querySelector('#messages').getBoundingClientRect().left)`);
+    assert.deepEqual([await indent(followUp), await indent(screen)], [0, 0], 'in line with the other new cards');
+    // Two New cards of one stack, one after the other, sit apart as two cards standing alone do: a New message on top and its New reply, and two New replies.
+    assert.deepEqual((await onlyNewLayout(p, '1280 light')).slice(0, 6), [menus, flowers, quietRoom, cloakroom, badges, lanyards],
+      'the items alone, then the two New replies, then the New message and its New reply');
+    await shot(p, 'conversation-stack-only-new');
+    await pressOnlyNew();
+    await until(async () => (await tags(p, item))?.shown, 'everything shows again');
+    // Answered while the page is open, the stacked item's tag turns in place, and the answer joins its stack.
+    const caterer = await answer('conversation-stack-caterer', 'The caterer is booked.', { reply_to: followUp });
+    await until(async () => (await tags(p, followUp))?.tags[0] === 'Answered', 'the stacked item turns Answered without a reload');
+    assert.deepEqual((await until(async () => { const s = await stack(p); return s?.replies[0][0] === caterer && s; }, 'the answer joins the stack')).replies[0],
+      [caterer, true], 'the answer is the stack\'s newest reply, in view');
+    assert.deepEqual(p.errors, []); await p.close();
+    const dark = await open('conversation-stacks-dark', '/?conversation=w1', desk('dark'));
+    await until(async () => (await stack(dark))?.head === item && (await tags(dark, followUp))?.tags.length, 'dark: the stack and its tags');
+    await shot(dark, 'conversation-stack-1280-dark');
+    assert.deepEqual(dark.errors, []); await dark.close();
+  });
+
   await check('conversation a link to its topic opens as ?conversation=, and Only new leaves out what is settled', async () => {
     const p = await open('conversation-address', `/?topic=${conversation.topic_id}`);
     await until(() => quiet(p, `location.search==='?conversation=w1' && document.body.classList.contains('conversation-page')`), 'the address names the conversation');
@@ -467,6 +604,12 @@ export async function conversationChecks({ check, page, until, control, view, fa
       assert.deepEqual(fit.out, [], `${theme}: every tag inside the screen`);
       backgrounds.push(fit.ink);
       await shot(p, `conversation-phone-${theme}`);
+      // Only new on the phone: every card shown, a stack's New cards among them, lays out as one standing alone.
+      await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`);
+      await p.point('#conversation-show button');
+      await until(async () => (await chip(p)).pressed === 'true', theme + ': Only new is pressed');
+      await onlyNewLayout(p, `390 ${theme}`);
+      await shot(p, `conversation-phone-only-new-${theme}`);
       assert.deepEqual(p.errors, []); await p.close();
     }
     assert.notEqual(backgrounds[0], backgrounds[1], `the words follow the theme (${backgrounds})`);

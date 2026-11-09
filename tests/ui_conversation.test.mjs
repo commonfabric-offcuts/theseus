@@ -80,6 +80,34 @@ test('a message sent from another topic says which message it is about, unless t
   assert.equal(card.querySelector(':scope > .about-line'), null, 'nothing of a message the reader cannot open');
 });
 
+// The page reads the conversation again on every commit, its own reports of
+// what was read among them, and paints each card's tags and About line again.
+// A link that is replaced as the person presses it, or that holds the focus,
+// is lost under them; so a paint that changes nothing keeps every link.
+test('a read that changes nothing on a card keeps its tag and About links, so a press or the focus on one lands; a change paints them anew', () => {
+  const doc = miniDocument(), card = doc.createElement('article'), opened = [];
+  const answered = item('settled', [{ kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: false }]);
+  const tagLink = () => card.querySelector(':scope > .item-tags').querySelector('.item-link');
+  paintItemTags(card, answered, [], 'tony', (kind, id) => opened.push(['first', kind, id]), doc);
+  const link = tagLink();
+  paintItemTags(card, structuredClone(answered), [], 'tony', (kind, id) => opened.push(['second', kind, id]), doc);
+  assert.equal(tagLink(), link, 'the same link after a read that changed nothing');
+  link.onclick({ stopPropagation() {}, preventDefault() {} });
+  assert.deepEqual(opened, [['second', 'message', 'm-a']], 'it follows as the newest paint says');
+  const wait = { ask_message_id: 'm-ask', on: 'tony', by: 'fable', since_ms: AT, item_id: 'm-item', excerpt: 'Which day?' };
+  paintItemTags(card, answered, [wait], 'tony', () => {}, doc);
+  assert.deepEqual(card.querySelector(':scope > .item-tags').querySelectorAll('.item-tag').map(tag => tag.textContent), ['Answered', 'Waiting on you'], 'a change is painted');
+  const about = { message_id: 'm-src', topic_id: 't-1', topic_title: 'Agent loop', author_id: 'fable' };
+  paintAbout(card, { about }, 'tony', () => {}, doc);
+  const aboutLink = card.querySelector(':scope > .about-line').querySelector('.item-link');
+  paintAbout(card, { about: { ...about } }, 'tony', (kind, id) => opened.push(['about', kind, id]), doc);
+  assert.equal(card.querySelector(':scope > .about-line').querySelector('.item-link'), aboutLink, 'the same About link');
+  aboutLink.onclick({ stopPropagation() {}, preventDefault() {} });
+  assert.deepEqual(opened.at(-1), ['about', 'message', 'm-src']);
+  paintAbout(card, { about: { ...about, topic_title: 'Codex hosting' } }, 'tony', () => {}, doc);
+  assert.equal(card.querySelector(':scope > .about-line').querySelector('.item-link').textContent, 'Codex hosting', 'a change is painted');
+});
+
 test('"Asks you" follows the author only while an open ask on that card waits on the reader', () => {
   const doc = miniDocument(), author = doc.createElement('div'), time = doc.createElement('time');
   time.className = 'message-time'; author.append('fable', time);

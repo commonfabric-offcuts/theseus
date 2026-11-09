@@ -72,23 +72,40 @@ export function itemTags(message, waits, reader) {
   return tags;
 }
 
+// The page paints a card's tags and About line again on every read of the
+// conversation, which every commit brings. A link replaced as the person
+// presses it, or while it holds the focus, is lost under them, so a paint
+// that would draw the same leaves the row as it is (shows), and its links
+// follow with the newest open (follows).
+const follows = new WeakMap();
+const shows = (host, open, drawn) => {
+  follows.set(host, open);
+  if (host.dataset.shows === drawn) return true;
+  host.dataset.shows = drawn;
+  return false;
+};
+// A link inside a card is a span the card's own click passes over.
+const itemLink = (doc, host, words, kind, id) => {
+  const link = element(doc, 'span', { className: 'item-link', textContent: words, tabIndex: 0, role: 'link' });
+  const follow = event => { event.stopPropagation(); event.preventDefault(); follows.get(host)(kind, id); };
+  link.onclick = follow;
+  link.onkeydown = event => { if (event.key === 'Enter') follow(event); };
+  return link;
+};
+
 // Paints the tags at the foot of one card into its .item-tags row; open(kind, id) follows a link.
 export function paintItemTags(card, message, waits, reader, open, doc = document) {
   let host = card.querySelector(':scope > .item-tags');
   const tags = itemTags(message, waits, reader);
   if (!tags.length) { host?.remove(); return; }
   if (!host) { host = element(doc, 'span', { className: 'item-tags' }); card.append(host); }
+  if (shows(host, open, JSON.stringify(tags))) return;
   host.replaceChildren(...tags.map(tag => element(doc, 'span', { className: 'item-tag-group' },
     element(doc, 'span', { className: tag.mine ? 'item-tag mine' : 'item-tag', textContent: tag.tag }),
     ...(tag.parts.length ? [element(doc, 'span', { className: 'item-detail' }, ...tag.parts.map(part => {
       if (typeof part === 'string') return part;
       if (part.time !== undefined) return Number.isSafeInteger(part.time) ? timeNode(part.time, doc) : '';
-      // A link inside a card is a span the card's own click passes over.
-      const link = element(doc, 'span', { className: 'item-link', textContent: part.link, tabIndex: 0, role: 'link' });
-      const follow = event => { event.stopPropagation(); event.preventDefault(); open(part.topic ? 'topic' : 'message', part.topic ?? part.message); };
-      link.onclick = follow;
-      link.onkeydown = event => { if (event.key === 'Enter') follow(event); };
-      return link;
+      return itemLink(doc, host, part.link, part.topic ? 'topic' : 'message', part.topic ?? part.message);
     }))] : []))));
 }
 
@@ -99,10 +116,9 @@ export function paintAbout(card, message, reader, open, doc = document) {
   const about = message?.about;
   if (!about || about.hidden) { line?.remove(); return; }
   if (!line) { line = element(doc, 'span', { className: 'about-line' }); card.prepend(line); }
-  const link = element(doc, 'span', { className: 'item-link', textContent: about.topic_title, tabIndex: 0, role: 'link' });
-  const follow = event => { event.stopPropagation(); event.preventDefault(); open('message', about.message_id); };
-  link.onclick = follow; link.onkeydown = event => { if (event.key === 'Enter') follow(event); };
-  line.replaceChildren(`About ${about.author_id === reader ? 'your' : `${about.author_id}'s`} message in `, link);
+  const mine = about.author_id === reader;
+  if (shows(line, open, JSON.stringify([about, mine]))) return;
+  line.replaceChildren(`About ${mine ? 'your' : `${about.author_id}'s`} message in `, itemLink(doc, line, about.topic_title, 'message', about.message_id));
 }
 
 // The small "Asks you" label after the author's name, on a card whose ask waits on the reader.

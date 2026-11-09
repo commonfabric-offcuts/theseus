@@ -721,7 +721,7 @@ function paintViews(kind) {
     }
     learnReply(views.messages, item, bootstrap.actor);
   }
-  if (kind === 'messages') { arrangeStacks($('messages'), views.messages, { enabled: !here?.page, keep: item => !cardRead(item) }); paintCardReading(); }
+  if (kind === 'messages') { stackMessages(); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
@@ -751,6 +751,18 @@ function paintViews(kind) {
 const messageEntries = new Map(), memoryCards = new Map();
 // The color the reader sees an agent in: their choice, or the agent's own.
 const agentShown = id => colors?.color(id) ?? agentColor(id);
+// Replies gather under the message they answer on every topic page, the
+// conversation's included (reply-stacks.mjs). A folded stack keeps in view a
+// reply the person has not read and, in the conversation, one whose card asks
+// something of them: an item nothing has settled, or an ask waiting on them.
+function stackMessages() {
+  arrangeStacks($('messages'), views.messages, { keep: item => !cardRead(item) || stillOwed(item) });
+}
+// The conversation's own word on a message: its item and the asks that wait,
+// as the conversation's newest read says, else as the page's messages say.
+const conversationItem = id => here.items.get(id) ?? views.messages.get(id);
+const stillOwed = item => Boolean(here?.page && (conversationItem(item.id)?.item?.state === 'new' ||
+  (here.view?.waits ?? []).some(wait => wait.on === bootstrap.actor && wait.ask_message_id === item.id)));
 // Messages this visit opened in the Reader: each reads as read at once.
 const openedIds = new Set();
 function openedHere(id) { if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
@@ -764,15 +776,23 @@ function paintCardReading() {
     if (!item) continue;
     const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
     entry.dataset.talk = quiet ? 'agents' : '';
-    paintReading(card, item, { read: cardRead(item), quiet, go: goToReply });
+    paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
   }
 }
-// The person's reply to a message, opened in the Reader from its card, its stack opened first when it folds the reply away.
-function goToReply(id) {
+// A message the page shows, brought into view: its stack opened first when it
+// folds the message away, and its fold opened. Null when it is not loaded.
+function landOn(id) {
   const entry = entries($('messages')).find(child => child.dataset.id === id);
-  if (!entry) return run(() => openSource({ kind: 'message', id }, document.activeElement));
+  if (!entry) return null;
   const card = opened(reveal(entry));
   card.scrollIntoView({ block: 'nearest' });
+  return card;
+}
+// A message a link on the page names (the person's reply, or a tag's), opened
+// in the Reader from its card, landed on first; one not loaded opens alone.
+function goToMessage(id) {
+  const card = landOn(id);
+  if (!card) return run(() => openSource({ kind: 'message', id }, document.activeElement));
   // Opened as its card's click opens it; a click on the card itself would only light it on a phone (message-menu.mjs).
   run(() => openSource({ kind: 'message', id }, card, marks.capture(id)));
 }
@@ -1730,8 +1750,8 @@ async function initialize() {
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   if (anchored) {
-    const entry = entries($('messages')).find(child => child.dataset.id === anchored);
-    run(() => openSource({ kind: 'message', id: anchored }, entry ? cardIn(entry) : $('main')));
+    const card = landOn(anchored);
+    run(() => openSource({ kind: 'message', id: anchored }, card ?? $('main')));
   }
   // A Notebook page's link opens the page in the Reader, as its card or row does.
   if (pageAnchor) run(async () => openSource(await pageSource(pageAnchor), $('main')));
@@ -1882,7 +1902,7 @@ function paintConversationNav() {
     href: routeHref(target), open: () => openDestination(target, CONVERSATION_TITLE) });
   $('conversation-navigation').hidden = !shown;
 }
-const openLinked = (kind, id) => run(() => kind === 'topic' ? openDestination({ kind: 'topic', id }, 'Topic') : openSource({ kind: 'message', id }, document.activeElement));
+const openLinked = (kind, id) => kind === 'topic' ? run(() => openDestination({ kind: 'topic', id }, 'Topic')) : goToMessage(id);
 function paintConversationPage() {
   const view = here.view;
   if (!view) return;
@@ -1893,8 +1913,10 @@ function paintConversationPage() {
   const empty = !views?.messages?.size;
   $('conversation-empty').hidden = !empty;
   if (empty) paintEmpty($('conversation-empty'), { view });
+  // What the conversation's read says can keep a reply in view in its stack.
+  if (views?.messages) stackMessages();
   for (const entry of entries($('messages'))) {
-    const card = cardIn(entry), id = card?.dataset?.id, item = id ? here.items.get(id) ?? views.messages.get(id) : null;
+    const card = cardIn(entry), id = card?.dataset?.id, item = id ? conversationItem(id) : null;
     if (!item) continue;
     entry.dataset.item = item.item?.state ?? 'none';
     paintAbout(card, item, bootstrap.actor, openLinked);

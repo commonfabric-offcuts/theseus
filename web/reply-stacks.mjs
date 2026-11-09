@@ -99,18 +99,18 @@ function fold(stack) {
   toggle.setAttribute('aria-expanded', String(open));
 }
 
-// Gathers the list's entries into stacks. messages: the loaded messages by id.
-// enabled false leaves every message on its own. keep(item): a reply that
-// stays in view while its stack is folded; once kept it stays kept, so a
-// reply the person is reading is never folded away under them.
-export function arrangeStacks(list, messages, { enabled = true, keep = () => false, doc = list.ownerDocument } = {}) {
+// Gathers the list's entries into stacks, on every topic page alike.
+// messages: the loaded messages by id. keep(item): a reply that stays in view
+// while its stack is folded; once kept it stays kept, so a reply the person is
+// reading is never folded away under them.
+export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) {
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
   const groups = new Map();
   for (const id of byId.keys()) {
     const item = messages.get(id);
     if (!item) continue;
-    const root = enabled ? rootOf(item, messages, other => byId.has(other)) : item;
+    const root = rootOf(item, messages, other => byId.has(other));
     if (!groups.has(root.id)) groups.set(root.id, []);
     groups.get(root.id).push(item);
   }

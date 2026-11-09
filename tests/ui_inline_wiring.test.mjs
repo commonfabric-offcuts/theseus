@@ -3956,3 +3956,125 @@ test('cards inside a reply stack count as read on screen, and a range breaks at 
   await settle(); await settle();
   assert.deepEqual(ranges().sort((a, b) => a[0] - b[0]), [[21, 21], [24, 25]]);
 });
+
+// The outcome's conversation (docs/conversation.md) is a topic page, and its
+// replies stack under what they answer as in any topic (docs/topic-reading.md,
+// "Reply stacks"). The page here is the real app on a conversation: the topic
+// is of kind conversation, the conversation's view says who answers and what
+// waits, and each message carries its item. The tags, "Asks you" and the About
+// line are painted by outcome-conversation.mjs, whose own checks
+// (ui_conversation.test.mjs) and the browser's (conversation_native.mjs) read
+// their words; here each painter records the card it was given and the link it
+// follows, so these checks read what the page hands them for a stacked message.
+async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1' } = {}) {
+  const painted = { tags: new Map(), asks: new Map(), about: new Map() };
+  const f = fixture(href, { history: { state: null, replaceState() {} },
+    paintItemTags: (card, item, shownWaits, _reader, open) => painted.tags.set(card.dataset.id, { card, item, waits: shownWaits, open }),
+    paintAsksYou: (author, item, shownWaits, reader) => painted.asks.set(item.id, (shownWaits ?? []).some(wait => wait.on === reader && wait.ask_message_id === item.id)),
+    paintAbout: (card, item, _reader, open) => painted.about.set(card.dataset.id, { item, open }) });
+  Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.topic.kind = 'conversation';
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  const opens = [];
+  f.registry.open = async (ref, options) => { opens.push([ref.id, options.opener?.dataset?.id ?? null]); return null; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  for (const message of list) f.views.messages.set(message.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, item: null, ...message });
+  f.views.newest = Math.max(...list.map(message => message.seq));
+  // The first page of messages is painted as the page starts, as TopicViews paints it.
+  f.views.messagesPage = () => f.paintViews('messages');
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'conversation') return { instance_id: 'fixture', conversation: { topic_id: 't1', version: 1, coordinator: { actor_id: 'agent-a' },
+      new_items: list.filter(message => message.item?.state === 'new').length, unread: 0, addressed: false, waits, work: null, replaced: [], live: true } };
+    if (name === 'topic_messages') return { instance_id: 'fixture', items: [...f.views.messages.values()], next_cursor: null };
+    return view(name, args, options);
+  };
+  await f.initialize(); for (let n = 0; n < 6; n++) await settle();
+  assert.equal(f.document.body.classList.contains('conversation-page'), true, 'the page is the conversation');
+  const stackOf = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
+  return { f, painted, opens, stackOf };
+}
+// One item answered, asked back about, and replied to, beside a new item of its own:
+// m1 the person's item, answered by the coordinator's m2 and asked back about in m4 (which waits on them);
+// dan's m3, a reply to m2, is an item nothing has settled; the coordinator's m5 is the newest reply; m6 stands alone.
+const ANSWERED = { state: 'settled', takes: [{ kind: 'answer', ref: 'm2', actor_id: 'agent-a', at_ms: TODAY, part: false }] };
+const conversationMessages = () => [
+  { id: 'm1', seq: 1, author_id: 'fixture-person', body: 'Where does the launch stand?', item: ANSWERED },
+  { id: 'm2', seq: 2, author_id: 'agent-a', body: 'On track for Friday.', reply_to: 'm1' },
+  { id: 'm3', seq: 3, author_id: 'dan', body: 'And the press kit?', reply_to: 'm2', item: { state: 'new', takes: [] } },
+  { id: 'm4', seq: 4, author_id: 'agent-a', body: '@fixture-person which Friday?', reply_to: 'm1', intent: 'ask', addressees: ['fixture-person'] },
+  { id: 'm5', seq: 5, author_id: 'agent-a', body: 'Noted.', reply_to: 'm2' },
+  { id: 'm6', seq: 6, author_id: 'dan', body: 'A new question.', item: { state: 'new', takes: [] } },
+];
+const ASKED = [{ ask_message_id: 'm4', on: 'fixture-person', by: 'agent-a', since_ms: TODAY, item_id: 'm1', excerpt: 'which Friday?' }];
+
+test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
+  const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const list = f.get('messages');
+  assert.ok(stackOf('m2'), 'a reply on the conversation page is in a reply stack');
+  const stack = stackOf('m1');
+  assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
+  assert.deepEqual(list.children.map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
+  const [head, replies] = stack.children;
+  assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m5', 'stack-toggle', 'm4', 'm3', 'm2']],
+    'the message on top, its replies under it, newest first, folded behind one line');
+  // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, false, false, true],
+    'the New item and the ask waiting on the reader stay in view; the plain answer folds');
+  assert.equal(replies.children[1].textContent, '1 earlier reply');
+  // The conversation's marks are painted on every message entry, stacked or not, with its item.
+  assert.deepEqual([...painted.tags.keys()].sort(), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 'each card gets its tags, stacked ones included');
+  assert.deepEqual(['m1', 'm3', 'm6', 'm2'].map(id => entryIn(f, id).dataset.item), ['settled', 'new', 'new', 'none'], 'each entry says its item for Only new');
+  assert.deepEqual(painted.tags.get('m1').waits, ASKED, 'the stacked item\'s wait is handed to its tags');
+  assert.deepEqual([painted.asks.get('m4'), painted.asks.get('m2')], [true, false], '"Asks you" on the stacked ask, and on no other');
+});
+
+test('on the conversation page a link to a message folded in a stack opens its stack and lands on it, from a tag or from the address', async () => {
+  const { f, painted, opens, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const scrolled = [];
+  for (const id of ['m2', 'm4']) entryIn(f, id).scrollIntoView = () => scrolled.push(id);
+  assert.equal(entryIn(f, 'm2').hidden, true, 'the reply the item\'s Answered tag names is folded away');
+  // "agent-a's reply" on m1's Answered tag.
+  painted.tags.get('m1').open('message', 'm2'); await settle();
+  assert.equal(stackOf('m2').dataset.open, 'true', 'its stack opens');
+  assert.deepEqual([entryIn(f, 'm2').hidden, scrolled, opens.at(-1)], [false, ['m2'], ['m2', 'm2']],
+    'the reply shows, is brought into view, and opens in the Reader from its own card');
+  // The ask in m1's "Waiting on you" tag, kept in view: it is brought into view and opened the same way.
+  painted.tags.get('m1').open('message', 'm4'); await settle();
+  assert.deepEqual([scrolled, opens.at(-1)], [['m2', 'm4'], ['m4', 'm4']]);
+  // A message that is not on the page opens in the Reader alone, from where the person is.
+  painted.tags.get('m1').open('message', 'elsewhere'); await settle();
+  assert.equal(opens.at(-1)[0], 'elsewhere');
+  // A message's link (docs/links.md) to a folded reply in the conversation.
+  const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2' });
+  assert.deepEqual([linked.stackOf('m2').dataset.open, entryIn(linked.f, 'm2').hidden, linked.opens.at(-1)], ['true', false, ['m2', 'm2']],
+    'the address opens the stack and the Reader on the message, from its card');
+});
+
+test('on the conversation page More messages brings a stack\'s first message: the replies gather under it, and its tags and what it keeps in view follow', async () => {
+  const all = conversationMessages(), first = all[0];
+  const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED });
+  // Its parent not loaded, the ask heads nothing and stands alone; m2 heads its own replies.
+  assert.deepEqual([stackOf('m4'), stackOf('m3') === stackOf('m2'), entryIn(f, 'm2').closest('.reply-stack')?.children[0].dataset.id], [null, true, 'm2']);
+  f.views.messages.set(first.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...first });
+  f.paintViews('messages'); await settle();
+  const stack = stackOf('m1');
+  assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'the older message heads the one stack');
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, false, false, true], 'the ask on the reader and the New item stay in view');
+  assert.deepEqual([painted.tags.get('m1')?.item.item, entryIn(f, 'm1').dataset.item], [ANSWERED, 'settled'], 'the loaded message gets its tags from its item');
+});
+
+test('on the conversation page a reply folded in its stack is never reported read, as in any topic', async () => {
+  const { f } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
+  // On screen, as a browser sees it: every entry shown, and none folded away.
+  const [observer] = f.observers;
+  observer.callback(observer.targets.map(target => {
+    const shown = !target.hidden;
+    return { target, isIntersecting: shown, intersectionRatio: shown ? 1 : 0, intersectionRect: { height: shown ? 40 : 0 }, rootBounds: { height: 600 } };
+  }));
+  for (const handler of f.events.filter(e => e[0] === 'window-handler' && e[1] === 'focus')) handler[2]();
+  await settle(); await settle();
+  assert.equal(entryIn(f, 'm2').hidden, true, 'm2 is folded in its stack');
+  assert.deepEqual(ranges(), [[3, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
+});

@@ -10,12 +10,20 @@ act that did it.
 ## The page
 
 `?conversation=OUTCOME` is a topic page like any other: the messages, newest
-first, with the same cards, New line and counts, and the writing box below
-them ("Write to OUTCOME…"). The heading is "Conversation", with what it is for
+first, with the same cards, reply stacks, New line and counts, and the writing
+box below them ("Write to OUTCOME…"). The heading is "Conversation", with what it is for
 and who answers under it. A card's tags say New, Answered (with the reply),
 Taken into a topic (with the topic) or On the pipeline, and, beside any of
 them, Waiting on someone (with the ask). One filter chip, "Only new (N)",
-leaves out every card but the items nothing has settled. Any link to the
+leaves out every card but the items nothing has settled; a new item in a reply
+stack shows on its own, without the messages it hangs under, and lays out as
+a card on its own does (in line with the others and as far apart), whatever
+else of its stack is new: there a stack draws nothing of its own. In a folded
+stack an item nothing has settled, and an ask waiting on the reader, stay in
+view (docs/topic-reading.md, "Reply stacks"). The page reads the
+conversation again on every commit; a read that changes nothing on a card
+leaves its tags and links as they are, so a press on a tag's link, or the
+focus on one, is never lost to a repaint. Any link to the
 conversation's topic opens this page.
 
 ## Who is in it

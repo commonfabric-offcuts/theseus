@@ -66,7 +66,12 @@ still reads newest on top and a reply brings its stack up with it. Folded, a
 stack shows its newest reply and every reply the person had not read, and one
 line says how many more there are ("2 earlier replies"); a click or tap opens
 them in place, and again folds them. A message whose parent is not loaded heads its own stack until the
-parent loads. The conversation page keeps every message on its own.
+parent loads. The conversation page stacks its replies by the same rule, and
+there a folded stack also keeps in view an item nothing has settled and an ask
+waiting on the reader, so a card's New tag and "Asks you" are never folded
+away (docs/conversation.md). A link on the page to a message a stack folds
+away (a tag's, the reply arrow's, or a message's address) opens the stack
+first and lands on the message.
 
 The New line goes under the stack holding its message. What the page reports
 as read (`topic.read_through`) is only what was on screen: a range runs over
