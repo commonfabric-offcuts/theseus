@@ -169,7 +169,7 @@ test('a socket that ends before its first number is announced as refused; one th
   assert.equal(sockets.length, 2, 'whoever renewed the session can try at once');
   events.length = 0;
   sockets[1].send({ seq: 3 }); sockets[1].drop();
-  assert.deepEqual(events, [{ kind: 'state', state: 'live' }, { kind: 'commit', seq: 3 }, { kind: 'state', state: 'down' }]);
+  assert.deepEqual(events, [{ kind: 'state', state: 'live', seq: 3 }, { kind: 'commit', seq: 3 }, { kind: 'state', state: 'down' }]);
   live.stop();
   events.length = 0;
   sockets[1].refuse();
@@ -194,7 +194,7 @@ test('reopen lets the socket go, says the feed is down and opens another at once
   sockets[0].send({ seq: 9 }); sockets[0].drop();
   assert.deepEqual(events, [], 'the socket let go of says nothing more');
   sockets[1].send({ seq: 1 });
-  assert.deepEqual(events, [{ kind: 'state', state: 'live' }], 'the new socket answers: up again');
+  assert.deepEqual(events, [{ kind: 'state', state: 'live', seq: 1 }], 'the new socket answers: up again, with the number it came back with');
   // Down and waiting out a back-off: it does not wait.
   sockets[1].drop();
   assert.equal(times.jobs.size, 1);
