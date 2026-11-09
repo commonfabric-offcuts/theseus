@@ -7,8 +7,8 @@ const behind = () => Object.assign(Error('The requested version is not available
 // A bounded cache of what this topic has actually loaded. Feed position and
 // older-message/Notebook paging frontiers are deliberately independent.
 export class TopicViews {
-  constructor({ instanceId, topicId, paint = () => {}, invalidate = () => {} }) {
-    Object.assign(this, { instanceId, topicId, paint, invalidate });
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {} }) {
+    Object.assign(this, { instanceId, topicId, reader, paint, invalidate });
     this.scope = { kind: 'topic', id: topicId };
     this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
     // Loaded messages form runs, each holding every topic message between its
@@ -23,12 +23,16 @@ export class TopicViews {
     this.oldestUnread = null; this.unreadAt = -1;
     // The message the New line is drawn under. The first answer places it;
     // during the visit it moves only to show more unread, never up as the
-    // person reads; once nothing at or above it is unread it fades where it
-    // is (held, below). placeAfresh (an explicit Mark read) has the next
+    // person reads; once nothing holds it (held, below) it fades where it is.
+    // placeAfresh (an explicit Mark read) has the next
     // topic_unread read asked after it place the line wherever the oldest
     // unread message is: asked is how many reads were asked, and afreshFrom
     // the count when the line was last asked to be placed afresh.
     this.line = null; this.asked = 0; this.afreshFrom = null;
+    // What this page read on screen while the line held (held, below): one
+    // entry for each range of cards it saw that reaches the line, kept until
+    // the reader acts, unless its report is known to have settled nothing.
+    this.sight = new Set();
     this.currentItem = null; this.openingItem = null;
   }
   retain(current = this.currentItem, opening = this.openingItem) {
@@ -81,19 +85,59 @@ export class TopicViews {
     const run = joined.size ? joined.values().next().value : ++this.runCount;
     for (const [id, other] of this.runs) if (joined.has(other)) this.runs.set(id, run);
     for (const item of answer.items) { this.messages.set(item.id, item); this.runs.set(item.id, run); }
+    // A message of the reader's own arriving is a reply, from this page or
+    // another: an act, as below. The repaint of the messages places the line.
+    if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live) this.olderCursor = answer.next_cursor;
     this.paint('messages'); return true;
   }
-  // Whether the line still holds something unread: the oldest unread message
-  // is its own or one above it (newer). The same answer that drives the counts
-  // and the Unread pills says so; when nothing at or above it is unread (read
-  // on screen, opened, replied to, marked read) the line fades where it is.
-  // A faded line is gone for the reader: a message that then arrives, or is
-  // marked unread, brings the line just below it, as when there was none.
+  // Whether the line holds: a message at or above it (its own or a newer one)
+  // is unread, as the answer that drives the counts and the Unread pills says,
+  // or this page read one on screen while the line held. Reading on screen is
+  // not reading for the line: it holds until the reader acts on what it marks
+  // (acted, below: opening a message at or above it in the Reader, a reply,
+  // Mark read). Read elsewhere, where this page did not see it, nothing holds
+  // it, and it fades where it is. A faded line is gone for the reader: a
+  // message that then arrives, or is marked unread, brings the line just
+  // below it, as when there was none.
   get held() {
     const value = this.oldestUnread;
-    return Boolean(this.line && value && value.seq >= this.line.seq);
+    return Boolean(this.line && (value && value.seq >= this.line.seq || this.sight.size));
+  }
+  // The page sees the cards of messages `from` through `through` on screen
+  // now, and report is the promise of Core's receipt for reporting them
+  // (ReadThrough.seen). While the line holds, a range that reaches it holds
+  // it from this moment, so an act that follows (acted, below) releases it
+  // however late the report goes out. Only cards seen on screen are sighted:
+  // the Reader showing a message is an open, an act. A faded line is never
+  // brought back by reading.
+  sighted(from, through, report) {
+    if (!this.held || through < this.line.seq) return;
+    const entry = { from, through };
+    this.sight.add(entry);
+    report.then(receipt => this.seen(entry, receipt));
+  }
+  // Core's receipt for a sighted range (ReadThrough.seen). The range stops
+  // holding only when its report is known to have settled nothing: Core
+  // committed it and acknowledged no delivery (read already, here or
+  // elsewhere), or the call reported nothing new (null: its cards were
+  // reported already or wait to be). Any other answer keeps it, a failed
+  // report among them: its answer may have been lost after Core recorded it,
+  // and if Core did not record it, its cards are still unread anyway.
+  seen(entry, receipt) {
+    if (!this.sight.has(entry) || !(receipt === null || receipt?.status === 'committed' && receipt.result?.acknowledged === 0)) return;
+    this.holding(() => this.sight.delete(entry));
+  }
+  // The reader acted on what the line marks: what they read on screen no
+  // longer holds it, so it fades unless something at or above it is unread.
+  acted() { this.holding(() => this.sight.clear()); }
+  // The Reader shows message seq to the reader: at or above the line, an act.
+  opened(seq) { if (this.line && seq >= this.line.seq) this.acted(); }
+  holding(change) {
+    const held = this.held;
+    change();
+    if (held !== this.held) this.paint('line');
   }
   // Keeps what an answer says of the oldest unread message unless an answer
   // read at a later commit said otherwise, and moves the line: afresh, to the
@@ -112,7 +156,7 @@ export class TopicViews {
     this.line = line;
     return moved || held !== this.held;
   }
-  placeAfresh() { this.afreshFrom = this.asked; }
+  placeAfresh() { this.afreshFrom = this.asked; this.acted(); }
   // Reads where the oldest unread message is now, and moves the line when it
   // moved. The first read asked after placeAfresh that answers places the line
   // afresh, so one that fails leaves that to the next.

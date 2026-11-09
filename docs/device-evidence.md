@@ -24,6 +24,7 @@ whose check no longer exists fails the run.
 | `native-webkit-rail` | `tests/outcome_rail_native.mjs` | The rail at 1280 and 390 wide, Tab order, lit outcomes, and the "☰ Topics" drawer at 390 wide |
 | `native-webkit-pipeline` | `tests/pipeline_native.mjs` | Every pipeline page check, including the page and an item's record at 1280 and 390 wide |
 | `native-webkit-device` | `tests/device_native.mjs` | The phone check page itself, below |
+| `native-webkit-new-line` | `tests/new_line_native.mjs` | The red New line staying while read on screen, at 1280 and 390 wide, on a topic and a conversation, until a message at or above it is opened (by a card, the Reader's arrows, or a link); a lost read answer; no card reported read that the marks line or a conversation's Show row pushes off screen, and none held back by the rail's drawer. Its checks hold a read or lose an answer with Playwright's own request routing |
 
 Five rail checks are skipped. Each depends on a Chrome harness tool that this
 harness does not have:

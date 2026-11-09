@@ -78,6 +78,9 @@ let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
 let pageHere = null, pageHereOutcome = null;
 const halfShown = new Set(), atMiddle = new Set();
+// Whether what is drawn above the topic page's messages after they paint has
+// had its first fill, so no card the page counts as seen moves (noteRead).
+let laidOut = false;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -399,33 +402,53 @@ function changed(editor) {
   }
 }
 // What the person sees is read: while the page is visible and has focus, and
-// no modal other than the Reader covers it, the message the Reader shows, or
-// else the message cards on screen. Each run of loaded messages is contiguous,
-// so the range from the lowest to the highest card on screen in one run holds
-// only messages on screen; a range never spans a gap between runs. Only
-// another actor's message can settle a delivery, so the person's own are never
+// no modal other than the Reader covers it, the message the Reader shows (an
+// open, which the New line counts as an act: TopicViews.opened), or else the
+// message cards on screen (which hold the New line from the moment they are
+// seen: TopicViews.sighted). A card is on screen only once everything drawn
+// above the messages after they paint has had its first fill (laidOut, set in
+// initialize, which names them), and only while it is on screen as the page
+// reports, measured then. Each run of loaded messages is contiguous, so the
+// range from the lowest to the highest card on screen in one run holds only
+// messages on screen; a range never spans a gap between runs. Only another
+// actor's message can settle a delivery, so the person's own are never
 // reported.
 function noteRead() {
   if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
   const source = registry.current?.source;
   if (source) {
-    if (!registry.current.sourceUnavailable && source.source_ref.kind === 'message' && source.topic_id === topic.id &&
-        source.author !== bootstrap.actor) readThrough.seen(topic.id, source.seq, source.seq);
+    if (registry.current.sourceUnavailable || source.source_ref.kind !== 'message' || source.topic_id !== topic.id) return;
+    views.opened(source.seq);
+    if (source.author !== bootstrap.actor) readThrough.seen(topic.id, source.seq, source.seq);
     return;
   }
+  if (!laidOut) return;
+  const shown = new Set();
+  for (const entry of $('messages').children) {
+    const seq = Number(entry.dataset.seq);
+    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) shown.add(seq);
+  }
+  if (!shown.size) return;
   const ranges = new Map();
   for (const item of views.messages.values()) {
-    if (!(halfShown.has(item.seq) || atMiddle.has(item.seq)) || item.author_id === bootstrap.actor) continue;
+    if (!shown.has(item.seq) || item.author_id === bootstrap.actor) continue;
     const run = views.runOf(item.id), range = ranges.get(run);
     ranges.set(run, range ? [Math.min(range[0], item.seq), Math.max(range[1], item.seq)] : [item.seq, item.seq]);
   }
-  for (const [from, through] of ranges.values()) readThrough.seen(topic.id, from, through);
+  for (const [from, through] of ranges.values()) views.sighted(from, through, readThrough.seen(topic.id, from, through));
 }
 // A card counts as on screen when at least half of it, or of the viewport,
 // shows it. The second holds exactly when the card crosses the viewport's
 // middle line (a card that crosses it is wholly shown or covers half the
 // viewport), which a zero-height root observes for a card of any height.
+// The observers say when that changes; onScreen measures it as it is now,
+// since a layout that moved since (a fill above the messages) is observed a
+// frame late.
+function onScreen(node) {
+  const box = node.getBoundingClientRect(), shown = Math.min(box.bottom, innerHeight) - Math.max(box.top, 0);
+  return shown > 0 && (shown >= box.height / 2 || box.top <= innerHeight / 2 && box.bottom >= innerHeight / 2);
+}
 const cardsSeen = (shown, test) => entries => {
   for (const entry of entries) {
     const seq = Number(entry.target.dataset.seq);
@@ -609,7 +632,7 @@ function keepListAnchor(paint) {
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The New line, just below the oldest message the reader had not read when the
 // topic opened, or further back as more became unread (TopicViews.line); faded
-// where it is once nothing at or above it is unread (TopicViews.held).
+// where it is once nothing holds it (TopicViews.held).
 function placeLine() {
   placeNewLine($('messages'), views.line?.seq ?? null, document,
     views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
@@ -1382,7 +1405,7 @@ async function initialize() {
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -1565,12 +1588,16 @@ async function initialize() {
   // The rail shows only this topic's outcome. A message's Add to pipeline
   // follows the Pipeline row's read.
   const pipeline = pipelineSection(topic.workspace_id, false, paintReaderMark); pipelineRow = pipeline.row;
+  // The latest read of the outcome's conversation; the page waits on its first
+  // (below).
+  let conversationRead = null;
   outcomeScope = new OutcomeScope({ workspaceId: topic.workspace_id, kind: 'topic', rail: document.querySelector('.rail'), home: $('outcomes-home'),
-    attention, open: openDestination, sections: [{ name: 'conversation', node: $('conversation-navigation'), load: loadConversation }, pipeline,
+    attention, open: openDestination, sections: [{ name: 'conversation', node: $('conversation-navigation'), load: () => (conversationRead = loadConversation()) }, pipeline,
       { name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
       { name: 'notebook', node: $('outcome-references'), load: () => outcomeReferences.load() }] });
   placeBrand(document.querySelector('.rail'));
   outcomeScope.load();
+  const conversationShown = conversationRead;
   // The open topic's marks are the person's own, read by the person's scope
   // and paged; the open Reader's button follows them. The New line follows
   // what the person has read, here or anywhere else. The topic's own Notebook
@@ -1596,7 +1623,14 @@ async function initialize() {
   window.addEventListener('beforeunload', event => { marks.leave(); if (registry.hasUnprotectedWriting) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
-  run(loadMarks);
+  // What is drawn above the messages after they paint, in their column: the
+  // marks line ("1 marked unread · Read it") and, on a conversation page, its
+  // Show row and header, which land with the conversation's first read. The
+  // outcome rail never is: it sits beside the topic, or on a phone in the
+  // drawer behind "☰ Topics" (rail-drawer.mjs). Cards count as seen once each
+  // has had its first answer, read or refused (noteRead), so neither moves a
+  // card the page has already counted.
+  Promise.allSettled([run(loadMarks), here.page ? conversationShown : null]).then(() => { laidOut = true; noteRead(); });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.

@@ -2,9 +2,11 @@
 // person had not read when the topic opened, as the server names it
 // (topic_unread); red words "New above" and when that message was sent,
 // readable on the page in light and dark. During the visit reading never
-// moves it up; once nothing at or above it is unread it fades out where it
-// is, keeping its space, inert, with no Refresh (Tony's case: open a message
-// in the Reader, reply, and the line goes). It moves to show more (Mark
+// moves it up, and reading on screen never fades it; once the person opens a
+// message at or above it, replies or marks read, or what it holds is read
+// elsewhere, it fades out where it is, keeping its space, inert, with no
+// Refresh (Tony's case: open a message in the Reader, reply, and the line
+// goes). It moves to show more (Mark
 // unread further back; an arrival or a mark while there is no line or it has
 // faded; Mark unread above a line that shows leaves it) and on the person's
 // explicit Mark read, which places it afresh, as opening the topic again
@@ -31,6 +33,274 @@ const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p
 // What loads older messages: More messages, or the New line while it says
 // more new messages lie below, which hides More.
 export const olderControl = p => p.evaluate("document.querySelector('#more-messages').hidden && document.querySelector('#messages .new-line-older') ? '#messages .new-line-older' : '#more-messages'");
+
+// The New line stays while the person reads on screen, in any engine: run
+// here in Chrome for Testing, and by webkit_native.mjs --new-line in WebKit
+// (the release check's native-webkit-new-line). open(url,
+// size, name, {lose}) gives a page with evaluate, point (a native click), close,
+// errors, reports() (the topic.read_through ranges it sent, [from, through])
+// and answered(name, test) (whether the page has had an answer to a read of
+// that view whose body passes test). With lose(payload), the first command
+// whose payload it accepts goes to the server and its answer is then lost:
+// the connection is reset before the page has it. With hold(payload), the
+// server answers every view read it accepts at once, and the page gets those
+// answers only on releaseAnswer() (a page reads its rail again after each
+// commit); heldAnswer() says whether one waits.
+// Sizes are a desk window and a phone.
+export const SIZES = { desk: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 3, mobile: true } };
+export async function newLineStaysChecks({ check, open, until, view, control, shot, observations, engine }) {
+  const agent = 'fixture-notebook-agent';
+  const unread = async topic => (await view('topic_unread', { topic_id: topic })).oldest_unread;
+  // A topic, or an outcome's conversation, with count agent messages in it, oldest first.
+  const place = async (id, route, count) => {
+    let topic = id;
+    if (route === 'conversation') {
+      await control({ method: 'navigation_workspaces', workspaces: [{ id, title: 'New line ' + id, team: [agent] }] });
+      topic = (await view('conversation', { workspace_id: id })).conversation.topic_id;
+    } else await control({ method: 'navigation_topics', topics: [{ id, title: 'New line ' + id }] });
+    const ids = [];
+    for (let n = 0; n < count; n++) ids.push((await control({ method: 'agent_message', operation_id: `${id}-${n}`, topic_id: topic, join: route === 'topic' && n === 0,
+      body: `Agent message ${n} in ${id}.` })).result.message_id);
+    return { topic, ids, url: route === 'conversation' ? '/?conversation=' + id : '/?topic=' + id };
+  };
+  const card = id => `#messages [data-id="${id}"]`;
+  const frames = p => p.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  // Every transition (the line's fade among them) has run.
+  const still = async (p, label) => { await frames(p); await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), label + ': transitions ran'); };
+  const line = p => p.evaluate(`(()=>{const lines=[...document.querySelectorAll('#messages .new-line')],l=lines[0],c=l&&getComputedStyle(l);
+    return {count:lines.length,kind:l?.dataset.line??null,read:l?.classList.contains('new-line-read')??null,opacity:c?.opacity??null,inert:l?.inert??null,
+      after:l?.previousElementSibling?.dataset?.id??null}})()`);
+  // Reads until nothing is unread, bringing the oldest unread card into view,
+  // and waits until the page has had the answer that says so and has drawn it.
+  const readOnScreen = async (p, topic, label) => {
+    for (let oldest; (oldest = await unread(topic));) {
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(oldest.id))}).scrollIntoView({block:'center'})`);
+      await until(async () => (await unread(topic))?.id !== oldest.id, label + ': read ' + oldest.id);
+    }
+    await until(() => p.answered('topic_unread', body => body?.topic_id === topic && body.oldest_unread === null), label + ': the page heard that nothing is unread');
+    await still(p, label);
+  };
+
+  // The person opens a short topic: both agent messages are on the first
+  // screen and the page reads them there. The line stays under the older of
+  // them, showing, for the visit; opening a message at or above it in the
+  // Reader fades it, and closing the Reader does not bring it back.
+  await check(`colors ${engine}: a short topic read on the first screen keeps its New line until a message above it is opened`, async () => {
+    for (const route of ['topic', 'conversation']) {
+      for (const [size, metrics] of Object.entries(SIZES)) {
+        const label = `${engine} ${route} ${size}`, id = `new-line-stays-${engine}-${route}-${size}`;
+        const { topic, ids, url } = await place(id, route, 2);
+        assert.equal((await unread(topic))?.id, ids[0], label + ': both agent messages are unread, the older one first');
+        const p = await open(url, metrics, id);
+        await readOnScreen(p, topic, label);
+        const held = await line(p);
+        assert.deepEqual(held, { count: 1, kind: 'new', read: false, opacity: '1', inert: false, after: ids[0] },
+          label + ': read on screen, the line stays under the oldest unread message, showing');
+        await shot(p, `new-line-stays-${engine}-${route}-${size}`);
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[1]))}).scrollIntoView({block:'center'})`);
+        await p.point(card(ids[1]));
+        await until(() => p.evaluate("document.querySelector('#reader').open"), label + ': the Reader is open on the newest message');
+        const faded = await until(async () => { const now = await line(p); return now.read && now.opacity === '0' && now; }, label + ': opened, the line fades');
+        assert.deepEqual([faded.count, faded.after, faded.inert], [1, ids[0], true], label + ': where it was, inert');
+        await p.point('#reader-close');
+        await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed');
+        await still(p, label + ': closed');
+        assert.deepEqual(await line(p), faded, label + ': closing the Reader leaves the line faded');
+        observations.push({ name: 'new line stays while read on screen', engine, route, size, held, faded });
+        assert.deepEqual(p.errors, [], label + ': no page errors');
+        await p.close();
+      }
+    }
+  });
+
+  // A topic whose oldest unread message is below the first screen: the page
+  // reads the first screen's cards, then the person opens the newest card in
+  // the Reader and presses its Older button down to the oldest unread, so
+  // every message at or above the line is opened. Each step reports its own
+  // message read, after the open that is the act: those reports never hold
+  // the line, and the first screen's cards were acted on. It fades while the
+  // Reader is open and stays faded when it closes.
+  await check(`colors ${engine}: opening every message at or above the line in the Reader fades it, whatever each step reports`, async () => {
+    const id = `new-line-step-${engine}`, { topic, ids, url } = await place(id, 'topic', 14), label = `${engine} stepped`;
+    const reported = (await control({ method: 'counts' })).read_through_operations;
+    const p = await open(url, SIZES.desk, id);
+    await until(() => p.reports().length, label + ': the first screen is reported read');
+    await until(async () => (await control({ method: 'counts' })).read_through_operations - reported === p.reports().length, label + ': and recorded');
+    assert.equal((await unread(topic))?.id, ids[0], label + ': the oldest unread message is below the first screen, still unread');
+    const first = p.reports(), oldest = await p.evaluate(`Number(document.querySelector(${JSON.stringify(card(ids[0]))}).dataset.seq)`);
+    assert.ok(first.every(([from]) => from > oldest), label + ': the first screen does not reach it: ' + JSON.stringify({ oldest, first }));
+    await still(p, label + ': first screen');
+    assert.deepEqual(await line(p), { count: 1, kind: 'new', read: false, opacity: '1', inert: false, after: ids[0] }, label + ': the line shows under it');
+    await p.point(card(ids.at(-1)));
+    const shows = n => until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(`Agent message ${n} in ${id}.`)})`), label + `: the Reader shows message ${n}`);
+    await shows(ids.length - 1);
+    for (let n = ids.length - 2; n >= 0; n--) {
+      await until(() => p.evaluate("!document.querySelector('#previous-message').disabled"), label + `: the Reader can step below message ${n + 1}`);
+      await p.point('#previous-message');
+      await shows(n);
+    }
+    await until(async () => await unread(topic) === null, label + ': every message is read');
+    await until(() => p.answered('topic_unread', body => body?.topic_id === topic && body.oldest_unread === null), label + ': the page heard that nothing is unread');
+    const faded = await until(async () => { const now = await line(p); return now.read && now.opacity === '0' && now; }, label + ': opened down to the line, it fades')
+      .catch(async error => { throw Error(`${label}: every message at or above the line was opened in the Reader, yet the line: ${JSON.stringify(await line(p))} reports ${JSON.stringify(p.reports())}`, { cause: error }); });
+    assert.deepEqual([faded.count, faded.after, faded.inert], [1, ids[0], true], label + ': where it was, inert');
+    await p.point('#reader-close');
+    await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed');
+    await still(p, label + ': closed');
+    assert.deepEqual(await line(p), faded, label + ': closing the Reader leaves the line faded');
+    observations.push({ name: 'new line fades once every message above it is opened', engine, first, reports: p.reports(), faded });
+    assert.deepEqual(p.errors, [], label + ': no page errors');
+    await p.close();
+  });
+
+  // The Reader is open when a message arrives: the faded line comes back
+  // under it, and showing it in the Reader (its Newer button) is an open, so
+  // the line fades again once Core has the read. The Reader's own report of
+  // the message, which goes out after the open while the message is still
+  // unread, never holds it.
+  await check(`colors ${engine}: a message that arrives while the Reader is open brings the line back, and showing it in the Reader fades it`, async () => {
+    const id = `new-line-arrives-${engine}`, label = `${engine} arrives`, { topic, ids, url } = await place(id, 'topic', 2);
+    const p = await open(url, SIZES.desk, id);
+    await readOnScreen(p, topic, label);
+    await p.point(card(ids[1]));
+    await until(() => p.evaluate("document.querySelector('#reader').open"), label + ': the Reader is open on the newest message');
+    await until(async () => { const now = await line(p); return now.read && now.opacity === '0'; }, label + ': opened, the line fades');
+    const arrived = (await control({ method: 'agent_message', operation_id: id + '-arrives', topic_id: topic, body: `Agent message arrives in ${id}.` })).result.message_id;
+    const back = await until(async () => { const now = await line(p); return !now.read && now.opacity === '1' && now.after === arrived && now; }, label + ': the line comes back under the message that arrived');
+    assert.deepEqual([back.count, back.inert], [1, false], label + ': one line, showing');
+    await until(() => p.evaluate("!document.querySelector('#next-message').disabled"), label + ': the Reader can step to the newer message');
+    await p.point('#next-message');
+    await until(() => p.evaluate(`document.querySelector('#source-body').textContent.includes(${JSON.stringify(`Agent message arrives in ${id}.`)})`), label + ': the Reader shows it');
+    await until(async () => await unread(topic) === null, label + ': it is read');
+    const faded = await until(async () => { const now = await line(p); return now.read && now.opacity === '0' && now; }, label + ': shown in the Reader, the line fades')
+      .catch(async error => { throw Error(`${label}: the message that arrived was opened in the Reader, yet the line: ${JSON.stringify(await line(p))} reports ${JSON.stringify(p.reports())}`, { cause: error }); });
+    assert.deepEqual([faded.count, faded.after, faded.inert], [1, arrived, true], label + ': where it was, inert');
+    await p.point('#reader-close');
+    await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed');
+    await still(p, label + ': closed');
+    assert.deepEqual(await line(p), faded, label + ': closing the Reader leaves the line faded');
+    observations.push({ name: 'new line fades when a message that arrived is shown in the Reader', engine, back, faded, reports: p.reports() });
+    assert.deepEqual(p.errors, [], label + ': no page errors');
+    await p.close();
+  });
+
+  // A message's link opens its topic with that message in the Reader: the
+  // one unread message, the line under it. The open is the act; the Reader's
+  // report of it never holds the line, which fades once Core has the read.
+  await check(`colors ${engine}: a message's link opens it in the Reader, and the line under it fades`, async () => {
+    const id = `new-line-link-${engine}`, label = `${engine} link`, { topic, ids } = await place(id, 'topic', 1);
+    const p = await open(`/?topic=${encodeURIComponent(topic)}&message=${encodeURIComponent(ids[0])}`, SIZES.desk, id);
+    await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(`Agent message 0 in ${id}.`)})`), label + ': the Reader shows the linked message');
+    await until(async () => await unread(topic) === null, label + ': it is read');
+    await until(() => p.answered('topic_unread', body => body?.topic_id === topic && body.oldest_unread === null), label + ': the page heard that nothing is unread');
+    const faded = await until(async () => { const now = await line(p); return now.read && now.opacity === '0' && now; }, label + ': opened from its link, the line fades')
+      .catch(async error => { throw Error(`${label}: the linked message was opened in the Reader, yet the line: ${JSON.stringify(await line(p))} reports ${JSON.stringify(p.reports())}`, { cause: error }); });
+    assert.deepEqual([faded.count, faded.after, faded.inert], [1, ids[0], true], label + ': under it, inert');
+    observations.push({ name: 'new line fades when a linked message opens in the Reader', engine, faded, reports: p.reports() });
+    assert.deepEqual(p.errors, [], label + ': no page errors');
+    await p.close();
+  });
+
+  // A report whose answer is lost after Core recorded it (the connection
+  // drops, a phone puts the page in the background, the server restarts):
+  // the page cannot tell it from one Core never saw, so the cards it carried
+  // keep holding the line, which reading on screen never fades. Opening a
+  // message above it in the Reader fades it.
+  await check(`colors ${engine}: a first screen whose report's answer is lost after Core recorded it keeps its New line until a message above it is opened`, async () => {
+    const id = `new-line-lost-${engine}`, label = `${engine} lost answer`, { topic, ids, url } = await place(id, 'topic', 2);
+    const p = await open(url, SIZES.desk, id, { lose: payload => payload?.kind === 'topic.read_through' });
+    await until(async () => await unread(topic) === null, label + ': Core recorded the first screen read');
+    await until(() => p.answered('topic_unread', body => body?.topic_id === topic && body.oldest_unread === null), label + ': the page heard that nothing is unread');
+    await still(p, label);
+    const held = await line(p), reports = p.reports();
+    observations.push({ name: 'new line stays when a report answer is lost', engine, held, reports });
+    assert.deepEqual(held, { count: 1, kind: 'new', read: false, opacity: '1', inert: false, after: ids[0] },
+      label + ': its answer lost, the line stays under the oldest unread message, showing: ' + JSON.stringify(reports));
+    await p.point(card(ids[1]));
+    await until(() => p.evaluate("document.querySelector('#reader').open"), label + ': the Reader is open on the newest message');
+    const faded = await until(async () => { const now = await line(p); return now.read && now.opacity === '0' && now; }, label + ': opened, the line fades');
+    assert.deepEqual([faded.count, faded.after, faded.inert], [1, ids[0], true], label + ': where it was, inert');
+    assert.deepEqual(p.errors, [], label + ': no page errors');
+    await p.close();
+  });
+
+  // What is drawn above the messages after they paint, in their column,
+  // pushes them down: the marks line ("1 marked unread · Read it") at any
+  // width, and on an outcome's conversation page its Show row ("Only new").
+  // Each is held in turn, its answer kept from the page (not the server,
+  // whose read lanes then serve every other read), until the messages are
+  // drawn and the page has settled: while it is held no card is reported
+  // read, and once it lands every card reported read is on screen where it
+  // now is, the page not scrolled. The outcome rail is never above them: on
+  // a phone it folds into the drawer behind "☰ Topics", so its Pipeline row
+  // landing moves no card, and the page reports the first screen while that
+  // read is still held.
+  const lateFill = async ({ label, id, url, size, hold, drawn, newest, above }) => {
+    const reported = (await control({ method: 'counts' })).read_through_operations;
+    const p = await open(url, size, id, { hold: payload => payload?.name === hold });
+    const top = () => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(card(newest))}).getBoundingClientRect().top)`);
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(newest))}))`), label + ': the messages are drawn');
+    await until(() => p.heldAnswer(), label + ': its answer is held');
+    if (!above) await until(() => p.reports().length, label + ': while it is held, the first screen is reported read');
+    await still(p, label + ': the rest of the page is drawn');
+    assert.equal(await p.evaluate(drawn), false, label + ': not drawn yet');
+    const before = await top(), early = p.reports();
+    await p.releaseAnswer();
+    await until(() => p.evaluate(drawn), label + ': drawn');
+    await still(p, label + ': filled');
+    // The first screen is reported, and every report the page sent has been answered.
+    await until(async () => p.reports().length && (await control({ method: 'counts' })).read_through_operations - reported === p.reports().length, label + ': the first screen is reported and recorded');
+    const after = await top(), sent = p.reports();
+    const shown = await p.evaluate(`(()=>{const h=innerHeight;return {scroll:scrollY,height:h,cards:[...document.querySelectorAll('#messages > [data-seq]')].map(c=>{const r=c.getBoundingClientRect(),seen=Math.min(r.bottom,h)-Math.max(r.top,0);
+      return {seq:Number(c.dataset.seq),top:Math.round(r.top),bottom:Math.round(r.bottom),on:seen>0&&(seen>=r.height/2||r.top<=h/2&&r.bottom>=h/2)}})}})()`);
+    observations.push({ name: 'reads once ' + label + ' filled', engine, before, after, early, sent, shown });
+    if (above) {
+      assert.deepEqual(early, [], `${label}: while it was held, no card was reported read: ${JSON.stringify({ before, early, shown })}`);
+      assert.ok(after > before, `${label}: filling it pushed the messages down: ${JSON.stringify({ before, after })}`);
+    } else assert.equal(after, before, `${label}: filling it moved no message: ${JSON.stringify({ before, after })}`);
+    assert.equal(shown.scroll, 0, label + ': the page is where it opened');
+    const off = shown.cards.filter(c => !c.on && sent.some(([from, through]) => from <= c.seq && c.seq <= through));
+    assert.deepEqual(off, [], `${label}: no card off screen once it filled is reported read: ${JSON.stringify({ before, after, sent, shown })}`);
+    return p;
+  };
+  await check(`colors ${engine}: no card is reported read that a fill drawn above the messages pushes off screen, and the rail holds none back`, async () => {
+    {
+      // The marks line at a desk width, in a short window: the reader marked
+      // an older message unread elsewhere.
+      const id = `new-line-marks-${engine}`, { ids, url } = await place(id, 'topic', 12);
+      await control({ method: 'mark', operation_id: id + '-mark', message_ids: [ids[0]], marked: true });
+      const p = await lateFill({ label: `${engine} the marks line`, id, url, size: { ...SIZES.desk, height: 271 }, hold: 'marks',
+        drawn: "!document.querySelector('#topic-marks').hidden", newest: ids.at(-1), above: true });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+    {
+      // A conversation's Show row at a phone's width: it shows once the
+      // conversation's read says there are new messages. Opened by its
+      // topic's address, so the page reads the conversation once, for that
+      // row (by its own address, it reads it first to find the topic).
+      const id = `new-line-show-${engine}`, { topic, ids } = await place(id, 'conversation', 8);
+      const p = await lateFill({ label: `${engine} the conversation's Show row at a phone's width`, id, url: '/?topic=' + topic, size: SIZES.phone, hold: 'conversation',
+        drawn: "!document.querySelector('#conversation-show').hidden", newest: ids.at(-1), above: true });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+    {
+      // The outcome rail at a phone's width, folded into its drawer; the
+      // outcome has a pipeline, so the rail gains its Pipeline row when that
+      // read lands.
+      const id = `new-line-rail-${engine}`, topic = id + '-topic';
+      await control({ method: 'light_outcome', outcome: id, title: 'New line ' + id, topic: { id: topic, title: 'New line ' + topic } });
+      await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: id + '-pipeline', workspace_id: id, target: { workspace_id: id }, args: { enabled: true } });
+      const ids = [];
+      for (let n = 0; n < 8; n++) ids.push((await control({ method: 'agent_message', operation_id: `${id}-${n}`, topic_id: topic, body: `Agent message ${n} in ${id}.` })).result.message_id);
+      const p = await lateFill({ label: `${engine} the outcome rail at a phone's width`, id, url: '/?topic=' + topic, size: SIZES.phone, hold: 'pipeline_row',
+        drawn: "!document.querySelector('#pipeline-navigation').hidden", newest: ids.at(-1), above: false });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+}
 
 export async function newLineCheck({ check, page, until, view, control, shot, observations, facts }) {
   // A topic of the person's own, with count agent messages in it, oldest first; their ids.
@@ -84,6 +354,36 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
     await p.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
   };
   const reading = p => p.evaluate(`(()=>{const c=[...document.querySelectorAll('#messages .message-card')].find(e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight});return {id:c.dataset.id,top:c.getBoundingClientRect().top}})()`);
+
+  // The same checks of the line staying while read on screen that
+  // webkit_native.mjs --new-line runs in WebKit, here in Chrome for Testing.
+  await newLineStaysChecks({ check, until, view, control, observations, engine: 'chrome', shot,
+    open: async (url, size, name, { lose = null, hold = null } = {}) => {
+      let lost = false, released = false;
+      const held = [];
+      const p = await page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
+        q.recordResponses();
+        // The first command lose accepts reaches the server; its answer is then
+        // lost. Each view read hold accepts is answered; the page waits for it.
+        if (lose || hold) q.intercept((payload, event) => {
+          if (lose && !lost && event.request.url.endsWith('/api/command') && lose(payload)) {
+            lost = true;
+            q.send('Fetch.failRequest', { requestId: event.requestId, errorReason: 'ConnectionReset' }).catch(error => q.errors.push({ message: error.message }));
+            return true;
+          }
+          if (hold && !released && event.request.url.endsWith('/api/view') && hold(payload)) { held.push({ event, payload }); return true; }
+          return false;
+        });
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+        await q.send('Emulation.setDeviceMetricsOverride', size);
+      } });
+      return Object.assign(p, {
+        heldAnswer: () => held.length > 0,
+        releaseAnswer: async () => { released = true; for (const entry of held.splice(0)) await p.release(entry); },
+        reports: () => p.calls.filter(c => c.payload?.kind === 'topic.read_through').map(c => [c.payload.args.from_seq, c.payload.args.seq]),
+        answered: (viewName, test) => p.responses.some(r => r.payload?.name === viewName && test(r.body)),
+      });
+    } });
 
   await check('colors the New line sits under the oldest unread message, holds while it is read, and moves on opening the topic again', async () => {
     for (const theme of ['light', 'dark']) {
@@ -139,10 +439,21 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await until(async () => (await drawn(again)).after === next?.id, theme + ': opened again, the line is under the oldest still unread');
       await again.close();
       await p.send('Page.bringToFront');
-      // Read to the end: nothing at or above the line is unread, so it fades
-      // out where it is, with no Refresh; opening the topic again shows none.
+      // Read to the end on screen: nothing at or above the line is unread, yet
+      // reading on screen is not reading for the line, so it holds, showing.
+      // Opening a message at or above it in the Reader fades it out where it
+      // is, with no Refresh; opening the topic again shows none.
+      const last = Date.now();
       await readAll(p, topic, theme);
-      const read = await fadedOut(p, theme + ': all read, the line fades out');
+      await pageRead(p, last, theme + ': all read');
+      const kept = await drawn(p);
+      assert.deepEqual([kept.count, kept.kind, kept.after, kept.faded], [1, 'new', ids[0], false], theme + ': all read on screen, the line still shows');
+      await p.evaluate(`document.querySelector('#messages [data-id="${ids[0]}"]').scrollIntoView({block:'center'})`);
+      await p.point(`#messages [data-id="${ids[0]}"]`);
+      await until(() => p.evaluate("document.querySelector('#reader').open"), theme + ': the Reader is open on the message at the line');
+      const read = await fadedOut(p, theme + ': opened, the line fades out');
+      await p.point('#reader-close');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': the Reader closed');
       assert.deepEqual([read.after, read.inert, read.pointer], [ids[0], true, 'none'], theme + ': in its place, inert: ' + JSON.stringify(read));
       assert.ok(read.height > 0, theme + ': it keeps its space, so nothing below it shifts');
       assert.deepEqual(p.errors, []);
@@ -209,11 +520,18 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await until(async () => (await drawn(p)).after === arrival && (await unread(topic))?.id === arrival, theme + ': Mark read places the line afresh');
       await p.point('#reader-close');
       await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': the Reader closed');
-      // At the top: the arrival is read, and with nothing at or above the line
-      // unread it fades where it is, under the arrival.
+      // At the top: the arrival is read on screen and the line holds under it;
+      // opening it in the Reader fades the line where it is.
+      const top0 = Date.now();
       await p.evaluate('scrollTo(0,0)');
       await until(async () => await unread(topic) === null, theme + ': the arrival, now on screen, is read');
-      assert.equal((await fadedOut(p, theme + ': read at the top, the line fades')).after, arrival, theme + ': where it was, under the arrival');
+      await pageRead(p, top0, theme + ': the arrival read');
+      assert.deepEqual([(await drawn(p)).after, (await drawn(p)).faded], [arrival, false], theme + ': read on screen, the line holds under the arrival');
+      await p.point(`#messages [data-id="${arrival}"]`);
+      await until(() => p.evaluate("document.querySelector('#reader').open"), theme + ': the Reader is open on the arrival');
+      assert.equal((await fadedOut(p, theme + ': opened, the line fades')).after, arrival, theme + ': where it was, under the arrival');
+      await p.point('#reader-close');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': the Reader closed on the arrival');
       // Faded, the line is gone for the person: a message that now arrives
       // brings it just below that message, not back where it was.
       const top = (await control({ method: 'agent_message', operation_id: topic + '-top', topic_id: topic, body: 'Arriving while the person is at the top.' })).result.message_id;
@@ -223,13 +541,15 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.ok(shown.top >= 0 && shown.bottom <= shown.height, theme + ': and it is in view');
       await until(async () => (await drawn(p)).after === top, theme + ': the faded line comes back just below the newest arrival, not under the first');
       await shot(p, 'new-line-' + theme + '-top-arrival');
-      // On screen, the newest is read and the line fades under it. Mark unread
-      // in the Reader on that message brings the line back where it is; Mark
-      // read then places it afresh: with nothing unread, it fades again.
+      // On screen, the newest is read and the line holds under it; opening it
+      // in the Reader fades the line. Mark unread there brings the line back
+      // where it is; Mark read then places it afresh: with nothing unread, it
+      // fades again.
       await until(async () => await unread(topic) === null, theme + ': the newest, on screen, is read');
-      assert.equal((await fadedOut(p, theme + ': the newest read, the line fades')).after, top);
+      assert.equal((await drawn(p)).faded, false, theme + ': read on screen, the line holds under the newest');
       await p.point(`#messages [data-id="${top}"]`);
       await until(() => p.evaluate("document.querySelector('#reader').open && !document.querySelector('#mark-unread').hidden"), theme + ': the Reader is open on the newest');
+      assert.equal((await fadedOut(p, theme + ': opened, the line fades')).after, top);
       await p.point('#mark-unread');
       await until(async () => (await unread(topic))?.id === top, theme + ': the newest is marked unread');
       await until(async () => { const line = await drawn(p); return line.after === top && line.faded === false && line.inert === false; }, theme + ': marked unread, the line under it shows again');
@@ -296,8 +616,13 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
 
   // "More new below" promises unread messages further back. Read elsewhere, it
   // fades where it is, inert, and More messages comes back to load older ones.
+  // What this page shows on its first screen was read in another tab first,
+  // so nothing this page read on screen holds the line.
   await check('colors "More new below" fades once what it leads to is read elsewhere, and More messages comes back', async () => {
     const topic = 'new-line-older-read', ids = await topicWith(topic, 40);
+    const elsewhere = await open(topic, 'new-line-older-read-elsewhere', 'light');
+    await until(() => elsewhere.calls.some(c => c.payload?.kind === 'topic.read_through'), 'another tab reads its first screen');
+    await elsewhere.close();
     const p = await open(topic, 'new-line-older-read', 'light');
     await until(async () => (await drawn(p)).kind === 'older', 'the line waits at the bottom');
     assert.deepEqual([await olderControl(p), (await drawn(p)).faded], ['#messages .new-line-older', false], 'it is what loads older messages, and More is hidden');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ReadThrough } from '../web/read-through.mjs';
+import { ReadThrough, UNKNOWN } from '../web/read-through.mjs';
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 function fixture() {
@@ -59,4 +59,42 @@ test('ranges seen during a request coalesce, one request per topic at a time', a
   f.reads.seen('t1', 2, 8); await settle();
   assert.equal(f.calls.length, 4, 'confirmed ranges that touch cover the range between them');
   assert.equal(f.most(), 2, 'never two requests at once for one topic');
+});
+
+// Each call answers with the receipt of the report that carries its range, so
+// the page can tell what its own sighting settled (TopicViews.sighted): null
+// only when the call reported nothing new, and UNKNOWN when the report failed,
+// since its answer may have been lost after Core recorded it.
+test('each sighting is answered with the receipt of the report that carries it, null when it reported nothing new, unknown when the report failed', async () => {
+  const f = fixture();
+  const answered = [];
+  const watch = (name, receipt) => { receipt.then(value => answered.push([name, value === UNKNOWN ? 'unknown' : value?.n ?? null])); };
+  watch('first', f.reads.seen('t1', 4, 6)); await settle();
+  watch('in flight', f.reads.seen('t1', 5, 6));
+  watch('waits', f.reads.seen('t1', 8, 9));
+  watch('already waiting', f.reads.seen('t1', 8, 8));
+  watch('joins', f.reads.seen('t1', 9, 10));
+  watch('invalid', f.reads.seen('t1', 3, 2)); await settle();
+  assert.deepEqual(answered, [['in flight', null], ['already waiting', null], ['invalid', null]], 'what is in flight or waiting already is nothing new');
+  f.answers[0].resolve({ recorded: true, n: 1 }); await settle();
+  assert.deepEqual(f.calls, [['t1', 4, 6], ['t1', 8, 10]]);
+  assert.deepEqual(answered.slice(3), [['first', 1]], 'the first report\'s receipt answers the range it carried');
+  watch('confirmed', f.reads.seen('t1', 4, 5)); await settle();
+  f.answers[1].reject(Error('Connection interrupted')); await settle();
+  assert.deepEqual(answered.slice(4).sort(), [['confirmed', null], ['joins', 'unknown'], ['waits', 'unknown']], 'confirmed already, nothing new; a failed report answers unknown to each range it carried');
+  watch('again', f.reads.seen('t1', 8, 10)); await settle();
+  watch('after it', f.reads.seen('t1', 11, 12)); await settle();
+  // #4..#6 confirmed, #8..#10 in flight, #11..#12 waiting: together they hold
+  // every message of #8..#12 and of #4..#12 but #7.
+  watch('spans flight and waiting', f.reads.seen('t1', 9, 12));
+  watch('spans a gap', f.reads.seen('t1', 4, 12)); await settle();
+  assert.deepEqual(answered.slice(7), [['spans flight and waiting', null]], 'nothing new across what is in flight and waiting');
+  f.answers[2].resolve({ recorded: true, n: 3 }); await settle();
+  assert.deepEqual(answered.slice(8), [['again', 3]], 'sent again, its receipt answers');
+  assert.deepEqual(f.calls.at(-1), ['t1', 4, 12], '#7 is new: the range that holds it goes out, joined with what waited');
+  f.answers[3].resolve({ recorded: true, n: 3 }); await settle();
+  assert.deepEqual(answered.slice(9).sort(), [['after it', 3], ['spans a gap', 3]]);
+  watch('answered nothing', f.reads.seen('t1', 30, 30)); await settle();
+  f.answers[4].resolve(undefined); await settle();
+  assert.deepEqual(answered.slice(11), [['answered nothing', 'unknown']], 'a report answered with nothing is unknown, not nothing new');
 });

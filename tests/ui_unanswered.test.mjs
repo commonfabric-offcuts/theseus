@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { oldestUnreadOf, placeNewLine } from '../web/unanswered.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
+import { UNKNOWN } from '../web/read-through.mjs';
 import { clock } from '../web/times.mjs';
 
 // Every time is read at noon on Thursday 5 November 2026.
@@ -321,4 +322,87 @@ test('placed afresh, the line goes where the newest answer says, even when the a
   assert.deepEqual(views.line, m(8), 'a read asked before the Mark read does not place the line afresh');
   await views.readUnread(answer(19, m(10)));
   assert.deepEqual(views.line, m(10), 'the read asked after it does');
+});
+
+// Reading on screen is not reading for the line (Tony, 7 November 2026): a
+// message turns read when the reader opens or answers it, not while they
+// scroll past it. What this page reads on screen while the line holds keeps
+// holding it, until the reader acts on what it marks: opens a message at or
+// above it in the Reader, replies (here or elsewhere), or presses Mark read.
+// Read elsewhere, where this page did not see it, nothing holds it.
+test('what the page reads on screen holds the line until the reader opens, answers or marks read; read elsewhere, it fades', async () => {
+  const paints = [];
+  const views = new TopicViews({ instanceId: 'i', topicId: 't1', reader: 'me', paint: kind => paints.push(kind) });
+  const item = (seq, author = 'a') => ({ id: 'm' + seq, seq, topic_id: 't1', body: 'b', author_id: author });
+  views.messagesPage({ instance_id: 'i', items: [item(3), item(4), item(5)], next_cursor: null, relevant_versions: { topic: 5 },
+    oldest_unread: { seq: 3, id: 'm3' }, commit_seq: 10 }, { initial: true });
+  const m = seq => ({ seq, id: 'm' + seq });
+  let at = 10;
+  const step = async oldest => { paints.length = 0; await views.readUnread(async () => ({ instance_id: 'i', topic_id: 't1', oldest_unread: oldest, commit_seq: ++at })); return [views.line, views.held, [...paints]]; };
+  const settled = n => ({ status: 'committed', result: { acknowledged: n } });
+  // The page sights cards on screen with the promise of Core's receipt for
+  // their report (ReadThrough.seen); the check answers it.
+  const sight = (from, through) => {
+    let answer; const report = new Promise(resolve => { answer = resolve; });
+    views.sighted(from, through, report);
+    return async receipt => { paints.length = 0; answer(receipt); await report; await null; return [views.held, [...paints]]; };
+  };
+  // Both unread messages on the first screen, sighted while the line holds.
+  const first = sight(3, 5);
+  assert.deepEqual(await step(null), [m(3), true, []], 'read on screen, nothing is unread and the line still holds, with no repaint');
+  assert.deepEqual(await first(settled(2)), [true, []], 'Core settled them for this page: it keeps holding');
+  views.opened(2);
+  assert.deepEqual([views.held, paints], [true, []], 'opening a message below the line is no act on it');
+  views.opened(4);
+  assert.deepEqual([views.held, paints], [false, ['line']], 'opening a message above it in the Reader fades it');
+  sight(3, 5)(settled(1));
+  assert.equal(views.held, false, 'faded, reading on screen never brings it back');
+  // An arrival brings the line back under it; read on screen and settled, it holds.
+  assert.deepEqual(await step(m(6)), [m(6), true, ['line']]);
+  const arrival = sight(6, 6);
+  assert.deepEqual(await step(null), [m(6), true, []], 'the arrival read on screen holds the line');
+  assert.deepEqual(await arrival(settled(0)), [false, ['line']], 'a report that settled nothing (read already, elsewhere) holds nothing: the line fades');
+  // A call that reported nothing new (its cards reported already or waiting
+  // to be) holds nothing either.
+  assert.deepEqual(await step(m(7)), [m(7), true, ['line']]);
+  const already = sight(7, 7);
+  assert.deepEqual(await step(null), [m(7), true, []]);
+  assert.deepEqual(await already(null), [false, ['line']], 'nothing new reported: the line fades once nothing is unread');
+  // A report whose result is not known keeps holding: a failed report, whose
+  // answer may have been lost after Core recorded it, or one Core did not
+  // commit. Whatever Core did not record is still unread anyway.
+  for (const [what, receipt, seq] of [['a failed report', UNKNOWN], ['a report Core did not commit', { recorded: false, status: 'retryable', error: { code: 'DATABASE_BUSY' } }],
+    ['a committed report that names no count', { recorded: true, status: 'committed', result: {} }]].map((entry, n) => [...entry, 100 + n])) {
+    assert.deepEqual(await step(m(seq)), [m(seq), true, ['line']], what);
+    const lost = sight(seq, seq);
+    assert.deepEqual(await step(null), [m(seq), true, []], what);
+    assert.deepEqual(await lost(receipt), [true, []], what + ': read on screen, the line holds');
+    paints.length = 0; views.opened(seq);
+    assert.deepEqual([views.held, paints], [false, ['line']], what + ': opened, it fades');
+  }
+  // A range seen before an act holds nothing after it, whenever its receipt comes.
+  assert.deepEqual(await step(m(8)), [m(8), true, ['line']]);
+  const before = sight(8, 8);
+  views.opened(8);
+  assert.deepEqual(await step(null), [m(8), false, ['line']], 'opened after it was seen: nothing holds the line');
+  assert.deepEqual(await before(settled(1)), [false, []], 'the receipt that comes after the act does not hold it again');
+  // Another's message arriving is no act; the reader's own (a reply, here or elsewhere) is.
+  assert.deepEqual(await step(m(9)), [m(9), true, ['line']]);
+  await sight(9, 9)(settled(1));
+  assert.deepEqual(await step(null), [m(9), true, []]);
+  views.messagesPage({ instance_id: 'i', items: [item(6), item(7), item(8), item(9)], next_cursor: null, relevant_versions: { topic: 9 } }, { live: true, cursor: 5 });
+  assert.equal(views.held, true, 'messages from others arriving leave it held');
+  paints.length = 0;
+  views.messagesPage({ instance_id: 'i', items: [item(10, 'me')], next_cursor: null, relevant_versions: { topic: 10 } }, { live: true, cursor: 9 });
+  assert.deepEqual([views.held, paints], [false, ['messages']], 'the reader\'s own reply arriving fades it, with the repaint of the messages');
+  // Mark read here is an act too.
+  assert.deepEqual(await step(m(11)), [m(11), true, ['line']]);
+  await sight(11, 11)(settled(1));
+  assert.deepEqual(await step(null), [m(11), true, []]);
+  paints.length = 0; views.placeAfresh();
+  assert.deepEqual([views.held, paints], [false, ['line']], 'Mark read fades it at once when nothing at or above it is unread');
+  // Read elsewhere, with nothing seen here, the line fades as the answer says.
+  assert.deepEqual(await step(m(12)), [m(12), true, ['line']]);
+  await sight(1, 2)(settled(2));
+  assert.deepEqual(await step(null), [m(12), false, ['line']], 'read in another tab, with only cards below the line read here, nothing holds it: it fades');
 });
