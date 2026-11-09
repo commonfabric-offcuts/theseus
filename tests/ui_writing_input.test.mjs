@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WritingInput } from '../web/writing-input.mjs';
+import { WritingInput, typingField } from '../web/writing-input.mjs';
 
 function fixture(value='zero\none two\nlast') {
   const events=[],handlers={},editor={draft:{body:value},localVersion:0,submissions:[],edit(patch){Object.assign(this.draft,patch);events.push('edit');}};
@@ -46,4 +46,17 @@ test('ordinary input and insertion fallback share the same update path',()=>{
   assert.equal(f.editor.draft.body,'typed');assert.deepEqual(f.editor.draft.caret,{start:5,end:5});
   f.field.ownerDocument.execCommand=()=>false;f.input.insertText(' tail');
   assert.equal(f.editor.draft.body,'typed tail');assert.deepEqual(f.editor.draft.caret,{start:10,end:10});
+});
+
+test('only a field that takes typed words is a typing field', () => {
+  const input = type => ({ tagName: 'INPUT', type, isContentEditable: false });
+  for (const type of ['text', 'search', 'email', 'url', 'tel', 'password', 'number', 'date', 'time'])
+    assert.equal(typingField(input(type)), true, type);
+  assert.equal(typingField({ tagName: 'TEXTAREA', isContentEditable: false }), true, 'textarea');
+  assert.equal(typingField({ tagName: 'DIV', isContentEditable: true }), true, 'an editable element');
+  for (const type of ['checkbox', 'radio', 'button', 'submit', 'range', 'color', 'file'])
+    assert.equal(typingField(input(type)), false, type);
+  assert.equal(typingField({ tagName: 'SELECT', isContentEditable: false }), false, 'select');
+  assert.equal(typingField({ tagName: 'BUTTON', isContentEditable: false }), false, 'button');
+  assert.equal(typingField(null), false, 'nothing in focus');
 });

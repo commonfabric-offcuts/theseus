@@ -155,12 +155,34 @@ class ReadAdmission:
 
 
 class SharedRead:
-    def __init__(self, disconnected, arrived):
+    """One waiting read: the request that runs it (runner) and those that joined it."""
+    def __init__(self, runner, disconnected, arrived):
         self.done = threading.Event()
-        self.arrived = arrived
+        self.runner, self.arrived = runner, arrived
         self.disconnected = (disconnected,)
+        self.joined = []
         self.result = self.error = None
         self.began = False
+        self.next = None
+
+    def join(self, request, disconnected, arrived):
+        self.disconnected += (disconnected,)
+        self.joined.append((request, disconnected, arrived))
+
+    def successor(self):
+        """The read handed to the request that joined and arrived first, or None.
+
+        It keeps that request's arrival, so its window counts from when it
+        arrived, and every other request that joined goes with it: each arrived
+        no earlier. A request with no arrival comes after those with one."""
+        if not self.joined:
+            return None
+        order = sorted(self.joined, key=lambda one: (one[2] is None, one[2] or 0.0))
+        request, disconnected, arrived = order[0]
+        handed = SharedRead(request, disconnected, arrived)
+        for other in order[1:]:
+            handed.join(*other)
+        return handed
 
 
 class SharedReads:
@@ -180,8 +202,10 @@ class SharedReads:
     Each request keeps its own queue window, counted from its arrival, so it
     joins only a read that was asked for no later than itself. If the lane
     refuses a shared read before it begins, it refused it for the requests it
-    had weighed: the first one's window ran out, or every one had gone. A
-    request that joined later asks for itself, within its own window.
+    had weighed: the first one's window ran out, or every one had gone. The
+    read then passes to the request that joined it and has waited longest,
+    within that request's own window, and the others stay joined to it, so a
+    refusal never opens one read per request.
     """
     def __init__(self):
         self.lock = threading.Lock()
@@ -191,33 +215,29 @@ class SharedReads:
         """run(begun, disconnected) reads, calling begun() once its lane is granted.
 
         arrived orders requests on the admission clock; None joins any read."""
-        while True:
-            with self.lock:
-                shared = self.waiting.get(key)
-                joined = shared is not None and (arrived is None or shared.arrived is None
-                                                 or shared.arrived <= arrived)
-                if joined:
-                    shared.disconnected += (disconnected,)
-                else:
-                    # A read asked for later than this request may wait past its
-                    # window; later requests join this one instead.
-                    shared = self.waiting[key] = SharedRead(disconnected, arrived)
-            if not joined:
-                break
+        request = object()
+        with self.lock:
+            shared = self.waiting.get(key)
+            if shared is not None and (arrived is None or shared.arrived is None or shared.arrived <= arrived):
+                shared.join(request, disconnected, arrived)
+            else:
+                # A read asked for later than this request may wait past its
+                # window; later requests join this one instead.
+                shared = self.waiting[key] = SharedRead(request, disconnected, arrived)
+        while shared.runner is not request:
             shared.done.wait()
             if shared.began:
                 if shared.error is not None:
                     raise shared.error
                 return shared.result
-
-        def leave():
-            with self.lock:
-                if self.waiting.get(key) is shared:
-                    del self.waiting[key]
+            # Refused before it began: the read was handed on before done was set.
+            shared = shared.next
 
         def begun():
-            shared.began = True
-            leave()
+            with self.lock:
+                shared.began = True
+                if self.waiting.get(key) is shared:
+                    del self.waiting[key]
         try:
             shared.result = run(begun, lambda: all(gone() for gone in shared.disconnected))
             return shared.result
@@ -225,7 +245,14 @@ class SharedReads:
             shared.error = error
             raise
         finally:
-            leave()
+            with self.lock:
+                if not shared.began:
+                    shared.next = shared.successor()
+                if self.waiting.get(key) is shared:
+                    if shared.next is None:
+                        del self.waiting[key]
+                    else:
+                        self.waiting[key] = shared.next
             shared.done.set()
 
 

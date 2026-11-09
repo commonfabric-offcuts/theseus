@@ -36,6 +36,8 @@ export class EditorRegistry {
     Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, activity, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map(); this.serverSaves = new Map();
+    // When this page last saw each writing kept on this device, and saved to Theseus.
+    this.savedTimes = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
     this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
@@ -266,7 +268,7 @@ export class EditorRegistry {
     const saved = session.persist();
     this.changed(editor);
     const settled = () => { marker.pending = false; this.changed(editor); };
-    saved.then(settled, settled);
+    saved.then(() => { this.savedAt(editor).device = this.timers.now(); settled(); }, settled);
     return saved;
   }
 
@@ -300,6 +302,7 @@ export class EditorRegistry {
     // Saves to Theseus under way, for the saving sign.
     const saved = this.sessionFor(editor).save();
     this.serverSaves.set(editor.key, (this.serverSaves.get(editor.key) ?? 0) + 1); this.changed(editor);
+    saved.then(receipt => { if (receipt?.status === 'committed') this.savedAt(editor).theseus = this.timers.now(); }, () => {});
     const settled = () => {
       const left = this.serverSaves.get(editor.key) - 1;
       if (left) this.serverSaves.set(editor.key, left); else this.serverSaves.delete(editor.key);
@@ -384,6 +387,31 @@ export class EditorRegistry {
     return held && editor.ackVersion >= version && !editor.dirty;
   }
 
+  savedAt(editor) {
+    if (!this.savedTimes.has(editor.key)) this.savedTimes.set(editor.key, { device: null, theseus: null });
+    return this.savedTimes.get(editor.key);
+  }
+  // When the save the saving sign speaks of was: saved to Theseus, or kept on
+  // this device only; null for any other state, or before this page saw one.
+  savedTime(editor) {
+    const state = this.saveSign(editor).state, times = this.savedTimes.get(editor.key);
+    return (state === 'saved' ? times?.theseus : state === 'device' ? times?.device : null) ?? null;
+  }
+  // The newest topic version this writing's own confirmed sends reached in
+  // this runtime, which the page waits to see before it says it is current.
+  // A send confirmed under an earlier runtime (a recovery copy from before
+  // the database was restored, or one a runtime review set aside) names a
+  // version this runtime may never reach, so it names none (item 54).
+  localTopicVersion(editor) {
+    const now = this.runtime.current;
+    let newest = 0;
+    for (const item of editor.submissions) {
+      if (item.detached || item.authority?.authority_id !== now.authority_id || item.authority?.authority_epoch !== now.authority_epoch) continue;
+      const version = item.status === 'confirmed' && item.receipt?.result?.topic?.version;
+      if (Number.isInteger(version) && version > newest) newest = version;
+    }
+    return newest;
+  }
   checkConfirmation(editor) { return this.sessionFor(editor).reconcile(); }
   status(editor) { return this.saveSign(editor).text; }
   // The saving sign beside the writing: its words, and its state (saving,

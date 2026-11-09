@@ -68,6 +68,12 @@ SCHEMA_BEFORE_SETTLE = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % 
 # the layout before it is the settling step's.
 BEFORE_HEALTH, HEALTH_VERSION = SETTLE_VERSION, str(int(SETTLE_VERSION) + 1)
 SCHEMA_BEFORE_HEALTH = SCHEMA_BEFORE_SETTLE
+# The reactions' step (thumbs-up and go-ahead answers on a message) follows the
+# Health page's, so the layout before it is version 32's, read from a fresh
+# instance of release 31's code (e1879db). Named here once, so a renumbering of
+# the step changes only these two and the fixture's file name.
+BEFORE_REACTIONS, REACTION_VERSION = HEALTH_VERSION, str(int(HEALTH_VERSION) + 1)
+SCHEMA_BEFORE_REACTIONS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_REACTIONS)).read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -87,6 +93,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The reactions' version keeps each thumbs-up and go-ahead answer, and
+        # whether a message asks for a go-ahead.
+        db.execute("ALTER TABLE messages DROP COLUMN go_ahead")
+        db.execute("DROP INDEX message_reaction_rows")
+        db.execute("DROP TABLE message_reactions")
+        if version == BEFORE_REACTIONS:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The Health page's version keeps each recipient's wake facts and its hosted turns
         # still running, the runner's previous end, what Theseus last announced and its own member.
         db.execute("DROP TABLE runner_prior")
@@ -1805,7 +1819,8 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE),
                      (BEFORE_CHECKS, SCHEMA_BEFORE_CHECKS),
                      (BEFORE_SETTLE, SCHEMA_BEFORE_SETTLE),
-                     (BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH))
+                     (BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH),
+                     (BEFORE_REACTIONS, SCHEMA_BEFORE_REACTIONS))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2388,7 +2403,8 @@ class Schema27Case(MigrationCase):
         # comes from the operator, never from the upgrade.
         self.assertEqual(self.sql("SELECT kind,replaced_by,count(*) FROM topics GROUP BY kind,replaced_by"), [("topic", None, 1)])
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE about_id IS NOT NULL"), [(0,)])
-        widened = {"messages": 1, "topics": 2}
+        # Messages gain what they are about, and the reactions' step whether they ask for a go-ahead.
+        widened = {"messages": 2, "topics": 2}
         self.assertEqual({table: [row[:-widened[table]] if table in widened else row for row in kept]
                           for table, kept in everything(self.path).items() if table in rows},
                          rows, "only the new columns are added, to messages and topics")
@@ -2514,6 +2530,9 @@ class HealthStepCase(MigrationCase):
 
     VERSION, FIXTURE = BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH
 
+    def upgrade(self):
+        return migrate(self.path, "test-instance", self.binding, HEALTH_VERSION)
+
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, BEFORE_HEALTH)
 
@@ -2526,9 +2545,9 @@ class HealthStepCase(MigrationCase):
                            "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, "r-1", recipient, 60000 * n, 60000 * n + 20000))
                 db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt, outcome, 60000 * n + 1000))
 
-    def test_the_step_follows_the_settling_steps_and_the_head_is_its_version(self):
+    def test_the_step_follows_the_settling_steps_and_the_reactions_step_follows_it(self):
         self.assertIn((BEFORE_HEALTH, HEALTH_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, HEALTH_VERSION)
+        self.assertIn((HEALTH_VERSION, REACTION_VERSION), [step[:2] for step in migrations.STEPS])
 
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_works_out_the_wake_facts(self):
         self.settled(["accepted", "error", "accepted", "error", "busy", "unavailable"])
@@ -2553,7 +2572,8 @@ class HealthStepCase(MigrationCase):
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_HEALTH,
                                           "schema_version": HEALTH_VERSION, "migrated": True})
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        # The layout a fresh instance of the Health page's release has (the reactions' step follows it).
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_REACTIONS))
         upgraded = everything(self.path)
         self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
         # The three wakes since the last that got through did not; why was never recorded. A turn's
@@ -2945,6 +2965,82 @@ class SettleStepCase(MigrationCase):
         self.assertTrue(self.upgrade()["migrated"])
         self.assertEqual(everything(self.path), settled, "and up again writes no second take")
 
+
+class ReactionStepCase(MigrationCase):
+    """An instance at the Health page's version: the reactions' step adds each
+    thumbs-up and go-ahead answer, and whether a message asks for one, and steps
+    back only while none is kept."""
+
+    VERSION, FIXTURE = BEFORE_REACTIONS, SCHEMA_BEFORE_REACTIONS
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_REACTIONS)
+
+    def thumb(self, thumbed, revision):
+        message = self.sql("SELECT id FROM messages WHERE topic_id='t1' AND author_id='owner' ORDER BY seq LIMIT 1")[0][0]
+        receipt = self.command("message.thumb", {"thumbed": thumbed}, {"message_id": message}, {"thumb_revision": revision}, actor="agent-b")
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_is_the_reactions_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_REACTIONS, REACTION_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, REACTION_VERSION)
+
+    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_a_thumb_is_kept(self):
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_REACTIONS,
+                                          "schema_version": REACTION_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        upgraded = everything(self.path)
+        # Each message gains whether it asks for a go-ahead, and none does.
+        self.assertEqual([row[-1] for row in upgraded["messages"]], [0] * len(stored["messages"]))
+        self.assertEqual({table: [row[:-1] for row in kept] if table == "messages" else kept
+                          for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
+        self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new table starts empty")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual((self.thumb(True, 0)["thumb_revision"], self.sql("SELECT actor_id,kind,value FROM message_reactions")),
+                         (1, [("agent-b", "thumb", "up")]))
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_none_is_kept(self):
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_REACTIONS))
+        self.assertEqual(everything(self.path), stored)
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_while_a_reaction_or_a_go_ahead_ask_is_kept_and_changes_nothing(self):
+        # A thumbs-up taken back still holds the instance: its revisions would restart.
+        def thumbed_and_taken_back():
+            self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+            self.thumb(True, 0)
+            self.thumb(False, 1)
+
+        def asks_for_a_go_ahead():
+            self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+            receipt = self.command("message.post", {"body": "May I merge it?", "addressees": ["owner"], "intent": "ask", "go_ahead": True},
+                                   {"topic_id": "t1"}, actor="agent-b")
+            self.assertEqual(receipt["status"], "committed", receipt)
+
+        for name, keep in (("a thumbs-up taken back", thumbed_and_taken_back), ("a message asking for a go-ahead", asks_for_a_go_ahead)):
+            with self.subTest(kept=name):
+                self.upgrade()
+                keep()
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    self.step_back()
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(self.unchanged(), before)
+                self.assertEqual(self.metadata()["schema_version"], REACTION_VERSION)
+                # Cleared by hand (a message refuses an UPDATE by trigger, kept as it was), the step back goes through.
+                with sqlite3.connect(str(self.path)) as db:
+                    db.execute("DELETE FROM message_reactions")
+                    trigger = db.execute("SELECT sql FROM sqlite_master WHERE name='immutable_messages_update'").fetchone()[0]
+                    db.execute("DROP TRIGGER immutable_messages_update")
+                    db.execute("UPDATE messages SET go_ahead=0")
+                    db.execute(trigger)
+                self.assertTrue(self.step_back()["migrated"])
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -2991,6 +3087,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(ChecksStepCase, _name, None)
     if _name.startswith("test_") and _name not in SettleStepCase.__dict__:
         setattr(SettleStepCase, _name, None)
+    if _name.startswith("test_") and _name not in ReactionStepCase.__dict__:
+        setattr(ReactionStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

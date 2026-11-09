@@ -872,8 +872,9 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       return {name:name.textContent,button:name.tagName==='BUTTON',title:name.title,fill:c.backgroundColor,border:[c.borderTopWidth,c.borderRightWidth,c.borderBottomWidth,c.borderLeftWidth],shadow:c.boxShadow,
         remove:out?{label:out.getAttribute('aria-label'),inside:ob.left>=pb.left-0.5&&ob.right<=pb.right+0.5&&ob.top>=pb.top-0.5&&ob.bottom<=pb.bottom+0.5,size:[ob.width,ob.height]}:null,
         buttonInButton:Boolean(e.querySelector('button button'))}})})()`);
-    const below = p => p.evaluate(`(()=>{const cards=[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1).getBoundingClientRect(),more=document.querySelector('#more-messages');
-      const top=document.querySelector('#topic-people').getBoundingClientRect().top;return {cards:cards.length,belowCard:top>=last.bottom,belowMore:more.hidden||top>=more.getBoundingClientRect().bottom,next:more.nextElementSibling.id}})()`);
+    // loaded: the messages the page holds; a reply stack folds most of them away (docs/topic-reading.md), so the last shown is the last on screen.
+    const below = p => p.evaluate(`(()=>{const all=[...document.querySelectorAll('#messages [data-id]')],cards=all.filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1).getBoundingClientRect(),more=document.querySelector('#more-messages');
+      const top=document.querySelector('#topic-people').getBoundingClientRect().top;return {loaded:all.length,belowCard:top>=last.bottom,belowMore:more.hidden||top>=more.getBoundingClientRect().bottom,next:more.nextElementSibling.id}})()`);
     const p = await page('header-people', null, true, { beforeNavigate: scheme('light') });
     await until(async () => (await people(p)).length >= 2, 'the people painted');
     const first = await below(p);
@@ -881,7 +882,10 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.equal(await p.evaluate(`document.querySelector('#more-messages').hidden`), false, 'a topic with more than a page shows More messages');
     await p.evaluate(`document.querySelector('#more-messages').scrollIntoView({block:'center'})`);
     await p.point('#more-messages');
-    const later = await until(async () => { const b = await below(p); return b.cards > first.cards && b; }, 'More messages loads the next page');
+    // A page that loads nothing new fails naming what it showed.
+    let seen;
+    const later = await until(async () => { const b = seen = await below(p); return b.loaded > first.loaded && b; }, 'More messages loads the next page')
+      .catch(error => assert.fail(`${error.message}: ${JSON.stringify({ first, seen })}`));
     assert.deepEqual([later.belowCard, later.belowMore], [true, true], 'still below the new last message');
     const light = await people(p);
     const own = light.find(x => x.name === facts.actor), theirs = light.find(x => x.name === agent);

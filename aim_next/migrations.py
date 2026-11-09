@@ -34,6 +34,7 @@ from .pipeline import (PIPELINE_DECIDED_AGAIN_DOWN, PIPELINE_DECIDED_AGAIN_UP, P
 from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
 from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
+from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -129,6 +130,10 @@ STEPS = (
     # from settlements and exits, so stepping back loses no record; it is
     # refused once Theseus has posted a health notice.
     ("31", "32", HEALTH_SCHEMA + HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED),
+    # Version 33 keeps each thumbs-up and go-ahead answer on a message, and
+    # whether a message asks for a go-ahead. Stepping back is refused once any
+    # of them exists.
+    ("32", "33", REACTION_SCHEMA, REACTION_DOWN, REACTION_OCCUPIED),
 )
 
 

@@ -1,5 +1,6 @@
 import { checkedView, RevisionTargets } from './freshness.mjs';
 import { oldestUnreadOf } from './unanswered.mjs';
+import { learnReactions, reactionsOf } from './reactions.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
@@ -248,6 +249,17 @@ export class TopicViews {
       if (!current()) return false;
       if (!this.messagesPage(answer, { live: true, cursor })) return false;
       return this.newest >= seq || !answer.items.length;
+    }
+    if (key.startsWith('reaction:')) {
+      // Reactions on a message this page has not loaded come with it when it loads.
+      const id = key.slice(9);
+      if (!this.messages.has(id)) return true;
+      const answer = checkedView(await read('reactions', { message_id: id }), this.instanceId);
+      if (!current()) return false;
+      if (answer.message_id !== id) throw invalid('The reactions answer is for another message.');
+      if (reactionsOf(answer).version < version) throw behind();
+      if (learnReactions(this.messages, answer)) this.paint('reactions');
+      return true;
     }
     if (key === 'notebook') {
       if (this.memoryCursor !== null) { this.unloadedChanged = true; return true; }

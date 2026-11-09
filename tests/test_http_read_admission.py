@@ -475,6 +475,41 @@ class SharedReadsTests(unittest.TestCase):
         self.assertEqual([later.result(timeout=2), last.result(timeout=2)], ["asked at 10.45"] * 2)
         self.assertEqual(runs, ["asked at 10.45", "asked at 10.4"])
 
+    def test_a_read_refused_before_it_begins_passes_to_the_request_that_waited_longest(self):
+        # The first request's window runs out while its read waits for the
+        # lane. Of the requests that joined it, the one that arrived first takes
+        # the read over, with its own arrival, and the others join it: one read
+        # more, never one each, which a full lane would refuse as Updates
+        # delayed. The request that joined first arrived last, so whichever
+        # wakes first, only the handover gives the read to the right one.
+        for trial in range(20):
+            reads, refuse, runs = http_server.SharedReads(), threading.Event(), []
+
+            def read_as(name):
+                def run(begun, disconnected):
+                    runs.append(name)
+                    if name == "first":
+                        refuse.wait(5)
+                        raise RuntimeError("Updates delayed")
+                    begun()
+                    return name
+                return run
+            pool = ThreadPoolExecutor(max_workers=3)
+            self.addCleanup(pool.shutdown, True)
+            self.addCleanup(refuse.set)
+            first = pool.submit(reads.read, "attention", read_as("first"), lambda: False, 10.0)
+            eventually(lambda: runs == ["first"])
+            later = pool.submit(reads.read, "attention", read_as("arrived at 10.3"), lambda: False, 10.3)
+            eventually(lambda: len(reads.waiting["attention"].disconnected) == 2)
+            longest = pool.submit(reads.read, "attention", read_as("arrived at 10.1"), lambda: False, 10.1)
+            eventually(lambda: len(reads.waiting["attention"].disconnected) == 3)
+            refuse.set()
+            with self.assertRaisesRegex(RuntimeError, "Updates delayed"):
+                first.result(timeout=2)
+            self.assertEqual([longest.result(timeout=2), later.result(timeout=2)], ["arrived at 10.1"] * 2, "trial %d" % trial)
+            self.assertEqual(runs, ["first", "arrived at 10.1"], "trial %d" % trial)
+            self.assertEqual(reads.waiting, {}, "trial %d" % trial)
+
 
 class DeterministicReadAdmissionTests(unittest.TestCase):
     def setUp(self):

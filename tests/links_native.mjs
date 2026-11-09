@@ -146,7 +146,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
   const menuOpen = async (p, want) => {
     let seen;
     try { await until(async () => JSON.stringify(seen = await items(p)) === JSON.stringify(want), 'the menu lists ' + want.join(', ')); }
-    catch (error) { assert.deepEqual(seen, want, error.message); }
+    catch (error) { assert.deepEqual(seen, want, `${error.message} (lit: ${await p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id+' '+e.className).join(', ')`)})`); }
   };
   const choose = async (p, label) => {
     const at = (await items(p)).indexOf(label); assert.ok(at >= 0, 'the menu offers ' + label);
@@ -168,14 +168,25 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
   await topics({ id: 'links-m', title: 'Links menu' }, { id: 'links-o', title: 'Other links' });
   const menuWords = 'A message with its own link to copy.';
   const menuId = await post('links-menu', 'links-m', menuWords);
-  const menuCard = `#messages [data-id="${menuId}"]`, menuMore = `${menuCard} .message-menu`;
+  // A message's ⋯ is on the one bar over the lit message (docs/interaction.md): a card lights under the pointer, or from the keyboard.
+  const menuCard = `#messages [data-id="${menuId}"]`, menuMore = '.message-bar [data-act=more]';
+  const barShown = p => p.evaluate(`(()=>{const b=document.querySelector('.message-bar');return Boolean(b)&&!b.hidden&&b.offsetHeight>0})()`);
+  // The pointer rests on a card, which lights it and brings up its bar.
+  const light = async (p, card) => {
+    const b = await p.box(card); assert.ok(b && b.width > 0, 'visible ' + card);
+    await mouse(p, 'mouseMoved', Math.round(b.x + b.width / 2), Math.round(b.y + b.height - 6), { button: 'none', clickCount: 0 });
+    await until(async () => await p.evaluate(`document.querySelector(${JSON.stringify(card)}).classList.contains('lit')`) && await barShown(p), 'the card lit, with its bar');
+  };
 
   await check('header a message\'s ⋯ copies its link and says so, and sets and clears its mark, without opening the card; light and dark', async () => {
     const p = await page('links-menu', null, true, { url: facts.origin + '/?topic=links-m' });
-    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuMore)}))`), 'the card has its ⋯');
-    const [card, more] = [await p.box(menuCard), await p.box(menuMore)];
-    assert.ok(more.width >= 36 && more.height >= 36, 'a ⋯ big enough to tap: ' + JSON.stringify(more));
-    assert.ok(more.x + more.width <= card.x + card.width && card.x + card.width - (more.x + more.width) < 12 && more.y - card.y < 12, 'in the card\'s top right corner');
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard)}))`), 'the card is drawn');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuCard)}).querySelector('button.message-menu, [data-act=more]')`), null, 'the card carries no ⋯ of its own');
+    await light(p, menuCard);
+    const [card, bar, more] = [await p.box(menuCard), await p.box('.message-bar'), await p.box(menuMore)];
+    assert.ok(more.width >= 28 && more.height >= 28, 'a ⋯ big enough to press: ' + JSON.stringify(more));
+    assert.ok(bar.x + bar.width <= card.x + card.width && card.x + card.width - (bar.x + bar.width) <= 24 && Math.abs(bar.y + bar.height / 2 - card.y) <= bar.height / 2 + 1, 'the bar over the card\'s top right corner');
+    assert.ok(more.x + more.width <= bar.x + bar.width && more.x >= bar.x, 'the ⋯ on the bar');
     await clipboard(p);
     await p.point(menuMore);
     await menuOpen(p, ['Copy Link', 'Mark unread']);
@@ -194,16 +205,17 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(await p.evaluate('window.copied'), [link], 'the message\'s link is on the clipboard');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).textContent`), 'Link copied');
     // The next press on the ⋯ itself opens its menu: its words change back only once that press has landed.
-    await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark unread']);
+    // The pointer rests on the card again first: the bar is the lit message's, and the menu may have closed over another card.
+    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark unread']);
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).textContent`), '⋯', 'until the next press');
     await choose(p, 'Mark unread');
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard + ' .unread-mark')}))`), 'the card is marked unread');
-    await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark read']); await choose(p, 'Mark read');
+    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark read']); await choose(p, 'Mark read');
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(menuCard + ' .unread-mark')})`), 'the mark is cleared');
     assert.equal(await open(p, 'reader'), false, 'no press opened the card');
     // Where the clipboard refuses, the link is given to select.
     await clipboard(p, true);
-    await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark unread']); await choose(p, 'Copy Link');
+    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark unread']); await choose(p, 'Copy Link');
     await until(() => p.evaluate(`document.querySelector('#app-status').textContent === ${JSON.stringify('The link could not be copied here. Select it to copy it: ' + link)}`), 'the link to select');
     assert.deepEqual(p.errors, []);
   });
@@ -212,13 +224,16 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     const own = await post('links-own', 'links-m', 'My own words.', { sender: 'person', join: false });
     const linked = await post('links-linked', 'links-m', `Words around ${ELSEWHERE} a link.`);
     const p = await page('links-right', null, true, { url: facts.origin + '/?topic=links-m' });
-    const ownMore = `#messages [data-id="${own}"] .message-menu`, card = `#messages [data-id="${linked}"]`;
-    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(ownMore)})) && Boolean(document.querySelector(${JSON.stringify(card + ' a.words-link')}))`), 'the cards are drawn');
-    await p.point(ownMore); await menuOpen(p, ['Copy Link']);
+    const ownCard = `#messages [data-id="${own}"]`, card = `#messages [data-id="${linked}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(ownCard)})) && Boolean(document.querySelector(${JSON.stringify(card + ' a.words-link')}))`), 'the cards are drawn');
+    await light(p, ownCard);
+    await p.point(menuMore); await menuOpen(p, ['Copy Link']);
     await p.key('Escape');
-    await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.activeElement === document.querySelector(${JSON.stringify(ownMore)})`), 'Escape closes it and gives the focus back');
+    await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.activeElement === document.querySelector(${JSON.stringify(menuMore)})`), 'Escape closes it and gives the focus back');
     await contextLog(p);
-    const box = await p.box(card + ' .message-preview'), x = Math.round(box.x + box.width - 30), y = Math.round(box.y + box.height / 2);
+    // Just past the end of the words, on the card's own space; the words fill a whole line's width, so that is where they end.
+    const [x, y] = await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card + ' .message-preview')}),r=document.createRange();r.selectNodeContents(e);const l=[...r.getClientRects()].at(-1),b=e.getBoundingClientRect();
+      return [Math.round(Math.min(l.right+30,b.right-10)),Math.round(l.top+l.height/2)]})()`);
     await rightClick(p, x, y);
     await menuOpen(p, ['Copy Link', 'Mark unread']);
     const list = await p.box('.message-menu-list');
@@ -231,7 +246,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     // On a Mac a right-click on a word selects that word before the page hears
     // it; that selection is the press's own, not the person's, and the menu
     // opens all the same, leaving no word selected.
-    const word = await p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(card + ' .message-preview')}).firstChild,r=document.createRange();r.setStart(t,0);r.setEnd(t,5);const b=r.getBoundingClientRect();return [Math.round(b.x+b.width/2),Math.round(b.y+b.height/2)]})()`);
+    const word = await p.evaluate(`(()=>{const t=document.createTreeWalker(document.querySelector(${JSON.stringify(card + ' .message-preview')}),NodeFilter.SHOW_TEXT).nextNode(),r=document.createRange();r.setStart(t,0);r.setEnd(t,5);const b=r.getBoundingClientRect();return [Math.round(b.x+b.width/2),Math.round(b.y+b.height/2)]})()`);
     await rightClick(p, ...word);
     await menuOpen(p, ['Copy Link', 'Mark unread']);
     assert.equal(await p.evaluate('getSelection().isCollapsed'), true, 'no word is left selected');
@@ -241,7 +256,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await rightClick(p, lx, ly);
     await frame(p);
     assert.deepEqual([await p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), await p.evaluate('window.contexts.at(-1)')], [false, false], 'on a link the browser\'s menu stays');
-    await p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(card + ' .message-preview')}).firstChild;getSelection().setBaseAndExtent(w,0,w,5);return true})()`);
+    await p.evaluate(`(()=>{const w=document.createTreeWalker(document.querySelector(${JSON.stringify(card + ' .message-preview')}),NodeFilter.SHOW_TEXT).nextNode();getSelection().setBaseAndExtent(w,0,w,5);return true})()`);
     await rightClick(p, x, y);
     await frame(p);
     assert.deepEqual([await p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), await p.evaluate('window.contexts.at(-1)')], [false, false], 'on selected words the browser\'s menu stays');
@@ -251,10 +266,24 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
 
   await check('header Tab reaches a message\'s ⋯, Return opens its menu, and Escape gives the focus back', async () => {
     const p = await page('links-keys', null, true, { url: facts.origin + '/?topic=links-m' });
-    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuMore)}))`), 'the card has its ⋯');
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard)}))`), 'the card is drawn');
     await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(menuCard)}).focus();return true})()`);
+    await until(() => barShown(p), 'the card the focus is on lights, with its bar');
+    // Tab from the lit card goes on to its bar's buttons, in order, as its own ⋯ once followed it.
+    const focused = () => p.evaluate(`(()=>{const a=document.activeElement;return a?.closest('.message-bar')?'bar:'+a.dataset.act:a===document.querySelector(${JSON.stringify(menuCard)})?'card':(a?.tagName??'')+(a?.className?'.'+a.className:'')})()`);
+    const order = [];
+    for (let i = 0; i < 3; i++) { await p.key('Tab'); order.push(await focused()); }
+    assert.deepEqual(order, ['bar:thumb', 'bar:reply', 'bar:more'], 'Tab from the card reaches its bar\'s 👍, Reply and ⋯');
+    // Shift-Tab from the bar's first button comes back to the card; Tab past its ⋯ goes on to what follows the card.
+    await p.key('Tab', 8); await p.key('Tab', 8); await p.key('Tab', 8);
+    assert.equal(await focused(), 'card', 'Shift-Tab from the bar\'s first button comes back to the card');
+    for (let i = 0; i < 3; i++) await p.key('Tab');
+    assert.equal(await focused(), 'bar:more');
     await p.key('Tab');
-    assert.equal(await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(menuMore)})`), true, 'Tab from the card reaches its ⋯');
+    assert.equal(await p.evaluate(`(()=>{const a=document.activeElement,c=document.querySelector(${JSON.stringify(menuCard)});return !a.closest('.message-bar')&&a!==c&&Boolean(c.compareDocumentPosition(a)&Node.DOCUMENT_POSITION_FOLLOWING)})()`), true, 'Tab past the ⋯ goes on from the card, not to the page\'s end');
+    await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(menuCard)}).focus();return true})()`);
+    for (let i = 0; i < 3; i++) await p.key('Tab');
+    assert.equal(await focused(), 'bar:more', 'Tab from the card reaches its ⋯');
     await p.key('Enter');
     await menuOpen(p, ['Copy Link', 'Mark unread']);
     assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Copy Link');

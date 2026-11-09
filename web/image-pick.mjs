@@ -1,0 +1,210 @@
+// Images while writing (item 121): the #img list that picks one of the
+// topic's recent images, the thumbnail on each image row, and whether the
+// image button can say "Paste image".
+import { shownTime } from './times.mjs';
+
+const node = (doc, tag, text, className) => {
+  const el = doc.createElement(tag);
+  if (text !== undefined) el.textContent = text;
+  if (className) el.className = className;
+  return el;
+};
+
+// "#img" just before the cursor, at the start of a line or after a space, and
+// what is typed after it to narrow the list: {start, filter}, or null.
+export function imageQuery(value, caret) {
+  const line = value.slice(value.lastIndexOf('\n', caret - 1) + 1, caret);
+  const found = /(?:^|\s)#img(\S*)$/.exec(line);
+  if (!found) return null;
+  return { start: caret - found[1].length - 4, filter: found[1].toLowerCase() };
+}
+
+// Theseus reads one image at a time and refuses a second read while one is
+// under way, so this page's image reads take turns: each starts when the one
+// before it has finished. A read the person is waiting on (a picked image)
+// goes ahead of thumbnails not yet started.
+const reads = [];
+let reading = false;
+export function readInTurn(read, { first = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const job = { read, resolve, reject };
+    if (first) reads.unshift(job); else reads.push(job);
+    nextRead();
+  });
+}
+function nextRead() {
+  if (reading || !reads.length) return;
+  reading = true;
+  const job = reads.shift();
+  Promise.resolve().then(job.read).then(job.resolve, job.reject).finally(() => { reading = false; nextRead(); });
+}
+
+// One object URL per thumbnail key for as long as a row shows it; Theseus
+// keeps no smaller copy, so a thumbnail is the image itself, made small.
+const thumbs = new Map();
+// A thumbnail in the row, at its start unless place(image) puts it elsewhere:
+// the image itself, made small, from the bytes load() gives (null for none).
+// A row keeps its thumbnail while its key is the same, so a repaint of the
+// row's words never loads it again.
+export function paintThumb(row, key, load, place = image => row.prepend(image)) {
+  const doc = row.ownerDocument;
+  let image = row.querySelector(':scope > img.image-thumb');
+  if (image?.dataset.key === key) { place(image); return; }
+  image?.remove(); dropThumb(row);
+  image = node(doc, 'img', undefined, 'image-thumb'); image.alt = ''; image.dataset.key = key; image.hidden = true;
+  place(image);
+  let entry = thumbs.get(key);
+  if (!entry) {
+    // A thumbnail whose rows are gone before its turn comes is not read.
+    const current = entry = { users: 0 };
+    entry.url = readInTurn(() => thumbs.get(key) === current ? load() : null).then(blob => blob ? URL.createObjectURL(blob) : null).catch(() => null);
+    thumbs.set(key, entry);
+  }
+  entry.users++;
+  entry.url.then(url => { if (url && image.isConnected && image.dataset.key === key) { image.src = url; image.hidden = false; } });
+}
+// The row no longer shows its thumbnail; the last row to let a key go frees it.
+export function dropThumb(row) {
+  const key = row.querySelector(':scope > img.image-thumb')?.dataset.key, entry = key && thumbs.get(key);
+  if (!entry || --entry.users > 0) return;
+  thumbs.delete(key);
+  entry.url.then(url => { if (url) URL.revokeObjectURL(url); });
+}
+
+// Whether the clipboard holds an image the page may read without asking: only
+// where the browser has a clipboard-read permission to ask about (Chrome,
+// Edge) and the person has already granted it. Nothing here ever asks for it,
+// and Safari, Firefox and every browser on iPhone and iPad answer no, since
+// they read the clipboard only inside a press and show their own Paste button.
+export async function clipboardHoldsImage(nav = globalThis.navigator) {
+  try {
+    if (!nav?.clipboard?.read || !nav.permissions?.query) return false;
+    if ((await nav.permissions.query({ name: 'clipboard-read' })).state !== 'granted') return false;
+    return (await nav.clipboard.read()).some(item => item.types.some(type => type.startsWith('image/')));
+  } catch { return false; }
+}
+// The image on the clipboard as a file, read on the person's press; null when
+// there is none or the browser will not give it.
+export async function clipboardImage(nav = globalThis.navigator) {
+  try {
+    for (const item of await nav.clipboard.read()) {
+      const type = item.types.find(value => value.startsWith('image/'));
+      if (type) { const blob = await item.getType(type); return new File([blob], '', { type: blob.type || type }); }
+    }
+  } catch { /* the browser declined */ }
+  return null;
+}
+
+// The list #img opens under the writing. load() gives the images to offer
+// ({items: [{source_ref, author_id, sent_ms, attachment}]}, from the
+// topic_images view), thumb(item) a thumbnail's bytes, and choose(item) adds
+// the picked image to the writing. The field keeps focus throughout: ↑ ↓ move
+// through the list, Return or Tab picks, Escape closes it; a tap or click on
+// an image picks it.
+export class ImagePick {
+  constructor({ field, host, load, thumb, choose, admits = () => true }) {
+    Object.assign(this, { field, host, load, thumb, choose, admits });
+    this.list = null; this.query = null; this.items = null; this.active = 0; this.reading = null;
+    field.addEventListener('blur', event => { if (!this.list?.contains(event.relatedTarget)) this.close(); });
+    field.addEventListener('click', () => this.update());
+    field.addEventListener('keyup', event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) this.update(); });
+  }
+  get open() { return Boolean(this.list && !this.list.hidden); }
+  // The list, made the first time #img is typed, just after the writing.
+  ensureList() {
+    if (this.list) return this.list;
+    this.doc = this.field.ownerDocument;
+    const list = this.list = node(this.doc, 'div', undefined, 'image-pick');
+    list.id = this.field.id + '-images'; list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Images to add');
+    list.hidden = true;
+    // A press on the list must not take focus from the writing. Only the
+    // mouse event is held back: holding back a touch's pointerdown would, in
+    // Safari, hold back the tap's click too, and nothing would be picked.
+    list.addEventListener('mousedown', event => event.preventDefault());
+    this.host.after(list);
+    return list;
+  }
+  // After the writing or its cursor changes: open, narrow or close the list.
+  update() {
+    const query = this.admits() && this.field.selectionStart === this.field.selectionEnd ? imageQuery(this.field.value, this.field.selectionStart) : null;
+    if (!query) { this.close(); return; }
+    const opening = !this.query;
+    this.query = query;
+    if (opening) { this.ensureList(); this.items = null; this.active = 0; this.fetch(); }
+    this.paint();
+  }
+  async fetch() {
+    const reading = this.reading = Promise.resolve().then(this.load);
+    let answer, failed = null;
+    try { answer = await reading; } catch (error) { failed = error; }
+    if (reading !== this.reading || !this.query) return;
+    this.items = failed || answer?.error ? { error: failed?.message ?? answer.error.message } : answer.items;
+    this.paint();
+    // The whole list in view once it has its rows, however low the writing sits.
+    this.list.scrollIntoView?.({ block: 'nearest' });
+  }
+  shown() {
+    if (!Array.isArray(this.items)) return [];
+    const filter = this.query?.filter ?? '';
+    return this.items.filter(item => !filter || item.attachment.name.toLowerCase().includes(filter));
+  }
+  paint() {
+    if (!this.query) return;
+    const shown = this.shown();
+    this.active = Math.max(0, Math.min(this.active, shown.length - 1));
+    const rows = [];
+    if (this.items === null) rows.push(node(this.doc, 'p', 'Finding images…', 'muted'));
+    else if (this.items.error) rows.push(node(this.doc, 'p', `Could not list images: ${this.items.error}`, 'muted'));
+    else if (!shown.length) rows.push(node(this.doc, 'p', this.items.length ? `No image named “${this.query.filter}”` : 'No images in this topic yet. Paste one, or use Add image.', 'muted'));
+    for (const [index, item] of shown.entries()) {
+      const option = node(this.doc, 'button', undefined, 'image-option'); option.type = 'button';
+      option.id = `${this.list.id}-${index}`; option.setAttribute('role', 'option'); option.tabIndex = -1;
+      option.setAttribute('aria-selected', String(index === this.active));
+      const words = node(this.doc, 'span', undefined, 'image-option-words');
+      words.append(node(this.doc, 'span', item.attachment.name, 'image-option-name'),
+        node(this.doc, 'span', [item.author_id, Number.isSafeInteger(item.sent_ms) ? shownTime(item.sent_ms) : ''].filter(Boolean).join(' · '), 'muted'));
+      option.append(words);
+      paintThumb(option, item.attachment.id, () => this.thumb(item));
+      option.onclick = () => this.pick(item);
+      rows.push(option);
+    }
+    for (const row of this.list.children) dropThumb(row);
+    this.list.replaceChildren(...rows);
+    this.list.hidden = false;
+    this.field.setAttribute('aria-controls', this.list.id); this.field.setAttribute('aria-expanded', 'true');
+    if (shown.length) this.field.setAttribute('aria-activedescendant', `${this.list.id}-${this.active}`);
+    else this.field.removeAttribute('aria-activedescendant');
+    this.list.querySelector('[aria-selected=true]')?.scrollIntoView({ block: 'nearest' });
+  }
+  close() {
+    if (!this.query && !this.open) return;
+    this.query = null; this.reading = null; this.items = null;
+    for (const row of this.list.children) dropThumb(row);
+    this.list.replaceChildren(); this.list.hidden = true;
+    this.field.removeAttribute('aria-activedescendant'); this.field.setAttribute('aria-expanded', 'false');
+  }
+  // The list's keys while it is open; whether it took the key.
+  key(event) {
+    if (!this.open || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return false;
+    const shown = this.shown();
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); return true; }
+    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && shown.length) {
+      event.preventDefault();
+      this.active = (this.active + (event.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length; this.paint(); return true;
+    }
+    if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey && shown.length) {
+      event.preventDefault(); event.stopPropagation(); this.pick(shown[this.active]); return true;
+    }
+    return false;
+  }
+  // The #img words come out of the writing as one edit Undo takes back, and
+  // the image goes in as a pasted one does.
+  pick(item) {
+    const query = this.query;
+    if (!query || !this.admits()) return;
+    this.close();
+    this.field.focus();
+    this.field.setSelectionRange(query.start, this.field.selectionEnd);
+    return this.choose(item);
+  }
+}

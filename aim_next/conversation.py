@@ -9,6 +9,8 @@ from .responsibility import responsibility_note
 from .work import OTHER_MESSAGE, work_by_topic
 from . import whispers
 from .standing_conversation import open_items_clause
+from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
+from .topic_reading import reading_fields, unread_groups
 
 
 CONVERSATION_SCHEMA = [
@@ -84,7 +86,14 @@ WRITTEN_UPGRADE = ("DROP INDEX message_replies",
 WRITTEN_DOWN = (UNANSWERED_SCHEMA[1], "DELETE FROM reply_horizons") + tuple(UNANSWERED_BACKFILL)
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects"}
+# The images a writer may pick with #img (docs/conversation.md, "Images to
+# pick"): those carried by the newest IMAGE_WINDOW messages the reader may see
+# in the topic and in its outcome's conversation, newest first.
+IMAGE_WINDOW = 200
+IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
+
+
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead"}
 
 
 def _preview(value, size=1024):
@@ -219,7 +228,9 @@ class Conversation:
         if set(target) != {"topic_id"} or "body" not in args or set(args) - POST_FIELDS:
             raise Refusal("INVALID_ARGUMENT", "A post names one topic and carries its body, and optionally attachments, addressees, intent, reply_to, quotes and whisper")
         subjects = args.get("subjects")
-        snapshot = self._writing({key: value for key, value in args.items() if key != "subjects"})
+        snapshot = self._writing({key: value for key, value in args.items() if key not in ("subjects", "go_ahead")})
+        # An Ask that asks for a go-ahead offers its people ✅ and 🚫 (reactions.py); only a post says so.
+        snapshot["go_ahead"] = go_ahead_flag(args)
         if snapshot.get("reply_to") is not None:
             _identifier(snapshot["reply_to"], "reply_to")
         result, affected = self._publish(db, actor, envelope["operation_id"], _identifier(target["topic_id"], "topic_id"), snapshot)
@@ -337,6 +348,8 @@ class Conversation:
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED, recorded=False)
         if intent is not None and not snapshot["addressees"]:
             raise Refusal("INVALID_ARGUMENT", "Only a message to someone asks or tells; name who it is to")
+        if snapshot.get("go_ahead") and (intent != "ask" or private is not None):
+            raise Refusal("INVALID_ARGUMENT", GO_AHEAD_NEEDS_ASK)
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         if not snapshot["body"].strip() and not snapshot["attachments"]:
             raise Refusal("EMPTY_MESSAGE", "A message needs writing or a ready attachment")
@@ -374,9 +387,10 @@ class Conversation:
             raise Refusal("TOO_MANY_RECIPIENTS", "Resolved recipients exceed the limit; nobody was sent a partial message")
         self._recipients(db, list(audience))
         message_id, sent_ms = "m-" + uuid.uuid4().hex, _now_ms()
-        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms,intent,private_to,about_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms,intent,private_to,about_id,go_ahead) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
-                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"))).lastrowid
+                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
+                    1 if snapshot.get("go_ahead") else 0)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The author has written in this topic (TopicState._may_say); a whisper is not writing in it.
         if private is None:
@@ -453,7 +467,7 @@ class Conversation:
                 "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
                 "quotes": whispers.redact_quotes(db, actor, json.loads(row["quotes"])), "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"], "version": 1, "current_revision": 1,
-                "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row)}
+                "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
 
     def _view_source(self, db, actor, args):
         return self._source(db, actor, args.get("source_ref", args))
@@ -529,8 +543,48 @@ class Conversation:
         if backwards:
             items.reverse()
         self._item_fields(db, actor, topic, items)
+        self._reaction_fields(db, actor, items)
+        reading_fields(db, actor, unread_groups(db, actor, topic["id"], self._addressed_group(db, actor)), items)
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
                 "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
+
+    def _view_topic_images(self, db, actor, args):
+        topic = self._topic(db, actor, args.get("topic_id"))
+        limit = args.get("limit", 24)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise Refusal("INVALID_ARGUMENT", "Invalid image count")
+        topics = [topic]
+        if topic["kind"] != "conversation":
+            conversation = db.execute("SELECT id FROM topics WHERE workspace_id=? AND kind='conversation'", (topic["workspace_id"],)).fetchone()
+            if conversation:
+                try:
+                    topics.append(self._topic(db, actor, conversation["id"]))
+                except Refusal:
+                    pass
+        found = []
+        for place in topics:
+            # Each topic's newest messages only, through the (topic_id, seq)
+            # index: the window bounds the read however long the topic is.
+            rows = db.execute("SELECT m.seq,m.id,m.topic_id,m.author_id,m.sent_ms,m.attachments FROM "
+                              "(SELECT * FROM messages m WHERE m.topic_id=:topic AND " + whispers.VISIBLE + " ORDER BY m.seq DESC LIMIT :window) m "
+                              "WHERE m.attachments<>'[]' ORDER BY m.seq DESC",
+                              {"topic": place["id"], "actor": actor, "window": IMAGE_WINDOW}).fetchall()
+            for row in rows:
+                for attachment in json.loads(row["attachments"]):
+                    if attachment.get("inline") is True and attachment.get("content_type") in IMAGE_TYPES:
+                        found.append((row["seq"], {"source_ref": {"kind": "message", "id": row["id"]}, "topic_id": row["topic_id"],
+                                                   "author_id": row["author_id"], "sent_ms": row["sent_ms"], "attachment": attachment}))
+        # One entry per image: the newest message that carries it.
+        items, seen = [], set()
+        for _, item in sorted(found, key=lambda pair: -pair[0]):
+            if item["attachment"]["id"] in seen:
+                continue
+            seen.add(item["attachment"]["id"])
+            items.append(item)
+            if len(items) == limit:
+                break
+        return {"instance_id": self.instance_id, "topic_id": topic["id"], "items": items,
+                "topics": [place["id"] for place in topics], "window": IMAGE_WINDOW}
 
     def _effective_reasons(self, db, delivery):
         rows = db.execute("SELECT r.reason,r.participant_epoch,p.active,p.epoch FROM delivery_reasons r LEFT JOIN topic_participants p ON p.topic_id=r.topic_id AND p.actor_id=? WHERE r.delivery_id=? ORDER BY r.reason", (delivery["recipient_id"], delivery["id"])).fetchall()

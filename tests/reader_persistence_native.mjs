@@ -224,7 +224,18 @@ try {
     };
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
-      const connectedPage = { targetId, send, evaluate, close, box, point, key, calls, held, errors, events, network, responses,
+      // A card a reply stack folds away (docs/topic-reading.md, "Reply stacks")
+      // is reached as a person reaches it: a press on its stack's line opens
+      // the stack first. A card on show is left as it is.
+      const unfold = async selector => {
+        const line = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),s=e?.closest('.reply-stack');
+          if(!s||e.getClientRects().length)return null;const t=s.querySelector(':scope > .stack-replies > .stack-toggle');t.scrollIntoView({block:'center'});return t.getAttribute('aria-expanded')==='true'?null:'opens'})()`);
+        if (!line) return;
+        const stack = `#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-replies > .stack-toggle`;
+        await point(stack);
+        await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
+      };
+      const connectedPage = { targetId, send, evaluate, close, box, point, key, unfold, calls, held, errors, events, network, responses,
         excusedReleases: releases.excused, failedReleases: releases.failed, unsettledReleases: releases.unsettled,
         recordResponses: () => { recordResponses = true; },
         response: async event => {
@@ -256,6 +267,8 @@ try {
             }
             await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
           }
+          await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
+          await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
           await point(`#messages [data-id="${facts.sources[index].id}"]`);
           await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
           await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');

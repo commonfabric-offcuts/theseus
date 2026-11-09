@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 // items 101 and 107), in the real browser against the real server, at 1280
 // and 390 wide, light and dark. Every page has the logo block (the wordmark
 // with its presence dot, the workspace name, the Health link and Turn on
-// notifications) first
-// in its rail, or first in its main column where it has no rail, and no header
+// notifications) first in its rail, or first in its main column where it has
+// no rail, with the guide's "? Pointer, keys and taps" under the name
+// (docs/interaction.md), and no header
 // bar or Refresh button. On a topic page the rail lists no outcomes: "←
 // Outcomes" comes first, then the outcome's conversation and its own topics.
 // On a phone (item 117) the topic comes first and the rail folds behind "☰
@@ -88,7 +89,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
       assert.deepEqual(topic.rail.slice(0, 4), ['brand', 'outcomes-home', 'conversation-navigation', 'topic-navigation'],
         at + ': the logo block, ← Outcomes, the outcome\'s conversation, then the topics');
-      assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'health-link', 'notify'], at + ': the wordmark, then the workspace name, the Health link and Turn on notifications under it');
+      assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'guide-open', 'health-link', 'notify'], at + ': the wordmark, then the workspace name, the guide\'s ? (docs/interaction.md) under it, the Health link and Turn on notifications');
       assert.equal(topic.dot, true, at + ': the wordmark carries its presence dot');
       assert.match(topic.name, new RegExp('^' + facts.actor + ' · '), at + ': the workspace name is filled in');
       assert.deepEqual([topic.outcomesShown, topic.railLabel], [false, 'This outcome'], at + ': no list of outcomes inside an outcome');

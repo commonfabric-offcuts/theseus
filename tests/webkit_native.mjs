@@ -229,7 +229,16 @@ try {
       qualifications.add('WebKit paints a selection over the glyph box on its first line and from the line top to the glyph bottom after; the hover is held to cover it, not to match it');
       return color;
     };
-    const p = { send, evaluate, close, box, point, key, calls, errors, events, held: [], network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
+    // As in the Chrome harness: a card a reply stack folds away (docs/topic-reading.md, "Reply stacks")
+    // is reached as a person reaches it, by a press on its stack's line first; a card on show is left as it is.
+    const unfold = async selector => {
+      const line = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),s=e?.closest('.reply-stack');
+        if(!s||e.getClientRects().length)return null;const t=s.querySelector(':scope > .stack-replies > .stack-toggle');t.scrollIntoView({block:'center'});return t.getAttribute('aria-expanded')==='true'?null:'opens'})()`);
+      if (!line) return;
+      await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-replies > .stack-toggle`);
+      await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
+    };
+    const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held: [], network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
       open: async index => {
         for (let more = 0; more < 20 && !await evaluate(`Boolean(document.querySelector('#messages [data-id="${facts.sources[index].id}"]'))`); ++more) {
           const count = await evaluate('document.querySelectorAll("#messages [data-id]").length');
@@ -240,6 +249,7 @@ try {
           await until(() => evaluate(`document.querySelectorAll('#messages [data-id]').length > ${count}` +
             (target === '#more-messages' ? '' : ` && !document.querySelector('#messages .new-line-older')`)), 'older history loaded');
         }
+        await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
         await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
         await point(`#messages [data-id="${facts.sources[index].id}"]`);
         await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');

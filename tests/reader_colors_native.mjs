@@ -17,6 +17,9 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       const p=await page('reading-colors-'+theme,null,true,{beforeNavigate:p=>p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]})});
       const style=s=>p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(s)}),c=getComputedStyle(e);return {background:c.backgroundColor,color:c.color,border:c.borderColor,outline:c.outlineStyle}})()`);
       const own=`#messages [data-id="${facts.sources[1].id}"]`;
+      // The person's own long card answers their first message, so it sits in that message's reply stack, folded away under the agents' later replies.
+      await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(own)}))`),'own card drawn');
+      await p.unfold(own);
       const initialOwn=await style(own),initialOther=await style(`#messages [data-id="${original.result.message_id}"]`);
       expect(initialOwn.background==='rgb(0, 0, 0)'&&initialOther.background!=='rgb(0, 0, 0)',theme+': initial paint distinguishes own and other');
       const incoming=await control({method:'agent_message',operation_id:'reading-colors-'+theme,body:'Other author for reading colors '+theme+'.'});
@@ -43,7 +46,8 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       expect([...pad(Math.ceil(ownBox.x)+3,Math.ceil(ownBox.x)+14),...pad(Math.floor(ownBox.x+ownBox.width)-14,Math.floor(ownBox.x+ownBox.width)-3)].every(px=>px.every((v,i)=>v===black[i])),theme+': the hovered card is black on both sides, with no edge or bar');
       await shot(p,'reading-colors-'+theme+'-cards');
       await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:2,y:2});
-      for(let n=0;n<80&&!await p.evaluate(`document.activeElement.matches(${JSON.stringify(own)})`);n++)await p.key('Tab');
+      // Each lit card's bar buttons follow it in the Tab order (docs/interaction.md), so a card takes up to four stops.
+      for(let n=0;n<320&&!await p.evaluate(`document.activeElement.matches(${JSON.stringify(own)})`);n++)await p.key('Tab');
       assert.equal(await p.evaluate(`document.activeElement.matches(${JSON.stringify(own)})`),true,'own message reachable by native Tab');
       expect((await style(own)).outline==='solid',theme+': keyboard focus stays visible on own black card');
       await p.evaluate(`document.querySelector(${JSON.stringify(other)}).scrollIntoView({block:'center'})`);

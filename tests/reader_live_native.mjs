@@ -205,6 +205,10 @@ export async function liveChecks({ check, page, until, control, observations, or
   await check('live a message arriving leaves the card being read in place, and a field scrolled away holds nothing', async () => {
     const p = await page('live-anchor', null, true);
     await settled(p);
+    // The fixture's agent messages answer the person's first message, so they
+    // fold into its reply stack (docs/topic-reading.md); opened, they make the
+    // page long enough to scroll a field away below the screen with a card in view.
+    await p.unfold(`#messages [data-id="${facts.sources[1].id}"]`);
     const card = "[...document.querySelectorAll('#messages .message-card')].find(card => card.getBoundingClientRect().bottom > 0)";
     const reading = () => p.evaluate(`(c => c && [c.dataset.id, Math.round(c.getBoundingClientRect().top)])(${card})`);
     // The same card, wherever it is now; a correction of a fraction of a pixel
@@ -214,7 +218,8 @@ export async function liveChecks({ check, page, until, control, observations, or
       assert.ok(Math.abs(now - was[1]) <= 1, `${why}: ${JSON.stringify([was, now])}`);
     };
     const arrive = async text => { await message(text); await until(() => hasText(p, '#messages', text), `${text} is shown`); await settled(p); };
-    await p.evaluate("(() => { document.querySelector('#messages .message-card:last-child').scrollIntoView({block:'center'}); document.activeElement.blur(); })()");
+    // The last card drawn, on its own or in a stack (a stack's last child is its line).
+    await p.evaluate("(() => { [...document.querySelectorAll('#messages .message-card')].filter(card => card.getClientRects().length).at(-1).scrollIntoView({block:'center'}); document.activeElement.blur(); })()");
     const before = await reading();
     assert.ok(before, 'a card is in view');
     await arrive('Arrives while a card is read');
@@ -474,6 +479,150 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1, `the messages already shown hold still: ${seen}`);
     assert.ok(Math.abs(after.first - before.endTop) <= 1, `the first older message is where the loaded messages ended: ${seen}`);
     observations.push({ name: 'More messages', before, after });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // With More at the top edge of the screen, the last card above it is out of
+  // sight and the Notebook below is the first card in view. The older
+  // messages still come in where More was, on a laptop by the pointer and on a
+  // phone by touch, instead of the Notebook holding still and the page
+  // jumping past everything More loaded. The topic is its own, its messages
+  // written from the topic and answering none, so no stack gathers them.
+  await check('live More at the top edge shows the older messages where its button was', async () => {
+    const topicId = 'live-more-edge';
+    await control({ method: 'navigation_topics', topics: [{ id: topicId, title: 'More at the top edge' }] });
+    await control({ method: 'agent_message', operation_id: topicId + '-join', topic_id: topicId, source: 'topic', join: true, body: 'The first message here.' });
+    await control({ method: 'seed', topic_id: topicId, source: 'topic', messages: 45, memory_items: 24 });
+    await control({ method: 'agent_message', operation_id: topicId + '-answered', topic_id: topicId, sender: 'person', whole_topic: true, read: true, body: 'Answering the topic, so nothing older waits on me.' });
+    const entry = "'#messages > [data-seq]'";
+    for (const screen of [{ name: 'laptop', width: 1440, height: 900, mobile: false }, { name: 'phone', width: 390, height: 844, mobile: true }]) {
+      const p = await page(`live-more-edge-${screen.name}`, null, true, { url: `${origin}/?topic=${topicId}` });
+      await p.send('Emulation.setDeviceMetricsOverride', { width: screen.width, height: screen.height, deviceScaleFactor: 1, mobile: screen.mobile });
+      if (screen.mobile) await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      await settled(p);
+      await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false && document.querySelectorAll('#memory-items .memory-card').length > 0"), 'More and the Notebook are shown');
+      const count = await p.evaluate(`document.querySelectorAll(${entry}).length`);
+      const before = await p.evaluate(`(async () => { document.activeElement.blur?.();
+        const more = document.querySelector('#more-messages'); scrollBy(0, more.getBoundingClientRect().top - 4);
+        await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)));
+        const shown = node => { const b = node.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; };
+        return { more: more.getBoundingClientRect().top, entriesInView: [...document.querySelectorAll(${entry})].filter(shown).length,
+          notebookInView: [...document.querySelectorAll('#memory-items .memory-card')].some(shown) }; })()`);
+      assert.ok(before.more >= 0 && before.more <= 12 && before.entriesInView === 0 && before.notebookInView, `More is at the top edge, no message above it in view, the Notebook in view: ${JSON.stringify(before)}`);
+      if (screen.mobile) {
+        const b = await p.box('#more-messages'), touch = { x: b.x + 12, y: b.y + 12 };
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touch] });
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } else await p.point('#more-messages');
+      await until(() => p.evaluate(`document.querySelectorAll(${entry}).length > ${count}`), 'older messages are loaded');
+      await settled(p);
+      await p.evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))');
+      const after = await p.evaluate(`Math.round(document.querySelectorAll(${entry})[${count}].getBoundingClientRect().top)`);
+      assert.ok(Math.abs(after - before.more) <= 2, `${screen.name}: the first older message is where More was: ${JSON.stringify({ before, after })}`);
+      observations.push({ name: `More at the top edge (${screen.name})`, before, after });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // Only a field the person types in holds the page still. With the focus on
+  // a checkbox on the page, just below the Notebook's pages, a new Notebook page landing
+  // between them leaves the Notebook card in view where it was and moves the
+  // checkbox down; with the caret in a text field there, the field holds and
+  // the Notebook moves up. On a phone, where the Notebook is one column and
+  // each new page adds a row.
+  await check('live a checkbox in focus holds nothing still, and a text field still does', async () => {
+    const topicId = 'live-control-focus';
+    await control({ method: 'navigation_topics', topics: [{ id: topicId, title: 'Controls in focus' }] });
+    await control({ method: 'agent_message', operation_id: topicId + '-join', topic_id: topicId, source: 'topic', join: true, body: 'The first message here.' });
+    await control({ method: 'seed', topic_id: topicId, memory_items: 6 });
+    const p = await page('live-control-focus', null, true, { url: `${origin}/?topic=${topicId}` });
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await settled(p);
+    await until(() => p.evaluate("document.querySelectorAll('#memory-items .memory-card').length === 6"), 'the Notebook is shown');
+    // The page's own controls of this kind sit in dialogs today; this pair stands in for one a card adds to the page.
+    await p.evaluate(`(() => { const spot = document.createElement('p'); spot.id = 'probe-controls'; spot.style.paddingBottom = '100vh';
+      spot.innerHTML = '<input type="checkbox" id="probe-check" aria-label="Probe checkbox"> <input type="text" id="probe-text" aria-label="Probe field">';
+      document.querySelector('#notebook').append(spot); return true; })()`);
+    // The first Notebook card in view, or the one named.
+    const where = (id = null) => p.evaluate(`(() => { const cards = [...document.querySelectorAll('#memory-items .memory-card')];
+      const first = ${JSON.stringify(id)} ? cards.find(c => c.dataset.id === ${JSON.stringify(id)}) : cards.find(c => { const b = c.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; });
+      return { card: first?.dataset.id, cardTop: first && Math.round(first.getBoundingClientRect().top), probe: Math.round(document.querySelector('#probe-check').getBoundingClientRect().top),
+        focus: document.activeElement.id, cards: document.querySelectorAll('#memory-items .memory-card').length }; })()`);
+    let added = 6;
+    const land = async focus => {
+      await p.evaluate(`(() => { document.querySelector('#probe-check').scrollIntoView({ block: 'center' }); document.querySelector('#${focus}').focus({ preventScroll: true }); return true; })()`);
+      const before = await where();
+      assert.ok(before.card && before.focus === focus && before.probe > 0 && before.probe < 844, `a Notebook card and the ${focus} are on the screen: ${JSON.stringify(before)}`);
+      await control({ method: 'seed', topic_id: topicId, memory_items: 1 }); added++;
+      await until(() => p.evaluate(`document.querySelectorAll('#memory-items .memory-card').length === ${added}`), 'the new Notebook page is shown');
+      await settled(p);
+      await p.evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))');
+      const after = await where(before.card);
+      assert.equal(after.focus, focus);
+      return { before, after, card: after.cardTop - before.cardTop, probe: after.probe - before.probe };
+    };
+    const box = await land('probe-check');
+    assert.ok(Math.abs(box.card) <= 1 && box.probe > 20, `with a checkbox in focus the Notebook card in view holds and the checkbox moves down: ${JSON.stringify(box)}`);
+    const field = await land('probe-text');
+    assert.ok(Math.abs(field.probe) <= 1 && field.card < -20, `with the caret in a text field the field holds and the Notebook moves up: ${JSON.stringify(field)}`);
+    observations.push({ name: 'controls in focus', box, field });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Painting an update looks at each loaded card a bounded number of times,
+  // so its work grows with what is loaded, not with its square. The work is
+  // counted as reads of an element's data (each card's id and number): one
+  // arriving message, and one revised Notebook page, are painted with a page
+  // of history loaded and again with four pages, and four times the history
+  // may cost about four times the work, never sixteen.
+  await check('live painting an update costs in step with the loaded history, not its square', async () => {
+    const topicId = 'live-paint-cost';
+    await control({ method: 'navigation_topics', topics: [{ id: topicId, title: 'Painting cost' }] });
+    await control({ method: 'agent_message', operation_id: topicId + '-join', topic_id: topicId, source: 'topic', join: true, body: 'The first message here.' });
+    await control({ method: 'seed', topic_id: topicId, source: 'topic', messages: 125, memory_items: 80 });
+    await control({ method: 'agent_message', operation_id: topicId + '-answered', topic_id: topicId, sender: 'person', whole_topic: true, read: true, body: 'Answering the topic, so nothing older waits on me.' });
+    const p = await page('live-paint-cost', null, true, { url: `${origin}/?topic=${topicId}` });
+    await caughtUp(p);
+    await p.evaluate(`(() => { const own = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'dataset'); window.dataReads = 0;
+      Object.defineProperty(HTMLElement.prototype, 'dataset', { configurable: true, get() { window.dataReads++; return own.get.call(this); } }); return true; })()`);
+    const loaded = () => p.evaluate("({ messages: document.querySelectorAll('#messages [data-seq][data-id]').length, notebook: document.querySelectorAll('#memory-items .memory-card').length })");
+    const item = await p.evaluate("document.querySelector('#memory-items .memory-card').dataset.id");
+    let arrival = 0, revisions = 0;
+    const measure = async () => {
+      await caughtUp(p);
+      const shown = await loaded();
+      let from = await p.evaluate('window.dataReads');
+      const body = `Arriving to be painted ${++arrival}`;
+      await control({ method: 'agent_message', operation_id: `${topicId}-arrival-${arrival}`, topic_id: topicId, source: 'topic', body });
+      await until(() => hasText(p, '#messages', body), 'the arriving message is shown');
+      await caughtUp(p);
+      const message = await p.evaluate('window.dataReads') - from;
+      const title = `Revised to be painted ${++revisions}`;
+      from = await p.evaluate('window.dataReads');
+      await control({ method: 'memory_revise', operation_id: `${topicId}-revise-${revisions}`, item_id: item, title, body: 'Revised body', expected_revision: revisions });
+      await until(() => hasText(p, '#memory-items', title), 'the revised Notebook page is shown');
+      await caughtUp(p);
+      return { shown, message, notebook: await p.evaluate('window.dataReads') - from };
+    };
+    const small = await measure();
+    for (let n = 0; n < 3; n++) {
+      const before = await loaded();
+      for (const more of ['#more-messages', '#more-memory']) {
+        await p.evaluate(`document.querySelector('${more}').scrollIntoView({ block: 'center' })`);
+        await p.point(more);
+      }
+      await until(async () => { const now = await loaded(); return now.messages >= before.messages + 30 && now.notebook >= before.notebook + 20; }, 'a page more of each is loaded');
+    }
+    const large = await measure();
+    const seen = JSON.stringify({ small, large });
+    assert.ok(large.shown.messages >= 4 * small.shown.messages - 4 && large.shown.notebook >= 4 * small.shown.notebook - 4, `four times the history is loaded: ${seen}`);
+    // The Notebook first: an arrival's pass paints the Notebook too, so its cost shows in both.
+    assert.ok(large.notebook < 6 * small.notebook, `a revised Notebook page costs in step with the pages loaded: ${seen}`);
+    assert.ok(large.message < 6 * small.message, `an arriving message costs in step with the messages loaded: ${seen}`);
+    observations.push({ name: 'painting cost', small, large });
     assert.deepEqual(p.errors, []);
     await p.close();
   });

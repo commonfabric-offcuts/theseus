@@ -538,6 +538,7 @@ class WhisperCLICase(verbs.AgentVerbCase):
 # view is classified here before it ships; until then this audit fails.
 VIEW_PATHS = {
     "topic_messages": "VISIBLE in each of its queries; a hidden parent's excerpt is blanked",
+    "topic_images": "VISIBLE in its window over each topic's newest messages",
     "source": "_message_access applies visible(); quotes are redacted",
     "media": "goes through _source",
     "editor_state": "the reader's own drafts; a whisper source goes through _message_access",
@@ -553,6 +554,7 @@ VIEW_PATHS = {
     "workspaces": "per-reader delivery counts",
     "outcome_light": "reads asks and summaries, which a whisper never writes",
     "source_topics": "_message_access applies visible()",
+    "reactions": "visible() on the message before its reactions",
     "wakes": "on_record_wake_health for every reader but the agent",
     "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
     "health_light": "the keys of what is red, counted on the record only",
@@ -573,12 +575,14 @@ VIEW_PATHS = {
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
-    "aim_next/conversation.py": ("the topic page (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations", 20),
+    "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations", 21),
     "aim_next/standing_conversation.py": ("a conversation's items, answers and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
                                           "and a pipeline item's message sources, which _source_rows refused as whispers", 8),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
+    "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked", 4),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
+    "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE", 1),
     "aim_next/topic_state.py": ("asks, an ask an open record still holds, the conversation asks to someone who can no longer read it, "
                                 "and the latest message on the record", 6),
     "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "

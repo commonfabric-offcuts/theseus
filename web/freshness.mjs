@@ -184,6 +184,8 @@ export class Freshness {
       if (!current()) return;
       for (const item of answer.items) {
         if (item.resource_kind === 'whisper' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('whisper:' + item.version, item.version);
+        // A thumbs-up or go-ahead answer on a message (docs/thumbs.md): its key names the message.
+        if (item.resource_kind === 'reaction' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('reaction:' + item.resource_id, item.version);
       }
       input = answer.has_more ? answer.continuation : null;
       if (!answer.has_more) this.actorCheckpoint = copy(answer.checkpoint);
@@ -217,6 +219,10 @@ export class Freshness {
     const read = (name, args) => this.readAt(epoch, name, args);
     const current = () => this.current(epoch);
     this.delay = 500; this.settled = false;
+    // Resources whose read failed in this pass with a failure worth retrying:
+    // each waits for the next pass while the others are read, so one that
+    // keeps failing never holds the rest up (item 54).
+    const failed = new Map();
     try {
       while (current() && (this.requested || this.continuation || this.dirty.size)) {
         if (this.requested || this.continuation) {
@@ -232,10 +238,16 @@ export class Freshness {
           await this.yieldRead();
         }
         if (!current()) return;
-        const entry = this.dirty.entries().next().value;
+        const entry = [...this.dirty.entries()].find(([key]) => !failed.has(key));
+        if (!entry && failed.size) throw failed.values().next().value;
         if (entry) {
           const [key, captured] = entry;
-          const complete = await this.refresh(key, captured.version, read, current);
+          let complete;
+          try { complete = await this.refresh(key, captured.version, read, current); }
+          catch (error) {
+            if (!current() || readFailure(error).kind !== 'retry') throw error;
+            failed.set(key, error); continue;
+          }
           if (!current()) return;
           if (this.dirty.get(key) === captured) {
             this.dirty.delete(key);

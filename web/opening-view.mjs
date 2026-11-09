@@ -41,7 +41,7 @@ export class OpeningView {
     const writer={get draft(){return {body:draft.writing.body};},edit:({body})=>draft.edit({body})};
     this.input=new WritingInput({field:this.body,editor:()=>writer,admits:()=>draft.editable,changed:()=>this.paint()});
     this.body.addEventListener('keydown',event=>{
-      if(this.input.terminalKey(event))return;
+      if(this.input.writingKey(event))return;
       if(event.key==='Enter'&&event.metaKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();if(!event.repeat)this.send();}
     });
     this.body.addEventListener('paste',event=>this.paste(event));

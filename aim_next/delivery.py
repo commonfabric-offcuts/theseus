@@ -7,6 +7,7 @@ import uuid
 
 from .contract import LIMITS, Refusal, _identifier, _json, _page_size, _prefix
 from .marks import MARKED
+from .topic_reading import unread_groups
 
 
 DELIVERY_SCHEMA = [
@@ -271,12 +272,7 @@ class Delivery:
         marks are read through the actor's marked index in sequence order,
         stopping at the first row, past only the actor's marks on their own
         messages; the topic's history and other topics are never read."""
-        groups = [row[0] for row in db.execute(
-            "SELECT g.id FROM topic_participants p CROSS JOIN delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
-            "ON g.recipient_id=p.actor_id AND g.kind='subscription' AND g.topic_id=p.topic_id AND g.participant_epoch=p.epoch "
-            "WHERE p.topic_id=? AND p.actor_id=? AND p.active=1 AND g.active=1", (topic_id, actor))]
-        direct = self._addressed_group(db, actor)
-        groups += [direct["id"]] if direct is not None else []
+        groups = unread_groups(db, actor, topic_id, self._addressed_group(db, actor))
         rows = [db.execute("SELECT m.id,m.seq,m.sent_ms FROM deliveries d INDEXED BY pending_group_topic_deliveries "
                            "CROSS JOIN messages m ON m.id=d.message_id "
                            "WHERE d.group_id=? AND d.topic_id=? AND d.state='pending' ORDER BY d.seq LIMIT 1",

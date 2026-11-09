@@ -12,6 +12,12 @@ their own time zone:
 The red New line in a topic says the time of the oldest message the reader
 has not read in the same form: "New above · 4:40 AM" (docs/attention.md).
 
+The saving sign under the writing says when it was last saved in the same
+form: "Saved to Theseus · 4:40 AM", or, while only this device holds it, the
+time it was kept there. The time is this page's own record of the save it saw
+(Theseus keeps no time for a draft), so a page opened afresh shows none until
+its first save.
+
 Today and yesterday are calendar days, not spans of 24 hours: on a day the
 clocks change, yesterday is 23 or 25 hours long and still ends at midnight.
 

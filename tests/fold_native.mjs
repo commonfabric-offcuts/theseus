@@ -16,7 +16,9 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
   await check('colors a message between others is one quiet line that opens and folds, is never unread and never holds the New line', async () => {
     for (const [width, metrics] of Object.entries(WIDTHS)) {
       // A topic of the person's own with two agents in it: a message to everyone,
-      // one between the agents, one to the person, and a reply to the person's own.
+      // one between the agents, one to the person, and a reply to the person's own,
+      // which stacks under it (docs/topic-reading.md, "Reply stacks"): kinds lists
+      // each message's entry, on its own or in its stack, in the page's order.
       const topic = 'fold-' + width, say = async (n, more) => (await control({ method: 'agent_message', operation_id: `${topic}-${n}`, topic_id: topic, source: 'topic', ...more })).result.message_id;
       await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Between others ' + width }] });
       const everyone = await say(0, { sender: 'aim-core', join: true, body: 'aim-core here, for everyone.' });
@@ -45,7 +47,7 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
         return {fold:f.className,expanded:l.getAttribute('aria-expanded'),controls:l.getAttribute('aria-controls')===c.id,cardShown:c.offsetHeight>0,
           lineHeight:b.height,lineRight:b.right,clipped:l.scrollWidth>l.clientWidth,ellipsis:getComputedStyle(l).textOverflow,text:l.textContent,
           scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth,
-          kinds:[...document.querySelectorAll('#messages > [data-seq]')].map(e=>[e.dataset.id,e.className.split(' ')[0]])}})()`);
+          kinds:[...document.querySelectorAll('#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]')].map(e=>[e.dataset.id,e.className.split(' ')[0]])}})()`);
       const folded = await state();
       assert.deepEqual([folded.fold, folded.expanded, folded.controls, folded.cardShown], ['message-fold', 'false', true, false], width + ': folded into one line');
       assert.ok(folded.text.startsWith('aim-core to aim-ux: the wake check fails on'), width + ': who to whom, and its first words: ' + folded.text);
@@ -78,12 +80,15 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       await press();
       await until(async () => !(await state()).cardShown, width + ': pressed again, it folds away');
 
-      // From the keyboard: Tab from the newer card above reaches its ⋯ (docs/links.md),
-      // then the line; Enter opens and folds it.
+      // From the keyboard: Tab from the newer card above reaches the buttons on
+      // its bar, its ⋯ last (docs/interaction.md, docs/links.md), then the line;
+      // Enter opens and folds it.
       const above = (await state()).kinds.map(([id]) => id), newer = above[above.indexOf(between) - 1];
       await p.evaluate(`document.querySelector('#messages > [data-id="${newer}"]').focus()`);
-      await p.key('Tab');
-      assert.equal(await p.evaluate(`document.activeElement === document.querySelector('#messages > [data-id="${newer}"] .message-menu')`), true, width + ': Tab reaches the newer card\'s ⋯');
+      await until(() => p.evaluate(`(()=>{const b=document.querySelector('.message-bar');return Boolean(b)&&!b.hidden})()`), width + ': the newer card lights, with its bar');
+      const acts = [];
+      for (let i = 0; i < 3; i++) { await p.key('Tab'); acts.push(await p.evaluate(`document.activeElement.closest('.message-bar') ? document.activeElement.dataset.act : ''`)); }
+      assert.deepEqual(acts, ['thumb', 'reply', 'more'], width + ': Tab reaches the newer card\'s ⋯, on its bar');
       await p.key('Tab');
       assert.equal(await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(line)})`), true, width + ': Tab reaches the line');
       await p.key('Enter');
@@ -104,7 +109,7 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       assert.equal(await drawn(), everyone, width + ': placed under the oldest unread, the message to everyone');
       for (let oldest; (oldest = await unread());) {
         assert.notEqual(oldest.id, between, width + ': the message between others is never the oldest unread');
-        await p.evaluate(`document.querySelector('#messages > [data-id="${oldest.id}"]').scrollIntoView({block:'center'})`);
+        await p.evaluate(`document.querySelector('#messages [data-id="${oldest.id}"]').scrollIntoView({block:'center'})`);
         await until(async () => (await unread())?.id !== oldest.id, width + ': read ' + oldest.id);
       }
       assert.equal(await drawn(), everyone, width + ': read during the visit, the line stays where it was placed');

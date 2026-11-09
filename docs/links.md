@@ -93,16 +93,18 @@ URL]` ([agent-cli.md](agent-cli.md#notebook-pages)).
 
 ## A message's menu
 
-Every message card on the topic page has a ⋯ button in its top right corner,
-always shown. It opens a short menu, and a right-click anywhere on a message
-(its card, or a folded message's line) opens the same menu where the pointer
-is; on a link or a selection the browser's own menu stays. The items:
+Every message on the topic page has a ⋯ button on its bar, the one bar that
+shows over a lit message (docs/interaction.md), beside 👍 and Reply. It opens a
+short menu, and a right-click anywhere on a message (its card, or a folded
+message's line) opens the same menu where the pointer is; on a link or a
+selection the browser's own menu stays. On a phone a tap lights the message
+and the bar's ⋯ is one more tap. The items:
 
 - Copy Link puts the message's link on the clipboard, naming the message's
   own topic (in the Reader, a message from another topic names that one), and the ⋯ says
-  "Link copied" until the next press lands or a key is pressed, so a press
-  on the ⋯ itself still opens its menu. Where the clipboard refuses, the page
-  gives the link to select instead.
+  "Link copied" until the next press lands, a key is pressed or the light
+  moves to another message, so a press on the ⋯ itself still opens its menu.
+  Where the clipboard refuses, the page gives the link to select instead.
 - Mark unread, or Mark read on a message marked unread, for a message by
   someone else. Mark read places the New line afresh, as the Reader's button
   does. A card never opened may have a mark the page has not seen; a refusal

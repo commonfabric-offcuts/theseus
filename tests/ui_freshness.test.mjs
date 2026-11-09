@@ -106,6 +106,29 @@ test('completed checkpoint can advance while a failed dependent resource stays d
   fail = false; await f.request(); assert.equal(f.dirty.size, 0); f.dispose();
 });
 
+// Item 54: one resource whose read keeps failing (a topic version that is not
+// there yet, a busy server) is retried later, while every other dirty
+// resource is read in the same pass.
+test('a dirty resource that keeps failing does not hold up the others', async () => {
+  const refreshed = [];
+  const { f, states } = fixture({ refresh: async key => {
+    if (key === 'topic:t1') throw Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });
+    refreshed.push(key); return true;
+  } });
+  f.invalidate('topic:t1', 9); f.invalidate('reaction:m1', 2); f.invalidate('memory:n1', 3);
+  await f.request();
+  assert.deepEqual(refreshed, ['reaction:m1', 'memory:n1'], 'the others are read in the same pass');
+  assert.deepEqual([...f.dirty.keys()], ['topic:t1'], 'the failing one stays dirty for the next pass');
+  assert.equal(states.at(-1).kind, 'retry', 'and the pass says it will retry');
+  // A failure that stops updates altogether still stops them at once.
+  const stopped = [];
+  const { f: g } = fixture({ refresh: async key => { if (key === 'topic:t1') throw Object.assign(Error('denied'), { code: 'INVALID_ARGUMENT' }); stopped.push(key); return true; } });
+  g.invalidate('topic:t1', 9); g.invalidate('reaction:m1', 2);
+  await g.request();
+  assert.deepEqual(stopped, [], 'a diagnostic failure reads nothing further');
+  f.dispose(); g.dispose();
+});
+
 test('repeated requests coalesce; invalidation during read retains one newest follow-up', async () => {
   const gate = deferred(), entered = deferred(), seen = []; let first = true;
   const { f } = fixture({ refresh: async (key, version) => { seen.push(version); if (first) { first = false; entered.resolve(); await gate.promise; } return true; } });

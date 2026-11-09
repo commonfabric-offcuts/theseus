@@ -688,6 +688,26 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [file] });
   };
   const uploading = p => p.held.filter(x => x.event.request.url.endsWith('/api/media/upload'));
+  // A row's thumbnail shows where the reply is wide, and holds its place
+  // before it loads, so its loading moves nothing (docs/images.md,
+  // "Thumbnails"). A phone's row has none, so the rows below lay out on a
+  // phone as they did before thumbnails.
+  await check('images a row thumbnail holds its place before it loads on a wide reply, and a phone row has none', async () => {
+    const p = await page('thumb-place', null, true);
+    await p.open(1);
+    await choose(p, path.join(root, 'tests/fixtures/media/screen.png'));
+    const thumb = `document.querySelector('#writing-attachments .image-choice>img.image-thumb')`;
+    await until(() => p.evaluate(`Boolean(${thumb}&&!${thumb}.hidden&&${thumb}.complete)`), 'the row thumbnail loaded');
+    const size = () => p.evaluate(`(r=>[r.width,r.height])(${thumb}.getBoundingClientRect())`);
+    const loaded = await size();
+    assert.ok(loaded[0] > 30 && loaded[1] > 30, `a wide row shows its thumbnail (${loaded})`);
+    await p.evaluate(`${thumb}.hidden=true`);
+    assert.deepEqual(await size(), loaded, 'a thumbnail not yet loaded holds the place it takes once loaded');
+    await p.evaluate(`${thumb}.hidden=false`);
+    await narrow(p);
+    assert.deepEqual(await size(), [0, 0], 'a phone row shows no thumbnail');
+    assert.deepEqual(p.errors, []);
+  });
   for (const [width, name] of [[1440, LONG_NAME], [390, SCREENSHOT_NAME], [390, LONG_NAME]]) {
     await check(`images Remove held while its upload finishes keeps its place at ${width} wide with the name ${name}`, async () => {
       const names = await namedImages(root);

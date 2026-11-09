@@ -5,6 +5,7 @@ import { Reader } from './reader.mjs';
 import { InlineComposer } from './inline-composer.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
+import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince } from './topic-navigation.mjs';
@@ -41,7 +42,6 @@ import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placehol
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from './links.mjs';
-import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
@@ -49,6 +49,13 @@ import { HealthPage } from './health.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
+import { MessageMenu, openMessageMenu, sayOn, copyText } from './message-menu.mjs';
+import { Reactions, learnReactions, paintReaderThumb } from './reactions.mjs';
+import { CardScroll } from './card-scroll.mjs';
+import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
+// How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks.
+import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
+import { entries, entryOf, lineSeq, reveal, arrangeStacks } from './reply-stacks.mjs';
 import { railDrawer } from './rail-drawer.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
 import { showLine, lineText } from './lines.mjs';
@@ -77,6 +84,9 @@ let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, mi
 let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
 let pageHere = null, pageHereOutcome = null;
+// The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
+let menu = null, reactions = null;
+const guide = new InteractionGuide(document);
 const halfShown = new Set(), atMiddle = new Set();
 // Whether what is drawn above the topic page's messages after they paint has
 // had its first fill, so no card the page counts as seen moves (noteRead).
@@ -396,10 +406,8 @@ function changed(editor) {
   }
   if (inline?.editor === editor) inline.paintStatus();
   invalidateComparison(editor);
-  for (const item of editor.submissions) {
-    const version = item.status === 'confirmed' && item.receipt?.result?.topic?.version;
-    if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
-  }
+  const version = registry.localTopicVersion(editor);
+  if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
 }
 // What the person sees is read: while the page is visible and has focus, and
 // no modal other than the Reader covers it, the message the Reader shows (an
@@ -420,23 +428,18 @@ function noteRead() {
   if (source) {
     if (registry.current.sourceUnavailable || source.source_ref.kind !== 'message' || source.topic_id !== topic.id) return;
     views.opened(source.seq);
-    if (source.author !== bootstrap.actor) readThrough.seen(topic.id, source.seq, source.seq);
+    if (source.author !== bootstrap.actor) { readThrough.seen(topic.id, source.seq, source.seq); openedHere(source.source_ref.id); }
     return;
   }
   if (!laidOut) return;
   const shown = new Set();
-  for (const entry of $('messages').children) {
+  for (const entry of entries($('messages'))) {
     const seq = Number(entry.dataset.seq);
     if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) shown.add(seq);
   }
   if (!shown.size) return;
-  const ranges = new Map();
-  for (const item of views.messages.values()) {
-    if (!shown.has(item.seq) || item.author_id === bootstrap.actor) continue;
-    const run = views.runOf(item.id), range = ranges.get(run);
-    ranges.set(run, range ? [Math.min(range[0], item.seq), Math.max(range[1], item.seq)] : [item.seq, item.seq]);
-  }
-  for (const [from, through] of ranges.values()) views.sighted(from, through, readThrough.seen(topic.id, from, through));
+  for (const [from, through] of seenRanges([...views.messages.values()], seq => shown.has(seq), id => views.runOf(id), bootstrap.actor))
+    views.sighted(from, through, readThrough.seen(topic.id, from, through));
 }
 // A card counts as on screen when at least half of it, or of the viewport,
 // shows it. The second holds exactly when the card crosses the viewport's
@@ -614,27 +617,38 @@ async function openSource(ref, opener, act = null) {
 }
 // A repaint leaves in place what the person is at: the inline writing, a
 // field on the page they are typing in, or else the first card in view. A
-// button keeps no place: More would hold itself still and scroll past what
+// button, checkbox or other control keeps no place: More would hold itself still and scroll past what
 // it loaded. At the top of the topic, where its newest card shows from its
 // top edge, nothing is held: what arrives comes into view above that card,
 // with the New line under it, instead of landing out of sight.
 function keepListAnchor(paint) {
   const at = document.activeElement;
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
-  const field = !writing && $('main').contains(at) && at.matches('input, textarea, select') && inView(at);
-  const anchor = writing ? inline.field : field ? at
-    : [...document.querySelectorAll('#messages > [data-seq], #memory-items .memory-card')].find(inView);
+  const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
+  const anchor = writing ? inline.field : field ? at : listAnchor();
   const top = anchor?.getBoundingClientRect().top;
-  const atTop = !writing && !field && anchor && anchor === document.querySelector('#messages > [data-seq]') && top >= 0;
+  const atTop = !writing && !field && anchor && anchor === document.querySelector(MESSAGE_ENTRIES) && top >= 0;
   paint();
   if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
+// The first card in view. With More, or the New line that loads older
+// messages, first in view at the top edge, the list itself holds by its top:
+// what they load comes in where they were, and the Notebook below moves down,
+// rather than holding still while the page jumps past all of it. Loaded
+// replies can gather messages above into their stacks; the page still stays
+// where it was. A card in a reply stack is a card in view of its own, so a
+// reply arriving above it in its stack moves it no more than one above the stack.
+const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
+function listAnchor() {
+  const first = [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+  return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;
+}
 // The New line, just below the oldest message the reader had not read when the
 // topic opened, or further back as more became unread (TopicViews.line); faded
 // where it is once nothing holds it (TopicViews.held).
 function placeLine() {
-  placeNewLine($('messages'), views.line?.seq ?? null, document,
+  placeNewLine($('messages'), lineSeq($('messages'), views.line?.seq ?? null), document,
     views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
   paintMoreMessages();
 }
@@ -647,6 +661,7 @@ function paintMoreMessages() {
 }
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
+  if (kind === 'reactions') { keepListAnchor(() => menu?.paint()); paintReaderThumb$(); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
@@ -664,8 +679,10 @@ function paintViews(kind) {
     paintMarks(); noteRead(); return;
   }
   keepListAnchor(() => {
+  // Newest first, so where each new card goes is at or after where the one before it went.
+  let following = $('messages').firstElementChild;
   for (const item of kind === 'messages' ? [...views.messages.values()].sort((a, b) => b.seq - a.seq) : []) {
-    let card = [...$('messages').children].find(child => child.dataset.id === item.id);
+    let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
@@ -679,7 +696,7 @@ function paintViews(kind) {
       };
       // On its card first, so a whisper's words name the card for a screen reader.
       const author = node('span', undefined, 'message-author');
-      card.append(messageMenuButton(item), author);
+      card.append(author);
       paintCardAuthor(author, item);
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
@@ -689,23 +706,27 @@ function paintViews(kind) {
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
-      const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
-      $('messages').insertBefore(entry, following ?? null);
+      while (following && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
+      $('messages').insertBefore(entry, following);
+      messageEntries.set(item.id, entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
     }
     // A whispered answer arrived: the whisper it answers no longer waits for one.
     const asked = item.whisper && item.reply_to ? views.messages.get(item.reply_to) : null;
     if (asked?.no_answer && item.author_id === asked.private_to) {
       asked.no_answer = false;
-      const entry = [...$('messages').children].find(child => cardIn(child)?.dataset.id === asked.id);
+      const entry = messageEntries.get(asked.id);
       if (entry) paintCardAuthor(cardIn(entry).querySelector('.message-author'), asked);
     }
+    learnReply(views.messages, item, bootstrap.actor);
   }
+  if (kind === 'messages') { arrangeStacks($('messages'), views.messages, { enabled: !here?.page, keep: item => !cardRead(item) }); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
-    let card = [...$('memory-items').children].find(child => child.dataset.id === item.id);
+    let card = memoryCards.get(item.id);
     if (!card) {
       card = button('', () => openSource(item.source_ref, card)); card.className = 'memory-card';
       card.dataset.id = item.id; card.append(node('strong'), node('span')); $('memory-items').append(card);
+      memoryCards.set(item.id, card);
     }
     // A page read before and revised since wears its light, as in the sidebar.
     const identity = sourceIdentity(item.source_ref), changed = String(changedSince(item));
@@ -716,18 +737,47 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
-  if (kind === 'messages') placeLine();
+  if (kind === 'messages') { placeLine(); menu?.paint(); }
   if (kind === 'messages' && here?.page) paintConversationPage();
   });
   paintMoreMessages();
   $('more-memory').hidden = views.memoryCursor === null;
   if (kind === 'messages') noteRead();
 }
+// Each message's entry in the list and each Notebook page's card, by id: a
+// paint finds a card without searching every card loaded. Cards stay for the
+// page's life.
+const messageEntries = new Map(), memoryCards = new Map();
 // The color the reader sees an agent in: their choice, or the agent's own.
 const agentShown = id => colors?.color(id) ?? agentColor(id);
+// Messages this visit opened in the Reader: each reads as read at once.
+const openedIds = new Set();
+function openedHere(id) { if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
+const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
+// Each loaded card's read look, agent talk and reply arrow, as they now stand.
+function paintCardReading() {
+  if (!views) return;
+  const { kindOf } = whisperPeople();
+  for (const entry of entries($('messages'))) {
+    const card = cardIn(entry), item = views.messages.get(card.dataset.id);
+    if (!item) continue;
+    const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
+    entry.dataset.talk = quiet ? 'agents' : '';
+    paintReading(card, item, { read: cardRead(item), quiet, go: goToReply });
+  }
+}
+// The person's reply to a message, opened in the Reader from its card, its stack opened first when it folds the reply away.
+function goToReply(id) {
+  const entry = entries($('messages')).find(child => child.dataset.id === id);
+  if (!entry) return run(() => openSource({ kind: 'message', id }, document.activeElement));
+  const card = opened(reveal(entry));
+  card.scrollIntoView({ block: 'nearest' });
+  // Opened as its card's click opens it; a click on the card itself would only light it on a phone (message-menu.mjs).
+  run(() => openSource({ kind: 'message', id }, card, marks.capture(id)));
+}
 // Every loaded card, the participants and the Reader's page, in the reader's colors as they now stand.
 function paintAgentColors() {
-  for (const entry of $('messages').children) {
+  for (const entry of entries($('messages'))) {
     const card = cardIn(entry), item = views?.messages.get(card.dataset.id);
     if (item) card.className = cardClass(item, bootstrap.actor, agentShown);
   }
@@ -796,10 +846,11 @@ function paintMarks() {
   $('topic-marks-words').textContent = marksWords(count);
   $('topic-marks').hidden = !count || topicUnavailable;
   keepListAnchor(() => {
-    for (const entry of $('messages').children) {
+    for (const entry of entries($('messages'))) {
       const card = cardIn(entry), item = views.messages.get(card.dataset.id);
       if (item) { paintCardAuthor(card.querySelector('.message-author'), item); paintFold(entry, marks.state(item.id)?.marked === true); }
     }
+    paintCardReading();
   });
   paintReaderMark();
 }
@@ -893,6 +944,24 @@ function paintReaderMark() {
   // The ⋯ shows while it offers something: a message's or a Notebook page's
   // links (openReaderMenu), or the layout where the window has room to choose.
   $('reader-menu').hidden = !(p && !p.sourceUnavailable && ((ref?.kind === 'message' && topic) || (ref?.kind === 'memory' && p.source.owner_scope))) && !reader?.layoutChoice;
+  paintReaderThumb$();
+}
+// The Reader's 👍 beside Send: the loaded card's item when there is one, which
+// the page keeps current, else what the message's source said.
+function readerItem() {
+  const p = registry?.current, source = p?.source, ref = source?.source_ref;
+  if (!p || p.sourceUnavailable || ref?.kind !== 'message') return null;
+  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead };
+}
+function paintReaderThumb$() {
+  const item = readerItem();
+  paintReaderThumb($('thumb-source'), reactions && item, bootstrap.actor, Boolean(item && reactions?.busy.has(item.id)));
+}
+// Reply, or Return, on a lit message: the Reader opens on it with the cursor
+// in the reply, and nothing quoted until the reader selects a passage.
+async function replyMessage(id, card) {
+  await openSource({ kind: 'message', id }, card, marks.capture(id));
+  if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });
 }
 // Every page of the person's marks in this topic.
 function loadMarks() {
@@ -927,13 +996,10 @@ async function toggleMark() {
     reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
   } else if (receipt?.status !== 'committed') reader.notice(receipt?.error ?? 'The mark was not confirmed. Press again to send the same request.');
 }
-// A message's ⋯ menu and right-click menu (docs/links.md, "A message's menu").
-function messageMenuButton(item) {
-  const more = node('button', '⋯', 'message-menu'); more.type = 'button';
-  more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', 'false');
-  more.setAttribute('aria-label', 'More for this message'); more.title = 'More';
-  more.onclick = event => { event.stopPropagation(); openMessageMenu({ anchor: more, items: messageMenuItems(item, more), label: 'This message' }); };
-  return more;
+// A message's ⋯ menu, from the ⋯ on its bar (message-menu.mjs) or a
+// right-click (docs/links.md, "A message's menu").
+function openMessageMore(item, more) {
+  openMessageMenu({ anchor: more, items: messageMenuItems(item, more), label: 'This message' });
 }
 // say: the ⋯ that says "Link copied", or null where none shows.
 function messageMenuItems(item, say) {
@@ -948,12 +1014,14 @@ function messageMenuItems(item, say) {
 // link or a selection the browser's own menu stays, to copy what it offers.
 function messageContextMenu(event) {
   if (event.target.closest('a') || window.getSelection()?.isCollapsed === false) return;
-  const entry = event.target.closest('#messages > [data-id]'), item = entry && views?.messages.get(entry.dataset.id);
+  // A message on its own or in a reply stack (reply-stacks.mjs).
+  const entry = entryOf($('messages'), event.target), item = entry && views?.messages.get(entry.dataset.id);
   if (!item) return;
   event.preventDefault();
   const card = cardIn(entry), shown = !card.hidden, anchor = shown ? card : entry.querySelector('.fold-line') ?? entry;
   const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null;
-  openMessageMenu({ anchor, at, items: messageMenuItems(item, shown ? card.querySelector('.message-menu') : null), label: 'This message' });
+  // "Link copied" shows on the bar's ⋯ while its message is lit, as it is under the pointer.
+  openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null), label: 'This message' });
 }
 // The link names the message's own topic, which the Reader may show on a page of another.
 async function copyLink(topicId, messageId, say) {
@@ -1040,14 +1108,14 @@ function listPage(kind, more = false) {
 // message takes the focus, with the line in its place below it. A read that
 // moves nothing on (a refusal, or a review pending) ends it.
 async function loadToUnread() {
-  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.line?.seq);
+  const loaded = () => entries($('messages')).find(child => Number(child.dataset.seq) === views.line?.seq);
   while (views.line && !loaded() && views.olderCursor !== null) {
     const before = views.olderCursor, shared = listLoads.has('messages');
     await listPage('messages', true);
     if (!shared && views.olderCursor === before) break;
   }
   const entry = loaded();
-  if (entry) opened(entry).focus();
+  if (entry) opened(reveal(entry)).focus();
 }
 // Where the oldest unread message is, read again after each commit: reading,
 // marks and replies move it without changing the topic. During a visit the
@@ -1372,6 +1440,7 @@ async function initialize() {
     run(() => healthLight.load());
   }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
+  guide.offer($('instance-label'));
   refreshDirectory();
   document.addEventListener('focusin', event => {
     const list = event.target?.getAttribute?.('list');
@@ -1465,12 +1534,17 @@ async function initialize() {
   const memoryAnswer = checkedView(await api.view('memory_items', { owner_scope: views.scope, limit: 20 }), bootstrap.instance_id);
   await colorsRead;
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
+  // The images #img offers (topic_images, docs/conversation.md), and one image's
+  // verified bytes, read through the message that carries it.
+  const topicImages = async editor => checkedView(await registry.cleanup.list(options => api.view('topic_images', { topic_id: editor.context.topicId }, options)), bootstrap.instance_id);
+  const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
+    images: topicImages, imageBytes,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     reach: recipientReach, addressable: addressPeople,
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
-    status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, needsReview,
+    status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: () => paintReview(),
@@ -1480,6 +1554,7 @@ async function initialize() {
     recipientsPainted: names => { if (here?.page || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.page)); },
   });
   reader = new Reader({
+    images: topicImages, imageBytes,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
     closing: p => registry?.isClosing(p),
@@ -1488,7 +1563,7 @@ async function initialize() {
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
     edit: editor => run(() => { if (registry.isWritable(reader.presentation, editor)) return registry.edited(editor); }), status: editor => registry.status(editor),
-    sign: editor => registry.saveSign(editor).state,
+    sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor),
     mode: mode => {
       const cancelled = Boolean(registry.pendingOpen);
       reader.presentation = registry.setMode(mode); changed(reader.editor); retainRevisionTargets();
@@ -1528,6 +1603,24 @@ async function initialize() {
   marks = new Marks({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current, cancelOpen: () => registry.cancelOpen(),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   marks.listen(paintMarks);
+  reactions = new Reactions({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
+    learned: answer => {
+      const source = registry.current?.source;
+      if (source?.source_ref?.id === answer.message_id) Object.assign(source, { reactions: answer.reactions, go_ahead: answer.go_ahead });
+      if (learnReactions(views.messages, answer)) paintViews('reactions'); else paintReaderThumb$();
+    },
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  const cardScroll = new CardScroll({ read: async id => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass: 'background' }), bootstrap.instance_id) });
+  const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
+  menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+    reply: (id, card) => run(() => replyMessage(id, card)),
+    thumb: (item, on) => act(reactions.thumb(item, on)), answer: (item, answer) => act(reactions.answer(item, answer)),
+    more: openMessageMore,
+    expand: (card, item) => cardScroll.expand(card, item) });
+  $('thumb-source').onclick = () => {
+    const item = readerItem();
+    if (item) run(async () => { try { await reactions.thumb(item, !item.reactions?.thumbs?.some(thumb => thumb.actor_id === bootstrap.actor)); } catch (error) { reader.notice(error); } finally { paintReaderThumb$(); } });
+  };
   pageReads = new PageReads({ recorded: () => { if (commitReload) run(commitReload); }, send: (id, revision) => {
     const { authority_id, authority_epoch } = registry.runtime.current;
     return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'memory.read',
@@ -1619,6 +1712,7 @@ async function initialize() {
     if (registry.current?.sourceUnavailable || registry.current?.availabilityUnconfirmed || registry.inline?.editors.reply.unavailable || updateState?.kind === 'forbidden') freshness?.invalidate('availability', 0, true);
     await freshness?.request({ refresh: true, retry: true });
   });
+  wakeOnPress($('messages'));
   $('more-messages').onclick = () => run(() => listPage('messages', true)); $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', event => { marks.leave(); if (registry.hasUnprotectedWriting) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); });
@@ -1635,7 +1729,7 @@ async function initialize() {
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   if (anchored) {
-    const entry = [...$('messages').children].find(child => child.dataset.id === anchored);
+    const entry = entries($('messages')).find(child => child.dataset.id === anchored);
     run(() => openSource({ kind: 'message', id: anchored }, entry ? cardIn(entry) : $('main')));
   }
   // A Notebook page's link opens the page in the Reader, as its card or row does.
@@ -1798,7 +1892,7 @@ function paintConversationPage() {
   const empty = !views?.messages?.size;
   $('conversation-empty').hidden = !empty;
   if (empty) paintEmpty($('conversation-empty'), { view });
-  for (const entry of $('messages').children) {
+  for (const entry of entries($('messages'))) {
     const card = cardIn(entry), id = card?.dataset?.id, item = id ? here.items.get(id) ?? views.messages.get(id) : null;
     if (!item) continue;
     entry.dataset.item = item.item?.state ?? 'none';
@@ -2272,6 +2366,8 @@ watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor
 railDrawer(document, window);
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
+// ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).
+document.addEventListener('keydown', event => { if (asksForGuide(event)) { event.preventDefault(); guide.open(); } });
 function begin(starting = start) {
   return Promise.resolve().then(starting).then(() => true, error => {
     const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();

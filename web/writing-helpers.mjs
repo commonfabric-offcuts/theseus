@@ -1,5 +1,6 @@
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { holdsWriting } from './editor.mjs';
+import { timeNode } from './times.mjs';
 
 // Shared descriptions and admission decisions only. Each surface keeps its
 // nodes, focus, events and captured presentation; sessions still own the work.
@@ -22,6 +23,17 @@ export function writingState(editor, { active = true, writable = active, note = 
     addDisabled: Boolean(!active || readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
       editor.uploadState?.entries.some(e => e.selected && e.owner.id === editor.clientCycleId && e.origin === 'retained-ref' && !e.ready_descriptor)),
   };
+}
+
+// When the writing was last saved, beside the saving sign's words: "Saved to
+// Theseus · 4:40 AM" (item 61). A shown time (times.mjs), so the words follow
+// the day at midnight; none until this page has seen a save.
+export function paintSaveTime(status, ms) {
+  const host = status.parentElement, doc = status.ownerDocument, old = host.querySelector(':scope > time.save-time');
+  if (!Number.isSafeInteger(ms)) { old?.remove(); return; }
+  if (old && old.dataset.ms === String(ms)) return;
+  const shown = timeNode(ms, doc); shown.className = 'save-time';
+  if (old) old.replaceWith(shown); else host.append(shown);
 }
 
 // The line above a Notebook page when the person's writing is about another

@@ -4,13 +4,14 @@ import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
-import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
+import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange, paintSaveTime } from './writing-helpers.mjs';
 import { paintImageRows } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { wordNodes, webLinks } from './links.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
+import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -68,16 +69,20 @@ export class Reader {
     this.$('quote-selection').onpointerdown = event => event.preventDefault();
     this.$('quote-selection').onclick = () => this.quote();
     this.$('send-reply').onclick = () => this.mode === 'note' ? this.saveNote() : this.send(false);
-    this.$('add-image').onclick = () => {
+    // Add image, or Paste image when the clipboard is known to hold one
+    // (image-pick.mjs); Choose file beside it then still opens the picker.
+    this.$('add-image').onclick = async () => {
       if (!this.admits()) return;
-      try {
-        const uploads = this.callbacks.uploads?.(this.editor);
-        if (!uploads) return;
-        const token = uploads.reserve(this.presentation);
-        this.imagePicker = { uploads, token }; this.$('image-file').value = '';
-        this.paintStatus(); this.$('image-file').click();
-      } catch (error) { this.notice(error); }
+      if (this.pasteReady) {
+        const file = await clipboardImage();
+        if (file) { await this.addImages([namedPastedImage(file)]); return; }
+        this.pasteReady = false; this.paintStatus();
+      }
+      this.chooseFile();
     };
+    this.$('choose-image').onclick = () => { if (this.admits()) this.chooseFile(); };
+    this.field.addEventListener('focus', () => this.checkClipboard());
+    window.addEventListener('focus', () => { if (this.dialog.open) this.checkClipboard(); });
     this.$('cancel-image').onclick = () => { this.cancelImagePicker(); this.$('add-image').focus(); };
     this.$('image-file').addEventListener('cancel', () => this.cancelImagePicker());
     this.$('image-file').onchange = async event => {
@@ -106,8 +111,14 @@ export class Reader {
     };
     // Writing can take the author a reply is offered to, so the choice is redrawn with it.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
-      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintChoice();}});
+      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintChoice();this.images?.update();}});
     this.field.addEventListener('paste', event => this.paste(event));
+    // #img lists the topic's recent images under the writing (image-pick.mjs).
+    this.images = new ImagePick({ field: this.field, host: this.field,
+      admits: () => this.mode === 'reply' && this.writes() && !this.writingReadOnly() && Boolean(this.callbacks.images),
+      load: () => this.callbacks.images(this.editor), thumb: item => this.callbacks.imageBytes(item),
+      choose: item => this.pickImage(item) });
+    this.field.addEventListener('keydown', event => this.images.key(event));
     // Clicking a passage lights it for Return, as moving over it does while
     // Return would quote. Shift-click extends the light, from a dragged
     // selection when there is one, and the browser's own selection is kept
@@ -137,6 +148,27 @@ export class Reader {
     const items = [...(event.clipboardData?.items ?? [])].filter(item => item.type.startsWith('image/'));
     if (!items.length) return; // Text-only paste belongs to the native editor.
     event.preventDefault();
+    // Capture clipboard files before any asynchronous work.
+    return this.addImages(items.map(item => item.getAsFile()));
+  }
+
+  // An image picked from the #img list: the #img words, which the list has
+  // selected, come out as one edit, and the image's verified bytes go in as a
+  // pasted image does, a copy of its own in this reply.
+  async pickImage(item) {
+    const editor = this.editor, presentation = this.presentation;
+    this.input.deleteSelection();
+    let file = null;
+    try {
+      const blob = await readInTurn(() => this.callbacks.imageBytes(item), { first: true });
+      file = new File([blob], item.attachment.name, { type: blob.type });
+    } catch (error) { if (this.editor === editor && this.presentation === presentation) this.notice([`${item.attachment.name}:`, error]); return; }
+    if (this.editor === editor && this.presentation === presentation) return this.addImages([file]);
+  }
+
+  // Images pasted, picked or read from the clipboard, each through the same
+  // admission and byte owner as Add image.
+  async addImages(files) {
     try {
       const editor = this.editor, presentation = this.presentation;
       const refusal = pasteImageError(editor, this.mode, this.writingReadOnly());
@@ -144,9 +176,6 @@ export class Reader {
       if (!this.admits(editor, presentation)) throw Error(this.callbacks.closing?.(presentation) ? CLOSING : STEP_WAITS);
       const uploads = this.callbacks.uploads?.(editor);
       if (!uploads) throw Error('Images are not available in this reply yet.');
-      // Capture clipboard files and their original editor/cycle before any
-      // asynchronous work. Every image uses the existing admission/byte owner.
-      const files = items.map(item => item.getAsFile());
       if (files.some(file => !file)) throw Error('Could not read the pasted image. Try Add image to choose the file.');
       const choices = files.map(file => {
         try {
@@ -425,6 +454,17 @@ export class Reader {
     this.disarm();
   }
 
+  // The reply, with the cursor after what is already written: Reply, or Return,
+  // on a lit message on the topic page (message-menu.mjs). Nothing is quoted.
+  reply(ref) {
+    const at = this.source?.source_ref;
+    if (!this.sessions || at?.kind !== ref.kind || at.id !== ref.id) return false;
+    if (this.mode === 'note') this.switchMode('reply');
+    this.field.focus();
+    this.field.setSelectionRange(this.field.value.length, this.field.value.length);
+    return true;
+  }
+
   caret() { return this.input.caret(); }
   placeKey() { return JSON.stringify(this.source?.source_ref); }
   rememberPlace() { this.positions.set(this.placeKey(), this.sourceBody.scrollTop); }
@@ -450,6 +490,7 @@ export class Reader {
 
   drawEditor() {
     const note = this.mode === 'note';
+    this.images?.close();
     this.$('writing-label').textContent = note ? 'Private note' : 'Reply';
     this.paintNoteToggle();
     this.$('destination-label').hidden = note || (this.source.source_ref.kind === 'message' && !this.offered);
@@ -556,6 +597,23 @@ export class Reader {
     for (const attachment of attachments ?? []) host.append(node('span', attachment.name ?? attachment.id ?? 'Attached image', 'attachment-label'));
   }
 
+  chooseFile() {
+    try {
+      const uploads = this.callbacks.uploads?.(this.editor);
+      if (!uploads) return;
+      const token = uploads.reserve(this.presentation);
+      this.imagePicker = { uploads, token }; this.$('image-file').value = '';
+      this.paintStatus(); this.$('image-file').click();
+    } catch (error) { this.notice(error); }
+  }
+
+  // Whether the image button can say Paste image: asked when the writing or
+  // the window takes focus, never by prompting (image-pick.mjs).
+  async checkClipboard() {
+    const ready = await clipboardHoldsImage();
+    if (ready !== Boolean(this.pasteReady)) { this.pasteReady = ready; this.paintStatus(); }
+  }
+
   cancelImagePicker() {
     const picker = this.imagePicker; this.imagePicker = null;
     picker?.uploads.cancel(picker.token); this.$('image-file').value = '';
@@ -576,7 +634,7 @@ export class Reader {
         if (item.method === 'remove' && this.admits(editor, presentation) && [null, document.body, b].includes(document.activeElement)) this.$('add-image').focus();
       } catch (error) { if (this.admits(editor, presentation)) this.notice(error); }
       finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); }
-    });
+    }, id => uploads.preview(id));
   }
 
   paintStatus() {
@@ -584,6 +642,7 @@ export class Reader {
     const editor = this.editor;
     const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status, sign: this.callbacks.sign });
     this.$('save-state').textContent = state.message; this.$('save-state').dataset.save = state.sign;
+    if (this.callbacks.savedAt) paintSaveTime(this.$('save-state'), state.sign ? this.callbacks.savedAt(editor) : null);
     this.$('send-reply').disabled = state.sendDisabled;
     const change = sourceChange(editor, this.source.source_ref);
     this.$('source-update').textContent = change;
@@ -591,6 +650,9 @@ export class Reader {
     const note = this.mode === 'note';
     this.$('add-image').hidden = note || Boolean(editor.imageReservation);
     this.$('add-image').disabled = state.addDisabled;
+    this.$('add-image').textContent = this.pasteReady ? 'Paste image' : 'Add image';
+    this.$('choose-image').hidden = this.$('add-image').hidden || !this.pasteReady;
+    this.$('choose-image').disabled = state.addDisabled;
     this.$('cancel-image').hidden = note || !editor.imageReservation;
     this.field.readOnly = state.readOnly;
     this.$('recipient-input').disabled = this.field.readOnly;
@@ -758,7 +820,7 @@ export class Reader {
   }
 
   terminalKey(event) {
-    return this.input.terminalKey(event);
+    return this.input.writingKey(event);
   }
 
   key(event) {

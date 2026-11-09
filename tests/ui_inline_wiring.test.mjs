@@ -9,11 +9,9 @@ import { readFailure, checkedView, bindingOf, Freshness } from '../web/freshness
 import { currentImages } from '../web/upload-state.mjs';
 import { WRITING_FIELDS, noWriting, Editor } from '../web/editor.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
-import { WritingInput } from '../web/writing-input.mjs';
+import { WritingInput, typingField } from '../web/writing-input.mjs';
 import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
-import { Attention, paintSent } from '../web/attention.mjs';
-import { HealthLight } from '../web/health-light.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { replyLine } from '../web/replies.mjs';
@@ -34,7 +32,33 @@ import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
 import * as apiExports from '../web/api.mjs';
 import { showLine, lineText } from '../web/lines.mjs';
+import { entries } from '../web/reply-stacks.mjs';
+// A message's entry in the list, on its own or in its reply stack (reply-stacks.mjs).
+const entryIn = (f, id) => entries(f.get('messages')).find(entry => entry.dataset.id === id);
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
+// The page's own scope. Each name app.mjs imports, and each name the modules loaded here import in turn, that the scope does
+// not already hold (a fake below, a test's override, or a module imported natively above) comes from its module's own source:
+// each module once, its dependencies first, with its imports and exports taken off. A module the page newly imports is wired
+// here as the browser wires it, so the app's wiring stays covered without a line added for it.
+const IMPORTS = /^import \{([^}]*)\} from '\.\/([^']+)';$/gm;
+const webSource = file => readFileSync(new URL('../web/' + file, import.meta.url), 'utf8');
+function loadPageScope(context, root) {
+  const wanted = new Map(), order = [];
+  const want = file => {
+    for (const [, list, from] of webSource(file).matchAll(IMPORTS)) for (const entry of list.split(',').map(s => s.trim()).filter(Boolean)) {
+      const [name, alias = name] = entry.split(/\s+as\s+/);
+      if (alias in context) continue;
+      if (!wanted.has(from)) { wanted.set(from, new Map()); want(from); order.push(from); }
+      wanted.get(from).set(alias, name);
+    }
+  };
+  want(root);
+  for (const file of order) {
+    const body = webSource(file).replace(/^import [^;]*;\n/gm, '').replace(/^export (?=(const|let|class|function|async function) )/gm, '');
+    const names = [...wanted.get(file)].map(([alias, name]) => alias === name ? name : alias + ': ' + name);
+    vm.runInContext('Object.assign(globalThis, (() => {\n' + body + '\nreturn { ' + names.join(', ') + ' }; })())', context, { filename: file });
+  }
+}
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
@@ -51,6 +75,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     prepend(...items) { for (const item of items) item.remove(); this.children.unshift(...items); for (const item of items) item.parent = this; }
     after(...items) { const host = this.parent; if (!host) return; for (const item of items) item.remove(); host.children.splice(host.children.indexOf(this) + 1, 0, ...items); for (const item of items) item.parent = host; }
     get parentNode() { return this.parent ?? null; }
+    // An element the page names by id sits in the page (the saving sign's words, the instance's label), unless it was placed.
+    get parentElement() { return this.parent ?? (this.id && this.id !== 'body' ? document.body : null); }
     get ownerDocument() { return this.owner ?? document; }
     set ownerDocument(value) { this.owner = value; }
     get firstElementChild() { return this.children[0]; }
@@ -67,7 +93,15 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       return null;
     }
     // The rail's sideways strips are a phone layout this fixture does not draw.
-    querySelectorAll(selector = '') { return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
+    querySelectorAll(selector = '') {
+      // A list's entries, read as the reply stacks read them (':scope > [data-id], :scope > .reply-stack > [data-id]', reply-stacks.mjs), in the page's order.
+      if (selector.startsWith(':scope')) {
+        const chains = selector.split(',').map(chain => chain.split('>').slice(1).map(step => step.trim()));
+        const found = [], walk = host => { for (const child of host.children) if (child instanceof Element) { if (chains.some(chain => inChain(child, chain, this))) found.push(child); walk(child); } };
+        walk(this); return found;
+      }
+      return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer');
+    }
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
     getAttribute(name) { return this[name] ?? null; }
@@ -80,11 +114,19 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
     // Where it is on screen: wholly in view, unless a check places it (box).
     getBoundingClientRect() { return this.box ?? { top: 0, bottom: 40, height: 40 }; }
+    replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
+  // One step of a selector: [data-name], .class or a tag.
+  const isStep = (el, step) => step.startsWith('[data-') ? el.dataset[step.slice(6, -1).replace(/-(.)/g, (_, c) => c.toUpperCase())] !== undefined
+    : step.startsWith('.') ? String(el.className ?? '').split(' ').includes(step.slice(1)) : el.tagName === step.toUpperCase();
+  // Whether el is reached from root through these child steps.
+  const inChain = (el, chain, root) => { let at = el; for (let i = chain.length - 1; i >= 0; i--, at = at.parent) if (!at || !isStep(at, chain[i])) return false; return at === root; };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
     createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
-    addEventListener(name, fn) { events.push(['document-handler', name, fn]); } };
+    addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
+    // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
+    get defaultView() { return { ResizeObserver: class { observe() {} }, ...context.window }; } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
@@ -107,6 +149,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get interactive() { return this.current ?? this.inline; },
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
     cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); }, resumeHeld() { events.push(['resume-held']); return Promise.resolve(); },
+    // The registry's own answers to when the writing was saved and which topic version its sends reached.
+    savedTimes: new Map(), savedTime: EditorRegistry.prototype.savedTime, localTopicVersion: EditorRegistry.prototype.localTopicVersion,
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     // Which replies are in doubt, and the Review buttons, are the registry's own answers, read over this fake's registered writings and pages.
@@ -118,13 +162,13 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     runtime: { current: bootstrap.authority },
   };
   const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
-  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
+  const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, HealthLight, IntersectionObserver, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -138,71 +182,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     OpeningView: class { constructor() { this.title = { focus() {} }; } run(action) { return Promise.resolve().then(action); } loadMembers() { return Promise.resolve(); } },
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(Object.assign(scope, overrides));
-  const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,workNote,STATES,stateLabel,waitsOn,managesTopic,organises}; })())', context);
-  const headerSource = readFileSync(new URL('../web/topic-header.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + headerSource + '; return {paintTopicHeader}; })())', context);
-  const settingsSource = readFileSync(new URL('../web/topic-settings.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + settingsSource + '; return {TopicSettings}; })())', context);
-  const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
-  const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips,paintAddress}; })())', context);
-  // The one-line creates and the purpose line, in the page's own scope.
-  context.hasTitle = hasTitle;
-  const quickSource = readFileSync(new URL('../web/quick-create.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + quickSource + '; return {OneLine,OutcomeStart,TopicStart,lineFromButton,firstSentence}; })())', context);
-  const purposeSource = readFileSync(new URL('../web/outcome-purpose.mjs', import.meta.url), 'utf8').replace('export class PurposeLine', 'class PurposeLine');
-  vm.runInContext('globalThis.PurposeLine = (()=>{' + purposeSource + '; return PurposeLine; })()', context);
-  const lightsSource = readFileSync(new URL('../web/wake-lights.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class WakeLights', 'class WakeLights');
-  vm.runInContext('globalThis.WakeLights = (()=>{' + lightsSource + '; return WakeLights; })()', context);
-  const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,paintChanged,changedSince,reread,PAGE}; })())', context);
-  // Links in a message's words, and a click outside a pop-up, in the page's own scope (docs/links.md).
-  const linksSource = readFileSync(new URL('../web/links.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + linksSource + '; return {webLinks,wordNodes,linkWords,openLinksWith,nameTopicsWith,shareLinksFrom,messageLink}; })())', context);
-  // A message's ⋯ menu (docs/links.md, "A message's menu").
-  const menuSource = readFileSync(new URL('../web/message-menu.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function|async function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + menuSource + '; return {openMessageMenu,sayOn,copyText}; })())', context);
-  const dismissSource = readFileSync(new URL('../web/dismiss.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + dismissSource + '; return {closeOnOutsideClick}; })())', context);
-  // The phone rail's drawer, wired by the page as it starts (web/rail-drawer.mjs).
-  const drawerSource = readFileSync(new URL('../web/rail-drawer.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + drawerSource + '; return {railDrawer}; })())', context);
-  const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
-  const foldSource = readFileSync(new URL('../web/fold.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + foldSource + '; return {betweenOthers,foldCard,cardIn,paintFold,opened}; })())', context);
-  // The outcome light: its words, then the rows, the peek and the panel that say them (item 86).
-  const lightWordsSource = readFileSync(new URL('../web/outcome-light-words.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  const outcomeLightSource = readFileSync(new URL('../web/outcome-light.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + lightWordsSource + outcomeLightSource + '; return {LightPeek,paintAlsoWaiting,paintStanding,paintStandingFailed,paintRowLight}; })())', context);
-  const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
-  vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
-  const referencesSource = readFileSync(new URL('../web/outcome-references.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeReferences', 'class OutcomeReferences');
-  vm.runInContext('globalThis.OutcomeReferences = (()=>{' + referencesSource + '; return OutcomeReferences; })()', context);
-  const scopeSource = readFileSync(new URL('../web/outcome-scope.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + scopeSource + '; return {OutcomeScope,placeBrand}; })())', context);
-  // Whisper, Tell or Ask, and whispers on cards, in the composers' and the page's own scope (docs/whispers.md).
-  const choiceSource = readFileSync(new URL('../web/whisper-choice.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + choiceSource + '; return {paintChoice,clearChoice,chosen,naming,unnamed,sending,paintWhisperAuthor}; })())', context);
-  // An outcome's conversation: its page, its row and the Reader's To, in the page's own scope (docs/conversation.md).
-  const conversationSource = readFileSync(new URL('../web/outcome-conversation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + conversationSource + '; return {CONVERSATION_TITLE:TITLE,conversationSubtitle:subtitle,conversationPlaceholder:placeholder,CONVERSATION_NOTE,paintOnlyNew,paintEmpty,paintItemTags,paintAbout,paintAsksYou,paintConversationRow,conversationDestination,paintAnswerers}; })())', context);
-  // The pipeline's page, its rail row and its line on the outcome page, with their words (item 84).
-  const pipelineSource = ['pipeline-words.mjs', 'pipeline.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
-    .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + pipelineSource + '; return {PipelinePage,PipelineRow,paintPipelineLine,pipelineHref,titleLine,firstLine}; })())', context);
-  // A reply's image rows, painted in place for the Reader and the inline composer.
-  const imageRowsSource = readFileSync(new URL('../web/image-rows.mjs', import.meta.url), 'utf8').replace(/^export function /gm, 'function ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + imageRowsSource + '; return {paintImageRows}; })())', context);
-  // The outcome's target, its checks and Measurements, with their words and charts (items 14, 104, 12).
-  const targetsSource = ['targets-words.mjs', 'charts.mjs', 'repaint.mjs', 'targets.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
-    .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + targetsSource + '; return {MeasurementsPage,OutcomeTargets,paintTopicTarget}; })())', context);
-  const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
-  vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
-  let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
+  loadPageScope(context, 'app.mjs');
+  let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
   vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
@@ -1569,13 +1550,15 @@ test('a page that leaves a gap in the loaded messages never reads across it', as
   shown([30, 31, 42, 43]); await settle(); await settle();
   assert.deepEqual(ranges().sort((a, b) => a[0] - b[0]), [[30, 31], [42, 43]], 'each side of the gap is its own range; #32..#41 stay pending');
   // An older page continues the newest run. Until a page overlaps what was
-  // loaded before, nothing shows the two runs meet.
+  // loaded before, nothing shows the two runs meet: #31 and #32 side by side
+  // on screen are two ranges. Once a page overlaps both, the screen from #30
+  // to #43 (with #32..#41 loaded between them, they show too) is one range.
   await f.get('more-messages').onclick(); await settle();
   assert.equal(views.messages.has('m35'), true);
-  shown([30, 31, 42, 43]); await settle(); await settle();
-  assert.equal(ranges().length, 2, 'the runs have not met: still two ranges');
+  shown([31, 32]); await settle(); await settle();
+  assert.deepEqual(ranges().slice(2), [[32, 32]], 'the runs have not met: #32 is reported apart from #31');
   await f.get('more-messages').onclick(); await settle();
-  shown([30, 31, 42, 43]); await settle(); await settle();
+  shown(Array.from({ length: 14 }, (_, i) => 30 + i)); await settle(); await settle();
   assert.deepEqual(ranges().at(-1), [30, 43], 'once a page overlaps both, the cards on screen are one range');
 });
 
@@ -2188,12 +2171,27 @@ test('a reply card says quietly which message it answers, and a message answerin
   f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'tony', body: 'Yes', topic_id: 't1', sent_ms: null,
     reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
   f.paintViews('messages');
-  const card = id => f.get('messages').children.find(node => node.dataset.id === id);
+  const card = id => entryIn(f, id);
   // A line's words are its text and link nodes' (links.mjs).
   const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
-  assert.deepEqual(card('m2').children.map(node => node.className), ['message-menu', 'message-author', 'message-reply-to', 'message-preview'], 'the card\'s ⋯ first, then the line between the author and the words');
+  // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card.
+  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview'], 'the line sits between the author and the words, and the card carries no ⋯ of its own');
+});
+
+test('a card shows a message\'s words as they were written: Markdown marks, tables and lists stay words, and only addresses link', async () => {
+  const f = fixture();
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  const body = '# Plan\n| a | b |\n|---|---|\n| 1 | 2 |\n- **one** at https://a.example/x\n> `two`';
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body, topic_id: 't1', sent_ms: null, reply_to: null });
+  f.paintViews('messages');
+  const preview = entryIn(f, 'm1').children.find(node => String(node.className).startsWith('message-preview'));
+  const text = node => node.children?.length ? node.children.map(text).join('') : (node.textContent ?? node.data ?? '');
+  assert.equal(preview.className, 'message-preview');
+  assert.equal(text(preview), body, 'every character as written, in order');
+  assert.deepEqual(preview.children.filter(node => node.tagName).map(node => node.tagName), ['A'], 'one element, the address\'s link; no heading, table, list or code');
 });
 
 test('a reply to someone else\'s message in this topic is offered to its author, once; one to anything else is not', () => {
@@ -2773,7 +2771,7 @@ test('a message between others is one quiet line that opens and folds its card; 
   say('m6', 6, { author_id: 'dan', author_kind: 'human', addressees: ['aim-ux', me] });
   say('m7', 7, { addressees: ['aim-ux'], reply_to: 'm6', reply_to_author: 'dan' });
   f.paintViews('messages');
-  const entry = id => f.get('messages').children.find(child => child.dataset.id === id);
+  const entry = id => entryIn(f, id);
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   assert.deepEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'].map(id => entry(id).className.split(' ')[0]),
     ['message-fold', 'message-card', 'message-card', 'message-card', 'message-card', 'message-card', 'message-fold'],
@@ -2787,7 +2785,7 @@ test('a message between others is one quiet line that opens and folds its card; 
   assert.deepEqual([card.hidden, line['aria-expanded']], [true, 'false'], 'pressed again, it folds it away');
   assert.equal(f.observers[0].targets.includes(fold), true, 'the fold is what is seen on screen');
   f.paintViews('messages');
-  assert.equal(f.get('messages').children.filter(child => child.dataset.id === 'm1').length, 1, 'a repaint keeps one fold');
+  assert.equal(entries(f.get('messages')).filter(child => child.dataset.id === 'm1').length, 1, 'a repaint keeps one fold');
 });
 
 // Core settles a message between others only for a person; for an agent it is
@@ -2948,7 +2946,8 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   let listTop = 0;
   const list = f.get('messages'), cards = () => list.children.filter(child => child.dataset.seq);
   f.document.querySelectorAll = () => cards();
-  f.document.querySelector = selector => selector === '#messages > [data-seq]' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
+  // The first message entry, on its own or in a reply stack (app.mjs MESSAGE_ENTRIES): here every card is on its own.
+  f.document.querySelector = selector => selector.startsWith('#messages > [data-id]') ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
   const layout = () => { for (const child of list.children) child.getBoundingClientRect = () => {
     let top = listTop; for (const before of list.children.slice(0, list.children.indexOf(child))) top += before.dataset.line ? 30 : 100;
     return { top, bottom: top + (child.dataset.line ? 30 : 90) }; }; };
@@ -3045,7 +3044,8 @@ test('at the top of a topic a new message comes into view; read further down, th
   const cards = () => f.get('messages').children.filter(child => child.dataset.seq);
   for (const kind of ['querySelectorAll', 'querySelector']) assert.equal(typeof f.document[kind], 'function');
   f.document.querySelectorAll = () => cards();
-  f.document.querySelector = selector => selector === '#messages > [data-seq]' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
+  // The first message entry, on its own or in a reply stack (app.mjs MESSAGE_ENTRIES): here every card is on its own.
+  f.document.querySelector = selector => selector.startsWith('#messages > [data-id]') ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
   const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
   const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect = () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
   for (let seq = 20; seq <= 25; seq++) add(seq);
@@ -3453,8 +3453,8 @@ test('a message card, the line a reply quotes and a Notebook card show their web
   f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'tony', body: 'See https://a.example/one and https://a.example/tw', preview: true, topic_id: 't1', sent_ms: null,
     reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Preview: https://preview.example:5211/ — try it.' });
   f.paintViews('messages');
-  const card = id => f.get('messages').children.find(node => node.dataset.id === id);
-  const part = (id, name) => card(id).children.find(node => node.className === name);
+  const card = id => entryIn(f, id);
+  const part = (id, name) => card(id).children.find(node => String(node.className).split(' ').includes(name));
   const shown = node => linksIn(node).map(a => [a.textContent, a.href, a.target, a.rel]);
   assert.deepEqual(shown(part('m1', 'message-preview')), [['https://preview.example:5211/', 'https://preview.example:5211/', '_blank', 'noopener noreferrer']]);
   assert.deepEqual(shown(part('m2', 'message-preview')), [['https://a.example/one', 'https://a.example/one', '_blank', 'noopener noreferrer']],

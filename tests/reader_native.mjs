@@ -529,7 +529,7 @@ try {
       { name: 'tab-not-told-apart', file: 'web/reader.mjs', index: 9,
         from: "if (event.key === 'Tab') this.tabbing = true;", to: 'void event;', expected: /Tabs onto the message sees the ring/ },
       { name: 'add-note-unlike-add-image', file: 'web/aim.css', index: 10,
-        from: '#toggle-note,#add-image,#cancel-image{', to: '#add-image,#cancel-image{', expected: /Add note has Add image's/ },
+        from: '#toggle-note,#add-image,#choose-image,#cancel-image{', to: '#add-image,#choose-image,#cancel-image{', expected: /Add note has Add image's/ },
       { name: 'done-closes-the-reader', file: 'web/reader.mjs', index: 10,
         from: "if (saved) { this.notice(''); this.switchMode('reply'); }", to: "if (saved) { this.notice(''); this.finishClose(); }", expected: /Done goes back to the reply/ },
       { name: 'no-yellow-for-a-note', file: 'web/aim.css', index: 10,
@@ -544,8 +544,8 @@ try {
       // The status's room as the last round had it: as tall as its words, so a
       // long file name or the cleanup error grows the footer.
       { name: 'status-as-tall-as-its-words', file: 'web/aim.css', index: 12,
-        from: '.save-status>span{display:block;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-        to: '.save-status>span{display:block;font-size:.78rem;color:var(--muted)}',
+        from: '.save-status>span{display:block;min-width:0;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        to: '.save-status>span{display:block;min-width:0;font-size:.78rem;color:var(--muted)}',
         expected: /"Finish or remove the image Screenshot 2026-11-07 at 10\.32\.15 AM\.png before sending\." moves nothing/ },
       { name: 'tap-shows-nothing-more', file: 'web/aim.css', index: 12,
         from: '.save-status>span:focus{white-space:normal;overflow-wrap:anywhere;outline:none}', to: '',

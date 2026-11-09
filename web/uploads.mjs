@@ -112,6 +112,19 @@ export class Uploads {
     if (e.file.sha256 && e.file.sha256 !== hash) throw Error('Retained image bytes do not match their digest.');
     return { blob: row.blob, hash };
   }
+  // The image's bytes for its thumbnail (image-pick.mjs), without changing
+  // anything: the file as chosen, else the copy saved on this device, else the
+  // verified original read back from Theseus. Null when it is not an image.
+  async preview(id) {
+    const e = this.find(id), d = e.ready_descriptor;
+    if (!imageTypes.has(e.file?.type ?? d?.content_type)) return null;
+    const held = this.memory.get(id);
+    if (held) return held;
+    if (e.bytes_ref && e.bytes_state === 'durable') return (await this.bytes(e)).blob;
+    if (!d) return null;
+    const media = await this.api.media(this.editor.context.instanceId, { id: d.media_id, name: d.name, content_type: d.content_type, size_bytes: d.size_bytes, sha256: d.sha256, inline: d.inline });
+    return media.inline ? media.blob : null;
+  }
   async prepare(e, a) {
     const { blob, hash } = await this.bytes(e);
     await this.transition(() => {

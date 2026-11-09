@@ -222,9 +222,12 @@ joined, since it may not show the commit the later request follows, and a shared
 read is withdrawn only once every page in it has gone. Each page keeps its own
 queue window, counted from when it asked, so it joins only a read asked for no
 later than itself; if the lane refuses a shared read before it begins, because
-the first page's window ran out or every page in it had gone, a page that joined
-it later asks for itself. Slow storage, foreground overload and browser connection
-limits can still delay work. Sends retain their separate command path.
+the first page's window ran out or every page in it had gone, the read passes to
+the page that joined it and has waited longest, within that page's own window,
+and the other pages stay joined to it, so one refusal never opens a read per
+page for a full lane to refuse as Updates delayed. Slow storage, foreground
+overload and browser connection limits can still delay work. Sends retain their
+separate command path.
 
 The reviewed workload measured the cost of that partition with an artificial
 25 ms delay inside each Store read: paired source-open p95 rose from 44.0 ms

@@ -318,8 +318,10 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
   const unread = async topic => (await view('topic_unread', { topic_id: topic })).oldest_unread;
   // Where the page drew the line: {count, after (the card just above it), kind,
   // faded (it holds nothing unread and fades where it is), inert}.
+  // after: the message the line sits under; under a reply stack, the message the stack holds its replies under (docs/topic-reading.md).
+  const above = 'l=>{const e=l?.previousElementSibling;return (e?.classList.contains("reply-stack")?e.querySelector("[data-id]"):e)?.dataset?.id??null}';
   const drawn = p => p.evaluate(`(()=>{const lines=[...document.querySelectorAll('#messages .new-line')];
-    return {count:lines.length,after:lines[0]?.previousElementSibling?.dataset?.id??null,kind:lines[0]?.dataset?.line??null,
+    return {count:lines.length,after:(${above})(lines[0]),kind:lines[0]?.dataset?.line??null,
       faded:lines[0]?.classList.contains('new-line-read')??null,inert:lines[0]?.inert??null}})()`);
   // The page and the server agree: one line just below the oldest unread card,
   // showing; or, when all is read, none or one faded.
@@ -331,7 +333,7 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
   // The line once its fade has run: no longer seen, its space kept, inert.
   const fadedOut = (p, label) => until(() => p.evaluate(`(()=>{const line=document.querySelector('#messages .new-line'),c=line&&getComputedStyle(line);
     return line&&c.opacity==='0'&&c.visibility==='hidden'?{opacity:c.opacity,visibility:c.visibility,pointer:c.pointerEvents,inert:line.inert,
-      height:line.getBoundingClientRect().height,after:line.previousElementSibling?.dataset?.id??null}:null})()`), label);
+      height:line.getBoundingClientRect().height,after:(${above})(line)}:null})()`), label);
   const settle = (p, topic, label) => until(() => agreed(p, topic), label);
   const cardTop = (p, id) => p.evaluate(`document.querySelector('#messages [data-id="${id}"]').getBoundingClientRect().top`);
   // The first card in view: what the person is reading.
@@ -583,8 +585,9 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const p = await open(topic, 'new-line-reply-' + theme, theme);
       await settle(p, topic, theme + ': the line under the message marked unread');
       const navigations = await p.evaluate('performance.getEntriesByType("navigation").length');
-      const gap = () => p.evaluate(`document.querySelector('#messages [data-id="${ids[1]}"]').getBoundingClientRect().top-document.querySelector('#messages [data-id="${ids[2]}"]').getBoundingClientRect().bottom`);
-      const before = await gap();
+      // The reply stacks under the message it answers and brings that stack up (docs/topic-reading.md, "Reply stacks"); the line goes with it, keeping its own height.
+      const lineHeight = () => p.evaluate(`document.querySelector('#messages .new-line').getBoundingClientRect().height`);
+      const before = await lineHeight();
       assert.deepEqual(await drawn(p), { count: 1, after: ids[2], kind: 'new', faded: false, inert: false }, theme + ': it shows');
       await p.point(`#messages [data-id="${ids[2]}"]`);
       await until(() => p.evaluate("document.querySelector('#reader').open && Boolean(document.querySelector('#writing-body'))"), theme + ': the Reader is open on the message');
@@ -597,8 +600,9 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${reply}"]'))`), theme + ': the reply drawn');
       await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': sending closed the Reader');
       const faded = await fadedOut(p, theme + ': opened and answered, the line fades out');
-      assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[2], true, 'none', 1], theme + ': where it was, inert: ' + JSON.stringify(faded));
-      assert.ok(Math.abs(await gap() - before) <= 1, theme + ': it keeps its space, so the card below it does not move');
+      assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[2], true, 'none', 1], theme + ': under its message\'s stack, inert: ' + JSON.stringify(faded));
+      assert.ok(Math.abs(faded.height - before) <= 1, theme + `: it keeps its space (${faded.height} of ${before})`);
+      assert.equal(await p.evaluate(`document.querySelector('#messages .new-line').previousElementSibling.contains(document.querySelector('#messages [data-id="${reply}"]'))`), true, theme + ': the reply is in that stack');
       assert.equal(await unread(topic), null, theme + ': the reply, the person\'s own, holds nothing');
       assert.equal(await p.evaluate('performance.getEntriesByType("navigation").length'), navigations, theme + ': no reload');
       assert.equal(await p.evaluate("document.querySelector('#refresh')"), null, theme + ': and no Refresh to press');

@@ -179,7 +179,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] [--attach FILE]... TEXT|- "
+         "| inbox | post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] [--attach FILE]... TEXT|- "
+         "| thumb MESSAGE [--off] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
@@ -269,10 +270,15 @@ def _parser():
     post.add_argument("--to")
     post.add_argument("--reply-to")
     post.add_argument("--part", action="store_true")
+    # An Ask that offers its people ✅ (go ahead) and 🚫 (don't) (docs/thumbs.md).
+    post.add_argument("--go-ahead", action="store_true")
     # --operation ID: the write's own operation id, so sending it again returns the same message (a deploy's retry).
     post.add_argument("--operation")
     post.add_argument("--attach", action="append", default=[])
     post.add_argument("text")
+    thumb = verb("thumb")
+    thumb.add_argument("message")
+    thumb.add_argument("--off", action="store_true")
     whisper = verb("whisper")
     whisper.add_argument("topic")
     whisper.add_argument("--to", required=True)
@@ -928,6 +934,13 @@ class Agent(PipelineVerbs, TargetVerbs):
             heading += " replying to " + item["reply_to"]
         self.out.plain("")
         self.out.plain(heading)
+        reactions = item.get("reactions") or {}
+        if item.get("go_ahead"):
+            said = ", ".join("%s %s" % (answer["actor_id"], "✅ go ahead" if answer["answer"] == "yes" else "🚫 don't")
+                             for answer in reactions.get("answers", []))
+            self.out.plain("  (asks for a go-ahead%s)" % (": " + said if said else "; not answered yet"))
+        if reactions.get("thumbs"):
+            self.out.plain("  (👍 " + ", ".join(thumb["actor_id"] for thumb in reactions["thumbs"]) + ")")
         about = item.get("about")
         if about and not about.get("hidden"):
             self.out.plain('  (about %s by %s in "%s")' % (about["message_id"], about["author_id"], _one_line(about["topic_title"], 60)))
@@ -1223,6 +1236,8 @@ class Agent(PipelineVerbs, TargetVerbs):
             args["reply_to"] = options.reply_to
         if options.part:
             args["part"] = True
+        if options.go_ahead:
+            args["go_ahead"] = True
         if options.subject:
             # --subject item:92,item:31: what the post is about, written with it.
             args["subjects"] = [dict(zip(("kind", "ref"), part.strip().split(":", 1))) for part in options.subject.split(",") if part.strip()]
@@ -1317,6 +1332,14 @@ class Agent(PipelineVerbs, TargetVerbs):
                               {"opening_revision": opening["revision"]})
         self.out.plain('started %s "%s" in %s with %s' % (opening["topic_id"], _one_line(opening.get("title", ""), 60),
                                                           opening["workspace_id"], result["message_id"] or "no message yet"))
+
+    def do_thumb(self):
+        """A thumbs-up: read and understood, said without a message (docs/thumbs.md)."""
+        message = self.options.message
+        current = self.view("reactions", {"message_id": message})["reactions"]["thumb_revision"]
+        result = self.command("message.thumb", {"message_id": message}, {"thumbed": not self.options.off}, {"thumb_revision": current})
+        words = "thumbed up" if result["thumbed"] else "took back the thumbs-up on"
+        self.out.plain("%s %s%s" % (words, result["message_id"], "" if result["changed"] else " (already so)"))
 
     def do_ack(self):
         for delivery in self.options.deliveries:

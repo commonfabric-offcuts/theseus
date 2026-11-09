@@ -239,6 +239,13 @@ the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the
 asked person's `attention` lists it (see [attention.md](attention.md#asked-and-waited-on)).
 Any message you write in a topic answers what was asked of you there.
 
+An ask that offers to do something, or asks permission, adds `--go-ahead`
+(`post TOPIC --asks owner --go-ahead -`): the person answers with one tap, ✅
+go ahead or 🚫 don't, and you receive that answer as their reply. To say you
+read a message and understood it, `thumb MESSAGE` (`--off` takes it back)
+instead of posting "got it"; it settles your delivery of that message. See
+[thumbs.md](thumbs.md).
+
 Writing saved with `draft.save` carries `intent` the same way, and the
 prepared send (`submission.prepare`, then `message.send`) holds the same rule:
 an agent preparing writing that names someone without an intent is refused

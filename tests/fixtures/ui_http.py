@@ -872,8 +872,12 @@ def main():
                         seed_number += 1
                         prefix = "freshness-seed-%d" % seed_number
                         message_ids, item_ids = [], []
+                        # In t1 unless "topic_id" names another, each written
+                        # from the person's first message unless "source" says.
+                        seed_topic = request.get("topic_id", "t1")
                         for n in range(request.get("messages", 0)):
-                            result = agent_message({"operation_id": prefix + "-message-%d" % n,
+                            result = agent_message({"operation_id": prefix + "-message-%d" % n, "topic_id": seed_topic,
+                                                    "source": request.get("source"),
                                                     "body": "Incoming fixture message %d" % n})
                             message_ids.append(result["result"]["message_id"])
                         for n in range(request.get("memory_items", 0)):
@@ -881,7 +885,7 @@ def main():
                             command("memory.create", prefix + "-create-%d" % n, {
                                 "title": "Fixture item %d" % n, "body": "Fixture Notebook body %d" % n,
                                 "attachments": [], "references": []},
-                                {"item_id": item_id, "owner_scope": {"kind": "topic", "id": "t1"}},
+                                {"item_id": item_id, "owner_scope": {"kind": "topic", "id": seed_topic}},
                                 {"item_revision": 0}, sender="fixture-notebook-agent")
                             item_ids.append(item_id)
                         # Query-scale fixture only: these are unrelated change

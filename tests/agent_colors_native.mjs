@@ -26,16 +26,19 @@ const hueGap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
 export async function agentColorsCheck({ check, page, until, facts, control, shot, observations }) {
   await check('colors each agent has its own color on its name and across its cards, and your own stay black', async () => {
-    const ids = {};
-    for (const [n, agent] of AGENTS.entries())
-      ids[agent] = (await control({ method: 'agent_message', operation_id: 'agent-colors-' + n, sender: agent, join: true, body: `A message from ${agent}, in its own color.` })).result.message_id;
-    // A second card from one agent, so the same agent is seen twice.
-    const again = (await control({ method: 'agent_message', operation_id: 'agent-colors-again', sender: 'fable', body: 'fable again: the same color as before.' })).result.message_id;
-    const own = facts.sources[1].id;
     const failures = [];
     const expect = (ok, why) => { if (!ok) failures.push(why); };
     for (const theme of ['light', 'dark']) for (const [width, metrics] of Object.entries(WIDTHS)) {
       const label = `${theme} ${width}`;
+      // Fresh cards for each look, written to the topic itself: every card is
+      // read once it has been on screen, and a read card sits back on a quieter
+      // fill (docs/topic-reading.md, "Read cards"), so this measures cards not yet read.
+      const say = (operation, sender, body) => control({ method: 'agent_message', operation_id: `agent-colors-${theme}-${width}-${operation}`, sender, join: sender !== 'person', source: 'topic', body }).then(answer => answer.result.message_id);
+      const ids = {};
+      for (const [n, agent] of AGENTS.entries()) ids[agent] = await say(n, agent, `A message from ${agent}, in its own color.`);
+      // A second card from one agent, so the same agent is seen twice.
+      const again = await say('again', 'fable', 'fable again: the same color as before.');
+      const own = await say('own', 'person', 'My own message, in black.');
       const p = await page(`agent-colors-${theme}-${width}`, null, true, { beforeNavigate: async p => {
         await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
         await p.send('Emulation.setDeviceMetricsOverride', { ...metrics, deviceScaleFactor: 1 });
@@ -108,7 +111,7 @@ export async function agentColorsCheck({ check, page, until, facts, control, sho
       expect(mine.background === 'rgb(0, 0, 0)', `${label}: own card stays black`);
       expect(mine.nameBackground === 'rgba(0, 0, 0, 0)', `${label}: own name has no tag`);
       // A message that arrives while the page is open is colored as it lands.
-      const live = (await control({ method: 'agent_message', operation_id: `agent-colors-live-${theme}-${width}`, sender: 'aim-core', body: 'aim-core, arriving live.' })).result.message_id;
+      const live = await say('live', 'aim-core', 'aim-core, arriving live.');
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(live))}))`), label + ': live arrival drawn');
       const arrived = await measure(live);
       expect(arrived.background === seen['aim-core'][0], `${label}: a live arrival takes its agent's color`);
@@ -172,9 +175,15 @@ export async function agentColorsCheck({ check, page, until, facts, control, sho
 export async function agentColorChoiceCheck({ check, page, until, control, shot, observations }) {
   await check('colors clicking an agent\'s name changes its color for you, kept across reloads and pages', async () => {
     // Older agent messages below aim-ux's, for a picker opened lower down.
-    for (let n = 0; n < 5; n++) await control({ method: 'agent_message', operation_id: 'agent-color-choice-older-' + n, body: `An older agent message ${n}.` });
-    const id = (await control({ method: 'agent_message', operation_id: 'agent-color-choice', sender: 'aim-ux', join: true, body: 'aim-ux, about to be recolored.' })).result.message_id;
-    const card = `#messages [data-id="${id}"]`;
+    for (let n = 0; n < 5; n++) await control({ method: 'agent_message', operation_id: 'agent-color-choice-older-' + n, source: 'topic', body: `An older agent message ${n}.` });
+    // A fresh aim-ux card for each page, written to the topic itself: a card
+    // read on an earlier page sits back on a quieter fill (docs/topic-reading.md,
+    // "Read cards"), and every aim-ux card wears the color chosen.
+    let card;
+    const fresh = async tag => {
+      const id = (await control({ method: 'agent_message', operation_id: 'agent-color-choice-' + tag, sender: 'aim-ux', join: true, source: 'topic', body: 'aim-ux, about to be recolored.' })).result.message_id;
+      card = `#messages [data-id="${id}"]`;
+    };
     const fill = (p, selector) => p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).backgroundColor`);
     const tokens = (p, name) => p.evaluate(`(()=>{const e=document.createElement('div');e.className='agent-${name}';document.body.append(e);const c=getComputedStyle(e);const v=[c.getPropertyValue('--agent-card').trim(),c.getPropertyValue('--agent-tag').trim()];e.remove();return v})()`);
     const rgbOf = hex => `rgb(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
@@ -183,6 +192,7 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
         inView:b.left>=0&&b.top>=0&&b.right<=innerWidth&&b.bottom<=innerHeight,pressed:[...r.querySelectorAll('[aria-pressed=true]')].map(e=>e.getAttribute('aria-label')??e.textContent)}})()`);
     // The phone first: it chooses nothing, so both widths start from aim-ux's own violet.
     for (const [width, metrics] of Object.entries({ phone: { width: 390, height: 844, mobile: true }, laptop: { width: 1280, height: 900, mobile: false } })) {
+      await fresh(width);
       const p = await page('agent-color-picker-' + width, null, true, { beforeNavigate: async p => {
         await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
         await p.send('Emulation.setDeviceMetricsOverride', { ...metrics, deviceScaleFactor: 1 });
@@ -266,6 +276,7 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
       await p.close();
     }
     // Kept by Core: a new page, as on another device, shows rose.
+    await fresh('again');
     const q = await page('agent-color-picker-again', null, true, { beforeNavigate: p => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] }) });
     await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'card drawn again');
     const [roseDark] = await tokens(q, 'rose');

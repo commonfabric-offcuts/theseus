@@ -24,7 +24,7 @@ function readerFixture({ mac }) {
   const reader = Object.assign(Object.create(Reader.prototype), {
     mac, dialog, field, sourceBody, source: { source_ref: { kind: 'message', id: 'm1' }, body: 'The message' }, mode: 'reply',
     sessions: { reply: { draft: { body: 'My reply', attachments: [] } } },
-    input: { readOnly: () => false, terminalKey: () => false },
+    input: { readOnly: () => false, terminalKey: () => false, writingKey: () => false },
     selectedPassage: () => null,
   });
   const press = (target, chord) => {

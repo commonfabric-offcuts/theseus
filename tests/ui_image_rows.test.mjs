@@ -33,7 +33,14 @@ class Node {
   detach() { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; this.moves++; } }
   append(...nodes) { for (const node of nodes) { node.detach(); node.parent = this; this.children.push(node); } }
   after(node) { node.detach(); this.parent.children.splice(this.parent.children.indexOf(this) + 1, 0, node); node.parent = this.parent; }
+  prepend(node) { node.detach(); node.parent = this; this.children.unshift(node); }
   remove() { this.detach(); }
+  // What a thumbnail asks of its row: the page it is in, and its image at the row's start.
+  get ownerDocument() { return document; }
+  querySelector(selector) {
+    assert.equal(selector, ':scope > img.image-thumb');
+    return this.children.find(child => child.tagName === 'img' && child.className === 'image-thumb') ?? null;
+  }
 }
 // The page's own listeners (capture, on the window), and what is under a point.
 const page = [];
@@ -43,7 +50,7 @@ globalThis.document = { createElement: tag => new Node(tag), activeElement: null
 const REMOVE = { label: 'Remove', method: 'remove' }, RETRY = { label: 'Retry upload', method: 'retry' };
 const choice = (id, state, actions = [REMOVE]) => ({ id, text: `${id}.png · ${state}`, view: JSON.stringify([state, actions.map(a => a.label)]), actions });
 const buttons = row => row.children.slice(1);
-const labels = row => buttons(row).map(b => b.dataset.action);
+const labels = row => buttons(row).filter(b => b.dataset.action).map(b => b.dataset.action);
 const rows = () => {
   const host = new Node('div'), presses = []; host.page = true;
   // Where focus is as the press reaches the surface's act.
@@ -279,4 +286,31 @@ test('the new-topic page\'s touch guard leaves a tap on a button that holds its 
   assert.equal(lift(other), false, 'a finger lifted on another button taps it');
   other.place = { left: 100, top: 38, right: 160, bottom: 78 };
   assert.equal(lift(other), true, 'a finger lifted off another button is cancelled, as before');
+});
+
+test('given a preview, a row holds its image small between its words and its buttons (shown first), so Remove is its last part, keeps it through a repaint with one read, and lets it go with the row', async t => {
+  const made = [], freed = [], { createObjectURL, revokeObjectURL } = URL;
+  URL.createObjectURL = blob => { made.push(blob); return 'blob:' + blob; };
+  URL.revokeObjectURL = url => { freed.push(url); };
+  t.after(() => Object.assign(URL, { createObjectURL, revokeObjectURL }));
+  const host = new Node('div'), reads = [];
+  host.page = true;
+  const paint = choices => paintImageRows(host, choices, true, () => {}, id => { reads.push(id); return Promise.resolve(id + '-bytes'); });
+  const settled = () => new Promise(resolve => setImmediate(resolve));
+  paint([choice('a', 'Uploading')]);
+  const row = host.children[0], [words, thumb, remove] = row.children;
+  assert.deepEqual([words.textContent, thumb.className, thumb.dataset.key, remove.dataset.action], ['a.png · Uploading', 'image-thumb', 'a', 'Remove']);
+  await settled();
+  assert.deepEqual([thumb.src, thumb.hidden], ['blob:a-bytes', false], 'the image itself, made small');
+  paint([choice('a', 'Could not attach', [RETRY, REMOVE])]);
+  assert.deepEqual([row.firstElementChild.textContent, row.children[1], labels(row), row.children.at(-1), remove.moves, thumb.moves],
+    ['a.png · Could not attach', thumb, ['Retry upload', 'Remove'], remove, 0, 0], 'the words follow the upload, a new button comes in after the thumbnail and before Remove, and nothing moves');
+  assert.deepEqual(reads, ['a'], 'a repaint reads the image no second time');
+  paint([]);
+  await settled();
+  assert.deepEqual([host.children.length, freed], [0, ['blob:a-bytes']], 'the row goes and its thumbnail is let go');
+  // Without a preview, a row is its words and its buttons.
+  const plain = rows();
+  plain.paint([choice('b', 'Ready')]);
+  assert.deepEqual(plain.host.children[0].children.map(child => child.tagName), ['span', 'button']);
 });

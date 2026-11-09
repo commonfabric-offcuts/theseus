@@ -32,7 +32,7 @@ function reader(t, { noteBody = '' } = {}) {
   const r = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply, note }, mode: 'reply', presentation: {}, dialog: { open: true }, positions: new Map(), sourceBody: { scrollTop: 0 },
     source: { source_ref: context.sourceRef, topic_id: 't1', body: 'Quoted passage' }, field, $: id => elements[id],
-    selectedPassage: () => 'Quoted passage', disarm() {}, input: { readOnly: () => false, terminalKey: () => false },
+    selectedPassage: () => 'Quoted passage', disarm() {}, input: { readOnly: () => false, terminalKey: () => false, writingKey: () => false },
     insertText(text) { field.value += text; },
     callbacks: { admits: () => true, writes: () => true, edit: editor => acts.push(['edit', editor.context.kind]),
       step: direction => acts.push(['step', direction]), close: reason => acts.push(['close', reason]) },

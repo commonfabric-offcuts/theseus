@@ -31,13 +31,23 @@ validation. The accepted correction specification is revision 04, reviewed in
 
 ## Work and presentation bounds
 
-- A persistently failing dirty resource can block other dirty resources.
-  Confirmed submission receipts restored from an older runtime can also supply
-  an unreachable topic-version target. Filtering local effects by current
-  authority and bounding independent-resource progress are follow-up work.
-- Fetch work is scoped, but painting repeatedly searches the loaded card list.
-  Its cost can grow quadratically with loaded history. The 1,000/10,000-record
-  measurements cover **unrelated history**, not an equally large loaded view.
+- A dirty resource whose read keeps failing with a retryable failure waits
+  for the next pass while every other dirty resource is read, so it no longer
+  holds them up; a failure that stops updates still stops them at once. Only
+  sends confirmed under the current runtime name the topic version the page
+  waits for, so a receipt restored from an older runtime, or set aside by a
+  runtime review, no longer supplies a version this runtime cannot reach
+  (item 54; `tests/ui_freshness.test.mjs`, `tests/ui_local_effects.test.mjs`).
+- The recovery journal lets its writer locks go on every pagehide from before
+  it holds the first, so a page in the back/forward cache, or one whose start
+  failed before it registered its own pagehide handler, never reads as open in
+  another tab (item 67; `tests/ui_journal_pagehide.test.mjs`). A native check
+  through a real back/forward cache navigation is not written.
+- Fetch work is scoped, and painting finds each loaded card by its id, so an
+  update costs in step with the loaded history rather than its square (the
+  live check "painting an update costs in step with the loaded history"). The
+  1,000/10,000-record measurements cover **unrelated history**, not an equally
+  large loaded view.
 - New replies can land above the viewport while the reader is at the top of
   the topic page. Automatic arrival does not yet guarantee that every new card
   is visible without scrolling.

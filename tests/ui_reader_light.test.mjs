@@ -144,3 +144,11 @@ test('the Reader never cuts a link between passages: the passages one spans are 
   // Without a link, the passages are the sentences, as before.
   assert.deepEqual(drawn(t, 'One? Two! Three.').map(part => part.text), ['One? ', 'Two! ', 'Three.']);
 });
+
+test('the Reader shows a message\'s words as they were written: Markdown marks, tables and lists stay words in sentence passages', t => {
+  const body = '# Plan\n| a | b |\n|---|---|\n| 1 | 2 |\n- **one** at https://a.example/x\n> `two`.';
+  const parts = drawn(t, body);
+  assert.equal(parts.map(part => part.text).join(''), body, 'every character as written, in order');
+  for (const part of parts) assert.equal(body.slice(part.start, part.end), part.text, 'each passage knows where its words lie in the source');
+  assert.deepEqual(parts.flatMap(part => part.links), ['https://a.example/x'], 'only the address links');
+});

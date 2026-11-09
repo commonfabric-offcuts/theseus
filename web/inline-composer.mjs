@@ -1,8 +1,9 @@
 import { paintAddress } from './people.mjs';
-import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
+import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, paintSaveTime } from './writing-helpers.mjs';
 import { paintImageRows } from './image-rows.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { paintChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
+import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { showLine } from './lines.mjs';
 
 const node = (tag, text, className) => {
@@ -17,9 +18,16 @@ export class InlineComposer {
     this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
     this.field = this.$('writing-body');
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
-      changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();}});
+      changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();this.images?.update();}});
+    // #img lists the topic's recent images under the writing (image-pick.mjs).
+    this.images = new ImagePick({ field: this.field, host: this.field,
+      admits: () => this.admits() && !this.state().readOnly && Boolean(this.callbacks.images),
+      load: () => this.callbacks.images(this.editor), thumb: item => this.callbacks.imageBytes(item),
+      choose: item => this.pickImage(item) });
+    this.field.addEventListener('focus', () => this.checkClipboard());
+    window.addEventListener('focus', () => { if (!this.root.hidden) this.checkClipboard(); });
     this.field.addEventListener('keydown', event => {
-      if(this.input.terminalKey(event))return;
+      if(this.images.key(event)||this.input.writingKey(event))return;
       if (event.key === 'Enter' && event.metaKey && !event.isComposing && event.keyCode !== 229) {
         event.preventDefault(); if (!event.repeat) this.send();
       }
@@ -29,7 +37,19 @@ export class InlineComposer {
     this.$('recipient-input').onkeydown = event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); if (!event.repeat) this.addRecipient(); }
     };
-    this.$('add-image').onclick = () => {
+    // Add image, or Paste image when the clipboard is known to hold one;
+    // Choose file beside it then still opens the picker.
+    this.$('add-image').onclick = async () => {
+      if (!this.admits() || this.state().addDisabled) return;
+      if (this.pasteReady) {
+        const file = await clipboardImage();
+        if (file) { await this.addImages([namedPastedImage(file)]); return; }
+        this.pasteReady = false; this.paintStatus();
+      }
+      this.chooseFile();
+    };
+    this.$('choose-image').onclick = () => this.chooseFile();
+    this.chooseFile = () => {
       const p = this.presentation, editor = this.editor;
       if (!this.admits(p, editor) || this.state().addDisabled) return;
       try {
@@ -71,12 +91,13 @@ export class InlineComposer {
   fail(error) {
     this.root.hidden = false;
     this.field.disabled = true;
-    for (const name of ['recipient-input', 'add-image', 'send']) this.$(name).disabled = true;
+    for (const name of ['recipient-input', 'add-image', 'choose-image', 'send']) this.$(name).disabled = true;
     showLine(this.$('notice'), ['New message is unavailable.', error]);
     this.$('save-state').textContent = 'Writing is disabled until this composer can load.';
     this.$('retry').textContent = 'Retry composer'; this.$('retry').hidden = false;
   }
   drawEditor() {
+    this.images?.close();
     this.field.value = this.editor.draft.body;
     const caret = this.editor.draft.caret; this.field.setSelectionRange(caret.start, caret.end);
   }
@@ -150,7 +171,7 @@ export class InlineComposer {
       }
       catch (error) { this.notice(error, p, editor); }
       finally { if (control.isConnected) control.disabled = !this.admits(p, editor) || this.state().readOnly; this.paintStatus(); }
-    });
+    }, id => uploads.preview(id));
   }
   paintStatus() {
     if (!this.editor) return;
@@ -158,12 +179,15 @@ export class InlineComposer {
     this.root.inert = !active; this.field.readOnly = state.readOnly;
     this.$('save-state').textContent = this.presentation.availabilityUnconfirmed ? 'Topic access unconfirmed — writing kept on this device' : state.message;
     this.$('save-state').dataset.save = this.presentation.availabilityUnconfirmed ? '' : state.sign;
+    if (this.callbacks.savedAt) paintSaveTime(this.$('save-state'), this.presentation.availabilityUnconfirmed || !state.sign ? null : this.callbacks.savedAt(editor));
     this.$('retry').textContent = 'Retry access';
     this.$('retry').hidden = Boolean(editor.authorityRecovery || this.presentation.availabilityChecking || !(this.presentation.availabilityUnconfirmed || editor.unavailable));
     this.$('send').disabled = state.sendDisabled;
     this.$('recipient-input').disabled = state.readOnly;
     this.paintChoice(state.readOnly);
     this.$('add-image').hidden = Boolean(editor.imageReservation); this.$('add-image').disabled = state.addDisabled;
+    this.$('add-image').textContent = this.pasteReady ? 'Paste image' : 'Add image';
+    this.$('choose-image').hidden = this.$('add-image').hidden || !this.pasteReady; this.$('choose-image').disabled = state.addDisabled;
     this.$('cancel-image').hidden = !editor.imageReservation;
     this.$('review-versions').hidden = !this.callbacks.needsReview(editor);
     // Status updates do not touch text or caret, even when uploads finish.
@@ -172,11 +196,35 @@ export class InlineComposer {
   async paste(event) {
     const items = [...(event.clipboardData?.items ?? [])].filter(item => item.type.startsWith('image/'));
     if (!items.length) return;
-    event.preventDefault(); const p = this.presentation, editor = this.editor;
+    event.preventDefault();
+    return this.addImages(items.map(item => item.getAsFile()));
+  }
+  // Whether the image button can say Paste image: asked when the writing or
+  // the window takes focus, never by prompting (image-pick.mjs).
+  async checkClipboard() {
+    const ready = await clipboardHoldsImage();
+    if (ready !== Boolean(this.pasteReady)) { this.pasteReady = ready; if (this.editor) this.paintStatus(); }
+  }
+  // An image picked from the #img list: the #img words, which the list has
+  // selected, come out as one edit, and the image's verified bytes go in as a
+  // pasted image does, a copy of its own in this message.
+  async pickImage(item) {
+    const p = this.presentation, editor = this.editor;
+    this.input.deleteSelection();
+    let file;
+    try {
+      const blob = await readInTurn(() => this.callbacks.imageBytes(item), { first: true });
+      file = new File([blob], item.attachment.name, { type: blob.type });
+    } catch (error) { this.notice([`${item.attachment.name}:`, error], p, editor); return; }
+    if (this.presentation === p && this.editor === editor) return this.addImages([file]);
+  }
+  // Images pasted, picked or read from the clipboard, each through the same
+  // admission and byte owner as Add image.
+  async addImages(files) {
+    const p = this.presentation, editor = this.editor;
     try {
       const refusal = pasteImageError(editor, 'reply', !this.admits(p, editor) || this.state().readOnly);
       if (refusal) throw Error(refusal);
-      const files = items.map(item => item.getAsFile());
       if (files.some(file => !file)) throw Error('Could not read the pasted image. Try Add image to choose the file.');
       const uploads = this.callbacks.uploads(editor);
       const results = await Promise.allSettled(files.map(file => {

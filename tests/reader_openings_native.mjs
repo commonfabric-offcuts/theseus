@@ -252,6 +252,11 @@ try {
     await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("topic")===${JSON.stringify(topicId)}`).catch(() => false), 'new topic page');
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'), title, 'topic header shows the opening title');
     const message = await until(() => p.evaluate(`(()=>{const m=[...document.querySelectorAll('#messages [data-id]')].find(e=>e.textContent.includes(${JSON.stringify(body.split('\n')[0])}));return m?m.dataset.id:null})()`), 'the opening message in the topic');
+    // On a phone a first tap lights the message and a second opens it (docs/interaction.md).
+    if (p.touch) {
+      await p.tap(`#messages [data-id="${message}"]`);
+      await until(() => p.evaluate(`document.querySelector('#messages [data-id="${message}"]').classList.contains('lit')`), 'a first tap lights the opening message');
+    }
     await p[p.touch ? 'tap' : 'click'](`#messages [data-id="${message}"]`);
     await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent===${JSON.stringify(body)}`), 'Reader shows the exact opening message');
     await until(() => p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled Reader');

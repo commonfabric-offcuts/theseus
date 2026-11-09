@@ -108,7 +108,7 @@ export class RecoveryJournal {
   close() { return this.backend.close?.(); }
 }
 
-export async function openJournal({ instanceId, actor } = {}) {
+export async function openJournal({ instanceId, actor, win = globalThis } = {}) {
   if (!instanceId || !actor) throw Error('Recovery needs the confirmed instance and actor.');
   if (!navigator.locks?.request) throw Error('Recovery ownership is unavailable in this browser. Keep this page open.');
   const scope = JSON.stringify([instanceId, actor]), writerId = crypto.randomUUID();
@@ -178,7 +178,6 @@ export async function openJournal({ instanceId, actor } = {}) {
     const name = lockName(writer);
     return !(await navigator.locks.query()).held.some(lock => lock.name === name);
   };
-  if (!await lock(writerId)) throw Error('This document could not acquire recovery ownership.');
   // Closing ends every lock this document holds, and every lease a cleanup
   // was granted. A write transaction made before close fails at its next
   // callback (see transact), so no write relies on a lock after close.
@@ -189,6 +188,12 @@ export async function openJournal({ instanceId, actor } = {}) {
     held.clear();
   };
   let database;
+  // A hidden page lets every lock go at once, from before it holds the first:
+  // a page in the back/forward cache is not open to write, and another tab's
+  // free() must not read its writer as held (item 67). Such a page reloads
+  // when it is shown again (app.mjs), so nothing needs the locks back.
+  win.addEventListener?.('pagehide', () => { database?.close(); release(); });
+  if (!await lock(writerId)) throw Error('This document could not acquire recovery ownership.');
   try { database = await new Promise((resolve, reject) => {
     let failed = false;
     const request = indexedDB.open('aim-next-pending', 2);

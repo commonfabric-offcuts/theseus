@@ -509,7 +509,8 @@ loaded ones that has no card on the page has no line.
 When the reader is at the top of a topic, with the newest card showing from
 its top edge, a message that arrives comes into view above it; the page does
 not scroll to keep the old card in place. Further down the topic, the card the
-reader is looking at stays where it was.
+reader is looking at stays where it was, a card in an opened reply stack too,
+when a reply arrives above it in its stack.
 
 ## In the browser
 

@@ -8,6 +8,15 @@
 // choices: imageChoices(). enabled: whether its buttons can be pressed.
 // press(action, choice, button): the surface's own act, run once per press;
 // the button stays disabled until it settles, whatever repaints meanwhile.
+// preview(id): the image's bytes for the row's thumbnail (image-pick.mjs
+// paintThumb), or none. A row shows one image for as long as it is there, so
+// its thumbnail is made with the row and let go with it. It comes right after
+// the words, before the buttons, and shows first (aim.css), so the words stay
+// the row's first part and Remove its last; and it holds its place before it
+// loads, so its loading moves nothing in the row or below it. A row under
+// 30rem wide (a phone) shows none (aim.css).
+import { paintThumb, dropThumb } from './image-pick.mjs';
+
 const busy = new WeakSet();
 
 // The page can move such a button while a press is held on it: a button
@@ -69,24 +78,26 @@ export function holdsItsPress(button) {
   });
 }
 
-export function paintImageRows(host, choices, enabled, press) {
+export function paintImageRows(host, choices, enabled, press, preview = null) {
   const ids = new Set(choices.map(choice => choice.id));
-  for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) row.remove();
+  for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) { if (preview) dropThumb(row); row.remove(); }
   for (const choice of choices) {
     let row = [...host.children].find(r => r.dataset.selection === choice.id);
     if (!row) {
       row = document.createElement('div'); row.className = 'image-choice'; row.dataset.selection = choice.id;
       row.append(document.createElement('span')); host.append(row);
+      if (preview) paintThumb(row, choice.id, () => preview(choice.id), image => row.firstElementChild.after(image));
     }
     if (row.dataset.view === choice.view) continue;
     row.dataset.view = choice.view;
     const words = row.firstElementChild; words.textContent = choice.text;
     const labels = new Set(choice.actions.map(action => action.label));
     const kept = new Map();
-    for (const button of [...row.children].slice(1)) {
+    // After its words, a row holds its thumbnail, then its buttons (data-action).
+    for (const button of [...row.children].slice(1).filter(part => part.dataset.action !== undefined)) {
       if (labels.has(button.dataset.action)) kept.set(button.dataset.action, button); else button.remove();
     }
-    let before = words;
+    let before = row.querySelector(':scope > img.image-thumb') ?? words;
     for (const action of choice.actions) {
       let button = kept.get(action.label);
       if (!button) {
