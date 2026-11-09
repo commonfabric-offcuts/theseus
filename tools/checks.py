@@ -180,8 +180,10 @@ def trial(cli, profile, outcome, of, without, reverts, out, repo=REPO, chrome=No
             if reverted.returncode != 0:
                 raise Refused("reverting %s conflicts in %s; try the suspects one at a time" % (sha, of))
         out.mkdir(parents=True, exist_ok=True)
+        # The replay runs as many times as a stopped measure's rule asks (item 166: the release check's own default is once).
+        repeats = max([check.get("repeats") or 1 for check in checks if set(release_check.SOURCE_STEPS.get(check["source"], ())) & set(release_check.REPLAYED)] or [1])
         argv = [PYTHON, "-I", "-B", str(code / "tools/release_check.py"), "--out", str(out / "check"), "--only", ",".join(steps),
-                "--base", "--cli", cli, "--profile", profile] + (["--chrome", chrome] if chrome else [])
+                "--base", "--cli", cli, "--profile", profile, "--repeats", str(repeats)] + (["--chrome", chrome] if chrome else [])
         with open(out / "release-check.log", "wb") as log:
             ran = subprocess.run(argv, cwd=str(code), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         try:

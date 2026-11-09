@@ -4,13 +4,15 @@ from __future__ import annotations
 """Run every check a release needs, for one commit, and write a summary the deploy reads.
 
 Usage: tools/release_check.py --out ABSOLUTE_DIR [--chrome PATH] [--playwright DIR] [--python PATH] [--node PATH] [--repeats N]
-         [--only STEP,...] [--cli LIVE/bin/aim-next --profile PROFILE [--base] [--report OUTCOME]]
+         [--only STEP,... | --live COMMIT] [--cli LIVE/bin/aim-next --profile PROFILE [--base] [--report OUTCOME]]
 
 The checkout this file lives in is the one checked. It must be clean, so the
 summary speaks for exactly its HEAD commit. Python units, node units, the
 deploy's refusals, every native browser mode and the wake replay run one at a
 time; any failure makes the run fail (exit 1) and a refusal before running
-anything exits 2. docs/tools.md has the details.
+anything exits 2. With --live, a change that none of the browser modes or the
+wake replay could see skips them, and the summary says so. docs/tools.md has
+the details.
 """
 
 import collections
@@ -70,6 +72,11 @@ SOURCE_STEPS = {"release-check:units": UNIT_STEPS, "release-check:native": tuple
 REPLAYED = (WAKE_REPLAY,)
 REPLAY_TOOL, REPLAY_STANDIN, REPLAY_FILE = "tools/wake_replay.py", "tools/wake_standin.py", "tests/fixtures/replay/wake-2026-11-05.json"
 TOOL = "theseus-release-check"
+# Item 166: the steps a change may skip, all together, when no path changed since the live commit is one they could see
+# (seen()): they run a server from the checkout's code and drive it with harnesses, so they read nothing in docs/ and only
+# some of tools/ and tests/. A Python or node unit module in tests/ is seen only where those files name it.
+SKIPPABLE = tuple("native-" + step.name for step in NATIVE_STEPS) + (WAKE_REPLAY,)
+UNIT_MODULE = re.compile(r"tests/(test_[^/]+\.py|[^/]+\.test\.mjs)")
 
 
 class Refused(Exception):
@@ -278,6 +285,67 @@ def replay_step(runs, started):
             "started_at": started, "finished_at": now()}
 
 
+def changed_paths(root, live, commit, git=git):
+    """Every path that differs between the live commit and commit, deleted and renamed ones included; Refused when git
+    cannot say, never taken as none."""
+    found = git(root, "diff", "--name-only", "--no-renames", "-z", live, commit, "--")
+    if found.returncode != 0:
+        raise Refused("what changed since the live commit %s cannot be read: %s" % (live, (found.stderr or "").strip()))
+    return [path for path in found.stdout.split("\0") if path]
+
+
+def seen(root, commit, paths, git=git):
+    """Of paths changed since the live commit, those the skippable steps could see at commit, in order: anything outside
+    docs/, tools/ and tests/ (web/, aim_next/, bin/ and every other); a file they run (a harness, the replay, its stand-in
+    and traffic, this file) and a tools module those import; and in tests/ any file but a unit module that no file they
+    could run names. [] means a change may skip them. Refused when git cannot say."""
+    runners = set(harnesses()) | {"tools/release_check.py"}
+    imports = git(root, "grep", "-h", "-E", r"^[[:space:]]*(from|import)[[:space:]]+tools", commit, "--",
+                  *sorted(path for path in runners if path.endswith(".py")))
+    if imports.returncode not in (0, 1):
+        raise Refused("the tools modules the checks import cannot be read at %s: %s" % (commit, (imports.stderr or "").strip()))
+    imported = set()
+    for line in imports.stdout.splitlines():
+        line = line.split("#")[0].strip()
+        dotted = re.match(r"(?:from|import)\s+tools\.(\w+)", line)
+        if dotted:
+            imported.add(dotted.group(1))
+        elif re.match(r"from\s+tools\s+import\s", line):
+            imported |= {name.split()[0] for name in line.split("import", 1)[1].replace("(", " ").replace(")", " ").split(",") if name.split()}
+    if imported:
+        imported.add("__init__")
+    units = {path: UNIT_MODULE.fullmatch(path).group(1).rsplit(".", 1)[0] for path in paths if UNIT_MODULE.fullmatch(path)}
+    named = set()
+    if units:
+        words = [part for stem in sorted(set(units.values())) for part in ("-e", stem)]
+        # The harnesses outside tests/; this file is left out, since what it names besides them it runs as unit steps.
+        found = git(root, "grep", "-I", "-o", "-w", "-F", *words, commit, "--", "tests", REPLAY_TOOL, REPLAY_STANDIN)
+        if found.returncode not in (0, 1):
+            raise Refused("the files the checks run cannot be searched at %s: %s" % (commit, (found.stderr or "").strip()))
+        for line in found.stdout.splitlines():
+            where, word = line.rsplit(":", 1)
+            if not UNIT_MODULE.fullmatch(where.split(":", 1)[-1]):
+                named.add(word)
+
+    def could_see(path):
+        if path.startswith("docs/"):
+            return False
+        if path in runners:
+            return True
+        if path.startswith("tools/"):
+            module = path.split("/")[1]
+            return (module[:-3] if module.endswith(".py") else module) in imported
+        if path in units:
+            return units[path] in named
+        return True
+    return [path for path in paths if could_see(path)]
+
+
+def skipped_words(live):
+    return ("Every path changed since the live commit %s is in docs/, tools/ or tests/, and none is code the browser modes or the "
+            "wake replay run, so they were not run: %d steps skipped, not passed." % (live, len(SKIPPABLE)))
+
+
 def blob(root, path):
     found = git(root, "rev-parse", "HEAD:" + path)
     return found.stdout.strip() if found.returncode == 0 else None
@@ -410,10 +478,12 @@ def base_code(root, commit, into):
         raise Refused("--base: the live commit %s could not be read from this repository: %s%s" % (commit, error, untar.stderr.decode("utf-8", "replace")))
 
 
-def check(root, out, chrome, python, node, playwright=None, repeats=2, only=None, base=None, report=None):
+def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None, base=None, report=None, live=None):
     """Run every step serially (or only those named) and write summary.json; returns the summary.
 
-    base: (cli, profile) to read the live release with and rerun the replayed steps on its code; report:
+    live: the live commit; when nothing changed since it is a path the skippable steps could see, they are skipped and
+    the summary's `skipped` says so (item 166). base: (cli, profile) to read the live release with and rerun the
+    replayed steps on its code; report:
     (cli, profile, outcome) to report the run on the outcome's open release piece; playwright is the playwright-core
     directory the WebKit modes load, without which they find none and fail."""
     started = now()
@@ -424,6 +494,20 @@ def check(root, out, chrome, python, node, playwright=None, repeats=2, only=None
         raise Refused("--only names steps the release check does not have: %s" % (unknown or "none"))
     if repeats < 1:
         raise Refused("--repeats is at least 1")
+    skipped, ran_all = None, None
+    if live is not None:
+        if only is not None:
+            raise Refused("--only names the steps to run and --live decides which to skip: give one")
+        if not re.fullmatch(r"[0-9a-f]{40}", live):
+            raise Refused("--live is the live release's full 40-character commit, not %r" % live)
+        changed = changed_paths(root, live, commit)
+        could = seen(root, commit, changed)
+        if could:
+            ran_all = {"live": live, "seen": could[:20], "why": "%d paths changed since %s are ones the browser modes or the wake replay "
+                       "could see, so every step ran" % (len(could), live[:12])}
+        else:
+            skipped = {"steps": list(SKIPPABLE), "live": live, "changed": changed, "why": skipped_words(live)}
+            names = [name for name in names if name not in SKIPPABLE]
     base_commit = live_commit(base[0], base[1]) if base else None
     out.mkdir(parents=True, exist_ok=True)
     tools = tools_of(root, chrome, python, node)
@@ -484,6 +568,10 @@ def check(root, out, chrome, python, node, playwright=None, repeats=2, only=None
                "passed": unchanged and [s["name"] for s in steps] == names and all(s["passed"] for s in steps)}
     if only is not None:
         summary["only"] = names
+    if skipped is not None:
+        summary["skipped"] = skipped
+    if ran_all is not None:
+        summary["ran_all"] = ran_all
     if base_dir is not None:
         # The live release's code measured with this commit's release check, harnesses and replay file (D32).
         summary["base"] = {"commit": base_commit, "tools": tools, "steps": base_steps}
@@ -491,10 +579,14 @@ def check(root, out, chrome, python, node, playwright=None, repeats=2, only=None
     return summary
 
 
-def judge_summary(path, commit):
+def judge_summary(path, commit, basis=None):
     """(foreign, unpassed): reasons a summary does not describe a run at exactly this commit (unreadable, not a
-    summary, another commit, a tree that changed while it ran), and reasons that run did not pass (a required step
-    failed or is missing). A summary that describes the commit can be measured even when it did not pass."""
+    summary, another commit, a tree that changed while it ran, steps it skipped that basis does not confirm it could
+    skip), and reasons that run did not pass (a required step failed or is missing). A summary that describes the
+    commit can be measured even when it did not pass.
+
+    basis: only for a summary that skipped steps, (the live commit, seen() of the paths changed since it at commit), read
+    by the caller itself, or Refused; without it a skip is never taken."""
     try:
         summary = json.loads(Path(path).read_text())
     except (OSError, ValueError) as error:
@@ -508,8 +600,29 @@ def judge_summary(path, commit):
         foreign.append("the release check ran on %s, not %s" % (summary.get("commit"), commit))
     if summary.get("tree_unchanged") is not True:
         foreign.append("the checkout changed while the release check ran")
+    skipped, covered = summary.get("skipped"), set()
+    if skipped is not None:
+        named = skipped.get("steps") if isinstance(skipped, dict) else None
+        if not isinstance(named, list) or set(named) != set(SKIPPABLE):
+            foreign.append("the release check skipped steps it never skips together: %s" % (named,))
+        else:
+            covered = set(named)
+            said = "the release check skipped the browser modes and the wake replay beside the live commit %s" % skipped.get("live")
+            try:
+                live, could = basis() if basis is not None else (None, None)
+            except Refused as refusal:
+                foreign.append("%s, and that cannot be taken: %s" % (said, refusal))
+            else:
+                if basis is None:
+                    foreign.append("%s; only the deploy, reading what changed since the live commit itself, takes that" % said)
+                elif live != skipped.get("live"):
+                    foreign.append("%s, but %s is live; run the release check again" % (said, live))
+                elif could:
+                    foreign.append("%s, but %s changed since then, which they could see" % (said, ", ".join(could[:5])))
     steps = {step.get("name"): step for step in summary.get("steps") or [] if isinstance(step, dict)}
     for name in sorted(set(REQUIRED) | set(summary.get("required") or [])):
+        if name in covered and name not in steps:
+            continue
         if name not in steps:
             reasons.append("the release check did not run %s" % name)
         elif steps[name].get("passed") is not True:
@@ -517,6 +630,23 @@ def judge_summary(path, commit):
     if summary.get("passed") is not True and not reasons and not foreign:
         reasons.append("the release check did not pass")
     return foreign, reasons
+
+
+def skipped_of(path):
+    """What a summary says it skipped and why, or None."""
+    try:
+        skipped = json.loads(Path(path).read_text()).get("skipped")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return skipped.get("why") if isinstance(skipped, dict) else None
+
+
+def replay_runs(summary):
+    """The fewest runs the wake replay made of any agent, on the candidate or its base rerun; None when it did not run."""
+    steps = list(summary.get("steps") or []) + list(((summary.get("base") or {}) if isinstance(summary.get("base"), dict) else {}).get("steps") or [])
+    counts = [len(values.get("runs") or []) for step in steps if isinstance(step, dict) and step.get("name") == WAKE_REPLAY
+              for values in (step.get("series") or {}).values() if isinstance(values, dict)]
+    return min(counts) if counts else None
 
 
 def verify_summary(path, commit):
@@ -533,8 +663,9 @@ def main(argv=None):
     parser.add_argument("--playwright")
     parser.add_argument("--python", default=PYTHON)
     parser.add_argument("--node", default=shutil.which("node"))
-    parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--only")
+    parser.add_argument("--live", metavar="COMMIT")
     parser.add_argument("--cli")
     parser.add_argument("--profile")
     parser.add_argument("--base", action="store_true")
@@ -547,7 +678,7 @@ def main(argv=None):
         summary = check(REPO, args.out, chrome, args.python, args.node, playwright_path(args.playwright), repeats=args.repeats,
                         only=[name for name in args.only.split(",") if name] if args.only is not None else None,
                         base=(args.cli, args.profile) if args.base else None,
-                        report=(args.cli, args.profile, args.report) if args.report else None)
+                        report=(args.cli, args.profile, args.report) if args.report else None, live=args.live)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         # Recorded only where the run itself could have written, so a refusal never changes the checkout.
@@ -556,7 +687,7 @@ def main(argv=None):
         return 2
     failed = [step["name"] for step in summary["steps"] if not step["passed"]]
     print(json.dumps({"commit": summary["commit"], "passed": summary["passed"], "failed": failed,
-                      "summary": str(args.out / "summary.json")}))
+                      "skipped": (summary.get("skipped") or {}).get("why"), "summary": str(args.out / "summary.json")}))
     return 0 if summary["passed"] else 1
 
 

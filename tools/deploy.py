@@ -346,6 +346,18 @@ def shipped_between(config, older, newer):
         raise Refused(str(error))
 
 
+def skip_basis(config, sha):
+    """For a summary that skipped the browser modes and the wake replay (item 166): the live commit, and the paths
+    changed since it that they could see at SHA, read here from the live checkout and never taken from the summary."""
+    if config.outcome:
+        raise release_check.Refused("measuring %s reads every step, so run the release check without --live" % config.outcome)
+    head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"])
+    if head.returncode != 0:
+        raise release_check.Refused("the live commit cannot be read: %s" % head.stderr.strip())
+    live, git = head.stdout.strip(), (lambda root, *args: run(["git", "-C", str(root)] + list(args)))
+    return live, release_check.seen(config.live, sha, release_check.changed_paths(config.live, live, sha, git), git)
+
+
 def release_plan(config, head, sha, summary, number, no_items, live_since=None):
     """The records this deploy writes once the release is verified: (this release's, those before it, its commits, latest).
 
@@ -526,10 +538,11 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
     evidence.mkdir(parents=True, exist_ok=True)
     # 0. A summary of exactly this commit, or nothing is touched; one whose steps failed is still measured (7.2 step 1).
-    foreign, unpassed = release_check.judge_summary(summary, sha)
+    # One that skipped steps is taken only when what changed since the live commit, read here, lets them be skipped.
+    foreign, unpassed = release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha))
     reasons = foreign + unpassed
     record(evidence, "00-release-check", {"summary": str(summary), "commit": sha, "passed": not reasons,
-                                          "reasons": reasons})
+                                          "reasons": reasons, "skipped": release_check.skipped_of(summary)})
     unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
     require(not foreign, unchecked)
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
@@ -586,6 +599,12 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
             if replayed and beside != head:
                 raise Refused("the replay was measured beside %s, but release %d (%s) is live; run the release check again; nothing was stopped" % (
                     beside[:12] if beside else "nothing (the summary has no base)", view["candidate_release"] - 1, head[:12]))
+            # A replayed measure that asks for more runs than the replay made would be told as worse; say so before anything is told.
+            asked = max([check.get("repeats") or 1 for check in view["checks"] if check["check_id"] in replayed] or [1])
+            made = release_check.replay_runs(written)
+            if made is not None and made < asked:
+                raise Refused("the wake replay ran %d time%s and %s asks for %d; run the release check with --repeats %d; nothing was stopped" % (
+                    made, "" if made == 1 else "s", ", ".join(replayed), asked, asked))
             found = outcome_checks.worse(measured, view)
             record(evidence, "02-checks", {"outcome": config.outcome, "live": view["live"], "candidate_release": view["candidate_release"],
                                            "checks": len(view["checks"]), "allowances": view["allowances"], "fix_topics": view["fix_topics"],
