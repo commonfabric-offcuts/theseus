@@ -44,8 +44,8 @@ export class PipelinePage {
     this.open = new Set(); this.closed = new Set(); this.menu = null; this.confirming = null; this.asiding = null; this.errors = new Map();
     this.answer = null; this.serial = 0; this.editing = false; this.chain = Promise.resolve();
     // The one-line add's text per section, the words being written per item, the
-    // item whose words and size are open, and what was just added.
-    this.addDrafts = {}; this.wordDrafts = new Map(); this.details = null; this.added = null; this.savedWords = null;
+    // item whose words and size are open, what was just added, and the why being typed per piece being set aside.
+    this.addDrafts = {}; this.wordDrafts = new Map(); this.details = null; this.added = null; this.savedWords = null; this.asideDrafts = new Map();
     // Change stages in place: what is being typed per stage line ("<stage>:<field>"),
     // the new stage's line, the quiet note per stage, and the stage just removed (for Undo).
     this.stageDrafts = new Map(); this.newStage = ''; this.stageNote = null; this.removed = null;
@@ -339,9 +339,12 @@ export class PipelinePage {
   // Set aside to Later… asks why in one line (the form rule): Return sets the whole piece aside, Escape keeps it as it is.
   asideLine(item, piece) {
     const key = `item:${item.number}`, one = piece.items.length === 1, later = this.answer?.pipeline?.section_words?.later ?? 'Later';
+    // The why being typed is kept per piece, as the add lines keep theirs, so a live repaint leaves its words alone;
+    // a piece set aside is closed for good, so its words are never offered for another.
     const close = () => { this.asiding = null; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="steer"]`)?.focus(); };
     return titleLine({ key: `aside:${item.number}`, role: 'aside-note', label: `Why set ${listWords(piece.items)} aside to ${later}`, placeholder: 'Why set it aside?',
       hint: `Return sets ${listWords(piece.items)} aside to ${later}, with ${one ? 'its' : 'their'} stages so far · Escape keeps ${one ? 'it' : 'them'}`,
+      value: this.asideDrafts.get(piece.id) ?? '', input: value => { this.asideDrafts.set(piece.id, value); },
       submit: note => { this.asiding = null; this.act(key, () => this.move(item, { section: 'later', note })); }, cancel: close });
   }
 

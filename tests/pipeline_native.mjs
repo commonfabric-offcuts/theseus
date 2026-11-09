@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 // set in place; the ⋯ menu steers by pointer and keyboard, ⌘↑ moves a focused
 // row and Undo puts it back; an item being built has its own ⋯, and its Drop…
 // asks first, where Keep it changes nothing; Set aside to Later… asks why in one
-// line and moves its whole piece to Later; a stage entered elsewhere shows
+// line, keeps its words through a live change, and moves its whole piece to Later; a stage entered elsewhere shows
 // with no reload and leaves what is being typed alone; the owner's word moves
 // a gated stage on; a message in the Reader becomes a Candidate in one line,
 // and a whisper is never offered as one;
@@ -182,7 +182,7 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('pipeline an item being built is set aside to Later in one line: Escape keeps it, and Return with why closes its piece and moves every item of it, its stages kept', async () => {
+  await check('pipeline an item being built is set aside to Later in one line: Escape keeps it, and Return with why closes its piece and moves every item of it, its stages kept; the why being typed keeps its words through a live change', async () => {
     const add = async title => (await pipeline('pipeline.item_add', { workspace_id: 'w1' }, { title, section: 'now', size: 'small', sources: [{ note: 'the check' }] })).result.number;
     const first = await add('Set me aside'), second = await add('And me');
     const { result: { piece_id: piece } } = await pipeline('pipeline.piece_start', { workspace_id: 'w1' }, { numbers: [first, second], topic_id: 't1', stage_id: 'build' });
@@ -202,7 +202,16 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     await tap(p, `${item} [data-role=steer]`);
     await pick(p, first, 'Set aside to Later…');
     await until(async () => (await focused(p)).role === 'aside-note', 'the line asks again');
-    await p.send('Input.insertText', { text: 'The tests miss the real case' });
+    // Half a reason typed while an agent, elsewhere, adds an item to Next: the page shows it live and the reason keeps its words.
+    await p.send('Input.insertText', { text: 'The tests miss' });
+    const before = await loaded(p), next = (await drawn(p, 'Next')).length;
+    await pipeline('pipeline.item_add', { workspace_id: 'w1' }, { title: 'Added elsewhere', section: 'next', sources: [{ note: 'the check' }] }, { sender: 'agent' });
+    await until(async () => (await drawn(p, 'Next')).length === next + 1, 'the item added elsewhere shows in Next, live');
+    assert.equal(await loaded(p), before, 'with no reload');
+    const typing = await focused(p);
+    assert.deepEqual([typing.role, typing.key, typing.value], ['aside-note', `aside:${first}`, 'The tests miss'], 'the reason being typed keeps its focus and its words');
+    assert.equal(await p.evaluate(`document.activeElement.selectionStart`), 'The tests miss'.length, 'and its caret');
+    await p.send('Input.insertText', { text: ' the real case' });
     await p.key('Enter');
     await until(async () => (await drawn(p, 'Later')).join() === later, 'every item of the piece moves last in Later, the one set aside first');
     assert.equal((await kept('later')).join(), later);
