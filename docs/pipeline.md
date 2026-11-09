@@ -62,7 +62,8 @@ where it gathers; only the owner and the coordinator change who raised it. The
 owner and the coordinator steer together: they move, drop and restore items,
 change the stages, and turn the pipeline on or off. Its title, units, sizing,
 releases and section words (the rest of `configure`) are the owner's alone. An item the
-owner placed is moved only by the owner (`OWNER_PLACED`). An item being built
+owner placed is moved only by the owner (`OWNER_PLACED`), or by the coordinator on the
+owner's go-ahead (below). An item being built
 stays in Now until it is dropped, its piece is done, or its piece is set aside,
 and dropping it needs a confirmation (`ITEM_UNDERWAY`), whether by a move or by an
 Undo: on the page, each item on a piece card has its own ⋯ with Open its record,
@@ -106,7 +107,13 @@ coordinator (`FORBIDDEN` otherwise); never the release being put together
 (`ITEM_IN_PIECE`: "1 is in release 23, being put together, so it stays in Now
 until it ships, goes back to building or is dropped"); and the coordinator
 neither while the piece waits on the owner's word (`STAGE_GATED`) nor when the
-owner placed any of its items (`OWNER_PLACED`). Without a note it is refused
+owner placed any of its items (`OWNER_PLACED`), unless the move is made on the
+owner's go-ahead naming each item the owner placed
+([the owner's go-ahead](#the-owners-go-ahead)). A go-ahead is not the owner's
+word on a gated stage, so it never lifts `STAGE_GATED`. The page offers Set
+aside to Later… only where no go-ahead is needed; with one, the coordinator
+sets the piece aside with `move --to later --note "why" --because MSG`.
+Without a note it is refused
 (`NOTE_REQUIRED`: "4 is being built now, so moving it to Later sets its piece
 aside, with 3: say why in a short note"), and a note on any other move is
 refused (`INVALID_ARGUMENT`). On the page, Set aside to Later… opens one line
@@ -271,6 +278,48 @@ release check's `--report`, and which piece a candidate's readings name.
 - A candidate run's release is the one after the release live when it ran, so a
   candidate that never shipped keeps its number.
 
+### The owner's go-ahead
+
+A move names the message it is made on as `because_message_id` (the CLI's
+`--because`): one the mover can read, and never a whisper
+(`WHISPER_STAYS_PRIVATE`, since a whisper stays private). For an item the owner
+placed last, a move by the coordinator goes through only when that message is
+the owner's go-ahead for this move:
+
+- it is the owner's own message,
+- in a topic of this outcome the mover can read,
+- written after the owner's last placement of the item,
+- and it names the item (its number standing alone in the words, "#92" or
+  "92" but not the 92 in 192, 9.2 or 2:30, or the item as the message's
+  subject), or it replies to a message that proposed this move: one naming the
+  item and the section it goes to (its name or the pipeline's word for it;
+  "drop" for Dropped).
+
+The move's event records the message and `go_ahead` (the owner it was
+theirs), and the item's record says "Moved to Later by fable on tony's word",
+the word linking to the message for a reader who can open it (another reader
+sees whose word it was and no link, nor the message's id). A word that is not a
+go-ahead refuses the move and says why, and nothing moves:
+
+| What is wrong | Code | Words |
+| --- | --- | --- |
+| none named | `OWNER_PLACED` | "tony placed this item at …. Say so once in this outcome's conversation; Theseus does not move it back. Once tony says go ahead, move it with that message as because." |
+| a message the mover cannot read, or none | `FORBIDDEN` | "You can't read a message m-…, so it is not a word to move on. Nothing moved." |
+| a whisper | `WHISPER_STAYS_PRIVATE` | "m-… is a whisper, and a whisper stays private: it is never the word a move is made on. Nothing moved." |
+| in another outcome | `OWNER_PLACED` | "tony placed this item at …, so it moves only on tony's word, and m-… is not that: it is in another outcome. Nothing moved." |
+| not the owner's | `OWNER_PLACED` | "…: it is fable's message. Nothing moved." |
+| older than the placement | `OWNER_PLACED` | "…: it was written before that placement. Nothing moved." |
+| not about this move | `OWNER_PLACED` | "…: it does not name 92, nor reply to a message that proposes moving 92 to Later. Nothing moved." |
+
+The owner's own moves need no go-ahead; a move of an item the owner did not
+place records its message with no `go_ahead`. Setting a piece aside moves each
+of its items, so the go-ahead must name every one of them the owner placed
+(or reply to a message proposing that move); when it does not, the refusal
+names the item ("tony placed 4 at …, so it moves only on tony's word, and m-…
+is not that: it does not name 4, …"). Each item's event then records
+`go_ahead`, and its row and record say "Set aside to Later with 4 by fable on
+tony's word, …".
+
 ## Turning it on and changing its stages
 
 Turn on is one tap, for the owner or the coordinator: the pipeline starts as
@@ -311,9 +360,10 @@ message source is an item of the outcome's conversation, `item_add` and
 `source_add` write its pipeline take in the same act (docs/conversation.md),
 and `part: true` keeps that item new. `item_move` takes `section`,
 `above` or `below` (a number in the same section), `undo_of` (an event),
-`underway_confirmed`, and `note`, which sets a piece aside
+`underway_confirmed`, `note`, which sets a piece aside
 ([setting a piece aside](#setting-a-piece-aside)); its answer then has
-`set_aside: {piece_id, numbers, events}`.
+`set_aside: {piece_id, numbers, events}`), and `because_message_id` (the
+message the move is made on; [the owner's go-ahead](#the-owners-go-ahead)).
 
 `combine` takes the pieces waiting in the last stage a piece goes through (the
 approved ones; `PIECE_NOT_APPROVED` otherwise) into a new release piece in the

@@ -127,11 +127,12 @@ def quote_allowed(db, actor, source, private_to):
     raise Refusal(STAYS, QUOTE_PRIVATE)
 
 
-def private_source_refused(db, message_id):
-    """Refuse a whisper as a topic's source or as Notebook evidence; the caller has already checked it is readable."""
+def private_source_refused(db, message_id, words=QUOTE_PRIVATE):
+    """Refuse a whisper as a topic's source, as Notebook evidence or as the word a move is made on; the caller has
+    already checked it is readable."""
     row = db.execute("SELECT private_to FROM messages WHERE id=?", (message_id,)).fetchone()
     if row is not None and row["private_to"] is not None:
-        raise Refusal(STAYS, QUOTE_PRIVATE)
+        raise Refusal(STAYS, words)
 
 
 def redact_quotes(db, actor, quotes):

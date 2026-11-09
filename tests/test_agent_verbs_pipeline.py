@@ -46,6 +46,47 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertIn("     Words.\n", record)
         self.assertRegex(record, r"event \d+: added by agent-a ")
 
+    def test_the_coordinator_moves_an_item_the_owner_placed_only_on_the_owners_word(self):
+        # Item 170. The clock is held and moved on by hand, so which message is newer than a placement is exact.
+        clock = [1_800_000_000_000]
+        for name in ("pipeline", "conversation"):
+            patch = mock.patch("aim_next.%s._now_ms" % name, side_effect=lambda: clock[0])
+            patch.start()
+            self.addCleanup(patch.stop)
+
+        def ok(*argv, actor="agent-a"):
+            clock[0] += 1000
+            return self.ok(*argv, actor=actor)
+
+        def refused(*argv):
+            clock[0] += 1000
+            code, out, err = self.run_cli(*argv)
+            self.assertEqual((code, out), (2, ""), err)
+            return err
+
+        latest = lambda: self.sql("SELECT id FROM messages ORDER BY seq DESC LIMIT 1")[0][0]
+        ok("pipeline-on", "w1")
+        for title in ("First", "Second"):
+            ok("add", "w1", "--title", title, "--section", "next", "--note", "n", "-")
+        ok("move", "w1", "2", "--above", "1", actor="owner")
+        err = refused("move", "w1", "2", "--to", "later")
+        self.assertIn("OWNER_PLACED", err)
+        self.assertIn("Once owner says go ahead, move it with that message as because.", err)
+        ok("post", "t1", "--asks", "owner", "Shall I move 2 to Later?")
+        ask = latest()
+        # Its own proposal is not the owner's word.
+        err = refused("move", "w1", "2", "--to", "later", "--because", ask)
+        self.assertIn("OWNER_PLACED", err)
+        self.assertIn("and %s is not that: it is agent-a's message. Nothing moved." % ask, err)
+        ok("post", "t1", "--reply-to", ask, "Yes", actor="owner")
+        yes = latest()
+        # A yes to Later is not a yes to Dropped.
+        err = refused("move", "w1", "2", "--to", "dropped", "--because", yes)
+        self.assertIn("it does not name 2, nor reply to a message that proposes moving 2 to Dropped. Nothing moved.", err)
+        self.assertEqual([line.split()[0] for line in self.ok("pipeline", "w1", "--section", "next").splitlines()[1::3]], ["2", "1"])
+        self.assertRegex(ok("move", "w1", "2", "--to", "later", "--because", yes), r"^moved 2 to later \(event \d+\)\n$")
+        self.assertRegex(self.ok("item", "w1", "2"), r"event \d+: moved by agent-a .* on owner's word \(%s\)\n" % yes)
+
     def test_the_coordinator_turns_it_off_and_only_the_owner_renames_it(self):
         self.ok("pipeline-on", "w1")
         code, out, err = self.run_cli("pipeline-on", "w1", "--title", "Release pipeline")
@@ -107,6 +148,36 @@ class PipelineVerbCase(AgentVerbCase):
         record = self.ok("item", "w1", "2")
         self.assertRegex(record, r"\n     Build: \d{4}-\d\d-\d\d \d\d:\d\d to \d{4}-\d\d-\d\d \d\d:\d\d · set aside: Rethink the tests\n")
         self.assertRegex(record, r"event \d+: set aside to later by agent-a .*: Rethink the tests\n")
+
+    def test_the_coordinator_sets_aside_a_piece_holding_an_item_the_owner_placed_on_the_owners_word(self):
+        # Items 170 and 183 together. The clock is held, so the word is exactly newer than the owner's placement.
+        clock = [1_800_000_000_000]
+        for name in ("pipeline", "conversation"):
+            patch = mock.patch("aim_next.%s._now_ms" % name, side_effect=lambda: clock[0])
+            patch.start()
+            self.addCleanup(patch.stop)
+
+        def ok(*argv, actor="agent-a"):
+            clock[0] += 1000
+            return self.ok(*argv, actor=actor)
+
+        ok("pipeline-on", "w1")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}]))
+        ok("stages", "w1", "--set", str(stages))
+        ok("add", "w1", "--title", "Mine", "--section", "now", "--size", "small", "--note", "n", "-")
+        ok("add", "w1", "--title", "The owner's", "--section", "now", "--size", "small", "--note", "n", "-", actor="owner")
+        ok("piece", "w1", "1,2", "--topic", "t1", "--stage", "build")
+        code, out, err = self.run_cli("move", "w1", "1", "--to", "later", "--note", "Rethink the tests")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("OWNER_PLACED: owner placed 2, which is built with 1,", err)
+        ok("post", "t1", "Go ahead, set 2 aside", actor="owner")
+        word = self.sql("SELECT id FROM messages ORDER BY seq DESC LIMIT 1")[0][0]
+        out = ok("move", "w1", "1", "--to", "later", "--note", "Rethink the tests", "--because", word)
+        self.assertRegex(out, r"^moved 1 to later \(event \d+\), setting aside piece \S+ with 1 and 2\n$")
+        for number in ("1", "2"):
+            self.assertRegex(self.ok("item", "w1", number),
+                             r"event \d+: set aside to later by agent-a \S+ \S+ on owner's word \(%s\): Rethink the tests\n" % word)
 
     def test_stages_set_whose_read_back_fails_says_the_stages_were_recorded(self):
         """`stages --set` reads the pipeline again after the write: a busy database

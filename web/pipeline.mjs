@@ -8,12 +8,13 @@ import { agentColor } from './author-colors.mjs';
 import { clock, datedTime, shownTime } from './times.mjs';
 import { workNote } from './topic-state.mjs';
 import {
-  EMPTY_WORDS, SIZE_WORDS, checkPipeline, duration, eventWords, factBoxes, gatheringWords, glyphWords, historyLine, listWords,
+  EMPTY_WORDS, SIZE_WORDS, checkPipeline, duration, eventRuns, factBoxes, gatheringWords, glyphWords, historyLine, listWords,
   pieceTopicWords, placedWords, raisedWords, sentenceName, sourceRuns, stageLine, typicalCell, typicalWords, waitingWords, waitsWords,
 } from './pipeline-words.mjs';
 
 export const pipelineHref = (workspace, item) => '?' + new URLSearchParams(item === undefined ? { pipeline: workspace } : { pipeline: workspace, item: String(item) });
 const topicHref = id => '?' + new URLSearchParams({ topic: id });
+const messageHref = (topic, message) => '?' + new URLSearchParams({ topic, message });
 
 function el(tag, attrs, ...kids) {
   const node = document.createElement(tag);
@@ -793,7 +794,10 @@ export class PipelinePage {
     }
     const progress = item.events.find(event => event.payload?.progress?.length);
     if (progress) page.push(el('p', { class: 'pl-note', text: `Progress noted by hand before the pipeline was part of Theseus: ${progress.payload.progress.join(' ')}` }));
-    page.push(section('What happened to it', null, el('ol', { class: 'pl-events' }, ...item.events.map(event => el('li', { text: eventWords(event, this.reader, pipeline.section_words, now, item.number) })))));
+    // A move made on the owner's word links that word to the message it was said in.
+    page.push(section('What happened to it', null, el('ol', { class: 'pl-events' }, ...item.events.map(event => el('li', {},
+      ...eventRuns(event, this.reader, pipeline.section_words, now, item.number).map(run => run.message
+        ? el('a', { href: messageHref(run.message.topic_id, run.message.message_id), text: run.text }) : run.text))))));
     this.host.replaceChildren(...page);
   }
 }

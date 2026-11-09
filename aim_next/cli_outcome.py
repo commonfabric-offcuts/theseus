@@ -179,9 +179,15 @@ class PipelineVerbs:
                     left = entry["left_note"][:1].lower() + entry["left_note"][1:]
                 self.out.plain("     %s: %s to %s%s" % (entry["name"], _at(entry["entered_ms"]), _at(entry["left_ms"]), " · " + left if left else ""))
         for event in item.get("events") or []:
-            aside = event["payload"].get("set_aside") if event["kind"] == "moved" else None
-            what = "set aside to %s" % event["payload"]["after"]["section"] if aside else event["kind"]
-            self.out.plain("     event %d: %s by %s %s%s" % (event["seq"], what, event["by"], _at(event["ms"]), ": " + aside["note"] if aside else ""))
+            # A set-aside says so with its note (183); a move made on the owner's word says so, with the message when the
+            # reader can open it (170).
+            payload, because = event.get("payload") or {}, event.get("because") or {}
+            aside = payload.get("set_aside") if event["kind"] == "moved" else None
+            what = "set aside to %s" % payload["after"]["section"] if aside else event["kind"]
+            word = (" on %s's word%s" % (payload["go_ahead"], " (%s)" % because["message_id"] if because.get("readable") else "")
+                    if payload.get("go_ahead") else "")
+            self.out.plain("     event %d: %s by %s %s%s%s" % (event["seq"], what, event["by"], _at(event["ms"]), word,
+                                                          ": " + aside["note"] if aside else ""))
 
     def do_pipeline_on(self):
         options = self.options

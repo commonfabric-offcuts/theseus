@@ -418,6 +418,11 @@ are absolute local times.
   An item being built moved `--to next|later|candidates` with `--note "why"`
   sets its whole piece aside ([pipeline.md](pipeline.md#setting-a-piece-aside)):
   `moved 1 to later (event 12), setting aside piece p-… with 1 and 2`.
+  `--because` names the message the move is made on. The coordinator moves an
+  item the owner placed only with `--because` naming the owner's go-ahead
+  (docs/pipeline.md, "Who changes what"), and sets aside a piece holding one
+  only with a go-ahead naming each such item; `item` then shows the move as
+  `on OWNER's word (MSG)`.
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
   `stage-note PIECE TEXT`, `combine OUTCOME --pieces P,... --topic T [--release N] [--commit SHA] [--ask MSG]`

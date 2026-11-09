@@ -731,10 +731,13 @@ class Pipeline:
         number = item["number"]
         placed = self._placement(db, workspace["id"], number)
         owner = workspace["owner_id"]
-        # D3: what the owner placed stays where the owner put it.
-        if actor != owner and placed is not None and placed["by"] == owner:
+        # D3: what the owner placed stays where the owner put it, unless the move is made on the owner's word (item 170).
+        owner_placed = actor != owner and placed is not None and placed["by"] == owner
+        because = args.get("because_message_id")
+        if owner_placed and because is None:
             raise Refusal("OWNER_PLACED", "%s placed this item at %s. Say so once in this outcome's conversation; "
-                          "Theseus does not move it back." % (owner, _clock(placed["ms"])))
+                          "Theseus does not move it back. Once %s says go ahead, move it with that message as because."
+                          % (owner, _clock(placed["ms"]), owner))
         if self._shipped(db, pipeline, item, self._shipped_numbers(db)):
             raise Refusal("ITEM_SHIPPED", "A shipped item stays where it shipped")
         undo_of, undone = args.get("undo_of"), None
@@ -759,7 +762,7 @@ class Pipeline:
             above, below = args.get("above"), args.get("below")
         piece = self._open_piece_of(db, workspace["id"], number)
         entry = self._open_entry(db, piece["id"]) if piece is not None else None
-        note, aside = args.get("note"), None
+        note, aside, message = args.get("note"), None, None
         # An item being built stays in Now (D26) while its piece is under way. It leaves by being dropped, which stops work
         # under way and so is confirmed (D3), or, moved to another section with a note, its whole piece is set aside (183).
         if section != item["section"] and entry is not None:
@@ -770,7 +773,11 @@ class Pipeline:
                 raise Refusal("ITEM_IN_PIECE", "%d is being built now, and an Undo never sets its piece aside: move it with a note to set "
                               "the piece aside" % number)
             else:
-                refused = self._set_aside_refusal(db, actor, workspace, piece, entry, number)
+                # The word the set-aside is made on is read first: the owner's go-ahead lets the coordinator move what the
+                # owner placed (170) here too, for each item of the piece the owner placed.
+                message = self._because(db, actor, because) if because is not None else None
+                refused = self._set_aside_refusal(db, actor, workspace, piece, entry, number, pipeline=pipeline, section=section,
+                                                  message=message)
                 if refused is not None:
                     raise refused
                 aside = [number] + [other for other in self._members(db, piece["id"]) if other != number]
@@ -781,11 +788,19 @@ class Pipeline:
                 note = _text(note, "The note", limit=2048)
         if note is not None and aside is None:
             raise Refusal("INVALID_ARGUMENT", "A note goes only with moving an item being built out of Now, which sets its piece aside")
-        because = args.get("because_message_id")
+        go_ahead = None
         if because is not None:
-            because = self._message_access(db, actor, because)["id"]
+            message = message if message is not None else self._because(db, actor, because)
+            because = message["id"]
+            if aside is not None:
+                # _set_aside_refusal took the go-ahead for every item of the piece the owner placed.
+                if actor != owner and any(self._placed_by(db, workspace["id"], moving) == owner for moving in aside):
+                    go_ahead = owner
+            elif owner_placed:
+                self._go_ahead(db, pipeline, workspace, number, section, placed, message)
+                go_ahead = owner
         ms = _now_ms()
-        payload = {"undo_of": undo_of, "because_message_id": because}
+        payload = dict({"undo_of": undo_of, "because_message_id": because}, **({"go_ahead": go_ahead} if go_ahead else {}))
         if aside is not None:
             # Every item of the piece goes, the one moved first and the rest below it, each with its own event (and Undo).
             names = []
@@ -828,11 +843,16 @@ class Pipeline:
         return db.execute("SELECT seq,by,ms FROM pipeline_events WHERE workspace_id=? AND number=? AND kind IN ('added','moved') "
                           "ORDER BY seq DESC LIMIT 1", (workspace_id, number)).fetchone()
 
-    def _set_aside_refusal(self, db, actor, workspace, piece, entry, number=None):
+    def _placed_by(self, db, workspace_id, number):
+        placed = self._placement(db, workspace_id, number)
+        return placed["by"] if placed is not None else None
+
+    def _set_aside_refusal(self, db, actor, workspace, piece, entry, number=None, pipeline=None, section=None, message=None):
         """Why the actor may not set this piece under way aside (183), as a Refusal, or None. The move and the piece's view
         (`you_set_aside`) both ask here, so the page offers only what the move accepts. Those who steer set work aside, and
         never the release; the coordinator neither leaves a stage that waits on the owner's word (D24) nor moves an item the
-        owner placed (D3), and a set-aside moves every item of the piece."""
+        owner placed (D3), unless the move is made on the owner's go-ahead naming that item (170, `message`); a set-aside
+        moves every item of the piece. A go-ahead is not the owner's word on a gated stage, so STAGE_GATED stands."""
         owner = workspace["owner_id"]
         if not self._steers(workspace, actor):
             return Refusal("FORBIDDEN", "Only this outcome's owner or coordinator may do this")
@@ -847,11 +867,70 @@ class Pipeline:
         for member in members:
             placed = self._placement(db, workspace["id"], member)
             if placed is not None and placed["by"] == owner:
+                if message is not None:
+                    try:
+                        self._go_ahead(db, pipeline, workspace, member, section, placed, message,
+                                       what="this item" if member == number else str(member))
+                    except Refusal as refusal:
+                        return refusal
+                    continue
                 others = [other for other in members if other != member]
                 return Refusal("OWNER_PLACED", "%s placed %d%s at %s. Setting the piece aside moves it too: say so once in this "
-                               "outcome's conversation." % (owner, member, ", which is built with " + _and(others) + "," if others else "",
-                                                             _clock(placed["ms"])))
+                               "outcome's conversation. Once %s says go ahead, move it with that message as because."
+                               % (owner, member, ", which is built with " + _and(others) + "," if others else "", _clock(placed["ms"]), owner))
         return None
+
+    def _because(self, db, actor, message_id):
+        """The message a move is made on: one the mover can read, and never a whisper, since a whisper stays private."""
+        message_id = _identifier(message_id, "because_message_id")
+        try:
+            row = self._message_access(db, actor, message_id)
+        except Refusal:
+            # The same words for a message that does not exist, so no refusal tells anyone a whisper exists.
+            raise Refusal("FORBIDDEN", "You can't read a message %s, so it is not a word to move on. Nothing moved." % message_id)
+        private_source_refused(db, row["id"], "%s is a whisper, and a whisper stays private: it is never the word a move is made on. "
+                                              "Nothing moved." % row["id"])
+        return row
+
+    def _go_ahead(self, db, pipeline, workspace, number, section, placed, message, what="this item"):
+        """Refuses a word that is not the owner's go-ahead for this move (item 170): it is the owner's own message, in a
+        topic of this outcome, newer than the owner's last placement of the item, and it names the item or replies to a
+        message that proposes moving the item to this section."""
+        owner = workspace["owner_id"]
+        row = db.execute("SELECT m.author_id,m.sent_ms,m.body,m.reply_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id "
+                         "WHERE m.id=?", (message["id"],)).fetchone()
+        words = dict(SECTION_WORDS, **_loads(pipeline["section_words"], {}), dropped="Dropped")
+        if row["workspace_id"] != workspace["id"]:
+            why = "it is in another outcome"
+        elif row["author_id"] != owner:
+            why = "it is %s's message" % row["author_id"]
+        elif row["sent_ms"] is None or row["sent_ms"] <= placed["ms"]:
+            why = "it was written before that placement"
+        elif not (self._names_item(db, workspace["id"], message["id"], row["body"], number)
+                  or self._proposes(db, workspace["id"], row["reply_to"], number, section, words[section])):
+            why = "it does not name %d, nor reply to a message that proposes moving %d to %s" % (number, number, words[section])
+        else:
+            return
+        raise Refusal("OWNER_PLACED", "%s placed %s at %s, so it moves only on %s's word, and %s is not that: %s. Nothing moved."
+                      % (owner, what, _clock(placed["ms"]), owner, message["id"], why))
+
+    def _names_item(self, db, workspace_id, message_id, body, number):
+        """Whether a message names an item: as its subject, or by its number standing alone in its words ("#92", "92",
+        never the 92 in 192, 9.2 or 2:30)."""
+        if db.execute("SELECT 1 FROM message_subjects WHERE message_id=? AND workspace_id=? AND kind='item' AND ref=?",
+                      (message_id, workspace_id, str(number))).fetchone():
+            return True
+        return re.search(r"(?<![\w.:/#])#?%d(?![\w:/]|[.,]\d)" % number, body) is not None
+
+    def _proposes(self, db, workspace_id, message_id, number, section, word):
+        """Whether the message a go-ahead replies to proposed this move: it names the item and the section it goes to."""
+        if message_id is None:
+            return False
+        row = db.execute("SELECT id,body FROM messages WHERE id=? AND private_to IS NULL", (message_id,)).fetchone()
+        if row is None or not self._names_item(db, workspace_id, row["id"], row["body"], number):
+            return False
+        names = {section, word.lower()} | {"dropped": {"drop"}, "candidates": {"candidate"}}.get(section, set())
+        return re.search(r"(?<!\w)(?:%s)(?!\w)" % "|".join(map(re.escape, sorted(names))), row["body"], re.IGNORECASE) is not None
 
     def _in_place(self, db, workspace_id, number, section, group):
         row = db.execute("SELECT section,candidate_group FROM pipeline_items WHERE workspace_id=? AND number=?", (workspace_id, number)).fetchone()
@@ -1221,19 +1300,36 @@ class Pipeline:
         if row is None:
             return None
         payload = json.loads(row["payload"])
-        because = None
-        if payload.get("because_message_id"):
-            try:
-                message = self._message_access(db, actor, payload["because_message_id"])
-                title = db.execute("SELECT title FROM topics WHERE id=?", (message["topic_id"],)).fetchone()[0]
-                because = {"message_id": message["id"], "topic_title": title, "author": message["author_id"]}
-            except Refusal:
-                because = None
+        because = self._because_view(db, actor, payload.get("because_message_id"))
         return {"kind": row["kind"], "by": row["by"], "ms": row["ms"], "relative": payload.get("relative"), "event": row["seq"],
                 "section": (payload.get("after") or {}).get("section", payload.get("section")),
                 "from_section": (payload.get("before") or {}).get("section"), "undo_of": payload.get("undo_of"),
-                "progress": payload.get("progress"), "because": because, "set_aside": payload.get("set_aside"),
+                "progress": payload.get("progress"), "because": because if because and because["readable"] else None,
+                "go_ahead": payload.get("go_ahead"), "set_aside": payload.get("set_aside"),
                 "set_aside_stays": payload.get("set_aside_stays")}
+
+    def _because_view(self, db, actor, message_id):
+        """The message a move was made on, as the reader may see it: where it is, or only that they cannot open it."""
+        if not message_id:
+            return None
+        try:
+            message = self._message_access(db, actor, message_id)
+        except Refusal:
+            return {"readable": False}
+        seq, title = db.execute("SELECT m.seq,t.title FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.id=?", (message["id"],)).fetchone()
+        return {"readable": True, "message_id": message["id"], "seq": seq, "topic_id": message["topic_id"], "topic_title": title,
+                "author": message["author_id"]}
+
+    def _event_view(self, db, actor, event):
+        """One event of an item's record; a move names the message it was made on only to a reader who can open it."""
+        payload = json.loads(event["payload"])
+        view = dict(kind=event["kind"], by=event["by"], ms=event["ms"], seq=event["seq"], payload=payload)
+        because = self._because_view(db, actor, payload.get("because_message_id"))
+        if because is not None:
+            view["because"] = because
+            if not because["readable"]:
+                view["payload"] = dict(payload, because_message_id=None)
+        return view
 
     def _item_view(self, db, actor, workspace, pipeline, row, releases, asks, pieces, cache, full=False):
         number = row["number"]
@@ -1257,7 +1353,7 @@ class Pipeline:
                             if row["section"] == "dropped" and placed else None),
                 "version": row["version"]}
         if full:
-            item["events"] = [dict(kind=event["kind"], by=event["by"], ms=event["ms"], seq=event["seq"], payload=json.loads(event["payload"]))
+            item["events"] = [self._event_view(db, actor, event)
                               for event in db.execute("SELECT * FROM pipeline_events WHERE workspace_id=? AND number=? ORDER BY seq",
                                                       (workspace["id"], number))]
             item["pieces"] = []
