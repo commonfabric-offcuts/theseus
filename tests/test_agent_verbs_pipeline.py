@@ -7,7 +7,9 @@ is about, and reads it all back."""
 from pathlib import Path
 import json
 import unittest
+from unittest import mock
 
+from aim_next import Store
 from aim_next.profile import write_profile
 from test_agent_verbs import AgentVerbCase
 
@@ -84,6 +86,28 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertEqual(self.ok("stage-note", piece, "Half read"), "noted on %s\n" % piece)
         self.assertEqual(self.ok("finish", piece), "%s finished\n" % piece)
         self.assertIn("1    Build me  [now · shipped]", self.ok("item", "w1", "1"))
+
+    def test_stages_set_whose_read_back_fails_says_the_stages_were_recorded(self):
+        """`stages --set` reads the pipeline again after the write: a busy database
+        there is not the write's failure, so it never asks for the write again."""
+        self.ok("pipeline-on", "w1")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build", "rounds": "split"}]))
+        original, reads = Store.view, []
+
+        def view(store, actor, name, args):
+            reads.append(name)
+            if name == "pipeline" and reads.count("pipeline") == 2:
+                return {"recorded": False, "error": {"code": "DATABASE_BUSY", "message": "The database is busy", "retryable": True}}
+            return original(store, actor, name, args)
+        with mock.patch.object(Store, "view", view):
+            code, out, err = self.run_cli("stages", "w1", "--set", str(stages))
+        [operation] = [row[0] for row in self.sql("SELECT id FROM operations WHERE kind='pipeline.stages_set'")]
+        self.assertEqual((code, out), (1, ""))
+        self.assertEqual(err, "READ_BACK_UNCONFIRMED: the stages of w1's pipeline were recorded (pipeline.stages_set, operation %s), "
+                              "but reading them back failed (DATABASE_BUSY: The database is busy); do not send them again: "
+                              "`stages w1` lists them.\n" % operation)
+        self.assertEqual(self.ok("stages", "w1"), "1 Build (build, split): \n")
 
     def test_combining_into_a_release_stage_on_the_owners_word_takes_an_ask(self):
         self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})

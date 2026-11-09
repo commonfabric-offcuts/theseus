@@ -4,7 +4,7 @@
 // native checks in tests/links_native.mjs press them in a real browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { webLinks, wordNodes, linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink } from '../web/links.mjs';
+import { webLinks, wordNodes, linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from '../web/links.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
 import { closeOnOutsideClick } from '../web/dismiss.mjs';
 import { foldCard } from '../web/fold.mjs';
@@ -232,6 +232,46 @@ test('a message\'s link names its topic and the message, and opens that message 
   assert.equal(opened[0][2], a, 'the page hears which link was pressed, to give it the focus back');
   shareLinksFrom('');
   assert.equal(messageLink(T1, 'm-1'), `http://127.0.0.1:5210/?topic=${T1}&message=m-1`, 'an empty origin names none');
+});
+
+// docs/links.md, "A Notebook page's link".
+test('a Notebook page\'s link names its Notebook and the page, latest or at a revision, and opens it here from this address or the tailnet one', t => {
+  here(t, 'http://127.0.0.1:5210');
+  const latest = { kind: 'topic', id: T1, page: 'n-1' }, revised = { kind: 'topic', id: T1, page: 'n-1', revision: '3' };
+  const outcome = { kind: 'workspace', id: 'w-1', page: 'n-2' }, outcomeAt = { kind: 'workspace', id: 'w-1', page: 'n-2', revision: '1' };
+  assert.equal(routeHref(latest), `?topic=${T1}&page=n-1`);
+  assert.equal(routeHref(revised), `?topic=${T1}&page=n-1&revision=3`);
+  assert.equal(routeHref(outcomeAt), '?workspace=w-1&page=n-2&revision=1');
+  for (const route of [latest, revised, outcome, outcomeAt]) assert.deepEqual(parseRoute(new URL('http://127.0.0.1:5210/' + routeHref(route))), route);
+  assert.deepEqual(parseRoute(new URL(`http://127.0.0.1:5210/?revision=3&page=n-1&topic=${T1}`)), revised, 'in any order');
+  for (const bad of [`?topic=${T1}&revision=3`, `?topic=${T1}&page=n-1&revision=0`, `?topic=${T1}&page=n-1&revision=x`,
+    `?topic=${T1}&page=n-1&message=m-1`, '?page=n-1', '?workspace=w-1&revision=2', `?topic=${T1}&page=`]) {
+    assert.throws(() => parseRoute(new URL('http://127.0.0.1:5210/' + bad)), /incomplete or ambiguous/, bad);
+  }
+  // A page is named alone, never with a message, and a revision only with its page.
+  assert.throws(() => routeHref({ kind: 'topic', id: T1, message: 'm-1', page: 'n-1' }), /incomplete or ambiguous/);
+  assert.throws(() => routeHref({ kind: 'workspace', id: 'w-1', revision: '2' }), /incomplete or ambiguous/);
+  assert.throws(() => routeHref({ kind: 'topic', id: T1, page: 'n-1', revision: '02' }), /incomplete or ambiguous/);
+  // Copied with no tailnet address: this page's own; with one, the address a phone reaches.
+  assert.equal(pageLink({ kind: 'topic', id: T1 }, 'n-1'), `http://127.0.0.1:5210/?topic=${T1}&page=n-1`);
+  shareLinksFrom('https://mac.example.ts.net:5210');
+  assert.equal(pageLink({ kind: 'workspace', id: 'w-1' }, 'n-2', 1), 'https://mac.example.ts.net:5210/?workspace=w-1&page=n-2&revision=1');
+  assert.throws(() => pageLink({ kind: 'message', id: 'm-1' }, 'n-1'), /Notebook/);
+  // Pasted into a message, each is one of this Theseus's places, and a press opens it here.
+  const opened = [];
+  openLinksWith(target => opened.push(target));
+  const text = `Results: ${pageLink({ kind: 'workspace', id: 'w-1' }, 'n-2', 1)} and http://127.0.0.1:5210/?topic=${T1}&page=n-1.`;
+  const anchors = wordNodes(text, { doc }).filter(node => node.tagName === 'A');
+  assert.deepEqual(anchors.map(a => [a.href, a.target]), [['?workspace=w-1&page=n-2&revision=1', ''], [`?topic=${T1}&page=n-1`, '']]);
+  for (const a of anchors) click(a);
+  assert.deepEqual(opened, [outcomeAt, latest]);
+});
+
+test('a link to a page in a topic\'s Notebook shows "Notebook page in" and the topic\'s name', t => {
+  here(t);
+  nameTopicsWith(id => names.get(id) ?? null);
+  assert.deepEqual(drawn(wordNodes(`See https://theseus.example:5211/?topic=${T1}&page=n-1&revision=2 now`, { doc })),
+    ['See ', ['Notebook page in Launch copy', `https://theseus.example:5211/?topic=${T1}&page=n-1&revision=2`, `?topic=${T1}&page=n-1&revision=2`], ' now']);
 });
 
 test('a link to an outcome\'s conversation, its pipeline or one of its items opens here', t => {

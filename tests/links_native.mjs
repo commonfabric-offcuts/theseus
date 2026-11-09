@@ -471,7 +471,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header the Reader\'s ⋯ on a Notebook page holds the layout alone, and goes where a phone\'s width leaves nothing to choose', async () => {
+  await check('header the Reader\'s ⋯ on a Notebook page copies its links and holds the layout, and at a phone\'s width still copies them', async () => {
     // A page of the outcome's own Notebook, listed in the rail of every topic in it.
     await control({ method: 'outcome_reference', operation_id: 'links-reader-notebook', item_id: 'links-reader-notebook', title: 'Layout notes', body: 'A page of the outcome\'s Notebook.' });
     const row = '#outcome-references-list .reference[data-id="links-reader-notebook"]';
@@ -483,11 +483,15 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes("A page of the outcome's Notebook.")`), 'the Reader shows the page');
     await settled(p);
     assert.equal(await shown(), true);
-    await p.point('#reader-menu'); await menuOpen(p, ['Wide layout']); await p.key('Escape');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Wide layout']); await p.key('Escape');
+    // At a phone's width there is no layout to choose, and the page's links stay.
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-    await until(async () => !await shown(), 'no ⋯ at a phone\'s width: nothing to choose');
+    await until(() => p.evaluate('innerWidth === 390'), 'a phone\'s width');
+    await until(shown, 'the ⋯ at a phone\'s width');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1']); await p.key('Escape');
     await p.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-    await until(shown, 'the ⋯ back on a wide window');
+    await until(() => p.evaluate('innerWidth === 1440'), 'a wide window');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Wide layout']); await p.key('Escape');
     assert.deepEqual(p.errors, []);
   });
 
