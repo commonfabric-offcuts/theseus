@@ -414,6 +414,10 @@ are absolute local times.
   adds an item; `add-source OUTCOME N --from MSG,...|--page ID|--note N` adds
   where it came from.
 - `move OUTCOME N --above M | --below M | --to SECTION | --undo EVENT [--underway] [--because MSG]`.
+  `--because` names the message the move is made on. The coordinator moves an
+  item the owner placed only with `--because` naming the owner's go-ahead
+  (docs/pipeline.md, "Who changes what"); `item` then shows the move as
+  `on OWNER's word (MSG)`.
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
   `stage-note PIECE TEXT`, `combine OUTCOME --pieces P,... --topic T [--release N] [--commit SHA] [--ask MSG]`

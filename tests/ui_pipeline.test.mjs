@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dom } from './fixtures/ui_dom.mjs';
 import {
-  checkPipeline, duration, eventWords, factBoxes, firstLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
+  checkPipeline, duration, eventRuns, eventWords, factBoxes, firstLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
 } from '../web/pipeline-words.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from '../web/pipeline.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
@@ -64,6 +64,55 @@ test('a move, a drop, an Undo and an edit say who did it and when', () => {
   assert.equal(eventWords({ kind: 'added', by: 'fable', ms: at(6), payload: { imported: true } }, 'tony', words, NOW), 'Added by fable, 6:00 AM, from the hand-written page.');
   assert.equal(waitsWords([{ number: 88, shipped: false }, { number: 12, shipped: true }]), ' · waits for 88');
   assert.equal(waitsWords([{ number: 88, shipped: true }]), '', 'once 88 ships, nothing waits');
+});
+
+test('a move made on the owner’s word says so, and the item’s record links that word to the message it was said in', () => {
+  // Item 170: the coordinator moved an item the owner placed, on the owner's go-ahead.
+  const words = { next: 'Next', later: 'Later' };
+  const because = { readable: true, message_id: 'm-yes', seq: 41, topic_id: 't-friction', topic_title: 'Friction log', author: 'tony' };
+  const moved = { kind: 'moved', by: 'fable', ms: at(6, 35), seq: 9, because,
+    payload: { after: { section: 'later' }, relative: null, because_message_id: 'm-yes', go_ahead: 'tony' } };
+  assert.equal(eventWords(moved, 'tony', words, NOW), 'Moved to Later by fable on your word, 6:35 AM.');
+  assert.equal(eventWords(moved, 'fable', words, NOW), "Moved to Later by you on tony's word, 6:35 AM.");
+  assert.deepEqual(eventRuns(moved, 'fable', words, NOW).map(run => [run.text, run.message?.message_id ?? null]),
+    [['Moved to Later by you on ', null], ["tony's word", 'm-yes'], [', 6:35 AM.', null]]);
+  const dropped = { ...moved, payload: { ...moved.payload, after: { section: 'dropped' } } };
+  assert.equal(eventWords(dropped, 'agent-b', words, NOW), "Dropped by fable on tony's word, 6:35 AM.");
+  // A reader who cannot open the message is told whose word it was, with nothing to follow.
+  const unreadable = { ...moved, because: { readable: false }, payload: { ...moved.payload, because_message_id: null } };
+  assert.deepEqual(eventRuns(unreadable, 'agent-b', words, NOW).map(run => [run.text, run.message ?? null]),
+    [['Moved to Later by fable on ', null], ["tony's word", null], [', 6:35 AM.', null]]);
+  // A move with a because that is not a go-ahead reads as before, and the row says the word too.
+  const plain = { ...moved, payload: { ...moved.payload, go_ahead: undefined } };
+  assert.deepEqual(eventRuns(plain, 'tony', words, NOW), [{ text: 'Moved to Later by fable, 6:35 AM.' }]);
+  assert.equal(placedWords({ kind: 'moved', by: 'fable', ms: at(6, 35), section: 'later', relative: null, because, go_ahead: 'tony' }, 'tony', words, NOW),
+    'Moved to Later by fable on your word, 6:35 AM.');
+  assert.equal(placedWords({ kind: 'moved', by: 'fable', ms: at(6, 35), section: 'later', relative: null, because }, 'tony', words, NOW),
+    'Moved to Later by fable, 6:35 AM, from your Friction log message.');
+
+  // The item's record paints the line with the word as a link to that message, which the Reader opens.
+  globalThis.document = Object.assign(dom(), { addEventListener() {} });
+  const host = { addEventListener() {}, replaceChildren(...nodes) { this.children = nodes; } };
+  const header = { eyebrow: {}, title: {}, description: {} };
+  const page = new PipelinePage({ host, header, reader: 'agent-b', instanceId: 'i1', workspace: 'w1', item: 5, read: async () => null, send: async () => null });
+  page.record = { workspace_title: 'Theseus', pipeline: { title: 'Pipeline', section_words: words, sized: false },
+    item: { number: 5, title: 'Say which release is live', description: '', section: 'dropped', glyph: 'dropped', needs: [], asks: [], shipped: null,
+      raised_by: 'fable', raised_note: '', sources: { shown: [], count: 0, messages: 0, notes: 0, yours: 0, topics: [] }, gathering: null, pieces: [],
+      events: [{ kind: 'added', by: 'fable', ms: at(6), seq: 8, payload: {} }, dropped] } };
+  page.paintRecord(NOW);
+  const walk = node => [node, ...(node.children ?? []).flatMap(walk)];
+  const lines = walk({ children: host.children }).filter(node => node.tagName === 'li');
+  const line = lines.find(node => node.text.startsWith('Dropped'));
+  assert.equal(line.text, "Dropped by fable on tony's word, 6:35 AM.");
+  const link = walk(line).find(node => node.tagName === 'a');
+  assert.ok(link, 'the word is a link');
+  assert.equal(link.text, "tony's word");
+  assert.deepEqual(parseRoute(new URL(link.href, 'http://theseus.test/')), { kind: 'topic', id: 't-friction', message: 'm-yes' });
+  page.record.item.events = [{ kind: 'added', by: 'fable', ms: at(6), seq: 8, payload: {} }, { ...dropped, because: { readable: false } }];
+  page.paintRecord(NOW);
+  const hidden = walk({ children: host.children }).filter(node => node.tagName === 'li').find(node => node.text.startsWith('Dropped'));
+  assert.equal(hidden.text, "Dropped by fable on tony's word, 6:35 AM.");
+  assert.equal(walk(hidden).some(node => node.tagName === 'a'), false, 'nothing to follow to a message the reader cannot open');
 });
 
 test('the facts boxes say what is live, what is next and what is being built, or an unsized pipeline’s own', () => {

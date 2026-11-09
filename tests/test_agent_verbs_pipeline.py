@@ -46,6 +46,47 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertIn("     Words.\n", record)
         self.assertRegex(record, r"event \d+: added by agent-a ")
 
+    def test_the_coordinator_moves_an_item_the_owner_placed_only_on_the_owners_word(self):
+        # Item 170. The clock is held and moved on by hand, so which message is newer than a placement is exact.
+        clock = [1_800_000_000_000]
+        for name in ("pipeline", "conversation"):
+            patch = mock.patch("aim_next.%s._now_ms" % name, side_effect=lambda: clock[0])
+            patch.start()
+            self.addCleanup(patch.stop)
+
+        def ok(*argv, actor="agent-a"):
+            clock[0] += 1000
+            return self.ok(*argv, actor=actor)
+
+        def refused(*argv):
+            clock[0] += 1000
+            code, out, err = self.run_cli(*argv)
+            self.assertEqual((code, out), (2, ""), err)
+            return err
+
+        latest = lambda: self.sql("SELECT id FROM messages ORDER BY seq DESC LIMIT 1")[0][0]
+        ok("pipeline-on", "w1")
+        for title in ("First", "Second"):
+            ok("add", "w1", "--title", title, "--section", "next", "--note", "n", "-")
+        ok("move", "w1", "2", "--above", "1", actor="owner")
+        err = refused("move", "w1", "2", "--to", "later")
+        self.assertIn("OWNER_PLACED", err)
+        self.assertIn("Once owner says go ahead, move it with that message as because.", err)
+        ok("post", "t1", "--asks", "owner", "Shall I move 2 to Later?")
+        ask = latest()
+        # Its own proposal is not the owner's word.
+        err = refused("move", "w1", "2", "--to", "later", "--because", ask)
+        self.assertIn("OWNER_PLACED", err)
+        self.assertIn("and %s is not that: it is agent-a's message. Nothing moved." % ask, err)
+        ok("post", "t1", "--reply-to", ask, "Yes", actor="owner")
+        yes = latest()
+        # A yes to Later is not a yes to Dropped.
+        err = refused("move", "w1", "2", "--to", "dropped", "--because", yes)
+        self.assertIn("it does not name 2, nor reply to a message that proposes moving 2 to Dropped. Nothing moved.", err)
+        self.assertEqual([line.split()[0] for line in self.ok("pipeline", "w1", "--section", "next").splitlines()[1::3]], ["2", "1"])
+        self.assertRegex(ok("move", "w1", "2", "--to", "later", "--because", yes), r"^moved 2 to later \(event \d+\)\n$")
+        self.assertRegex(self.ok("item", "w1", "2"), r"event \d+: moved by agent-a .* on owner's word \(%s\)\n" % yes)
+
     def test_the_coordinator_turns_it_off_and_only_the_owner_renames_it(self):
         self.ok("pipeline-on", "w1")
         code, out, err = self.run_cli("pipeline-on", "w1", "--title", "Release pipeline")

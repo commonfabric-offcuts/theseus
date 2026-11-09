@@ -171,7 +171,11 @@ class PipelineVerbs:
                 self.out.plain("     %s: %s to %s%s" % (entry["name"], _at(entry["entered_ms"]), _at(entry["left_ms"]),
                                                        " · " + entry["left_outcome"] if entry.get("left_outcome") else ""))
         for event in item.get("events") or []:
-            self.out.plain("     event %d: %s by %s %s" % (event["seq"], event["kind"], event["by"], _at(event["ms"])))
+            # A move made on the owner's word says so, with the message when the reader can open it.
+            payload, because = event.get("payload") or {}, event.get("because") or {}
+            word = (" on %s's word%s" % (payload["go_ahead"], " (%s)" % because["message_id"] if because.get("readable") else "")
+                    if payload.get("go_ahead") else "")
+            self.out.plain("     event %d: %s by %s %s%s" % (event["seq"], event["kind"], event["by"], _at(event["ms"]), word))
 
     def do_pipeline_on(self):
         options = self.options

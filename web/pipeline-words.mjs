@@ -121,10 +121,14 @@ export function gatheringWords(gathering, reader) {
     after: '. It moves up to Next when it is ready to build, and keeps the page for whoever builds it.' };
 }
 
-// The latest move, as the row says it: "Moved above 72 by you, 7:12 AM." or "Moved to Next by fable, 6:35 AM, from your Friction log message".
+// A move made on the owner's word (item 170): "your word", or "tony's word".
+const wordOf = (owner, reader) => owner === reader ? 'your word' : `${owner}'s word`;
+
+// The latest move, as the row says it: "Moved above 72 by you, 7:12 AM.", "Moved to Next by fable, 6:35 AM, from your Friction log message",
+// or, made on the owner's word, "Moved to Later by fable on your word, 6:35 AM."
 export function placedWords(placed, reader, sectionWords, now) {
   if (!placed || placed.kind !== 'moved') return null;
-  const who = placed.by === reader ? 'you' : placed.by;
+  const who = (placed.by === reader ? 'you' : placed.by) + (placed.go_ahead ? ` on ${wordOf(placed.go_ahead, reader)}` : '');
   const when = shownTime(placed.ms, now);
   if (placed.section === 'dropped') return `Dropped by ${who}, ${when}.`;
   let where;
@@ -132,7 +136,7 @@ export function placedWords(placed, reader, sectionWords, now) {
   else if (placed.relative?.below !== undefined && placed.relative.below !== null) where = `below ${placed.relative.below}`;
   else where = `to ${sectionWords?.[placed.section] ?? placed.section}`;
   if (placed.undo_of) return `Put back by ${who}, ${when}.`;
-  const because = placed.because ? `, from ${placed.because.author === reader ? 'your' : `${placed.because.author}'s`} ${placed.because.topic_title} message` : '';
+  const because = placed.because && !placed.go_ahead ? `, from ${placed.because.author === reader ? 'your' : `${placed.because.author}'s`} ${placed.because.topic_title} message` : '';
   return `Moved ${where} by ${who}, ${when}${because}.`;
 }
 
@@ -188,20 +192,24 @@ export function historyLine(entry, now) {
 }
 
 // An item's events in its record: "Added by fable, 6:35 AM", "Moved to Next by fable ...".
-export function eventWords(event, reader, sectionWords, now) {
+export const eventWords = (event, reader, sectionWords, now) => eventRuns(event, reader, sectionWords, now).map(run => run.text).join('');
+
+// The same line as runs of words; a move made on the owner's word has the run "tony's word" (or "your word"),
+// carrying the message it was said in when the reader can open it, so the page links it: "Moved to Later by fable on tony's word, 6:35 AM."
+export function eventRuns(event, reader, sectionWords, now) {
   const who = event.by === reader ? 'you' : event.by;
   const when = shownTime(event.ms, now);
-  if (event.kind === 'added') return `Added by ${who}, ${when}${event.payload?.imported ? ', from the hand-written page' : ''}.`;
-  if (event.kind === 'edited') return `Edited by ${who}, ${when}: ${listWords(Object.keys(event.payload?.after ?? {}).map(key => EDITED_WORDS[key] ?? key))}.`;
+  if (event.kind === 'added') return [{ text: `Added by ${who}, ${when}${event.payload?.imported ? ', from the hand-written page' : ''}.` }];
+  if (event.kind === 'edited') return [{ text: `Edited by ${who}, ${when}: ${listWords(Object.keys(event.payload?.after ?? {}).map(key => EDITED_WORDS[key] ?? key))}.` }];
   if (event.kind === 'moved') {
-    const after = event.payload?.after ?? {};
-    if (after.section === 'dropped') return `Dropped by ${who}, ${when}.`;
-    if (event.payload?.undo_of) return `Put back by ${who}, ${when}.`;
-    const relative = event.payload?.relative;
-    const where = relative?.above != null ? `above ${relative.above}` : relative?.below != null ? `below ${relative.below}` : `to ${sectionWords?.[after.section] ?? after.section}`;
-    return `Moved ${where} by ${who}, ${when}.`;
+    const after = event.payload?.after ?? {}, relative = event.payload?.relative;
+    const what = after.section === 'dropped' ? 'Dropped' : event.payload?.undo_of ? 'Put back'
+      : `Moved ${relative?.above != null ? `above ${relative.above}` : relative?.below != null ? `below ${relative.below}` : `to ${sectionWords?.[after.section] ?? after.section}`}`;
+    const owner = event.payload?.go_ahead;
+    if (!owner) return [{ text: `${what} by ${who}, ${when}.` }];
+    return [{ text: `${what} by ${who} on ` }, { text: wordOf(owner, reader), message: event.because?.readable ? event.because : null }, { text: `, ${when}.` }];
   }
-  return `${event.kind} by ${who}, ${when}.`;
+  return [{ text: `${event.kind} by ${who}, ${when}.` }];
 }
 
 // The waiting row: " · about 92, <title> · fable asked you, since 7:05 AM".

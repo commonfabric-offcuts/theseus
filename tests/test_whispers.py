@@ -589,7 +589,9 @@ MESSAGE_READS = {
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
                              "number then read through _message_access; sources and gathering shown through _message_access; "
-                             "the operator's import of the hand-kept page, which refuses a whisper", 6),
+                             "the operator's import of the hand-kept page, which refuses a whisper; the word a move is made on "
+                             "(item 170), read after _because refused a whisper, the message it replies to read on the record "
+                             "only, and its place shown through _message_access", 9),
 }
 
 
