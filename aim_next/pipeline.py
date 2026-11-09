@@ -314,8 +314,9 @@ class Pipeline:
         stored is always derive() of the facts so far, whatever order they came in.
 
         A topic the pipeline newly holds Done is set Done by nobody, "Shipped in release N", unless someone has already
-        said it is done; one it no longer holds (work for it appeared again) goes back to active only while its Done is
-        the pipeline's own. A person's own word, a Done or a reopen, always stands. The database keeps the owner's word
+        said it is done, so a person's earlier reopen gives way; one it holds with a newer N gets the new note, and one it
+        no longer holds (work for it appeared again) goes back to active, each only while its Done is the pipeline's own.
+        A person's word given while the pipeline holds a topic, a Done or a reopen, stands. The database keeps the owner's word
         on leaving a stage (D24): an end written by someone's act that cannot leave it refuses the write, and an end a
         record wrote (nobody's) leaves any stage."""
         state = pipeline_state.derive(pipeline_state.read_facts(db, workspace_id))

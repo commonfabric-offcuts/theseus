@@ -201,13 +201,21 @@ release check's `--report`, and which piece a candidate's readings name.
   none of its pieces has work left (an item still in one, or combined from one
   and still being built, that no record names and no drop ended), no release in
   it is being put together, and some of its work shipped, N the newest release
-  that shipped any. Starting to hold it sets the topic Done by nobody, unless
-  someone has said it is done; holding it with a newer N rewrites the note while
-  the Done is still the pipeline's. Work for it appearing again (a piece started
-  or a release combined there, or an item going back to building from a piece
-  there) withdraws it: the topic goes back to active, by nobody, while its Done
-  is still the pipeline's own. A person's word, a Done or a reopen (a message in
-  a done topic reopens it), always stands.
+  that shipped any. The pipeline writes the topic's state itself, by nobody, in
+  the transaction of the write that changed what it holds (`_settle`), at three
+  moments and no others. Starting to hold a topic sets it Done, "Shipped in
+  release N", whatever it stood at (active after a person's reopen, waiting or
+  in review), unless someone has said it is Done: for a topic it starts to hold,
+  the pipeline's rule wins over every word but a Done. Holding it with a newer N
+  rewrites the note, while the Done is still the pipeline's own (Done by
+  nobody, and no reopen since). Work for it appearing again (a piece started or
+  a release combined there, or an item going back to building from a piece
+  there) withdraws the hold, and the topic goes back to active with no note,
+  again only while its Done is the pipeline's own. A person's word given while
+  the pipeline holds a topic stands: a reopen (a message in a done topic, or
+  `state active`) keeps the topic active until the pipeline lets it go and then
+  starts to hold it again, and a person's Done stays Done through a newer N and
+  the end of the hold.
 - Upgrading to version 30 writes version 29's pipeline as facts, in time
   order; the first pipeline write after the upgrade (the deploy's record is one)
   writes the state they derive.
