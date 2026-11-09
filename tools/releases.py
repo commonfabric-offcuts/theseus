@@ -68,4 +68,6 @@ def measurements(summary):
             "node_units": {"tests": steps.get("node-units", {}).get("tests", 0),
                            "pass": steps.get("node-units", {}).get("pass", 0)},
             "native": {"pass": sum(step["pass"] for step in native.values()),
-                       "total": sum(step["total"] for step in native.values()), "steps": native}}
+                       "total": sum(step["total"] for step in native.values()), "steps": native},
+            # Item 166: a release whose check skipped the browser modes and the replay says so beside their empty counts.
+            **({"skipped": {key: summary["skipped"].get(key) for key in ("live", "why")}} if isinstance(summary.get("skipped"), dict) else {})}
