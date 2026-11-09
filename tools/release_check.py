@@ -51,7 +51,7 @@ WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device")
 NATIVE_STEPS = tuple(
     [NativeStep(mode, PERSISTENCE, ("--" + mode,), "native.json")
      for mode in ("journal", "connected", "correction", "cleanup", "images", "freshness",
-                  "inline", "navigation", "live", "colors", "asks", "whispers", "work", "light", "list", "notebook", "duties", "sources", "wakes", "header", "rail", "conversation", "forms", "pipeline", "targets")]
+                  "inline", "navigation", "live", "colors", "asks", "whispers", "work", "light", "list", "notebook", "duties", "sources", "wakes", "header", "rail", "conversation", "forms", "pipeline", "targets", "health")]
     + [NativeStep("openings", "tests/reader_openings_native.mjs", (), "native.json"),
        NativeStep("reader", READER, (), "results.json")]
     + [NativeStep("reader-" + mode, READER, ("--" + mode,), "results.json")

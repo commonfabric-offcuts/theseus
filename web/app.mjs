@@ -45,6 +45,8 @@ import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
+import { HealthPage } from './health.mjs';
+import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { railDrawer } from './rail-drawer.mjs';
@@ -61,6 +63,7 @@ const button = (label, action) => { const element = node('button', label); eleme
 const status = what => showLine($('app-status'), what);
 const failed = error => { status(error); return null; };
 const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
+let healthLight = null;
 let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
 // The open page's outcome conversation: its view (the rail row reads it), and on the conversation page
@@ -1333,6 +1336,18 @@ async function initialize() {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') attention.refresh(); });
     attention.refresh();
   }
+  if (!healthLight) {
+    // The Health link lights on every page while Core says something is red.
+    // The live feed says what is red with every commit; a commit that comes
+    // without it, the page opening and the page coming back into view read
+    // it, and it says it could not check while the feed is down
+    // (health-light.mjs).
+    healthLight = new HealthLight({ link: $('health-link'), feed: () => live?.state ?? null,
+      read: async () => checkedView(await api.view('health_light', {}, { readClass: 'background' }), bootstrap.instance_id) });
+    live?.listen(event => run(() => healthLight.heard(event)));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(() => healthLight.load()); });
+    run(() => healthLight.load());
+  }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
   refreshDirectory();
   document.addEventListener('focusin', event => {
@@ -1909,6 +1924,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='create')return initializeCreationPage(route);
   if(route.kind==='opening')return initializeOpeningPage(route);
   if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
+  if(route.kind==='health')return initializeHealthPage();
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   // A Notebook page's link opens the page in place once the outcome's lists are
@@ -2055,6 +2071,23 @@ async function initializePipelinePage(route) {
       {name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
+  document.body.dataset.ready='true';
+}
+// The instance's Health page (docs/health.md): no rail, the logo block and
+// "← Outcomes" head it; it reads the health view again on every commit and
+// says at once when the live feed drops.
+async function initializeHealthPage() {
+  status('');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  document.querySelector('.rail').hidden=true;
+  $('main').prepend($('outcomes-home'));placeBrand($('main'));
+  $('health-link').setAttribute('aria-current','page');
+  $('topic-title').textContent='Health';$('topic-description').textContent='Read live from Theseus; it follows every change.';
+  const page=new HealthPage({host:$('health-page'),feed:()=>live?.state??null,
+    read:async()=>checkedView(await api.view('health',{},{readClass:'foreground'}),bootstrap.instance_id)});
+  $('health-page').hidden=false;
+  live?.listen(event=>page.heard(event));
+  await followCommits(()=>page.load())();
   document.body.dataset.ready='true';
 }
 // An outcome's Measurements: every check's readings by release (docs/targets.md). The rail

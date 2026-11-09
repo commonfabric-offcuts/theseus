@@ -29,6 +29,7 @@ from .colors import Colors, COLOR_SCHEMA
 from .responsibility import Responsibility, RESPONSIBILITY_SCHEMA
 from .sources import Sources, SOURCE_SCHEMA
 from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
+from .health import Health, HEALTH_SCHEMA, LIGHT_KEY
 from . import delivery as _delivery
 from .releases import Releases, RELEASE_SCHEMA, write_release
 from .outcome_light import OutcomeLight
@@ -40,7 +41,7 @@ from .outcome_kind import OutcomeKind, KINDS_SCHEMA
 from .outcome_rules import KIND_BEFORE_R21
 
 
-SCHEMA_VERSION = "31"
+SCHEMA_VERSION = "32"
 
 
 def commit_identity_intact(metadata):
@@ -114,12 +115,14 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
             db.execute("INSERT INTO metadata VALUES ('commit_seq','0')")
             db.execute("INSERT INTO metadata VALUES ('commit_id',?)", (uuid.uuid4().hex,))
+            # A new instance has nothing red: no runner has run, no work waits, no wake was tried (health.py).
+            db.execute("INSERT INTO metadata VALUES (?,?)", (LIGHT_KEY, json.dumps({"red": [], "seq": 0}, separators=(",", ":"))))
             db.executemany("INSERT INTO metadata VALUES (?,?)", list(binding.items()))
             db.executemany("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", actors)
             db.commit()
@@ -147,7 +150,7 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Releases, Checks, OutcomeKind,
+class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
             OutcomeLight, StandingConversation, Pipeline):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
@@ -259,7 +262,8 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                 self._check_instance(db)
                 changed = write(db)
                 if changed:
-                    self._advance_commit_seq(db)
+                    # Every commit keeps what is red with it (health.py).
+                    self._health_commit(db, _delivery._now_ms())
                 db.commit()
                 return changed
             except sqlite3.Error as error:
@@ -392,9 +396,12 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                 receipt = self._refusal(envelope, exc, recorded=True)
             db.execute("RELEASE effect")
             # Any recorded act is a sign of life: the actor's wakes are answered.
-            self._sign_of_life(db, actor, _delivery._now_ms())
+            now = _delivery._now_ms()
+            self._sign_of_life(db, actor, now)
+            self._health_acted(db, actor, now)
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))
-            self._advance_commit_seq(db)
+            # What is red may have changed with this act (health.py); the last step before the commit.
+            self._health_commit(db, now)
             db.commit()
             return receipt
         except Refusal as exc:

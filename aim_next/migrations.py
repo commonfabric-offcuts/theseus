@@ -33,6 +33,7 @@ from .pipeline import (PIPELINE_DECIDED_AGAIN_DOWN, PIPELINE_DECIDED_AGAIN_UP, P
                        PIPELINE_FACTS_DOWN, PIPELINE_FACTS_SCHEMA, PIPELINE_OCCUPIED, PIPELINE_SCHEMA)
 from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
 from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
+from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -122,6 +123,12 @@ STEPS = (
     # its author back, which before it wrote no take and so stayed New. It
     # changes no layout; stepping back keeps the takes, which version 30 reads.
     ("30", "31", SETTLE_ASKED_BACK, (), "SELECT 0"),
+    # Version 32 keeps, per recipient, when a wake last got through, how
+    # many have not since and why the latest did not, and how the runner's
+    # previous run ended, for the Health page (health.py). They are worked out
+    # from settlements and exits, so stepping back loses no record; it is
+    # refused once Theseus has posted a health notice.
+    ("31", "32", HEALTH_SCHEMA + HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED),
 )
 
 
@@ -222,7 +229,11 @@ def migrate(db_path, instance_id, binding, target=None):
             if occupied is not None and db.execute(occupied).fetchone()[0]:
                 raise MigrationError("RECORDS_WOULD_BE_LOST", "The older version cannot hold records that exist; nothing was changed")
             for statement in statements:
-                db.execute(statement)
+                if callable(statement):
+                    # A step that works facts out by a rule in Python (health.py's backfill) passes the rule itself.
+                    statement(db)
+                else:
+                    db.execute(statement)
         if db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (target,)).rowcount != 1:
             raise MigrationError("SCHEMA_UNSUPPORTED", "The stored schema version could not be replaced")
         Store._advance_commit_seq(db)

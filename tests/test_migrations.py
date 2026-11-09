@@ -63,6 +63,11 @@ SCHEMA_BEFORE_CHECKS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % 
 # fresh instance of release 27's code (63521cd).
 BEFORE_SETTLE, SETTLE_VERSION = CHECKS_VERSION, "31"
 SCHEMA_BEFORE_SETTLE = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_SETTLE)).read_text().splitlines()
+# The Health page's step keeps wake facts, the hosted turns still running and the
+# runner's previous end. It follows the settling step, which changes no layout, so
+# the layout before it is the settling step's.
+BEFORE_HEALTH, HEALTH_VERSION = SETTLE_VERSION, str(int(SETTLE_VERSION) + 1)
+SCHEMA_BEFORE_HEALTH = SCHEMA_BEFORE_SETTLE
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -82,6 +87,16 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The Health page's version keeps each recipient's wake facts and its hosted turns
+        # still running, the runner's previous end, what Theseus last announced and its own member.
+        db.execute("DROP TABLE runner_prior")
+        db.execute("DROP TABLE wake_turns")
+        db.execute("DROP TABLE wake_facts")
+        db.execute("DELETE FROM metadata WHERE key IN ('health_announced','health_due')")
+        db.execute("DELETE FROM actors WHERE id='theseus'")
+        if version == BEFORE_HEALTH:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The settling step changes no layout and keeps every row.
         if version == BEFORE_SETTLE:
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
@@ -1789,7 +1804,8 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24),
                      ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE),
                      (BEFORE_CHECKS, SCHEMA_BEFORE_CHECKS),
-                     (BEFORE_SETTLE, SCHEMA_BEFORE_SETTLE))
+                     (BEFORE_SETTLE, SCHEMA_BEFORE_SETTLE),
+                     (BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2082,7 +2098,7 @@ class LiveShapedChainCase(MigrationCase):
         self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_CHECKS)["schema_version"], BEFORE_CHECKS)
         before = everything(self.path)
         self.assertEqual(migrate(self.path, "test-instance", self.binding, CHECKS_VERSION)["schema_version"], CHECKS_VERSION)
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_HEALTH))
         self.assertEqual({k: v for k, v in everything(self.path).items() if k in before}, before)
         self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_CHECKS)["schema_version"], BEFORE_CHECKS)
         self.assertEqual(everything(self.path), before, "an empty checks step steps back to every row it had")
@@ -2491,6 +2507,219 @@ class PipelineStepCase(MigrationCase):
         self.assertEqual(self.unchanged(), before)
 
 
+class HealthStepCase(MigrationCase):
+    """An instance at the version before the Health page: its step works out each
+    recipient's wake facts from the settlements kept, and steps back while Theseus
+    has posted no notice."""
+
+    VERSION, FIXTURE = BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_HEALTH)
+
+    def settled(self, outcomes, recipient="agent-a"):
+        """Settlements the older version kept: one attempt and result per outcome, a minute apart."""
+        with sqlite3.connect(str(self.path)) as db:
+            for n, outcome in enumerate(outcomes):
+                attempt = "a-%s-%d" % (recipient, n)
+                db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                           "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, "r-1", recipient, 60000 * n, 60000 * n + 20000))
+                db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt, outcome, 60000 * n + 1000))
+
+    def test_the_step_follows_the_settling_steps_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_HEALTH, HEALTH_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, HEALTH_VERSION)
+
+    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_works_out_the_wake_facts(self):
+        self.settled(["accepted", "error", "accepted", "error", "busy", "unavailable"])
+        self.settled(["handed", "handed", "handed"], recipient="agent-b")
+        self.settled(["handed"], recipient="owner")
+        with sqlite3.connect(str(self.path)) as db:
+            # A handed wake settles with its turn's end: agent-b's first turn completed, its second
+            # Codex failed, and its third still runs; the owner's turn runs too.
+            db.executemany("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,error_code,finished_ms) "
+                           "VALUES (?,?,'thread-1',?,'start',?,1,?,?,?,?)",
+                           [("a-agent-b-0", "agent-b", "turn-0", "theseus:a-agent-b-0", 1000, "completed", None, 30000),
+                            ("a-agent-b-1", "agent-b", "turn-1", "theseus:a-agent-b-1", 61000, "failed", "serverOverloaded", 90000),
+                            ("a-agent-b-2", "agent-b", "turn-2", "theseus:a-agent-b-2", 121000, None, None, None),
+                            ("a-owner-0", "owner", "turn-3", "theseus:a-owner-0", 1000, None, None, None)])
+            # The scheduler's count of wakes left unanswered is the only record of them. It counted
+            # agent-b's first and third turns (the failed one it took back); the owner acted after its turn began.
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('agent-b',1) ON CONFLICT DO NOTHING")
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('owner',1) ON CONFLICT DO NOTHING")
+            # Each turn still running holds the work it was handed (handed_seq).
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=2,unanswered_since_ms=1000,handed_seq=1 WHERE recipient_id='agent-b'")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=0,unanswered_since_ms=NULL,handed_seq=1 WHERE recipient_id='owner'")
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_HEALTH,
+                                          "schema_version": HEALTH_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        upgraded = everything(self.path)
+        self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
+        # The three wakes since the last that got through did not; why was never recorded. A turn's
+        # end keeps Codex's code, and a turn still running is counted by the rule when it completes.
+        # The owner acted after its running turn's wake began (its claim, at 0): the scheduler's count says
+        # so, and so does the latest message it wrote.
+        # The first message it wrote after then is when its wake got through.
+        wrote = self.sql("SELECT min(sent_ms) FROM messages WHERE author_id='owner' AND sent_ms>=0")[0][0]
+        self.assertEqual(sorted(upgraded["wake_facts"]), [("agent-a", 121000, 3, 181000, 301000, "unavailable", None, 0, None, None),
+                                                            ("agent-b", 30000, 1, 90000, 90000, "failed", "serverOverloaded", 1, 1000, None),
+                                                            ("owner", wrote, 0, None, None, None, None, 0, None, None)])
+        # Each turn still running is kept as one attempt, from its claim, acted in or not.
+        self.assertEqual(sorted(upgraded["wake_turns"]), [("thread-1", "turn-2", "agent-b", 120000, 121000, 1, 0),
+                                                           ("thread-1", "turn-3", "owner", 0, 1000, 1, 1)])
+        self.assertEqual(upgraded["runner_prior"], [])
+        self.assertNotIn("theseus", [row[0] for row in upgraded["actors"]], "Theseus's member comes with its first notice")
+
+    def turns(self, recipient, turns):
+        """Hosted turns the older version kept, each a list of hands (mode, handed_ms, seen_ms) and how it
+        ended (status, error_code, finished_ms, or Nones while it runs); each hand's claim began 500 ms before it."""
+        with sqlite3.connect(str(self.path)) as db:
+            for number, (hands, (status, code, finished)) in enumerate(turns):
+                for index, (mode, handed, seen) in enumerate(hands):
+                    attempt = "a-%s-t%d-%d" % (recipient, number, index)
+                    db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                               "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, "r-1", recipient, handed - 500, handed + 20000))
+                    db.execute("INSERT INTO wake_results VALUES (?,'handed',?)", (attempt, handed))
+                    db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,seen_ms,final_status,error_code,finished_ms) "
+                               "VALUES (?,?,?,?,?,?,1,?,?,?,?,?)", (attempt, recipient, "thread-" + recipient, "turn-%d" % number, mode,
+                                                                    "theseus:" + attempt, handed, seen, status, code, finished))
+
+    def posted(self, author, sent_ms):
+        """A message the older version kept, by author at sent_ms: one of the agent's acts with its time."""
+        with sqlite3.connect(str(self.path)) as db:
+            topic = db.execute("SELECT topic_id FROM messages LIMIT 1").fetchone()[0]
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
+                       "VALUES (?,?,?,'Done','[]','[]','[]',?,?)", ("m-%s-%d" % (author, sent_ms), topic, author, "op-%d" % sent_ms, sent_ms))
+
+    def test_upgrade_counts_one_wake_per_turn_whatever_was_steered_into_it_and_a_turn_the_agent_acted_in_got_through(self):
+        # agent-b: a turn that completed with two steers it never read; one Codex failed with a steer it read;
+        # one Codex failed in which agent-b posted (an act Core kept the time of); one lost, with a steer it read.
+        self.turns("agent-b", [([("start", 1000, None), ("steer", 2000, None), ("steer", 3000, None)], ("completed", None, 30000)),
+                               ([("start", 61000, None), ("steer", 62000, 62500)], ("failed", "serverOverloaded", 90000)),
+                               ([("start", 121000, None)], ("failed", "serverOverloaded", 150000)),
+                               ([("start", 181000, None), ("steer", 182000, 182500)], ("lost", None, 210000))])
+        self.posted("agent-b", 130000)
+        # owner: three turns Codex failed, each with two steers, and nothing posted: three wakes, not nine.
+        self.turns("owner", [([("start", 1000 + 60000 * n, None), ("steer", 2000 + 60000 * n, 2500 + 60000 * n),
+                               ("steer", 3000 + 60000 * n, None)], ("failed", "serverOverloaded", 30000 + 60000 * n)) for n in range(3)])
+        self.posted("owner", 100)  # before any of its wakes began
+        # agent-a: a claim that got through, then one found expired, which is its own why; and a turn still
+        # running that holds no work (the scheduler handed it back), which the scheduler's one unanswered
+        # wake therefore does not include.
+        self.settled(["accepted", "expired"], recipient="agent-a")
+        self.turns("agent-a", [([("start", 300000, None)], (None, None, None))])
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('agent-a',1) ON CONFLICT DO NOTHING")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=1000,handed_seq=NULL WHERE recipient_id='agent-a'")
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT unanswered_wakes,unanswered_since_ms FROM wake_facts WHERE recipient_id='agent-a'"), [(1, 1000)])
+        self.assertEqual(self.sql("SELECT thread_id,turn_id,began_ms,handed_ms,carried FROM wake_turns"), [("thread-agent-a", "turn-0", 299500, 300000, 0)])
+        # agent-b's post got its third turn through then, so that turn's failure adds nothing.
+        self.assertEqual(sorted(self.sql("SELECT recipient_id,reached_ms,failed_wakes,failing_since_ms,failed_outcome,failed_reason FROM wake_facts")),
+                         [("agent-a", 1000, 1, 61000, "expired", "expired"), ("agent-b", 130000, 1, 210000, "lost", None),
+                          ("owner", None, 3, 30000, "failed", "serverOverloaded")])
+
+    def claims(self, recipient, claims):
+        """Claims the older version kept that settled other than handed: (outcome, finished_ms, runner_token),
+        each begun 500 ms before it settled."""
+        with sqlite3.connect(str(self.path)) as db:
+            for outcome, finished, runner in claims:
+                attempt = "a-%s-c%d" % (recipient, finished)
+                db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                           "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, runner, recipient, finished - 500, finished + 20000))
+                db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt, outcome, finished))
+
+    def test_upgrade_counts_every_claim_it_kept_as_its_own_since_which_turn_one_came_from_was_never_kept(self):
+        # agent-a: a turn r-1 started at 61000 and Codex lost at 90000, and r-1's late steer into it. Every
+        # claim before, during and after it, of either run, is its own attempt: which turn one came from was
+        # never kept. The one found expired happened when its lease ended.
+        self.turns("agent-a", [([("start", 61000, None)], ("lost", None, 90000))])
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                       "VALUES ('a-late','c-late','r-1','agent-a',1,1,94500,115000)")
+            db.execute("INSERT INTO wake_results VALUES ('a-late','handed',95000)")
+            db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,finished_ms) "
+                       "VALUES ('a-late','agent-a','thread-agent-a','turn-0','steer','theseus:a-late',1,95000,'lost',95000)")
+        self.claims("agent-a", [("error", 30000, "r-1"), ("busy", 62000, "r-1"), ("unavailable", 63000, "r-1"), ("unavailable", 64000, "r-2"),
+                                ("error", 65000, "r-1"), ("error", 91000, "r-1"), ("busy", 96000, "r-1")])
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                       "VALUES ('a-gone','c-gone','r-1','agent-a',1,1,66000,86000)")
+            db.execute("INSERT INTO wake_results VALUES ('a-gone','expired',97000)")
+        # agent-b: a turn r-1 started at 1000 still runs, and r-1's and r-2's busy claims while it runs.
+        self.turns("agent-b", [([("start", 1000, None)], (None, None, None))])
+        self.claims("agent-b", [("busy", 2000, "r-1"), ("busy", 3000, "r-2")])
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(sorted(self.sql("SELECT recipient_id,failed_wakes,failing_since_ms,failed_ms,failed_outcome FROM wake_facts")),
+                         [("agent-a", 9, 30000, 96000, "busy"), ("agent-b", 2, 2000, 3000, "busy")])
+
+    def test_upgrade_dates_a_turn_the_agent_wrote_in_by_its_message_so_its_late_end_clears_no_failure_after_it(self):
+        # agent-a's turn began at 500 and it posted at 2000; three claims failed after that, and the turn
+        # ended lost at 6000 (its process exited). It got through at 2000, before the failures.
+        self.turns("agent-a", [([("start", 1000, None)], ("lost", None, 6000))])
+        self.posted("agent-a", 2000)
+        self.claims("agent-a", [("unavailable", 3000, "r-1"), ("unavailable", 4000, "r-1"), ("unavailable", 5000, "r-1")])
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT reached_ms,failed_wakes,failing_since_ms,failed_outcome FROM wake_facts WHERE recipient_id='agent-a'"),
+                         [(2000, 3, 3000, "unavailable")])
+
+    def test_upgrade_folds_a_claim_that_began_before_an_act_and_failed_after_it_after_the_act(self):
+        # agent-a's turn began at 500 and it posted at 2000; a claim begun at 1500 settled busy at 3000.
+        # It happened at 3000, after the act got a wake through, so it is a failure since then.
+        self.turns("agent-a", [([("start", 1000, None)], ("lost", None, 6000))])
+        self.posted("agent-a", 2000)
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                       "VALUES ('a-busy','c-busy','r-1','agent-a',1,1,1500,21500)")
+            db.execute("INSERT INTO wake_results VALUES ('a-busy','busy',3000)")
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT reached_ms,failed_wakes,failing_since_ms,failed_outcome FROM wake_facts WHERE recipient_id='agent-a'"),
+                         [(2000, 1, 3000, "busy")])
+
+    def test_upgrade_takes_the_schedulers_count_as_an_act_in_the_turns_it_left_out(self):
+        # Each agent has one turn still running that was handed work, and wrote nothing since its wake
+        # began. The scheduler counted agent-b's as unanswered; agent-a's count is lower than the turns
+        # it would have counted, so agent-a acted while its turn ran and that turn got through.
+        self.turns("agent-a", [([("start", 300000, None)], (None, None, None))])
+        self.turns("agent-b", [([("start", 300000, None)], (None, None, None))])
+        with sqlite3.connect(str(self.path)) as db:
+            for recipient, count in [("agent-a", 0), ("agent-b", 1)]:
+                db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES (?,1) ON CONFLICT DO NOTHING", (recipient,))
+                db.execute("UPDATE recipient_schedule SET unanswered_wakes=?,unanswered_since_ms=?,handed_seq=1 WHERE recipient_id=?",
+                           (count, 300000 if count else None, recipient))
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE author_id IN ('agent-a','agent-b') AND sent_ms>=299500"), [(0,)])
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT recipient_id,carried,acted FROM wake_turns ORDER BY recipient_id"),
+                         [("agent-a", 1, 1), ("agent-b", 1, 0)])
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_no_notice_is_posted(self):
+        self.settled(["error", "error", "error"])
+        stored = everything(self.path)
+        self.upgrade()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO metadata VALUES ('health_announced','{}')")
+            db.execute("INSERT INTO metadata VALUES ('health_due','5')")
+            db.execute("INSERT INTO runner_prior VALUES (1,'stopped',NULL,5)")
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_HEALTH))
+        self.assertEqual(everything(self.path), stored)
+        self.assertEqual(self.sql("SELECT count(*) FROM metadata WHERE key IN ('health_announced','health_due')"), [(0,)])
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_theseus_has_posted_a_notice_and_changes_nothing(self):
+        self.upgrade()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name,enabled) VALUES ('theseus','agent','Theseus',0)")
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
+                       "VALUES ('m-notice','t1','theseus','Health: a notice','[]','[]','[]','health-1',1)")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+
+
 class ChecksStepCase(MigrationCase):
     """An instance at the pipeline's version: the checks' step adds each outcome's target,
     its checks and their readings, the owner's allowances, the problems found before a
@@ -2623,6 +2852,9 @@ class SettleStepCase(MigrationCase):
 
     VERSION, FIXTURE = BEFORE_SETTLE, SCHEMA_BEFORE_SETTLE
 
+    def upgrade(self):
+        return migrate(self.path, "test-instance", self.binding, SETTLE_VERSION)
+
     def create_topic(self):
         source = super().create_topic()
         self.write_as_release_24_left()
@@ -2670,9 +2902,9 @@ class SettleStepCase(MigrationCase):
     def sent(self, message_id):
         return self.sql("SELECT sent_ms FROM messages WHERE id=?", (message_id,))[0][0]
 
-    def test_the_step_settles_and_the_head_is_its_version(self):
+    def test_the_step_settles_and_the_health_pages_step_follows_it(self):
         self.assertIn((BEFORE_SETTLE, SETTLE_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, SETTLE_VERSION)
+        self.assertIn((SETTLE_VERSION, HEALTH_VERSION), [step[:2] for step in migrations.STEPS])
 
     def test_upgrade_answers_each_item_an_answerer_asked_its_author_back_on_and_leaves_the_rest_as_they_were(self):
         before, stored = self.items(), everything(self.path)
@@ -2691,6 +2923,8 @@ class SettleStepCase(MigrationCase):
         self.assertEqual([after[key][0] for key in (self.quiet, self.other, self.other_back, self.partly)], [0, 0, 0, 0])
         changed = {table for table, rows in everything(self.path).items() if rows != stored[table]}
         self.assertEqual(changed, {"conversation_takes", "conversation_items", "sqlite_sequence"}, "nothing but them and the takes' counter")
+        # The conversation is read at the head, which keeps what the step wrote.
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         found = self.store.view("owner", "conversation", {"workspace_id": "w1"})["conversation"]
         self.assertEqual(found["new_items"], 4)
@@ -2751,6 +2985,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema27Case, _name, None)
     if _name.startswith("test_") and _name not in PipelineStepCase.__dict__:
         setattr(PipelineStepCase, _name, None)
+    if _name.startswith("test_") and _name not in HealthStepCase.__dict__:
+        setattr(HealthStepCase, _name, None)
     if _name.startswith("test_") and _name not in ChecksStepCase.__dict__:
         setattr(ChecksStepCase, _name, None)
     if _name.startswith("test_") and _name not in SettleStepCase.__dict__:

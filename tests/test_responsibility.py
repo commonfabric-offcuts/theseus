@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """What each participant is responsible for: their own note, shown on the topic, fenced on its own revision."""
 
+import re
 import unittest
 
 import reader_fixture as fixtures
@@ -49,10 +50,12 @@ class ResponsibilityCase(fixtures.ReaderCase):
         self.rejected(self.command("responsibility.set", {"note": "x", "actor_id": "owner"}, target={"topic_id": "t1"},
                                    expected={"responsibility_revision": 0}, actor="agent-a"), "INVALID_ARGUMENT")
         self.assertEqual(self.notes(), {"owner": ("", 0), "agent-a": ("", 0)})
-        # Refusals record their operation and nothing else.
+        # Refusals record their operation and nothing else; what is red is kept with the commit
+        # number (docs/health.md), so only that number moves with it.
         after = self.records()
-        self.assertEqual([line for line in after if "INSERT INTO \"operations\"" not in line and "commit_" not in line],
-                         [line for line in before if "INSERT INTO \"operations\"" not in line and "commit_" not in line])
+        kept = lambda lines: [re.sub(r'"seq":\d+', '"seq":N', line) if "'health_light'" in line else line
+                              for line in lines if "INSERT INTO \"operations\"" not in line and "commit_" not in line]
+        self.assertEqual(kept(after), kept(before))
         self.participation("agent-b", True)
         self.committed(self.note("Reviews the copy", 0, actor="agent-b"))
         self.participation("agent-b", False)

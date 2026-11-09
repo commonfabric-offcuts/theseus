@@ -349,6 +349,8 @@ class EffectsRunnerCase(unittest.TestCase):
             self.loop()
         self.assertEqual(claims,[60])
         self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('unavailable',)])
+        # Core keeps the route's own code for why, for the Health page.
+        self.assertEqual(self.sql("SELECT failed_wakes,failed_reason FROM wake_facts WHERE recipient_id='agent-a'"),[(1,'fixture')])
 
     def test_repeated_short_lease_refusal_is_one_immediate_retry_then_paced(self):
         self.api();self.create_topic();self.wait.stop_at=3.5
@@ -1152,7 +1154,10 @@ finally:db.close()
             self.assertEqual(len(injected),1,'fault reached the selected real profile read')
             self.assert_pause('storage_failure')
             self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(1,)],'no second claim')
-            self.assertEqual(self.sql('SELECT id,state FROM deliveries ORDER BY id'),before)
+            # The pause is told to the team (docs/health.md); the work's own deliveries are untouched.
+            self.assertEqual(self.sql("SELECT d.id,d.state FROM deliveries d JOIN messages m ON m.id=d.message_id "
+                                      "WHERE m.author_id<>'theseus' ORDER BY d.id"),before)
+            self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE author_id='theseus'"),[(1,)])
             self.assertEqual(spawn.call_count,0,'post-claim storage failure must never spawn')
             self.assertEqual(result['status'],'paused')
             if mode=='busy':
@@ -1369,6 +1374,18 @@ sys.exit(result)
         self.assertEqual(result['status'],'paused','unknown cleanup cannot enter short-lease retry')
         self.assertEqual(calls.call_count,1)
         self.assert_pause('storage_failure')
+
+    def test_a_hosted_answer_that_did_not_get_through_is_settled_with_its_reason(self):
+        api=self.api();self.create_topic()
+        with self.store.runner_guard('loop-fixture') as guard:
+            loop=api.EffectsLoop(self.profile,self.store,guard,self.wait,{},selected_executable=str(self.broker),
+                                 clock=self.clock,emit=self.trace.append)
+            loop.token=self.store.acquire_runner(guard)['runner_token']
+            loop.outstanding=self.store.claim_wakes(guard,loop.token,['agent-a'])['claims'][0]
+            # The host's settle callback, with the fixed code for how the turn went.
+            loop._hosted_settled('error',None,'child_exited')
+        self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('error',)])
+        self.assertEqual(self.sql("SELECT failed_wakes,failed_reason FROM wake_facts WHERE recipient_id='agent-a'"),[(1,'child_exited')])
 
     def test_a_hosted_answer_read_after_the_claim_lease_is_late_not_a_fault(self):
         # A busy, error or unavailable answer can be read after Core's claim lease

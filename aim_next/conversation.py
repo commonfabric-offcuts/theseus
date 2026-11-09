@@ -314,9 +314,14 @@ class Conversation:
             return "tell"
         return intent
 
-    def _publish(self, db, actor, operation_id, topic_id, snapshot):
-        """Publish frozen writing as one message with its deliveries; every send shares this path."""
-        topic = self._topic(db, actor, topic_id)
+    def _publish(self, db, actor, operation_id, topic_id, snapshot, topic=None, settled_for=()):
+        """Publish frozen writing as one message with its deliveries; every send shares this path.
+
+        topic, the topic's row, and settled_for are given only by Theseus's own
+        notices (health.py), written into an outcome's conversation by no member
+        of it: whoever a notice is about gets it settled, so it is never work
+        that wakes them."""
+        topic = self._topic(db, actor, topic_id) if topic is None else topic
         parent = None
         if snapshot.get("reply_to"):
             # A message the writer cannot see is refused as one that does not exist.
@@ -394,7 +399,7 @@ class Conversation:
         answers = parent["author_id"] if parent else None
         for recipient, reasons in audience.items():
             between = bool(snapshot["addressees"]) and "addressed" not in reasons and recipient != answers
-            settled = between and self._actor(db, recipient)["kind"] == "human"
+            settled = recipient in settled_for or between and self._actor(db, recipient)["kind"] == "human"
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons, settled=settled)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         if private is not None:

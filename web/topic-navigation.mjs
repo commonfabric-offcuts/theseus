@@ -15,7 +15,7 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 const OPTIONAL = {opening:['from'],topic:['message','page','revision'],workspace:['page','revision']};
 const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
-  const fields = {root:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
+  const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>validId(route[key]))) badRoute();
   // A page is named alone (not with a message), and a revision only with its page.
@@ -25,7 +25,7 @@ export function routeKey(route) {
 export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
-  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
+  const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
@@ -38,6 +38,8 @@ export function parseRoute(url) {
   if (new Set(keys).size !== keys.length) badRoute();
   let route;
   if (!keys.length) route={kind:'root'};
+  // The instance's Health page (docs/health.md).
+  else if (keys.length===1 && p.get('health')==='') route={kind:'health'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
   else if (keys.length===2 && p.has('topic') && p.has('message')) route={kind:'topic',id:p.get('topic'),message:p.get('message')};
   // A Notebook page's link: its topic's or its outcome's, the page, and perhaps its revision.

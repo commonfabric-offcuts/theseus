@@ -52,7 +52,7 @@ Then it runs, one at a time:
 1. Python units: `/usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v` (`--python` to change).
 2. Node units: `node --test --test-reporter=tap tests/*.test.mjs` (`--node` to change).
 3. The deploy's refusals: `tests/test_tools_deploy.py -k DeployRefuses`, which the outcome's "deploy refuses" check reads.
-4. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes` and `header` among them), `tests/reader_openings_native.mjs`, the default and five modes of `tests/reader_native.mjs`, and the six modes of `tests/webkit_native.mjs` that run checks again in Safari's engine, the phone check page among them ([device-evidence.md](device-evidence.md)). A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
+4. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes`, `header` and `health` among them), `tests/reader_openings_native.mjs`, the default and five modes of `tests/reader_native.mjs`, and the six modes of `tests/webkit_native.mjs` that run checks again in Safari's engine, the phone check page among them ([device-evidence.md](device-evidence.md)). A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
 5. The wake replay (below), `--repeats` times (default 2), which the outcome's wake time check reads.
 
 A unit check also holds every machine-read check source in `tools/pipeline/checks.json` to a step here: each is read from its own steps (`SOURCE_STEPS`) and from no other, so a check cannot be seeded that no step produces.

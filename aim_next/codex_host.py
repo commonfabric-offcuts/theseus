@@ -85,6 +85,9 @@ UNSUPPORTED = {"code": -32601, "message": "not supported by theseus host"}
 TOKEN_FIELDS = (("inputTokens", "input_tokens"), ("cachedInputTokens", "cached_input_tokens"),
                 ("outputTokens", "output_tokens"), ("reasoningOutputTokens", "reasoning_output_tokens"))
 TURN_END = frozenset(("completed", "interrupted", "failed"))
+# How a claim fails when the Codex process serving its thread ends: it exited, or was ended for an
+# answer Theseus does not understand. Either way every turn that process ran ends lost.
+PROCESS_ENDED = frozenset(("child_exited", "protocol_error"))
 # The schema's ThreadStatus types; any other value is kept and logged only as "other".
 THREAD_STATUSES = frozenset(("idle", "active", "systemError", "notLoaded"))
 # The error a request gets when its child is gone before answering.
@@ -475,9 +478,9 @@ class Host:
     """All hosted threads of one runner process; the effects loop drives it from its kqueue."""
 
     def __init__(self, configs, *, core, settle, watch, log, monotonic):
-        # settle(outcome, turn, reason) records the current claim's result at
-        # once, so the handed row exists before any later message of the same
-        # read refers to it.
+        # settle(outcome, turn, reason, from_turn) records the current claim's
+        # result at once, so the handed row exists before any later message of
+        # the same read refers to it.
         self.core, self.settle, self.watch, self.log, self.monotonic = core, settle, watch, log, monotonic
         self.threads = {}
         self.executables = {}
@@ -551,7 +554,12 @@ class Host:
         self.threads[thread_id].uncertain = True
         self.log.write("settlement_stale", attempt=attempt_id)
 
-    def _settle(self, work, outcome, turn, reason):
+    def _settle(self, work, outcome, turn, reason, steered=None):
+        """Settle the dispatch's claim once. One that failed names the running turn it came from, as
+        Health counts it with that turn (health.py): the turn a steer was refused by because Codex
+        said it cannot take more work (steered), or the turn the thread's Codex process was running
+        when it exited or was ended for an answer Theseus does not understand, which ends that turn
+        too. Any other failure never reached a running turn, so it names none."""
         if work.settled:
             return
         work.settled = True
@@ -561,8 +569,9 @@ class Host:
             work.thread.uncertain = True
             self.log.write("dispatch_late", attempt=work.claim["attempt_id"], outcome=outcome)
             return
+        running = steered if reason == "not_steerable" else work.thread.active_turn if reason in PROCESS_ENDED else None
         # Logged once Core holds the settlement, so the log never runs ahead of the record.
-        self.settle(outcome, turn, reason)
+        self.settle(outcome, turn, reason, None if running is None else {"thread_id": work.thread.id, "turn_id": running})
         self.log.write("dispatch", attempt=work.claim["attempt_id"], outcome=outcome, reason=reason,
                        mode=turn["mode"] if turn else None, ms=int((self.monotonic() - work.started) * 1000))
 
@@ -644,7 +653,7 @@ class Host:
             return self._settle(work, "unavailable", None, "child_exited")
         if error is not None:
             if _not_steerable(error):
-                return self._settle(work, "busy", None, "not_steerable")
+                return self._settle(work, "busy", None, "not_steerable", steered=expected)
             ended = work.thread.active_turn != expected
             # A turn the history lists in progress may be one its app-server lost:
             # any refusal of a steer into it means it is not running, so start one.

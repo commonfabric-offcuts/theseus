@@ -44,7 +44,10 @@ test('each new commit number is announced once, over the page origin, with the s
   sockets[0].send({ seq: 4 });
   assert.equal(live.connected, true);
   sockets[0].send({ seq: 4 }); sockets[0].send({ seq: 5 }); sockets[0].send({ seq: 6 });
-  assert.deepEqual(events, [{ kind: 'state', state: 'live' }, { kind: 'commit', seq: 4 }, { kind: 'commit', seq: 5 }, { kind: 'commit', seq: 6 }]);
+  assert.deepEqual(events, [{ kind: 'state', state: 'live', seq: 4 }, { kind: 'commit', seq: 4 }, { kind: 'commit', seq: 5 }, { kind: 'commit', seq: 6 }]);
+  // What is red at a commit, when the server says it, goes with its number (docs/health.md).
+  sockets[0].send({ seq: 7, health: { red: ['runner'], seq: 7 } });
+  assert.deepEqual(events.slice(-1), [{ kind: 'commit', seq: 7, health: { red: ['runner'], seq: 7 } }]);
   const secure = new Live({ token: 't', origin: 'https://box.tail.ts.net', socket: url => ({ url }), timers: clock() });
   secure.start();
   assert.equal(secure.current.socket.url, 'wss://box.tail.ts.net/api/live');

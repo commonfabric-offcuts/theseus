@@ -22,6 +22,7 @@ from .effects_watch import NativeWatch, WatchError, WatchStopped
 from .topic_state import STATES
 from .profile import ProfileError, load_profile
 from .store import StoreOpenError
+from .health import report_lines
 
 
 class InvalidRequest(ValueError):
@@ -182,7 +183,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] "
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] | health "
          "| attachment ATTACHMENT --message MESSAGE --out FILE "
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
@@ -321,6 +322,7 @@ def _parser():
     verb("watch").add_argument("--once", action="store_true")
     verb("retry").add_argument("operation")
     verb("releases").add_argument("--limit", type=int)
+    verb("health")
     attachment = verb("attachment")
     attachment.add_argument("attachment")
     attachment.add_argument("--message", required=True)
@@ -841,6 +843,12 @@ class Agent(PipelineVerbs, TargetVerbs):
                 "  (%s)" % ", ".join(shown) if shown else "", "  [recorded retroactively]" if item["source"] == "backfill" else ""))
         if not items:
             self.out.plain("no releases recorded")
+
+    def do_health(self):
+        """What is healthy and what is not, from Core's facts, in the Health page's words (docs/health.md)."""
+        answer = self.view("health", {})
+        for line in report_lines(answer, lambda ms: time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0))):
+            self.out.plain(line)
 
     def update_topic(self, args):
         topic = self.view("topic", {"topic_id": self.options.topic})["topic"]

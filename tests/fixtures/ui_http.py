@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from aim_next import Store, initialize
+from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
 
 
@@ -336,6 +337,10 @@ def main():
             command("memory.create", "fixture-notebook", {"title": "Image Notebook", "body": "Notebook passage to quote.", "attachments": [], "references": []},
                     {"item_id": "fixture-notebook", "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender="fixture-notebook-agent")
         max_reads = 1 if "--legacy-read-admission" in sys.argv else 2
+        # The server's own event lines (a runner gone, a lease that lapsed) are
+        # kept for the checks to read, so stderr carries only what went wrong.
+        server_events = []
+        server_module._stderr = server_events.append
         controls = FreshnessControls() if freshness else None
 
         def serve(port=0):
@@ -429,6 +434,9 @@ def main():
                                 {"topic_id": topic_id}, sender=sender))
 
         seed_number = 0
+        # The Health checks' runner: one guard this process holds across their
+        # acts, as a running runner does, and the token its acquisition gave.
+        health_runner = {}
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -590,6 +598,85 @@ def main():
                             answer = {"parked": agent}
                         else:
                             raise ValueError("Unknown wakes action")
+                    elif freshness and request["method"] == "health":
+                        # The fixture agent's wakes through Core's own runner acts, for
+                        # the Health page (docs/health.md). "start" gives it a queue
+                        # route and takes the runner role under a guard held across the
+                        # checks; "fail" settles `count` claimed wakes as errors with the
+                        # runner's fixed `reason`, and "through" settles one accepted, which
+                        # the agent answers as a working agent does (a note in its topic, so
+                        # its waiting work stays and it is not left with wakes unanswered). A
+                        # wake waits out a backoff of seconds before it is due again;
+                        # the fixture makes it due at once (next_due_ms), which is the
+                        # one fact not reached through a runner act. "pause" pauses the
+                        # runner as an operator; "resume" takes the role again with a
+                        # fresh guard, as the supervisor's resume does. "renew" renews
+                        # the role, a commit that changes nothing on the page; "hang"
+                        # renews it for one second and then never again, as a hung
+                        # runner whose process lives; "take" takes the role again
+                        # after that with a fresh guard; "notices" reads what Theseus posted;
+                        # "settled" reads the server's event lines, what Core last told the team
+                        # and the moment it keeps for what is red or told to change.
+                        agent, action = "fixture-notebook-agent", request["action"]
+                        def claimed():
+                            with sqlite3.connect(str(path)) as db:
+                                db.execute("UPDATE recipient_schedule SET next_due_ms=? WHERE recipient_id=?", (int(time.time() * 1000), agent))
+                            assert store().renew_runner(health_runner["guard"], health_runner["token"], 120000)["status"] == "renewed"
+                            claims = store().claim_wakes(health_runner["guard"], health_runner["token"], [agent])["claims"]
+                            assert len(claims) == 1, claims
+                            return claims[0]["claim_token"]
+                        if action == "start":
+                            home = root / "agent-home"
+                            home.mkdir(mode=0o700, exist_ok=True)
+                            health_runner["guard"] = store().runner_guard("fixture-health")
+                            health_runner["guard"].__enter__()
+                            pinned = store().provision_route_pin(health_runner["guard"], agent, {
+                                "kind": "codex-queue-stdio", "protocol_version": 1, "codex_home": str(home),
+                                "thread_id": "12345678-1234-4234-8234-000000000001"})
+                            acquired = store().acquire_runner(health_runner["guard"], lease_ms=120000)
+                            health_runner["token"] = acquired.get("runner_token")
+                            answer = {"route": pinned["status"], "runner": acquired["status"]}
+                        elif action in ("fail", "through"):
+                            for unused in range(request.get("count", 1)):
+                                settled = store().finish_wake(health_runner["guard"], health_runner["token"], claimed(),
+                                                              "error" if action == "fail" else "accepted",
+                                                              reason=request.get("reason") if action == "fail" else None)
+                                assert settled["status"] == "settled", settled
+                                if action == "through":
+                                    health_runner["answers"] = health_runner.get("answers", 0) + 1
+                                    item = "health-answer-%d" % health_runner["answers"]
+                                    command("memory.create", item, {"title": "Woken", "body": "Answered a wake.", "attachments": [], "references": []},
+                                            {"item_id": item, "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender=agent)
+                            answer = {"settled": request.get("count", 1)}
+                        elif action in ("renew", "hang"):
+                            answer = store().renew_runner(health_runner["guard"], health_runner["token"], 120000 if action == "renew" else 1000)
+                        elif action == "take":
+                            health_runner["guard"].close()
+                            health_runner["guard"] = store().runner_guard("fixture-health-taken")
+                            health_runner["guard"].__enter__()
+                            answer = store().acquire_runner(health_runner["guard"], lease_ms=120000)
+                            health_runner["token"] = answer.get("runner_token")
+                            answer = {"status": answer["status"]}
+                        elif action == "settled":
+                            with sqlite3.connect(str(path)) as db:
+                                row = db.execute("SELECT value FROM metadata WHERE key='health_announced'").fetchone()
+                                due = db.execute("SELECT value FROM metadata WHERE key='health_due'").fetchone()
+                            answer = {"events": list(server_events), "announced": sorted(json.loads(row[0])) if row else [],
+                                      "due": int(due[0]) if due else None}
+                        elif action == "notices":
+                            with sqlite3.connect(str(path)) as db:
+                                answer = [row[0] for row in db.execute("SELECT body FROM messages WHERE author_id='theseus' ORDER BY seq")]
+                        elif action == "pause":
+                            answer = store().pause_runner(health_runner["guard"], health_runner["token"], "operator_pause")
+                        elif action == "resume":
+                            health_runner["guard"].close()
+                            health_runner["guard"] = store().runner_guard("fixture-health-again")
+                            health_runner["guard"].__enter__()
+                            answer = store().resume_runner(health_runner["guard"], request["version"], lease_ms=120000)
+                            health_runner["token"] = answer.get("runner_token")
+                            answer = {"status": answer["status"]}
+                        else:
+                            raise ValueError("Unknown health action")
                     elif freshness and request["method"] == "agent_topic":
                         # A topic in an outcome an agent owns, which the agent started
                         # with the reader in it: the reader takes part but is neither

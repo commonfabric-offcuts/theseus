@@ -36,16 +36,26 @@ A turn behaviour (consumed in order across restarts) may hold:
   reply      text posted in each topic ("{history}" is this thread's previous reply)
   commands   how many non-CLI commandExecution items to report first
   hold       "steer": stay active until one steer arrives; "die": SIGKILL itself
-             once the turn's input is seen; "interrupt": stay active until interrupted
+             once the turn's input is seen; "interrupt": stay active until interrupted;
+             "close": once the turn's input is seen, close the thread (thread/closed)
+             with no turn/completed; "unload": the same, announced as a status change
+             to notLoaded
+  resume     after a "close" or "unload" hold, how every later thread/resume of that
+             thread is answered: "refused" (the default) or "widened" (echo a sandbox
+             wider than asked)
   steer      "race": on a steer, finish the turn first and refuse the steer as having
              no active turn; "race_fail": the same, but the turn fails; "late": finish
              the turn first, then accept the steer; "drop": accept the steer but never
-             surface its input
+             surface its input; "busy": refuse each steer as activeTurnNotSteerable, and
+             complete the turn after `refusals` (default 1) of them; "refuse": refuse each
+             steer as "input rejected" while the turn goes on; "die": SIGKILL itself
+             with the steer unanswered
   fail       a codexErrorInfo key: the turn fails without acting
   busy       refuse turn/start as activeTurnNotSteerable
   silent     start the turn but never answer turn/start or announce the turn
   vanish     the same, and the turn is gone at once while the thread's history
              still lists it in progress (a turn its app-server lost)
+  lose       answer turn/start and surface its input, then lose the turn the same way
   garble     answer turn/start with a line that is not JSON, then wait
   server_request  a server request method sent mid-turn; the turn waits for its answer
   bad_notification  before answering turn/start, notify turn/started with a threadId that is a list
@@ -169,10 +179,10 @@ class Fake:
                 "ephemeral": False, "modelProvider": "openai", "preview": "", "projectId": None,
                 "sessionId": thread_id, "source": "appServer", "status": status, "turns": []}
 
-    def settings(self, params, thread_id, status=None):
+    def settings(self, params, thread_id, status=None, widened=False):
         record = self.state["threads"][thread_id]
         roots = params.get("config", {}).get("sandbox_workspace_write", {}).get("writable_roots", [])
-        widened = self.script.get("echo_widened")
+        widened = widened or self.script.get("echo_widened")
         return {"thread": self.thread(thread_id, status or {"type": "idle"}), "approvalPolicy": params.get("approvalPolicy", "on-request"),
                 "approvalsReviewer": "user", "cwd": record["cwd"], "model": "fake-model", "modelProvider": "openai",
                 "sandbox": {"type": "workspaceWrite", "writableRoots": ["/"] if widened else roots, "networkAccess": bool(widened),
@@ -215,10 +225,13 @@ class Fake:
         if thread_id not in self.state["threads"]:
             return self.error(request, -32600, "thread not found: " + thread_id)
         record = self.state["threads"][thread_id]
+        if record.get("closed") == "refused":
+            return self.error(request, -32600, "thread could not be resumed")
         record["resumes"] = record.get("resumes", 0) + 1
         self.save()
         self.load(thread_id, params.get("developerInstructions") or record["instructions"])
-        self.send({"id": request["id"], "result": self.settings(params, thread_id, self.script.get("resume_status"))})
+        self.send({"id": request["id"], "result": self.settings(params, thread_id, self.script.get("resume_status"),
+                                                                widened=record.get("closed") == "widened")})
         if self.once("mute_after_resume_once"):
             self.muted = True
 
@@ -276,6 +289,11 @@ class Fake:
         self.notify("thread/status/changed", {"threadId": thread_id, "status": {"type": "active", "activeFlags": []}})
         self.notify("turn/started", {"threadId": thread_id, "turn": {"id": turn["id"], "status": "inProgress", "items": []}})
         self.accept(thread_id, turn, params)
+        if behaviour.get("lose"):
+            # The app-server loses the turn once its input is seen: no turn/completed, and the
+            # thread's history still lists it in progress.
+            del self.active[thread_id]
+            return
         self.advance(thread_id)
 
     def on_turn_steer(self, request, params):
@@ -290,6 +308,19 @@ class Fake:
             # The turn ended a moment before the steer arrived.
             self.finish(thread_id, "completed" if mode == "race" else "failed")
             return self.error(request, -32600, "no active turn to steer")
+        if mode == "busy":
+            # A review turn: each steer is refused as not steerable, and after `refusals` of them it completes.
+            turn["refused"] = turn.get("refused", 0) + 1
+            self.error(request, -32600, "cannot steer now", {"codexErrorInfo": {"activeTurnNotSteerable": {"turnKind": "review"}}})
+            if turn["refused"] >= turn["behaviour"].get("refusals", 1):
+                self.finish(thread_id, "completed")
+            return
+        if mode == "refuse":
+            # Each steer is refused for a reason that does not say whether the turn runs; the turn goes on.
+            return self.error(request, -32600, "input rejected")
+        if mode == "die":
+            # The process dies with the steer in flight, unanswered.
+            os.kill(os.getpid(), signal.SIGKILL)
         if mode == "late":
             # The turn ends first; the steer's answer follows, and its input is never seen.
             self.finish(thread_id, "completed")
@@ -347,6 +378,15 @@ class Fake:
         if turn.get("asked") and any(owner == thread_id for owner in self.asked.values()):
             return
         hold = behaviour.get("hold")
+        if hold in ("close", "unload"):
+            # The thread is closed mid-turn: no turn/completed, and it is never resumed as it was.
+            del self.active[thread_id]
+            self.loaded.pop(thread_id, None)
+            self.state["threads"][thread_id]["closed"] = behaviour.get("resume", "refused")
+            self.save()
+            if hold == "close":
+                return self.notify("thread/closed", {"threadId": thread_id})
+            return self.notify("thread/status/changed", {"threadId": thread_id, "status": {"type": "notLoaded"}})
         if hold == "die":
             os.kill(os.getpid(), signal.SIGKILL)
         if hold == "interrupt" or (hold == "steer" and not turn["steered"]):

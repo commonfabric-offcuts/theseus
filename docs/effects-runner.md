@@ -128,7 +128,13 @@ count clears, and a parked recipient with work waiting is due at once, unless
 a hosted turn that holds its work is the one acting. Reaching nothing pending
 clears the count too. Reads stay write-free, so a read is not a sign of life.
 The counts are derived from wakes, not anyone's records, so stepping back to
-version 21 drops them and is never refused for them.
+version 21 drops them and is never refused for them. This count is the
+scheduler's: it counts a turn when it is handed and takes it back if it fails,
+and clears when nothing waits, for the scheduler's own reasons. The Health
+page keeps a count of its own, of attempts that got through (a hosted turn,
+with every steer it took, once, when it completes), which only those attempts
+and the agent's acts move, and it never says what the scheduler will do
+(docs/health.md).
 
 The `wakes` view lists the agents whose wakes are not getting through: while a
 runner holds a live lease, each parked agent with work, as `{actor_id,
@@ -171,9 +177,21 @@ answer. When Core could not take the account (`unrecorded`, for instance
 `DATABASE_BUSY` while another writer held the lock past the store's wait), the
 next commit's read finds the pid still recorded as running and gone, and the
 server tells Core again; there is no timer. A
-runner that is alive but stops renewing has no process event; it is known gone
-when its lease ends, on the next read. Proof: `tests/test_http_live.py`,
-`tests/test_runner_exit.py`.
+runner that is alive but stops renewing (hung) has no process event and makes
+no more commits; its lease ending is the one sign. A stop that no runner
+follows makes no more commits either, and is told once it has lasted
+(docs/health.md). Core keeps the next moment what is red would change with no
+act (metadata `health_due`: the running runner's lease's end, or when an
+absence will have lasted), the same read learns it, and the feed's wait lasts
+no longer than that. When it comes with no commit first the server calls
+`settle_health_due(due_ms)`: Core settles what is red on a commit of its own,
+so the team is told and every open page reads it, and records nothing of the
+runner's (a runner that comes back finds its role lost, as before). Its
+answer is `settled`, `unchanged` (nothing was due to change) or `early`; the
+server writes one `health_due` line with it. Any act that moves the moment
+is a commit, so the read after it moves the wait with it; when Core could
+not be told, the next commit's read asks again. Proof:
+`tests/test_http_live.py`, `tests/test_runner_exit.py`, `tests/test_health.py`.
 
 The `wakes` view carries `runner`: `{live: true}`, or `{live: false, state}`
 with `paused` and its reason, `stopped` or `exited` with `since_ms` (and the

@@ -551,6 +551,10 @@ class Handler(BaseHTTPRequestHandler):
             result = self.server.shared_reads.read(key, lambda begun, disconnected: self._store_call(
                 lambda store: store.view(self.server.actor, value["name"], value["args"]),
                 begun=begun, disconnected=disconnected, arrived=arrived), self._read_disconnected, arrived)
+            if value["name"] == "health" and isinstance(result, dict) and "error" not in result:
+                # The one line Core cannot know: this server, which answered the read.
+                result = dict(result, server={"started_ms": self.server.started_ms, "pid": os.getpid(),
+                                              "live_feed": self.server.live_feed is not None})
         self._json_response(200, result)
 
     def _upload_framing(self):
@@ -761,7 +765,10 @@ class Handler(BaseHTTPRequestHandler):
     def _live(self):
         """One WebSocket text message per new commit number, until the feed ends or the client leaves.
 
-        The first message is the current number. A last message {"end": reason}
+        The first message is the current number. Each carries what is red at
+        that commit, {"seq": N, "health": {"red": [...], "seq": N}}, when Core
+        kept it with that commit (docs/health.md); a page that does not know
+        the field ignores it. A last message {"end": reason}
         says the feed stopped, followed by a close; a client treats any close
         the same way, reads the views it shows, and reconnects. The stream is a
         WebSocket because a browser keeps those apart from its few HTTP
@@ -790,11 +797,12 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.setblocking(False)
             sent, pending, ping, received = None, b"", None, b""
             while True:
-                seq, ended = feed.state()
+                seq, light, ended = feed.snapshot()
                 if not pending and ping is not None:
                     pending, ping = _ws_frame(ping, 10), None
                 elif not pending and seq != sent:
-                    pending, sent = _ws_frame(b'{"seq":%d}' % seq), seq
+                    message = {"seq": seq} if light is None else {"seq": seq, "health": light}
+                    pending, sent = _ws_frame(json.dumps(message, separators=(",", ":")).encode("ascii")), seq
                 if ended:
                     pending += _ws_frame(json.dumps({"end": ended}, separators=(",", ":")).encode("ascii")) + _ws_frame(b"\x03\xe8", 8)
                 if pending:
@@ -910,6 +918,26 @@ def runner_gone(store_factory, emit):
     return gone
 
 
+def health_due(store_factory, emit):
+    """What the live feed calls when Core's next health moment comes with no act first (a lease that
+    ended unrenewed, a stop that lasted): have Core settle what is red at once, say what Core
+    answered, and return its status, or None when Core could not be told."""
+    from .runner import RunnerError
+    from .contract import StoreError
+
+    def due(due_ms):
+        try:
+            record = store_factory().settle_health_due(due_ms)
+            status = record["status"]
+        except (AuthorityError, StoreError, RunnerError) as error:
+            code = getattr(error, "code", None)
+            record, status = {"status": "unsettled", "code": code if isinstance(code, str) else type(error).__name__}, None
+        if status != "early":
+            emit({"event": "health_due", "due_ms": due_ms, "record": record})
+        return status
+    return due
+
+
 def _stderr(event):
     print(json.dumps(event, separators=(",", ":")), file=sys.stderr, flush=True)
 
@@ -925,6 +953,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     if max_reads < 1 or max_json_bytes < 1:
         raise ValueError("Positive request bounds are required")
     server = AIMHTTPServer((host, port), Handler)
+    server.started_ms = int(time.time() * 1000)
     server.store_factory = store_factory
     server.instance_id = instance_id
     server.actor = actor
@@ -952,7 +981,8 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
         # feed reads the commit number on its own thread, so a writer's lock
         # at start delays its first message and never disables it.
         try:
-            server.live_feed = LiveFeed(*live, runner_gone=runner_gone(store_factory, _stderr))
+            server.live_feed = LiveFeed(*live, runner_gone=runner_gone(store_factory, _stderr),
+                                        health_due=health_due(store_factory, _stderr))
         except (WatchError, OSError):
             server.live_feed = None
     return server

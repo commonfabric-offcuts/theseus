@@ -554,6 +554,8 @@ VIEW_PATHS = {
     "outcome_light": "reads asks and summaries, which a whisper never writes",
     "source_topics": "_message_access applies visible()",
     "wakes": "on_record_wake_health for every reader but the agent",
+    "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
+    "health_light": "the keys of what is red, counted on the record only",
     "memory_items": "Notebook revisions; a whisper is refused as evidence",
     "memory_current": "a Notebook page as it stands, read as the source view reads a revision; a whisper is refused as evidence",
     "capabilities": "no message", "operation": "the reader's own operation", "workspace": "no message",
@@ -585,6 +587,9 @@ MESSAGE_READS = {
     "aim_next/outcome_kind.py": ("the conversation's asks, cleared when the outcome is reached", 1),
     "aim_next/sources.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/wake_health.py": ("on the record only (private_to IS NULL)", 1),
+    "aim_next/health.py": ("on the record only (private_to IS NULL), but an agent's own count for that agent, as wakes; "
+                           "the step back's check for Theseus's notices, which are never whispers; and the upgrade's "
+                           "reads of when an agent wrote, its own acts, of which only a time is kept, as live keeps any act", 5),
     "aim_next/whispers.py": ("the rule itself", 5),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "

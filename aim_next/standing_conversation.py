@@ -25,6 +25,7 @@ import uuid
 
 from .contract import READABLE, Refusal, _identifier, _revision
 from .delivery import _now_ms
+from .health import HEALTH_ACTOR
 
 
 # Version 28: a topic's kind, the conversation a replaced topic gave way to,
@@ -345,7 +346,8 @@ class StandingConversation:
         answering = parent_item is not None and actor in self._answerers(db, parent_id)
         answers_ask = parent_id is not None and db.execute(
             "SELECT 1 FROM conversation_waits WHERE ask_id=? AND actor_id=?", (parent_id, actor)).fetchone() is not None
-        if actor != coordinator and not answering and not answers_ask:
+        # Theseus's own notices (health.py) are nobody's request, as the coordinator's posts are not.
+        if actor not in (coordinator, HEALTH_ACTOR) and not answering and not answers_ask:
             db.execute("INSERT INTO conversation_items(message_id) VALUES (?)", (message_id,))
         if answering:
             # An answer even when it asks the item's author back: its ask waits on them apart (below).

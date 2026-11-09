@@ -13,6 +13,7 @@ import sys
 import tempfile
 import textwrap
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -150,6 +151,15 @@ class LiveStreamTests(unittest.TestCase):
         with sqlite3.connect(str(self.db)) as db:
             return int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0])
 
+    def message(self, seq=None):
+        """The stream's message for the current commit: its number, and what Core kept as red with it."""
+        seq = self.seq() if seq is None else seq
+        self.assertEqual(seq, self.seq(), "only the current commit's message can be known")
+        with sqlite3.connect(str(self.db)) as db:
+            light = json.loads(db.execute("SELECT value FROM metadata WHERE key='health_light'").fetchone()[0])
+        self.assertEqual(light["seq"], seq, "Core keeps what is red with every commit")
+        return {"seq": seq, "health": {"red": light["red"], "seq": seq}}
+
     def bootstrap(self):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
         try:
@@ -160,12 +170,12 @@ class LiveStreamTests(unittest.TestCase):
 
     def test_a_stream_starts_at_the_current_commit_and_announces_each_new_one(self):
         client = self.open()
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), self.message())
         other = self.open()
-        self.assertEqual(self.line(other), {"seq": self.seq()})
+        self.assertEqual(self.line(other), self.message())
         for _ in range(3):
             self.commit()
-            expected = {"seq": self.seq()}
+            expected = self.message()
             self.assertEqual(self.line(client), expected)
             self.assertEqual(self.line(other), expected)
 
@@ -205,7 +215,7 @@ class LiveStreamTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertEqual((receipt["status"], receipt["result"]["mark_revision"]), ("committed", 1), receipt)
-        self.assertEqual((self.line(client), self.seq()), ({"seq": start + 1}, start + 1))
+        self.assertEqual((self.line(client), self.seq()), (self.message(start + 1), start + 1))
 
     def runner_state(self):
         with sqlite3.connect(str(self.db)) as db:
@@ -273,12 +283,81 @@ class LiveStreamTests(unittest.TestCase):
         child.wait()
         # The next line every open page gets is the commit that records the end, and the feed goes on.
         line = self.announced(client)
-        self.assertEqual((line, self.runner_state()), ({"seq": self.seq()}, ("exited", "ended", child.pid)))
+        self.assertEqual((line, self.runner_state()), (self.message(), ("exited", "ended", child.pid)))
         self.settled(client)
         view = self.store.view("test-human", "wakes", {})
         self.assertEqual((view["runner"]["state"], view["runner"]["reason"]), ("exited", "ended"))
         self.assertEqual([(event["event"], event["pid"], event["record"]["status"]) for event in told],
                          [("runner_gone", child.pid, "recorded")])
+
+    def test_a_hung_runner_whose_lease_runs_out_is_settled_and_announced_with_no_other_commit(self):
+        """Its process lives, so there is no exit; its lease ending is the one sign, and the feed waits no longer than that.
+        Every page's link goes red on that commit, from the stream alone; the team is told once no runner has followed."""
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        self.take_runner(child.pid)
+        self.settled(client)
+        lease = int(time.time() * 1000) + 700
+        with mock.patch("aim_next.health.HANDOVER_MS", 1500):
+            with sqlite3.connect(str(self.db)) as db:
+                # A short lease, and its end as the moment Core keeps for it, as a renewal's settling keeps it.
+                db.execute("UPDATE runner_state SET lease_until_ms=? WHERE id=1", (lease,))
+                db.execute("UPDATE metadata SET value=? WHERE key='health_due'", (str(lease),))
+            # The write wakes the feed, which reads the new moment; then nothing else is committed.
+            line = self.announced(client)
+            self.assertEqual(line, self.message())
+            self.assertEqual(line["health"]["red"], ["runner"], "the stream says the runner is red with that commit")
+            self.assertGreaterEqual(int(time.time() * 1000), lease, "announced once the lease ended, not before")
+            with sqlite3.connect(str(self.db)) as db:
+                self.assertIsNone(db.execute("SELECT value FROM metadata WHERE key='health_announced' AND value LIKE '%runner%'").fetchone(),
+                                  "not told before no runner has followed it for the handover")
+            line = self.announced(client)
+        self.assertEqual(line, self.message())
+        self.assertGreaterEqual(int(time.time() * 1000), lease + 1500, "told once the handover passed, not before")
+        self.assertEqual([(event["event"], event["due_ms"], event["record"]["status"]) for event in told],
+                         [("health_due", lease, "settled"), ("health_due", lease + 1500, "settled")])
+        self.assertEqual(self.store.view("test-human", "health_light", {})["red"], ["runner"])
+        with sqlite3.connect(str(self.db)) as db:
+            announced = json.loads(db.execute("SELECT value FROM metadata WHERE key='health_announced'").fetchone()[0])
+        self.assertEqual(list(announced), ["runner"], "what is told was settled on that commit")
+        self.assertEqual(self.runner_state(), ("running", None, child.pid), "nothing of the runner's is recorded")
+        # Said once: the feed goes on announcing commits and does not settle that lease again.
+        self.settled(client)
+        self.assertEqual(len(told), 2)
+
+    def test_a_commit_core_kept_no_light_for_is_announced_by_its_number_alone(self):
+        """An older Core, or a commit that did not settle what is red: the page reads it instead."""
+        client = self.open()
+        self.assertEqual(self.line(client), self.message())
+        with sqlite3.connect(str(self.db)) as db:
+            # A commit the way an older Core makes one: the number moves, what is red is not kept with it.
+            db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='commit_seq'")
+        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.commit()
+        self.assertEqual(self.line(client), self.message(), "the next commit that settles it says it again")
+
+    def test_a_stop_no_runner_follows_is_settled_and_announced_once_it_has_lasted_with_no_other_commit(self):
+        """A deploy refused after its stop, or a runner sent TERM: nothing more is committed, and the team is told."""
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        with mock.patch("aim_next.health.HANDOVER_MS", 1500):
+            with self.store.runner_guard("live-runner") as guard:
+                acquired = self.store.acquire_runner(guard)
+                stopped = self.store.stop_runner(guard, acquired["runner_token"])
+            self.assertEqual(stopped["status"], "stopped")
+            self.settled(client)
+            self.assertEqual(told, [], "not before it has lasted")
+            line = self.announced(client)
+        self.assertEqual(line, self.message())
+        self.assertGreaterEqual(int(time.time() * 1000), stopped["ended_ms"] + 1500, "announced once the stop lasted, not before")
+        self.assertEqual([(event["event"], event["due_ms"], event["record"]["status"]) for event in told],
+                         [("health_due", stopped["ended_ms"] + 1500, "settled")])
+        with sqlite3.connect(str(self.db)) as db:
+            announced = json.loads(db.execute("SELECT value FROM metadata WHERE key='health_announced'").fetchone()[0])
+        self.assertEqual(list(announced), ["runner"], "what is red was settled and told on that commit")
 
     def test_a_runner_process_already_gone_when_the_server_starts_is_recorded_at_once(self):
         self.stop()
@@ -382,7 +461,7 @@ class LiveStreamTests(unittest.TestCase):
         self.assertEqual(self.store.view("test-human", "workspaces", {}).get("error"), None)
         self.commit()
         # The next message is the commit's number, so the read sent none of its own.
-        self.assertEqual(self.line(client), {"seq": start + 1})
+        self.assertEqual(self.line(client), self.message(start + 1))
 
     def test_bootstrap_offers_live_only_when_the_instance_has_it(self):
         self.assertEqual(self.bootstrap()["transport"]["live"], {"version": 2, "path": "/api/live", "protocol": "theseus-live.v1"})
@@ -426,11 +505,11 @@ class LiveStreamTests(unittest.TestCase):
         client.send(9, b"hi")
         self.assertEqual(client.frame(), (10, b"hi"))
         self.commit()
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), self.message())
         client.send(8, b"\x03\xe8bye")
         self.assertEqual(client.frame(), (8, b"\x03\xe8"))
         self.assertEqual(client.connection.recv(1), b"")
-        self.assertEqual(self.line(self.open()), {"seq": self.seq()})
+        self.assertEqual(self.line(self.open()), self.message())
 
     def test_anything_but_a_control_frame_ends_the_stream(self):
         for opcode, masked in ((1, True), (2, True), (9, False)):
@@ -491,13 +570,13 @@ class LiveStreamTests(unittest.TestCase):
         # answered once, by the answer to the latest of them.
         self.assertLess(answers, count // 2)
         self.commit()
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), self.message())
 
     def test_streams_are_bounded_and_a_closed_stream_frees_its_slot(self):
         self.stop()
         self.start(streams=1)
         first = self.open()
-        self.assertEqual(self.line(first), {"seq": self.seq()})
+        self.assertEqual(self.line(first), self.message())
         status, body = self.open()
         self.assertEqual((status, body["error"]["code"]), (503, "SERVER_BUSY"))
         feed, released = self.server.live_feed, threading.Event()
@@ -505,7 +584,7 @@ class LiveStreamTests(unittest.TestCase):
         feed.unsubscribe = lambda stream: (unsubscribe(stream), released.set())
         first.connection.close()
         self.assertTrue(released.wait(5))
-        self.assertEqual(self.line(self.open()), {"seq": self.seq()})
+        self.assertEqual(self.line(self.open()), self.message())
 
     def test_a_failed_subscription_gives_its_slot_back(self):
         self.stop()
@@ -517,7 +596,7 @@ class LiveStreamTests(unittest.TestCase):
                 self.server.live_feed.subscribe()
         finally:
             live_module.os.pipe = pipe
-        self.assertEqual(self.line(self.open()), {"seq": self.seq()})
+        self.assertEqual(self.line(self.open()), self.message())
 
     def test_stopping_the_server_ends_every_stream_with_a_reason(self):
         clients = [self.open(), self.open()]
@@ -585,7 +664,7 @@ class LiveStreamTests(unittest.TestCase):
         holder.executemany("INSERT INTO spill VALUES (?)", [("x" * 200,)] * 5000)
         holder.execute("COMMIT")
         self.commit()
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), self.message())
         settled()
         opens, opened = self.count_opens()
         holder.execute("PRAGMA cache_size=2")
@@ -606,7 +685,7 @@ class LiveStreamTests(unittest.TestCase):
             holder.execute("ROLLBACK")
             holder.close()
         self.commit()
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), self.message())
         self.assertIsNone(self.server.live_feed.state()[1])
 
     def test_stopping_does_not_wait_for_a_writer_that_holds_its_lock(self):
@@ -684,10 +763,10 @@ class LiveStreamTests(unittest.TestCase):
             holder.execute("ROLLBACK")
             holder.close()
         # Releasing a lock writes nothing; the waiting read sees it go.
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), self.message())
         self.assertIn("live", self.bootstrap()["transport"])
         self.commit()
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), self.message())
 
     def test_without_a_feed_a_stream_is_still_refused_its_session_and_origin_first(self):
         self.stop()
@@ -747,7 +826,7 @@ class LiveStreamTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(self.db.read_bytes()).digest(), before)
         self.assertIsNone(feed.state()[1])
         self.commit()
-        self.assertEqual(self.line(client), {"seq": start + 1})
+        self.assertEqual(self.line(client), self.message(start + 1))
         self.assertIsNone(self.server.live_feed.state()[1])
 
     def test_without_a_native_watch_the_instance_serves_and_leaks_nothing(self):

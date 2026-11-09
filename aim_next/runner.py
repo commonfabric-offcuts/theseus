@@ -10,6 +10,7 @@ from .authority import RunnerGuard
 from .contract import StoreError
 from . import work
 from .wake_health import ANSWERING
+from .health import REASON
 
 
 RUNNER_SCHEMA = [
@@ -161,9 +162,11 @@ class Runner:
             db.execute("BEGIN IMMEDIATE")
             guard.verify()
             self._check_instance(db)
-            result, changed = action(db, delivery._now_ms())
+            now = delivery._now_ms()
+            result, changed = action(db, now)
             if changed:
-                self._advance_commit_seq(db)
+                # What is red may have changed with this act (health.py).
+                self._health_commit(db, now)
                 guard.verify()
                 db.commit()
             return dict(result, instance_id=self.instance_id)
@@ -221,6 +224,8 @@ class Runner:
     def _acquire(self, db, guard, now, lease_ms, reason=None):
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
+        # How the run this one replaces ended, for the Health page (health.py).
+        self._runner_took_role(db, now)
         db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
                    (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now))
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
@@ -281,7 +286,9 @@ class Runner:
                     # child or scan indefinitely for another due recipient.
                     raise RunnerError("RUNNER_STATE_INVALID", "A live claim appeared in the due index")
                 if row["claim_token"] is not None:
-                    db.execute("INSERT INTO wake_results SELECT id,'expired',? FROM wake_attempts WHERE claim_token=?", (now, row["claim_token"]))
+                    expired = db.execute("SELECT id FROM wake_attempts WHERE claim_token=?", (row["claim_token"],)).fetchone()[0]
+                    db.execute("INSERT INTO wake_results VALUES (?,'expired',?)", (expired, now))
+                    self._claim_settled(db, expired, "expired", now, "expired")
                 attempt, claim = "a-" + uuid.uuid4().hex, "c-" + uuid.uuid4().hex
                 db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms,handed_seq) "
                            "VALUES (?,?,?,?,?,?,?,?,?)", (attempt, claim, runner_token, row["recipient_id"], row["wake_generation"], row["last_seq"], now, until, row["handed_seq"]))
@@ -295,14 +302,26 @@ class Runner:
             return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims)
         return self._effect(guard, action)
 
-    def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None):
+    def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None, reason=None, from_turn=None):
+        """Settle a claimed wake. reason is the runner's fixed code for how it went
+        ("broker_exit", "deadline", ...), never local text; Core keeps it for a
+        wake that did not get through, so the Health page can say why. A hosted
+        wake that was not handed may name the running turn it came from
+        (from_turn: its thread_id and turn_id), as the Codex host knows it, so
+        Health counts it with that turn (health.py)."""
         if not isinstance(outcome, str) or outcome not in OUTCOMES:
             raise RunnerError("INVALID_ARGUMENT", "Unsupported wake outcome")
+        if reason is not None and (not isinstance(reason, str) or not REASON.fullmatch(reason)):
+            raise RunnerError("INVALID_ARGUMENT", "A wake's reason is a short fixed code")
         if not isinstance(claim_token, str):
             raise RunnerError("INVALID_ARGUMENT", "Use a claim token")
         if (outcome == "handed") != (turn is not None):
             raise RunnerError("INVALID_ARGUMENT", "A handed wake names its turn, and no other outcome does")
         turn = _turn(turn) if turn is not None else None
+        if from_turn is not None and (outcome not in ("busy", "error", "unavailable") or type(from_turn) is not dict
+                                      or set(from_turn) != {"thread_id", "turn_id"}):
+            raise RunnerError("INVALID_ARGUMENT", "Only a wake that failed names the running turn it came from, by its thread and turn")
+        from_turn = dict(thread_id=_thread(from_turn["thread_id"]), turn_id=_text(from_turn["turn_id"], "turn_id")) if from_turn else None
         def action(db, now):
             state = self._runner_state(db)
             attempt = db.execute("SELECT * FROM wake_attempts WHERE claim_token=?", (claim_token,)).fetchone()
@@ -323,6 +342,8 @@ class Runner:
             else:
                 due = now + delay
             db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], outcome, now))
+            # One attempt to reach the agent (health.py): an accepted notice with work waiting stays unanswered until it acts.
+            self._claim_settled(db, attempt["id"], outcome, now, reason, work=row["pending_count"], from_turn=from_turn)
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
             if outcome == "accepted" and row["pending_count"]:
                 # The notice reached the agent's chat; it stays unanswered until the agent acts.
@@ -349,6 +370,19 @@ class Runner:
             raise RunnerError("INVALID_ARGUMENT", "A notice cannot announce a delivery that does not exist")
         if self._hosted_thread(db, attempt["recipient_id"]) != turn["thread_id"]:
             raise RunnerError("ROUTE_PIN_MISMATCH", "The handed thread is not this recipient's pinned hosted thread")
+        # Codex runs one turn on a thread at a time, and Codex just took this hand's input into this
+        # turn, so every other turn Core still lists running on the thread had ended by now, as far as
+        # anyone knows: the host stopped running it without seeing it end (it started another after a
+        # refused steer, or a history read named another). It ends lost now, the way a turn's end is
+        # recorded, before this hand reads the schedule that end re-arms and before this turn is
+        # recorded, so no claim joins it after this.
+        others = db.execute("SELECT DISTINCT turn_id FROM hosted_turns INDEXED BY hosted_turns_open "
+                            "WHERE thread_id=? AND final_status IS NULL AND turn_id<>? ORDER BY turn_id",
+                            (turn["thread_id"], turn["turn_id"])).fetchall()
+        for (other,) in others:
+            self._turn_ended(db, now, turn["thread_id"], other, "lost")
+        if others:
+            row = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (attempt["recipient_id"],)).fetchone()
         pending = row["pending_count"]
         ended = db.execute("SELECT final_status,error_code FROM hosted_turns INDEXED BY hosted_turns_turn "
                            "WHERE thread_id=? AND turn_id=? AND final_status IS NOT NULL LIMIT 1",
@@ -381,6 +415,10 @@ class Runner:
                    (attempt["id"], attempt["recipient_id"], turn["thread_id"], turn["turn_id"], turn["mode"], turn["client_id"],
                     turn["announced_seq"], now, ended["final_status"] if ended else None, ended["error_code"] if ended else None,
                     now if ended else None))
+        if not ended:
+            # The turn and every hand it takes are one attempt to reach the agent, settled when it ends
+            # (health.py); a hand to a turn that had already ended joins an attempt already settled.
+            self._turn_handed(db, attempt, turn, now, handed is not None)
         # retry_count is otherwise kept: a turn that fails again backs off further, and only a clean turn end resets it.
         db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,handed_seq=?,retry_count=? WHERE recipient_id=?",
                    (due, handed, retry, attempt["recipient_id"]))
@@ -425,51 +463,59 @@ class Runner:
             ownership = self._ownership(self._runner_state(db), guard, runner_token, now)
             if ownership != "running":
                 return {"status": ownership}, False
-            rows = db.execute("SELECT * FROM hosted_turns INDEXED BY hosted_turns_open WHERE thread_id=? AND turn_id=? AND final_status IS NULL "
-                              "ORDER BY handed_ms,attempt_id", (thread_id, turn_id)).fetchall()
-            if not rows:
-                return {"status": "unknown"}, False
-            unseen = any(row["mode"] in UNSEEN_REARM_MODES and row["seen_ms"] is None for row in rows)
-            db.execute("UPDATE hosted_turns SET final_status=?,error_code=?,finished_ms=? WHERE thread_id=? AND turn_id=? AND final_status IS NULL",
-                       (status, error_code, now, thread_id, turn_id))
-            if counts:
-                # Usage is the turn's, so it lands once: on the first handed row.
-                db.execute("UPDATE hosted_turns SET " + ",".join(key + "=?" for key in sorted(counts)) + " WHERE attempt_id=?",
-                           [counts[key] for key in sorted(counts)] + [rows[0]["attempt_id"]])
-            if status == "completed":
-                for row in rows:
-                    work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
-            else:
-                # A turn that did not complete never gave the agent its wake to answer.
-                for row in rows:
-                    if row["mode"] == "start":
-                        self._wake_withdrawn(db, row["recipient_id"])
-            rearmed = False
-            for recipient in sorted({row["recipient_id"] for row in rows}):
-                schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
-                clean = status == "completed" and not unseen
-                if clean:
-                    db.execute("UPDATE recipient_schedule SET retry_count=0 WHERE recipient_id=?", (recipient,))
-                head = self._pending_head(db, recipient)
-                if schedule["handed_seq"] is None or head is None or head > schedule["handed_seq"]:
-                    continue
-                live = schedule["claim_token"] is not None and schedule["claim_until_ms"] > now
-                if clean:
-                    # The turn ended with work it was handed still pending (it
-                    # read one page, or left one unanswered): it is named again
-                    # after the same minute an accepted wake waits, unless newer
-                    # work already made it due.
-                    retry = 0
-                    due = schedule["next_due_ms"] if self._pending_above(db, recipient, schedule["handed_seq"]) else now + delivery.REWAKE_MS
-                else:
-                    retry, delay = _backoff(schedule["retry_count"])
-                    due = now + delay
-                # Work handed back was never read: what named it goes again, parked or not.
-                db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=?,named_seq=CASE WHEN ? THEN named_seq END WHERE recipient_id=?",
-                           (retry, schedule["claim_until_ms"] if live else due, clean, recipient))
-                rearmed = True
-            return {"status": "ended", "final_status": status, "rows": len(rows), "unseen": unseen, "rearmed": rearmed}, True
+            ended = self._turn_ended(db, now, thread_id, turn_id, status, error_code, counts)
+            return ({"status": "unknown"}, False) if ended is None else (ended, True)
         return self._effect(guard, action)
+
+    def _turn_ended(self, db, now, thread_id, turn_id, status, error_code=None, counts=None):
+        """Finish every open row of one turn, at now; None when Core lists none."""
+        rows = db.execute("SELECT * FROM hosted_turns INDEXED BY hosted_turns_open WHERE thread_id=? AND turn_id=? AND final_status IS NULL "
+                          "ORDER BY handed_ms,attempt_id", (thread_id, turn_id)).fetchall()
+        if not rows:
+            return None
+        unseen = any(row["mode"] in UNSEEN_REARM_MODES and row["seen_ms"] is None for row in rows)
+        db.execute("UPDATE hosted_turns SET final_status=?,error_code=?,finished_ms=? WHERE thread_id=? AND turn_id=? AND final_status IS NULL",
+                   (status, error_code, now, thread_id, turn_id))
+        if counts:
+            # Usage is the turn's, so it lands once: on the first handed row.
+            db.execute("UPDATE hosted_turns SET " + ",".join(key + "=?" for key in sorted(counts)) + " WHERE attempt_id=?",
+                       [counts[key] for key in sorted(counts)] + [rows[0]["attempt_id"]])
+        if status == "completed":
+            for row in rows:
+                work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
+        else:
+            # A turn that did not complete never gave the agent its wake to
+            # answer, so the scheduler wakes it again.
+            for row in rows:
+                if row["mode"] == "start":
+                    self._wake_withdrawn(db, row["recipient_id"])
+        # The turn, with every hand it took, was one attempt to reach the agent: it settles once (health.py).
+        self._turn_settled(db, thread_id, turn_id, status, error_code, now)
+        rearmed = False
+        for recipient in sorted({row["recipient_id"] for row in rows}):
+            schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
+            clean = status == "completed" and not unseen
+            if clean:
+                db.execute("UPDATE recipient_schedule SET retry_count=0 WHERE recipient_id=?", (recipient,))
+            head = self._pending_head(db, recipient)
+            if schedule["handed_seq"] is None or head is None or head > schedule["handed_seq"]:
+                continue
+            live = schedule["claim_token"] is not None and schedule["claim_until_ms"] > now
+            if clean:
+                # The turn ended with work it was handed still pending (it
+                # read one page, or left one unanswered): it is named again
+                # after the same minute an accepted wake waits, unless newer
+                # work already made it due.
+                retry = 0
+                due = schedule["next_due_ms"] if self._pending_above(db, recipient, schedule["handed_seq"]) else now + delivery.REWAKE_MS
+            else:
+                retry, delay = _backoff(schedule["retry_count"])
+                due = now + delay
+            # Work handed back was never read: what named it goes again, parked or not.
+            db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=?,named_seq=CASE WHEN ? THEN named_seq END WHERE recipient_id=?",
+                       (retry, schedule["claim_until_ms"] if live else due, clean, recipient))
+            rearmed = True
+        return {"status": "ended", "final_status": status, "rows": len(rows), "unseen": unseen, "rearmed": rearmed}
 
     def open_hosted_turns(self, guard, runner_token, thread_ids):
         """The turns of these threads with a handed row not yet finished, from any run; nothing changes."""
@@ -540,14 +586,19 @@ class Runner:
         return self._effect(guard, action)
 
     def stop_runner(self, guard, runner_token):
-        """A graceful stop says so, and frees the lease at once for the next runner."""
+        """A graceful stop says so, and frees the lease at once for the next runner.
+
+        Its end is when wakes last went out: now, or, for a runner whose lease
+        had already run out unrenewed, that lease's end, so a hung runner that
+        is then stopped has been absent since it stopped answering (health.py)."""
         def action(db, now):
             state = self._runner_state(db)
             ownership = self._ownership(state, guard, runner_token, now, allow_expired=True)
             if ownership != "running":
                 return {"status": ownership}, False
-            db.execute("UPDATE runner_state SET state='stopped',version=version+1,reason_code=NULL,lease_until_ms=?,ended_ms=? WHERE id=1", (now, now))
-            return {"status": "stopped", "ended_ms": now}, True
+            ended = min(now, state["lease_until_ms"]) if state["lease_until_ms"] is not None else now
+            db.execute("UPDATE runner_state SET state='stopped',version=version+1,reason_code=NULL,lease_until_ms=?,ended_ms=? WHERE id=1", (now, ended))
+            return {"status": "stopped", "ended_ms": ended}, True
         return self._effect(guard, action)
 
     def record_runner_exit(self, pid, exit_status):
@@ -579,7 +630,7 @@ class Runner:
                         return {"status": "not_holder", "instance_id": self.instance_id}
                     db.execute("UPDATE runner_state SET state='exited',version=version+1,reason_code=?,lease_until_ms=MIN(lease_until_ms,?),ended_ms=COALESCE(ended_ms,?) WHERE id=1",
                                (reason, now, now))
-                    self._advance_commit_seq(db)
+                    self._health_commit(db, now)
                     db.commit()
                     return {"status": "recorded", "reason": reason, "ended_ms": now, "instance_id": self.instance_id}
                 finally:
@@ -593,6 +644,48 @@ class Runner:
                     and ("locked" in str(error).lower() or "busy" in str(error).lower())):
                 raise RunnerError("DATABASE_BUSY", "Runner state is busy; the exit was not recorded", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "The runner's exit could not be confirmed") from error
+
+    def settle_health_due(self, due_ms):
+        """What the server saw: due_ms, the moment Core kept for what is red to change with no act
+        at all (metadata health_due, health.py), has come, and no act came first.
+
+        A hung runner's process lives, so no exit is recorded and it makes no
+        more commits; its lease running out is the only sign. A stop that no
+        runner follows makes no more commits either. This settles what is red
+        then, so the team is told and every open page reads it on this commit.
+        It needs no guard and records nothing of the runner's: a runner that
+        comes back finds its role lost, as before. Status "settled" when it
+        wrote, "unchanged" when nothing was due to change, "early" while
+        due_ms has not yet come by Core's clock."""
+        _bounded(due_ms, 0, 9223372036854775807, "due_ms")
+        from .store import _connect
+        try:
+            with self._authority.shared() as fence:
+                db, _ = _connect(self.path)
+                try:
+                    db.execute("BEGIN IMMEDIATE")
+                    fence.verify()
+                    self._check_instance(db)
+                    now = delivery._now_ms()
+                    if due_ms > now:
+                        status = "early"
+                    elif self._health_commit(db, now, always=False):
+                        db.commit()
+                        status = "settled"
+                    else:
+                        status = "unchanged"
+                    return {"status": status, "instance_id": self.instance_id}
+                finally:
+                    try:
+                        if db.in_transaction:
+                            db.rollback()
+                    finally:
+                        db.close()
+        except (sqlite3.Error, OSError) as error:
+            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
+                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+                raise RunnerError("DATABASE_BUSY", "Runner state is busy; what is red was not settled", retryable=True) from error
+            raise RunnerError("RUNNER_STORAGE_ERROR", "What is red could not be settled") from error
 
     def pause_runner(self, guard, runner_token, reason_code, child=None):
         """child, for cleanup_failed only: (pid, started_at) of the broker whose
@@ -611,7 +704,8 @@ class Runner:
                 return {"status": "paused", "version": state["version"]}, False
             if ownership != "running":
                 return {"status": "lost"}, False
-            db.execute("UPDATE runner_state SET state='paused',version=version+1,reason_code=? WHERE id=1", (reason_code,))
+            # ended_ms says since when wakes have been paused; the next acquisition clears it.
+            db.execute("UPDATE runner_state SET state='paused',version=version+1,reason_code=?,ended_ms=? WHERE id=1", (reason_code, now))
             if child is not None:
                 db.execute("UPDATE runner_state SET child_pid=?,child_started_at=? WHERE id=1", child)
             return {"status": "paused", "version": state["version"] + 1}, True
