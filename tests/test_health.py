@@ -439,6 +439,21 @@ class AttemptCase(AttemptFixture):
                          ["Health: agent-a can't be woken: its last 3 wakes did not get through. Why: its Codex turn failed "
                           "(server overloaded)." + NOTICE_TAIL])
 
+    def test_a_turn_left_unanswered_is_so_from_when_it_was_first_handed_work(self):
+        """Handed work at its start, given more by a steer, completed with no act: agent-a has left it
+        unanswered since the start's hand, not since the steer or the turn's end."""
+        self.now += 61000
+        self.send_next("Work")
+        self.hand(self.claim_now(), turn_id="turn-1")
+        handed = self.now
+        self.now += 1000
+        self.send_next("More")
+        self.hand(self.claim_now(), turn_id="turn-1", mode="steer")
+        self.now += 5000
+        self.end("completed", turn_id="turn-1")
+        self.assertEqual(self.facts(), (0, None, 1))
+        self.assertEqual(self.sql("SELECT unanswered_since_ms FROM wake_facts WHERE recipient_id='agent-a'"), [(handed,)])
+
     def test_a_turn_that_completed_with_steers_it_never_read_got_through(self):
         """The reviewer's P1b: the turn ran to its end, so agent-a was woken; the steers it never read
         are work the scheduler hands again, not wakes that failed."""
@@ -746,24 +761,24 @@ class AttemptCase(AttemptFixture):
 
 @own_cases
 class StaleTurnCase(AttemptFixture):
-    """The reviewer's r5 blockers. Core lists a turn as open that the host has stopped running: the
-    app-server lost it after starting it (the host's steer into it was refused, so it started turn-2),
-    or Codex ended it with a status the host does not know, or the host's re-read found it ended.
-    It stays open in Core, the same run throughout, until the runner's process exits. agent-a acted
-    in turn-2, while both were open."""
+    """The reviewer's r5 blockers. Core lists a turn as open that the host has stopped running, and
+    no turn has started on its thread since (a start would end it: ReplacedTurnCase): Codex ended it
+    with a status the host does not know, or the host's re-read found it ended, and every claim after
+    fails before a turn starts. It stays open in Core, the same run throughout, until the runner's
+    process exits. turn-2 completed before it; agent-a acted in turn-L, while it was open."""
 
     def stale_turn(self):
         self.now += 61000
         self.fresh_lease()
         self.run = self.runner
         self.send_next("First")
-        self.hand(self.claim_now(), turn_id="turn-L")
-        self.keep_role_until(self.now + 30000)
-        self.send_next("Second")
         self.hand(self.claim_now(), turn_id="turn-2")
+        self.end("completed", turn_id="turn-2")
+        self.keep_role_until(self.store.runner_schedule(["agent-a"])["next_due_ms"])
+        self.send_next("Second")
+        self.hand(self.claim_now(), turn_id="turn-L")
         for item in self.pending()["items"]:
             self.ack(item["id"])
-        self.end("completed", turn_id="turn-2")
         self.assertEqual(self.facts(), (0, None, 0))
         self.now += 1000
         self.send_next("Third")
@@ -824,6 +839,76 @@ class StaleTurnCase(AttemptFixture):
         self.fail_unreached([("unavailable", "resume_failed")], 3)
         self.assertEqual((self.facts(), len(self.notices())), ((9, "unavailable", 0), 1))
 
+
+
+@own_cases
+class ReplacedTurnCase(AttemptFixture):
+    """The reviewer's r6 blocker. Codex loses turn-L; the host's steer into it is refused, so it
+    starts turn-N on the same thread (codex_host.py _steered), and turn-N completes. A thread runs
+    one turn at a time, so turn-N's start is when turn-L ended as far as anyone knows: Core ends it
+    lost then, through the same path a turn's end takes, before it records turn-N, not hours later
+    when the process exits after wakes that got through."""
+
+    def lost_and_replaced(self, number):
+        self.now += 61000
+        self.send_next("Work L%d" % number)
+        self.hand(self.claim_now(), turn_id="turn-L%d" % number)
+        self.now += 1000
+        self.send_next("More %d" % number)
+        self.hand(self.claim_now(), turn_id="turn-N%d" % number)
+        replaced = self.now
+        # turn-L's work went back when it was lost, and turn-N's notice named only "More": the
+        # scheduler names it all again at once, steered into turn-N.
+        self.assertEqual(self.store.runner_schedule(["agent-a"])["next_due_ms"], self.now)
+        self.now += 1000
+        self.hand(self.claim_now(), turn_id="turn-N%d" % number, mode="steer")
+        self.now += 5000
+        self.end("completed", turn_id="turn-N%d" % number)
+        return replaced
+
+    def test_turns_lost_and_replaced_before_wakes_that_got_through_are_counted_before_them(self):
+        """The deploy: three lost turns, each replaced by one that completed. The process exits hours
+        later and ends whatever Core still lists open. Every wake since the losses got through, so
+        nothing is red and nobody is told agent-a can't be woken."""
+        replaced = [self.lost_and_replaced(number) for number in range(3)]
+        reached = self.agent()["reached_ms"]
+        self.now += 3 * 3600 * 1000
+        self.fresh_lease()
+        for row in self.store.open_hosted_turns(self.hosting, self.runner, [THREAD])["turns"]:
+            self.end("lost", turn_id=row["turn_id"])  # what codex_host.py _handle_exit does
+        self.assertEqual(self.facts(), (0, None, 3), "no wake failed since the last that got through; agent-a answered none")
+        self.assertEqual(self.agent()["reached_ms"], reached)
+        self.assertNotIn("failing:agent-a", self.light())
+        self.assertEqual([body for _, body in self.notices() if "can't be woken" in body], [])
+        self.assertEqual(self.sql("SELECT turn_id,final_status,finished_ms FROM hosted_turns WHERE turn_id LIKE 'turn-L%' ORDER BY turn_id"),
+                         [("turn-L%d" % number, "lost", at) for number, at in enumerate(replaced)],
+                         "each lost turn ended when the turn that replaced it started")
+
+    def test_a_claim_from_the_new_turn_joins_it_and_one_naming_the_replaced_turn_is_its_own(self):
+        """After the replacement Core lists turn-N alone as running: a claim the host says came from
+        turn-N joins it; one naming turn-L, which ended, is an attempt of its own."""
+        self.now += 61000
+        self.send_next("Work L")
+        self.hand(self.claim_now(), turn_id="turn-L")
+        self.now += 1000
+        self.send_next("More")
+        self.hand(self.claim_now(), turn_id="turn-N")
+        self.assertEqual(self.sql("SELECT turn_id FROM wake_turns"), [("turn-N",)])
+        self.assertEqual(self.facts()[:2], (1, "lost"), "turn-L did not get through, when turn-N started")
+        self.traffic_during("turn-N", [("busy", "not_steerable", "turn-N"), ("busy", "not_steerable", "turn-L")])
+        self.assertEqual(self.facts()[:2], (2, "busy"), "the claim from turn-N joined it; the one naming turn-L did not")
+        self.end("completed", turn_id="turn-N")
+        self.assertEqual(self.facts()[:2], (0, None))
+
+    def test_a_steer_or_a_start_of_the_same_turn_ends_no_turn(self):
+        """A steer joins the running turn, and a start Codex answers with the running turn's own id
+        names that turn: neither says another turn started, so nothing ends."""
+        self.steered_turn("turn-1", 2)
+        self.now += 1000
+        self.send_next("Again")
+        self.hand(self.claim_now(), turn_id="turn-1")
+        self.assertEqual(self.sql("SELECT DISTINCT turn_id FROM hosted_turns WHERE final_status IS NULL"), [("turn-1",)])
+        self.assertEqual(self.facts(), (0, None, 0))
 
 @own_cases
 class RunnerNoticeCase(HealthCase):

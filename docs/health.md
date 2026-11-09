@@ -109,13 +109,29 @@ something else happened to settle it.
 
 Health never guesses which turn a claim came from or whether a turn still
 runs: Core cannot tell either, and the rows it lists as running can outlive
-the turns themselves. The Codex host can lose a turn and start another (a
-steer into it refused as "no active turn"), Codex can end a turn with a status
-the host does not know, a re-read can find the turn ended, or Codex can close
-the thread mid-turn (`thread/closed`, or a status of `notLoaded` or
-`systemError`): each time the host stops running the turn without ending it
-in Core, and the row stays until the process exits or the next runner ends
-it (`lost`). So the facts come from who knows them:
+the turns themselves. Who ends a turn in Core is whoever learns it ended:
+
+- the Codex host, when Codex says so (`turn/completed`), when a resume finds
+  the thread's last turn ended or gone, and when the Codex process running it
+  exits or is ended (`lost`, for a turn still running then);
+- Core itself, when a turn starts on the same thread (`finish_wake` with a
+  `start` hand): Codex runs one turn on a thread at a time, so every other
+  turn Core still lists there ended, as far as anyone knows, by then. Core
+  ends it `lost` at that hand, through the same path as a turn's end, before
+  it records the new turn. This is how a turn the host gave up on ends: the
+  host lost it and started another (a steer into it refused as "no active
+  turn", or one the history listed in progress), or Codex ended it with a
+  status the host does not know, or a re-read found it ended. Core ends it
+  there rather than the host at each place it stops running a turn, because
+  every such path reaches a start on the same thread, and the start is the
+  one fact Core records for all of them: no path the host adds can leave the
+  turn open past it, to be dated hours later when the process exits.
+
+Until a turn starts on its thread, a turn the host stopped running without an
+end (Codex closed the thread mid-turn, `thread/closed` or a status of
+`notLoaded` or `systemError`, and no start has succeeded since) stays open
+until the process exits or the next runner ends it (`lost`). So the facts
+come from who knows them:
 
 - **Which turn a claim came from** is said by the Codex host when it settles
   the claim (`finish_wake(..., from_turn=)`), and only when the claim did come
@@ -339,9 +355,13 @@ keeps what was shown and says so; an answer without `red`, `runner` and
   end `lost`; a steer Codex never answers expires with its claim and counts;
   and a runner that stops or loses its role is red at once, and the next one
   ends the turns it left as `lost`. A turn the host stopped running without
-  an end stays open in Core until its process exits or the next runner ends
-  it, but no claim names it, so the claims that cannot reach the agent
-  meanwhile count, and the agent goes red as its wakes fail.
+  an end stays open in Core until a turn starts on its thread, its process
+  exits, or the next runner ends it, but no claim names it, so the claims
+  that cannot reach the agent meanwhile count, and the agent goes red as its
+  wakes fail. Its end, when the process exits, is dated then, and follows
+  nothing that got through on its thread: a turn starting there would have
+  ended it, and an act of the agent's meanwhile got it through already, so
+  its end adds nothing.
 
 - A WebSocket that stays open but has stalled (a half-open connection after
   the Mac sleeps or the network changes) still looks live to the page, so the

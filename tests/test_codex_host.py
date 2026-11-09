@@ -1154,11 +1154,11 @@ class SteerInFlightDeathCase(HostCase):
 
 
 class LostTurnCase(HostCase):
-    """The reviewer's r5 lost-turn probe: Codex's app-server loses the turn it started (no
+    """The reviewer's r5 and r6 lost-turn probes: Codex's app-server loses the turn it started (no
     turn/completed), so the host's next steer into it is refused and it starts a new turn, which
-    completes; the lost turn stays open in Core, the same run. Then Codex never answers turn/start,
-    so every claim expires. No running turn refused them, so each is an attempt that did not get
-    through: the agent is red and told once."""
+    completes. The new turn's start is when Core ends the lost one, lost, the same run, not when the
+    process exits. Then Codex never answers turn/start, so every claim expires. No running turn
+    refused them, so each is an attempt that did not get through: the agent is red and told once."""
     turns = [{"lose": True}, {"reply": "second"}] + [{"vanish": True}] * 8
 
     def test_claims_that_expire_while_a_lost_turn_stays_open_are_red_and_told(self):
@@ -1178,7 +1178,9 @@ class LostTurnCase(HostCase):
                                              "kind": "delivery.ack", "target": {"delivery_id": pending[0]["id"]}, "args": {},
                                              "expected": {"authority": dict(self.pin)}})
         self.assertEqual(receipt["status"], "committed", receipt)
-        self.assertEqual([row["final_status"] for row in self.turns_rows()].count(None), 1, "Core still lists the lost turn as open")
+        lost, second = self.turns_rows()
+        self.assertEqual((lost["final_status"], lost["finished_ms"], second["mode"], second["final_status"]),
+                         ("lost", second["handed_ms"], "start", "completed"), "the lost turn ended when the new one started")
         self.post("Third")
         for number in range(FAILING_AFTER):
             runner.event("host_dispatch_abandoned")

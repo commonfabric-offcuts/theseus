@@ -370,6 +370,17 @@ class Runner:
             raise RunnerError("INVALID_ARGUMENT", "A notice cannot announce a delivery that does not exist")
         if self._hosted_thread(db, attempt["recipient_id"]) != turn["thread_id"]:
             raise RunnerError("ROUTE_PIN_MISMATCH", "The handed thread is not this recipient's pinned hosted thread")
+        if turn["mode"] == "start":
+            # Codex runs one turn on a thread at a time, so a turn starting there is when every other
+            # turn Core still lists running on it ended, as far as anyone knows: the host stopped
+            # running it (a refused steer's fallback, a history read) without seeing it end. It ends
+            # lost now, the way a turn's end is recorded, before this hand reads the schedule it
+            # re-arms and before the new turn is recorded, so no claim can join it after this.
+            for (other,) in db.execute("SELECT DISTINCT turn_id FROM hosted_turns INDEXED BY hosted_turns_open "
+                                       "WHERE thread_id=? AND final_status IS NULL AND turn_id<>? ORDER BY turn_id",
+                                       (turn["thread_id"], turn["turn_id"])).fetchall():
+                self._turn_ended(db, now, turn["thread_id"], other, "lost")
+            row = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (attempt["recipient_id"],)).fetchone()
         pending = row["pending_count"]
         ended = db.execute("SELECT final_status,error_code FROM hosted_turns INDEXED BY hosted_turns_turn "
                            "WHERE thread_id=? AND turn_id=? AND final_status IS NOT NULL LIMIT 1",
@@ -450,54 +461,59 @@ class Runner:
             ownership = self._ownership(self._runner_state(db), guard, runner_token, now)
             if ownership != "running":
                 return {"status": ownership}, False
-            rows = db.execute("SELECT * FROM hosted_turns INDEXED BY hosted_turns_open WHERE thread_id=? AND turn_id=? AND final_status IS NULL "
-                              "ORDER BY handed_ms,attempt_id", (thread_id, turn_id)).fetchall()
-            if not rows:
-                return {"status": "unknown"}, False
-            unseen = any(row["mode"] in UNSEEN_REARM_MODES and row["seen_ms"] is None for row in rows)
-            db.execute("UPDATE hosted_turns SET final_status=?,error_code=?,finished_ms=? WHERE thread_id=? AND turn_id=? AND final_status IS NULL",
-                       (status, error_code, now, thread_id, turn_id))
-            if counts:
-                # Usage is the turn's, so it lands once: on the first handed row.
-                db.execute("UPDATE hosted_turns SET " + ",".join(key + "=?" for key in sorted(counts)) + " WHERE attempt_id=?",
-                           [counts[key] for key in sorted(counts)] + [rows[0]["attempt_id"]])
-            if status == "completed":
-                for row in rows:
-                    work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
-            else:
-                # A turn that did not complete never gave the agent its wake to
-                # answer, so the scheduler wakes it again.
-                for row in rows:
-                    if row["mode"] == "start":
-                        self._wake_withdrawn(db, row["recipient_id"])
-            # The turn, with every hand it took, was one attempt to reach the agent: it settles once (health.py).
-            self._turn_settled(db, thread_id, turn_id, status, error_code, now)
-            rearmed = False
-            for recipient in sorted({row["recipient_id"] for row in rows}):
-                schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
-                clean = status == "completed" and not unseen
-                if clean:
-                    db.execute("UPDATE recipient_schedule SET retry_count=0 WHERE recipient_id=?", (recipient,))
-                head = self._pending_head(db, recipient)
-                if schedule["handed_seq"] is None or head is None or head > schedule["handed_seq"]:
-                    continue
-                live = schedule["claim_token"] is not None and schedule["claim_until_ms"] > now
-                if clean:
-                    # The turn ended with work it was handed still pending (it
-                    # read one page, or left one unanswered): it is named again
-                    # after the same minute an accepted wake waits, unless newer
-                    # work already made it due.
-                    retry = 0
-                    due = schedule["next_due_ms"] if self._pending_above(db, recipient, schedule["handed_seq"]) else now + delivery.REWAKE_MS
-                else:
-                    retry, delay = _backoff(schedule["retry_count"])
-                    due = now + delay
-                # Work handed back was never read: what named it goes again, parked or not.
-                db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=?,named_seq=CASE WHEN ? THEN named_seq END WHERE recipient_id=?",
-                           (retry, schedule["claim_until_ms"] if live else due, clean, recipient))
-                rearmed = True
-            return {"status": "ended", "final_status": status, "rows": len(rows), "unseen": unseen, "rearmed": rearmed}, True
+            ended = self._turn_ended(db, now, thread_id, turn_id, status, error_code, counts)
+            return ({"status": "unknown"}, False) if ended is None else (ended, True)
         return self._effect(guard, action)
+
+    def _turn_ended(self, db, now, thread_id, turn_id, status, error_code=None, counts=None):
+        """Finish every open row of one turn, at now; None when Core lists none."""
+        rows = db.execute("SELECT * FROM hosted_turns INDEXED BY hosted_turns_open WHERE thread_id=? AND turn_id=? AND final_status IS NULL "
+                          "ORDER BY handed_ms,attempt_id", (thread_id, turn_id)).fetchall()
+        if not rows:
+            return None
+        unseen = any(row["mode"] in UNSEEN_REARM_MODES and row["seen_ms"] is None for row in rows)
+        db.execute("UPDATE hosted_turns SET final_status=?,error_code=?,finished_ms=? WHERE thread_id=? AND turn_id=? AND final_status IS NULL",
+                   (status, error_code, now, thread_id, turn_id))
+        if counts:
+            # Usage is the turn's, so it lands once: on the first handed row.
+            db.execute("UPDATE hosted_turns SET " + ",".join(key + "=?" for key in sorted(counts)) + " WHERE attempt_id=?",
+                       [counts[key] for key in sorted(counts)] + [rows[0]["attempt_id"]])
+        if status == "completed":
+            for row in rows:
+                work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
+        else:
+            # A turn that did not complete never gave the agent its wake to
+            # answer, so the scheduler wakes it again.
+            for row in rows:
+                if row["mode"] == "start":
+                    self._wake_withdrawn(db, row["recipient_id"])
+        # The turn, with every hand it took, was one attempt to reach the agent: it settles once (health.py).
+        self._turn_settled(db, thread_id, turn_id, status, error_code, now)
+        rearmed = False
+        for recipient in sorted({row["recipient_id"] for row in rows}):
+            schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
+            clean = status == "completed" and not unseen
+            if clean:
+                db.execute("UPDATE recipient_schedule SET retry_count=0 WHERE recipient_id=?", (recipient,))
+            head = self._pending_head(db, recipient)
+            if schedule["handed_seq"] is None or head is None or head > schedule["handed_seq"]:
+                continue
+            live = schedule["claim_token"] is not None and schedule["claim_until_ms"] > now
+            if clean:
+                # The turn ended with work it was handed still pending (it
+                # read one page, or left one unanswered): it is named again
+                # after the same minute an accepted wake waits, unless newer
+                # work already made it due.
+                retry = 0
+                due = schedule["next_due_ms"] if self._pending_above(db, recipient, schedule["handed_seq"]) else now + delivery.REWAKE_MS
+            else:
+                retry, delay = _backoff(schedule["retry_count"])
+                due = now + delay
+            # Work handed back was never read: what named it goes again, parked or not.
+            db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=?,named_seq=CASE WHEN ? THEN named_seq END WHERE recipient_id=?",
+                       (retry, schedule["claim_until_ms"] if live else due, clean, recipient))
+            rearmed = True
+        return {"status": "ended", "final_status": status, "rows": len(rows), "unseen": unseen, "rearmed": rearmed}
 
     def open_hosted_turns(self, guard, runner_token, thread_ids):
         """The turns of these threads with a handed row not yet finished, from any run; nothing changes."""

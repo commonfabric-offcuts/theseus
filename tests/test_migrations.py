@@ -2664,6 +2664,35 @@ class HealthStepCase(MigrationCase):
         self.assertEqual(self.sql("SELECT reached_ms,failed_wakes,failing_since_ms,failed_outcome FROM wake_facts WHERE recipient_id='agent-a'"),
                          [(2000, 3, 3000, "unavailable")])
 
+    def test_upgrade_folds_a_claim_that_began_before_an_act_and_failed_after_it_after_the_act(self):
+        # agent-a's turn began at 500 and it posted at 2000; a claim begun at 1500 settled busy at 3000.
+        # It happened at 3000, after the act got a wake through, so it is a failure since then.
+        self.turns("agent-a", [([("start", 1000, None)], ("lost", None, 6000))])
+        self.posted("agent-a", 2000)
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                       "VALUES ('a-busy','c-busy','r-1','agent-a',1,1,1500,21500)")
+            db.execute("INSERT INTO wake_results VALUES ('a-busy','busy',3000)")
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT reached_ms,failed_wakes,failing_since_ms,failed_outcome FROM wake_facts WHERE recipient_id='agent-a'"),
+                         [(2000, 1, 3000, "busy")])
+
+    def test_upgrade_takes_the_schedulers_count_as_an_act_in_the_turns_it_left_out(self):
+        # Each agent has one turn still running that was handed work, and wrote nothing since its wake
+        # began. The scheduler counted agent-b's as unanswered; agent-a's count is lower than the turns
+        # it would have counted, so agent-a acted while its turn ran and that turn got through.
+        self.turns("agent-a", [([("start", 300000, None)], (None, None, None))])
+        self.turns("agent-b", [([("start", 300000, None)], (None, None, None))])
+        with sqlite3.connect(str(self.path)) as db:
+            for recipient, count in [("agent-a", 0), ("agent-b", 1)]:
+                db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES (?,1) ON CONFLICT DO NOTHING", (recipient,))
+                db.execute("UPDATE recipient_schedule SET unanswered_wakes=?,unanswered_since_ms=?,handed_seq=1 WHERE recipient_id=?",
+                           (count, 300000 if count else None, recipient))
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE author_id IN ('agent-a','agent-b') AND sent_ms>=299500"), [(0,)])
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT recipient_id,carried,acted FROM wake_turns ORDER BY recipient_id"),
+                         [("agent-a", 1, 1), ("agent-b", 1, 0)])
+
     def test_step_back_restores_the_frozen_layout_and_every_row_while_no_notice_is_posted(self):
         self.settled(["error", "error", "error"])
         stored = everything(self.path)
