@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
 // and 390 wide, light and dark. Every page has the logo block (the wordmark
-// with its presence dot, the workspace name and Turn on notifications) first
+// with its presence dot, the workspace name, the Health link and Turn on
+// notifications) first
 // in its rail, or first in its main column where it has no rail, and no header
 // bar or Refresh button. On a topic page the rail lists no outcomes: "←
 // Outcomes" comes first, then the outcome's conversation and its own topics.
@@ -87,7 +88,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
       assert.deepEqual(topic.rail.slice(0, 4), ['brand', 'outcomes-home', 'conversation-navigation', 'topic-navigation'],
         at + ': the logo block, ← Outcomes, the outcome\'s conversation, then the topics');
-      assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'notify'], at + ': the wordmark, then the workspace name and Turn on notifications under it');
+      assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'health-link', 'notify'], at + ': the wordmark, then the workspace name, the Health link and Turn on notifications under it');
       assert.equal(topic.dot, true, at + ': the wordmark carries its presence dot');
       assert.match(topic.name, new RegExp('^' + facts.actor + ' · '), at + ': the workspace name is filled in');
       assert.deepEqual([topic.outcomesShown, topic.railLabel], [false, 'This outcome'], at + ': no list of outcomes inside an outcome');
