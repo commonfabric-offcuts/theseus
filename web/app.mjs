@@ -1305,12 +1305,13 @@ async function initialize() {
   api = new Api(token); api.refused = () => run(reconnect);
   bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  // Every page, the phone check among them, takes the restarted server's session in place.
+  renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
+    adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
   // The phone check is a page of its own: no topic, no live updates (docs/device-evidence.md).
   const asked = parseRoute(new URL(location.href));
   if (asked.kind === 'phone-check') { await phoneCheck({ api, bootstrap, topicId: asked.id }); document.body.dataset.ready = 'true'; return; }
   shareLinksFrom(bootstrap.links?.origin);
-  renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
-    adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });
     live.listen(event => { if (event.kind === 'refused') run(reconnect); else if (event.state === 'live') reached(); });

@@ -29,6 +29,7 @@ import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { SessionRenewal } from '../web/session-renewal.mjs';
+import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
 import * as apiExports from '../web/api.mjs';
 import { showLine, lineText } from '../web/lines.mjs';
@@ -845,9 +846,9 @@ test('a connection line shows only while the page is not connected and nothing h
 // case answers the page's requests itself (held.server); each socket the feed
 // opens and each read of the page's address (the renewal) are the case's to
 // settle.
-const realPage = () => {
+const realPage = (href = 'https://fixture/?topic=t1', overrides = {}) => {
   const sockets = [], pages = [], held = { live: null, server: null };
-  const f = fixture('https://fixture/?topic=t1', {
+  const f = fixture(href, { ...overrides,
     Api: class extends RealApi { constructor(token) { super(token, async (path, init) => {
       if (held.server) return held.server(path, init);
       const body = init.body ? JSON.parse(init.body) : null;
@@ -986,6 +987,39 @@ test('a renewed session replaces a socket that still reads live with one under t
     `renewed after a restart, yet the page keeps the socket opened under the refused session (sockets 1 -> ${sockets.length}, state ${held.live.state})`);
   number(1); await drain();
   assert.equal(held.live.state, 'live');
+});
+
+// The phone check is a page of its own (docs/device-evidence.md), and Theseus
+// can restart while a phone is part way through it. Send to Theseus refused for
+// the page's session renews it, as any page does, so the next tap goes out
+// under the new session and the steps already recorded are sent, not lost to a
+// reload.
+test('on the phone check page a send refused for the page\'s session renews it, and Send to Theseus again goes through', async () => {
+  const shown = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(shown)] : [];
+  const win = { matchMedia: () => ({ matches: false }), innerWidth: 390, innerHeight: 664, screen: {}, navigator: { maxTouchPoints: 5 }, location: { origin: 'https://fixture', protocol: 'https:', hostname: 'fixture' }, getComputedStyle: () => ({}) };
+  let page = null;
+  const { f, pages, held } = realPage('https://fixture/?phone-check=t1', {
+    phoneCheck: options => { page.api = options.api; return phoneCheck({ ...options, doc: page.f.document, win, notifications: undefined, operationId: 'phone-check-op' }); } });
+  page = { f };
+  await f.initialize(); await drain();
+  assert.equal(f.document.body.dataset.ready, 'true');
+  const post = shown(f.document.body).find(node => node.id === 'check-post'), outcome = shown(f.document.body).find(node => node.id === 'check-outcome');
+  // Theseus restarted: it refuses the old session and answers only the new one.
+  const sent = [];
+  held.server = async (path, init) => {
+    if (init.headers.Authorization !== 'Bearer restarted-session') return sessionRefusal();
+    const body = JSON.parse(init.body); sent.push(body);
+    if (path === '/api/view') return new Response(JSON.stringify({ instance_id: 'fixture', body: sent[0].args.body }), { status: 200 });
+    return new Response(JSON.stringify({ status: 'committed', result: { message_id: 'm-phone' } }), { status: 200 });
+  };
+  await post.onclick(); await drain();
+  assert.match(outcome.textContent, /Tap Send to Theseus to try again\.$/);
+  assert.equal(pages.length, 1, `Send to Theseus was refused for the page's session, yet the page asked for the server's new session ${pages.length} times`);
+  pages[0].resolve(pageWith('restarted-session')); await drain(); await drain();
+  assert.equal(page.api.token, 'restarted-session', 'the Api the phone check sends with holds the new session');
+  await post.onclick(); await drain();
+  assert.deepEqual([outcome.textContent, sent.map(body => body.kind ?? body.name), sent[0]?.operation_id],
+    ['Sent, and read back from Theseus exactly. Thank you.', ['message.post', 'source'], 'phone-check-op'], 'the second tap goes out under the new session');
 });
 
 // A small seeded random source, so a failing interleaving can be run again by its seed.
