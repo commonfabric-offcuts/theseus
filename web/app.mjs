@@ -1965,7 +1965,8 @@ async function initializeOutcomePage(route) {
         return false;
       }
     };
-    let refreshSerial=0;
+    // permitted: the latest read of the outcome let the reader see it.
+    let refreshSerial=0,permitted=false;
     const refresh=async()=>{
       const serial=++refreshSerial;
       status('');
@@ -1974,7 +1975,7 @@ async function initializeOutcomePage(route) {
       catch(error) {
         if(serial!==refreshSerial)return;
         if(readFailure(error).kind==='forbidden') {
-          $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
+          permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
           $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('conversation-navigation').hidden=true;
@@ -1984,7 +1985,7 @@ async function initializeOutcomePage(route) {
       if(serial!==refreshSerial)return;
       const workspace=answer.workspace;
       if(workspace?.id!==route.id||typeof workspace.title!=='string')throw Error('The outcome identity could not be confirmed.');
-      $('topic-navigation').hidden=false;
+      permitted=true;
       $('topic-title').textContent=workspace.title;
       purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
         save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
@@ -2001,8 +2002,16 @@ async function initializeOutcomePage(route) {
         paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
-    // topics, and other outcomes' questions in the line above them.
-    const reload=followCommits(async()=>(await Promise.all([outcomeRail.load(),refresh()])).every(read=>read!==false));
+    // topics, and other outcomes' questions in the line above them. Back from a
+    // refusal, the topics show once that commit's reads have painted what stands
+    // above them (those questions, where it stands, its conversation), so a topic
+    // does not move down under a pointer as each lands.
+    const reload=followCommits(async()=>{
+      const reads=await Promise.allSettled([outcomeRail.load(),refresh()]);
+      if(permitted)$('topic-navigation').hidden=false;
+      for(const read of reads)if(read.status==='rejected')throw read.reason;
+      return reads.every(read=>read.value!==false);
+    });
     await reload();
     if(shown)run(async()=>pageHere.open(await pageSource(shown),$('main')));
   }

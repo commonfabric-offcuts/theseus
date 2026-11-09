@@ -267,6 +267,42 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
   assert.equal(f.get('app-status').hidden,true);
 });
 
+// Back from a refusal, the outcome's page comes back whole: its topics show
+// once the commit's reads have painted what stands above them, so a topic does
+// not move down under a pointer as each read lands.
+test('an outcome page back from a refusal shows its topics only once what stands above them is painted again', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  f.inject({ api:f.api, bootstrap:f.bootstrap }); f.useLive(live);
+  let denied = false;
+  const held = new Map();
+  let seq = 1, out = 0;
+  f.api.view = async name => {
+    out++;
+    try {
+      if (held.has(name)) await held.get(name).promise;
+      if (name === 'workspace') {
+        if (denied) throw Object.assign(Error('Access denied'), { code: 'FORBIDDEN' });
+        return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: 'Purpose' } };
+      }
+      return { instance_id: 'fixture', items: name === 'workspace_topics' ? [{ ...f.topic, activity_ms: 1 }] : [], next_cursor: null };
+    } finally { out--; }
+  };
+  // Every read the commit made has landed but the held one, and the page has done with what they brought.
+  const settled = async () => { do await drain(); while (out > held.size); await drain(); };
+  await f.initialize();
+  const shown = () => ({ topics: !f.get('topic-navigation').hidden, standing: !f.get('outcome-standing').hidden });
+  assert.deepEqual(shown(), { topics: true, standing: true });
+  // Each read above the topics in turn: where it stands, and the list other outcomes' questions are read from.
+  for (const name of ['outcome_light', 'workspaces']) {
+    denied = true; await commit(live, ++seq);
+    assert.deepEqual(shown(), { topics: false, standing: false }, 'a refused outcome hides its topics and where it stands');
+    denied = false; const gate = defer(); held.set(name, gate);
+    await commit(live, ++seq); await settled();
+    assert.equal(shown().topics, false, `the outcome is back but its ${name} read is still out, yet the topics show and would move down when it lands`);
+    held.delete(name); gate.resolve(); await drain();
+    assert.deepEqual(shown(), { topics: true, standing: true }, `once the ${name} read lands, the page is back whole`);
+  }
+});
 test('inline startup failure disables ownerless input but paints lists, enables freshness and keeps one registry on a commit', async () => {
   const f = fixture(), live = stream(); f.registry.inline = null; f.useLive(live);
   f.registry.initializeInline = async () => { throw Object.assign(Error('Read deadline expired'), { code: 'READ_TIMEOUT' }); };
