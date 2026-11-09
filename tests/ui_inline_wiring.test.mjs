@@ -3942,3 +3942,17 @@ test('after every step of a random run, the Review buttons and the departure gua
   for (const part of ['(its read fails)', '(and its registration fails)', '(refused: Return to this writing before sending.)']) assert.ok(seen.some(step => step.includes(part)), `no run reached ${part}`);
   assert.ok(tally.asked > 100 && tally.left > 100, 'leaving asks, and goes, many times');
 });
+
+test('cards inside a reply stack count as read on screen, and a range breaks at a message the stack moved away', async () => {
+  const { f, ranges, card } = await readingPage();
+  const msgs = messages(20, 25); msgs[5].reply_to = 'm21';
+  for (const m of msgs) f.views.messages.set(m.id, m);
+  f.views.newest = 25; f.paintViews('messages'); await settle();
+  const list = f.get('messages');
+  const stack = list.children.find(c => String(c.className).includes('reply-stack'));
+  assert.ok(stack, 'a stack formed');
+  assert.ok(!list.children.includes(card(21)) && !list.children.includes(card(25)), 'm21 and m25 sit inside the stack');
+  f.observers[0].callback([21, 24, 25].map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })));
+  await settle(); await settle();
+  assert.deepEqual(ranges().sort((a, b) => a[0] - b[0]), [[21, 21], [24, 25]]);
+});

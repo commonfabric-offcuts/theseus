@@ -32,6 +32,28 @@ A reviewer can check each kill against the exact revision it ran on, without tru
 
 A run that reuses an evidence directory replaces its verdict and its checkout.
 
+## Act ledger: `tools/acts.py`
+
+A release's acts, and the check that holds each one, are listed in
+`tests/acts.json`. Each row names the pipeline item, the act in a person's
+words, a break (one or more `[file, OLD, NEW]` replacements that stop the act
+where the code does it) and its check: `{"node": "tests/x.test.mjs"}`,
+`{"python": "test_x.py"}`, or a browser mode and case filter,
+`{"native": "reading", "case": "reading 👍 in the Reader"}`.
+
+```sh
+tools/acts.py tests/acts.json --evidence /abs/dir [--only REGEX]
+```
+
+Each row goes through `tools/mutant.py`: a unit check must fail on an
+assertion, and a browser case on a `FAILED` line from `tools/native.py`, which
+gets a fresh output folder for the mutant and for its control. One line per
+act says caught (with the failing line), SURVIVED, or refused (its break no
+longer applies). Exit 0 only when every act chosen was caught. `--only`
+chooses the acts whose item number or words match. Each act's evidence is in
+its own folder under `--evidence`. Run it under `heavy-run --browser` when a
+browser case is chosen.
+
 ## Release check: `tools/release_check.py`
 
 The release check speaks for one commit: the HEAD of the checkout the tool lives in.

@@ -18,9 +18,9 @@ test('Option-Up on "b) two" in a lettered list puts it above "a) one", as the it
 
 test('an item carries the lines indented under it, and moves only past an item at its own depth', () => {
   const value = '- one\n  more of one\n- two\n  - two a\n  - two b\n- three';
-  assert.equal(moved(value, at(value, 'more'), at(value, 'more'), 1).value, '- two\n  - two a\n  - two b\n- one\n  more of one\n- three');
+  assert.equal(moved(value, at(value, 'more'), at(value, 'more'), 1)?.value, '- two\n  - two a\n  - two b\n- one\n  more of one\n- three');
   // A nested item moves within its own list, and past its end nothing moves.
-  assert.equal(moved(value, at(value, 'two b'), at(value, 'two b'), -1).value, '- one\n  more of one\n- two\n  - two b\n  - two a\n- three');
+  assert.equal(moved(value, at(value, 'two b'), at(value, 'two b'), -1)?.value, '- one\n  more of one\n- two\n  - two b\n  - two a\n- three');
   assert.equal(moved(value, at(value, 'two b'), at(value, 'two b'), 1), null);
   assert.equal(moved(value, at(value, 'two a'), at(value, 'two a'), -1), null);
   // The first item has nothing above it in its list.
@@ -29,24 +29,24 @@ test('an item carries the lines indented under it, and moves only past an item a
 
 test('a plain line moves past the line next to it in its paragraph, and not out of it', () => {
   const value = 'first\nsecond\nthird\n\nafter';
-  assert.equal(moved(value, at(value, 'second'), at(value, 'second'), -1).value, 'second\nfirst\nthird\n\nafter');
+  assert.equal(moved(value, at(value, 'second'), at(value, 'second'), -1)?.value, 'second\nfirst\nthird\n\nafter');
   assert.equal(moved(value, at(value, 'third'), at(value, 'third'), 1), null, 'the paragraph ends at the blank line');
   assert.equal(moved(value, 0, 0, -1), null, 'nothing above the first line');
 });
 
 test('a paragraph wholly the cursor\'s moves past the next paragraph, the blank lines staying put', () => {
   const value = 'one\n\ntwo\n\n\nthree';
-  assert.equal(moved(value, at(value, 'two'), at(value, 'two'), 1).value, 'one\n\nthree\n\n\ntwo');
-  assert.equal(moved(value, at(value, 'two'), at(value, 'two'), -1).value, 'two\n\none\n\n\nthree');
+  assert.equal(moved(value, at(value, 'two'), at(value, 'two'), 1)?.value, 'one\n\nthree\n\n\ntwo');
+  assert.equal(moved(value, at(value, 'two'), at(value, 'two'), -1)?.value, 'two\n\none\n\n\nthree');
   // Every line of a longer paragraph selected moves it whole.
   const long = 'a\nb\n\nc';
-  assert.equal(moved(long, 0, 3, 1).value, 'c\n\na\nb');
+  assert.equal(moved(long, 0, 3, 1)?.value, 'c\n\na\nb');
   assert.equal(moved(long, 0, 3, 1).start, 3);
 });
 
 test('a selection moves the blocks it touches together, and nothing when they are of two kinds', () => {
   const value = '- a\n- b\n- c\n- d';
-  assert.equal(moved(value, at(value, 'b'), at(value, 'c'), -1).value, '- b\n- c\n- a\n- d');
+  assert.equal(moved(value, at(value, 'b'), at(value, 'c'), -1)?.value, '- b\n- c\n- a\n- d');
   const mixed = 'words\n- item';
   assert.equal(moved(mixed, 0, mixed.length, 1), null);
   assert.equal(moved(mixed, 0, 0, 1), null, 'a line does not move past an item');

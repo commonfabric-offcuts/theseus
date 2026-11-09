@@ -62,5 +62,47 @@ the pointer's way, the keys' and the phone's.
   outside a pop-up closes it too (`web/dismiss.mjs`, docs/links.md).
 - **?** opens this guide.
 
-Each rule will name the check that holds it once the checks for the message
-menu are written.
+## The checks that hold these rules
+
+Every act on this page has a row in `tests/acts.json`: the item it shipped
+with, a break that stops the act where the code does it, and the check that
+must then fail. `tools/acts.py tests/acts.json --evidence DIR` applies each
+break, runs its check, and requires the check to fail on it and to pass once
+the break is undone (docs/tools.md). A check is named for an act only when its
+row is caught; a test file that sits near the act is not a check of it.
+
+The topic page's and the writing's acts are pressed by
+`tests/topic_reading_native.mjs`, in Chrome for Testing (`native-reading`) and
+Safari's engine (`native-webkit-reading`), at 1280 wide with a pointer and keys
+and at 390 wide with touch; each reads what Core then holds, not only what the
+page painted. Its checks, by rule:
+
+- The light, ↑ ↓, Return and a phone's two taps: "reading ↑ and ↓ move the
+  light, …"; Reply on the bar: "reading Reply on the bar opens the Reader …";
+  Tab through the bar and the ⋯ menu: `tests/links_native.mjs` ("header Tab
+  reaches a message's ⋯ …", "header a message's ⋯ copies its link …").
+- A cut-off message: "reading a cut-off message scrolls in place …". Safari's
+  engine in the harness has no finger drag, so there the box is held to scroll
+  and to stay under 60% of the window; the drag runs in Chrome.
+- 👍: "reading the bar's 👍 and the card's 👍 count …", "reading 👍 in the
+  Reader beside Send …" and "reading a thumbs-up an agent gives shows on the
+  card …"; an agent's `thumb`: `tests/test_agent_verbs_reactions.py`. ✅ and
+  🚫: "reading ✅ and 🚫 on a go-ahead ask …"; an agent's `--go-ahead` and what
+  `read` says of both: `tests/test_agent_verbs_reactions.py`.
+- How cards read (docs/topic-reading.md): "reading read cards sit back on the
+  read fill …", "reading the reply arrow says "You replied at" …" and
+  "reading replies gather into a stack …".
+- ?: "reading ? and the rail's "? Pointer, keys and taps" open the guide …".
+- Images: "reading #img in the topic's composer and in the Reader …" picks
+  with ↓ and Return and with a tap, narrows by name, shows each thumbnail and
+  takes the #img words out as one edit ⌘Z puts back; "reading Paste image: …"
+  reads the button, presses it, presses Choose file beside it and pastes with
+  ⌘V in Chrome, and in Safari's engine, which tells a page nothing of the
+  clipboard, reads Add image. A paste into the Reader and a row's thumbnail:
+  `tests/reader_images_native.mjs`.
+- ⌥↑ and ⌥↓: "reading ⌥↑ and ⌥↓ move the line …", in the composer and the
+  Reader; which line moves: `tests/ui_line_move.test.mjs`.
+- The saving sign's time: "reading the save status says when the writing was
+  saved …".
+- Escape and a press outside a pop-up: `tests/ui_links.test.mjs` and
+  `tests/links_native.mjs`.

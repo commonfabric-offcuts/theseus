@@ -1,0 +1,1211 @@
+{
+ "acts": [
+  {
+   "item": 25,
+   "act": "The bar's 👍 records a thumbs-up in Core and a second press takes it back",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (name === 'thumb' && mayThumb(item, this.viewer)) return this.thumb(item, !thumbed(item, this.viewer));",
+     "if (name === 'thumb' && mayThumb(item, this.viewer)) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the bar's 👍 and the card's 👍 count"
+   }
+  },
+  {
+   "item": 25,
+   "act": "A press on the card's 👍 count, ✅ or 🚫 acts, and opens nothing",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (!(this.touch && react.classList.contains('reaction-count'))) this.act(react.dataset.react);",
+     "if (false) this.act(react.dataset.react);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the bar's 👍 and the card's 👍 count"
+   }
+  },
+  {
+   "item": 25,
+   "act": "On a phone a tap on the count lights the card, which then names who, and leaves the thumbs-up on",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(hover:none){.message-card.lit .reaction-count{white-space:normal}.message-card.lit .reaction-who{display:inline}",
+     "@media(hover:none){.message-card.lit .reaction-count{white-space:normal}.message-card.lit .reaction-who{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the bar's 👍 and the card's 👍 count"
+   }
+  },
+  {
+   "item": 25,
+   "act": "Where a finger presses, each of the bar's buttons is at least 44px",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(pointer:coarse){.message-bar button{min-width:2.75rem;min-height:2.75rem}",
+     "@media(pointer:coarse){.message-bar button{min-width:2rem;min-height:2rem}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the bar's 👍 and the card's 👍 count"
+   }
+  },
+  {
+   "item": 25,
+   "act": "The card counts the thumbs-up and offers the reader's own 👍 as a press",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "if (mayThumb(item, viewer)) count.dataset.react = 'thumb';",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reactions.test.mjs"
+   }
+  },
+  {
+   "item": 25,
+   "act": "The Reader's 👍 beside Send records a thumbs-up in Core and a second press takes it back",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (item) run(async () => { try { await reactions.thumb(",
+     "    if (false) run(async () => { try { await reactions.thumb("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "👍 in the Reader beside Send"
+   }
+  },
+  {
+   "item": 25,
+   "act": "The Reader's 👍 shows on someone else's message",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "  button.hidden = !can;",
+     "  button.hidden = true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "👍 in the Reader beside Send"
+   }
+  },
+  {
+   "item": 25,
+   "act": "A thumbs-up someone else gives reaches an open page's card without a reload",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "if (item.resource_kind === 'reaction' && typeof item.resource_id === 'string'",
+     "if (false && item.resource_kind === 'reaction' && typeof item.resource_id === 'string'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a thumbs-up an agent gives shows on the card"
+   }
+  },
+  {
+   "item": 25,
+   "act": "An open page reads the reactions a change names and repaints the card",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (learnReactions(this.messages, answer)) this.paint('reactions');",
+     "learnReactions(this.messages, answer);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a thumbs-up an agent gives shows on the card"
+   }
+  },
+  {
+   "item": 25,
+   "act": "Core keeps a thumbs-up, takes it back, and a late one never undoes a newer one",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        if envelope[\"expected\"][\"thumb_revision\"] != current:\n            raise Refusal(\"REVISION_CONFLICT\", \"This thumbs-up",
+     "        if False:\n            raise Refusal(\"REVISION_CONFLICT\", \"This thumbs-up"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 25,
+   "act": "A thumbs-up settles the reactor's own delivery of the message",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        if pending is not None:\n            self._acknowledge(db, actor, pending)",
+     "        if False:\n            self._acknowledge(db, actor, pending)"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 25,
+   "act": "An agent thumbs up with `thumb MESSAGE` and takes it back with `--off`",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "{\"thumbed\": not self.options.off}",
+     "{\"thumbed\": True}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_reactions.py"
+   }
+  },
+  {
+   "item": 25,
+   "act": "`read` names who thumbed a message up",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "self.out.plain(\"  (👍 \" + \", \".join(thumb[\"actor_id\"] for thumb in reactions[\"thumbs\"]) + \")\")",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_reactions.py"
+   }
+  },
+  {
+   "item": 124,
+   "act": "The bar's ✅ and 🚫 record the person's answer in Core and tell the agent by a reply",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "&& name in ANSWER_WORDS) return this.answer(item, name);",
+     "&& name in ANSWER_WORDS) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "✅ and 🚫 on a go-ahead ask"
+   }
+  },
+  {
+   "item": 124,
+   "act": "A go-ahead ask offers ✅ and 🚫 on its card, to a person it asks",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "    if (answerable) {\n      for (const answer of ['yes', 'no']) {",
+     "    if (false) {\n      for (const answer of ['yes', 'no']) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "✅ and 🚫 on a go-ahead ask"
+   }
+  },
+  {
+   "item": 124,
+   "act": "Core keeps the answer and says it to the asker as a reply, with the change said",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "body = ANSWERS[answer] + (\" (I changed my answer)\" if row is not None else \"\")",
+     "body = ANSWERS[answer]"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 124,
+   "act": "Only a person a go-ahead ask names can answer it",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "if actor not in json.loads(message[\"addressees\"]) or self._actor(db, actor)[\"kind\"] != \"human\":",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 124,
+   "act": "A go-ahead goes only on an Ask",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "            raise Refusal(\"INVALID_ARGUMENT\", GO_AHEAD_NEEDS_ASK)",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 124,
+   "act": "An agent asks for a go-ahead with `post TOPIC --asks A --go-ahead`",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "            args[\"go_ahead\"] = True",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_reactions.py"
+   }
+  },
+  {
+   "item": 124,
+   "act": "`read` says a message asks for a go-ahead and what each person answered",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "self.out.plain(\"  (asks for a go-ahead%s)\" % (\": \" + said if said else \"; not answered yet\"))",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_reactions.py"
+   }
+  },
+  {
+   "item": 114,
+   "act": "The message under the pointer lights, with its bar",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      if (entry && entry !== this.lit) this.light(entry);\n    });\n    // What was lit",
+     "    });\n    // What was lit"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "↑ and ↓ move the light"
+   }
+  },
+  {
+   "item": 114,
+   "act": "↑ and ↓ move the light to the message below and above",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "index + (event.key === 'ArrowDown' ? 1 : -1)",
+     "index + (event.key === 'ArrowDown' ? -1 : 1)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "↑ and ↓ move the light"
+   }
+  },
+  {
+   "item": 114,
+   "act": "Return opens the Reader on the lit message",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      event.preventDefault();\n      this.act('reply');",
+     "      event.preventDefault();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "↑ and ↓ move the light"
+   }
+  },
+  {
+   "item": 114,
+   "act": "The Reader opens with the cursor in the reply and nothing quoted",
+   "break": [
+    [
+     "web/app.mjs",
+     "registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });",
+     "registry.current?.source?.source_ref?.id === id) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "↑ and ↓ move the light"
+   }
+  },
+  {
+   "item": 114,
+   "act": "Reply on the bar opens the Reader on the lit message with the cursor in the reply",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      button.onclick = () => this.act(name);",
+     "      button.onclick = () => name === 'reply' || this.act(name);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Reply on the bar opens the Reader"
+   }
+  },
+  {
+   "item": 114,
+   "act": "On a phone a first tap lights a message and opens nothing; a second opens it",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line')) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "↑ and ↓ move the light"
+   }
+  },
+  {
+   "item": 114,
+   "act": "On a phone a tap outside the messages lets the light go",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "!at?.closest?.('dialog, .message-menu-list')) this.light(null);",
+     "!at?.closest?.('dialog, .message-menu-list')) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "↑ and ↓ move the light"
+   }
+  },
+  {
+   "item": 114,
+   "act": "Tab from the lit message goes to its bar's buttons, ⋯ last",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (!event.shiftKey && at === card) { event.preventDefault(); shown[0].focus({ preventScroll: true }); }",
+     "if (false) { event.preventDefault(); shown[0].focus({ preventScroll: true }); }"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header Tab reaches a message's ⋯"
+   }
+  },
+  {
+   "item": 114,
+   "act": "The bar's ⋯ opens the message's menu",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (name === 'more') return this.more(item, this.buttons.more);",
+     "if (name === 'more') return;"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header a message's ⋯ copies its link"
+   }
+  },
+  {
+   "item": 114,
+   "act": "A right-click on a message opens its menu where the pointer is",
+   "break": [
+    [
+     "web/app.mjs",
+     "const entry = entryOf($('messages'), event.target), item = entry && views?.messages.get(entry.dataset.id);",
+     "const entry = null, item = null;"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header a message the reader wrote offers Copy Link alone"
+   }
+  },
+  {
+   "item": 114,
+   "act": "The bar never covers the reply arrow beside the card's time",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (mark?.width && mark.right > left",
+     "if (false && mark?.width && mark.right > left"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the reply arrow says \"You replied at\""
+   }
+  },
+  {
+   "item": 108,
+   "act": "A lit cut-off message's words become a box that scrolls in place under the wheel or a finger",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (item?.preview && !cardIn(entry).hidden) this.expand(cardIn(entry), item);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a cut-off message scrolls in place"
+   }
+  },
+  {
+   "item": 108,
+   "act": "The box scrolls itself, not the page",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:contain;",
+     ".message-preview.scroll-in-place{display:block;overflow:visible;overscroll-behavior:contain;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a cut-off message scrolls in place"
+   }
+  },
+  {
+   "item": 108,
+   "act": "Where a finger scrolls, the excerpt is never taller than 60% of the window",
+   "break": [
+    [
+     "web/aim.css",
+     ">.message-preview:not(.scroll-in-place){display:block;max-height:60dvh;overflow:hidden}",
+     ">.message-preview:not(.scroll-in-place){display:block;overflow:hidden}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a cut-off message scrolls in place"
+   }
+  },
+  {
+   "item": 106,
+   "act": "? opens the guide",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (asksForGuide(event)) { event.preventDefault(); guide.open(); }",
+     "if (false) { event.preventDefault(); guide.open(); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+   }
+  },
+  {
+   "item": 106,
+   "act": "The rail's \"? Pointer, keys and taps\" opens the guide",
+   "break": [
+    [
+     "web/app.mjs",
+     "  guide.offer($('instance-label'));\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+   }
+  },
+  {
+   "item": 106,
+   "act": "? in the writing is the writing's, and opens no guide",
+   "break": [
+    [
+     "web/interaction-guide.mjs",
+     "  if (at && (at.matches?.('input, textarea, select, [contenteditable=\"\"], [contenteditable=\"true\"]'))) return false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+   }
+  },
+  {
+   "item": 31,
+   "act": "Another person's card the person has read sits on the read fill",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-card[data-read]:not(.own-message):not(.agent-card){--muted:#56616a;background:var(--read-card)}",
+     ".message-card[data-read]:not(.own-message):not(.agent-card){--muted:#56616a}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "read cards sit back on the read fill"
+   }
+  },
+  {
+   "item": 31,
+   "act": "An agent's card the person has read keeps a share of its tint over the read fill",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-card.agent-card[data-read]{background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}",
+     ".message-card.agent-card[data-read]{}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "read cards sit back on the read fill"
+   }
+  },
+  {
+   "item": 31,
+   "act": "Talk between agents is dimmed",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-fold[data-talk=agents]>.fold-line,.message-card[data-talk=agents]{opacity:.62;",
+     ".message-fold[data-talk=agents]>.fold-line,.message-card[data-talk=agents]{opacity:1;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "read cards sit back on the read fill"
+   }
+  },
+  {
+   "item": 31,
+   "act": "Talk between agents is an agent writing by name to agents only, read by a person who is none of them",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "to.every(name => kindOf(name) === 'agent')",
+     "to.some(name => kindOf(name) === 'agent')"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 31,
+   "act": "A press wakes quiet agent talk for the visit",
+   "break": [
+    [
+     "web/app.mjs",
+     "  wakeOnPress($('messages'));\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "read cards sit back on the read fill"
+   }
+  },
+  {
+   "item": 31,
+   "act": "A card opened in the Reader reads as read at once",
+   "break": [
+    [
+     "web/app.mjs",
+     "readThrough.seen(topic.id, source.seq, source.seq); openedHere(source.source_ref.id); }",
+     "readThrough.seen(topic.id, source.seq, source.seq); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "read cards sit back on the read fill"
+   }
+  },
+  {
+   "item": 31,
+   "act": "Core says which messages wait unread for the reader",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "        item[\"unread\"] = item[\"id\"] in unread and item[\"author_id\"] != actor",
+     "        item[\"unread\"] = False"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 102,
+   "act": "A message the person replied to carries the reply arrow, and one they did not carries none",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "  if (!item.replied) { arrow?.remove(); return; }",
+     "  { arrow?.remove(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the reply arrow says \"You replied at\""
+   }
+  },
+  {
+   "item": 102,
+   "act": "The arrow says \"You replied at\" and the time",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "const repliedWords = sent => (sent === null ? 'You replied' : `You replied at ${shownTime(sent)}`);",
+     "const repliedWords = sent => 'You replied';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the reply arrow says \"You replied at\""
+   }
+  },
+  {
+   "item": 102,
+   "act": "A click on the arrow opens the reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "    delete arrow.dataset.shown;\n    go(item.replied.id);",
+     "    delete arrow.dataset.shown;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the reply arrow says \"You replied at\""
+   }
+  },
+  {
+   "item": 102,
+   "act": "On a phone a first tap on the arrow says when, and a second opens the reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (touched && !('shown' in arrow.dataset)) { arrow.dataset.shown = ''; return; }",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the reply arrow says \"You replied at\""
+   }
+  },
+  {
+   "item": 102,
+   "act": "Core names the reader's newest reply to each message",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "            replied[row[\"reply_to\"]] = {\"id\": row[\"id\"], \"sent_ms\": row[\"sent_ms\"]}",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 103,
+   "act": "Replies gather into a stack under the message they answer",
+   "break": [
+    [
+     "web/app.mjs",
+     "arrangeStacks($('messages'), views.messages, { enabled: !here?.page,",
+     "arrangeStacks($('messages'), views.messages, { enabled: false,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "replies gather into a stack"
+   }
+  },
+  {
+   "item": 103,
+   "act": "A folded stack's line says how many earlier replies it holds, and a press opens them in place",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  toggle.onclick = () => { stack.dataset.open = String(stack.dataset.open !== 'true'); fold(stack); };",
+     "  toggle.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "replies gather into a stack"
+   }
+  },
+  {
+   "item": 103,
+   "act": "A reply the person has not read stays in view while its stack is folded",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "for (const entry of answers.slice(1)) if (keep(messages.get(entry.dataset.id))) entry.dataset.kept = 'true';",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "replies gather into a stack"
+   }
+  },
+  {
+   "item": 61,
+   "act": "The topic's composer shows the time beside \"Saved to Theseus\"",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    if (this.callbacks.savedAt) paintSaveTime(this.$('save-state'), this.presentation.availabilityUnconfirmed",
+     "    if (false) paintSaveTime(this.$('save-state'), this.presentation.availabilityUnconfirmed"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the save status says when the writing was saved"
+   }
+  },
+  {
+   "item": 61,
+   "act": "The Reader shows the time beside \"Saved to Theseus\"",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    if (this.callbacks.savedAt) paintSaveTime(this.$('save-state'), state.sign ? this.callbacks.savedAt(editor) : null);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the save status says when the writing was saved"
+   }
+  },
+  {
+   "item": 61,
+   "act": "The time is when Theseus confirmed the save",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "if (receipt?.status === 'committed') this.savedAt(editor).theseus = this.timers.now();",
+     "if (receipt?.status === 'committed') this.savedAt(editor).theseus = 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_save_sign.test.mjs"
+   }
+  },
+  {
+   "item": 78,
+   "act": "⌥↑ and ⌥↓ in the writing move the line the cursor is on",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "  writingKey(event) { return this.terminalKey(event)||this.moveKey(event); }",
+     "  writingKey(event) { return this.terminalKey(event); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌥↑ and ⌥↓ move the line"
+   }
+  },
+  {
+   "item": 78,
+   "act": "⌘Z puts a moved line back",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "    try{this.insertText(move.text);}finally{this.moving=false;}",
+     "    try{field.setRangeText(move.text);}finally{this.moving=false;}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌥↑ and ⌥↓ move the line"
+   }
+  },
+  {
+   "item": 78,
+   "act": "A list item carries the lines indented under it",
+   "break": [
+    [
+     "web/line-move.mjs",
+     "    while (stack.length && depth[k] <= depth[stack.at(-1)]) last[stack.pop()] = previous;",
+     "    while (stack.length) last[stack.pop()] = previous;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_line_move.test.mjs"
+   }
+  },
+  {
+   "item": 121,
+   "act": "Picking from the #img list adds the image and takes the #img words out of the writing",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "    const query = this.query;\n    if (!query || !this.admits()) return;",
+     "    return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "#img in the topic's composer and in the Reader"
+   }
+  },
+  {
+   "item": 121,
+   "act": "↓ and Return pick from the #img list",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey && shown.length) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "#img in the topic's composer and in the Reader"
+   }
+  },
+  {
+   "item": 121,
+   "act": "A tap or click on an image in the #img list picks it",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "      option.onclick = () => this.pick(item);\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "#img in the topic's composer and in the Reader"
+   }
+  },
+  {
+   "item": 121,
+   "act": "Each image in the #img list shows its thumbnail",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "      paintThumb(option, item.attachment.id, () => this.thumb(item));\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "#img in the topic's composer and in the Reader"
+   }
+  },
+  {
+   "item": 121,
+   "act": "Letters typed after #img narrow the list by name",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "return this.items.filter(item => !filter || item.attachment.name.toLowerCase().includes(filter));",
+     "return this.items;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "#img in the topic's composer and in the Reader"
+   }
+  },
+  {
+   "item": 121,
+   "act": "#img opens at the start of a line or after a space",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "const found = /(?:^|\\s)#img(\\S*)$/.exec(line);",
+     "const found = /#img(\\S*)$/.exec(line);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_image_pick.test.mjs"
+   }
+  },
+  {
+   "item": 121,
+   "act": "Core lists the topic's verified inline images, newest first, once each",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "if attachment.get(\"inline\") is True and attachment.get(\"content_type\") in IMAGE_TYPES:",
+     "if True:"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_images.py"
+   }
+  },
+  {
+   "item": 121,
+   "act": "The Reader's image button says Paste image when the clipboard holds one",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    this.$('add-image').textContent = this.pasteReady ? 'Paste image' : 'Add image';",
+     "    this.$('add-image').textContent = 'Add image';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Paste image"
+   }
+  },
+  {
+   "item": 121,
+   "act": "The composer's image button says Paste image when the clipboard holds one",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    this.$('add-image').textContent = this.pasteReady ? 'Paste image' : 'Add image';",
+     "    this.$('add-image').textContent = 'Add image';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Paste image"
+   }
+  },
+  {
+   "item": 121,
+   "act": "Paste image in the Reader adds the clipboard's image",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      if (!this.admits()) return;\n      if (this.pasteReady) {",
+     "      if (!this.admits()) return;\n      if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Paste image"
+   }
+  },
+  {
+   "item": 121,
+   "act": "Paste image in the composer adds the clipboard's image",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "      if (!this.admits() || this.state().addDisabled) return;\n      if (this.pasteReady) {",
+     "      if (!this.admits() || this.state().addDisabled) return;\n      if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Paste image"
+   }
+  },
+  {
+   "item": 121,
+   "act": "Choose file beside Paste image still opens the file picker",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    this.$('choose-image').onclick = () => this.chooseFile();",
+     "    this.$('choose-image').onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Paste image"
+   }
+  },
+  {
+   "item": 121,
+   "act": "The page asks the clipboard only when its permission was granted, and only for an image",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "if ((await nav.permissions.query({ name: 'clipboard-read' })).state !== 'granted') return false;",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_image_pick.test.mjs"
+   }
+  },
+  {
+   "item": 121,
+   "act": "An image pasted into the Reader's writing is added",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    this.field.addEventListener('paste', event => this.paste(event));",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "images",
+    "case": "images restoration paste event preserves source"
+   }
+  },
+  {
+   "item": 121,
+   "act": "An image pasted into the topic's composer is added",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    this.field.addEventListener('paste', event => this.paste(event));",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Paste image"
+   }
+  },
+  {
+   "item": 121,
+   "act": "An image row in the topic's composer shows its thumbnail where the row is wide",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    }, id => uploads.preview(id));",
+     "    });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "#img in the topic's composer and in the Reader"
+   }
+  },
+  {
+   "item": 121,
+   "act": "An image row in a wide reply shows its thumbnail",
+   "break": [
+    [
+     "web/image-rows.mjs",
+     "      if (preview) paintThumb(row, choice.id",
+     "      if (false) paintThumb(row, choice.id"
+    ]
+   ],
+   "check": {
+    "native": "images",
+    "case": "images a row thumbnail holds its place"
+   }
+  },
+  {
+   "item": 50,
+   "act": "More at the top edge shows the older messages where its button was, and the page does not jump",
+   "break": [
+    [
+     "web/app.mjs",
+     "return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;",
+     "return first;"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live More at the top edge shows the older messages"
+   }
+  },
+  {
+   "item": 52,
+   "act": "Painting finds each loaded card by its id, so an update costs in step with the loaded history",
+   "break": [
+    [
+     "web/app.mjs",
+     "    let card = messageEntries.get(item.id);",
+     "    let card = [...document.querySelectorAll('#messages [data-id]')].find(child => child.dataset.id === item.id) && messageEntries.get(item.id);"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live painting an update costs in step"
+   }
+  },
+  {
+   "item": 54,
+   "act": "A resource whose read keeps failing waits while the others are read",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "            failed.set(key, error); continue;",
+     "            throw error;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_freshness.test.mjs"
+   }
+  },
+  {
+   "item": 54,
+   "act": "Only sends confirmed in this runtime name the topic version the page waits for",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "if (item.detached || item.authority?.authority_id !== now.authority_id || item.authority?.authority_epoch !== now.authority_epoch) continue;",
+     "if (item.detached) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_local_effects.test.mjs"
+   }
+  },
+  {
+   "item": 55,
+   "act": "Only a field that takes typed words holds the page still on a repaint",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "node.tagName === 'INPUT' && TYPED_INPUTS.has(node.type)",
+     "node.tagName === 'INPUT'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_writing_input.test.mjs"
+   }
+  },
+  {
+   "item": 56,
+   "act": "A shared read refused before it begins passes to the request that waited longest",
+   "break": [
+    [
+     "aim_next/server.py",
+     "                if not shared.began:\n                    shared.next = shared.successor()",
+     "                if False:\n                    shared.next = shared.successor()"
+    ]
+   ],
+   "check": {
+    "python": "test_http_read_admission.py"
+   }
+  },
+  {
+   "item": 67,
+   "act": "A page hidden before its start registers anything lets its writer lock go",
+   "break": [
+    [
+     "web/journal.mjs",
+     "  win.addEventListener?.('pagehide', () => { database?.close(); release(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_journal_pagehide.test.mjs"
+   }
+  }
+ ]
+}

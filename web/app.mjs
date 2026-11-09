@@ -416,11 +416,12 @@ function changed(editor) {
 // seen: TopicViews.sighted). A card is on screen only once everything drawn
 // above the messages after they paint has had its first fill (laidOut, set in
 // initialize, which names them), and only while it is on screen as the page
-// reports, measured then. Each run of loaded messages is contiguous, so the
-// range from the lowest to the highest card on screen in one run holds only
-// messages on screen; a range never spans a gap between runs. Only another
-// actor's message can settle a delivery, so the person's own are never
-// reported.
+// reports, measured then. The ranges reported come from seenRanges, so each
+// holds only messages on screen: any loaded message between two seen ones that
+// is not itself on screen (a reply folded in its stack, a card a stack moved
+// away) ends one range and starts the next, and a range never spans a gap
+// between runs. Only another actor's message can settle a delivery, so the
+// person's own are never reported.
 function noteRead() {
   if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return;

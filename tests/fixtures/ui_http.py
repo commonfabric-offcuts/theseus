@@ -279,6 +279,9 @@ def main():
             # The team's agents, each with its own color, and one the page
             # colors by its id alone.
             actors.extend({"id": name, "kind": "agent"} for name in ("aim-lead", "aim-ux", "fable", "aim-core", "aim-spec", "warp", "fixture-guest-agent"))
+        if "--other-person" in sys.argv:
+            # A second person, whose messages are neither the person's own nor an agent's.
+            actors.append({"id": "fixture-other-person", "kind": "human"})
         binding = initialize(path, instance, actors,
                              authority_path=root / "control" / "authority.json")["binding"]
 
@@ -402,8 +405,11 @@ def main():
                 return sent
             if request.get("whole_topic"):
                 # A post to the whole topic, replying to no message: from the
-                # person, it answers everything before it.
-                return read(command("message.post", operation, {"body": request["body"]}, {"topic_id": topic_id}, sender=sender))
+                # person, it answers everything before it. "post_args" adds
+                # message.post's own fields, such as an agent's ask for a
+                # go-ahead ({"addressees", "intent": "ask", "go_ahead": true}).
+                return read(command("message.post", operation, dict(request.get("post_args") or {}, body=request["body"]),
+                                    {"topic_id": topic_id}, sender=sender))
             # Written from the person's first message, or with "source": "topic"
             # from the topic itself, for an agent that cannot read that message,
             # or with "reply_to" from that message, which it then answers.
@@ -412,12 +418,18 @@ def main():
             current = store().view(sender, "editor_state", {"source_ref": source, "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
-            # Optional attachments, each published by the agent: {"name", "text"}.
+            # Optional attachments, each published by the agent: {"name", "text"}, or
+            # {"name", "image"}, an image from tests/fixtures/media by its file name.
             attached = []
             for number, item in enumerate(request.get("attachments", [])):
-                data, media_id = item["text"].encode(), "%s-media-%d" % (operation, number)
+                media_id = "%s-media-%d" % (operation, number)
+                if "image" in item:
+                    data = (Path(__file__).parent / "media" / item["image"]).read_bytes()
+                    kind = {".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}[Path(item["image"]).suffix]
+                else:
+                    data, kind = item["text"].encode(), "text/plain"
                 command("media.begin", "%s-media-begin-%d" % (operation, number), {
-                    "name": item["name"], "content_type": "text/plain", "size_bytes": len(data),
+                    "name": item["name"], "content_type": kind, "size_bytes": len(data),
                     "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": "%s-publish-%d" % (operation, number),
                 }, {"media_id": media_id}, {"media_revision": 0}, sender=sender)
                 envelope = {"v": 1, "instance_id": instance, "kind": "media.publish", "operation_id": "%s-publish-%d" % (operation, number),
@@ -564,6 +576,11 @@ def main():
                                              {"topic_id": topic_id}, sender=agent)
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
+                    elif freshness and request["method"] == "agent_thumb":
+                        # An agent's thumbs-up on a message, as its CLI's `thumb` gives it (docs/thumbs.md).
+                        revision = store().view(request["sender"], "reactions", {"message_id": request["message_id"]})["reactions"]["thumb_revision"]
+                        answer = command("message.thumb", request["operation_id"], {"thumbed": request.get("thumbed", True)},
+                                         {"message_id": request["message_id"]}, {"thumb_revision": revision}, sender=request["sender"])
                     elif freshness and request["method"] == "agent_state":
                         # An agent says where a topic stands, as through its CLI; Core may refuse it.
                         topic_id, sender = request.get("topic_id", "t1"), request["sender"]

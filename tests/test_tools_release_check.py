@@ -810,9 +810,10 @@ class NativeCoverage(unittest.TestCase):
 
     def test_the_webkit_modes_are_steps(self):
         # Safari's engine runs the reading colours, whispers, Notebook pages, the rail, the pipeline
-        # page (each with its phone layouts), the phone check page and the New line staying.
+        # page, the topic page's acts and how its cards read (each with its phone layouts), the
+        # phone check page and the New line staying.
         steps = {step.name: step for step in release_check.NATIVE_STEPS}
-        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line"))
+        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading"))
         for mode in release_check.WEBKIT_MODES:
             self.assertEqual((steps["webkit-" + mode].harness, steps["webkit-" + mode].flags), (release_check.WEBKIT, ("--" + mode,)))
             self.assertIn("native-webkit-" + mode, release_check.REQUIRED)

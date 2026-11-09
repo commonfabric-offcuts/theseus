@@ -9,7 +9,7 @@
 // --new-line mode's checks hold a read or lose an answer with Playwright's own
 // request routing, which they are written for (new_line_native.mjs).
 //
-// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line [case filter]
+// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading [case filter]
 // playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -26,10 +26,11 @@ import { pipelineChecks } from './pipeline_native.mjs';
 import { railChecks } from './outcome_rail_native.mjs';
 import { deviceChecks } from './device_native.mjs';
 import { newLineStaysChecks } from './new_line_native.mjs';
+import { readingChecks } from './topic_reading_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode, caseFilter] = process.argv.slice(2);
-assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line'].includes(mode), `a WebKit mode, not ${mode}`);
+assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading'].includes(mode), `a WebKit mode, not ${mode}`);
 assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory');
 const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
 assert.ok(playwrightPath && path.isAbsolute(playwrightPath), 'AIM_PLAYWRIGHT_CORE names an absolute playwright-core directory');
@@ -57,7 +58,7 @@ async function until(probe, description, timeout = 8000) {
   throw Error(`Timed out: ${description}`);
 }
 
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(['--colors', '--new-line'].includes(mode) ? ['--agent-colors'] : []), '--freshness', '--images', '--media'], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(['--colors', '--new-line', '--reading'].includes(mode) ? ['--agent-colors'] : []), ...(mode === '--reading' ? ['--other-person'] : []), '--freshness', '--images', '--media'], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -76,8 +77,9 @@ const control = data => new Promise((resolve, reject) => {
 
 const results = [], observations = [], hashes = {};
 for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs',
-  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
-  'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs']) {
+  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
+  'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
+  'web/message-menu.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
@@ -329,6 +331,8 @@ try {
       });
     };
     await newLineStaysChecks({ check, open, until, view, control, shot, observations, engine: 'webkit' });
+  } else if (mode === '--reading') {
+    await readingChecks({ check, page, until, control, view, facts, shot, observations, engine: 'webkit' });
   } else {
     await deviceChecks({ check, page, until, control, view, facts, shot, observations });
   }

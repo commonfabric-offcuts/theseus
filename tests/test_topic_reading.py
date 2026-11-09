@@ -37,9 +37,7 @@ class TopicReadingCase(fixtures.ReaderCase):
         self.assertEqual(self.page()[asked]["replied"], None, "someone else's reply is not the reader's")
         self.post("The first", actor="owner", reply_to=asked)
         newest = self.post("The second", actor="owner", reply_to=asked)
-        replied = self.page()[asked]["replied"]
-        self.assertEqual(replied["id"], newest)
-        self.assertEqual(replied["sent_ms"], self.sql("SELECT sent_ms FROM messages WHERE id=?", (newest,))[0][0])
+        self.assertEqual(self.page()[asked]["replied"], {"id": newest, "sent_ms": self.sql("SELECT sent_ms FROM messages WHERE id=?", (newest,))[0][0]})
         self.assertEqual((self.page()[quiet]["replied"], self.page("agent-b")[asked]["replied"]["id"] != newest), (None, True))
 
 
