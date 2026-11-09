@@ -1,4 +1,5 @@
 // Scoped read state only. This module owns no editor, operation or delivery.
+import { busyCode } from './api.mjs';
 const copy = structuredClone;
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const integer = x => Number.isSafeInteger(x) && x >= 0;
@@ -24,7 +25,7 @@ export function readFailure(value) {
   if (code === 'FORBIDDEN') return result('forbidden');
   if (status === 401 || status === 403 || ['SESSION_REQUIRED', 'ORIGIN_REFUSED'].includes(code)) return result('reconnect');
   if (['VIEW_TOO_LARGE', 'INVALID_ARGUMENT', 'INVALID_READ_CLASS', 'INVALID_FRESHNESS_VIEW'].includes(code)) return result('diagnostic');
-  if (['SERVER_BUSY', 'AUTHORITY_BUSY', 'DATABASE_BUSY', 'RESOURCE_NOT_CURRENT'].includes(code) || error?.retryable === true ||
+  if (busyCode(code) || code === 'RESOURCE_NOT_CURRENT' || error?.retryable === true ||
       status >= 500 && ['REQUEST_UNCONFIRMED', 'CAPABILITIES_UNAVAILABLE'].includes(code)) return result('retry');
   if (!code && status >= 500 && status < 600) return result('retry');
   if (!code && (value?.name === 'AbortError' || value?.name === 'AttemptError' && status === 0 || value instanceof TypeError)) return result('retry');

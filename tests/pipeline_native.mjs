@@ -10,6 +10,11 @@ import assert from 'node:assert/strict';
 // with no reload and leaves what is being typed alone; the owner's word moves
 // a gated stage on; a message in the Reader becomes a Candidate in one line,
 // and a whisper is never offered as one;
+// a busy Theseus while stages are changed is said in plain words with Try again,
+// the stage name being typed keeps its words, and the page never prints null;
+// a title kept under its line gives focus back to itself or its line after Try
+// again, Return or Escape; an item whose answer is lost is said as not known to be
+// saved, and Return on it sends the same change, so Core has it once;
 // the rail's Pipeline row and the outcome page's line link the page; and the
 // page and an item's record fit 1280 and 390, light and dark, with no People
 // heading. Run by reader_persistence_native.mjs with --pipeline; screenshots
@@ -95,6 +100,152 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     assert.equal(await loaded(o), before, 'all with no reload');
     await shot(o, 'pipeline-turned-on');
     assert.deepEqual(o.errors, []); await o.close();
+  });
+
+  await check('pipeline a busy Theseus while stages are changed says so in plain words with Try again, keeps the stage name being typed, and the page never prints null', async () => {
+    // Item 192. Theseus answers every pipeline read of the page with its own busy refusal (503 SERVER_BUSY, its own
+    // words), as its full read lane does, until the check withdraws it; changes still go through. The check reads
+    // Core in the background lane, which the refusal leaves alone.
+    const BUSY = { method: 'read_fault', name: 'pipeline', read_class: 'foreground', status: 503,
+      body: { error: { code: 'SERVER_BUSY', message: 'This read could not enter its bounded lane.', retryable: true } }, count: 10000 };
+    const stages = async () => (await (await fetch(facts.origin + '/api/view', { method: 'POST', headers: { Authorization: `Bearer ${facts.token}`, Origin: facts.origin,
+      'Content-Type': 'application/json', 'X-AIM-Read-Class': 'background' }, body: JSON.stringify({ name: 'pipeline', args: { workspace_id: 'w1', limit: 1 } }) })).json()).pipeline?.stages.map(stage => stage.name) ?? [];
+    const refused = async () => (await control({ method: 'admission_events' })).events.filter(event => event.event === 'fault-applied' && event.name === 'pipeline').length;
+    // What the page shows, whole: the words a person reads on it and in the page's status line.
+    const shown = p => p.evaluate(`(()=>({page:document.getElementById('pipeline-page').innerText,status:document.getElementById('app-status').hidden?'':document.getElementById('app-status').textContent}))()`);
+    // Every null, undefined or server word for being busy the page shows, each as found.
+    const unplain = text => [...text.matchAll(/null|undefined|bounded lane|request lane|retain its operation/g)].map(found => found[0]);
+    const said = (p, key) => p.evaluate(`[...document.querySelectorAll('[data-key="${key}"] [role=status]')].map(e=>e.textContent)`);
+    const addStage = async (p, name) => { await type(p, '[data-key="add-stage"] input', name); await p.key('Enter'); };
+    const busyStages = async () => {
+      const p = await open('pipeline-busy', '/?pipeline=w1');
+      await ready(p);
+      await tap(p, '[data-role=edit-stages]');
+      await until(() => p.evaluate(`Boolean(document.querySelector('[data-key="add-stage"] input'))`), 'Change stages opens its lines');
+      await addStage(p, 'Build');
+      await until(() => p.evaluate(`[...document.querySelectorAll('[data-role=stage-name]')].map(i=>i.value).join()==='Build'`), 'a stage added while Theseus answers shows');
+      // Tony's moment: a stage added while every read of the page is refused as busy.
+      await control(BUSY);
+      await addStage(p, 'Review');
+      await until(async () => (await stages()).join() === 'Build,Review', 'Review is saved');
+      await until(async () => (await said(p, 'add-stage')).length > 0, 'the page says what happened under the line');
+      const busy = await shown(p);
+      assert.deepEqual({ said: await said(p, 'add-stage'), unplain: unplain(busy.page), status: busy.status },
+        { said: ['Saved. Theseus was busy, so this page does not show it yet. Try again'], unplain: [], status: '' },
+        'a busy Theseus said in plain words, with Try again, under the line it was added on; no null, and none of the server’s own words');
+      assert.equal(await p.evaluate(`document.querySelector('[data-key="add-stage"] input').value`), '', 'the line is clear: Review is saved');
+      // The stage name being typed, while live changes are read and refused as busy, keeps its words, focus and caret.
+      await tap(p, '[data-role=stage-name]');
+      await p.key('a', 4); await p.send('Input.insertText', { text: 'Build it' });
+      for (const sized of [false, true]) {
+        const before = await refused();
+        await pipeline('pipeline.configure', { workspace_id: 'w1' }, { enabled: true, sized });
+        await until(async () => (await refused()) > before, 'the page reads the live change and Theseus refuses it as busy');
+      }
+      const typing = await focused(p);
+      assert.deepEqual([typing.role, typing.value, await p.evaluate('document.activeElement.selectionStart')], ['stage-name', 'Build it', 'Build it'.length],
+        'the name being typed keeps its words, its focus and its caret');
+      const still = await shown(p);
+      assert.deepEqual({ said: await said(p, 'add-stage'), unplain: unplain(still.page), status: still.status },
+        { said: ['Saved. Theseus was busy, so this page does not show it yet. Try again'], unplain: [], status: '' }, 'the busy line stays where it was said');
+      await p.evaluate(`document.querySelector('[data-key="add-stage"]').scrollIntoView({block:'center'})`);
+      await shot(p, 'pipeline-busy-laptop-light');
+      // Return on the name, still busy: the page does not show Review yet, so it reads before it sends the name on
+      // a revision Theseus has moved past; that read is refused, so nothing is sent and the stage says so, keeping the name.
+      const build = await p.evaluate(`document.querySelector('[data-role=stage-name]').closest('[data-key]').dataset.key`);
+      assert.deepEqual(await said(p, build), [], 'nothing is said on the stage before Return');
+      const asked = await refused();
+      await p.key('Enter');
+      await until(async () => (await said(p, build)).join() === 'Not saved: Theseus was busy. Try again', 'the stage says it is not saved');
+      assert.ok(await refused() > asked, 'the page read before sending, and Theseus refused the read');
+      assert.deepEqual({ stage: await said(p, build), added: await said(p, 'add-stage'), name: await p.evaluate(`document.querySelector('[data-key="${build}"] [data-role=stage-name]').value`),
+        core: await stages(), unplain: unplain((await shown(p)).page) },
+      { stage: ['Not saved: Theseus was busy. Try again'], added: ['Saved. Theseus was busy, so this page does not show it yet. Try again'], name: 'Build it',
+        core: ['Build', 'Review'], unplain: [] }, 'the name not saved and kept, Review saved: each said where it was made');
+      // A new stage typed on its line, still busy: the same read first is refused, so it is not sent. Its title is
+      // kept on a line of its own under the add line, said as not saved beside it, and Review stays said as saved
+      // under the add line, with one Try again between them. The title is corrected where it stands, and the next
+      // one typed on the add line meanwhile stays there.
+      const held = '[data-key^="held:add-stage:"]';
+      const asked2 = await refused();
+      await addStage(p, 'Shp');
+      await until(async () => (await said(p, 'add-stage')).length === 1 && (await p.evaluate(`document.querySelectorAll('${held}').length`)) === 1, 'the title not saved is kept under the line');
+      assert.ok(await refused() > asked2, 'the page read before sending, and Theseus refused the read');
+      const lines = () => p.evaluate(`({line:document.querySelector('[data-key="add-stage"] input').value,held:[...document.querySelectorAll('${held} input')].map(i=>i.value),
+        heldSaid:[...document.querySelectorAll('${held} [role=status]')].map(e=>e.textContent),
+        tries:document.querySelectorAll('[data-key="add-stage"] [data-role=try-again], ${held} [data-role=try-again]').length})`);
+      assert.deepEqual({ added: await said(p, 'add-stage'), ...await lines(), core: await stages() },
+        { added: ['Saved. Theseus was busy, so this page does not show it yet.'], line: '', held: ['Shp'], heldSaid: ['Not saved: Theseus was busy. Try again'], tries: 1, core: ['Build', 'Review'] },
+        'Shp is kept and not saved, beside its own words; Review is said to be saved; the line is clear');
+      // Escape on a title kept lets it go, sends nothing, and focus goes to the line it was typed on, for the next title.
+      await addStage(p, 'Gone');
+      await until(() => p.evaluate(`document.querySelectorAll('${held}').length===2`), 'Gone is kept too');
+      const gone = await p.evaluate(`[...document.querySelectorAll('${held}')].find(f=>f.querySelector('input').value==='Gone').dataset.key`);
+      await tap(p, `[data-key="${gone}"] input`); await p.key('Escape');
+      await until(() => p.evaluate(`document.querySelectorAll('${held}').length===1`), 'Escape lets Gone go');
+      const left = await focused(p);
+      assert.deepEqual([left.key, left.role, left.value, (await lines()).held, await stages()], ['add-stage', 'add-title', '', ['Shp'], ['Build', 'Review']],
+        'focus is on the Add a stage line; Shp stays; nothing was sent');
+      await tap(p, `${held} input`); await p.key('a', 4); await p.send('Input.insertText', { text: 'Ship' });
+      await type(p, '[data-key="add-stage"] input', 'Rev');
+      assert.deepEqual(await lines(), { line: 'Rev', held: ['Ship'], heldSaid: ['Not saved: Theseus was busy. Try again'], tries: 1 }, 'each kept where it was typed');
+      await p.evaluate(`document.querySelector('[data-key="add-stage"]').scrollIntoView({block:'center'})`);
+      await shot(p, 'pipeline-busy-held');
+      // Try again while Theseus is still busy reads again, is refused, and says the same.
+      const before = await refused();
+      await tap(p, `[data-key="${build}"] [data-role=try-again]`);
+      await until(async () => (await refused()) > before, 'Try again reads the page again');
+      await until(async () => (await said(p, build)).join() === 'Not saved: Theseus was busy. Try again', 'still busy, it says so again');
+      assert.equal(await p.evaluate(`document.querySelector('[data-key="${build}"] [data-role=stage-name]').value`), 'Build it');
+      // The kept title's Try again, then Return on it, while Theseus is still busy: each reads again and is refused,
+      // the title stays as corrected, and focus, on what the send took away, goes back onto the title.
+      for (const how of ['Try again', 'Return']) {
+        await tap(p, `${held} input`);
+        const asked3 = await refused();
+        if (how === 'Try again') await tap(p, `${held} [data-role=try-again]`); else await p.key('Enter');
+        await until(async () => (await refused()) > asked3 && (await lines()).heldSaid.length === 1, `${how}: the page reads again and Ship is said again`);
+        const back = await focused(p);
+        assert.deepEqual([back.role, back.value, (await lines()).held, (await lines()).heldSaid], ['held-title', 'Ship', ['Ship'], ['Not saved: Theseus was busy. Try again']],
+          `${how}: focus is back on Ship, still kept`);
+      }
+      // Theseus answers again: Try again reads the page, then saves the name.
+      await control({ method: 'read_fault_clear' });
+      await tap(p, `[data-key="${build}"] [data-role=try-again]`);
+      await until(async () => (await stages()).join() === 'Build it,Review', 'Try again saves the name typed');
+      await until(() => p.evaluate(`[...document.querySelectorAll('[data-role=stage-name]')].map(i=>i.value).join()==='Build it,Review'`), 'the page shows both stages');
+      // The kept title's Try again adds the words it shows, once; the line keeps what was typed on it.
+      assert.deepEqual((await lines()).held, ['Ship'], 'a repaint keeps the title as corrected');
+      await tap(p, `${held} input`);
+      await tap(p, `${held} [data-role=try-again]`);
+      await until(async () => (await stages()).join() === 'Build it,Review,Ship', 'Try again adds Ship');
+      await until(() => p.evaluate(`[...document.querySelectorAll('[data-role=stage-name]')].map(i=>i.value).join()==='Build it,Review,Ship'`), 'the page shows Ship');
+      assert.deepEqual(await lines(), { line: 'Rev', held: [], heldSaid: [], tries: 0 }, 'Ship is added, and Rev stays on the line');
+      const added = await focused(p);
+      assert.deepEqual([added.key, added.role, added.value], ['add-stage', 'add-title', 'Rev'], 'Ship added, focus goes to the Add a stage line, where Rev is');
+      await until(() => p.evaluate(`!document.querySelector('#pipeline-page [data-role=try-again]')`), 'nothing busy is left to try again');
+      assert.deepEqual(unplain((await shown(p)).page), []);
+      assert.doesNotMatch((await shown(p)).page, /busy/);
+      assert.deepEqual(p.errors, []); await p.close();
+      // How a busy moment looks, light and dark, on a laptop and a phone.
+      for (const [size, theme] of COMBOS.slice(1)) {
+        const q = await open(`pipeline-busy-${size}-${theme}`, '/?pipeline=w1', size, theme);
+        await ready(q);
+        await tap(q, '[data-role=edit-stages]');
+        await until(() => q.evaluate(`Boolean(document.querySelector('[data-key="add-stage"] input'))`), `${size} ${theme}: Change stages opens its lines`);
+        await control(BUSY);
+        await addStage(q, `Seen ${size} ${theme}`);
+        await until(async () => (await said(q, 'add-stage')).join() === 'Saved. Theseus was busy, so this page does not show it yet. Try again', `${size} ${theme}: the busy line shows`);
+        const seen = await q.evaluate(`(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth,text:document.getElementById('pipeline-page').innerText}))()`);
+        assert.ok(seen.scroll <= seen.width, `${size} ${theme}: no sideways scroll (${seen.scroll} of ${seen.width})`);
+        assert.deepEqual(unplain(seen.text), []);
+        await q.evaluate(`document.querySelector('[data-key="add-stage"]').scrollIntoView({block:'center'})`);
+        await shot(q, `pipeline-busy-${size}-${theme}`);
+        await control({ method: 'read_fault_clear' });
+        assert.deepEqual(q.errors, []); await q.close();
+      }
+    };
+    // However this check ends, the server answers as itself again for the checks after it.
+    try { await busyStages(); } finally { await control({ method: 'read_fault_clear' }); }
   });
 
   await check('pipeline the ⋯ menu steers by pointer and keyboard, ⌘↑ moves a focused row, and Undo and Restore put it back', async () => {
@@ -310,5 +461,45 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
         assert.deepEqual(p.errors, []); await p.close();
       }
     }
+  });
+
+  await check('pipeline an item added on Next’s line whose answer is lost, though Core has it, is not said as not saved, and Return on it sends that same change: Core has it once', async () => {
+    // Item 192, the reviewer's case: a phone over the tailnet whose connection drops after Core has made the change
+    // and answered. The answer is lost on its way back, the connection closed, so the page has no answer at all.
+    const title = 'Count the releases', held = '[data-key^="held:add:next:"]';
+    const count = async () => (await view('pipeline', { workspace_id: 'w1', section: 'next', limit: 100 })).items.filter(item => item.title === title).length;
+    // On when the checks before it ran; on its own, the person turns it on as their CLI does.
+    if (!(await view('pipeline', { workspace_id: 'w1', limit: 1 })).pipeline?.enabled) await pipeline('pipeline.configure', { workspace_id: 'w1' }, { enabled: true });
+    const p = await open('pipeline-lost', '/?pipeline=w1');
+    await ready(p);
+    let lost = false;
+    const losing = (payload, url) => !lost && url === facts.origin + '/api/command' && payload?.kind === 'pipeline.item_add' && payload.args?.title === title;
+    if (p.pw) await p.pw.route(facts.origin + '/api/command', async route => {
+      if (!losing(route.request().postDataJSON(), route.request().url())) return route.continue();
+      lost = true; await route.fetch(); await route.abort('connectionreset');
+    });
+    else p.intercept(async (payload, event) => {
+      if (!losing(payload, event.request.url)) return false;
+      lost = true; await p.fail({ event }); return true;
+    });
+    await type(p, '[data-key="add:next"] input', title); await p.key('Enter');
+    await until(() => lost, 'Core takes the item and its answer is lost');
+    await until(() => p.evaluate(`document.querySelectorAll('${held}').length===1`), 'the title is kept under the line');
+    assert.equal(await count(), 1, 'Core has it');
+    const kept = () => p.evaluate(`(()=>{const i=document.querySelector('${held} input');return i&&{value:i.value,label:i.getAttribute('aria-label'),readOnly:i.readOnly,
+      said:[...document.querySelectorAll('${held} [role=status]')].map(e=>e.textContent)}})()`);
+    assert.deepEqual(await kept(), { value: title, label: 'Add an item to Next, not known if saved', readOnly: true,
+      said: ['Not known whether this was saved: Theseus did not confirm it. Try again'] }, 'not known, kept as it was sent');
+    assert.doesNotMatch(await p.evaluate(`document.getElementById('pipeline-page').innerText`), /not saved|null|undefined/i);
+    await shot(p, 'pipeline-lost');
+    // Return on it sends the same change again, under its operation; Core answers with what it recorded.
+    await tap(p, `${held} input`); await p.key('Enter');
+    await until(() => p.evaluate(`!document.querySelector('${held}')`), 'Core answers, and the title is let go');
+    assert.equal(await count(), 1, 'Core has it once');
+    await until(() => p.evaluate(`[...document.querySelectorAll('section[aria-label=Next] .pl-row')].filter(r=>r.textContent.includes(${JSON.stringify(title)})).length===1`), 'the page shows it once');
+    // The title is let go as Core answers, before the page reads again; focus comes back once that read is shown.
+    const back = await until(async () => { const f = await focused(p); return f.key !== null && f; }, 'focus comes back into the page');
+    assert.deepEqual([back.key, back.role, back.value], ['add:next', 'add-title', ''], 'focus goes to Next’s line');
+    assert.deepEqual(p.errors, []); await p.close();
   });
 }

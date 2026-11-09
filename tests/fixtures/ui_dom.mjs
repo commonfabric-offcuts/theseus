@@ -4,8 +4,9 @@ export function dom() {
   const document={activeElement:null};
   class Element {
     constructor(tag){this.tagName=tag;this.children=[];this.dataset={};this.hidden=false;this.disabled=false;this.value='';this.textContent='';this.classList={add(){}};}
-    // A string appended is a text node, as in a page.
-    append(...items){for(let item of items){if(typeof item==='string')item=document.createTextNode(item);item.parent=this;this.children.push(item);}}
+    // Anything appended that is not a node is a text node of its string, as in a page:
+    // a null appended reads "null" there, and so it does here.
+    append(...items){for(let item of items){if(!(item instanceof Element))item=document.createTextNode(String(item));item.parent=this;this.children.push(item);}}
     // What the page's textContent gives: its own words, or its children's.
     get text(){return this.children.length?this.children.map(child=>child.text).join(''):this.textContent;}
     replaceChildren(...items){this.children=[];this.append(...items);}

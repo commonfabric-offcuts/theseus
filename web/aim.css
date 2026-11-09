@@ -469,6 +469,9 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 .pl-settings .pl-error{margin:0}
 .pl-turn-on{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .8rem;margin-top:.7rem}
 .pl-error{margin:.35rem 0 0;color:var(--alert);font-size:.82rem;overflow-wrap:anywhere}
+/* A busy Theseus (item 192): a read it could not take yet, in ink, and Try again beside it and beside a change it could not take. */
+.pl-busy{margin:.35rem 0 0;color:var(--ink);font-size:.82rem;overflow-wrap:anywhere}
+.pl-busy button,.pl-error button{min-height:2rem;padding:0 .55rem;font-size:.8rem;margin-left:.3rem}
 .pl-confirm{margin:.35rem 0 0 1.9rem;font-size:.82rem}
 .pl-confirm button{min-height:2rem;padding:0 .55rem;font-size:.8rem;margin-left:.3rem}
 .pl-gate-you{display:block;margin-top:.2rem;font-weight:600}

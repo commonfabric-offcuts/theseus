@@ -5,16 +5,21 @@
 // `pipeline_row` views. The page reads its views again on every commit and
 // keeps the reader's open groups, open menu and focus.
 import { agentColor } from './author-colors.mjs';
+import { isBusy, unconfirmed } from './api.mjs';
 import { clock, datedTime, shownTime } from './times.mjs';
 import { workNote } from './topic-state.mjs';
 import {
-  EMPTY_WORDS, SIZE_WORDS, checkPipeline, duration, eventRuns, factBoxes, gatheringWords, glyphWords, historyLine, listWords,
+  BUSY_WORDS, EMPTY_WORDS, SIZE_WORDS, checkPipeline, duration, eventRuns, factBoxes, gatheringWords, glyphWords, historyLine, listWords, missedWords,
   pieceTopicWords, placedWords, raisedWords, sentenceName, sourceRuns, stageLine, typicalCell, typicalWords, waitingWords, waitsWords,
 } from './pipeline-words.mjs';
 
 export const pipelineHref = (workspace, item) => '?' + new URLSearchParams(item === undefined ? { pipeline: workspace } : { pipeline: workspace, item: String(item) });
 const topicHref = id => '?' + new URLSearchParams({ topic: id });
 const messageHref = (topic, message) => '?' + new URLSearchParams({ topic, message });
+
+// What is given to be shown: nothing for null, undefined or false, which a
+// browser would otherwise print as the words "null" and "undefined".
+const present = kid => kid !== null && kid !== undefined && kid !== false;
 
 function el(tag, attrs, ...kids) {
   const node = document.createElement(tag);
@@ -25,7 +30,7 @@ function el(tag, attrs, ...kids) {
     else if (key.startsWith('on')) node[key] = value;
     else node.setAttribute(key, value === true ? '' : value);
   }
-  for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) node.append(kid);
+  node.append(...kids.flat().filter(present));
   return node;
 }
 const time = (ms, now) => el('time', { datetime: new Date(ms).toISOString(), title: datedTime(ms), 'data-ms': String(ms), text: shownTime(ms, now) });
@@ -44,12 +49,27 @@ export class PipelinePage {
     Object.assign(this, { host, header, reader, instanceId, workspace, itemNumber: item, read, send });
     this.open = new Set(); this.closed = new Set(); this.menu = null; this.confirming = null; this.asiding = null; this.errors = new Map();
     this.answer = null; this.serial = 0; this.editing = false; this.chain = Promise.resolve();
+    // A busy Theseus (item 192): the Try again per place whose act it was too busy to
+    // take; the read that did not go through, kept until a read is shown ({ key, busy }:
+    // the place whose act that read followed, or null, and whether Theseus was too busy
+    // for it or it failed another way); the act running; the load whose read is
+    // shown (shownAt), and the load running when the page's last act saved (savedAt), so
+    // a change saved after the read shown began is said to be saved and not shown yet.
+    this.agains = new Map(); this.missed = null; this.busyPlaced = false; this.acting = null; this.shownAt = 0; this.savedAt = null;
+    // Words saved from a field that no read has shown yet ("<stage>:<field>", "words:<number>",
+    // "title"): the field shows them, never the words they replaced, until a read does.
+    this.sent = new Map();
+    // The titles sent from a one-line add that Theseus does not have yet, per line (lineAct).
+    this.held = new Map(); this.heldSerial = 0;
     // The one-line add's text per section, the words being written per item, the
     // item whose words and size are open, what was just added, and the why being typed per piece being set aside.
     this.addDrafts = {}; this.wordDrafts = new Map(); this.details = null; this.added = null; this.savedWords = null; this.asideDrafts = new Map();
     // Change stages in place: what is being typed per stage line ("<stage>:<field>"),
     // the new stage's line, the quiet note per stage, and the stage just removed (for Undo).
     this.stageDrafts = new Map(); this.newStage = ''; this.stageNote = null; this.removed = null;
+    // True while a repaint replaces the page: a field it takes away is not the person leaving it,
+    // so its blur saves nothing (Chrome fires one; WebKit does not).
+    this.painting = false;
     // The pipeline's own settings in place (the owner's): the title being typed, and the quiet note.
     this.titleDraft = null; this.titleField = null; this.settingsNote = null;
     host.addEventListener('toggle', event => {
@@ -79,21 +99,45 @@ export class PipelinePage {
     return this.latest;
   }
 
+  // A read overtaken by a newer one, however it ends, settles as the newer one does and
+  // says nothing of its own. A read that does not go through keeps the page as it was last
+  // read, says so with a Try again (missedLine), in words for how it failed, and settles
+  // false, so the commit follower reads again on the next commit: a read Theseus was too
+  // busy for, a read made for a place (after an act there, or its Try again), and any read
+  // while the page does not show a change it saved. Its own failure is never said under a
+  // place, where it would read as the change's. Any other failure throws, as before.
   async loadOnce(serial) {
-    if (this.itemNumber !== null) {
-      const answer = await this.read('pipeline_item', { workspace_id: this.workspace, number: this.itemNumber });
-      if (answer?.error) throw Error(answer.error.message);
-      if (serial !== this.serial) return this.latest;
-      this.record = answer; this.paint(); return true;
-    }
-    const head = await this.readAll('now');
-    if (head.pipeline === null) { if (serial !== this.serial) return this.latest; this.answer = head; this.paint(); return true; }
-    const [next, later, candidates, dropped, shipped] = await Promise.all(['next', 'later', 'candidates', 'dropped', 'shipped'].map(section => this.readAll(section)));
+    let answer, failed = null;
+    try { answer = this.itemNumber !== null ? await this.readRecord() : await this.readPage(); } catch (error) { failed = { error }; }
     if (serial !== this.serial) return this.latest;
-    this.answer = { ...head, sections: { now: head.items, next: next.items, later: later.items, candidates: candidates.items, dropped: dropped.items }, groups: shipped.groups };
+    if (failed) {
+      const busy = isBusy(failed.error);
+      if (!busy && this.acting === null && !this.unshown()) throw failed.error;
+      // It is said where the act it followed was made; a later read that fails, with no act of its own, leaves it where it was.
+      this.missed = { key: this.acting ?? this.missed?.key ?? null, busy }; this.paint(); return false;
+    }
+    this.missed = null; this.shownAt = serial;
+    if (!this.unshown()) this.sent.clear();
+    if (this.itemNumber !== null) this.record = answer; else this.answer = answer;
     this.paint();
     return true;
   }
+
+  async readRecord() {
+    const answer = await this.read('pipeline_item', { workspace_id: this.workspace, number: this.itemNumber });
+    if (answer?.error) throw Object.assign(Error(answer.error.message), { details: answer });
+    return answer;
+  }
+
+  async readPage() {
+    const head = await this.readAll('now');
+    if (head.pipeline === null) return head;
+    const [next, later, candidates, dropped, shipped] = await Promise.all(['next', 'later', 'candidates', 'dropped', 'shipped'].map(section => this.readAll(section)));
+    return { ...head, sections: { now: head.items, next: next.items, later: later.items, candidates: candidates.items, dropped: dropped.items }, groups: shipped.groups };
+  }
+
+  // The page's last act saved after the read it shows began.
+  unshown() { return this.savedAt !== null && this.savedAt >= this.shownAt; }
 
   // ---- painting ----------------------------------------------------------------
 
@@ -103,8 +147,13 @@ export class PipelinePage {
     const focusedRole = active?.dataset?.role;
     const caret = isField(active) ? [active.selectionStart, active.selectionEnd] : null;
     const now = clock.now();
-    if (this.itemNumber !== null) this.paintRecord(now);
-    else this.paintPage(now);
+    this.busyPlaced = false;
+    this.painting = true;
+    try {
+      if (!this.shownAt) this.show([]);
+      else if (this.itemNumber !== null) this.paintRecord(now);
+      else this.paintPage(now);
+    } finally { this.painting = false; }
     // The 98 rule: what had focus keeps it, so a reload never moves the reader.
     if (focused) {
       const row = this.host.querySelector(`[data-key="${CSS.escape(focused)}"]`);
@@ -128,7 +177,7 @@ export class PipelinePage {
     if (!pipeline || !pipeline.enabled) {
       this.paintHeader(answer.workspace_title ?? '', pipeline?.title ?? 'Pipeline', 'This outcome’s pipeline is off.');
       page.push(this.turnOn(pipeline));
-      this.host.replaceChildren(...page);
+      this.show(page);
       return;
     }
     const sized = pipeline.sized;
@@ -188,7 +237,15 @@ export class PipelinePage {
     page.push(this.timesSection(answer, pipeline));
     page.push(this.shippedSection(answer, pipeline, now));
     if (sections.dropped.length) page.push(section('Dropped', 'Kept with its number, so it can come back.', this.rows(sections.dropped, pipeline, now, { dropped: true })));
-    this.host.replaceChildren(...page);
+    this.show(page);
+  }
+
+  // The page as built, leaving out each part with nothing to show (a section with no
+  // rows is null), and first, a busy read's line when no place on the page said it.
+  show(page) {
+    const kids = page.filter(present);
+    if (this.missed && !this.busyPlaced) kids.unshift(this.missedLine(null));
+    this.host.replaceChildren(...kids);
   }
 
   pieceCard(piece, byNumber, pipeline, now, first) {
@@ -205,7 +262,7 @@ export class PipelinePage {
         this.head(item, item.glyph === 'decide' ? 'decide' : 'building', ring), this.meta(item, pipeline, now), ...this.origin(item));
       if (this.confirming === number) lines.append(this.dropConfirm(item));
       if (this.asiding === number && piece.you_set_aside) lines.append(this.asideLine(item, piece));
-      if (this.errors.get(key)) lines.append(el('p', { class: 'pl-error', role: 'status', text: this.errors.get(key) }));
+      lines.append(...this.said(key));
       if (known && pipeline.you_steer) lines.append(...this.steer(item, [item], 0, pipeline, { underway: true, piece }));
       card.append(lines);
     });
@@ -252,8 +309,7 @@ export class PipelinePage {
         el('summary', { text: 'Stages so far' }),
         el('ol', {}, ...piece.stages_so_far.map(entry => el('li', { text: historyLine(entry, now) })), el('li', { text: `${stage.name}: since ${shownTime(stage.entered_ms, now)}` }))));
     }
-    const error = this.errors.get(`piece:${piece.id}`);
-    if (error) box.append(el('p', { class: 'pl-error', role: 'status', text: error }));
+    box.append(...this.said(`piece:${piece.id}`));
     return box;
   }
 
@@ -320,8 +376,7 @@ export class PipelinePage {
     if (this.confirming === item.number) body.append(this.dropConfirm(item));
     const editable = item.section !== 'dropped' && item.glyph !== 'shipped';
     if (editable && this.details === item.number) body.append(this.detailsPanel(item, pipeline));
-    const error = this.errors.get(key);
-    if (error) body.append(el('p', { class: 'pl-error', role: 'status', text: error }));
+    body.append(...this.said(key));
     li.append(body);
     if (editable) li.append(el('button', { type: 'button', class: 'pl-edit', 'data-role': 'details', 'aria-expanded': this.details === item.number ? 'true' : 'false',
       'aria-label': `${this.details === item.number ? 'Close details' : 'Details'} of ${item.number}`, text: this.details === item.number ? 'Close' : 'Details', onclick: () => this.toggleDetails(item.number) }));
@@ -426,21 +481,59 @@ export class PipelinePage {
     return this.command('pipeline.item_edit', { workspace_id: this.workspace, number }, args, { item_revision: item.version });
   }
 
-  async command(kind, target, args, expected = {}) {
-    const receipt = await this.send(kind, target, args, expected);
-    if (receipt?.status !== 'committed') throw Error(receipt?.error?.message ?? 'Theseus did not confirm this change.');
+  command(kind, target, args, expected = {}) { return this.sendChange(this.change(kind, target, args, expected)); }
+
+  // A change, made once with its own operation; `saved` hears its result once it is saved.
+  change(kind, target, args, expected = {}, saved = () => {}) {
+    return { kind, target, args, expected, operation_id: crypto.randomUUID(), unconfirmed: false, saved };
+  }
+
+  // Sends a change as it was made. An attempt that ends with no word on whether Core
+  // recorded it (api.mjs unconfirmed) leaves it unconfirmed until Core's recorded
+  // answer to it comes; until then, what sends it again sends it so, and Core answers
+  // with what it recorded, or makes it then ("A retry keeps the same operation identity").
+  async sendChange(change) {
+    let receipt;
+    try { receipt = await this.send(change.kind, change.target, change.args, change.expected, change.operation_id); }
+    catch (error) { if (unconfirmed(error)) change.unconfirmed = true; throw error; }
+    if (receipt?.status === 'committed' || receipt?.recorded === true) change.unconfirmed = false;
+    if (receipt?.status !== 'committed') throw Object.assign(Error(receipt?.error?.message ?? 'Theseus did not confirm this change.'), { details: receipt });
+    this.savedAt = this.serial;
     return receipt.result;
   }
 
   // An act from the page: its refusal shows in plain words under the row and keeps focus there.
   // Acts run one at a time. `role` names the control that takes focus after; false leaves
-  // focus where the reader put it (the repaint keeps it).
-  act(key, action, role = null) {
+  // focus where the reader put it (the repaint keeps it). An act Theseus was too busy to
+  // take saved nothing: its row says so, with a Try again that does it again. While the
+  // page does not show its last saved change, a change made on it would carry a revision
+  // Theseus has moved past, so the page reads first; when that read does not go through,
+  // the act is not sent and says so, with a Try again that reads first again. The read
+  // after an act is the page's (loadOnce): one that does not go through says so in words
+  // of its own, and a change saved stays said as saved.
+  // However it ends without a change saved (not sent, refused, too busy, or its answer
+  // lost), `held` (lineAct), when given, hears it instead, before the page paints: { words, again }.
+  act(key, action, role = null, held = null) {
     const run = async () => {
-      this.errors.delete(key);
-      try { await action(); await this.load(); }
-      // A refusal says why under its row, and the page reads again, so what it shows is how things stand now.
-      catch (error) { this.errors.set(key, error.message); try { await this.load(); } catch { this.paint(); } }
+      this.errors.delete(key); this.agains.delete(key);
+      // Not saved: not sent, as the read first did not go through (no error), or the failure that ended it.
+      const unsaved = (error = null) => {
+        const again = error === null || isBusy(error);
+        const words = error === null ? missedWords(this.missed?.busy ?? true).notSaved : again ? BUSY_WORDS.notSaved : error.message;
+        if (held) return held({ words, again });
+        this.errors.set(key, words);
+        if (again) this.agains.set(key, () => this.act(key, action, role));
+      };
+      try {
+        if (this.unshown() && await this.load() === false) { unsaved(); this.paint(); }
+        else {
+          this.acting = key;
+          // A refusal says why under its row, and the page reads again, so what it shows is how things stand now.
+          // That read is the page's (loadOnce): however it fails, it never says anything of the act's.
+          try { await action(); } catch (error) { unsaved(error); }
+          try { await this.load(); } catch { this.paint(); }
+        }
+      } catch (error) { unsaved(error); this.paint(); } finally { this.acting = null; }
       if (role === false) return;
       const scope = `[data-key="${CSS.escape(key)}"]`;
       const target = (role ? this.host.querySelector(`${scope} [data-role="${CSS.escape(role)}"]`) : null) ?? this.host.querySelector(`${scope} a, ${scope} button`);
@@ -448,6 +541,116 @@ export class PipelinePage {
     };
     this.chain = this.chain.then(run, run);
     return this.chain;
+  }
+
+  // A one-line add (the form rule): the line clears at once, so the next title can be
+  // typed while this one is added, and only the person writes on it after. The title
+  // leaves the line for one place of its own until Theseus has it, held under the line:
+  // unseen while it is sent; whenever it is not added (act), shown on a line of its own
+  // (heldLines) with why, where it can be changed, and where Try again or Return adds the
+  // words it shows then. `make(title)` makes the change for those words (change), at its
+  // turn. A change whose answer was lost may have been made: it stays as it was sent, and
+  // Try again or Return sends that same change until Core answers it (sendChange).
+  lineAct(key, title, clear, make) {
+    clear();
+    const entry = { id: ++this.heldSerial, text: title, make, change: null, said: null };
+    this.held.set(key, [...(this.held.get(key) ?? []), entry]);
+    return this.sendHeld(key, entry);
+  }
+
+  sendHeld(key, entry) {
+    const title = entry.text.trim();
+    entry.said = null;
+    if (!title) { this.letGo(key, entry); return this.chain; }
+    this.paint();
+    return this.act(key, async () => {
+      if (!entry.change?.unconfirmed) entry.change = entry.make(title);
+      entry.change.saved(await this.sendChange(entry.change)); this.letGo(key, entry);
+    }, false, said => { entry.said = said; })
+      .then(() => {
+        // Focus was on what the add took away (the Try again, or the held line itself): it goes back to the title, or the line.
+        if (this.host.contains?.(document.activeElement)) return;
+        const kept = this.held.get(key)?.includes(entry) ? `held:${key}:${entry.id}` : key;
+        this.host.querySelector(`[data-key="${CSS.escape(kept)}"] input`)?.focus({ preventScroll: true });
+      });
+  }
+
+  // A held title let go: added, emptied, or the person's Escape.
+  letGo(key, entry) {
+    const rest = (this.held.get(key) ?? []).filter(other => other !== entry);
+    if (rest.length) this.held.set(key, rest); else this.held.delete(key);
+    this.paint();
+  }
+
+  // The titles held under a one-line add that are not added, each a line of its own,
+  // with why and, when Theseus was busy, Try again. A title whose answer was lost is
+  // not known to be saved: it says so, with Try again, and stays as it was sent.
+  // Escape lets it go.
+  heldLines(key, label, placeholder) {
+    return (this.held.get(key) ?? []).filter(entry => entry.said).map(entry => {
+      const unknown = entry.change?.unconfirmed === true;
+      const line = titleLine({ key: `held:${key}:${entry.id}`, value: entry.text, role: 'held-title', readonly: unknown, placeholder,
+        label: `${label}, ${unknown ? 'not known if saved' : 'not saved'}`, hint: `Return ${unknown ? 'sends it again' : 'adds it'} · Escape lets it go`,
+        input: value => { entry.text = value; }, submit: () => this.sendHeld(key, entry),
+        cancel: () => { this.letGo(key, entry); this.host.querySelector(`[data-key="${CSS.escape(key)}"] input`)?.focus(); } });
+      line.append(notSaved(unknown ? BUSY_WORDS.unconfirmed : entry.said.words, this.heldAgain(entry) ? () => this.sendHeld(key, entry) : null, { className: 'pl-line-note' }));
+      return line;
+    });
+  }
+
+  // Whether a title held offers Try again: when Theseus was too busy for it, or for the read before it,
+  // or that read failed, or its answer was lost.
+  heldAgain(entry) { return entry.said?.again || entry.change?.unconfirmed === true; }
+
+  // Whether a place offers a Try again for a change made there: its act's, or a title held there.
+  againAt(key) {
+    return this.agains.has(key) || (this.held.get(key) ?? []).some(entry => entry.said && this.heldAgain(entry));
+  }
+
+  // What the page says at a place, in the order it happened: that the change before
+  // was saved and is not shown yet, when the read after it did not go through (missedLine);
+  // why its act was refused, with Try again when Theseus was too busy to take it; and,
+  // when the read after that act did not go through, that the page may be behind (missedLine).
+  // Beside an act's own Try again, which reads the page again too, the busy read's line
+  // has none of its own and says only that the change before is saved.
+  said(key, { tag = 'p', className = '', lead = '' } = {}) {
+    const error = this.errors.get(key), nodes = [];
+    if (this.missed !== null && this.missed.key === key) this.busyPlaced = true;
+    const busy = !this.missedSaidAt(key) ? null : this.againAt(key)
+      ? el(tag, { class: `pl-busy ${className}`.trim(), role: 'status' }, lead + missedWords(this.missed.busy).savedNotShown) : this.missedLine(key, { tag, className, lead });
+    if (busy && this.unshown()) nodes.push(busy);
+    if (error) nodes.push(notSaved(error, this.agains.get(key), { tag, className, lead }));
+    if (busy && !this.unshown()) nodes.push(busy);
+    return nodes;
+  }
+
+  // Whether the line of a read that did not go through is said at a place: always, unless a
+  // change made there has a Try again of its own; then only to say that the change before it there is saved.
+  missedSaidAt(key) {
+    return this.missed !== null && this.missed.key === key && (!this.againAt(key) || this.unshown());
+  }
+
+  // A read that did not go through, in plain words for how (missedWords), with a Try again
+  // that reads the page again in its turn with the acts. Without a place (key null) it heads the page.
+  missedLine(key, { tag = 'p', className = '', lead = '' } = {}) {
+    const said = missedWords(this.missed.busy), words = !this.shownAt ? said.unread : this.unshown() ? said.savedNotShown : said.behind;
+    return el(tag, { class: `pl-busy ${className}`.trim(), role: 'status', 'data-key': key === null ? 'read-again' : null }, lead + words, ' ',
+      tryAgain(() => this.readAgain(key ?? 'read-again')));
+  }
+
+  // Try again of a read: the page reads again, in its turn with the acts; one that does
+  // not go through says so where it was (loadOnce). Focus, which was on the Try again
+  // just removed, goes back into its place.
+  readAgain(key) {
+    const run = async () => {
+      this.acting = key;
+      try { await this.load(); } finally { this.acting = null; }
+    };
+    this.chain = this.chain.then(run, run);
+    return this.chain.then(() => {
+      const place = this.host.querySelector(`[data-key="${CSS.escape(key)}"]`);
+      if (place && !place.contains?.(document.activeElement)) place.querySelector('input, textarea, button, a')?.focus({ preventScroll: true });
+    });
   }
 
   stagesSection(pipeline) {
@@ -478,10 +681,10 @@ export class PipelinePage {
       const id = stage.stage_id, key = `stage:${id}`, name = stage.name || `stage ${index + 1}`;
       const chip = (role, words, pressed, title, change) => el('button', { type: 'button', class: 'pl-pick', 'data-role': role, 'aria-pressed': pressed ? 'true' : 'false', title, text: words,
         onclick: () => { if (change) this.stageAct(id, change, role); } });
-      const move = (role, words, label, change) => el('button', { type: 'button', class: 'pl-stage-move', 'data-role': role, 'aria-label': label, title: label, text: words,
-        onclick: () => this.stageAct(id, change, role) });
-      const note = this.stageNote?.id === id ? el('p', { class: 'pl-stage-note muted', role: 'status', text: this.stageNote.text }) : null;
-      const error = this.errors.get(key);
+      const move = (role, words, label, change, saved) => el('button', { type: 'button', class: 'pl-stage-move', 'data-role': role, 'aria-label': label, title: label, text: words,
+        onclick: () => this.stageAct(id, change, role, saved) });
+      // Where the missed read's line says the change is saved (missedLine), its quiet Saved does not say it again.
+      const note = this.stageNote?.id === id && !this.missedSaidAt(key) ? el('p', { class: 'pl-stage-note muted', role: 'status', text: this.stageNote.text }) : null;
       return el('li', { 'data-key': key },
         el('span', { class: 'pl-num', text: String(index + 1) }),
         el('div', { class: 'pl-stage-edit' },
@@ -500,45 +703,43 @@ export class PipelinePage {
             el('span', { class: 'pl-stage-moves' },
               index ? move('stage-up', '↑', `Move ${name} up`, list => { list.splice(index - 1, 0, list.splice(index, 1)[0]); }) : null,
               index < stages.length - 1 ? move('stage-down', '↓', `Move ${name} down`, list => { list.splice(index + 1, 0, list.splice(index, 1)[0]); }) : null,
+              // "Removed …, Undo" only once Theseus has taken the removal, never beside a refusal of it.
               stages.length > 1 && (mine || !stage.gate?.owner) ? move('stage-remove', '×', `Remove ${name}`, list => {
                 const at = list.findIndex(other => other.stage_id === id);
                 if (at < 0) throw Error(`${name} is no longer a stage. The stages are shown as they are now.`);
-                this.removed = { stage: list.splice(at, 1)[0], index: at };
-              }) : null)),
-          note, error ? el('p', { class: 'pl-error', role: 'status', text: error }) : null));
+                return { stage: list.splice(at, 1)[0], index: at };
+              }, removed => { this.removed = removed; }) : null)),
+          note, this.said(key)));
     }));
+    const submit = title => this.lineAct('add-stage', title, () => { this.newStage = ''; }, title => {
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'stage';
+      const stage = { stage_id: `${slug}-${Date.now().toString(36)}`, name: title, done_when: '', gate: { checks: [], owner: false, words: '' }, rounds: 'none', scope: 'piece', added_note: '' };
+      return this.stagesChange(list => { list.push(stage); }, () => { this.removed = null; this.stageNote = { id: stage.stage_id, text: 'Added. Its done-when and chips are optional.' }; });
+    });
     const add = titleLine({
       key: 'add-stage', value: this.newStage, label: 'Add a stage', placeholder: 'Add a stage…', hint: 'Return adds it last · Escape clears',
       input: value => { this.newStage = value; },
       cancel: (had, input) => { if (!had) input.blur(); },
-      submit: title => {
-        this.newStage = ''; this.paint();
-        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'stage';
-        const stage = { stage_id: `${slug}-${Date.now().toString(36)}`, name: title, done_when: '', gate: { checks: [], owner: false, words: '' }, rounds: 'none', scope: 'piece', added_note: '' };
-        this.act('add-stage', async () => {
-          try { await this.setStages(list => { list.push(stage); }); this.removed = null; this.stageNote = { id: stage.stage_id, text: 'Added. Its done-when and chips are optional.' }; }
-          catch (error) { if (!this.newStage) this.newStage = title; throw error; }
-        }, false);
-      },
+      submit,
     });
-    const error = this.errors.get('add-stage');
-    if (error) add.append(el('p', { class: 'pl-error pl-line-note', role: 'status', text: error }));
+    add.append(...this.said('add-stage', { className: 'pl-line-note' }));
+    const held = this.heldLines('add-stage', 'Add a stage', 'Add a stage…');
     const removed = this.removed;
     const undo = removed ? el('p', { class: 'pl-stage-removed muted', 'data-key': 'stage-undo', role: 'status' }, `Removed ${removed.stage.name}. `,
       el('button', { type: 'button', 'data-role': 'undo', text: 'Undo', onclick: () => this.act('stage-undo', async () => {
         await this.setStages(list => { if (!list.some(other => other.stage_id === removed.stage.stage_id)) list.splice(Math.min(removed.index, list.length), 0, removed.stage); });
         this.removed = null; this.stageNote = { id: removed.stage.stage_id, text: 'Back.' };
-      }, false) }), this.errors.get('stage-undo') ? el('span', { class: 'pl-error', text: ` ${this.errors.get('stage-undo')}` }) : null) : null;
-    return el('div', { class: 'pl-stage-editing' }, list, undo, add);
+      }, false) }), this.said('stage-undo', { tag: 'span', lead: ' ' })) : null;
+    return el('div', { class: 'pl-stage-editing' }, list, undo, add, held);
   }
 
   // One line of a stage, saved on Return or blur; Escape puts back what was saved.
   stageField(stage, field, attrs) {
     const id = stage.stage_id, key = `${id}:${field}`;
     const input = el('input', { type: 'text', class: `pl-stage-${field}`, 'data-role': `stage-${field}`, autocomplete: 'off', enterkeyhint: 'done', spellcheck: 'true', ...attrs });
-    input.value = this.stageDrafts.get(key) ?? stageText(stage, field);
+    input.value = this.stageDrafts.get(key) ?? this.sent.get(key) ?? stageText(stage, field);
     input.oninput = () => { this.stageDrafts.set(key, input.value); if (this.stageNote?.id === id) this.stageNote = null; };
-    input.onblur = () => this.saveStageText(id, field);
+    input.onblur = () => { if (!this.painting) this.saveStageText(id, field); };
     input.onkeydown = event => {
       if (event.isComposing) return;
       if (event.key === 'Enter') { event.preventDefault(); this.saveStageText(id, field); }
@@ -563,25 +764,32 @@ export class PipelinePage {
       if (text.trim() !== stageText(now, field)) {
         if (field === 'name' && !text.trim()) throw Error('A stage needs a name. Escape puts the old one back.');
         await this.setStages(list => { setStageText(stageIn(list, id), field, text.trim()); });
-        this.stageNote = { id, text: 'Saved.' };
+        this.sent.set(key, text.trim()); this.stageNote = { id, text: 'Saved.' };
       }
       if (this.stageDrafts.get(key) === text) this.stageDrafts.delete(key);
     }, false);
   }
 
   // A tap on a stage's chip or move: the whole list as last read, with that one change.
-  stageAct(id, change, role) {
-    return this.act(`stage:${id}`, async () => { await this.setStages(change); this.stageNote = { id, text: 'Saved.' }; }, role);
+  // Once it is saved, `saved` hears what the change gave back; without one, the stage says Saved.
+  stageAct(id, change, role, saved = null) {
+    return this.act(`stage:${id}`, async () => {
+      let made;
+      await this.setStages(list => { made = change(list); });
+      if (saved) saved(made); else this.stageNote = { id, text: 'Saved.' };
+    }, role);
   }
 
   // pipeline.stages_set takes the whole ordered list; each change is made to the list
   // as the page last read it, at its turn, with the revision that read carried.
-  setStages(change) {
+  setStages(edit) { return this.sendChange(this.stagesChange(edit)); }
+
+  stagesChange(edit, saved) {
     const pipeline = this.answer?.pipeline;
     if (!pipeline) throw Error('This pipeline changed since this page read it. It is shown as it is now.');
     const list = pipeline.stages.map(({ you_leave_it, ...stage }) => ({ ...stage, gate: { ...stage.gate } }));
-    change(list);
-    return this.command('pipeline.stages_set', { workspace_id: this.workspace }, { stages: list }, { pipeline_revision: pipeline.version });
+    edit(list);
+    return this.change('pipeline.stages_set', { workspace_id: this.workspace }, { stages: list }, { pipeline_revision: pipeline.version }, saved);
   }
 
   timesSection(answer, pipeline) {
@@ -620,41 +828,36 @@ export class PipelinePage {
   // there, last; Escape clears it. Words and size are set on the item afterwards.
   addLine(pipeline, name) {
     const key = `add:${name}`, label = pipeline.section_words?.[name] ?? sentenceName(name);
+    const submit = title => {
+      this.added = null;
+      this.lineAct(key, title, () => { this.addDrafts[name] = ''; }, title => {
+        const args = { title, section: name, sources: [{ note: 'the pipeline page' }] }; // "From the pipeline page"; who added it is its `added` event
+        if (name === 'candidates') args.candidate_group = '';
+        return this.change('pipeline.item_add', { workspace_id: this.workspace }, args, {}, result => {
+          if (this.details !== null) this.saveWords(this.details);
+          this.added = { section: name, number: result.number }; this.details = result.number;
+          if (name === 'candidates') { this.open.add('group:'); this.closed.delete('group:'); }
+        });
+      });
+    };
     const form = titleLine({
       key, value: this.addDrafts[name] ?? '', label: `Add an item to ${label}`, hint: `Return adds it to ${label} · Escape clears`,
       input: value => { this.addDrafts[name] = value; },
       cancel: (had, input) => { if (!had) input.blur(); },
-      submit: title => {
-        // The line clears at once, so the next title can be typed while this one is added.
-        this.addDrafts[name] = ''; this.added = null; this.paint();
-        this.act(key, async () => {
-          const args = { title, section: name, sources: [{ note: 'the pipeline page' }] }; // "From the pipeline page"; who added it is its `added` event
-          if (name === 'candidates') args.candidate_group = '';
-          try {
-            const result = await this.command('pipeline.item_add', { workspace_id: this.workspace }, args);
-            if (this.details !== null) this.saveWords(this.details);
-            this.added = { section: name, number: result.number }; this.details = result.number;
-            if (name === 'candidates') { this.open.add('group:'); this.closed.delete('group:'); }
-          } catch (error) {
-            if (!this.addDrafts[name]) this.addDrafts[name] = title;
-            throw error;
-          }
-        }, false);
-      },
+      submit,
     });
     if (this.added?.section === name) form.append(el('p', { class: 'pl-line-note muted', role: 'status', text: `Added ${this.added.number}, last in ${label}. ${pipeline.sized ? 'Words and a size are' : 'Words are'} optional; set them on it below.` }));
-    const error = this.errors.get(key);
-    if (error) form.append(el('p', { class: 'pl-error pl-line-note', role: 'status', text: error }));
-    return form;
+    form.append(...this.said(key, { className: 'pl-line-note' }));
+    return [form, ...this.heldLines(key, `Add an item to ${label}`, 'Add an item…')];
   }
 
   // An item's words (a sentence or two) and its size as three chips, set in place.
   detailsPanel(item, pipeline, record = false) {
     const number = item.number, key = `item:${number}`;
     const area = el('textarea', { class: 'pl-words-box', rows: '2', 'data-role': 'words', placeholder: 'Words, if they help: a sentence or two', 'aria-label': `Words for ${number}` });
-    area.value = this.wordDrafts.get(number) ?? item.description ?? '';
+    area.value = this.wordDrafts.get(number) ?? this.sent.get(`words:${number}`) ?? item.description ?? '';
     area.oninput = () => { this.wordDrafts.set(number, area.value); if (this.savedWords === number) this.savedWords = null; };
-    area.onblur = () => this.saveWords(number);
+    area.onblur = () => { if (!this.painting) this.saveWords(number); };
     area.onkeydown = event => {
       if (event.key === 'Escape' && !record) { event.preventDefault(); this.closeDetails(number); }
       else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); this.saveWords(number); }
@@ -680,7 +883,7 @@ export class PipelinePage {
       // Read again when its turn comes: an earlier save may already have sent these words.
       const words = this.wordDrafts.get(number), now = this.current(number);
       if (words === undefined || !now) return;
-      if (words !== (now.description ?? '')) { await this.edit(number, { description: words }); this.savedWords = number; }
+      if (words !== (now.description ?? '')) { await this.edit(number, { description: words }); this.sent.set(`words:${number}`, words); this.savedWords = number; }
       if (this.wordDrafts.get(number) === words) this.wordDrafts.delete(number);
     }, false);
   }
@@ -713,8 +916,7 @@ export class PipelinePage {
         this.settingsNote = { text: 'On. Change its title above, or whether items are sized, right here.' };
       }, false).then(() => { if (this.answer?.pipeline?.enabled) this.titleField?.focus({ preventScroll: true }); }) }),
     el('span', { class: 'muted', text: pipeline ? `Comes back as ${pipeline.title}, with every item it kept.` : 'Starts as “Pipeline”, with items sized small, medium or large. Both change on the page after.' })));
-    const error = this.errors.get('turn-on');
-    if (error) box.append(el('p', { class: 'pl-error', role: 'status', text: error }));
+    box.append(...this.said('turn-on'));
     return el('div', { 'data-key': 'turn-on' }, box);
   }
 
@@ -730,7 +932,7 @@ export class PipelinePage {
       if (event.key === 'Enter') { event.preventDefault(); this.saveTitle(); }
       else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.titleDraft = null; field.value = this.answer?.pipeline?.title ?? ''; field.blur(); }
     };
-    if (document.activeElement !== field) field.value = this.titleDraft ?? pipeline.title;
+    if (document.activeElement !== field) field.value = this.titleDraft ?? this.sent.get('title') ?? pipeline.title;
     const title = this.header.title;
     if (title.childNodes.length !== 1 || title.firstChild !== field) title.replaceChildren(field);
   }
@@ -744,7 +946,7 @@ export class PipelinePage {
       if (text === null || !now) return;
       if (text.trim() !== now.title) {
         await this.command('pipeline.configure', { workspace_id: this.workspace }, { enabled: now.enabled, title: text.trim() }, { pipeline_revision: now.version });
-        this.settingsNote = { text: 'Title saved.' };
+        this.sent.set('title', text.trim()); this.settingsNote = { text: 'Title saved.' };
       }
       if (this.titleDraft === text) this.titleDraft = null;
     }, false);
@@ -753,7 +955,6 @@ export class PipelinePage {
   // The owner's settings line: whether items are sized, one chip, saved on its tap;
   // the quiet note or the refusal for the title above shows here too.
   settingsLine(pipeline) {
-    const error = this.errors.get('settings');
     return el('div', { class: 'pl-settings', 'data-key': 'settings' },
       el('button', { type: 'button', class: 'pl-pick', 'data-role': 'sized', 'aria-pressed': pipeline.sized ? 'true' : 'false',
         title: pipeline.sized ? 'Items can be small, medium or large. Tap to stop sizing them.' : 'Tap so that items can be small, medium or large.',
@@ -764,7 +965,7 @@ export class PipelinePage {
           this.settingsNote = { text: now.sized ? 'Items are no longer sized.' : 'Items can be sized now: S, M or L on each.' };
         }, 'sized') }),
       this.settingsNote ? el('span', { class: 'muted', role: 'status', text: this.settingsNote.text }) : null,
-      error ? el('span', { class: 'pl-error', role: 'status', text: error }) : null);
+      this.said('settings', { tag: 'span' }));
   }
 
   // ---- an item's record (9.1.5) ----------------------------------------------------
@@ -778,7 +979,7 @@ export class PipelinePage {
       : item.section === 'dropped' ? 'Dropped. Kept with its number, so it can come back.' : `In ${pipeline.section_words?.[item.section] ?? item.section}.`;
     const editable = item.section !== 'dropped' && !item.shipped;
     page.push(el('article', { class: 'pl-item', 'data-key': `item:${item.number}` }, this.head(item), this.meta(item, pipeline, now), el('p', { class: 'pl-meta', text: status }),
-      editable ? this.detailsPanel(item, pipeline, true) : null, this.errors.get(`item:${item.number}`) ? el('p', { class: 'pl-error', role: 'status', text: this.errors.get(`item:${item.number}`) }) : null));
+      editable ? this.detailsPanel(item, pipeline, true) : null, this.said(`item:${item.number}`)));
     for (const ask of item.asks) page.push(el('p', { class: 'pl-note' }, `${ask.by} asked you, since ${shownTime(ask.since_ms, now)}: “${ask.excerpt}” In `, el('a', { href: topicHref(ask.topic_id), text: ask.topic_title }), '.'));
     const runs = sourceRuns(item.sources, this.reader);
     page.push(section('Where this came from', null, runs.parts.length
@@ -798,18 +999,23 @@ export class PipelinePage {
     page.push(section('What happened to it', null, el('ol', { class: 'pl-events' }, ...item.events.map(event => el('li', {},
       ...eventRuns(event, this.reader, pipeline.section_words, now, item.number).map(run => run.message
         ? el('a', { href: messageHref(run.message.topic_id, run.message.message_id), text: run.text }) : run.text))))));
-    this.host.replaceChildren(...page);
+    this.show(page);
   }
 }
 
 const isField = node => node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement;
 
+const tryAgain = onclick => el('button', { type: 'button', 'data-role': 'try-again', text: BUSY_WORDS.again, onclick });
+// Why a change is not saved, with Try again when there is one.
+const notSaved = (words, again, { tag = 'p', className = '', lead = '' } = {}) =>
+  el(tag, { class: `pl-error ${className}`.trim(), role: 'status' }, lead + words, again ? ' ' : null, again ? tryAgain(again) : null);
+
 // One line for a title (the form rule): placeholder "Add an item…", Return submits it,
 // Escape clears it (and then `cancel` hears whether it held text). The pipeline page's
 // sections and a message's Add to pipeline both use it.
-export function titleLine({ key, value = '', label, hint, placeholder = 'Add an item…', role = 'add-title', input, submit, cancel }) {
+export function titleLine({ key, value = '', label, hint, placeholder = 'Add an item…', role = 'add-title', readonly = false, input, submit, cancel }) {
   const field = el('input', { type: 'text', class: 'pl-line-input', 'data-role': role, placeholder, 'aria-label': label, autocomplete: 'off',
-    enterkeyhint: 'done', maxlength: '500', spellcheck: 'true' });
+    enterkeyhint: 'done', maxlength: '500', spellcheck: 'true', readonly });
   field.value = value;
   field.oninput = () => input?.(field.value);
   field.onkeydown = event => {

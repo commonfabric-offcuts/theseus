@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dom } from './fixtures/ui_dom.mjs';
+import { AttemptError, isBusy, unconfirmed } from '../web/api.mjs';
 import {
   checkPipeline, duration, eventRuns, eventWords, factBoxes, firstLine, historyLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
 } from '../web/pipeline-words.mjs';
@@ -285,10 +286,786 @@ test('an item being built offers Set aside to Later… only when the server woul
   assert.deepEqual(sent, [], 'an empty line sends nothing');
   field.value = '  The tests miss the real case  '; form.onsubmit({ preventDefault() {} });
   await page.chain;
-  assert.deepEqual(sent, [['pipeline.item_move', { workspace_id: 'w1', number: 183 }, { section: 'later', note: 'The tests miss the real case' }, { item_revision: 4 }]]);
+  assert.deepEqual(sent.map(args => args.slice(0, 4)), [['pipeline.item_move', { workspace_id: 'w1', number: 183 }, { section: 'later', note: 'The tests miss the real case' }, { item_revision: 4 }]]);
+  assert.match(sent[0][4], /^[0-9a-f-]{36}$/, 'under an operation of its own');
   assert.equal(page.asiding, null);
   page.asiding = 183;
   field.onkeydown({ key: 'Escape', isComposing: false, preventDefault() {}, stopPropagation() {} });
   assert.equal(page.asiding, null, 'Escape keeps the piece as it is');
   assert.equal(sent.length, 1);
 });
+
+// ---- a busy Theseus on the pipeline page (item 192) -------------------------------
+// A stand-in for Theseus behind the page's read and send, answering as the real Api
+// does: its view and command answers, and, while it is busy, the AttemptError the Api
+// throws for the server's own 503 SERVER_BUSY, with the server's words in it.
+function busyTheseus() {
+  const stage = (stage_id, name) => ({ stage_id, name, done_when: '', gate: { checks: [], owner: false, words: '' }, rounds: 'none', scope: 'piece', added_note: '' });
+  // Its pipeline (owned by Tony unless `youOwn`), its stages, and the items in Next.
+  const theseus = { stages: [stage('build', 'Build')], items: [], title: 'Pipeline', youOwn: false, version: 3, busyReads: false, busySends: false, reads: 0, sends: 0 };
+  const busy = words => new AttemptError(words, 503, { error: { code: 'SERVER_BUSY', message: words, retryable: true } });
+  // A read held (holdRead): the next read to start waits on it, and once released answers as Theseus then is.
+  theseus.hold = null;
+  theseus.holdRead = () => {
+    let started, release;
+    const begun = new Promise(resolve => { started = resolve; }), gate = new Promise(resolve => { release = resolve; });
+    theseus.hold = { started, gate };
+    return { begun, release };
+  };
+  theseus.read = async (name, args) => {
+    theseus.reads += 1;
+    const hold = theseus.hold; theseus.hold = null;
+    if (hold) { hold.started(); await hold.gate; }
+    if (theseus.busyReads) throw busy('This read could not enter its bounded lane.');
+    // A read whose connection dropped, with the Api's own words for it, which are a change's words, not a read's.
+    if (theseus.failReads) throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+    assert.equal(name, 'pipeline');
+    const pipeline = { enabled: true, sized: true, title: theseus.title, unit_one: 'item', unit_many: 'items', you_own: theseus.youOwn, you_steer: true, owner: theseus.youOwn ? 'fable' : 'tony',
+      coordinator: 'fable', ships_in_releases: false, version: theseus.version, section_words: {}, stages: structuredClone(theseus.stages) };
+    // A pipeline nothing has finished in yet: no Done groups, as on Tony's new outcome.
+    return { instance_id: 'i1', workspace_title: 'Moments', pipeline, items: args.section === 'next' ? structuredClone(theseus.items) : [], groups: [], next_cursor: null, facts: {}, section: args.section,
+      stage_times: { sized: true, rows: theseus.stages.map(({ name }) => ({ label: name, cells: Object.fromEntries(['small', 'medium', 'large'].map(size => [size, { too_few: 0, min: 3 }])) })) } };
+  };
+  // As Core does, it keeps the answer it recorded to each operation: the same operation sent again, as it was
+  // made, is answered with that answer, and nothing is made twice. `lose` drops the connection once, as a phone's
+  // on the move: 'before' Core has the change, or 'after' Core has made it and answered, with the Api's own
+  // failure for a connection that dropped. While `gate` is set, a change waits on it before Core reads it.
+  theseus.ops = new Map(); theseus.operations = [];
+  const lost = () => new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+  theseus.send = async (kind, target, args, expected, operation_id) => {
+    theseus.sends += 1;
+    theseus.operations.push(operation_id);
+    if (theseus.gate) await theseus.gate;
+    if (theseus.busySends) throw busy('This request lane is busy; retain its operation.');
+    const made = JSON.stringify([kind, target, args, expected]), kept = theseus.ops.get(operation_id);
+    if (kept) return kept.made === made ? kept.receipt : { status: 'rejected', recorded: false, error: { code: 'OPERATION_PAYLOAD_MISMATCH', message: 'This operation already names different content' } };
+    if (theseus.lose === 'before') { theseus.lose = null; throw lost(); }
+    const receipt = theseus.make(kind, target, args, expected);
+    if (operation_id !== undefined && (receipt.status === 'committed' || receipt.recorded === true)) theseus.ops.set(operation_id, { made, receipt });
+    if (theseus.lose === 'after') { theseus.lose = null; throw lost(); }
+    return receipt;
+  };
+  theseus.make = (kind, target, args, expected) => {
+    // A refusal Core records, so the same operation sent again is refused again.
+    if (theseus.refuseRecorded) return { status: 'rejected', recorded: true, error: { code: 'FORBIDDEN', message: theseus.refuseRecorded } };
+    // The store's own busy refusal comes back as a receipt, not a failed request.
+    if (theseus.refuse) return { status: 'rejected', recorded: false, error: { code: 'FORBIDDEN', message: theseus.refuse } };
+    if (theseus.busyReceipt) return { status: 'rejected', recorded: false, error: { code: 'DATABASE_BUSY', message: 'The database is busy; retry the command.', retryable: true } };
+    if (kind === 'pipeline.item_add') {
+      const number = theseus.items.reduce((most, each) => Math.max(most, each.number), 0) + 1;
+      theseus.items.push({ number, title: args.title, section: args.section, version: 1, description: '', size: null, sources: [], raised_by: 'fable', placed: null, asks: [] });
+      return { status: 'committed', result: { number } };
+    }
+    if (kind === 'pipeline.item_edit') {
+      const item = theseus.items.find(each => each.number === target.number);
+      assert.equal(expected.item_revision, item.version);
+      Object.assign(item, args); item.version += 1;
+      return { status: 'committed', result: {} };
+    }
+    assert.equal(expected.pipeline_revision, theseus.version);
+    if (kind === 'pipeline.configure') theseus.title = args.title ?? theseus.title;
+    else { assert.equal(kind, 'pipeline.stages_set'); theseus.stages = structuredClone(args.stages); }
+    theseus.version += 1;
+    return { status: 'committed', result: {} };
+  };
+  return theseus;
+}
+
+function busyPage(theseus) {
+  globalThis.document = Object.assign(dom(), { addEventListener() {} });
+  globalThis.CSS = { escape: text => text };
+  for (const name of ['HTMLInputElement', 'HTMLTextAreaElement']) globalThis[name] ??= class {};
+  const host = document.createElement('main');
+  const header = { eyebrow: document.createElement('p'), title: document.createElement('h1'), description: document.createElement('p') };
+  const page = new PipelinePage({ host, header, reader: 'fable', instanceId: 'i1', workspace: 'w1', read: theseus.read, send: theseus.send });
+  const walk = node => [node, ...(node.children ?? []).flatMap(walk)];
+  const find = (test, from = host) => walk(from).find(test) ?? null;
+  const keyed = key => find(node => node['data-key'] === key);
+  return {
+    page, host,
+    keyed,
+    text: () => host.text,
+    field: (id, role) => find(node => node['data-role'] === role, keyed(`stage:${id}`)),
+    stageNames: () => walk(host).filter(node => node['data-role'] === 'stage-name').map(node => node.value),
+    // What the page says under a place, and the Try again it offers there.
+    said: key => walk(keyed(key)).filter(node => node.role === 'status').map(node => node.text),
+    again: (key = null) => find(node => node['data-role'] === 'try-again', key === null ? host : keyed(key)),
+    tries: () => walk(host).filter(node => node['data-role'] === 'try-again').length,
+    // A title on the Add a stage line, and Return.
+    addStage: title => { const form = keyed('add-stage'); form.children[0].value = title; form.children[0].oninput(); form.onsubmit({ preventDefault() {} }); },
+    // A title on a section's Add an item line, and Return.
+    addItem: (section, title) => { const form = keyed(`add:${section}`); form.children[0].value = title; form.children[0].oninput(); form.onsubmit({ preventDefault() {} }); },
+    line: key => keyed(key).children[0].value,
+    typeOnLine: (key, text) => { const line = keyed(key).children[0]; line.value = text; line.oninput(); },
+    // The one field on the page that holds these words, wherever the page put them; what is said beside it, and its Try again.
+    fieldWith: text => { const found = walk(host).filter(node => node.tagName === 'input' && node.value === text); assert.ok(found.length <= 1, `“${text}” is in one field`); return found[0] ?? null; },
+    // The title kept under a one-line add that holds these words, beside a stage or item that may hold them too.
+    heldWith: text => { const found = walk(host).filter(node => node['data-role'] === 'held-title' && node.value === text); assert.ok(found.length <= 1, `“${text}” is held once`); return found[0] ?? null; },
+    besideField: field => walk(field.parent).filter(node => node.role === 'status').map(node => node.text),
+    againBeside: field => walk(field.parent).find(node => node['data-role'] === 'try-again') ?? null,
+    retype: (field, text) => { field.value = text; field.oninput(); },
+  };
+}
+
+// Nothing the page shows is a literal null or undefined, nor the server's own words for being busy.
+// (A page's text runs its nodes together, so "null" is looked for anywhere in it.)
+// Nor the Api's words for a dropped connection, which speak of a change's confirmation and are never a read's.
+const unplain = /null|undefined|bounded lane|request lane|retain its operation|database is busy|Connection interrupted|Confirmation is unknown|writing is kept/;
+
+test('a busy Theseus after a stage is added says it is saved and not shown yet, with Try again, and the page never prints null (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, tries, addStage, stageNames, keyed } = busyPage(theseus);
+  assert.equal(await page.load(), true);
+  assert.doesNotMatch(text(), unplain, 'a pipeline with nothing done yet shows no null under its stage times');
+  page.editing = true; page.paint();
+  // Tony's moment: the stage is saved, and Theseus is too busy for every read after it.
+  theseus.busyReads = true;
+  addStage('test');
+  await page.chain;
+  assert.equal(theseus.stages.at(-1).name, 'test', 'the stage was saved');
+  assert.doesNotMatch(text(), unplain);
+  assert.deepEqual(said('add-stage'), ['Saved. Theseus was busy, so this page does not show it yet. Try again']);
+  assert.ok(again('add-stage'), 'Try again is offered where the stage was added');
+  assert.equal(tries(), 1, 'and only there: said once, where it happened');
+  // A live change read while still busy keeps the page as last read and says so; it is no failure of the page's.
+  assert.equal(await page.load(), false, 'the commit follower reads again on the next commit');
+  assert.deepEqual(said('add-stage'), ['Saved. Theseus was busy, so this page does not show it yet. Try again']);
+  assert.deepEqual(stageNames(), ['Build'], 'what was last read stays');
+  // Try again, once Theseus can answer: the stage shows and the busy words go.
+  theseus.busyReads = false;
+  await again('add-stage').onclick();
+  await page.chain;
+  assert.deepEqual(stageNames(), ['Build', 'test']);
+  assert.equal(again(), null, 'nothing busy is left to try again');
+  assert.doesNotMatch(text(), /busy/);
+  assert.equal(keyed('add-stage').children[0].value, '', 'the line is clear for the next stage');
+});
+
+test('a change Theseus was too busy to take says Not saved with Try again, and keeps every word typed (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, addStage, field, stageNames, line, fieldWith, besideField, againBeside } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busySends = true;
+  // A stage's name being typed, then saved on blur: refused as busy, its words stay in its field.
+  const name = field('build', 'stage-name');
+  name.value = 'Build it'; name.oninput(); name.onblur();
+  await page.chain;
+  assert.equal(field('build', 'stage-name').value, 'Build it', 'the name typed survives the refusal and the repaint after it');
+  assert.deepEqual(said('stage:build'), ['Not saved: Theseus was busy. Try again']);
+  // A new stage's name is kept under its line, said as not saved beside it.
+  addStage('Review');
+  await page.chain;
+  assert.ok(fieldWith('Review'), 'the new stage’s name is kept');
+  assert.deepEqual(besideField(fieldWith('Review')), ['Not saved: Theseus was busy. Try again']);
+  assert.deepEqual([line('add-stage'), said('add-stage')], ['', []], 'the line is clear for the next title, and says nothing of Review');
+  assert.doesNotMatch(text(), unplain);
+  // A live change read meanwhile repaints the page and leaves what is typed alone.
+  await page.load();
+  assert.deepEqual([field('build', 'stage-name').value, fieldWith('Review')?.['data-role']], ['Build it', 'held-title']);
+  // Try again sends each one once, as Return would.
+  theseus.busySends = false;
+  await again('stage:build').onclick(); await page.chain;
+  await againBeside(fieldWith('Review')).onclick(); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build it', 'Review']);
+  assert.deepEqual(stageNames(), ['Build it', 'Review']);
+  assert.equal(line('add-stage'), '');
+  assert.equal(again(), null);
+  const sends = theseus.sends;
+  await page.chain; await page.load();
+  assert.equal(theseus.sends, sends, 'nothing is sent twice');
+});
+
+test('a first read Theseus was too busy for says so with Try again, and Try again shows the page (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, again, stageNames } = busyPage(theseus);
+  theseus.busyReads = true;
+  assert.equal(await page.load(), false, 'a busy first read is no failure of the page; the commit follower reads again');
+  assert.equal(text(), 'Theseus was busy, so this page could not be read yet. Try again');
+  theseus.busyReads = false;
+  await again().onclick(); await page.chain;
+  assert.deepEqual(stageNames(), [], 'not editing: the stages are listed, not fields');
+  assert.match(text(), /Build/);
+  assert.doesNotMatch(text(), unplain);
+});
+
+test('a failure is a busy Theseus only by its answer’s code, whichever way the answer came (item 192)', () => {
+  const answer = code => ({ error: { code, message: 'words of the server' } });
+  assert.equal(isBusy(new AttemptError('x', 503, answer('SERVER_BUSY'))), true, 'a read or request lane refused');
+  assert.equal(isBusy({ status: 'rejected', ...answer('DATABASE_BUSY') }), true, 'a receipt');
+  assert.equal(isBusy(Object.assign(Error('x'), { details: answer('AUTHORITY_BUSY') })), true, 'a view answer checked by the page');
+  assert.equal(isBusy(Error('words of the page', { cause: new AttemptError('x', 503, answer('SERVER_BUSY')) })), true, 'a failure put into the page’s own words');
+  for (const other of [new AttemptError('x', 503, answer('CAPABILITIES_UNAVAILABLE')), new AttemptError('Connection interrupted.'), answer('FORBIDDEN'),
+    Error('SERVER_BUSY'), null, undefined, 'SERVER_BUSY']) assert.equal(isBusy(other), false, String(other?.message ?? other));
+});
+
+test('a stage’s removal Theseus was too busy to take keeps the stage and never says Removed; Try again removes it, with Undo (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, tries, addStage, stageNames, keyed } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  addStage('Review'); await page.chain;
+  const id = theseus.stages[1].stage_id, remove = () => keyed(`stage:${id}`).children[1].children[1].children.at(-1).children.at(-1);
+  assert.equal(remove()['data-role'], 'stage-remove');
+  // Too busy for the removal and for the read after it: one line says so, with one Try again.
+  theseus.busySends = true; theseus.busyReads = true;
+  await remove().onclick(); await page.chain;
+  assert.deepEqual(stageNames(), ['Build', 'Review']);
+  assert.deepEqual(said(`stage:${id}`), ['Added. Its done-when and chips are optional.', 'Not saved: Theseus was busy. Try again'], 'its note from being added, then the removal not saved');
+  assert.equal(keyed('stage-undo'), null, 'nothing says Removed beside a removal that was not saved');
+  assert.doesNotMatch(text(), /Removed|null|undefined/);
+  assert.equal(tries(), 1);
+  theseus.busySends = false; theseus.busyReads = false;
+  await again(`stage:${id}`).onclick(); await page.chain;
+  assert.deepEqual([stageNames(), theseus.stages.map(stage => stage.name)], [['Build'], ['Build']]);
+  assert.equal(keyed('stage-undo').text, 'Removed Review. Undo');
+});
+
+test('a change the store was too busy for, answered in its receipt, says Not saved with Try again too (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, field } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busyReceipt = true;
+  await field('build', 'rounds-together').onclick(); await page.chain;
+  assert.deepEqual(said('stage:build'), ['Not saved: Theseus was busy. Try again']);
+  assert.doesNotMatch(text(), unplain);
+  assert.equal(theseus.stages[0].rounds, 'none');
+  theseus.busyReceipt = false;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([theseus.stages[0].rounds, said('stage:build')], ['together', ['Saved.']]);
+});
+
+test('a stage name saved while Theseus is too busy to read the page back stays in its field, never the old name, until a read shows it (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, field, tries } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busyReads = true;
+  const name = field('build', 'stage-name');
+  name.value = 'test'; name.oninput(); name.onblur();
+  await page.chain;
+  assert.equal(theseus.stages[0].name, 'test', 'saved');
+  assert.equal(field('build', 'stage-name').value, 'test', 'the name typed stays in its field, not the name it replaced');
+  assert.deepEqual(said('stage:build'), ['Saved. Theseus was busy, so this page does not show it yet. Try again'], 'said once: no second Saved beside it');
+  assert.equal(tries(), 1);
+  assert.doesNotMatch(text(), unplain);
+  // A live change read while still busy repaints and keeps it.
+  assert.equal(await page.load(), false);
+  assert.equal(field('build', 'stage-name').value, 'test');
+  theseus.busyReads = false;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([field('build', 'stage-name').value, said('stage:build')], ['test', ['Saved.']]);
+  // Once a read has shown it, the field shows what Theseus holds: a rename made elsewhere shows.
+  theseus.stages[0].name = 'Built elsewhere';
+  await page.load();
+  assert.equal(field('build', 'stage-name').value, 'Built elsewhere');
+});
+
+test('a change made while the page does not show the last one saved is not sent on a revision it never read: Theseus busy, it says Not saved and keeps the words (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, addStage, field, stageNames } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busyReads = true;
+  addStage('Review'); await page.chain;
+  const sends = theseus.sends;
+  // The name of the stage still shown, typed and saved on blur: the page reads first, and Theseus is still busy.
+  const name = field('build', 'stage-name');
+  name.value = 'Build it'; name.oninput(); name.onblur();
+  await page.chain;
+  assert.equal(theseus.sends, sends, 'nothing is sent on a revision the page has not read');
+  assert.deepEqual([said('stage:build'), said('add-stage')],
+    [['Not saved: Theseus was busy. Try again'], ['Saved. Theseus was busy, so this page does not show it yet. Try again']],
+    'the name is not saved, and Review still is: each said where it was made');
+  assert.equal(field('build', 'stage-name').value, 'Build it');
+  assert.doesNotMatch(text(), unplain);
+  // Theseus answers again: Try again reads the page, then saves the name on the revision it now shows.
+  theseus.busyReads = false;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([theseus.stages.map(stage => stage.name), stageNames()], [['Build it', 'Review'], ['Build it', 'Review']]);
+  assert.equal(again(), null);
+});
+
+test('a repaint while a stage name is being typed saves nothing and says nothing, busy or not, as in Chrome (item 192)', async () => {
+  const theseus = busyTheseus(), { page, host, said, field } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  // Chrome fires blur on the field that has focus when a repaint takes it away; the fake page does the same.
+  const replace = host.replaceChildren.bind(host);
+  host.replaceChildren = (...kids) => { const had = document.activeElement; replace(...kids); if (had && !kids.includes(had)) had.onblur?.(); };
+  const name = field('build', 'stage-name');
+  name.focus(); name.value = 'Build i'; name.oninput();
+  for (const busyReads of [true, false]) {
+    theseus.busyReads = busyReads;
+    const sends = theseus.sends;
+    await page.load(); await page.chain;
+    assert.equal(theseus.sends, sends, `a ${busyReads ? 'busy' : 'live'} repaint sends nothing`);
+    assert.deepEqual(said('stage:build'), [], 'and says nothing on the stage being typed');
+    assert.equal(field('build', 'stage-name').value, 'Build i', 'the half-typed name stays as typed');
+  }
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build']);
+});
+
+test('an item’s words and the title, saved while Theseus is too busy to read them back, stay as saved; a repaint while words are typed saves nothing (item 192)', async () => {
+  const theseus = busyTheseus();
+  theseus.youOwn = true;
+  theseus.items = [{ number: 1, title: 'Fold the list', section: 'next', version: 1, description: '', size: null, sources: [], raised_by: 'tony', placed: null, asks: [] }];
+  const { page, host, keyed, text } = busyPage(theseus);
+  // The header holds the owner's title field across repaints, by its child nodes.
+  Object.defineProperties(page.header.title, { childNodes: { get() { return this.children; } }, firstChild: { get() { return this.children[0] ?? null; } } });
+  await page.load();
+  const walk = node => [node, ...(node.children ?? []).flatMap(walk)];
+  const words = () => walk(keyed('item:1')).find(node => node['data-role'] === 'words') ?? null;
+  page.toggleDetails(1);
+  // Chrome fires blur on the field that has focus when a repaint takes it away; the fake page does the same.
+  const replace = host.replaceChildren.bind(host);
+  host.replaceChildren = (...kids) => { const had = document.activeElement; replace(...kids); if (had && !kids.includes(had)) had.onblur?.(); };
+  theseus.busyReads = true;
+  const area = words();
+  area.focus(); area.value = 'Half'; area.oninput();
+  const sends = theseus.sends;
+  await page.load(); await page.chain;
+  assert.equal(theseus.sends, sends, 'a repaint while the words are typed sends nothing');
+  assert.equal(words().value, 'Half', 'and leaves them as typed');
+  // The owner's title, saved on blur while every read back is refused as busy, stays as saved.
+  const title = page.header.title.children[0];
+  title.value = 'Release pipeline'; title.oninput(); title.onblur();
+  await page.chain;
+  assert.equal(theseus.title, 'Release pipeline', 'the title was saved');
+  await page.load();
+  assert.equal(page.header.title.children[0].value, 'Release pipeline', 'the title saved stays, not the one it replaced');
+  // A read goes through; then, busy again, the words saved on blur stay in their box.
+  theseus.busyReads = false; await page.load(); theseus.busyReads = true;
+  document.activeElement = null;
+  words().value = 'Folded past three.'; words().oninput(); words().onblur();
+  await page.chain;
+  assert.equal(theseus.items[0].description, 'Folded past three.', 'the words were saved');
+  await page.load();
+  assert.equal(words().value, 'Folded past three.', 'the words saved stay in their box, not what the page last read');
+  assert.doesNotMatch(text(), /null|undefined|bounded lane/);
+  // Once a read goes through, the page shows Theseus's own.
+  theseus.busyReads = false;
+  await page.load();
+  assert.deepEqual([words().value, page.header.title.children[0].value], ['Folded past three.', 'Release pipeline']);
+});
+
+// The reviewer's case: a one-line add made while the page does not show the last change saved there, and the read
+// the page makes first is refused as busy, so the add is never sent. The title typed goes back on its line, the
+// line says the earlier change is saved and this one is not, and Try again sends what is on the line, once.
+test('a one-line add the page could not send, because Theseus was too busy for the read before it, keeps its title, and Try again adds it; the change before stays said as saved (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, tries, addStage, stageNames, line, fieldWith, besideField, againBeside } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busyReads = true;
+  addStage('test'); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'test'], 'test is saved');
+  const sends = theseus.sends;
+  addStage('Ship'); await page.chain;
+  assert.equal(theseus.sends, sends, 'Ship is not sent on a revision the page has not read');
+  assert.ok(fieldWith('Ship'), 'the title typed is kept');
+  assert.deepEqual([said('add-stage'), besideField(fieldWith('Ship'))],
+    [['Saved. Theseus was busy, so this page does not show it yet.'], ['Not saved: Theseus was busy. Try again']],
+    'test is said to be saved under the line, Ship not saved beside its words: one Try again');
+  assert.equal(tries(), 1);
+  assert.doesNotMatch(text(), unplain);
+  // Try again while Theseus is still busy reads again, sends nothing and keeps the title.
+  await againBeside(fieldWith('Ship')).onclick(); await page.chain;
+  assert.deepEqual([theseus.sends, besideField(fieldWith('Ship'))], [sends, ['Not saved: Theseus was busy. Try again']]);
+  // Theseus answers: Try again reads the page, then adds the title, once.
+  theseus.busyReads = false;
+  await againBeside(fieldWith('Ship')).onclick(); await page.chain;
+  assert.equal(theseus.sends, sends + 1, 'Try again sends it once');
+  assert.deepEqual([theseus.stages.map(stage => stage.name), stageNames()], [['Build', 'test', 'Ship'], ['Build', 'test', 'Ship']]);
+  assert.equal(line('add-stage'), '', 'the line clears once Ship is added');
+  assert.equal(again(), null);
+  assert.doesNotMatch(text(), /busy/);
+});
+
+test('an item added on a section’s line the page could not send, Theseus busy for the read before it or that read failing, keeps its title, and Try again adds it (item 192)', async () => {
+  const theseus = busyTheseus();
+  theseus.items = [{ number: 1, title: 'Fold the list', section: 'next', version: 1, description: '', size: null, sources: [], raised_by: 'tony', placed: null, asks: [] }];
+  const { page, text, said, tries, addItem, line, fieldWith, besideField, againBeside } = busyPage(theseus);
+  await page.load();
+  theseus.busyReads = true;
+  addItem('next', 'Make the rail shorter'); await page.chain;
+  assert.deepEqual(theseus.items.map(item => item.title), ['Fold the list', 'Make the rail shorter'], 'the first item is saved');
+  const sends = theseus.sends;
+  addItem('next', 'Fold the shipped list'); await page.chain;
+  assert.equal(theseus.sends, sends, 'not sent');
+  assert.ok(fieldWith('Fold the shipped list'), 'the title typed is kept');
+  assert.deepEqual([said('add:next'), besideField(fieldWith('Fold the shipped list'))],
+    [['Saved. Theseus was busy, so this page does not show it yet.'], ['Not saved: Theseus was busy. Try again']]);
+  assert.equal(tries(), 1);
+  // The read before it failing in some other way (the connection dropped) keeps the title too: it was not sent, so it
+  // is not saved, and Try again reads first again; the item before stays said as saved, as the read failed now.
+  theseus.busyReads = false; theseus.failReads = true;
+  await againBeside(fieldWith('Fold the shipped list')).onclick(); await page.chain;
+  assert.deepEqual([theseus.sends, said('add:next'), besideField(fieldWith('Fold the shipped list')), tries()], [sends,
+    ['Saved. This page could not be read again, so it does not show it yet.'], ['Not saved: this page could not be read again first. Try again'], 1]);
+  assert.doesNotMatch(text(), unplain);
+  // Return on the title kept, once Theseus answers, adds it, once.
+  theseus.failReads = false;
+  const kept = fieldWith('Fold the shipped list');
+  kept.parent.onsubmit({ preventDefault() {} }); await page.chain;
+  assert.equal(theseus.sends, sends + 1);
+  assert.deepEqual(theseus.items.map(item => item.title), ['Fold the list', 'Make the rail shorter', 'Fold the shipped list']);
+  assert.equal(line('add:next'), '');
+});
+
+test('a change at a place whose last change is saved and not shown yet, not sent because Theseus was busy, says both: the saved one stays said (item 192)', async () => {
+  const theseus = busyTheseus(), { page, said, again, tries, field } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busyReads = true;
+  const name = field('build', 'stage-name');
+  name.value = 'test'; name.oninput(); name.onblur(); await page.chain;
+  assert.equal(theseus.stages[0].name, 'test');
+  const sends = theseus.sends;
+  await field('build', 'rounds-together').onclick(); await page.chain;
+  assert.equal(theseus.sends, sends);
+  assert.deepEqual(said('stage:build'), ['Saved. Theseus was busy, so this page does not show it yet.', 'Not saved: Theseus was busy. Try again']);
+  assert.equal(tries(), 1);
+  theseus.busyReads = false;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([theseus.stages[0].name, theseus.stages[0].rounds, said('stage:build')], ['test', 'together', ['Saved.']]);
+});
+
+test('a change refused for its own reason, with the read after it too busy, says the refusal first, then that the page may be behind (item 192)', async () => {
+  const theseus = busyTheseus(), { page, said, tries, field } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.refuse = 'Only Tony changes this stage.'; theseus.busyReads = true;
+  await field('build', 'rounds-together').onclick(); await page.chain;
+  assert.deepEqual(said('stage:build'), ['Only Tony changes this stage.', 'Theseus was busy, so this page may not show the latest changes. Try again'], 'what happened, in the order it happened');
+  assert.equal(tries(), 1);
+});
+
+// A one-line add's title, not saved, is never lost and never stands in for other words: whatever is typed
+// on the line since stays there, each title not saved stays where it can be read and changed, and its
+// Try again adds the words it then shows, once. (The reviewer's RVE, RVB, RVF and RVA.)
+test('RVE: a stage title not saved, corrected where it stands, is added as corrected by Try again (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addStage, fieldWith, againBeside, retype, line } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busySends = true;
+  addStage('Shp'); await page.chain;
+  const held = fieldWith('Shp');
+  assert.ok(held, 'the title not saved is kept where it can be changed');
+  retype(held, 'Ship');
+  theseus.busySends = false;
+  await againBeside(fieldWith('Ship')).onclick(); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Ship'], 'the words shown when Try again was tapped are what is added');
+  assert.equal(line('add-stage'), '');
+  assert.equal(page.host.text.includes('Shp'), false, 'nothing is left of the old words');
+});
+
+test('RVB: words typed on the Add a stage line while a title is added stay there when that title is not saved, and Try again adds only the title (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addStage, fieldWith, besideField, againBeside, typeOnLine, line } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busySends = true;
+  addStage('Ship'); typeOnLine('add-stage', 'Rev'); await page.chain;
+  assert.equal(line('add-stage'), 'Rev', 'what was typed since stays on the line');
+  const held = fieldWith('Ship');
+  assert.ok(held, 'and Ship, not saved, is still on the page');
+  assert.deepEqual(besideField(held), ['Not saved: Theseus was busy. Try again'], 'said beside Ship itself');
+  theseus.busySends = false;
+  await againBeside(held).onclick(); await page.chain;
+  assert.deepEqual([theseus.stages.map(stage => stage.name), line('add-stage')], [['Build', 'Ship'], 'Rev'], 'Ship added once, Rev still on the line');
+  assert.equal(fieldWith('Ship')?.['data-role'], 'stage-name', 'Ship is now a stage, and held nowhere else');
+});
+
+test('RVF: words typed on Next’s Add an item line while an item is added stay there when it is not saved, and Try again adds only that item (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addItem, fieldWith, againBeside, typeOnLine, line } = busyPage(theseus);
+  await page.load();
+  theseus.busySends = true;
+  addItem('next', 'Fold the shipped list'); typeOnLine('add:next', 'Shorter rail'); await page.chain;
+  assert.equal(line('add:next'), 'Shorter rail');
+  const held = fieldWith('Fold the shipped list');
+  assert.ok(held, 'the item not added is still on the page');
+  theseus.busySends = false;
+  await againBeside(held).onclick(); await page.chain;
+  assert.deepEqual([theseus.items.map(item => item.title), line('add:next')], [['Fold the shipped list'], 'Shorter rail']);
+});
+
+test('RVA: two titles sent with Return while Theseus is busy are both kept, each said as not saved, and each Try again adds its own (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addStage, fieldWith, besideField, againBeside, line, tries } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busySends = true;
+  addStage('Ship'); addStage('Review'); await page.chain;
+  for (const title of ['Ship', 'Review']) {
+    assert.ok(fieldWith(title), `${title} is kept`);
+    assert.deepEqual(besideField(fieldWith(title)), ['Not saved: Theseus was busy. Try again'], `${title} is said as not saved, beside its own words`);
+  }
+  assert.equal(line('add-stage'), '', 'the line is the person’s, clear for the next title');
+  assert.equal(tries(), 2, 'one Try again for each title');
+  theseus.busySends = false;
+  await againBeside(fieldWith('Review')).onclick(); await page.chain;
+  await againBeside(fieldWith('Ship')).onclick(); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Review', 'Ship'], 'each added once, in the order tried');
+  assert.equal(tries(), 0);
+});
+
+test('Escape on a title not saved lets that one go, sends nothing, and leaves the line and every other title kept as they are (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addStage, fieldWith, typeOnLine, line, tries } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busySends = true;
+  addStage('Ship'); addStage('Review'); typeOnLine('add-stage', 'Rev'); await page.chain;
+  const sends = theseus.sends;
+  fieldWith('Ship').onkeydown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+  await page.chain;
+  assert.equal(fieldWith('Ship'), null, 'Ship is let go');
+  assert.deepEqual([fieldWith('Review')?.['data-role'], line('add-stage'), tries(), theseus.sends], ['held-title', 'Rev', 1, sends], 'Review and the line stay; nothing is sent');
+  theseus.busySends = false; await page.load();
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build']);
+});
+
+// A title whose answer was lost (the reviewer's case: Tony on his phone over the tailnet, the connection dropping
+// while a stage is added that Core then has). A failure with no answer of Theseus's is no proof of what Core
+// recorded, so the page never says "not saved" of it, and what sends it again sends the same change, under the
+// same operation, so Core answers with what it recorded, or makes it then: once either way.
+const UNCONFIRMED = 'Not known whether this was saved: Theseus did not confirm it.';
+
+test('a stage added whose answer was lost, though Core has it, is said as not known to be saved, kept as sent, and Return sends that same change: Core has it once (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, addStage, heldWith, besideField, stageNames, line, tries } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.lose = 'after';
+  addStage('Ship'); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Ship'], 'Core has it');
+  assert.deepEqual(stageNames(), ['Build', 'Ship'], 'and the page read it again');
+  const held = heldWith('Ship');
+  assert.ok(held, 'the title is kept, as it was sent');
+  assert.deepEqual({ label: held['aria-label'], readonly: held.readonly === '', said: besideField(held), hint: held.parent.text },
+    { label: 'Add a stage, not known if saved', readonly: true, said: [`${UNCONFIRMED} Try again`], hint: `Return sends it again · Escape lets it go${UNCONFIRMED} Try again` },
+    'never said as not saved; its words are what was sent, not to be changed under the same change');
+  assert.doesNotMatch(text(), /not saved|Not saved/);
+  assert.doesNotMatch(text(), unplain);
+  held.parent.onsubmit({ preventDefault() {} }); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Ship'], 'Core has Ship once');
+  assert.deepEqual([stageNames(), heldWith('Ship'), tries(), line('add-stage')], [['Build', 'Ship'], null, 0, '']);
+  assert.equal(new Set(theseus.operations).size, 1, 'Return sent the same operation again');
+});
+
+test('a stage added whose answer was lost, with the read after it busy too, offers one Try again, on the title kept, and nothing more under Add a stage (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, tries, addStage, heldWith, besideField, againBeside } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.lose = 'after'; theseus.busyReads = true;
+  addStage('Ship'); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Ship'], 'Core has it');
+  const held = heldWith('Ship');
+  assert.ok(held, 'the title is kept, as it was sent');
+  assert.deepEqual([said('add-stage'), besideField(held), tries()], [[], [`${UNCONFIRMED} Try again`], 1],
+    'the title kept is the place’s Try again: the busy read adds no line and no Try again of its own under Add a stage');
+  assert.doesNotMatch(text(), /not saved|Not saved/);
+  assert.doesNotMatch(text(), unplain);
+  // That one Try again sends the same change, and reads the page again once Theseus can.
+  theseus.busyReads = false;
+  await againBeside(held).onclick(); await page.chain;
+  assert.deepEqual([theseus.stages.map(stage => stage.name), heldWith('Ship'), tries()], [['Build', 'Ship'], null, 0]);
+  assert.equal(new Set(theseus.operations).size, 1, 'Try again sent the same operation again');
+});
+
+test('an item added on Next’s line whose answer was lost, though Core has it, is not known to be saved, and Try again sends that same change: one item (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addItem, heldWith, besideField, againBeside, line } = busyPage(theseus);
+  await page.load();
+  theseus.lose = 'after';
+  addItem('next', 'Fold the shipped list'); await page.chain;
+  assert.deepEqual(theseus.items.map(item => item.title), ['Fold the shipped list']);
+  const held = heldWith('Fold the shipped list');
+  assert.deepEqual([held?.['aria-label'], besideField(held)], ['Add an item to Next, not known if saved', [`${UNCONFIRMED} Try again`]]);
+  await againBeside(held).onclick(); await page.chain;
+  assert.deepEqual(theseus.items.map(item => item.title), ['Fold the shipped list'], 'one item, not two');
+  assert.deepEqual([heldWith('Fold the shipped list'), line('add:next')], [null, '']);
+  assert.equal(new Set(theseus.operations).size, 1);
+});
+
+test('a title whose answer was lost before Core had it stays not known through a busy Try again, and is made once when Theseus takes it (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addItem, heldWith, besideField, againBeside } = busyPage(theseus);
+  await page.load();
+  theseus.lose = 'before';
+  addItem('next', 'Fold the shipped list'); await page.chain;
+  assert.deepEqual(theseus.items, [], 'Core does not have it');
+  assert.deepEqual(besideField(heldWith('Fold the shipped list')), [`${UNCONFIRMED} Try again`], 'the page cannot know that, and does not say it');
+  // Busy now: this attempt was not taken, but the first may have been, so it is still not known.
+  theseus.busySends = true;
+  await againBeside(heldWith('Fold the shipped list')).onclick(); await page.chain;
+  assert.deepEqual(besideField(heldWith('Fold the shipped list')), [`${UNCONFIRMED} Try again`], 'a busy answer to the second attempt says nothing of the first');
+  theseus.busySends = false;
+  await againBeside(heldWith('Fold the shipped list')).onclick(); await page.chain;
+  assert.deepEqual(theseus.items.map(item => item.title), ['Fold the shipped list']);
+  assert.equal(heldWith('Fold the shipped list'), null);
+  assert.deepEqual([theseus.operations.length, new Set(theseus.operations).size], [3, 1], 'three attempts, one operation');
+});
+
+test('a title not known to be saved that Core then refuses, recording why, is not saved: it says why, can be changed, and Return adds the new words as a new change (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addStage, heldWith, besideField, againBeside, retype } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.lose = 'before';
+  addStage('Ship'); await page.chain;
+  theseus.refuseRecorded = 'Only Tony changes these stages.';
+  await againBeside(heldWith('Ship')).onclick(); await page.chain;
+  const held = heldWith('Ship');
+  assert.deepEqual({ label: held['aria-label'], readonly: held.readonly, said: besideField(held) },
+    { label: 'Add a stage, not saved', readonly: undefined, said: ['Only Tony changes these stages.'] }, 'Core’s recorded answer settles it: not saved, and why');
+  theseus.refuseRecorded = null;
+  retype(held, 'Ship it');
+  heldWith('Ship it').parent.onsubmit({ preventDefault() {} }); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Ship it']);
+  assert.equal(heldWith('Ship it'), null);
+  assert.equal(new Set(theseus.operations).size, 2, 'the corrected words went as a change of their own');
+});
+
+test('a title kept under the line is not on the page while it is sent, so it cannot be sent twice (item 192)', async () => {
+  const theseus = busyTheseus(), { page, addStage, heldWith, againBeside, tries } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busySends = true;
+  addStage('Ship'); await page.chain;
+  theseus.busySends = false;
+  let open; theseus.gate = new Promise(resolve => { open = resolve; });
+  againBeside(heldWith('Ship')).onclick();
+  assert.deepEqual([heldWith('Ship'), tries()], [null, 0], 'while Ship is sent, neither it nor its Try again is there to tap again');
+  open(); theseus.gate = null; await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Ship']);
+});
+
+test('a change is not known to be saved exactly when no answer of Theseus’s says whether its attempt was taken (item 192)', () => {
+  const answer = (status, code) => new AttemptError('words of the server', status, { recorded: false, error: { code, message: 'words of the server' } });
+  // An answer of Theseus's that it did not take the attempt: known, whichever way it came.
+  for (const [taken, why] of [[answer(503, 'SERVER_BUSY'), 'a full request lane'], [answer(503, 'AUTHORITY_BUSY'), 'a busy authority'],
+    [answer(401, 'SESSION_REQUIRED'), 'a refused session'], [answer(403, 'FORBIDDEN'), 'a refusal before Core read it'],
+    [Error('words of the page', { cause: answer(503, 'SERVER_BUSY') }), 'one put into the page’s own words']]) assert.equal(unconfirmed(taken), false, why);
+  // No word on it: unknown.
+  for (const [unknown, why] of [[new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.'), 'a dropped connection'],
+    [answer(500, 'REQUEST_UNCONFIRMED'), 'Theseus could not confirm it'], [Error('words of the page', { cause: new AttemptError('Connection interrupted.') }), 'one put into words'],
+    [new TypeError('Failed to fetch'), 'a failure that is no attempt’s']]) assert.equal(unconfirmed(unknown), true, why);
+});
+
+// A change saved, and the read right after it failing another way than busy: the connection drops a moment after
+// Theseus answers (the reviewer's case, a phone on the move). The change is saved, so the page says so where it was
+// made, with a Try again that reads the page again; never the read's own failure as if it described the change, which
+// would ask the person to make it again. Every read that fails while a saved change is not shown says the same.
+const SAVED_UNREAD = 'Saved. This page could not be read again, so it does not show it yet.';
+
+test('a stage added and saved, with the read after it dropped, is said as saved where it was added, and Try again reads the page and sends nothing (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, tries, addStage, stageNames, line, heldWith } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.failReads = true;
+  addStage('Ship'); await page.chain;
+  assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build', 'Ship'], 'Core has it');
+  assert.deepEqual([stageNames(), said('add-stage'), tries(), heldWith('Ship'), line('add-stage')], [['Build'], [`${SAVED_UNREAD} Try again`], 1, null, ''],
+    'saved, said so under the line it was added on, with one Try again; the title is not held as if it were not');
+  assert.doesNotMatch(text(), unplain);
+  // A live change read while the connection is still down keeps the page as last read and the words where they were.
+  assert.equal(await page.load().catch(error => `threw: ${error.message}`), false, 'the commit follower reads again on the next commit, and no failure of its own is raised');
+  assert.deepEqual(said('add-stage'), [`${SAVED_UNREAD} Try again`]);
+  // Try again while it still fails sends nothing and says the same.
+  const sends = theseus.sends;
+  await again('add-stage').onclick(); await page.chain;
+  assert.deepEqual([theseus.sends, said('add-stage'), tries()], [sends, [`${SAVED_UNREAD} Try again`], 1]);
+  assert.doesNotMatch(text(), unplain);
+  // Once a read goes through, the page shows Ship, once.
+  theseus.failReads = false;
+  await again('add-stage').onclick(); await page.chain;
+  assert.deepEqual([theseus.sends, theseus.stages.map(stage => stage.name), stageNames(), again()], [sends, ['Build', 'Ship'], ['Build', 'Ship'], null]);
+  assert.deepEqual(new Set(theseus.operations).size, 1, 'one change was made, under one operation');
+});
+
+test('an item added on Next’s line and saved, with the read after it dropped, says Added and Saved, never the read’s failure, and Try again shows it once (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, tries, addItem, line, heldWith } = busyPage(theseus);
+  await page.load();
+  theseus.failReads = true;
+  addItem('next', 'Ship'); await page.chain;
+  assert.deepEqual(theseus.items.map(item => item.title), ['Ship'], 'Core has it');
+  assert.deepEqual([said('add:next'), tries(), heldWith('Ship'), line('add:next')],
+    [['Added 1, last in Next. Words and a size are optional; set them on it below.', `${SAVED_UNREAD} Try again`], 1, null, '']);
+  assert.doesNotMatch(text(), unplain);
+  theseus.failReads = false;
+  const sends = theseus.sends;
+  await again('add:next').onclick(); await page.chain;
+  assert.deepEqual([theseus.sends, theseus.items.map(item => item.title), again()], [sends, ['Ship'], null]);
+  assert.match(text(), /Ship/);
+});
+
+test('a stage name saved while a busy read leaves it unshown, then a Try again whose read drops, stays said as saved, never the read’s failure (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, tries, field } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.busyReads = true;
+  const name = field('build', 'stage-name');
+  name.value = 'test'; name.oninput(); name.onblur(); await page.chain;
+  assert.deepEqual(said('stage:build'), ['Saved. Theseus was busy, so this page does not show it yet. Try again']);
+  theseus.busyReads = false; theseus.failReads = true;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([said('stage:build'), tries(), field('build', 'stage-name').value], [[`${SAVED_UNREAD} Try again`], 1, 'test'], 'how the read failed now, and still saved');
+  assert.doesNotMatch(text(), unplain);
+  theseus.failReads = false;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([field('build', 'stage-name').value, said('stage:build'), again()], ['test', ['Saved.'], null]);
+});
+
+test('a change refused for its own reason, with the read after it dropped, says the refusal, then that the page may be behind; its Try again reads (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, said, again, tries, field } = busyPage(theseus);
+  await page.load(); page.editing = true; page.paint();
+  theseus.refuse = 'Only Tony changes this stage.'; theseus.failReads = true;
+  await field('build', 'rounds-together').onclick(); await page.chain;
+  const behind = 'This page could not be read again, so it may not show the latest changes. Try again';
+  assert.deepEqual([said('stage:build'), tries()], [['Only Tony changes this stage.', behind], 1], 'what happened, in the order it happened');
+  // The same, after a busy read whose Try again then drops: the refusal stays, and the read's failure is the page's.
+  theseus.failReads = false; theseus.busyReads = true;
+  await field('build', 'rounds-together').onclick(); await page.chain;
+  assert.deepEqual(said('stage:build'), ['Only Tony changes this stage.', 'Theseus was busy, so this page may not show the latest changes. Try again']);
+  theseus.busyReads = false; theseus.failReads = true;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([said('stage:build'), tries()], [['Only Tony changes this stage.', behind], 1]);
+  assert.doesNotMatch(text(), unplain);
+  theseus.failReads = false;
+  await again('stage:build').onclick(); await page.chain;
+  assert.deepEqual([said('stage:build'), again()], [['Only Tony changes this stage.'], null]);
+});
+
+// How a read that did not go through is said, Theseus too busy for it or its connection dropped: the words for each.
+const MISSED = {
+  busyReads: { saved: 'Saved. Theseus was busy, so this page does not show it yet.', behind: 'Theseus was busy, so this page may not show the latest changes.' },
+  failReads: { saved: SAVED_UNREAD, behind: 'This page could not be read again, so it may not show the latest changes.' },
+};
+
+test('a first read too busy, whose Try again drops, says the page could not be read yet, and a later Try again shows it (item 192)', async () => {
+  const theseus = busyTheseus(), { page, text, again, tries } = busyPage(theseus);
+  theseus.busyReads = true;
+  assert.equal(await page.load(), false);
+  assert.equal(text(), 'Theseus was busy, so this page could not be read yet. Try again');
+  theseus.busyReads = false; theseus.failReads = true;
+  await again().onclick(); await page.chain;
+  assert.deepEqual([text(), tries()], ['This page could not be read yet. Try again', 1], 'how this read failed, in the page’s own words, with one Try again');
+  theseus.failReads = false;
+  await again().onclick(); await page.chain;
+  assert.match(text(), /Build/);
+  assert.equal(again(), null);
+  assert.doesNotMatch(text(), unplain);
+});
+
+for (const fails of ['busyReads', 'failReads']) {
+  test(`the read after an act that does not go through is said where that act was made, never where an earlier read’s was (${fails}, item 192)`, async () => {
+    const theseus = busyTheseus(), { page, text, said, tries, field, addItem } = busyPage(theseus);
+    await page.load(); page.editing = true; page.paint();
+    // The Rounds chip on Build, refused for its own reason, and the read after it does not go through.
+    theseus.refuse = 'Only Tony changes this stage.'; theseus[fails] = true;
+    await field('build', 'rounds-together').onclick(); await page.chain;
+    assert.deepEqual(said('stage:build'), ['Only Tony changes this stage.', `${MISSED[fails].behind} Try again`]);
+    // Ship added on Next's line, saved, and the read after it does not go through either: it is said there, as saved.
+    theseus.refuse = null;
+    addItem('next', 'Ship'); await page.chain;
+    assert.deepEqual(theseus.items.map(item => item.title), ['Ship'], 'Core has it');
+    assert.deepEqual([said('stage:build'), said('add:next'), tries()], [['Only Tony changes this stage.'],
+      ['Added 1, last in Next. Words and a size are optional; set them on it below.', `${MISSED[fails].saved} Try again`], 1],
+      'the refused stage says only why; never Saved beside a change refused');
+    assert.doesNotMatch(text(), unplain);
+  });
+
+  test(`a read that fails after a newer one is shown leaves the page as shown and says nothing (${fails}, item 192)`, async () => {
+    // The read after Ship is added at Add a stage is held; a commit follower's read, newer, goes through and shows Ship.
+    const theseus = busyTheseus(), { page, text, tries, addStage, stageNames, said } = busyPage(theseus);
+    await page.load(); page.editing = true; page.paint();
+    const acts = theseus.holdRead();
+    addStage('Ship'); await acts.begun;
+    assert.equal(await page.load(), true);
+    assert.deepEqual(stageNames(), ['Build', 'Ship']);
+    // Then the act's own read, older, does not go through: the page stays as shown.
+    theseus[fails] = true; acts.release(); await page.chain;
+    assert.deepEqual([stageNames(), said('add-stage'), tries()], [['Build', 'Ship'], [], 0]);
+    assert.doesNotMatch(text(), unplain);
+    // The other way round: the commit follower's read is held, and the act's read after it, newer, shows Shipped.
+    theseus[fails] = false;
+    const follower = theseus.holdRead(), read = page.load();
+    await follower.begun;
+    addStage('Shipped'); await page.chain;
+    assert.deepEqual(stageNames(), ['Build', 'Ship', 'Shipped']);
+    // The follower's older read does not go through: it is told what the newer read found, and nothing is said.
+    theseus[fails] = true; follower.release();
+    assert.equal(await read.catch(error => `threw: ${error.message}`), true);
+    assert.deepEqual([stageNames(), said('add-stage'), tries()], [['Build', 'Ship', 'Shipped'], [], 0]);
+    assert.doesNotMatch(text(), unplain);
+  });
+}

@@ -233,6 +233,13 @@ class FreshnessControls:
             with self.lock:
                 self.faults.append(dict(request, body=body, count=request.get("count", 1)))
             return {"armed": True}
+        if method == "read_fault_clear":
+            # Withdraws every fault not yet taken, so the server answers as itself again.
+            with self.lock:
+                withdrawn = sum(rule["count"] for rule in self.faults)
+                for rule in self.faults:
+                    rule["count"] = 0
+            return {"withdrawn": withdrawn}
         if method == "admission_events":
             with self.lock:
                 events = [dict(e) for e in self.events if e["index"] > request.get("after", 0)]
@@ -494,7 +501,7 @@ def main():
                         thread = threading.Thread(target=server.serve_forever, daemon=True)
                         thread.start()
                         answer = {"origin": server.origin, "token": server.session_token}
-                    elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_delay", "read_fault", "admission_events"):
+                    elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_delay", "read_fault", "read_fault_clear", "admission_events"):
                         answer = controls.control(request, server)
                     elif freshness and request["method"] == "navigation_topics":
                         # Isolated fixture setup through real creation commands.

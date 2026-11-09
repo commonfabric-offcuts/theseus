@@ -8,6 +8,31 @@ export const GLYPHS = {
   decide: ['❓', 'Needs your decision'], shipped: ['✅', 'Shipped'], dropped: ['–', 'Dropped'],
 };
 export const SIZE_WORDS = { small: 'Small', medium: 'Medium', large: 'Large' };
+// A busy Theseus (api.mjs isBusy), said in the page's own words with a Try again
+// beside them: an act it was too busy to take, which saved nothing (`notSaved`; a
+// one-line add's title says it beside its own words, held under the line); and a read it was too busy
+// for, after the page's last act saved (that act's receipt says so), after the page
+// was shown, or before anything was. And a change whose answer was lost, which
+// may have been made (api.mjs unconfirmed): never said to be unsaved.
+export const BUSY_WORDS = {
+  notSaved: 'Not saved: Theseus was busy.',
+  unconfirmed: 'Not known whether this was saved: Theseus did not confirm it.',
+  savedNotShown: 'Saved. Theseus was busy, so this page does not show it yet.',
+  behind: 'Theseus was busy, so this page may not show the latest changes.',
+  unread: 'Theseus was busy, so this page could not be read yet.',
+  again: 'Try again',
+};
+// A read that failed another way (the connection dropped, an answer that could not be
+// read): the page says it could not be read, in its own words. A read's failure is
+// never said as a change's, so it never asks for a change saved to be made again.
+export const UNREAD_WORDS = {
+  notSaved: 'Not saved: this page could not be read again first.',
+  savedNotShown: 'Saved. This page could not be read again, so it does not show it yet.',
+  behind: 'This page could not be read again, so it may not show the latest changes.',
+  unread: 'This page could not be read yet.',
+};
+// The words for a read that did not go through: Theseus too busy for it, or it failed another way.
+export const missedWords = busy => busy ? BUSY_WORDS : UNREAD_WORDS;
 const EDITED_WORDS = { description: 'its words', size: 'its size', title: 'its title', candidate_group: 'its group', raised_by: 'who raised it', raised_note: 'who raised it', needs: 'what it waits for', gathering: 'where it gathers' };
 // D14, with the one-line add (the form rule): a title on a section's first line, or a message's Add to pipeline.
 export const EMPTY_WORDS = ['Nothing in this pipeline yet.',
@@ -243,7 +268,7 @@ export const waitingWords = (row, now) => ` · about ${row.number}, ${row.item_t
 
 // Checks that a view answer has the shape these words read; a failure names what is missing.
 export function checkPipeline(answer, instanceId) {
-  if (!answer || answer.error) throw Error(answer?.error?.message ?? 'The pipeline could not be read.');
+  if (!answer || answer.error) throw Object.assign(Error(answer?.error?.message ?? 'The pipeline could not be read.'), { details: answer });
   if (answer.instance_id !== instanceId) throw Error('This pipeline belongs to a different instance.');
   if (answer.pipeline !== null && (typeof answer.pipeline !== 'object' || !Array.isArray(answer.pipeline.stages))) throw Error('The pipeline could not be confirmed.');
   if (answer.items !== undefined && !Array.isArray(answer.items)) throw Error('The pipeline could not be confirmed.');

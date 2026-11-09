@@ -83,6 +83,33 @@ export function unreached(error) {
   const at = attemptOf(error);
   return Boolean(at) && (at.details === null || sessionRefused(at));
 }
+// Theseus answered that it was too busy to take the attempt: a full read or
+// request lane, every connection taken, a busy database or authority. The one
+// place these codes are known (freshness.mjs readFailure reads them here too).
+// A page says a busy Theseus in plain words of its own, never the server's.
+const BUSY_CODES = new Set(['SERVER_BUSY', 'DATABASE_BUSY', 'AUTHORITY_BUSY']);
+export const busyCode = code => BUSY_CODES.has(code);
+// A failure or a receipt that is such an answer: an attempt error's answer, a
+// view answer or receipt naming one of the codes, or a failure a caller put into
+// words of its own with such an answer as its cause.
+export function isBusy(value) {
+  for (let at = value, seen = new Set(); typeof at === 'object' && at !== null && !seen.has(at); seen.add(at), at = at.cause) {
+    if (busyCode((at.details ?? at).error?.code)) return true;
+  }
+  return false;
+}
+// A change's attempt that ended with no word from Theseus on whether it was
+// recorded: no answer of Theseus's own (the connection dropped, an answer that
+// could not be read, a wait given up on, or a failure that is no attempt's), or
+// its answer that it could not confirm the attempt (REQUEST_UNCONFIRMED). Any
+// other answer of Theseus's (a busy lane, a refused session, a refusal before
+// Core read it) is that this attempt was not taken. Such a change may have been
+// made, so it is never said to be unsaved, and what sends it again sends it as
+// it was made, under the same operation: Core answers with what it recorded.
+export function unconfirmed(error) {
+  const answer = attemptOf(error)?.details;
+  return !answer || answer.error?.code === 'REQUEST_UNCONFIRMED';
+}
 // Something has answered since the failure at at. The clock only goes
 // forward, so this stays true: what that failure said is over for good.
 export const answeredAfter = (at, { answered } = contact) => answered > at;

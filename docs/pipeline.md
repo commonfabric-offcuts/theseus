@@ -335,6 +335,50 @@ owner's word on a stage but has no chip for it, and no cross on that stage); the
 and the cross removes it, with Undo. A new stage is one line, "Add a stage…".
 Every change sends the whole ordered list through `stages_set`.
 
+When Theseus is too busy (its answer names `SERVER_BUSY`, `DATABASE_BUSY` or
+`AUTHORITY_BUSY`), the page says so in its own words, with Try again, where the
+change was made: "Not saved: Theseus was busy." for a change it could not take,
+which keeps every word typed (Try again sends it again, as Return would); and,
+when only the read after a saved change was refused, "Saved. Theseus was busy,
+so this page does not show it yet." The page stays as last read until a read
+goes through; a refused read with no change of the person's before it heads the
+page instead ("… may not show the latest changes", or "… could not be read
+yet" before the first read). A read made after a change, or by its Try again,
+that fails another way (the connection dropping a moment after Theseus answered,
+as on a phone on the move) is said the same way, in the page's own words: "Saved.
+This page could not be read again, so it does not show it yet.", or, after a change
+not saved, "This page could not be read again, so it may not show the latest
+changes.", with a Try again that reads. The read's own failure is never said under
+a change, where it would read as the change's and ask for it to be made again.
+Such a line is said where the change it followed was made, never where an earlier
+read's line was. A read overtaken by a newer one, however it ends, says nothing:
+the page is as the newer one left it. A
+field whose words were saved keeps showing them until a read does. While the page does not show its last saved change, a further
+change is sent only after the page reads it again (it would carry a revision
+Theseus has moved past); when that read is refused as busy, the change is not
+sent and says "Not saved: Theseus was busy.", and when it fails another way, "Not
+saved: this page could not be read again first.", each with Try again, which reads
+first again.
+However a change ends unsaved (not sent, refused, too busy), what was typed for it
+stays. A one-line add's line clears on Return and is the person's alone after it;
+each title not added is kept on a line of its own under it, saying why beside its
+words, where it can be corrected, and where Try again (or Return) adds what it says
+then, once; Escape there lets it go. A title whose answer was lost (the connection
+dropped, or Theseus could not confirm it) may have been added, so it is never said to
+be unsaved: it stays as it was sent, saying "Not known whether this was saved: Theseus
+did not confirm it.", and Try again (or Return) sends that same change under the same
+operation, so Theseus answers with what it recorded, or adds it then: once either way.
+It stays so through a busy Try again, until Theseus answers the change itself; a
+refusal it records is then said as not saved, and the title can be changed and added
+anew. However many titles are not added, and whatever
+is typed on the line meanwhile, each stays where it was typed. Where the change before,
+at the same place, is saved and not shown yet, that stays said under the line ("Saved.
+Theseus was busy, so this page does not show it yet."), with the one Try again,
+which reads the page before it sends. A Removed line with Undo shows
+only once the removal is saved. A repaint that takes away the field being typed
+in is not the person leaving it: it saves nothing (a stage's name and done-when,
+and an item's words, save on Return or when the person leaves the field).
+
 ## Commands and views
 
 Commands, each with the revision it checks:

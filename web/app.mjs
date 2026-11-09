@@ -2163,9 +2163,10 @@ async function initializeOutcomePage(route) {
 }
 // The pipeline's views and commands (item 84; docs/pipeline.md).
 const pipelineView=async(name,args)=>checkedView(await api.view(name,args,{readClass:'foreground'}),bootstrap.instance_id);
-function pipelineSend(kind,target,args,expected={}) {
+// The pipeline page names each change's operation (pipeline.mjs change), so a change sent again is the same one.
+function pipelineSend(kind,target,args,expected={},operation_id=crypto.randomUUID()) {
   const {authority_id,authority_epoch}=bootstrap.authority;
-  return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind,target,
+  return api.command({v:1,instance_id:bootstrap.instance_id,operation_id,kind,target,
     expected:{...expected,authority:{authority_id,authority_epoch}},args});
 }
 // The rail's Pipeline row (D19), placed by the outcome's rail between the
