@@ -847,7 +847,8 @@ class ReplacedTurnCase(AttemptFixture):
     starts turn-N on the same thread (codex_host.py _steered), and turn-N completes. A thread runs
     one turn at a time, so turn-N's start is when turn-L ended as far as anyone knows: Core ends it
     lost then, through the same path a turn's end takes, before it records turn-N, not hours later
-    when the process exits after wakes that got through."""
+    when the process exits after wakes that got through. Any hand Codex takes into another turn on
+    the thread says the same."""
 
     def lost_and_replaced(self, number):
         self.now += 61000
@@ -898,6 +899,21 @@ class ReplacedTurnCase(AttemptFixture):
         self.traffic_during("turn-N", [("busy", "not_steerable", "turn-N"), ("busy", "not_steerable", "turn-L")])
         self.assertEqual(self.facts()[:2], (2, "busy"), "the claim from turn-N joined it; the one naming turn-L did not")
         self.end("completed", turn_id="turn-N")
+        self.assertEqual(self.facts()[:2], (0, None))
+
+    def test_a_steer_codex_takes_into_another_turn_ends_the_one_core_listed(self):
+        """The host's re-read of the thread names turn-M in progress, not turn-L, and its steer into
+        turn-M is taken: turn-L had ended by then, so Core ends it lost at that hand."""
+        self.now += 61000
+        self.send_next("Work L")
+        self.hand(self.claim_now(), turn_id="turn-L")
+        self.now += 1000
+        self.send_next("More")
+        self.hand(self.claim_now(), turn_id="turn-M", mode="steer")
+        self.assertEqual(self.sql("SELECT turn_id,final_status,finished_ms FROM hosted_turns WHERE turn_id='turn-L'"), [("turn-L", "lost", self.now)])
+        self.assertEqual(self.sql("SELECT turn_id FROM wake_turns"), [("turn-M",)])
+        self.now += 5000
+        self.end("completed", turn_id="turn-M")
         self.assertEqual(self.facts()[:2], (0, None))
 
     def test_a_steer_or_a_start_of_the_same_turn_ends_no_turn(self):

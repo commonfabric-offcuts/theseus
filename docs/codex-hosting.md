@@ -49,15 +49,16 @@ Codex process was running when it exited or was ended (`child_exited`,
 `protocol_error`). Health counts such a claim with that turn while Core lists
 it as running (docs/health.md); it changes nothing in the schedule.
 
-A `start` hand first ends every other turn Core lists open on that thread,
-`lost`, at the hand, exactly as `end_hosted_turn` would (below): Codex runs one
-turn on a thread at a time, so a turn starting there is when the earlier one
-ended as far as anyone knows. The host gives up on a turn without seeing it end
-when its steer into it is refused and it starts another (step 5 below), and
-this is where that end is recorded, whichever path the host took. A turn the
-start answer names itself is not ended. The schedule below is then read again,
-so work the lost turn held is named again (`handed_seq` NULL: the new turn's
-notice named only what was above it).
+A hand first ends every other turn Core lists open on that thread, `lost`, at
+the hand, exactly as `end_hosted_turn` would (below): Codex runs one turn on a
+thread at a time and just took the hand's input into the turn it names, so the
+others had ended as far as anyone knows. The host gives up on a turn without
+seeing it end when its steer into it is refused and it starts another (step 5
+below), or when a history read names another turn in progress, and this is
+where that end is recorded, whichever path the host took. The turn the hand
+names is not ended. The schedule below is then read again, so work the lost
+turn held is named again (`handed_seq` NULL: the new turn's notice named only
+what was above it).
 
 Schedule effect, in the same transaction as the `wake_results` row and the
 `hosted_turns` row:

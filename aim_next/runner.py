@@ -370,16 +370,18 @@ class Runner:
             raise RunnerError("INVALID_ARGUMENT", "A notice cannot announce a delivery that does not exist")
         if self._hosted_thread(db, attempt["recipient_id"]) != turn["thread_id"]:
             raise RunnerError("ROUTE_PIN_MISMATCH", "The handed thread is not this recipient's pinned hosted thread")
-        if turn["mode"] == "start":
-            # Codex runs one turn on a thread at a time, so a turn starting there is when every other
-            # turn Core still lists running on it ended, as far as anyone knows: the host stopped
-            # running it (a refused steer's fallback, a history read) without seeing it end. It ends
-            # lost now, the way a turn's end is recorded, before this hand reads the schedule it
-            # re-arms and before the new turn is recorded, so no claim can join it after this.
-            for (other,) in db.execute("SELECT DISTINCT turn_id FROM hosted_turns INDEXED BY hosted_turns_open "
-                                       "WHERE thread_id=? AND final_status IS NULL AND turn_id<>? ORDER BY turn_id",
-                                       (turn["thread_id"], turn["turn_id"])).fetchall():
-                self._turn_ended(db, now, turn["thread_id"], other, "lost")
+        # Codex runs one turn on a thread at a time, and Codex just took this hand's input into this
+        # turn, so every other turn Core still lists running on the thread had ended by now, as far as
+        # anyone knows: the host stopped running it without seeing it end (it started another after a
+        # refused steer, or a history read named another). It ends lost now, the way a turn's end is
+        # recorded, before this hand reads the schedule that end re-arms and before this turn is
+        # recorded, so no claim joins it after this.
+        others = db.execute("SELECT DISTINCT turn_id FROM hosted_turns INDEXED BY hosted_turns_open "
+                            "WHERE thread_id=? AND final_status IS NULL AND turn_id<>? ORDER BY turn_id",
+                            (turn["thread_id"], turn["turn_id"])).fetchall()
+        for (other,) in others:
+            self._turn_ended(db, now, turn["thread_id"], other, "lost")
+        if others:
             row = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (attempt["recipient_id"],)).fetchone()
         pending = row["pending_count"]
         ended = db.execute("SELECT final_status,error_code FROM hosted_turns INDEXED BY hosted_turns_turn "
