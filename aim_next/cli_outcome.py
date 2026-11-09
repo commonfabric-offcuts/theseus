@@ -19,6 +19,11 @@ def _numbers(value):
     return [int(part) for part in value.split(",") if part.strip()]
 
 
+def _and(numbers):
+    words = [str(number) for number in numbers]
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
+
 def _duration(ms):
     minutes = int(round(ms / 60000.0))
     hours, minutes = divmod(minutes, 60)
@@ -69,6 +74,7 @@ def register(verb):
     move.add_argument("--undo", type=int)
     move.add_argument("--underway", action="store_true")
     move.add_argument("--because")
+    move.add_argument("--note")
     piece = verb("piece")
     piece.add_argument("outcome")
     piece.add_argument("numbers")
@@ -168,10 +174,14 @@ class PipelineVerbs:
             self.out.plain("     " + item["description"])
         for piece in item.get("pieces") or []:
             for entry in piece.get("stages_so_far") or []:
-                self.out.plain("     %s: %s to %s%s" % (entry["name"], _at(entry["entered_ms"]), _at(entry["left_ms"]),
-                                                       " · " + entry["left_outcome"] if entry.get("left_outcome") else ""))
+                left = entry.get("left_outcome") or ""
+                if left == "set aside":
+                    left = entry["left_note"][:1].lower() + entry["left_note"][1:]
+                self.out.plain("     %s: %s to %s%s" % (entry["name"], _at(entry["entered_ms"]), _at(entry["left_ms"]), " · " + left if left else ""))
         for event in item.get("events") or []:
-            self.out.plain("     event %d: %s by %s %s" % (event["seq"], event["kind"], event["by"], _at(event["ms"])))
+            aside = event["payload"].get("set_aside") if event["kind"] == "moved" else None
+            what = "set aside to %s" % event["payload"]["after"]["section"] if aside else event["kind"]
+            self.out.plain("     event %d: %s by %s %s%s" % (event["seq"], what, event["by"], _at(event["ms"]), ": " + aside["note"] if aside else ""))
 
     def do_pipeline_on(self):
         options = self.options
@@ -252,9 +262,14 @@ class PipelineVerbs:
             args["underway_confirmed"] = True
         if options.because:
             args["because_message_id"] = options.because
+        if options.note is not None:
+            # An item being built moved out of Now with a note sets its whole piece aside.
+            args["note"] = options.note
         result = self.command("pipeline.item_move", {"workspace_id": options.outcome, "number": options.number}, args,
                               {"item_revision": item["version"]})
-        self.out.plain("moved %d to %s (event %d)" % (options.number, result["section"], result["event"]))
+        aside = result.get("set_aside")
+        self.out.plain("moved %d to %s (event %d)%s" % (options.number, result["section"], result["event"], ", setting aside piece %s with %s"
+                                                       % (aside["piece_id"], _and(aside["numbers"])) if aside else ""))
 
     def do_piece(self):
         options = self.options

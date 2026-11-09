@@ -189,7 +189,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
-         "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION | --undo EVENT) "
+         "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION [--note TEXT] | --undo EVENT) "
          "| piece OUTCOME N,M --topic TOPIC --stage S | enter-stage PIECE STAGE [--round N] [--left approved|sent-back|passed|held] "
          "| stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
          "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC] TEXT|- | target-settle OUTCOME REVISION accepted|declined "

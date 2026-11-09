@@ -63,12 +63,55 @@ owner and the coordinator steer together: they move, drop and restore items,
 change the stages, and turn the pipeline on or off. Its title, units, sizing,
 releases and section words (the rest of `configure`) are the owner's alone. An item the
 owner placed is moved only by the owner (`OWNER_PLACED`). An item being built
-stays in Now (`ITEM_IN_PIECE`) until it is dropped or its piece is done, and
-dropping it needs a confirmation (`ITEM_UNDERWAY`), whether by a move or by an
-Undo: on the page, each item on a piece card has its own ⋯ with Open its record
-and Drop…, and Drop… asks first. Only the owner gives a stage their word, takes
+stays in Now until it is dropped, its piece is done, or its piece is set aside,
+and dropping it needs a confirmation (`ITEM_UNDERWAY`), whether by a move or by an
+Undo: on the page, each item on a piece card has its own ⋯ with Open its record,
+Set aside to Later… and Drop…, and Drop… asks first. Only the owner gives a stage their word, takes
 it off, or removes a stage that waits on it (`FORBIDDEN`); a retired stage keeps
 the word it had.
+
+### Setting a piece aside
+
+Work that misses lands, or goes to Later while its spec or tests are rethought.
+Moving an item being built to Next, Later or Candidates with a short `note`
+(why, in a line; at most 2048 bytes) sets its piece aside, in a pipeline that
+ships in releases or not:
+
+- The piece closes: its open stage entry is left, by whoever moved the item,
+  `dropped` with the words "Set aside: " and the note, which every view reads as
+  `left_outcome: "set aside"`. Its stages so far stay with it, and a stage left
+  this way is not a time the stage took.
+- Every item of the piece moves to that section, since an item is never half in
+  a piece: the one moved first (where `above` or `below` put it, else last),
+  each other below the one before. Each gets its own `moved` event, whose
+  `set_aside` says the piece, the note, the stages it reached and the items set
+  aside together. The pipeline page's row says it ("Set aside to Later with 184
+  by you, 7:12 AM, after Build › Review: why") for as long as the item stays
+  there, and the item's record lists the piece with its stages and the event.
+- Each item's drop is a fact with the note (`{number, aside}`), so the derived
+  state treats a set-aside as a drop of each item: a release record that names
+  one of them later ships it as it would a dropped item.
+- An item set aside starts a new piece like any other, once it is back in Now.
+- Undo of the move brings that one item back, last in Now, not being built: the
+  piece stays closed and set aside (`set_aside_stays` names it on the Undo's
+  event and in its answer: "Put back by you. Its piece stays set aside: a new
+  piece builds it."). The other items stay where the set-aside put them, each
+  with its own Undo. An Undo never sets a piece aside (`ITEM_IN_PIECE`, "an Undo
+  never sets its piece aside").
+
+Who may, and what is refused, is one rule the move and the piece's view share
+(`you_set_aside` on each piece, which the page reads to offer Set aside to
+Later…, so it never offers what the server refuses): the owner and the
+coordinator (`FORBIDDEN` otherwise); never the release being put together
+(`ITEM_IN_PIECE`: "1 is in release 23, being put together, so it stays in Now
+until it ships, goes back to building or is dropped"); and the coordinator
+neither while the piece waits on the owner's word (`STAGE_GATED`) nor when the
+owner placed any of its items (`OWNER_PLACED`). Without a note it is refused
+(`NOTE_REQUIRED`: "4 is being built now, so moving it to Later sets its piece
+aside, with 3: say why in a short note"), and a note on any other move is
+refused (`INVALID_ARGUMENT`). On the page, Set aside to Later… opens one line
+under the item, "Why set it aside?": Return sets the piece aside, Escape keeps
+it as it is.
 
 A stage gated on the owner's word is entered only with an ask to the owner,
 written by whoever enters it, in the piece's topic (`ASK_REQUIRED`), and left
@@ -165,7 +208,8 @@ release check's `--report`, and which piece a candidate's readings name.
   topics the pipeline holds Done are derived, not decided by whichever command
   ran last. The facts are each outcome's log, in the order things happened
   (`pipeline_facts`, which keeps its past): every `piece_start` (a return to
-  building among them), `combine`, drop (by a move or an Undo), `piece_finish`,
+  building among them), `combine`, drop (by a move or an Undo, or one per item
+  when a piece is set aside), `piece_finish`,
   release record, and turning releases on or off; with each piece's kind and
   topic and the items each record names. One pure function of the facts alone
   (`pipeline_state.derive`) plays the log in order and applies the rules here
@@ -266,8 +310,10 @@ as people say it), `{memory_item_id}` or `{note}`; never a whisper
 message source is an item of the outcome's conversation, `item_add` and
 `source_add` write its pipeline take in the same act (docs/conversation.md),
 and `part: true` keeps that item new. `item_move` takes `section`,
-`above` or `below` (a number in the same section), `undo_of` (an event), and
-`underway_confirmed`.
+`above` or `below` (a number in the same section), `undo_of` (an event),
+`underway_confirmed`, and `note`, which sets a piece aside
+([setting a piece aside](#setting-a-piece-aside)); its answer then has
+`set_aside: {piece_id, numbers, events}`.
 
 `combine` takes the pieces waiting in the last stage a piece goes through (the
 approved ones; `PIECE_NOT_APPROVED` otherwise) into a new release piece in the

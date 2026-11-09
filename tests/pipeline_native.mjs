@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 // on is one tap; an item is added by one line and Return, its words and size
 // set in place; the ⋯ menu steers by pointer and keyboard, ⌘↑ moves a focused
 // row and Undo puts it back; an item being built has its own ⋯, and its Drop…
-// asks first, where Keep it changes nothing; a stage entered elsewhere shows
+// asks first, where Keep it changes nothing; Set aside to Later… asks why in one
+// line and moves its whole piece to Later; a stage entered elsewhere shows
 // with no reload and leaves what is being typed alone; the owner's word moves
 // a gated stage on; a message in the Reader becomes a Candidate in one line,
 // and a whisper is never offered as one;
@@ -148,7 +149,7 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     await until(() => p.evaluate(`document.querySelector('${card} .pl-chip[aria-current=step]')?.textContent==='Build'`), 'the piece card shows it in Build');
     await tap(p, `${item} [data-role=steer]`);
     await until(async () => (await focused(p)).text === 'Open its record', 'its ⋯ opens with focus in the menu');
-    assert.deepEqual(await menu(p, number), ['Open its record', 'Drop…'], 'an item being built is not ordered or moved from its card');
+    assert.deepEqual(await menu(p, number), ['Open its record', 'Set aside to Later…', 'Drop…'], 'an item being built is not ordered or moved from its card');
     await pick(p, number, 'Drop…');
     const asked = await until(() => p.evaluate(`document.querySelector('${item} .pl-confirm')?.textContent`), 'Drop… asks first');
     assert.equal(asked, `Drop ${number}? It is being built now, so this stops work under way. Drop itKeep it`);
@@ -178,6 +179,39 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     await tap(p, `${card} [data-role=leave]`);
     await until(async () => Boolean((await record(number)).shipped?.done_ms), 'Done with this stage finishes it');
     await until(() => p.evaluate(`[...document.querySelectorAll('section[aria-label=Done] .pl-shipped-title')].map(a=>a.textContent).includes('Build me')`), 'it shows under Done');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('pipeline an item being built is set aside to Later in one line: Escape keeps it, and Return with why closes its piece and moves every item of it, its stages kept', async () => {
+    const add = async title => (await pipeline('pipeline.item_add', { workspace_id: 'w1' }, { title, section: 'now', size: 'small', sources: [{ note: 'the check' }] })).result.number;
+    const first = await add('Set me aside'), second = await add('And me');
+    const { result: { piece_id: piece } } = await pipeline('pipeline.piece_start', { workspace_id: 'w1' }, { numbers: [first, second], topic_id: 't1', stage_id: 'build' });
+    const later = [...await kept('later'), first, second].join();
+    const p = await open('pipeline-aside', '/?pipeline=w1');
+    await ready(p);
+    const card = `[data-key="piece:${piece}"]`, item = `${card} [data-key="item:${first}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector('${item} [data-role=steer]'))`), 'the piece card is drawn');
+    await tap(p, `${item} [data-role=steer]`);
+    assert.deepEqual(await menu(p, first), ['Open its record', 'Set aside to Later…', 'Drop…']);
+    await pick(p, first, 'Set aside to Later…');
+    const asked = await until(async () => { const f = await focused(p); return f.role === 'aside-note' && f; }, 'one line asks why, focused');
+    assert.equal(asked.label, `Why set ${first} and ${second} aside to Later`);
+    await p.key('Escape');
+    await until(async () => (await focused(p)).label === `Steer ${first}`, 'Escape closes the line and gives focus back to ⋯');
+    assert.deepEqual([(await record(first)).section, await p.evaluate(`Boolean(document.querySelector('[data-role=aside-note]'))`)], ['now', false], 'Escape changes nothing');
+    await tap(p, `${item} [data-role=steer]`);
+    await pick(p, first, 'Set aside to Later…');
+    await until(async () => (await focused(p)).role === 'aside-note', 'the line asks again');
+    await p.send('Input.insertText', { text: 'The tests miss the real case' });
+    await p.key('Enter');
+    await until(async () => (await drawn(p, 'Later')).join() === later, 'every item of the piece moves last in Later, the one set aside first');
+    assert.equal((await kept('later')).join(), later);
+    assert.equal(await p.evaluate(`Boolean(document.querySelector('${card}'))`), false, 'its piece has left Now');
+    const note = await p.evaluate(`document.querySelector('section[aria-label=Later] [data-key="item:${second}"] .pl-note')?.textContent`);
+    assert.match(note, new RegExp(`^Set aside to Later with ${first} by you, .+, after Build: The tests miss the real case`));
+    const last = (await record(second)).pieces[0].stages_so_far.at(-1);
+    assert.deepEqual([last.left_outcome, last.left_note], ['set aside', 'Set aside: The tests miss the real case']);
+    await shot(p, 'pipeline-aside');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

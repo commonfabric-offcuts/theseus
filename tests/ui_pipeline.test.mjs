@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dom } from './fixtures/ui_dom.mjs';
 import {
-  checkPipeline, duration, eventWords, factBoxes, firstLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
+  checkPipeline, duration, eventWords, factBoxes, firstLine, historyLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
 } from '../web/pipeline-words.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from '../web/pipeline.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
@@ -181,4 +181,53 @@ test('Change stages offers the owner’s word only to the owner: the coordinator
   assert.deepEqual(coordinator['stage:tony-reads'].word.slice(0, 2), ['span', 'Tony’s word'], 'the coordinator sees the owner’s word as a fact, not a chip to tap');
   assert.doesNotMatch(coordinator['stage:tony-reads'].word[2], /tap/i);
   assert.equal(coordinator['stage:tony-reads'].remove, false, 'nor removes the stage that waits on it');
+});
+
+test('a piece set aside says why, where it had got to, and that an Undo leaves it set aside', () => {
+  const words = { later: 'Later', now: 'Now' };
+  const set_aside = { piece: 'p-1', note: 'The tests miss the real case', stages: ['Build, round 1', 'Review'], numbers: [183, 184] };
+  assert.equal(placedWords({ kind: 'moved', by: 'tony', ms: at(7, 12), section: 'later', relative: null, set_aside }, 'tony', words, NOW, 183),
+    'Set aside to Later with 184 by you, 7:12 AM, after Build, round 1 › Review: The tests miss the real case');
+  assert.equal(placedWords({ kind: 'moved', by: 'fable', ms: at(7, 12), section: 'later', relative: { below: 183 }, set_aside }, 'tony', words, NOW, 184),
+    'Set aside to Later with 183 by fable, 7:12 AM, after Build, round 1 › Review: The tests miss the real case');
+  assert.equal(placedWords({ kind: 'moved', by: 'tony', ms: at(7, 20), section: 'now', undo_of: 9, set_aside_stays: 'p-1' }, 'tony', words, NOW),
+    'Put back by you, 7:20 AM. Its piece stays set aside: a new piece builds it.');
+  assert.equal(eventWords({ kind: 'moved', by: 'tony', ms: at(7, 12), payload: { after: { section: 'later' }, set_aside } }, 'tony', words, NOW, 183),
+    'Set aside to Later with 184 by you, 7:12 AM, after Build, round 1 › Review: The tests miss the real case');
+  assert.equal(eventWords({ kind: 'moved', by: 'tony', ms: at(7, 20), payload: { after: { section: 'now' }, undo_of: 9, set_aside_stays: 'p-1' } }, 'tony', words, NOW),
+    'Put back by you, 7:20 AM. Its piece stays set aside: a new piece builds it.');
+  assert.equal(historyLine({ name: 'Review', entered_ms: at(6), left_ms: at(7, 12), left_outcome: 'set aside', left_note: 'Set aside: The tests miss the real case' }, NOW),
+    'Review: 6:00 AM to 7:12 AM, 1 h 12 min · Set aside: The tests miss the real case');
+});
+
+test('an item being built offers Set aside to Later… only when the server would take it, and asks why in one line', async () => {
+  globalThis.document = Object.assign(dom(), { addEventListener() {} });
+  globalThis.CSS = { escape: text => text };
+  const sent = [];
+  const page = new PipelinePage({ host: { addEventListener() {}, querySelector: () => null }, header: {}, reader: 'tony', instanceId: 'i1', workspace: 'w1',
+    read: async () => null, send: async (...args) => { sent.push(args); return { status: 'committed', result: {} }; } });
+  page.load = async () => true; page.paint = () => {};
+  const walk = node => [node, ...(node.children ?? []).flatMap(walk)];
+  const pipeline = { you_steer: true, section_words: { later: 'Later' } };
+  const item = { number: 183, section: 'now', version: 4, stage: { name: 'Review' } };
+  const labels = piece => page.steerMenu(item, [item], 0, pipeline, true, piece).children.filter(node => node.role === 'menuitem').map(node => node.text);
+  assert.deepEqual(labels({ id: 'p-1', items: [183, 184], you_set_aside: true }), ['Open its record', 'Set aside to Later…', 'Drop…']);
+  assert.deepEqual(labels({ id: 'p-1', items: [183, 184], you_set_aside: false }), ['Open its record', 'Drop…'], 'never a move the server refuses');
+  const menu = page.steerMenu(item, [item], 0, pipeline, true, { id: 'p-1', items: [183, 184], you_set_aside: true });
+  menu.children.find(node => node.text === 'Set aside to Later…').onclick();
+  assert.equal(page.asiding, 183);
+  const form = page.asideLine(item, { id: 'p-1', items: [183, 184], you_set_aside: true });
+  const field = walk(form).find(node => node.tagName === 'input');
+  assert.deepEqual([field.placeholder, field['aria-label'], walk(form).find(node => node.tagName === 'span').text],
+    ['Why set it aside?', 'Why set 183 and 184 aside to Later', 'Return sets 183 and 184 aside to Later, with their stages so far · Escape keeps them']);
+  field.value = '   '; form.onsubmit({ preventDefault() {} });
+  assert.deepEqual(sent, [], 'an empty line sends nothing');
+  field.value = '  The tests miss the real case  '; form.onsubmit({ preventDefault() {} });
+  await page.chain;
+  assert.deepEqual(sent, [['pipeline.item_move', { workspace_id: 'w1', number: 183 }, { section: 'later', note: 'The tests miss the real case' }, { item_revision: 4 }]]);
+  assert.equal(page.asiding, null);
+  page.asiding = 183;
+  field.onkeydown({ key: 'Escape', isComposing: false, preventDefault() {}, stopPropagation() {} });
+  assert.equal(page.asiding, null, 'Escape keeps the piece as it is');
+  assert.equal(sent.length, 1);
 });

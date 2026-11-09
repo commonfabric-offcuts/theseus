@@ -87,6 +87,27 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertEqual(self.ok("finish", piece), "%s finished\n" % piece)
         self.assertIn("1    Build me  [now · shipped]", self.ok("item", "w1", "1"))
 
+    def test_move_with_a_note_sets_a_piece_aside_and_the_item_shows_its_stages_and_the_note(self):
+        self.ok("pipeline-on", "w1")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}, {"stage_id": "review", "name": "Review"}]))
+        self.ok("stages", "w1", "--set", str(stages))
+        for title in ("Build me", "And me"):
+            self.ok("add", "w1", "--title", title, "--section", "now", "--size", "small", "--note", "n", "-")
+        piece = self.ok("piece", "w1", "1,2", "--topic", "t1", "--stage", "build").split()[2]
+        code, out, err = self.run_cli("move", "w1", "1", "--to", "later")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("NOTE_REQUIRED: 1 is being built now, so moving it to Later sets its piece aside, with 2: say why in a short note", err)
+        code, out, err = self.run_cli("move", "w1", "1", "--to", "later", "--note", "Rethink the tests", actor="agent-b")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("FORBIDDEN", err)
+        out = self.ok("move", "w1", "1", "--to", "later", "--note", "Rethink the tests")
+        self.assertRegex(out, r"^moved 1 to later \(event \d+\), setting aside piece %s with 1 and 2\n$" % piece)
+        self.assertEqual([line.split()[0] for line in self.ok("pipeline", "w1", "--section", "later").splitlines()[1::3]], ["1", "2"])
+        record = self.ok("item", "w1", "2")
+        self.assertRegex(record, r"\n     Build: \d{4}-\d\d-\d\d \d\d:\d\d to \d{4}-\d\d-\d\d \d\d:\d\d · set aside: Rethink the tests\n")
+        self.assertRegex(record, r"event \d+: set aside to later by agent-a .*: Rethink the tests\n")
+
     def test_stages_set_whose_read_back_fails_says_the_stages_were_recorded(self):
         """`stages --set` reads the pipeline again after the write: a busy database
         there is not the write's failure, so it never asks for the write again."""

@@ -413,7 +413,10 @@ are absolute local times.
 - `add OUTCOME --title T [--size S] [--section S] [--group G] [--from MSG,...] [--note N] [--raised-by A] TEXT`
   adds an item; `add-source OUTCOME N --from MSG,...|--page ID|--note N` adds
   where it came from.
-- `move OUTCOME N --above M | --below M | --to SECTION | --undo EVENT [--underway] [--because MSG]`.
+- `move OUTCOME N --above M | --below M | --to SECTION [--note TEXT] | --undo EVENT [--underway] [--because MSG]`.
+  An item being built moved `--to next|later|candidates` with `--note "why"`
+  sets its whole piece aside ([pipeline.md](pipeline.md#setting-a-piece-aside)):
+  `moved 1 to later (event 12), setting aside piece p-… with 1 and 2`.
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
   `stage-note PIECE TEXT`, `combine OUTCOME --pieces P,... --topic T [--release N] [--commit SHA] [--ask MSG]`

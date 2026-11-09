@@ -121,11 +121,24 @@ export function gatheringWords(gathering, reader) {
     after: '. It moves up to Next when it is ready to build, and keeps the page for whoever builds it.' };
 }
 
+// A piece set aside (183), on each of its items: "Set aside to Later with 184 by you, 7:12 AM, after Build › Review: <why>",
+// and an Undo of it, which brings the one item back and leaves the piece closed.
+function asideWords(payload, section, number, who, when, sectionWords) {
+  if (payload.set_aside) {
+    const others = payload.set_aside.numbers.filter(other => other !== number);
+    return `Set aside to ${sectionWords?.[section] ?? section}${others.length ? ` with ${listWords(others)}` : ''} by ${who}, ${when}, after ${payload.set_aside.stages.join(' › ')}: ${payload.set_aside.note}`;
+  }
+  if (payload.set_aside_stays) return `Put back by ${who}, ${when}. Its piece stays set aside: a new piece builds it.`;
+  return null;
+}
+
 // The latest move, as the row says it: "Moved above 72 by you, 7:12 AM." or "Moved to Next by fable, 6:35 AM, from your Friction log message".
-export function placedWords(placed, reader, sectionWords, now) {
+export function placedWords(placed, reader, sectionWords, now, number) {
   if (!placed || placed.kind !== 'moved') return null;
   const who = placed.by === reader ? 'you' : placed.by;
   const when = shownTime(placed.ms, now);
+  const aside = asideWords(placed, placed.section, number, who, when, sectionWords);
+  if (aside) return aside;
   if (placed.section === 'dropped') return `Dropped by ${who}, ${when}.`;
   let where;
   if (placed.relative?.above !== undefined && placed.relative.above !== null) where = `above ${placed.relative.above}`;
@@ -188,13 +201,15 @@ export function historyLine(entry, now) {
 }
 
 // An item's events in its record: "Added by fable, 6:35 AM", "Moved to Next by fable ...".
-export function eventWords(event, reader, sectionWords, now) {
+export function eventWords(event, reader, sectionWords, now, number) {
   const who = event.by === reader ? 'you' : event.by;
   const when = shownTime(event.ms, now);
   if (event.kind === 'added') return `Added by ${who}, ${when}${event.payload?.imported ? ', from the hand-written page' : ''}.`;
   if (event.kind === 'edited') return `Edited by ${who}, ${when}: ${listWords(Object.keys(event.payload?.after ?? {}).map(key => EDITED_WORDS[key] ?? key))}.`;
   if (event.kind === 'moved') {
     const after = event.payload?.after ?? {};
+    const aside = asideWords(event.payload ?? {}, after.section, number, who, when, sectionWords);
+    if (aside) return aside;
     if (after.section === 'dropped') return `Dropped by ${who}, ${when}.`;
     if (event.payload?.undo_of) return `Put back by ${who}, ${when}.`;
     const relative = event.payload?.relative;
