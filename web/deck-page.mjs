@@ -1,11 +1,11 @@
-import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard } from './deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
+const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
@@ -414,10 +414,8 @@ export class DeckPage {
     button.setAttribute('aria-label', 'Cards under this one');
     button.setAttribute('aria-expanded', String(!this.folded.has(this.deck.cards[index].title)));
     button.append(mark(this.doc, CHEVRON));
-    // While a card is being written a click finishes it, here as on the rest of a card, and a double click is
-    // two folds, never the card's edit.
+    // While a card is being written, a click here finishes it and folds nothing.
     button.addEventListener('click', event => { event.stopPropagation(); if (this.editing) this.finish(); else this.fold(index); });
-    button.addEventListener('dblclick', event => event.stopPropagation());
     return button;
   }
 
@@ -462,13 +460,36 @@ export class DeckPage {
     if (focus) row.focus({ preventScroll: true });
   }
 
-  // ⌘Return, Edit or a double click: the picked card's text in one box, its first line the title. The lines naming its stacks stay
-  // out of the box and go back under what is written, so writing never loses them.
-  edit() {
+  // ⌘Return, Edit or a click: the picked card's text in one box, its first line the title, the cursor at `at` (a click's
+  // place) or the end. The lines naming its stacks stay out of the box and go back under what is written, so writing
+  // never loses them.
+  edit(at = null) {
     const card = this.deck.cards[this.picked];
     if (!card || this.readOnly || this.asking) return;
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null));
-    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false });
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false, at });
+  }
+  // A click on a card: a card being written is finished first, and the clicked one, found again by its text in case
+  // that moved it, opens in its box with the cursor at `at`.
+  editAt(text, near, at) {
+    if (this.editing) this.finish();
+    const index = findCard(this.deck, text, near);
+    if (index < 0) return;
+    this.pick(index);
+    this.edit(at);
+  }
+  // Where a click fell in a card, as a place in its box's text (the title, a line break, the words as written), or
+  // null when it fell on neither the title nor the words.
+  placeOf(event, card, words, titleNode, wordsNode) {
+    const doc = this.doc, point = doc.caretPositionFromPoint?.(event.clientX, event.clientY);
+    const range = point ? null : doc.caretRangeFromPoint?.(event.clientX, event.clientY);
+    const node = point?.offsetNode ?? range?.startContainer, offset = point?.offset ?? range?.startOffset;
+    if (!node) return null;
+    const before = doc.createRange();
+    if (card.title && titleNode.contains(node)) { before.setStart(titleNode, 0); before.setEnd(node, offset); return before.toString().length; }
+    if (!wordsNode.contains(node)) return null;
+    before.setStart(wordsNode, 0); before.setEnd(node, offset);
+    return card.title.length + 1 + writtenAt(words, wordsNode.textContent, before.toString().length);
   }
   // Return or New card: an empty card beside the picked one, after its children; ⌥Return: right above it.
   start(above = false) {
@@ -486,7 +507,8 @@ export class DeckPage {
     field.addEventListener('input', () => this.fit(field));
     this.editing = { ...editing, field };
     this.paint();
-    field.setSelectionRange(field.value.length, field.value.length);
+    const at = Math.min(editing.at ?? field.value.length, field.value.length);
+    field.setSelectionRange(at, at);
   }
   // Escape, ⌘Return or Done: what was written becomes the card; a new card with nothing written is not made.
   finish() {
@@ -645,16 +667,24 @@ export class DeckPage {
       row.hidden = !shown[index];
       row.style.setProperty('--depth', String(card.depth));
       if (parents[index] >= 0) row.append(this.node('p', 'deck-under muted', cards[parents[index]].title || 'Untitled'));
-      row.append(title, formatWords(this.node('div', 'deck-words'), words), this.bubbles(index, stacks));
-      // ⌘-click and ⇧-click select, never selecting the page's text, and leave a link or button its own click.
+      const shownWords = formatWords(this.node('div', 'deck-words'), words);
+      row.append(title, shownWords, this.bubbles(index, stacks));
+      // A click opens the card in its box with the cursor where it fell. ⌘-click and ⇧-click select, never selecting
+      // the page's text, and finish a card being written first, so a click and then a ⌘-click select both cards. A
+      // link or a button keeps its own click, and words a drag selected stay selected.
       const selecting = event => (event.metaKey || event.ctrlKey || event.shiftKey) && !event.target.closest('a, button');
       row.addEventListener('mousedown', event => { if (selecting(event)) event.preventDefault(); });
       row.addEventListener('click', event => {
-        if (this.editing) this.finish();
-        else if (selecting(event)) { if (event.shiftKey) this.extend(index); else this.toggle(index); }
-        else this.pick(index);
+        const text = cardText(card), writing = Boolean(this.editing);
+        if (!selecting(event) && !event.target.closest('a, button') && this.doc.getSelection()?.isCollapsed !== false) {
+          this.editAt(text, index, this.placeOf(event, card, words, title, shownWords));
+          return;
+        }
+        if (writing) this.finish();
+        const at = findCard(this.deck, text, index);
+        if (selecting(event) && at >= 0) { if (event.shiftKey) this.extend(at); else this.toggle(at); }
+        else if (!writing) this.pick(index);
       });
-      row.addEventListener('dblclick', () => { this.pick(index); this.edit(); });
       return row;
     });
     if (editing) {

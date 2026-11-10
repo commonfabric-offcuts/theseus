@@ -107,6 +107,21 @@ export function deckBody({ opening, cards }) {
   return body;
 }
 
+// Where a place in a card's words as shown falls in the words as written. The shown text leaves out the
+// markup (`**`, a link's address, a quote's `>`) and spaces its blocks its own way, so the written words are
+// walked beside it: each shown character is the next written one like it, close ahead, and what comes before
+// that is markup. A space shown takes one written space, if one is next; a character not close ahead is the
+// page's own and is passed over.
+export function writtenAt(written, shown, at) {
+  let i = 0;
+  for (const character of shown.slice(0, at)) {
+    if (/\s/.test(character)) { if (/\s/.test(written[i] ?? '')) i++; continue; }
+    const found = written.indexOf(character, i);
+    if (found >= 0 && found - i <= 300) i = found + 1;
+  }
+  return i;
+}
+
 // The card whose text is this one, nearest to where it stood; -1 when none is.
 export function findCard(deck, text, near = 0) {
   let found = -1;

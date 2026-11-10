@@ -42,7 +42,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | take the card out of its parent | ⇧Tab | |
 | fold away a card's children, or show them | ← →, or a click on the chevron before its title | a tap on its chevron |
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
-| edit the card | ⌘Return, or a double click | Edit |
+| edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
 | finish editing | Escape or ⌘Return | Done |
 | a new card beside this one | Return while not editing | New card |
 | a new card right above this one | ⌥Return | |

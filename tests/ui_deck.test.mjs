@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard } from '../web/deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard, writtenAt } from '../web/deck.mjs';
 
 const PAGE = '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n## Gamma\n';
 const titles = deck => deck.cards.map(card => card.title).join(',');
@@ -172,4 +172,23 @@ test('Tab on several cards puts them, side by side, under the card above the top
 test('removing several cards takes each with its children, and one undo gives them all back where they stood', () => {
   assert.equal(there(FIVE, groupAct(parseDeck(FIVE), [1, 3], 'remove', { text: 'A', near: 1 })), '## X\n\n## Y\n\n## Z\n');
   assert.equal(there(GROUPS, groupAct(parseDeck(GROUPS), [0, 2, 3], 'remove', { text: P, near: 0 })), '');
+});
+
+test('a place in a card\'s words as shown falls at the same words as written, past the markup', () => {
+  const at = (written, shown, before) => writtenAt(written, shown, shown.indexOf(before) + before.length);
+  assert.equal(at('hello world', 'hello world', 'hello'), 5);
+  const bold = 'a **bold** word';
+  assert.equal(bold.slice(0, at(bold, 'a bold word', 'a bo')), 'a **bo');
+  assert.equal(bold.slice(0, at(bold, 'a bold word', 'a bold w')), 'a **bold** w');
+  const link = 'see [the doc](https://example.com/a/b) now';
+  assert.equal(link.slice(0, at(link, 'see the doc now', 'the do')), 'see [the do');
+  assert.equal(link.slice(0, at(link, 'see the doc now', 'doc n')), 'see [the doc](https://example.com/a/b) n');
+  // Paragraphs shown with nothing between them, and a quote's mark left out.
+  const blocks = 'one two\n\n> three four';
+  assert.equal(blocks.slice(0, at(blocks, 'one twothree four', 'twoth')), 'one two\n\n> th');
+  // A character only the page shows is passed over.
+  assert.equal(writtenAt('abc', 'a•bc', 3), 2);
+  // Nothing before the place, and a place past the end.
+  assert.equal(writtenAt('abc', 'abc', 0), 0);
+  assert.equal(writtenAt('abc', 'abc', 9), 3);
 });
