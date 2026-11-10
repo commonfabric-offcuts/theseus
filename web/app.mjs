@@ -2287,9 +2287,11 @@ async function initializeDeckPage(route) {
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
+  // The way back names the page's topic or outcome, or says only "The page" when that read fails.
   const place=async scope=>{
-    const title=scope.kind==='topic'?(await pipelineView('topic',{topic_id:scope.id})).topic.title:(await pipelineView('workspace',{workspace_id:scope.id})).workspace.title;
-    return {title,href:routeHref({kind:scope.kind,id:scope.id,page:route.id})};
+    const href=routeHref({kind:scope.kind,id:scope.id,page:route.id});
+    try { return {href,title:scope.kind==='topic'?(await pipelineView('topic',{topic_id:scope.id})).topic.title:(await pipelineView('workspace',{workspace_id:scope.id})).workspace.title}; }
+    catch { return {href,title:'The page'}; }
   };
   const page=new DeckPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
     item:route.id,read:pipelineView,send:pipelineSend,place});

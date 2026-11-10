@@ -53,7 +53,7 @@ elsewhere first (`REVISION_CONFLICT`), the deck reads the page again and makes
 the waiting acts again on it, each finding its card by its words; an act whose
 card is gone is dropped, and the page says so. A save whose answer was lost
 goes again exactly as it was, under the same operation, so Core records it
-once. On every commit the live feed announces, the deck reads its Notebook's
+once: on Try again, or by itself the next time Theseus is heard from. On every commit the live feed announces, the deck reads its Notebook's
 version, and reads the page again only when that has moved, so a change made
 on a laptop shows on the phone. An edit in progress is kept through a re-read;
 if its card changed elsewhere meanwhile, the edit is added as a card beside

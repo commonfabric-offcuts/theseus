@@ -20,7 +20,8 @@ export class DeckPage {
   constructor({ host, header, item, read, send, place, doc = globalThis.document, narrow = globalThis.matchMedia?.('(max-width: 760px)') }) {
     Object.assign(this, { host, header, item, read, send, place, doc, narrow });
     // base: the page as Core last confirmed it. acts: the person's acts since, in order. undos: what takes back
-    // each of their acts, newest last. sending: the save on its way, sent again as it is until Core answers it.
+    // each of their acts, newest last. sending: the save on its way, sent again as it is until Core answers it
+    // (failed while its last send went unanswered).
     // held: a refusal stopped saving until Try again. notebook: the Notebook's version when the page was read.
     Object.assign(this, { base: null, source: null, notebook: null, acts: [], undos: [], sending: null, owed: false, held: false,
       readOnly: false, deck: parseDeck(''), picked: 0, editing: null });
@@ -51,6 +52,9 @@ export class DeckPage {
   // once its Notebook's version has moved, so a commit elsewhere costs one
   // short read. The version is read before the page, so no revision slips by.
   async load() {
+    // A save that went unanswered goes again first, exactly as it was; while it stays unanswered the read
+    // counts as failed, so the feed coming back (followCommits) sends it once more.
+    if (this.sending?.failed) { await this.flush(); if (this.sending?.failed) return false; }
     if (this.sending) { this.owed = true; return true; }
     try {
       let notebook = null;
@@ -100,10 +104,8 @@ export class DeckPage {
     const { eyebrow, title, description } = this.header;
     title.textContent = this.source.title || 'Notebook page';
     description.textContent = this.described();
-    let place = null;
-    try { place = await this.place(this.source.owner_scope); } catch {}
-    const back = this.node('a', '', `← ${place?.title ?? 'The page'}`);
-    back.href = place?.href ?? '/';
+    const place = await this.place(this.source.owner_scope), back = this.node('a', '', `← ${place.title}`);
+    back.href = place.href;
     eyebrow.replaceChildren(back);
   }
   described() {
@@ -153,6 +155,7 @@ export class DeckPage {
   }
   async flush() {
     const sending = this.sending, { title, attachments, references } = this.source;
+    sending.failed = false;
     this.say('Saving…', 'saving');
     let receipt;
     try {
@@ -160,10 +163,11 @@ export class DeckPage {
         { title, body: sending.body, attachments: attachments.map(({ id }) => ({ id })), references }, { item_revision: sending.revision }, sending.operation_id);
     } catch (error) {
       // No word on whether Core recorded it: it goes again exactly as it was.
+      sending.failed = true;
       this.say(`Not saved yet. ${error.message}`, 'attention', () => this.flush());
       return;
     }
-    if (receipt?.status === 'retryable') { this.say(`Not saved yet. ${receipt.error?.message ?? 'Theseus is busy.'}`, 'attention', () => this.flush()); return; }
+    if (receipt?.status === 'retryable') { sending.failed = true; this.say(`Not saved yet. ${receipt.error?.message ?? 'Theseus is busy.'}`, 'attention', () => this.flush()); return; }
     this.sending = null;
     if (receipt?.status === 'committed') {
       this.base = { revision: receipt.result.revision, body: sending.body };
@@ -175,7 +179,7 @@ export class DeckPage {
         const source = await this.read('memory_current', { item_id: this.item });
         this.source = source;
         this.rebase({ revision: source.source_ref.revision, body: source.body ?? '' });
-      } catch (error) { this.held = true; this.say(`Not saved: the page changed elsewhere and could not be read again. ${error.message}`, 'attention', () => this.load()); return; }
+      } catch (error) { this.say(`Not saved: the page changed elsewhere and could not be read again. ${error.message}`, 'attention', () => this.load()); return; }
     } else if (READ_ONLY.has(receipt?.error?.code)) {
       Object.assign(this, { readOnly: true, acts: [], undos: [] });
       this.host.classList.add('deck-read-only');
