@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import http.client
 import io
@@ -17,6 +18,54 @@ from aim_next.contract import LIMITS, Refusal
 from aim_next.server import create_server, Handler, DeadlineInput
 from aim_next import server as server_module
 from reader_fixture import ReaderCase
+
+
+class PacedClock:
+    """The server's clock during an upload, moved only by the bytes Core has taken.
+
+    Before each read Core makes of the upload, the clock is set to the
+    request's start plus elapsed(bytes taken so far), and send(client, bytes
+    taken) then does what the client does at that moment, from the server's
+    thread, so every byte is sent before the read that takes it. A budget the
+    server measures is then a fact about bytes and pace, never about how busy
+    the machine is.
+    """
+    def __init__(self, elapsed, send):
+        self.now = time.monotonic()
+        self.elapsed, self.send = elapsed, send
+        self.reads, self.expired = [], None
+        self.client, self.opened = None, threading.Event()
+
+    @contextmanager
+    def serving(self):
+        publish = Store.publish_media
+        def paced(store, actor, value, stream):
+            return publish(store, actor, value, SimpleNamespace(read=lambda size: self._read(stream, size)))
+        with mock.patch.object(server_module, 'time', SimpleNamespace(monotonic=lambda: self.now)), \
+                mock.patch.object(Store, 'publish_media', paced):
+            yield self
+
+    def upload(self, case, envelope, length, prefix=b''):
+        try:
+            self.client = case.raw_upload(envelope, length, prefix=prefix)
+            self.client.settimeout(None)
+        finally:
+            self.opened.set()
+        return case.raw_response(self.client)
+
+    def _read(self, stream, size):
+        consumed = stream.handler.body_consumed
+        offset = self.elapsed(consumed)
+        self.now = stream.handler.request_started + offset
+        self.reads.append(offset)
+        self.opened.wait()
+        if self.client is not None:
+            self.send(self.client, consumed)
+        try:
+            return stream.read(size)
+        except socket.timeout:
+            self.expired = offset
+            raise
 
 
 class MediaHTTPTests(ReaderCase):
@@ -398,27 +447,44 @@ class MediaHTTPTests(ReaderCase):
         self.assertEqual(self.read_media()[2], data)
 
     def test_paced_upload_outlives_header_budget_but_not_absolute_body_budget(self):
-        self.server.request_timeout = .12
-        data = b'x' * 131072
+        # The budgets are the behaviour here, so the server's clock is a
+        # PacedClock. 8 MiB adds 32 s to the 1 s header budget, so the only
+        # real wait (a socket read for bytes already sent) is never near a
+        # deadline.
+        header = self.server.request_timeout
+        data = b'x' * (8 * 1024 * 1024)
+        body = header + len(data) / 262144.0
+        sent = [0]
+        def paced(client, consumed):
+            # The next 16 KiB once Core has taken everything sent so far.
+            if consumed == sent[0] < len(data):
+                piece = data[consumed:consumed + 16384]
+                client.sendall(piece)
+                sent[0] += len(piece)
+        # A client that takes twice the header budget to send every byte.
         envelope = self.begin('paced', data)
-        started = time.monotonic()
-        sock = self.raw_upload(envelope, len(data), prefix=data[:32768])
-        for index in range(1, 4):
-            threading.Event().wait(.07)
-            sock.sendall(data[index * 32768:(index + 1) * 32768])
-        self.committed(json.loads(self.raw_response(sock)[2]))
-        self.assertGreater(time.monotonic() - started, .12)
+        with PacedClock(lambda consumed: 2 * header * consumed / len(data), paced).serving() as clock:
+            self.committed(json.loads(clock.upload(self, envelope, len(data))[2]))
+        self.assertGreater(max(clock.reads), header, 'the upload must outlive the header budget')
+        self.assertLess(max(clock.reads), body)
+        self.assertIsNone(clock.expired)
+
         stalled = self.begin('stalled', data)
-        sock = self.raw_upload(stalled, len(data), prefix=b'x')
-        started = time.monotonic()
-        for _ in range(3):
-            threading.Event().wait(.13)
-            sock.sendall(b'x')
-        response = self.raw_response(sock)
-        elapsed = time.monotonic() - started
-        self.assertNotEqual(json.loads(response[2]).get('status'), 'committed')
-        self.assertGreater(elapsed, .48)
-        self.assertLess(elapsed, .82, 'body progress renewed the absolute deadline')
+        # After the first byte, one byte at a third and at two thirds of the
+        # body budget; the next read comes past the budget. The client then
+        # ends its side, so a deadline that progress renewed would read the
+        # end and refuse a short body instead.
+        pace = {0: 0., 1: body / 3, 2: body * 2 / 3, 3: body * 4 / 3}
+        def stalling(client, consumed):
+            if consumed in (1, 2):
+                client.sendall(b'x')
+            elif consumed == 3:
+                client.shutdown(socket.SHUT_WR)
+        with PacedClock(lambda consumed: pace[min(consumed, 3)], stalling).serving() as clock:
+            receipt = json.loads(clock.upload(self, stalled, len(data), prefix=b'x')[2])
+        self.assertEqual(receipt['error']['code'], 'MEDIA_UNCONFIRMED', 'body progress renewed the absolute deadline')
+        self.assertEqual(clock.reads, [pace[0], pace[1], pace[2], pace[3]])
+        self.assertEqual(clock.expired, pace[3], 'only the read past the body budget may end the upload')
         self.assertEqual(self.store.view('owner', 'media', {'media_id': 'stalled'})['state'], 'pending')
 
     def test_verified_descriptor_bound_is_checked_before_headers_and_resource_closed(self):

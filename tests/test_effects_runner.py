@@ -777,6 +777,13 @@ finally:db.close()
         self.assertEqual({n:signal.getsignal(n) for n in originals},originals)
 
     def _native_spill(self, commit):
+        # Every step waits on the event it needs, never on a timer: the writer
+        # starts after the runner's first read, holds its spilled transaction
+        # until the runner's own read is refused by it, and the runner is
+        # stopped once it has read the finished transaction and has nothing
+        # left to do at once. A loaded machine changes how long each step
+        # takes (SQLite's busy wait counts its sleeps, which stretch at low
+        # QoS), never their order.
         api=self.api();self.clock_patch.stop()
         self.workspace()
         source=dict(kind='new_topic',id='spill-opening',workspace_id='w1')
@@ -784,8 +791,18 @@ finally:db.close()
             opening=dict(workspace_id='w1',title='Spill',participants=['agent-a']))['status'],'committed')
         self.assertEqual(self.prepare('spill-draft','spill-topic',submission='spill',send_op='spill-send')['status'],'committed')
         writing=threading.Event();at_commit=threading.Event();done=threading.Event()
-        release=threading.Event();hints=[];reads=[];errors=[];receipts=[];threads=[];timers=[];spill_settings=[]
-        started=time.monotonic();original_connect=sqlite3.connect;original_read=Store.runner_schedule
+        release=threading.Event();final=threading.Event()
+        hints=[];reads=[];asked=[];errors=[];receipts=[];threads=[];spill_settings=[];locked=[]
+        started=time.monotonic();original_connect=sqlite3.connect
+        original_read=Store.runner_schedule;original_loop_read=api.EffectsLoop._read
+        def probe():
+            # A reader that never waits: refused now only if the spill holds the lock.
+            db=original_connect(str(self.path),isolation_level=None,timeout=0)
+            try:
+                db.execute('SELECT count(*) FROM sqlite_master').fetchone();return 'readable'
+            except sqlite3.OperationalError as error:
+                return str(error)
+            finally:db.close()
         class Spill(sqlite3.Connection):
             def commit(db):
                 # After Core releases its SAVEPOINT, force actual dirty-page
@@ -796,9 +813,12 @@ finally:db.close()
                     for key in ('journal_mode','cache_size','cache_spill')})
                 db.execute('CREATE TABLE fixture_spill_pages (value BLOB)')
                 for _ in range(64):db.execute('INSERT INTO fixture_spill_pages VALUES (zeroblob(4096))')
+                locked.append(probe())
                 at_commit.set()
-                timer=threading.Timer(0.65,release.set);timers.append(timer);timer.start()
-                if not release.wait(3):raise AssertionError('spill fixture release deadline')
+                # Held until the runner's read has been refused (or, if nothing
+                # spilled, at once, and the lock assertion below says so).
+                if locked[-1]=='readable':release.set()
+                release.wait()
                 if commit:super().commit()
                 else:
                     db.rollback();raise RuntimeError('controlled spill rollback')
@@ -814,29 +834,33 @@ finally:db.close()
             except BaseException as error:
                 if commit or str(error)!='controlled spill rollback':errors.append(repr(error))
             finally:done.set()
+        def loop_read(loop,hint):
+            asked.append(hint);return original_loop_read(loop,hint)
         def read(store,routed):
+            row=dict(hint=asked[-1] if asked else None)
             try:
-                value=original_read(store,routed);reads.append(dict(at=time.monotonic()-started,status='ok',due=value['next_due_ms']))
-                return value
+                value=original_read(store,routed)
             except RunnerError as error:
-                reads.append(dict(at=time.monotonic()-started,status=error.code));raise
-        watchdog=threading.Timer(3.2,lambda:os.kill(os.getpid(),signal.SIGTERM))
+                reads.append(dict(row,at=time.monotonic()-started,status=error.code))
+                if error.code=='DATABASE_BUSY':release.set()
+                raise
+            # An ok read after a refused one read the ended transaction: the
+            # lock that refused the earlier read is held until the end.
+            if any(r['status']=='DATABASE_BUSY' for r in reads):final.set()
+            reads.append(dict(row,at=time.monotonic()-started,status='ok',due=value['next_due_ms']))
+            if not threads:
+                thread=threading.Thread(target=write,name='theseus-spill-writer')
+                threads.append(thread);thread.start()
+            return value
         class Watch(NativeWatch):
-            def __init__(watch,path):
-                super().__init__(path);watchdog.start()
-                def launch():
-                    thread=threading.Thread(target=write,name='theseus-spill-writer')
-                    threads.append(thread);thread.start()
-                timer=threading.Timer(0.2,launch);timers.append(timer);timer.start()
             def close(watch):
-                release.set();watchdog.cancel()
-                if watchdog.ident is not None:watchdog.join()
-                for timer in timers:
-                    timer.cancel()
-                    if timer.ident is not None:timer.join()
-                for thread in threads:thread.join(4)
+                release.set()
+                for thread in threads:thread.join()
                 super().close()
             def wait(watch,timeout):
+                if final.is_set() and timeout!=0:
+                    # The finished transaction is read and nothing is due at once.
+                    os.kill(os.getpid(),signal.SIGTERM)
                 value=super().wait(timeout)
                 if value['dirty'] and writing.is_set():
                     hints.append(dict(at=time.monotonic()-started,at_commit=at_commit.is_set(),
@@ -847,24 +871,22 @@ finally:db.close()
             if event['event']=='settled':os.kill(os.getpid(),signal.SIGTERM)
         try:
             with mock.patch.object(sqlite3,'connect',connect),mock.patch.object(Store,'runner_schedule',read), \
-                    mock.patch.object(api,'NativeWatch',Watch):
+                    mock.patch.object(api.EffectsLoop,'_read',loop_read),mock.patch.object(api,'NativeWatch',Watch):
                 result=api.run_foreground(self.profile_path,'spill-loop',self.map_path,
                     selected_executable=str(self.broker),emit=emit)
         finally:
-            release.set();watchdog.cancel()
-            if watchdog.ident is not None:watchdog.join()
-            for timer in timers:
-                timer.cancel()
-                if timer.ident is not None:timer.join()
-            for thread in threads:thread.join(4)
-        print(json.dumps(dict(native_spill_commit=commit,hints=hints,reads=reads,
+            release.set()
+            for thread in threads:thread.join()
+        print(json.dumps(dict(native_spill_commit=commit,hints=hints,reads=reads,locked=locked,
             spill_settings=spill_settings,loop_result=result,writer_errors=errors)))
         self.assertFalse(errors)
         self.assertTrue(done.is_set());self.assertTrue(at_commit.is_set())
+        self.assertEqual(locked,['database is locked'],'the spill must hold the lock before COMMIT')
         self.assertTrue(any(not row['writer_done'] for row in hints),
                         'a genuine vnode write hint must precede transaction completion')
-        self.assertTrue(any(row['status']=='DATABASE_BUSY' for row in reads),
-                        'real cache spill must block the early authoritative read')
+        self.assertTrue(any(row['status']=='DATABASE_BUSY' and row['hint'] for row in reads),
+                        'real cache spill must block the read its write hint asked for')
+        self.assertTrue(final.is_set(),'the runner must read the finished transaction')
         self.assertEqual(result['status'],'stopped')
         expected=[('accepted',)] if commit else []
         self.assertEqual(self.sql('SELECT outcome FROM wake_results'),expected)
