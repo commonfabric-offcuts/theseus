@@ -41,9 +41,11 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | put the card under the one above it | Tab | |
 | take the card out of its parent | ⇧Tab | |
 | fold away a card's children, or show them | ← →, or a click on its count of cards | a tap on its count of cards |
+| fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | ⌘Return, or a double click | Edit |
 | finish editing | Escape or ⌘Return | Done |
 | a new card beside this one | Return while not editing | New card |
+| a new card right above this one | ⌥Return | |
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | select several cards, to act on them as one | ⇧↑ ⇧↓, ⌘-click or ⇧-click | |
@@ -56,7 +58,8 @@ title a bold line inside it and its children following the upper card's. Tab
 makes the card the last child of the card above it with the same parent, and
 ⇧Tab puts it after its parent's children, beside its parent; with nowhere to
 go, Tab and ⇧Tab move the focus as they do elsewhere. A new card goes beside
-the picked one, after its children. Clearing all of a card's text removes the
+the picked one, after its children, or with ⌥Return right above it, at its
+depth. Clearing all of a card's text removes the
 card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the
 person's own acts on this page, newest first, each as a new revision; it
 never reverts someone else's change.
@@ -81,7 +84,8 @@ cards are kept in this browser by their titles, so a fold lasts through a
 reload and comes undone when its card's title changes. ← and → work as in any
 tree: on a card with no children showing, ← goes up to its parent, and on a
 card whose children show, → goes down to the first of them. ⌘← and ⌘→ do the
-same, and the browser never takes them for Back and Forward on the cards. ↑ and ↓ pass over
+same, and the browser never takes them for Back and Forward on the cards.
+⇧⌘← folds every card's children away and ⇧⌘→ shows them all again. ↑ and ↓ pass over
 folded cards, a phone's swipe holds only the cards that show, and the count
 says how many are folded away. An act that puts a card under a folded card,
 Tab or an undo, unfolds it to show the card where it went; a remove beside a

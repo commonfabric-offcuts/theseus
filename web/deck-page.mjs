@@ -5,7 +5,7 @@ import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold · Return new card · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
+const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
@@ -332,11 +332,12 @@ export class DeckPage {
     else if ((up || down) && !event.altKey) this.pick(this.beside(this.picked, up ? -1 : 1));
     // Tab and ⇧Tab are the deck's only while there is somewhere to go, so the focus can still leave it.
     else if (event.key === 'Tab' && !command && !event.altKey) { if (!this.actOn(event.shiftKey ? 'outdent' : 'indent')) return; }
+    else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && command && event.shiftKey && !event.altKey) this.foldAll(event.key === 'ArrowLeft');
     // ← and →, or ⌘← and ⌘→, are the deck's even where they change nothing, since the browser takes ⌘← and ⌘→
     // for Back and Forward.
     else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft');
     else if (event.key === 'Enter' && command) this.edit();
-    else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) this.start();
+    else if (event.key === 'Enter' && !event.shiftKey) this.start(event.altKey);
     else if (event.key === 'Backspace' && command) this.actOn('remove');
     else if (event.key === 'Escape' && this.selected.size) this.pick(this.picked);
     else if (event.key.toLowerCase() === 'z' && command && !event.shiftKey && !event.altKey) this.undo();
@@ -370,6 +371,15 @@ export class DeckPage {
     if (!this.folded.delete(card.title)) this.folded.add(card.title);
     this.keepFolds();
     this.picked = index;
+    this.selected = new Set(); this.anchor = null;
+    if (this.asking) this.endAsk(true);
+    this.paint();
+  }
+  // ⇧⌘← or ⇧⌘→: every card's children folded away, or every card's shown again.
+  foldAll(fold) {
+    const cards = this.deck.cards;
+    this.folded = new Set(fold ? cards.filter((card, i) => groupEnd(cards, i) > i + 1).map(card => card.title) : []);
+    this.keepFolds();
     this.selected = new Set(); this.anchor = null;
     if (this.asking) this.endAsk(true);
     this.paint();
@@ -456,11 +466,11 @@ export class DeckPage {
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null));
     this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false });
   }
-  // Return or New card: an empty card beside the picked one, after its children.
-  start() {
+  // Return or New card: an empty card beside the picked one, after its children; ⌥Return: right above it.
+  start(above = false) {
     if (this.readOnly || !this.base || this.asking) return;
-    const card = this.deck.cards[this.picked], last = card ? groupEnd(this.deck.cards, this.picked) - 1 : -1;
-    this.open({ text: '', after: card ? cardText(this.deck.cards[last]) : null, depth: card?.depth ?? 0, near: last, fresh: true });
+    const card = this.deck.cards[this.picked], last = !card ? -1 : above ? this.picked - 1 : groupEnd(this.deck.cards, this.picked) - 1;
+    this.open({ text: '', after: last >= 0 ? cardText(this.deck.cards[last]) : null, depth: card?.depth ?? 0, near: last, fresh: true });
   }
   open(editing) {
     if (this.editing) this.finish();
