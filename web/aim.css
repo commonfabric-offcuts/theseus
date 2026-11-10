@@ -887,7 +887,8 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-opening{color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
 .deck-cards{list-style:none;margin:0;padding:0;display:grid;gap:.45rem}
 .deck-card{min-width:0;padding:.75rem .95rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);overflow-wrap:anywhere}.deck-card:hover{border-color:color-mix(in srgb,var(--line),var(--ink) 20%)}
-.deck-card[aria-current=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:color-mix(in srgb,var(--soft) 45%,var(--panel))}.deck-card:focus{outline:none}.deck-card:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.deck-card[aria-current=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:color-mix(in srgb,var(--soft) 45%,var(--panel))}
+.deck-card.deck-selected{background:color-mix(in srgb,var(--accent) 12%,var(--panel))}.deck-card.deck-selected:not([aria-current=true]){border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}.deck-card:focus{outline:none}.deck-card:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 .deck-title{margin:0;font-size:1rem;font-weight:700;line-height:1.35}.deck-words{margin-top:.3rem;font-size:.92rem;line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}.deck-words:empty{display:none}
 .deck-writing{padding:0;border:0;background:none}.deck-editor{min-height:7rem;overflow:hidden}.deck-empty{padding:1rem 0}
 .deck-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-count{flex:1;color:var(--muted);font-size:.85rem}.deck-keys{margin:0;font-size:.78rem}

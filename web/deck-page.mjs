@@ -1,11 +1,11 @@
-import { applyAct, cardStacks, cardText, deckBody, findCard, groupEnd, parseDeck, stackLine, textCard } from './deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold · Return new card · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
+const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold · Return new card · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
@@ -44,6 +44,9 @@ export class DeckPage {
     // room: where an ask goes. talks: each stack's {replies, unread}, by its first message. asking: the ask being written.
     Object.assign(this, { base: null, source: null, notebook: null, acts: [], undos: [], sending: null, owed: false, held: false,
       readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, talks: new Map(), asking: null, drafts: new Map() });
+    // The cards selected together, by index, the picked card among them; and where a ⇧ selection began, with
+    // the cards ⌘-clicked before it, which it keeps.
+    Object.assign(this, { selected: new Set(), anchor: null });
     // The card picked when this deck was last open in this tab, by its words, so going to a stack and back lands
     // on it; read before the first paint stores the first card in its place.
     try { this.recalled = JSON.parse(globalThis.sessionStorage.getItem(`deck:${item}`)); } catch { this.recalled = null; }
@@ -118,7 +121,7 @@ export class DeckPage {
 
   // The page from Core, with the person's acts not yet saved made again on it.
   rebase(base) {
-    const keep = this.deck.cards[this.picked];
+    const keep = this.deck.cards[this.picked], before = this.deck.cards;
     let deck = parseDeck(base.body), lost = 0;
     const acts = this.acts.filter(act => {
       const done = applyAct(deck, act);
@@ -126,6 +129,7 @@ export class DeckPage {
       return Boolean(done);
     });
     Object.assign(this, { base, deck, acts });
+    this.reselect(before);
     const found = keep ? findCard(deck, cardText(keep), this.picked) : -1;
     this.picked = found >= 0 ? found : Math.min(this.picked, Math.max(deck.cards.length - 1, 0));
     if (lost) this.say(lost === 1 ? 'One of your changes was not made: its card changed elsewhere first.' : `${lost} of your changes were not made: their cards changed elsewhere first.`, 'attention');
@@ -191,7 +195,9 @@ export class DeckPage {
     if (this.readOnly || !this.base) return false;
     const done = applyAct(this.deck, act);
     if (!done) return false;
+    const before = this.deck.cards;
     this.deck = parseDeck(deckBody(done.deck)); this.acts.push(act);
+    this.reselect(before);
     if (!undoing) this.undos = [...this.undos, done.undo].slice(-UNDO_LIMIT);
     this.picked = Math.max(done.at, 0);
     // The card an act leaves picked shows, unfolding the cards it now stands under, unless the act removed its
@@ -202,6 +208,38 @@ export class DeckPage {
     this.save();
     return true;
   }
+  // An act on the picked card or, with several cards selected, on all of them as one act.
+  actOn(kind, step) {
+    const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
+    if (this.selected.size < 2) return this.act({ kind, text, step, near });
+    const act = groupAct(this.deck, [...this.selected], kind, { step, text, near });
+    return Boolean(act) && this.act(act);
+  }
+  // The selected cards found again, by their words, in the deck as it now stands; a ⇧ selection begins again.
+  reselect(cards) {
+    const found = [...this.selected].map(i => (cards[i] ? findCard(this.deck, cardText(cards[i]), i) : -1)).filter(i => i >= 0);
+    this.selected = new Set(found.length > 1 ? found : []);
+    this.anchor = null;
+  }
+  // ⇧↑ ⇧↓ or a ⇧-click: every card that shows from where the selection began to this one, with the cards
+  // ⌘-clicked before it began.
+  extend(index) {
+    this.anchor ??= { at: this.picked, kept: new Set(this.selected) };
+    const { shown } = this.layout(), selected = new Set(this.anchor.kept);
+    for (let i = Math.min(this.anchor.at, index); i <= Math.max(this.anchor.at, index); i++) if (shown[i]) selected.add(i);
+    this.selected = selected.size > 1 ? selected : new Set();
+    this.pick(index, true);
+  }
+  // ⌘-click: the card added to the selection, the picked card with it, or taken out of it.
+  toggle(index) {
+    const selected = new Set(this.selected.size ? this.selected : [this.picked]);
+    if (!selected.delete(index)) selected.add(index);
+    const to = selected.has(index) ? index : selected.has(this.picked) ? this.picked : [...selected][0] ?? index;
+    this.selected = selected.size > 1 ? selected : new Set();
+    this.anchor = null;
+    this.pick(to, true);
+  }
+
   // ⌘Z or Undo: the person's own last act, taken back as an act of its own.
   undo() {
     if (this.editing || this.asking || this.readOnly) return;
@@ -288,16 +326,19 @@ export class DeckPage {
     if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
     if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
-    if ((up || down) && command && !event.altKey) this.act({ kind: event.shiftKey ? 'merge' : 'move', text, step: up ? -1 : 1, near });
-    else if ((up || down) && !event.shiftKey && !event.altKey) this.pick(this.beside(this.picked, up ? -1 : 1));
+    if ((up || down) && command && !event.altKey && event.shiftKey) this.act({ kind: 'merge', text, step: up ? -1 : 1, near });
+    else if ((up || down) && command && !event.altKey) this.actOn('move', up ? -1 : 1);
+    else if ((up || down) && event.shiftKey && !event.altKey) this.extend(this.beside(this.picked, up ? -1 : 1));
+    else if ((up || down) && !event.altKey) this.pick(this.beside(this.picked, up ? -1 : 1));
     // Tab and ⇧Tab are the deck's only while there is somewhere to go, so the focus can still leave it.
-    else if (event.key === 'Tab' && !command && !event.altKey) { if (!this.act({ kind: event.shiftKey ? 'outdent' : 'indent', text, near })) return; }
+    else if (event.key === 'Tab' && !command && !event.altKey) { if (!this.actOn(event.shiftKey ? 'outdent' : 'indent')) return; }
     // ← and →, or ⌘← and ⌘→, are the deck's even where they change nothing, since the browser takes ⌘← and ⌘→
     // for Back and Forward.
     else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft');
     else if (event.key === 'Enter' && command) this.edit();
     else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) this.start();
-    else if (event.key === 'Backspace' && command) this.act({ kind: 'remove', text, near });
+    else if (event.key === 'Backspace' && command) this.actOn('remove');
+    else if (event.key === 'Escape' && this.selected.size) this.pick(this.picked);
     else if (event.key.toLowerCase() === 'z' && command && !event.shiftKey && !event.altKey) this.undo();
     else if (event.key === 'ArrowRight' && event.altKey && !command && !event.shiftKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
     else return;
@@ -329,6 +370,7 @@ export class DeckPage {
     if (!this.folded.delete(card.title)) this.folded.add(card.title);
     this.keepFolds();
     this.picked = index;
+    this.selected = new Set(); this.anchor = null;
     if (this.asking) this.endAsk(true);
     this.paint();
   }
@@ -365,8 +407,10 @@ export class DeckPage {
     return button;
   }
 
-  pick(index) {
+  // A pick ends a selection, unless it is the selection's own.
+  pick(index, keep = false) {
     if (!this.deck.cards.length) return;
+    if (!keep) { this.selected = new Set(); this.anchor = null; }
     this.picked = Math.min(Math.max(index, 0), this.deck.cards.length - 1);
     if (this.asking && this.picked !== this.asking.near) this.endAsk(true);
     this.mark();
@@ -381,12 +425,16 @@ export class DeckPage {
   }
   mark() {
     for (const row of this.list.querySelectorAll('.deck-card')) {
-      const picked = Number(row.dataset.index) === this.picked;
+      const index = Number(row.dataset.index), picked = index === this.picked, selected = this.selected.has(index);
       row.tabIndex = picked ? 0 : -1;
       if (picked) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
+      row.classList.toggle('deck-selected', selected);
+      row.querySelector(':scope > .deck-selected-note')?.remove();
+      if (selected) row.prepend(this.node('span', 'sr-only deck-selected-note', 'Selected. '));
     }
     const { shown } = this.layout(), seen = shown.filter(Boolean).length, away = shown.length - seen;
-    this.count.textContent = shown.length ? `${shown.slice(0, this.picked + 1).filter(Boolean).length} of ${seen}${away ? ` · ${away} folded` : ''}` : 'No cards yet';
+    const together = this.selected.size ? ` · ${this.selected.size} selected` : '';
+    this.count.textContent = shown.length ? `${shown.slice(0, this.picked + 1).filter(Boolean).length} of ${seen}${away ? ` · ${away} folded` : ''}${together}` : 'No cards yet';
     const card = this.deck.cards[this.picked];
     try { if (card) globalThis.sessionStorage.setItem(`deck:${this.item}`, JSON.stringify({ text: cardText(card), at: this.picked })); } catch {}
   }
@@ -416,6 +464,7 @@ export class DeckPage {
   }
   open(editing) {
     if (this.editing) this.finish();
+    this.selected = new Set(); this.anchor = null;
     const field = this.node('textarea', 'deck-editor');
     field.setAttribute('autocomplete', 'off');
     field.value = editing.shown ?? editing.text;
@@ -478,6 +527,7 @@ export class DeckPage {
     const card = this.deck.cards[index];
     if (!card || !this.room?.agents.length || this.readOnly || this.asking) return;
     if (this.editing) this.finish();
+    this.selected = new Set(); this.anchor = null;
     const form = this.node('div', 'deck-ask-form'), field = this.node('textarea', 'deck-ask-field'), to = this.node('select', 'deck-ask-to');
     field.setAttribute('aria-labelledby', 'deck-ask-label');
     field.setAttribute('autocomplete', 'off');
@@ -582,7 +632,14 @@ export class DeckPage {
       row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'), formatWords(this.node('div', 'deck-words'), words),
         this.bubbles(index, stacks));
       if (under) row.append(this.foldButton(index, under));
-      row.addEventListener('click', () => { if (this.editing) this.finish(); else this.pick(index); });
+      // ⌘-click and ⇧-click select, never selecting the page's text, and leave a link or button its own click.
+      const selecting = event => (event.metaKey || event.ctrlKey || event.shiftKey) && !event.target.closest('a, button');
+      row.addEventListener('mousedown', event => { if (selecting(event)) event.preventDefault(); });
+      row.addEventListener('click', event => {
+        if (this.editing) this.finish();
+        else if (selecting(event)) { if (event.shiftKey) this.extend(index); else this.toggle(index); }
+        else this.pick(index);
+      });
       row.addEventListener('dblclick', () => { this.pick(index); this.edit(); });
       return row;
     });

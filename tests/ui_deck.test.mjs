@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAct, cardStacks, cardText, deckBody, findCard, groupEnd, parseDeck, stackLine, textCard } from '../web/deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard } from '../web/deck.mjs';
 
 const PAGE = '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n## Gamma\n';
 const titles = deck => deck.cards.map(card => card.title).join(',');
@@ -137,4 +137,39 @@ test('a new card goes in at the depth it is given, and an edit keeps its card\'s
   const added = applyAct(parseDeck(GROUPS), { kind: 'add', after: P2, text: 'N', depth: 0, near: 2 });
   assert.deepEqual(added.deck.cards.map(card => `${card.title}${card.depth}`), ['P0', 'P11', 'P21', 'N0', 'Q0']);
   assert.equal(after(GROUPS, { kind: 'edit', text: P1, to: 'P1, renamed\none', near: 1 }), GROUPS.replace('### P1\n', '### P1, renamed\n'));
+});
+
+const FIVE = '## X\n\n## A\n\n## Y\n\n## B\n\n## Z\n';
+
+test('several cards move as one: they gather under the top one, go past the card beside it, and one undo takes it all back', () => {
+  const deck = parseDeck(FIVE), up = groupAct(deck, [3, 1], 'move', { step: -1, text: 'B', near: 3 });
+  assert.equal(there(FIVE, up), '## A\n\n## B\n\n## X\n\n## Y\n\n## Z\n');
+  assert.equal(applyAct(deck, up).at, 1);
+  assert.equal(there(FIVE, groupAct(deck, [1, 3], 'move', { step: 1, text: 'A', near: 1 })), '## X\n\n## Y\n\n## A\n\n## B\n\n## Z\n');
+  // Cards side by side already go as one block, never past each other.
+  const side = '## X\n\n## A\n\n## B\n\n## Y\n';
+  assert.equal(there(side, groupAct(parseDeck(side), [1, 2], 'move', { step: 1, text: 'A', near: 1 })), '## X\n\n## Y\n\n## A\n\n## B\n');
+  // At the edge a move only gathers them, and then there is nothing to do.
+  const edge = '## A\n\n## X\n\n## B\n', gathered = there(edge, groupAct(parseDeck(edge), [0, 2], 'move', { step: -1, text: 'A', near: 0 }));
+  assert.equal(gathered, '## A\n\n## B\n\n## X\n');
+  assert.equal(groupAct(parseDeck(gathered), [0, 1], 'move', { step: -1, text: 'A', near: 0 }), null);
+  // A picked card under another picked card goes with that one.
+  const nested = '## X\n\n## P\n\n### P1\n\n## Q\n';
+  assert.equal(there(nested, groupAct(parseDeck(nested), [1, 2, 3], 'move', { step: -1, text: 'P', near: 1 })), '## P\n\n### P1\n\n## Q\n\n## X\n');
+});
+
+test('Tab on several cards puts them, side by side, under the card above the top one, and shift-Tab takes them out after its parent', () => {
+  const page = '## X\n\n## A\n\n## B\n\n### B1\n\n## Y\n', deck = parseDeck(page), under = '## X\n\n### A\n\n### B\n\n#### B1\n\n## Y\n';
+  assert.equal(there(page, groupAct(deck, [1, 2], 'indent', { text: 'A', near: 1 })), under);
+  assert.equal(there(page, groupAct(deck, [1, 2, 3], 'indent', { text: 'B', near: 2 })), under);
+  assert.equal(there(FIVE, groupAct(parseDeck(FIVE), [1, 3], 'indent', { text: 'A', near: 1 })), '## X\n\n### A\n\n### B\n\n## Y\n\n## Z\n');
+  assert.equal(groupAct(deck, [0, 1], 'indent', { text: 'X', near: 0 }), null);
+  const inside = '## P\n\n### A\n\n### B\n\n### C\n';
+  assert.equal(there(inside, groupAct(parseDeck(inside), [1, 3], 'outdent', { text: 'A', near: 1 })), '## P\n\n### B\n\n## A\n\n## C\n');
+  assert.equal(groupAct(parseDeck(FIVE), [1, 3], 'outdent', { text: 'A', near: 1 }), null);
+});
+
+test('removing several cards takes each with its children, and one undo gives them all back where they stood', () => {
+  assert.equal(there(FIVE, groupAct(parseDeck(FIVE), [1, 3], 'remove', { text: 'A', near: 1 })), '## X\n\n## Y\n\n## Z\n');
+  assert.equal(there(GROUPS, groupAct(parseDeck(GROUPS), [0, 2, 3], 'remove', { text: P, near: 0 })), '');
 });

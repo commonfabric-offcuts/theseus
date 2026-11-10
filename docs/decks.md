@@ -46,6 +46,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | a new card beside this one | Return while not editing | New card |
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
+| select several cards, to act on them as one | ⇧↑ ⇧↓, ⌘-click or ⇧-click | |
 | ask an agent about the card, or open its reply stack | ⌥→ then Return, or a click on its speech bubble | its speech bubble |
 
 A move and a merge go between cards with the same parent, never out of it: a
@@ -59,6 +60,21 @@ the picked one, after its children. Clearing all of a card's text removes the
 card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the
 person's own acts on this page, newest first, each as a new revision; it
 never reverts someone else's change.
+
+Several cards can be selected together, the picked card among them: ⇧↑ and
+⇧↓ select every card that shows from where the selection began to the card
+they go to, ⇧-click does the same up to the card clicked, and ⌘-click adds a
+card or takes it out. The count says how many are selected. With several
+selected, the top one leads and the others follow it as its neighbors, each
+with its children, at its depth and in their order: ⌘↑ and ⌘↓ gather them
+under the top card and take them all past the card beside them, Tab puts the
+top card under the card above it and the others after it, ⇧Tab takes the top
+card out of its parent and the others after it, and ⌘⌫ removes them all. ⌘Z
+takes back each of these whole, and the cards stay selected through them.
+Merge, edit, fold and the speech bubble act on the picked card alone. Escape,
+a plain click or a plain ↑ or ↓ ends the selection, and so do writing a
+card, asking about one and folding. The rules are `groupAct` in
+`web/deck.mjs`.
 
 Folding is the reader's own view and never touches the page: the folded
 cards are kept in this browser by their titles, so a fold lasts through a

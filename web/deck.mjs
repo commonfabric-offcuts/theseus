@@ -134,7 +134,21 @@ export function findCard(deck, text, near = 0) {
 //   {kind: 'outdent', text, near}          the card leaves its parent, to follow the parent's children
 //   {kind: 'place', text, after, depth, near}  the card goes right after the card `after` (null:
 //                                          first), at that depth
+//   {kind: 'many', acts, text, near}       the acts one after another, each on the deck the last left,
+//                                          leaving the card `text` picked; nothing if one can't be made
 export function applyAct(deck, act) {
+  if (act.kind === 'many') {
+    let now = deck;
+    const undos = [];
+    for (const each of act.acts) {
+      const done = applyAct(now, each);
+      if (!done) return null;
+      now = done.deck;
+      undos.unshift(done.undo);
+    }
+    const at = findCard(now, act.text, act.near);
+    return { deck: now, at: at >= 0 ? at : Math.min(act.near, now.cards.length - 1), undo: { kind: 'many', acts: undos, text: act.text, near: act.near } };
+  }
   const cards = deck.cards.slice(), i = act.kind === 'add' ? -1 : findCard(deck, act.text, act.near);
   const done = (at, undo) => ({ deck: { ...deck, cards }, at, undo });
   if (act.kind !== 'add' && i < 0) return null;
@@ -205,4 +219,46 @@ export function applyAct(deck, act) {
     default:
       throw new Error(`No such act on a deck: ${act.kind}`);
   }
+}
+
+// groupAct(deck, picks, kind, {step, text, near}) gives the one act that makes an act on several cards, so
+// that ⌘Z takes it back whole, leaving the card `text` picked; or null when it changes nothing. picks are
+// the cards' indices, and a picked card under another picked card goes with that one. 'remove' takes them
+// all away. For 'move', 'indent' and 'outdent' the top card leads and the others follow it as its
+// neighbors, each with its children, at its depth and in their order: a move gathers them under the top
+// card and then takes them all past the card beside them, a step up (-1) or down (1); an indent puts the top
+// card under the card above it, and an outdent takes it out of its parent, the others following it there.
+export function groupAct(deck, picks, kind, { step = 0, text, near } = {}) {
+  const tops = [];
+  for (const i of [...new Set(picks)].sort((a, b) => a - b)) if (!tops.length || i >= groupEnd(deck.cards, tops.at(-1))) tops.push(i);
+  const acts = [];
+  let now = deck;
+  // Each act is made on the deck the last one left, which is where the next one finds its cards.
+  const make = act => { const done = applyAct(now, act); if (done) { acts.push(act); now = done.deck; } return done; };
+  if (kind === 'remove') for (const i of tops.reverse()) make({ kind: 'remove', text: cardText(deck.cards[i]), near: i });
+  else if (tops.length) {
+    let lead = tops[0];
+    if (kind !== 'move') {
+      const done = make({ kind, text: cardText(deck.cards[lead]), near: lead });
+      if (!done) return null;
+      lead = done.at;
+    }
+    const depth = now.cards[lead].depth;
+    let last = lead;
+    for (const i of tops.slice(1)) {
+      const cards = now.cards, own = cardText(deck.cards[i]), at = findCard(now, own, i), end = groupEnd(cards, last);
+      if (at === end && cards[at].depth === depth) { last = at; continue; }
+      const done = make({ kind: 'place', text: own, after: cardText(cards[end - 1]), depth, near: at });
+      if (!done) return null;
+      last = done.at;
+    }
+    // The gathered cards go past the card beside them by that card going past them, the other way.
+    if (kind === 'move') {
+      const cards = now.cards, end = groupEnd(cards, last);
+      const beside = step < 0 ? sibling(cards, lead, -1) : end < cards.length && cards[end].depth === depth ? end : -1;
+      const after = step < 0 ? cardText(cards[end - 1]) : lead > 0 ? cardText(cards[lead - 1]) : null;
+      if (beside >= 0) make({ kind: 'place', text: cardText(cards[beside]), after, depth, near: beside });
+    }
+  }
+  return acts.length ? { kind: 'many', acts, text, near } : null;
 }
