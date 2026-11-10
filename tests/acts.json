@@ -1428,6 +1428,349 @@
    "check": {
     "python": "test_thumb_answers.py"
    }
+  },
+  {
+   "item": 272,
+   "act": "A folded outcome counts everything new inside it; an open one counts only its Conversation",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "  if (!open) return { unread: count(item?.unread), addressed: count(item?.addressed) };",
+     "  return { unread: count(item?.unread), addressed: count(item?.addressed) };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 272,
+   "act": "An outcome the person folds or opens stays that way on this browser",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "    try { this.storage?.setItem(this.key, JSON.stringify(this.held)); } catch { /* kept for this page only */ }",
+     "    try { /* not kept */ } catch { /* kept for this page only */ }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 272,
+   "act": "Back or forward that unsent writing refuses puts the address back where the person was",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "this.index = from; this.history.go(from - to); }",
+     "this.index = from; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 272,
+   "act": "Only a move between topics and Conversations is made in place; every other page loads as before",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "export const movesInPlace = (from, to) => isFeed(from) && isFeed(to);",
+     "export const movesInPlace = (from, to) => isFeed(from) || isFeed(to);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 272,
+   "act": "On a phone the line saying what is new in other outcomes opens the outline",
+   "break": [
+    [
+     "web/rail-drawer.mjs",
+     "const OPENS = '#rail-open, [data-opens-rail]';",
+     "const OPENS = '#rail-open';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rail_drawer.test.mjs"
+   }
+  },
+  {
+   "item": 272,
+   "act": "Moving between an outcome's topics and its Conversation keeps the outline where it was, with no page load",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (!shell.go(target)) location.assign(routeHref(target));",
+     "location.assign(routeHref(target));"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "moves in place"
+   }
+  },
+  {
+   "item": 272,
+   "act": "Opening a folded outcome moves its count from its row to its topics, live",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const counted = rowCount(item, { open, conversation: outcome.conversation });",
+     "const counted = rowCount(item, { open: false, conversation: outcome.conversation });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "raises a folded outcome"
+   }
+  },
+  {
+   "item": 131,
+   "act": "A pull request posted in messages shows once, from the newest message that carries it",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "for (const message of [...messages].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0))) {",
+     "for (const message of messages) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 131,
+   "act": "Waiting for… holds only what the reader raised",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (item.raised_by !== reader || item.shipped) continue;",
+     "if (item.shipped) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 131,
+   "act": "On a topic the right rail shows the topic's things, with the whole outcome one tap away",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "    this.scope = handles.route.kind === 'topic' ? 'topic' : 'outcome';",
+     "    this.scope = 'outcome';"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the right rail shows the topic"
+   }
+  },
+  {
+   "item": 131,
+   "act": "Below laptop width the right rail opens as a sheet on a phone and a panel between",
+   "break": [
+    [
+     "web/rails.css",
+     "  [data-rails][data-things-open] .things{visibility:visible}\n",
+     "  [data-rails][data-things-open] .things{}\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "at 390 and 900"
+   }
+  },
+  {
+   "item": 272,
+   "act": "What the page left reads after a move draws nothing: no topic list under the wrong outcome, no word that the outcomes could not be read",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "    this.run += 1; this.handles = null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "across outcomes"
+   }
+  },
+  {
+   "item": 131,
+   "act": "Moving to another place empties the right rail until that place's things are read",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "    this.serial += 1;\n    this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';\n    this.paintHead(); this.clear();\n",
+     "    this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';\n"
+    ],
+    [
+     "web/things-rail.mjs",
+     "    this.paintHead(); this.clear();\n    this.unlisten = handles.live",
+     "    this.paintHead();\n    this.unlisten = handles.live"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "across outcomes"
+   }
+  },
+  {
+   "item": 272,
+   "act": "A quick second back moves in place with no page load",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (this.between) { this.owe({ pop: true }); return; }",
+     "    if (this.between) { this.win.location.reload(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "quick second back"
+   }
+  },
+  {
+   "item": 272,
+   "act": "A place chosen in the outline before the page is up opens once it is, with no page load",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    return new Promise(resolve => this.owe({ open: target, title, resolve }));",
+     "    this.win.location.assign(routeHref(target)); return Promise.resolve(false);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "quick second back"
+   }
+  },
+  {
+   "item": 272,
+   "act": "A back pressed while the page starts is not overwritten by the page naming its own address",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (this.begun && now && routeKey(now) !== routeKey(this.begun)) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "quick second back"
+   }
+  },
+  {
+   "item": 272,
+   "act": "\"N new\" and \"N waiting on you\" show only the outcomes that hold them",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "      chip.onclick = () => { this.filter = this.filter === filter ? null : filter; this.paint(); if (this.filter) this.reload(); };",
+     "      chip.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "chips show only"
+   }
+  },
+  {
+   "item": 272,
+   "act": "Fold all and Open all set every outcome's fold, kept on this browser",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "      for (const id of this.outcomes.keys()) this.folds.set(id, !anyOpen);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "chips show only"
+   }
+  },
+  {
+   "item": 272,
+   "act": "+ New topic under another outcome starts the topic in that outcome",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "bootstrap: this.handles.bootstrap, workspace: outcome.id });",
+     "bootstrap: this.handles.bootstrap, workspace: this.here });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "chips show only"
+   }
+  },
+  {
+   "item": 131,
+   "act": "A right-rail section the person folds stays folded across moves and reloads",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      details.addEventListener('toggle', () => { if (this.folds) this.folds.set(key, details.open); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "section of the right rail folded"
+   }
+  },
+  {
+   "item": 131,
+   "act": "A row in the right rail opens its place through the page, in place, and closes the sheet on a phone",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (!this.wide?.matches) this.close(false);\n      this.handles.open(target, title || 'that page', link);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 a picture in the outcome's things opens its message in place"
+   }
+  },
+  {
+   "item": 131,
+   "act": "“Just this topic” shows the topic's own things again after “All of this outcome”",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "this.onlyTopic.onclick = () => this.choose('topic');",
+     "this.onlyTopic.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 a picture in the outcome's things opens its message in place"
+   }
+  },
+  {
+   "item": 272,
+   "act": "New outcome in the outline, on a topic or a Conversation, creates the outcome and opens its page",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "        const id = await start.create(title);\n        start = null; line.input.value = ''; close();\n        await this.open({ kind: 'workspace', id }, title);\n",
+     "        close();\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail New outcome in the outline, on a topic and on a Conversation"
+   }
   }
  ]
 }

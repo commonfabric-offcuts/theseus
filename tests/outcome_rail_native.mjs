@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
@@ -7,14 +8,18 @@ import assert from 'node:assert/strict';
 // notifications) first in its rail, or first in its main column where it has
 // no rail, with the guide's "? Pointer, keys and taps" under the name
 // (docs/interaction.md), and no header
-// bar or Refresh button. On a topic page the rail lists no outcomes: "←
-// Outcomes" comes first, then the outcome's conversation and its own topics.
-// On a phone (item 117) the topic comes first and the rail folds behind "☰
-// Topics" at its top, which opens it as a drawer over the topic. The
-// outcome's own page has no rail. An ask to the reader in another outcome
-// lights "← Outcomes" live, with its words on a topic page; on the outcome
-// page too when that outcome is one the reader is not on the team of, so its
-// "Also waiting on you" line cannot name it.
+// bar or Refresh button. On a topic page and a Conversation the rail is the
+// outline of every outcome (item 272, docs/rails.md): each outcome's light,
+// name (its Conversation) and where it stands, its topics folded under it,
+// and "N new" and "N waiting on you" across them all; moving between those
+// pages loads nothing again, and the outline stays the same element with its
+// folds and its scroll. The outcome's things are on the right (item 131).
+// On a phone (item 117) the topic comes first and the outline folds behind
+// "☰ Outcomes" at its top, which carries the total and opens it as a drawer
+// over the topic. The outcome's own page has no rail. An ask to the reader
+// in another outcome lights that outcome's row live; on the outcome page it
+// lights "← Outcomes" when that outcome is one the reader is not on the team
+// of, so its "Also waiting on you" line cannot name it.
 // At 390 the drawer opens on the open topic, whole with a lit neighbour not
 // cut; the dimmed page beside it, Escape and a topic in it close it. What
 // Refresh did is done without it: writes elsewhere show with no
@@ -62,6 +67,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     backdrop:!document.getElementById('rail-backdrop').hidden,inert:document.getElementById('main').inert,expanded:control.getAttribute('aria-expanded'),
     focus:document.activeElement===control?'control':document.activeElement?.dataset?.topicId??document.activeElement?.id??null}})()`);
   const loaded = p => p.evaluate('performance.timeOrigin');
+  // The outline as drawn: its totals, and each outcome shown with whether it is
+  // open, its count, its light, whether it is the page, where its name goes,
+  // and the topics shown under it.
+  const outline = p => p.evaluate(`(()=>{const shown=e=>Boolean(e)&&e.getClientRects().length>0,o=document.getElementById('outline');
+    const chip=id=>{const c=document.getElementById(id);return {text:c.textContent.trim(),pressed:c.getAttribute('aria-pressed'),disabled:c.disabled}};
+    return {shown:shown(o),scroll:document.getElementById('rail').scrollTop,fresh:chip('outline-only-new'),waiting:chip('outline-only-waiting'),
+      outcomes:Object.fromEntries([...o.querySelectorAll('.ol-outcome')].filter(li=>!li.hidden).map(li=>{const name=li.querySelector('.ol-name'),badge=name.querySelector('.unread-count');
+        return [li.dataset.workspaceId,{open:li.hasAttribute('data-open'),count:badge?Number(badge.textContent):0,lit:Boolean(name.querySelector('.outcome-light[data-light=waiting]')),
+          current:name.getAttribute('aria-current'),href:name.getAttribute('href'),standing:name.querySelector('.standing')?.textContent??'',
+          topics:[...li.querySelectorAll('.ol-topics a[data-topic-id]')].filter(shown).map(a=>({id:a.dataset.topicId,unread:Number(a.querySelector('.unread-count')?.textContent??0),current:a.getAttribute('aria-current')}))}]}))}})()`);
   const home = p => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
     return {lit:Boolean(l)&&l.getClientRects().length>0,words:w&&w.getClientRects().length>0?w.textContent:null,said:w?.textContent??null,label:h.getAttribute('aria-label')}})()`);
 
@@ -72,27 +87,29 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const t = await open(`rail-topic-${size}-${theme}`, '/?topic=t1', size, theme);
       await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), at + ': the topic rail is drawn');
       if (SIZES[size].mobile) {
-        // On a phone the topic comes first: the rail is folded behind "☰ Topics" at the top of the topic.
+        // On a phone the topic comes first: the outline is folded behind "☰ Outcomes" at the top of the topic.
         const folded = await until(async () => { const seen = await top(t); return seen.main[0] === 'topic-header' && seen; }, at + ': the topic heads the page');
         assert.deepEqual(folded.rail, [], at + ': the folded rail shows nothing above the topic');
-        assert.equal(folded.control, true, at + ': "☰ Topics" is shown');
-        assert.equal(await t.evaluate('document.getElementById("rail-open").textContent'), '☰ Topics');
+        assert.equal(folded.control, true, at + ': "☰ Outcomes" is shown');
+        assert.match(await t.evaluate('document.getElementById("rail-open").textContent'), /^☰ Outcomes/);
         assert.ok(folded.title < folded.height / 4, at + `: the topic's title is near the top of the screen (${folded.title} of ${folded.height})`);
         assert.ok(folded.scroll <= folded.width, at + `: no sideways scroll on the folded topic page (${folded.scroll} of ${folded.width})`);
         await shot(t, `rail-topic-${size}-${theme}-folded`);
         await tap(t, '#rail-open');
-        await until(async () => (await drawer(t)).open, at + ': "☰ Topics" opens the rail over the topic');
+        await until(async () => (await drawer(t)).open, at + ': "☰ Outcomes" opens the outline over the topic');
       }
-      const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outcomes-home' && seen; }, at + ': the logo block, then ← Outcomes');
-      if (!SIZES[size].mobile) assert.equal(topic.control, false, at + ': no "☰ Topics" beside the rail');
+      const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outline' && seen; }, at + ': the logo block, then the outline');
+      if (!SIZES[size].mobile) assert.equal(topic.control, false, at + ': no "☰ Outcomes" beside the rail');
       assert.deepEqual([topic.headers, topic.refresh, topic.buttons], [0, false, 0], at + ': no header bar and no Refresh on the topic page');
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
-      assert.deepEqual(topic.rail.slice(0, 4), ['brand', 'outcomes-home', 'conversation-navigation', 'topic-navigation'],
-        at + ': the logo block, ← Outcomes, the outcome\'s conversation, then the topics');
+      assert.deepEqual(topic.rail, ['brand', 'outline'], at + ': the logo block, then the outline, and nothing else');
+      const drawn = await until(async () => { const seen = await outline(t); return seen.outcomes.w1?.topics.some(row => row.id === 't1') && seen; }, at + ': the outline holds this outcome, open, with its topics');
+      assert.deepEqual([drawn.outcomes.w1.open, drawn.outcomes.w1.href, drawn.outcomes.w1.topics.find(row => row.id === 't1').current], [true, '?conversation=w1', 'page'],
+        at + ': the outcome being read is open, its name opens its Conversation, and the open topic is marked');
       assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'guide-open', 'health-link', 'notify'], at + ': the wordmark, then the workspace name, the guide\'s ? (docs/interaction.md) under it, the Health link and Turn on notifications');
       assert.equal(topic.dot, true, at + ': the wordmark carries its presence dot');
       assert.match(topic.name, new RegExp('^' + facts.actor + ' · '), at + ': the workspace name is filled in');
-      assert.deepEqual([topic.outcomesShown, topic.railLabel], [false, 'This outcome'], at + ': no list of outcomes inside an outcome');
+      assert.deepEqual([topic.outcomesShown, topic.railLabel], [false, 'Outcomes'], at + ': the outline stands for the old list of outcomes');
       assert.ok(topic.scroll <= topic.width, at + `: no sideways scroll on the topic page (${topic.scroll} of ${topic.width})`);
       await shot(t, `rail-topic-${size}-${theme}`);
       assert.deepEqual(t.errors, []); await t.close();
@@ -121,46 +138,24 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
-  await check('rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics in the open rail and the page below do not move when it lands', async () => {
-    const t = await page('rail-conversation-held', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
-      await q.send('Emulation.setDeviceMetricsOverride', SIZES.phone);
-      await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-      q.intercept(payload => payload?.name === 'conversation');
-    } });
-    await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), 'the topic rail is drawn');
-    await until(() => t.held.some(entry => entry.payload?.name === 'conversation'), 'the conversation\'s read is held');
-    await tap(t, '#rail-open');
-    await until(async () => (await drawer(t)).open, 'the rail is open over the topic');
-    const where = () => t.evaluate(`(()=>{const top=s=>Math.round(document.querySelector(s).getBoundingClientRect().top);
-      return {row:!document.querySelector('#conversation-navigation').hidden&&Boolean(document.querySelector('#conversation-row a.conversation-row')),topics:top('#topic-navigation'),title:top('#topic-title')}})()`);
-    const before = await where();
-    assert.equal(before.row, true, 'the row is in its place while its read is out');
-    t.intercept(null);
-    for (const entry of t.held.splice(0)) await t.release(entry);
-    await t.evaluate('new Promise(resolve=>setTimeout(resolve,0))');
-    const after = await where();
-    assert.deepEqual(after, before, 'the read landing moves nothing');
-    assert.deepEqual(t.errors, []); await t.close();
-  });
-
-  await check('rail an outcome with no conversation never draws its row: on a phone nothing stands there while the conversation\'s read is out, nor after it lands, and nothing moves', async () => {
+  await check('rail the outline names an outcome by its light and name, which opens its Conversation; one with no conversation opens its page, and nothing moves when that read lands', async () => {
     // An outcome made before version 28, not yet given its conversation.
     await control({ method: 'older_outcome', workspace_id: 'rail-older', title: 'Older outcome', topic_id: 'rail-older-topic', topic_title: 'Older topic' });
     const t = await page('rail-conversation-none', null, true, { url: facts.origin + '/?topic=rail-older-topic', beforeNavigate: async q => {
-      await q.send('Emulation.setDeviceMetricsOverride', SIZES.phone);
-      await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-      q.intercept(payload => payload?.name === 'conversation');
+      await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop);
+      q.intercept(payload => payload?.name === 'conversation' && payload.args?.workspace_id === 'rail-older');
     } });
-    await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=rail-older-topic]"))'), 'the topic rail is drawn');
+    await until(async () => (await outline(t)).outcomes['rail-older']?.topics.some(row => row.id === 'rail-older-topic'), 'the outline holds the outcome being read, open');
     await until(() => t.held.some(entry => entry.payload?.name === 'conversation'), 'the conversation\'s read is held');
     const where = () => t.evaluate(`(()=>{const top=s=>Math.round(document.querySelector(s).getBoundingClientRect().top);
-      return {row:!document.querySelector('#conversation-navigation').hidden||Boolean(document.querySelector('#conversation-row a')),topics:top('#topic-navigation'),title:top('#topic-title')}})()`);
+      return {topic:top('#outline a[data-topic-id="rail-older-topic"]'),title:top('#topic-title')}})()`);
     const before = await where();
-    assert.equal(before.row, false, 'no row stands for a conversation the outcome does not have');
+    assert.equal((await outline(t)).outcomes['rail-older'].href, '?conversation=rail-older', 'until Core says otherwise, the name opens the Conversation');
+    assert.equal((await outline(t)).outcomes.w1.href, '?conversation=w1', 'another outcome\'s name opens its Conversation');
     t.intercept(null);
     for (const entry of t.held.splice(0)) await t.release(entry);
-    await t.evaluate('new Promise(resolve=>setTimeout(resolve,0))');
-    assert.deepEqual(await where(), before, 'the read landing draws nothing and moves nothing');
+    await until(async () => (await outline(t)).outcomes['rail-older'].href === '?workspace=rail-older', 'with no conversation, the name opens the outcome\'s page');
+    assert.deepEqual(await where(), before, 'the read landing moves nothing');
     assert.deepEqual(t.errors, []); await t.close();
   });
 
@@ -194,86 +189,86 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
-  await check('rail Tab from ← Outcomes reaches the conversation, New topic, then the first topic', async () => {
+  await check('rail Tab from the logo block reaches the outline: New outcome, then each outcome\'s fold and name, and in the outcome being read its topics, then New topic', async () => {
     const p = await open('rail-tab', '/?topic=t1');
-    await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), 'the rail is ready');
+    await until(() => p.evaluate('Boolean(document.querySelector("#outline #topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), 'the outline is ready');
     // A press on the workspace name starts Tab there, as it would for a person.
     await p.point('#instance-label');
-    const focused = () => p.evaluate('document.activeElement.id || (document.activeElement.dataset.topicId ? "topic:" + document.activeElement.dataset.topicId : document.activeElement.classList.contains("conversation-row") ? "conversation" : document.activeElement.tagName)');
-    for (let n = 0; n < 6 && await focused() !== 'outcomes-home'; ++n) await p.key('Tab');
-    assert.equal(await focused(), 'outcomes-home', 'Tab reaches ← Outcomes from the logo block');
+    const focused = () => p.evaluate(`(()=>{const e=document.activeElement,li=e.closest?.('.ol-outcome');
+      return e.dataset.topicId ? 'topic:' + e.dataset.topicId : e.classList.contains('ol-fold') ? 'fold:' + li.dataset.workspaceId : e.classList.contains('ol-name') ? 'name:' + li.dataset.workspaceId : e.id || e.tagName})()`);
+    for (let n = 0; n < 8 && await focused() !== 'outline-new-outcome'; ++n) await p.key('Tab');
+    assert.equal(await focused(), 'outline-new-outcome', 'Tab reaches the outline\'s New outcome from the logo block');
     const order = [];
-    for (let n = 0; n < 3; ++n) { await p.key('Tab'); order.push(await focused()); }
-    const first = await p.evaluate('"topic:" + document.querySelector("#topics a").dataset.topicId');
-    assert.deepEqual(order, ['conversation', 'new-topic', first], 'then the outcome\'s conversation, New topic, then the first topic');
+    for (let n = 0; n < 40 && order.at(-1) !== 'new-topic'; ++n) { await p.key('Tab'); order.push(await focused()); }
+    const first = order.findIndex(stop => stop.startsWith('fold:'));
+    assert.deepEqual(order.slice(first, first + 2).map(stop => stop.split(':')[0]), ['fold', 'name'], 'each outcome is its fold, then its name: ' + order.join(' '));
+    const name = order.indexOf('name:w1'), topic = order.indexOf('topic:t1'), add = order.indexOf('new-topic');
+    assert.ok(name >= 0 && name < topic && topic < add, 'then this outcome\'s name, its topics, then New topic: ' + order.join(' '));
     assert.deepEqual(p.errors, []);
   });
 
-  await check('rail an ask in another outcome lights ← Outcomes live, with words on a topic page, and on the outcome page when its Also-waiting line cannot name it; answering it clears the light', async () => {
+  await check('rail an ask in another outcome lights its row and the waiting total live; on the outcome page an ask it cannot name lights ← Outcomes; answering clears both', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-ask-o', title: 'Asking outcome', topic: { id: 'rail-ask-t', title: 'Asking topic' } });
     const p = await open('rail-light', '/?topic=t1');
-    await until(async () => (await home(p)).lit === false, 'nothing waits elsewhere at first');
+    await until(async () => { const seen = await outline(p); return seen.outcomes['rail-ask-o'] && !seen.outcomes['rail-ask-o'].lit; }, 'the other outcome is listed, unlit, at first');
+    const waitingBefore = parseInt((await outline(p)).waiting.text, 10);
     const before = await loaded(p);
-    // An agent asks the reader in an outcome of its own, through its CLI.
-    const asked = await control({ method: 'elsewhere_ask', operation_id: 'rail-ask', body: 'Which deck do we send?' });
-    const lit = await until(async () => { const h = await home(p); return h.lit && h; }, 'the ask lights ← Outcomes, live');
-    assert.deepEqual(lit, { lit: true, words: '1 other outcome is waiting on you', said: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' });
+    // An agent on its team asks the reader there, through its CLI.
+    await control({ method: 'agent_message', operation_id: 'rail-ask', body: 'Which deck do we send?', topic_id: 'rail-ask-t', addressees: [facts.actor], intent: 'ask' });
+    const lit = await until(async () => { const seen = await outline(p); return seen.outcomes['rail-ask-o'].lit && seen; }, 'the ask lights that outcome\'s row, live');
+    assert.match(lit.outcomes['rail-ask-o'].standing, /Waiting on you/, 'its standing line says it waits on the reader');
+    assert.equal(parseInt(lit.waiting.text, 10), waitingBefore + 1, 'and the waiting total counts it: ' + lit.waiting.text);
+    assert.equal(lit.outcomes['rail-ask-o'].open, false, 'the outline did not open it by itself');
     assert.equal(await loaded(p), before, 'with no reload');
     await shot(p, 'rail-light-topic');
-    // The ask's outcome has an empty team: the reader cannot list it, so the
-    // page's Also-waiting line cannot name it, and the light says it in words.
+    // An ask in an outcome the reader is not on the team of cannot be listed:
+    // the outcome page's ← Outcomes says it in words.
+    const asked = await control({ method: 'elsewhere_ask', operation_id: 'rail-ask-elsewhere', body: 'And the cover?' });
     const o = await open('rail-light-outcome', '/?workspace=w1');
-    const there = await until(async () => { const h = await home(o); return h.lit && h.words && h; }, 'the outcome page lights it too, with its words');
-    assert.deepEqual(there, { lit: true, words: '1 other outcome is waiting on you', said: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' });
-    const page = await o.evaluate(`(()=>{const a=document.getElementById('also-waiting');return {also:a.getClientRects().length>0?a.textContent:null,
-      said:document.querySelector('main').innerText.includes('1 other outcome is waiting on you'),listed:document.querySelectorAll('#workspaces a').length}})()`);
-    assert.deepEqual([page.also, page.said], [null, true], 'no Also-waiting line can name it, and the page says it in words');
-    assert.ok(page.listed > 0, 'the outcome list was read, without the ask\'s outcome in it');
+    const there = await until(async () => { const h = await home(o); return h.lit && h.words && h; }, 'the outcome page lights ← Outcomes, with its words');
+    assert.match(there.words, /^\d+ other outcomes? (is|are) waiting on you$/);
     await shot(o, 'rail-light-outcome');
-    // The reader answers in that topic: the light goes on both pages, live.
-    const answeredFrom = await loaded(o);
-    await control({ method: 'agent_message', operation_id: 'rail-answer', sender: 'person', topic_id: asked.topic_id, whole_topic: true, body: 'The short one.' });
-    await until(async () => (await home(o)).lit === false, 'answered, the light goes on the outcome page');
-    assert.equal((await home(o)).label, null);
-    assert.equal(await loaded(o), answeredFrom, 'with no reload');
+    // The reader answers both: the lights go, live.
+    await control({ method: 'agent_message', operation_id: 'rail-answer', sender: 'person', topic_id: 'rail-ask-t', whole_topic: true, body: 'The short one.' });
+    await control({ method: 'agent_message', operation_id: 'rail-answer-elsewhere', sender: 'person', topic_id: asked.topic_id, whole_topic: true, body: 'The blue one.' });
+    await until(async () => (await home(o)).lit === false, 'answered, ← Outcomes goes dark on the outcome page');
     await p.send('Page.bringToFront');
-    await until(async () => (await home(p)).lit === false, 'and on the topic page');
-    assert.deepEqual((await home(p)).said, '');
+    await until(async () => !(await outline(p)).outcomes['rail-ask-o'].lit, 'and the row goes dark on the topic page');
+    assert.equal(await loaded(p), before, 'still with no reload');
     assert.deepEqual([...p.errors, ...o.errors], []);
   });
 
-  await check('rail waited on only in this outcome, a topic page never lights ← Outcomes as it loads; with a wait elsewhere too it counts one other', async () => {
+  await check('rail on a phone, waited on only in the outcome being read, the line under the header never says so; a wait in another outcome shows there', async () => {
     // An agent asks the reader in t1, in this outcome w1: only this outcome waits.
     await control({ method: 'agent_message', operation_id: 'rail-here-ask', body: 'Is the outline right?', topic_id: 't1', addressees: [facts.actor], intent: 'ask' });
-    // Every state "← Outcomes" is drawn in, from the page's first script on.
-    const watch = `(()=>{window.homeSeen=[];const seen=()=>{const h=document.getElementById('outcomes-home'),l=h?.querySelector('.outcome-light');
-      const now=h?{lit:Boolean(l&&!l.hidden),label:h.getAttribute('aria-label')}:null,last=homeSeen.at(-1);
-      if(now&&JSON.stringify(now)!==JSON.stringify(last))homeSeen.push(now)};new MutationObserver(seen).observe(document,{subtree:true,childList:true,attributes:true,characterData:true})})()`;
+    // Every state the line under the header is drawn in, from the page's first script on.
+    const watch = `(()=>{window.lineSeen=[];const seen=()=>{const l=document.getElementById('outline-elsewhere');
+      const now=l?{shown:!l.hidden,words:l.textContent}:null,last=lineSeen.at(-1);
+      if(now&&JSON.stringify(now)!==JSON.stringify(last))lineSeen.push(now)};new MutationObserver(seen).observe(document,{subtree:true,childList:true,attributes:true,characterData:true})})()`;
     const p = await page('rail-here', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
-      await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop);
+      await q.send('Emulation.setDeviceMetricsOverride', SIZES.phone);
+      await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: watch });
     } });
-    // The read that names this outcome has answered.
-    const asked = e => e.method === 'Network.requestWillBeSent' && e.params.request.url === facts.origin + '/api/view' && /"name":"attention"/.test(e.params.request.postData ?? '') && /"workspace_id":"w1"/.test(e.params.request.postData ?? '');
-    const read = await until(() => p.network.find(asked)?.params.requestId, 'the page asks about w1');
-    await until(() => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === read), 'the read about w1 answered');
-    await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), 'the topic rail is drawn');
-    const loading = await p.evaluate('homeSeen.length');
-    // A wait in another outcome too: one other outcome, never two.
-    const elsewhere = await control({ method: 'elsewhere_ask', operation_id: 'rail-here-elsewhere', body: 'And the cover?' });
-    await until(async () => (await home(p)).lit, 'the wait elsewhere lights ← Outcomes, live');
-    assert.deepEqual(await home(p), { lit: true, words: '1 other outcome is waiting on you', said: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' });
-    const seen = await p.evaluate('homeSeen');
-    assert.ok(seen.length > 0, 'the watch saw ← Outcomes drawn');
-    assert.deepEqual(seen.slice(0, loading).filter(state => state.lit || state.label !== null), [], 'while only this outcome waits, ← Outcomes is never lit nor labelled: ' + JSON.stringify(seen));
-    assert.deepEqual(seen.slice(loading).map(state => state.label).filter(Boolean), ['Outcomes. 1 other outcome is waiting on you.'], 'once a wait elsewhere lands, it says one other, and only that');
+    await until(async () => (await outline(p)).outcomes.w1?.lit, 'the outline has read that this outcome waits');
+    const loading = await p.evaluate('lineSeen.length');
+    await control({ method: 'light_outcome', outcome: 'rail-here-o', title: 'Waiting elsewhere', topic: { id: 'rail-here-t', title: 'Elsewhere topic' } });
+    await control({ method: 'agent_message', operation_id: 'rail-here-elsewhere', body: 'And the cover?', topic_id: 'rail-here-t', addressees: [facts.actor], intent: 'ask' });
+    const line = await until(async () => { const seen = await p.evaluate('lineSeen.at(-1)'); return seen?.shown && /waiting on you/.test(seen.words) && seen; }, 'the wait elsewhere shows under the header, live');
+    assert.match(line.words, /^\d+ new in \d+ other outcomes? · \d+ waiting on you›$/, 'how much is new elsewhere and what waits there: ' + line.words);
+    const seen = await p.evaluate('lineSeen');
+    assert.deepEqual(seen.slice(0, loading).filter(state => /waiting on you/.test(state.words)), [], 'while only this outcome waits, the line never says so: ' + JSON.stringify(seen));
+    // The line opens the outline.
+    await tap(p, '#outline-elsewhere');
+    await until(async () => (await drawer(p)).open, 'the line opens the outline over the topic');
     // Both answered, so the checks after this one start with nothing waiting.
     await control({ method: 'agent_message', operation_id: 'rail-here-answer', sender: 'person', topic_id: 't1', whole_topic: true, body: 'Yes.' });
-    await control({ method: 'agent_message', operation_id: 'rail-here-elsewhere-answer', sender: 'person', topic_id: elsewhere.topic_id, whole_topic: true, body: 'The blue one.' });
-    await until(async () => (await home(p)).lit === false, 'answered, the light goes');
+    await control({ method: 'agent_message', operation_id: 'rail-here-elsewhere-answer', sender: 'person', topic_id: 'rail-here-t', whole_topic: true, body: 'The blue one.' });
+    await until(async () => !(await outline(p)).outcomes['rail-here-o'].lit && !(await outline(p)).outcomes.w1.lit, 'answered, the lights go');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail at 390 "☰ Topics" opens the rail over the topic on the open topic, whole with its lit neighbour; the dimmed page, Escape and a topic in it close it', async () => {
+  await check('rail at 390 "☰ Outcomes" opens the outline over the topic on the open topic, whole with its lit neighbour; the dimmed page, Escape and a topic in it close it', async () => {
     // Twelve topics, newest first in the rail; the open one is the ninth, and
     // the one after it waits on the reader.
     const ids = Array.from({ length: 12 }, (_, n) => 'rail-drawer-' + String(n).padStart(2, '0'));
@@ -283,11 +278,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
     for (const theme of ['light', 'dark']) {
       const p = await open('rail-drawer-' + theme, '/?topic=' + ids[3], 'phone', theme);
-      await until(() => p.evaluate(`${JSON.stringify(ids)}.every(id => document.querySelector('#topics > a[data-topic-id="' + id + '"]'))`), theme + ': the rail holds every topic');
+      // Every topic, in the outline under its outcome (shown once the outline has drawn the outcomes above it).
+      await until(() => p.evaluate(`${JSON.stringify(ids)}.every(id => document.querySelector('#outline #topics > a[data-topic-id="' + id + '"]'))`), theme + ': the rail holds every topic');
       const { focus: _unused, ...folded } = await drawer(p);
       assert.deepEqual(folded, { open: false, backdrop: false, inert: false, expanded: 'false' }, theme + ': folded as the page opens');
       await tap(p, '#rail-open');
-      await until(async () => (await drawer(p)).open, theme + ': "☰ Topics" opens it');
+      await until(async () => (await drawer(p)).open, theme + ': "☰ Outcomes" opens it');
       const seen = await p.evaluate(`(()=>{const r=document.getElementById('rail'),b=r.getBoundingClientRect(),rows=[...document.querySelectorAll('#topics > a')];
         const open=rows.find(a=>a.getAttribute('aria-current')==='page'),lit=rows[rows.indexOf(open)+1],box=e=>{const x=e.getBoundingClientRect();return [x.top,x.bottom]};
         return {index:rows.indexOf(open),litId:lit?.dataset.topicId,lit:Boolean(lit?.querySelector('.topic-state.mine')),drawer:[b.left,b.right,b.top,b.bottom],row:box(open),neighbour:box(lit),
@@ -299,22 +295,22 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.deepEqual(await drawer(p), { open: true, backdrop: true, inert: true, expanded: 'true', focus: ids[3] }, theme + ': open over the dimmed topic, the focus on the open topic');
       assert.ok(seen.drawer[0] === 0 && seen.drawer[1] <= seen.width * 0.86 + 1 && seen.drawer[2] === 0 && seen.drawer[3] === seen.height, theme + ': the drawer runs down the left of the screen, ' + JSON.stringify(seen.drawer));
       assert.equal(seen.cover, 'rail-backdrop', theme + ': the dimmed page covers the topic beside it');
-      assert.deepEqual(seen.flash, ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], theme + ': a tap on "☰ Topics" or the dimmed page leaves no highlight over the drawer');
+      assert.deepEqual(seen.flash, ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], theme + ': a tap on "☰ Outcomes" or the dimmed page leaves no highlight over the drawer');
       const whole = ([top, bottom]) => top >= seen.drawer[2] - 0.5 && bottom <= seen.drawer[3] + 0.5;
       assert.ok(whole(seen.row) && whole(seen.neighbour), theme + ': the open topic and its lit neighbour show whole: ' + JSON.stringify(seen));
       assert.ok(seen.room > 0 && seen.scrolled > 0, theme + `: the drawer scrolled itself to the open topic (${seen.scrolled} of ${seen.room})`);
       assert.ok(seen.pageX === 0 && seen.pageY === 0 && seen.scroll <= seen.width, theme + `: the page itself did not scroll (${seen.pageX}, ${seen.pageY}; ${seen.scroll} of ${seen.width})`);
       await shot(p, 'rail-drawer-' + theme);
-      // A tap on the dimmed page beside it closes it, and "☰ Topics" has the focus back.
+      // A tap on the dimmed page beside it closes it, and "☰ Outcomes" has the focus back.
       await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: seen.width - 12, y: seen.height / 2 }] });
       await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await until(async () => !(await drawer(p)).open, theme + ': the dimmed page closes it');
-      assert.deepEqual(await drawer(p), { open: false, backdrop: false, inert: false, expanded: 'false', focus: 'control' }, theme + ': closed, the focus back on "☰ Topics"');
+      assert.deepEqual(await drawer(p), { open: false, backdrop: false, inert: false, expanded: 'false', focus: 'control' }, theme + ': closed, the focus back on "☰ Outcomes"');
       // Escape closes it too.
       await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, theme + ': open again');
       await p.key('Escape');
       await until(async () => !(await drawer(p)).open, theme + ': Escape closes it');
-      assert.equal((await drawer(p)).focus, 'control', theme + ': the focus back on "☰ Topics"');
+      assert.equal((await drawer(p)).focus, 'control', theme + ': the focus back on "☰ Outcomes"');
       // A topic in it opens that topic, at the top of the screen, and the drawer is closed.
       await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, theme + ': open once more');
       await tap(p, `#topics > a[data-topic-id="${ids[2]}"]`);
@@ -332,11 +328,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p = await open('rail-new-topic-' + theme, '/?topic=t1', 'phone', theme);
       await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), theme + ': the rail is ready');
       await tap(p, '#rail-open');
-      await until(async () => (await drawer(p)).open, theme + ': "☰ Topics" opens it');
+      await until(async () => (await drawer(p)).open, theme + ': "☰ Outcomes" opens it');
       // One tap: the line shows in the open drawer, under the Topics heading, with the focus in it.
       const line = () => p.evaluate(`(()=>{const l=document.getElementById('new-topic-title'),r=document.getElementById('rail'),b=l?.getBoundingClientRect(),d=r.getBoundingClientRect();
         return {shown:Boolean(l)&&l.getClientRects().length>0&&b.top>=d.top&&b.bottom<=d.bottom&&b.left>=d.left&&b.right<=d.right,focused:document.activeElement===l,open:r.classList.contains('open'),active:document.activeElement?.id??null}})()`);
       const tapped = () => until(() => p.evaluate('document.getElementById("new-topic").getAttribute("aria-expanded")==="true"'), theme + ': the tap reached New topic');
+      // New topic ends the outcome's list in the outline, below its topics.
+      await p.evaluate('document.getElementById("new-topic").scrollIntoView({block:"center"})');
       await tap(p, '#new-topic'); await tapped();
       assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'new-topic-title' }, theme + ': one tap shows the line, focused, in the open drawer');
       const seen = await p.evaluate('({scroll:document.documentElement.scrollWidth,width:innerWidth})');
@@ -347,6 +345,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(() => p.evaluate('!document.getElementById("new-topic-title")'), theme + ': Escape closes the line');
       assert.deepEqual(await drawer(p), { open: true, backdrop: true, inert: true, expanded: 'true', focus: 'new-topic' }, theme + ': the drawer stays open, the focus on New topic');
       // Again, and Return starts the topic: it opens first on the page, the drawer folded.
+      // New topic ends the outcome's list in the outline, below its topics.
+      await p.evaluate('document.getElementById("new-topic").scrollIntoView({block:"center"})');
       await tap(p, '#new-topic'); await tapped();
       assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'new-topic-title' }, theme + ': the line again');
       const title = 'Started from the drawer ' + theme;
@@ -431,5 +431,544 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await second.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'), true);
     assert.equal(await loaded(second), before, 'with no reload');
     assert.deepEqual(second.errors, []);
+  });
+
+  // ---- Moving in place (item 272) and the outcome's things (item 131) ----
+  // The rail's scroll, its folds, the window and the outline element itself
+  // are what a load would lose; each move below keeps them.
+  const placeOf = p => p.evaluate(`({search:location.search,title:document.getElementById('topic-title').textContent,ready:document.body.dataset.ready==='true',
+    origin:performance.timeOrigin,same:window.railKept===document.getElementById('outline'),mark:window.railMark,history:history.length})`);
+  const arrived = (p, search, title, what) => until(async () => { const at = await placeOf(p); return at.ready && at.search === search && (title === null || at.title === title) && at; }, what);
+
+  await check('rail outcome to topic to Conversation and back moves in place: the outline stays the same element with its folds and scroll, the address follows, and back, forward and reload work', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-move-o', title: 'Moving outcome', topic: { id: 'rail-move-t', title: 'Moving topic' } });
+    const p = await page('rail-move', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+      await q.send('Emulation.setDeviceMetricsOverride', { ...SIZES.laptop, height: 420 });
+    } });
+    await until(async () => (await outline(p)).outcomes['rail-move-o'], 'the outline lists the other outcome');
+    const start = await placeOf(p);
+    await p.evaluate("(window.railKept=document.getElementById('outline'),window.railMark='this window')");
+    // Unfold the other outcome; its topics show under it.
+    await p.evaluate(`document.querySelector('.ol-outcome[data-workspace-id="rail-move-o"] .ol-fold').scrollIntoView({block:'center'})`);
+    await p.point('.ol-outcome[data-workspace-id="rail-move-o"] .ol-fold');
+    await until(async () => (await outline(p)).outcomes['rail-move-o'].topics.some(row => row.id === 'rail-move-t'), 'its topics show under it');
+    const room = await p.evaluate("(()=>{document.querySelector('#outline a[data-topic-id=\"rail-move-t\"]').scrollIntoView({block:'center'});return document.getElementById('rail').scrollTop})()");
+    assert.ok(room > 0, 'the rail scrolls at this height');
+    await p.point('#outline a[data-topic-id="rail-move-t"]');
+    const there = await arrived(p, '?topic=rail-move-t', 'Moving topic', 'the topic opens');
+    assert.deepEqual([there.origin, there.same, there.mark], [start.origin, true, 'this window'], 'in place: no load, the same outline element, the same window');
+    const after = await outline(p);
+    assert.deepEqual([after.scroll, after.outcomes['rail-move-o'].open, after.outcomes.w1.open], [room, true, true], 'its scroll and both folds kept');
+    assert.equal(after.outcomes['rail-move-o'].topics.find(row => row.id === 'rail-move-t').current, 'page', 'the open topic is marked');
+    await shot(p, 'rail-move-topic');
+    // The outcome's name opens its Conversation, in place.
+    await p.point('.ol-outcome[data-workspace-id="rail-move-o"] .ol-name');
+    const conversation = await arrived(p, '?conversation=rail-move-o', null, 'the Conversation opens');
+    assert.deepEqual([conversation.origin, conversation.same], [start.origin, true], 'in place');
+    assert.equal((await outline(p)).outcomes['rail-move-o'].current, 'page', 'its name is marked as the page');
+    // Back, back, forward: each in place.
+    await p.evaluate('history.back()');
+    assert.equal((await arrived(p, '?topic=rail-move-t', 'Moving topic', 'back to the topic')).origin, start.origin);
+    await p.evaluate('history.back()');
+    assert.equal((await arrived(p, '?topic=t1', null, 'back to where it started')).origin, start.origin);
+    await p.evaluate('history.forward()');
+    const forward = await arrived(p, '?topic=rail-move-t', 'Moving topic', 'forward to the topic');
+    assert.deepEqual([forward.origin, forward.same], [start.origin, true], 'in place');
+    // A reload is a load like any other, and the folds are remembered.
+    await p.send('Page.reload');
+    const reloaded = await until(async () => { const at = await placeOf(p).catch(() => null); return at?.ready && at.origin !== start.origin && at; }, 'the page loads again');
+    assert.equal(reloaded.search, '?topic=rail-move-t');
+    // The fold the person chose is remembered; one open only because it was being read is not.
+    const again = await until(async () => { const seen = await outline(p); return seen.outcomes['rail-move-o']?.topics.length && seen.outcomes.w1 && seen; }, 'the outline is drawn again');
+    assert.deepEqual([again.outcomes['rail-move-o'].open, again.outcomes.w1.open], [true, false], 'the outcome the person opened is open again; the one they only passed through is folded');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail a new message raises a folded outcome\'s count and the new total live; open, the row counts only its Conversation; reading the topic lowers them', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-count-o', title: 'Counting outcome', topic: { id: 'rail-count-t', title: 'Counting topic' } });
+    const p = await open('rail-count', '/?topic=t1');
+    const first = await until(async () => { const seen = await outline(p); return seen.outcomes['rail-count-o'] && seen; }, 'the outline lists the outcome');
+    assert.equal(first.outcomes['rail-count-o'].open, false, 'an outcome not being read starts folded');
+    const before = await loaded(p), count = first.outcomes['rail-count-o'].count, total = parseInt(first.fresh.text, 10);
+    await control({ method: 'agent_message', operation_id: 'rail-count-1', sender: 'fixture-notebook-agent', topic_id: 'rail-count-t', body: 'A new line in the counting topic' });
+    const raised = await until(async () => { const seen = await outline(p); return seen.outcomes['rail-count-o'].count === count + 1 && seen; }, 'the folded outcome counts the new message, live');
+    assert.equal(parseInt(raised.fresh.text, 10), total + 1, 'and so does the new total');
+    assert.deepEqual(Object.keys(raised.outcomes), Object.keys(first.outcomes), 'nothing moved: the outcomes keep their order');
+    assert.equal(await loaded(p), before, 'with no reload');
+    // Open, the outcome's own row counts only its Conversation; the topic row counts the topic.
+    await p.point('.ol-outcome[data-workspace-id="rail-count-o"] .ol-fold');
+    const opened = await until(async () => { const seen = await outline(p); const row = seen.outcomes['rail-count-o']; return row.topics.some(topic => topic.id === 'rail-count-t' && topic.unread === count + 1) && seen; }, 'open, the topic row counts its unread');
+    assert.equal(opened.outcomes['rail-count-o'].count, 0, 'and the outcome row counts only its Conversation, which has nothing new');
+    // Reading the topic lowers both.
+    await p.point('#outline a[data-topic-id="rail-count-t"]');
+    await arrived(p, '?topic=rail-count-t', 'Counting topic', 'the topic opens in place');
+    const read = await until(async () => { const seen = await outline(p); const row = seen.outcomes['rail-count-o'].topics.find(topic => topic.id === 'rail-count-t'); return row && row.unread === 0 && parseInt(seen.fresh.text, 10) <= total - count && seen; }, 'read, its count goes, and the total drops by it');
+    assert.equal(read.outcomes['rail-count-o'].topics.find(topic => topic.id === 'rail-count-t').current, 'page');
+    assert.equal(await loaded(p), before, 'still with no reload');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail the right rail shows the topic\'s things on a topic, the whole outcome one tap away, and the outcome\'s on its Conversation; an empty section says so or hides', async () => {
+    await control({ method: 'agent_message', operation_id: 'rail-things-links', sender: 'fixture-notebook-agent', topic_id: 't1',
+      body: 'The fix is [Sort species by common name](https://github.com/acme/field/pull/12); try it at http://bench.example.ts.net:5192/preview/species.' });
+    const p = await open('rail-things', '/?topic=t1');
+    const things = () => p.evaluate(`(()=>{const t=document.getElementById('things'),shown=e=>Boolean(e)&&e.getClientRects().length>0;
+      return {shown:shown(t),heading:t.querySelector('h2').textContent,chips:shown(t.querySelector('.things-scope'))?[...t.querySelectorAll('.things-scope .chip')].map(c=>c.textContent+':'+c.getAttribute('aria-pressed')):[],
+        name:t.querySelector('.things-name').textContent,sections:[...t.querySelectorAll('.things-sec')].filter(shown).map(d=>d.dataset.key),
+        prs:[...t.querySelectorAll('[data-key=prs] a.row')].map(a=>a.firstChild.textContent+' '+a.getAttribute('href')),
+        previews:[...t.querySelectorAll('[data-key=previews] a.row')].map(a=>a.getAttribute('href')),
+        tools:t.querySelector('[data-key=tools] .things-body')?.textContent??'',busy:t.querySelector('.things-sections').getAttribute('aria-busy')==='true'}})()`);
+    const topic = await until(async () => { const seen = await things(); return seen.prs.length && seen; }, 'the right rail lists the pull request posted in the topic');
+    assert.equal(topic.shown, true, 'beside the page at 1280');
+    assert.deepEqual([topic.heading, topic.chips], ['In this topic', ['Just this topic:true', 'All of this outcome:false']], 'a topic shows its own things, the whole outcome one tap away');
+    assert.deepEqual(topic.prs, ['Sort species by common name https://github.com/acme/field/pull/12'], 'the pull request by the words it was posted with');
+    assert.deepEqual(topic.previews, ['http://bench.example.ts.net:5192/preview/species'], 'the preview by its address');
+    assert.equal(topic.tools, 'Skills and tools are not recorded yet.', 'what Core does not record is said, not made up');
+    assert.ok(!topic.sections.includes('pipeline'), 'a topic with nothing in the pipeline shows no Pipeline section');
+    await shot(p, 'rail-things-topic');
+    await p.point('#things .things-scope .chip:nth-child(2)');
+    const whole = await until(async () => { const seen = await things(); return seen.heading === 'This outcome' && !seen.busy && seen; }, 'All of this outcome shows the outcome\'s things');
+    assert.match(whole.name, /›$/, 'with the outcome\'s name, a link to its page');
+    assert.ok(whole.sections.includes('pipeline'), 'the outcome says whether it has a pipeline');
+    // On the Conversation the rail shows the outcome's, with no chips.
+    await p.point('.ol-outcome[data-workspace-id="w1"] .ol-name');
+    await arrived(p, '?conversation=w1', null, 'the Conversation opens in place');
+    // Its own things, once they are read: until then the rail shows nothing of the topic it left.
+    const conversation = await until(async () => { const seen = await things(); return seen.heading === 'This outcome' && seen.chips.length === 0 && !seen.busy && seen; }, 'the Conversation shows the outcome\'s things');
+    assert.ok(conversation.prs.length >= 1, 'the outcome\'s pull requests, from its topics too');
+    await shot(p, 'rail-things-conversation');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail a send under way keeps the page where it is, in place; unsent writing is saved as the page moves and is there on coming back', async () => {
+    await control({ method: 'navigation_topics', topics: [{ id: 'rail-leave-t', title: 'Leaving topic' }] });
+    const p = await open('rail-leave', '/?topic=t1');
+    await until(() => p.evaluate('Boolean(document.querySelector("#outline a[data-topic-id=rail-leave-t]")) && Boolean(document.getElementById("inline-writing-body"))'), 'the outline and the writing box are ready');
+    const start = await placeOf(p);
+    await p.evaluate("window.railKept=document.getElementById('outline')");
+    // A send held on its way: leaving now would lose track of it, so the page stays.
+    p.intercept(payload => payload?.kind === 'message.send');
+    const writeHere = () => p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
+    await writeHere(); await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Sent while the page tries to leave' });
+    await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})"); await p.point('#inline-send');
+    await until(() => p.held.some(entry => entry.payload?.kind === 'message.send'), 'the send is on its way');
+    await p.point('#outline a[data-topic-id="rail-leave-t"]');
+    await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), 'the page says why it stays');
+    const stayed = await placeOf(p);
+    assert.deepEqual([stayed.search, stayed.origin, stayed.history, stayed.same], ['?topic=t1', start.origin, start.history, true], 'the address, the page and its history as they were');
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    await until(() => p.evaluate("document.getElementById('messages').textContent.includes('Sent while the page tries to leave')"), 'the send lands');
+    // Writing not sent yet goes with the page as it moves, and is there on coming back.
+    await writeHere(); await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Kept for later' });
+    await p.point('#outline a[data-topic-id="rail-leave-t"]');
+    const moved = await arrived(p, '?topic=rail-leave-t', 'Leaving topic', 'with the send done, the page moves');
+    assert.deepEqual([moved.origin, moved.same], [start.origin, true], 'in place');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=t1', null, 'back');
+    await until(() => p.evaluate("(document.getElementById('inline-writing-body').value ?? document.getElementById('inline-writing-body').textContent).includes('Kept for later')"), 'the unsent writing is there');
+    assert.equal((await placeOf(p)).origin, start.origin, 'all in place');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail at 390 and 900 the outcome\'s things open from "Pipeline & pages": a sheet from the bottom on a phone, a panel from the right between; Escape and the dimmed page close them', async () => {
+    for (const [width, height, kind] of [[390, 844, 'sheet'], [900, 800, 'panel']]) {
+      const p = await page('rail-sheet-' + width, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+        await q.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: width < 761 });
+        if (width < 761) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      const state = () => p.evaluate(`(()=>{const t=document.getElementById('things'),b=t.getBoundingClientRect(),c=document.getElementById('things-open');
+        return {open:document.documentElement.hasAttribute('data-things-open'),visible:getComputedStyle(t).visibility==='visible',box:[Math.round(b.left),Math.round(b.right),Math.round(b.top),Math.round(b.bottom)],
+          control:Boolean(c)&&c.getClientRects().length>0,expanded:c?.getAttribute('aria-expanded'),backdrop:!document.getElementById('things-backdrop').hidden,focus:document.activeElement?.id??null,
+          scroll:document.documentElement.scrollWidth,width:innerWidth,height:innerHeight}})()`);
+      await until(async () => (await state()).control, width + ': "Pipeline & pages" is in the header');
+      const closed = await state();
+      assert.deepEqual([closed.open, closed.visible, closed.backdrop], [false, false, false], width + ': closed at first');
+      assert.ok(closed.scroll <= closed.width, width + ': no sideways scroll');
+      if (width < 761) await tap(p, '#things-open'); else await p.point('#things-open');
+      const shown = await until(async () => { const seen = await state(); return seen.open && seen.visible && (kind === 'sheet' ? seen.box[3] === seen.height && seen.box[2] > 0 : seen.box[1] === seen.width && seen.box[2] === 0) && seen; }, width + ': it opens as a ' + kind);
+      assert.deepEqual([shown.expanded, shown.backdrop, shown.focus], ['true', true, 'things-close'], width + ': over the dimmed page, the focus on its ✕');
+      await shot(p, 'rail-things-' + kind);
+      await p.key('Escape');
+      await until(async () => !(await state()).open, width + ': Escape closes it');
+      assert.equal((await state()).focus, 'things-open', width + ': the focus back on "Pipeline & pages"');
+      await until(() => p.evaluate("getComputedStyle(document.getElementById('things')).visibility==='hidden'"), width + ': it has gone out of the way');
+      if (width < 761) await tap(p, '#things-open'); else await p.point('#things-open');
+      await until(async () => (await state()).open, width + ': open again');
+      // The dimmed page, where the things do not cover it: its top left corner.
+      for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x: 12, y: 12, button: 'left', clickCount: 1 });
+      await until(async () => !(await state()).open, width + ': the dimmed page closes it');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // ---- Moves that overlap: each rail is the current address's, as a fresh load draws it ----
+  // What both rails show, read from the page as drawn: where the page's own
+  // topic list sits in the outline (and how many there are), which topic and
+  // which outcome name are marked as the page, the topics under the outcome
+  // being read, and the right rail's heading, name, chips, sections and its
+  // line for nothing.
+  const rails = p => p.evaluate(`(()=>{const shown=e=>Boolean(e)&&e.getClientRects().length>0,o=document.getElementById('outline'),t=document.getElementById('things');
+    const lists=[...document.querySelectorAll('#topic-navigation')],list=o.querySelector('#topic-navigation'),holder=list?.closest('.ol-outcome')?.dataset.workspaceId??null;
+    const under=holder?[...o.querySelectorAll('.ol-outcome[data-workspace-id="'+holder+'"] .ol-topics a[data-topic-id]')].filter(shown).map(a=>a.dataset.topicId):[];
+    const nothing=t.querySelector('.things-empty');
+    return {search:location.search,lists:lists.length,holder,under,
+      currentTopics:[...o.querySelectorAll('a[data-topic-id][aria-current=page]')].filter(shown).map(a=>a.closest('.ol-outcome').dataset.workspaceId+'/'+a.dataset.topicId),
+      currentNames:[...o.querySelectorAll('.ol-name[aria-current=page]')].map(a=>a.closest('.ol-outcome').dataset.workspaceId),
+      things:{heading:t.querySelector('h2').textContent,name:t.querySelector('.things-name').textContent,
+        chips:shown(t.querySelector('.things-scope'))?[...t.querySelectorAll('.things-scope .chip')].map(c=>c.textContent+':'+c.getAttribute('aria-pressed')):[],
+        sections:[...t.querySelectorAll('.things-sec')].filter(shown).map(d=>d.dataset.key),nothing:shown(nothing)?nothing.textContent:null}}})()`);
+  // Up, with nothing more on its way: the page, both rails' reads, and the page's own list in the outline.
+  const settled = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading')
+    && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true' && Boolean(document.querySelector('#outline #topic-navigation'))`).catch(() => false), what);
+  // A reload, waited out on the new document.
+  const reloaded = async (p, what) => {
+    const before = (await placeOf(p)).origin;
+    await p.send('Page.reload');
+    await until(async () => (await placeOf(p).catch(() => null))?.origin > before, what + ': a new document');
+    await settled(p, what);
+  };
+  // The same address loaded fresh in a page of its own: what both rails show there.
+  const fresh = async (search, name) => {
+    const q = await page(name, null, true, { url: facts.origin + '/' + search, beforeNavigate: async r => { await r.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+    await settled(q, 'the fresh load of ' + search + ' is up');
+    const seen = await rails(q);
+    assert.deepEqual(q.errors, []); await q.close();
+    return seen;
+  };
+  const readClass = event => event.request.headers?.['X-AIM-Read-Class'] ?? event.request.headers?.['x-aim-read-class'] ?? null;
+  // The outline's own reads are the foreground reads of an outcome's Conversation; the
+  // right rail's first is the background read of the pipeline; the page's start waits on its topic.
+  const outlineRead = (payload, event) => payload?.name === 'conversation' && readClass(event) === 'foreground';
+  const thingsRead = (payload, event) => payload?.name === 'pipeline' && readClass(event) === 'background';
+  const startRead = topicId => (payload, event) => payload?.name === 'topic' && payload.args?.topic_id === topicId && readClass(event) === null;
+  // A press on what the selector names, brought into view in its rail first.
+  const press = async (p, selector) => { await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`); await p.point(selector); };
+  const releaseAll = async (p, which) => { for (const entry of p.held.filter(entry => which(entry.payload, entry.event))) { p.held.splice(p.held.indexOf(entry), 1); await p.release(entry); } };
+
+  await check('rail back and forward across outcomes while the page before is still reading: both rails always show the address as a fresh load does', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-overlap-o', title: 'Overlapping outcome', topic: { id: 'rail-overlap-t', title: 'Overlapping topic' } });
+    await control({ method: 'light_outcome', outcome: 'rail-overlap-noise', title: 'Noise outcome', topic: { id: 'rail-overlap-noise-t', title: 'Noise topic' } });
+    const conversationTopic = async workspace => (await view('conversation', { workspace_id: workspace })).conversation.topic_id;
+    const w1Conversation = await conversationTopic('w1'), otherConversation = await conversationTopic('rail-overlap-o');
+    const p = await page('rail-overlap', null, true, { url: facts.origin + '/?conversation=w1', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+    await settled(p, 'the Conversation is up');
+    const start = await placeOf(p);
+    await p.evaluate(`document.querySelector('#outline a[data-topic-id="t1"]').scrollIntoView({block:'center'})`);
+    await p.point('#outline a[data-topic-id="t1"]');
+    await arrived(p, '?topic=t1', null, 'the topic opens in place');
+    await settled(p, 'the topic is up');
+    let noise = 0;
+    // One move made while the page it leaves is still reading for the outline,
+    // and before the page it reaches is up: the read the page left lands then.
+    // Then, with the right rail's first read held, the page reached is up.
+    const overlapping = async (act, search, topicId, what) => {
+      await settled(p, 'before ' + what + ', the page is up');
+      p.intercept(outlineRead);
+      await control({ method: 'agent_message', operation_id: 'rail-overlap-noise-' + (++noise), sender: 'fixture-notebook-agent', topic_id: 'rail-overlap-noise-t', body: 'Noise ' + noise });
+      await until(() => p.held.some(entry => outlineRead(entry.payload, entry.event)), what + ': the outline is reading for the page it leaves');
+      p.intercept(startRead(topicId));
+      await act();
+      await until(() => p.held.some(entry => startRead(topicId)(entry.payload, entry.event)), what + ': the page reached has started, and waits');
+      await releaseAll(p, outlineRead);
+      await until(() => p.evaluate("!document.documentElement.hasAttribute('data-rails-reading')"), what + ': the reads for the page it left have settled');
+      // What the page left read, or failed to read, once it is gone, is dropped: nothing says it could not be read.
+      assert.equal(await p.evaluate("[...document.querySelectorAll('#outline > p.notice')].some(e=>!e.hidden)"), false, what + ': no word that the outcomes could not be read');
+      p.intercept(thingsRead);
+      await releaseAll(p, startRead(topicId));
+      await arrived(p, search, null, what);
+      await until(() => p.held.some(entry => thingsRead(entry.payload, entry.event)), what + ': the right rail is reading for the page reached');
+      const meanwhile = await rails(p);
+      assert.deepEqual([meanwhile.things.sections, meanwhile.things.nothing], [[], null], what + ': until its read lands, the right rail shows nothing of the place before: ' + JSON.stringify(meanwhile.things));
+      p.intercept(null);
+      await releaseAll(p, () => true);
+      await settled(p, what + ': settled');
+      const here = await rails(p);
+      assert.deepEqual(here, await fresh(search, 'rail-overlap-fresh-' + noise), what + ': both rails as a fresh load of ' + search + ' draws them');
+      assert.equal(here.lists, 1, what + ': one topic list');
+      assert.equal((await placeOf(p)).origin, start.origin, what + ': in place, with no load');
+    };
+    await overlapping(() => press(p, '.ol-outcome[data-workspace-id="rail-overlap-o"] .ol-name'), '?conversation=rail-overlap-o', otherConversation, 'to the other outcome\'s Conversation');
+    await overlapping(() => p.evaluate('history.back()'), '?topic=t1', 't1', 'back to the topic');
+    await overlapping(() => p.evaluate('history.back()'), '?conversation=w1', w1Conversation, 'back to the first Conversation');
+    await overlapping(() => p.evaluate('history.forward()'), '?topic=t1', 't1', 'forward to the topic');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail a quick second back, a back before the page is up, and a place chosen meanwhile all move in place, with no load', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-quick-o', title: 'Quick outcome', topic: { id: 'rail-quick-t', title: 'Quick topic' } });
+    const p = await page('rail-quick', null, true, { url: facts.origin + '/?conversation=w1', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+    await settled(p, 'the Conversation is up');
+    const start = await placeOf(p);
+    const otherConversation = (await view('conversation', { workspace_id: 'rail-quick-o' })).conversation.topic_id;
+    await p.evaluate(`document.querySelector('#outline a[data-topic-id="t1"]').scrollIntoView({block:'center'})`);
+    await p.point('#outline a[data-topic-id="t1"]');
+    await arrived(p, '?topic=t1', null, 'the topic');
+    await settled(p, 'the topic is up');
+    await press(p, '.ol-outcome[data-workspace-id="rail-quick-o"] .ol-name');
+    await arrived(p, '?conversation=rail-quick-o', null, 'the other Conversation');
+    // Two backs at once: the second comes while the first move is under way.
+    await p.evaluate('(history.back(), history.back())');
+    await arrived(p, '?conversation=w1', null, 'two back, to the first Conversation');
+    await settled(p, 'up');
+    assert.equal((await placeOf(p)).origin, start.origin, 'two quick backs load nothing');
+    assert.deepEqual(await rails(p), await fresh('?conversation=w1', 'rail-quick-fresh-1'), 'both rails as a fresh load draws them');
+    // Forward twice, then back once more before the page reached is up.
+    await p.evaluate('history.forward()');
+    await arrived(p, '?topic=t1', null, 'forward to the topic');
+    await settled(p, 'up again');
+    p.intercept(startRead(otherConversation));
+    await p.evaluate('history.forward()');
+    await until(() => p.held.some(entry => startRead(otherConversation)(entry.payload, entry.event)), 'the other Conversation has started, and waits');
+    await p.evaluate('history.back()');
+    p.intercept(null); await releaseAll(p, () => true);
+    await arrived(p, '?topic=t1', null, 'the back made before the page was up is taken up once it is');
+    await settled(p, 'up at the topic');
+    assert.equal((await placeOf(p)).origin, start.origin, 'a back before the page is up loads nothing');
+    assert.deepEqual(await rails(p), await fresh('?topic=t1', 'rail-quick-fresh-2'), 'both rails as a fresh load draws them');
+    // An outcome chosen in the outline before the page reached is up.
+    p.intercept(startRead(otherConversation));
+    await press(p, '.ol-outcome[data-workspace-id="rail-quick-o"] .ol-name');
+    await until(() => p.held.some(entry => startRead(otherConversation)(entry.payload, entry.event)), 'the other Conversation has started, and waits');
+    await press(p, '.ol-outcome[data-workspace-id="w1"] .ol-name');
+    p.intercept(null); await releaseAll(p, () => true);
+    await arrived(p, '?conversation=w1', null, 'the Conversation chosen meanwhile opens once the page is up');
+    await settled(p, 'up at the Conversation');
+    assert.equal((await placeOf(p)).origin, start.origin, 'a place chosen before the page is up loads nothing');
+    assert.deepEqual(await rails(p), await fresh('?conversation=w1', 'rail-quick-fresh-3'), 'both rails as a fresh load draws them');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail the chips show only the outcomes with something new or waiting on the reader, Fold all and Open all set every fold and are kept, and + New topic under another outcome starts a topic there', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-chip-ask', title: 'Asking for the chips', topic: { id: 'rail-chip-ask-t', title: 'Chip ask topic' } });
+    await control({ method: 'agent_message', operation_id: 'rail-chip-ask', body: 'Which one?', topic_id: 'rail-chip-ask-t', addressees: [facts.actor], intent: 'ask' });
+    const p = await page('rail-chips', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+    await settled(p, 'the topic is up');
+    // What Core says each outcome holds as the outline is read, and what the outline shows.
+    const asking = item => item.light?.light === 'waiting' && item.light.short?.kind === 'asks' && item.light.short.count > 0;
+    const holding = async which => (await view('workspaces', { limit: 100 })).items.filter(which).map(item => item.id).sort();
+    const shownIds = async () => Object.keys((await outline(p)).outcomes).sort();
+    const everyId = await holding(() => true);
+    await until(async () => JSON.stringify(await shownIds()) === JSON.stringify(everyId), 'every outcome is listed');
+    // Only those that hold it show, each open: and some do not hold it.
+    const only = async (chip, key, which, what) => {
+      await press(p, chip);
+      const seen = await until(async () => { const now = await outline(p), ids = await holding(which);
+        return now[key].pressed === 'true' && JSON.stringify(Object.keys(now.outcomes).sort()) === JSON.stringify(ids) && { now, ids }; }, what + ': pressed, only the outcomes that hold it show');
+      assert.ok(seen.ids.length > 0 && seen.ids.length < everyId.length, what + ': some outcomes hold it and some do not: ' + seen.ids.join(' '));
+      assert.ok(Object.values(seen.now.outcomes).every(row => row.open), what + ': each open, to show it');
+      await shot(p, 'rail-chip-' + key);
+      await press(p, chip);
+      await until(async () => { const now = await outline(p); return now[key].pressed === 'false' && JSON.stringify(Object.keys(now.outcomes).sort()) === JSON.stringify(everyId); }, what + ': pressed again, every outcome shows');
+    };
+    await only('#outline-only-new', 'fresh', item => item.unread > 0, '"N new"');
+    await only('#outline-only-waiting', 'waiting', asking, '"N waiting on you"');
+    // Fold all, then Open all: every fold, kept on this browser.
+    const opens = async () => Object.values((await outline(p)).outcomes).map(row => row.open);
+    assert.ok((await opens()).some(open => open), 'the outcome being read is open');
+    await press(p, '#outline .ol-fold-all');
+    await until(async () => (await opens()).every(open => !open) && await p.evaluate("document.querySelector('#outline .ol-fold-all').textContent==='Open all'"), 'Fold all folds every outcome, and becomes Open all');
+    await press(p, '#outline .ol-fold-all');
+    await until(async () => (await opens()).every(open => open) && await p.evaluate("document.querySelector('#outline .ol-fold-all').textContent==='Fold all'"), 'Open all opens every outcome, and becomes Fold all');
+    await reloaded(p, 'the page loads again');
+    await until(async () => { const rows = Object.values((await outline(p)).outcomes); return rows.length === everyId.length && rows.every(row => row.open); }, 'after a reload every outcome is still open');
+    await press(p, '#outline .ol-fold-all');
+    await until(async () => (await opens()).every(open => !open), 'and Fold all folds them all again');
+    // + New topic under another outcome, while reading this one: the topic starts there and opens in place.
+    const before = await placeOf(p);
+    await press(p, '.ol-outcome[data-workspace-id="rail-chip-ask"] .ol-fold');
+    await until(async () => (await outline(p)).outcomes['rail-chip-ask'].topics.some(row => row.id === 'rail-chip-ask-t'), 'its topics show under it');
+    await press(p, '.ol-outcome[data-workspace-id="rail-chip-ask"] .ol-new-topic');
+    await until(() => p.evaluate("document.activeElement?.id==='ol-new-topic-rail-chip-ask'"), 'its title line shows, focused');
+    const title = 'Started under another outcome';
+    await p.send('Input.insertText', { text: title }); await p.key('Enter');
+    const opened = await until(async () => { const at = await placeOf(p); return at.ready && at.title === title && at; }, 'the new topic opens');
+    assert.equal(opened.origin, before.origin, 'in place');
+    const id = new URLSearchParams(opened.search).get('topic');
+    assert.equal((await view('topic', { topic_id: id })).topic.workspace_id, 'rail-chip-ask', 'the topic is in the outcome whose + New topic was pressed');
+    await settled(p, 'up');
+    const seen = await rails(p);
+    assert.deepEqual([seen.holder, seen.currentTopics], ['rail-chip-ask', ['rail-chip-ask/' + id]], 'and the outline shows it under that outcome, marked as the page');
+    // The folds go back to what each person starts with, for the checks after this one.
+    await p.evaluate("Object.keys(localStorage).filter(key=>key.startsWith('aim-next.outline.')).forEach(key=>localStorage.removeItem(key))");
+    await control({ method: 'agent_message', operation_id: 'rail-chip-answer', sender: 'person', topic_id: 'rail-chip-ask-t', whole_topic: true, body: 'This one.' });
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail a section of the right rail folded stays folded across a move in place and a reload, and opens again when unfolded', async () => {
+    const p = await page('rail-section-fold', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+    await settled(p, 'the topic is up');
+    const tools = "document.querySelector('#things .things-sec[data-key=tools]')";
+    const open = () => p.evaluate(`(()=>{const d=${tools};return d.getClientRects().length>0?d.open:null})()`);
+    // A press on the section's heading, waited out until the section has said it folded or opened.
+    const toggle = async () => {
+      await p.evaluate(`(window.railToggled=new Promise(resolve=>${tools}.addEventListener('toggle',resolve,{once:true})),true)`);
+      await press(p, '#things .things-sec[data-key=tools] summary');
+      await p.evaluate('window.railToggled.then(()=>true)');
+    };
+    assert.equal(await open(), true, 'Skills and tools shows, open');
+    await toggle();
+    assert.equal(await open(), false, 'a press on its heading folds it');
+    await press(p, '.ol-outcome[data-workspace-id="w1"] .ol-name');
+    await arrived(p, '?conversation=w1', null, 'the Conversation opens in place');
+    await settled(p, 'the Conversation is up');
+    assert.equal(await open(), false, 'still folded on the Conversation');
+    await reloaded(p, 'the page loads again');
+    assert.equal(await open(), false, 'still folded after a reload');
+    await toggle();
+    assert.equal(await open(), true, 'unfolded');
+    await reloaded(p, 'the page loads again');
+    assert.equal(await open(), true, 'and open after a reload');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // ---- What a move leaves for the page it reaches, and the rails' own presses ----
+  // An outcome whose one topic carries five pictures, for the right rail's Images.
+  const PICTURES = ['one.png', 'one.jpg', 'one.gif', 'palette.png', 'sixteen.png'];
+  // Made once, by the first check that asks for it.
+  let pics = null;
+  const pictured = () => pics ??= (async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-pics-o', title: 'Pictures outcome', topic: { id: 'rail-pics-t', title: 'Pictures topic' } });
+    await control({ method: 'agent_message', operation_id: 'rail-pics', topic_id: 'rail-pics-t', source: 'topic', body: 'Five pictures',
+      attachments: PICTURES.map((image, n) => ({ name: `picture-${n}${image.slice(image.lastIndexOf('.'))}`, image })) });
+  })();
+  // Each picture the right rail lists, as drawn: shown (its image drawn) or blank.
+  const pictures = p => p.evaluate(`[...document.querySelectorAll('#things [data-key=images] a.thumb')].map(a=>{const i=a.querySelector('img.image-thumb');
+    return i&&!i.hidden&&i.complete&&i.naturalWidth>0?'shown':'blank'})`);
+  const allShown = (p, what) => until(async () => { const seen = await pictures(p); return seen.length === PICTURES.length && seen.every(state => state === 'shown') && seen; }, what);
+  const readerOpen = p => p.evaluate("Boolean(document.querySelector('#reader')?.open)");
+
+  await check('rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture opens its message in place', async () => {
+    await pictured();
+    const p = await page('rail-pictures', null, true, { url: facts.origin + '/?topic=rail-pics-t', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+    const media = payload => typeof payload?.media_id === 'string';
+    // The pictures are read one at a time; the first is held on its way, so the rest wait their turn.
+    p.intercept(media);
+    await until(() => p.held.some(entry => media(entry.payload)), 'a picture is being read');
+    await until(async () => (await pictures(p)).length === PICTURES.length, 'the right rail lists the topic\'s pictures, still being read');
+    const start = await placeOf(p);
+    await press(p, '.ol-outcome[data-workspace-id="rail-pics-o"] .ol-name');
+    await arrived(p, '?conversation=rail-pics-o', null, 'the Conversation opens in place, while the pictures are still being read');
+    p.intercept(null); await releaseAll(p, () => true);
+    await settled(p, 'the Conversation is up');
+    await allShown(p, 'every picture of the outcome shows on the Conversation');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=rail-pics-t', 'Pictures topic', 'back to the topic');
+    await settled(p, 'the topic is up');
+    await allShown(p, 'and every picture shows again on the topic');
+    // A picture on the Conversation opens its message: in its topic, in place, in the Reader.
+    await p.evaluate('history.forward()');
+    await arrived(p, '?conversation=rail-pics-o', null, 'forward to the Conversation');
+    await settled(p, 'the Conversation is up again');
+    await allShown(p, 'its pictures show');
+    await press(p, '#things [data-key=images] a.thumb');
+    await arrived(p, '?topic=rail-pics-t', 'Pictures topic', 'the picture opens its topic');
+    await until(() => readerOpen(p), 'with its message in the Reader');
+    assert.equal((await placeOf(p)).origin, start.origin, 'in place, with no load');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail at 390 a picture in the outcome\'s things opens its message in place and closes the sheet; "Just this topic" shows the topic\'s own things again', async () => {
+    await pictured();
+    const p = await open('rail-sheet-row', '/?conversation=rail-pics-o', 'phone');
+    // On a phone the right rail reads only once its sheet is open.
+    const up = what => until(() => p.evaluate("document.body?.dataset.ready==='true' && Boolean(document.getElementById('things-open'))").catch(() => false), what);
+    await up('the Conversation is up');
+    const start = await placeOf(p);
+    const sheet = () => p.evaluate("document.documentElement.hasAttribute('data-things-open')");
+    const scope = () => p.evaluate(`(()=>{const t=document.getElementById('things');return {heading:t.querySelector('h2').textContent,name:t.querySelector('.things-name').textContent,
+      chips:[...t.querySelectorAll('.things-scope .chip')].map(c=>c.getAttribute('aria-pressed')),busy:t.querySelector('.things-sections').getAttribute('aria-busy')==='true'}})()`);
+    // A finger on what the selector names, brought into view and once it holds its place (the sheet slides in, the header fills).
+    const reach = async selector => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+      let last = null;
+      await until(async () => { const now = await p.box(selector), same = Boolean(last && now) && ['x', 'y', 'width', 'height'].every(key => now[key] === last[key]); last = now; return same; }, selector + ' holds its place');
+      await tap(p, selector);
+    };
+    await reach('#things-open');
+    await until(sheet, 'the sheet opens');
+    await allShown(p, 'the outcome\'s pictures show in it');
+    await reach('#things [data-key=images] a.thumb');
+    await arrived(p, '?topic=rail-pics-t', 'Pictures topic', 'the picture opens its topic');
+    await until(() => readerOpen(p), 'with its message in the Reader');
+    assert.equal(await sheet(), false, 'the sheet has closed');
+    assert.equal((await placeOf(p)).origin, start.origin, 'in place, with no load');
+    await reach('#reader-close');
+    await until(async () => !(await readerOpen(p)), 'the Reader closes');
+    await up('the topic is up');
+    await reach('#things-open');
+    await until(sheet, 'the sheet opens on the topic');
+    await until(async () => { const seen = await scope(); return seen.heading === 'In this topic' && !seen.busy; }, 'it shows the topic\'s things');
+    await reach('#things .things-scope .chip:nth-child(2)');
+    await until(async () => { const seen = await scope(); return seen.heading === 'This outcome' && !seen.busy && JSON.stringify(seen.chips) === '["false","true"]'; }, '"All of this outcome" shows the outcome\'s');
+    await reach('#things .things-scope .chip:nth-child(1)');
+    const topic = await until(async () => { const seen = await scope(); return seen.heading === 'In this topic' && !seen.busy && seen; }, '"Just this topic" shows the topic\'s own things again');
+    assert.deepEqual([topic.name, topic.chips], ['Pictures topic', ['true', 'false']], 'named for the topic, with "Just this topic" pressed');
+    // A picture of the topic on show opens its message in the Reader, with no move, and the sheet closes for it.
+    await allShown(p, 'the topic\'s pictures show');
+    await reach('#things [data-key=images] a.thumb');
+    await until(() => readerOpen(p), 'the picture\'s message opens in the Reader');
+    assert.deepEqual([await sheet(), (await placeOf(p)).origin], [false, start.origin], 'the sheet has closed, on the same page');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail after moves in place the window and the document hear what a fresh load of the same place hears, after the same acts', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-heard-o', title: 'Hearing outcome', topic: { id: 'rail-heard-t', title: 'Hearing topic' } });
+    const asked = await control({ method: 'agent_message', operation_id: 'rail-heard-ask', topic_id: 'rail-heard-t', source: 'topic', addressees: [facts.actor], body: 'A question to reply to.' });
+    await control({ method: 'agent_message', operation_id: 'rail-heard-reply', sender: 'person', topic_id: 'rail-heard-t', reply_to: asked.result.message_id, addressees: ['fixture-notebook-agent'], body: 'My reply to it.' });
+    const laptop = async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); };
+    // Every listener on the window and the document, by its type, its options and its function.
+    const heard = async q => {
+      const found = [];
+      for (const target of ['window', 'document']) {
+        const { result } = await q.send('Runtime.evaluate', { expression: target, objectGroup: 'rail-heard' });
+        const { listeners } = await q.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
+        for (const l of listeners) found.push([target, l.type, l.useCapture ? 'capture' : '', l.passive ? 'passive' : '', l.once ? 'once' : '', String(l.handler?.description ?? '').slice(0, 160)].join(' '));
+      }
+      await q.send('Runtime.releaseObjectGroup', { objectGroup: 'rail-heard' });
+      return found.sort();
+    };
+    // The page as the acts leave it: the card replied to, and the picture in the writing box.
+    const shows = (q, what) => until(() => q.evaluate("Boolean(document.querySelector('#messages .replied-mark')) && document.querySelector('#inline-attachments .image-choice span')?.textContent === 'screen.png · Ready'"), what);
+    const p = await page('rail-heard', null, true, { url: facts.origin + '/?topic=rail-heard-t', beforeNavigate: laptop });
+    await settled(p, 'the topic is up');
+    const start = await placeOf(p);
+    // A picture put in the writing box: its row's buttons guard their presses.
+    await p.evaluate("document.getElementById('inline-add-image').scrollIntoView({block:'center'})");
+    const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
+    const chooser = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'the picture chooser');
+    await p.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [fileURLToPath(new URL('fixtures/media/screen.png', import.meta.url))] });
+    await shows(p, 'the replied card and the picture in the writing box');
+    // Away to the Conversation and back, each in place.
+    await press(p, '.ol-outcome[data-workspace-id="rail-heard-o"] .ol-name');
+    await arrived(p, '?conversation=rail-heard-o', null, 'the Conversation opens in place');
+    await settled(p, 'the Conversation is up');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=rail-heard-t', 'Hearing topic', 'back to the topic');
+    await settled(p, 'the topic is up again');
+    await shows(p, 'the replied card and the kept picture, again');
+    assert.equal((await placeOf(p)).origin, start.origin, 'in place, with no load');
+    const moved = await heard(p);
+    const q = await page('rail-heard-fresh', null, true, { url: facts.origin + '/?topic=rail-heard-t', beforeNavigate: laptop });
+    await settled(q, 'the fresh load is up');
+    await shows(q, 'the fresh load shows the replied card and the kept picture');
+    assert.deepEqual(moved, await heard(q), 'the listeners of a fresh load, no more and no fewer');
+    assert.deepEqual(q.errors, []); await q.close();
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail New outcome in the outline, on a topic and on a Conversation, creates the outcome and opens its page', async () => {
+    for (const [search, title] of [['?topic=t1', 'Started beside a topic'], ['?conversation=w1', 'Started beside a Conversation']]) {
+      const p = await page('rail-new-outcome', null, true, { url: facts.origin + '/' + search, beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+      await settled(p, search + ': the page is up');
+      await press(p, '#outline-new-outcome');
+      await until(() => p.evaluate("document.activeElement?.id==='outline-new-outcome-title'"), search + ': its title line shows, focused');
+      await p.send('Input.insertText', { text: title }); await p.key('Enter');
+      const opened = await until(async () => { const at = await placeOf(p).catch(() => null); return at?.ready && at.title === title && at; }, search + ': the new outcome\'s page opens');
+      const id = new URLSearchParams(opened.search).get('workspace');
+      assert.ok(id, search + ': the address names the outcome: ' + opened.search);
+      assert.equal((await view('workspace', { workspace_id: id })).workspace?.title, title, search + ': Core holds the outcome by the title typed');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
   });
 }

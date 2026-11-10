@@ -39,38 +39,42 @@ function nextRead() {
   Promise.resolve().then(job.read).then(job.resolve, job.reject).finally(() => { reading = false; nextRead(); });
 }
 
-// One object URL per thumbnail key for as long as a row shows it; Theseus
-// keeps no smaller copy, so a thumbnail is the image itself, made small.
-const thumbs = new Map();
+// The pictures thumbnails show now, by key: the address of each one's bytes
+// and the images that show it. Only a picture read whole is kept, never a read
+// that brought nothing (it failed, or the page moved on before it was sent).
+// A picture is let go once none of its images is in the page any more, as the
+// page itself says (isConnected), however they were taken out; an image made
+// before its row goes in counts from when it has been in the page.
+const pictures = new Map(), placed = new WeakSet();
+function letGo() {
+  for (const [key, picture] of pictures) {
+    for (const image of picture.images) if (image.isConnected) placed.add(image); else if (placed.has(image)) picture.images.delete(image);
+    if (!picture.images.size) { pictures.delete(key); URL.revokeObjectURL(picture.url); }
+  }
+}
+const show = (image, picture) => { picture.images.add(image); image.src = picture.url; image.hidden = false; };
 // A thumbnail in the row, at its start unless place(image) puts it elsewhere:
-// the image itself, made small, from the bytes load() gives (null for none).
-// A row keeps its thumbnail while its key is the same, so a repaint of the
-// row's words never loads it again.
+// the image itself, made small (Theseus keeps no smaller copy), from the bytes
+// load() gives (null for none). A row keeps its thumbnail while its key is the
+// same, so a repaint of the row's words never reads it again; a picture still
+// shown elsewhere is not read again either. Each image otherwise reads its
+// own bytes, when its turn comes and only if it is still in the page. One that
+// brings none leaves its row, so the row's next paint reads the picture again.
 export function paintThumb(row, key, load, place = image => row.prepend(image)) {
-  const doc = row.ownerDocument;
+  letGo();
   let image = row.querySelector(':scope > img.image-thumb');
   if (image?.dataset.key === key) { place(image); return; }
-  image?.remove(); dropThumb(row);
-  image = node(doc, 'img', undefined, 'image-thumb'); image.alt = ''; image.dataset.key = key; image.hidden = true;
+  image?.remove();
+  image = node(row.ownerDocument, 'img', undefined, 'image-thumb'); image.alt = ''; image.dataset.key = key; image.hidden = true;
   place(image);
-  let entry = thumbs.get(key);
-  if (!entry) {
-    // A thumbnail whose rows are gone before its turn comes is not read.
-    const current = entry = { users: 0 };
-    entry.url = readInTurn(() => thumbs.get(key) === current ? load() : null).then(blob => blob ? URL.createObjectURL(blob) : null).catch(() => null);
-    thumbs.set(key, entry);
-  }
-  entry.users++;
-  // One with nothing to show says so (data-none), so a strip can show the
-  // image's name in its place rather than an empty one (aim.css).
-  entry.url.then(url => { if (!image.isConnected || image.dataset.key !== key) return; if (url) { image.src = url; image.hidden = false; } else image.dataset.none = ''; });
-}
-// The row no longer shows its thumbnail; the last row to let a key go frees it.
-export function dropThumb(row) {
-  const key = row.querySelector(':scope > img.image-thumb')?.dataset.key, entry = key && thumbs.get(key);
-  if (!entry || --entry.users > 0) return;
-  thumbs.delete(key);
-  entry.url.then(url => { if (url) URL.revokeObjectURL(url); });
+  if (pictures.has(key)) { show(image, pictures.get(key)); return; }
+  const shown = image;
+  readInTurn(() => (shown.isConnected ? load() : null)).catch(() => null).then(blob => {
+    if (!blob || !shown.isConnected) { shown.remove(); return; }
+    letGo();
+    if (!pictures.has(key)) pictures.set(key, { url: URL.createObjectURL(blob), images: new Set() });
+    placed.add(shown); show(shown, pictures.get(key));
+  });
 }
 
 // Whether the clipboard holds an image the page may read without asking: only
@@ -170,7 +174,6 @@ export class ImagePick {
       option.onclick = () => this.pick(item);
       rows.push(option);
     }
-    for (const row of this.list.children) dropThumb(row);
     this.list.replaceChildren(...rows);
     this.list.hidden = false;
     this.field.setAttribute('aria-controls', this.list.id); this.field.setAttribute('aria-expanded', 'true');
@@ -181,7 +184,6 @@ export class ImagePick {
   close() {
     if (!this.query && !this.open) return;
     this.query = null; this.reading = null; this.items = null;
-    for (const row of this.list.children) dropThumb(row);
     this.list.replaceChildren(); this.list.hidden = true;
     this.field.removeAttribute('aria-activedescendant'); this.field.setAttribute('aria-expanded', 'false');
   }

@@ -49,8 +49,9 @@ actions. The keyboard reaches every region: the sidebar, the topic, the Reader
 and the writing. Focus stays visible and follows what the person did.
 
 - Keyboard: `tests/outcome_rail_native.mjs` (`native-rail`,
-  `native-webkit-rail`): "rail Tab from ← Outcomes reaches the conversation, New
-  topic, then the first topic". `tests/reader_colors_native.mjs`
+  `native-webkit-rail`): "rail Tab from the logo block reaches the outline: New
+  outcome, then each outcome's fold and name, and in the outcome being read its
+  topics, then New topic". `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
 - Touch: see "A phone by touch" below.

@@ -1,0 +1,448 @@
+// The right rail of a topic or an outcome's Conversation (pipeline item 131;
+// docs/rails.md): the outcome's things in folding sections. Pipeline (what is
+// live, what is in Now and at which stage, what is Next), Waiting for… (what
+// the reader asked for and where it stands), Notebook pages, Previews, Pull
+// requests, Images, and Skills and tools. On a Conversation it shows the
+// outcome's; on a topic it shows the topic's, and "All of this outcome" is
+// one tap away. A section with nothing in it is left out, or says so in one
+// quiet line; nothing is made up to fill it.
+//
+// Everything comes from what Core already serves: pipeline, conversation,
+// workspace_topics, topic_messages, topic_images and memory_items. Previews
+// and pull requests are the links people posted in messages; Core keeps no
+// record of a pull request's state, or of an outcome's skills and tools, so
+// the rail says what it cannot know rather than guess.
+//
+// Like the outline it is the shell's (in-place-navigation.mjs): one element
+// across moves, which reads through the page that is up. On a phone it is a
+// sheet from the bottom, at middle widths a panel from the right, and beside
+// the page when there is room; it reads only while it shows. What it shows
+// is drawn for one place and one scope: when either changes, what was shown
+// goes at once, and a read for a place or scope left behind draws nothing.
+import { paintChanged } from './topic-navigation.mjs';
+import { paintThumb } from './image-pick.mjs';
+import { clock, shownTime, datedTime } from './times.mjs';
+import { readFailure } from './freshness.mjs';
+import { pipelineHref } from './pipeline.mjs';
+import { reloader } from './live.mjs';
+import { listen } from './in-place-navigation.mjs';
+
+export const SECTIONS = [
+  ['pipeline', 'Pipeline'], ['waiting', 'Waiting for…'], ['notebook', 'Notebook'], ['previews', 'Previews'],
+  ['prs', 'Pull requests'], ['images', 'Images'], ['tools', 'Skills and tools'],
+];
+// How far back the rail looks for links and images in a whole outcome: its
+// Conversation and its most recently active topics, each their newest messages.
+export const OUTCOME_TOPICS = 6, MESSAGES = 50;
+
+// Every web address in a message's words, with the words a Markdown link gave
+// it, without the punctuation that ends a sentence after it.
+const LINK = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"'`]+)/g;
+export function linksIn(body) {
+  const found = [];
+  for (const match of String(body ?? '').matchAll(LINK)) {
+    let url = match[2] ?? match[3], text = match[1] ?? null;
+    url = url.replace(/[.,;:!?…]+$/, '');
+    while (url.endsWith(')') && (url.match(/\(/g)?.length ?? 0) < (url.match(/\)/g)?.length ?? 0)) url = url.slice(0, -1);
+    try { found.push({ url: new URL(url).href, text }); } catch { /* not an address */ }
+  }
+  return found;
+}
+// A pull request's address: its repository and number.
+export function pullRequest(url) {
+  const match = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#]|$)/.exec(url);
+  return match ? { repo: match[2], number: Number(match[3]), href: `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}` } : null;
+}
+// A preview: a build served on this team's private network (a tailnet name,
+// or this machine), or a page whose address says it is a preview or a mockup.
+export function isPreview(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return false; }
+  if (pullRequest(url) || parsed.hostname === 'github.com') return false;
+  return parsed.hostname.endsWith('.ts.net') || ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) || /\/(previews?|mockups?)(\/|$)/i.test(parsed.pathname);
+}
+const shortAddress = url => { try { const u = new URL(url); return (u.host + u.pathname).replace(/\/$/, ''); } catch { return url; } };
+// The previews and pull requests in messages, newest first, each once: the
+// newest message that carries it names where it came from.
+export function thingsIn(messages) {
+  const previews = new Map(), prs = new Map();
+  for (const message of [...messages].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0))) {
+    for (const { url, text } of linksIn(message.body)) {
+      const pr = pullRequest(url);
+      if (pr) {
+        const key = pr.href;
+        if (!prs.has(key)) prs.set(key, { ...pr, title: text ?? `${pr.repo} #${pr.number}`, message });
+        else if (text && prs.get(key).title === `${pr.repo} #${pr.number}`) prs.get(key).title = text;
+      } else if (isPreview(url) && !previews.has(url)) previews.set(url, { url, title: text ?? shortAddress(url), message });
+    }
+  }
+  return { previews: [...previews.values()], prs: [...prs.values()] };
+}
+// What the reader asked for and where it stands: the pipeline items they
+// raised that are in Now or Next, at their stage; and what they posted in the
+// Conversation that nobody has taken up yet.
+export function waitingFor({ reader, now = [], next = [], conversation = [], topic = null }) {
+  const rows = [];
+  for (const item of [...now, ...next]) {
+    if (item.raised_by !== reader || item.shipped) continue;
+    if (topic && item.pieceTopic !== topic) continue;
+    rows.push({ what: item.title, where: item.stage?.name ? { stage: item.stage.name, since: item.stage.entered_ms } : { words: item.section === 'now' ? 'In Now' : 'Next' }, item });
+  }
+  if (!topic) for (const message of conversation) {
+    if (message.author_id !== reader || message.item?.state !== 'new') continue;
+    const takes = Array.isArray(message.item.takes) ? message.item.takes : [];
+    rows.push({ what: firstWords(message.body), where: { words: takes.length ? 'Part taken up so far' : 'Not taken up yet' }, message });
+  }
+  return rows;
+}
+const firstWords = (body, max = 90) => {
+  const text = String(body ?? '').replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text || 'A message';
+};
+
+// Which sections this person keeps open, on this browser; each is open until
+// they fold it.
+export class SectionFolds {
+  constructor(storage, key) { Object.assign(this, { storage, key }); }
+  read() { try { const value = JSON.parse(this.storage?.getItem(this.key) ?? '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; } }
+  isOpen(name) { return this.read()[name] !== false; }
+  set(name, open) { try { this.storage?.setItem(this.key, JSON.stringify({ ...this.read(), [name]: open })); } catch { /* kept for this page only */ } }
+}
+
+const element = (doc, tag, props = {}, ...children) => {
+  const node = Object.assign(doc.createElement(tag), props);
+  node.append(...children.filter(child => child !== null && child !== undefined && child !== false));
+  return node;
+};
+const plainClick = event => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+const settle = promise => promise.then(value => ({ value }), error => ({ error }));
+
+export class ThingsRail {
+  constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView }) {
+    Object.assign(this, { host, backdrop, storage, doc, win });
+    this.handles = null; this.scope = 'outcome'; this.unlisten = null; this.stale = false; this.serial = 0; this.folds = null;
+    // Each place's messages and images, with the version of the topic they were read at (readPlace).
+    this.kept = new Map();
+    this.reload = reloader(() => this.load());
+    this.build();
+    // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
+    listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
+    listen(backdrop, 'click', () => this.close(true));
+    this.wide = win.matchMedia?.('(min-width: 1181px)') ?? null;
+    if (this.wide) listen(this.wide, 'change', () => { if (this.wide.matches) this.close(false); if (this.stale && this.shows()) this.reload(); });
+  }
+  build() {
+    const doc = this.doc;
+    this.heading = element(doc, 'h2', { id: 'things-heading', textContent: 'This outcome' });
+    this.closer = element(doc, 'button', { type: 'button', className: 'quiet things-close', id: 'things-close', textContent: '✕' });
+    this.closer.setAttribute('aria-label', 'Close');
+    this.closer.onclick = () => this.close(true);
+    this.onlyTopic = element(doc, 'button', { type: 'button', className: 'chip', textContent: 'Just this topic' });
+    this.wholeOutcome = element(doc, 'button', { type: 'button', className: 'chip', textContent: 'All of this outcome' });
+    this.onlyTopic.onclick = () => this.choose('topic'); this.wholeOutcome.onclick = () => this.choose('outcome');
+    this.chips = element(doc, 'div', { className: 'things-scope', hidden: true }, this.onlyTopic, this.wholeOutcome);
+    this.chips.setAttribute('role', 'group'); this.chips.setAttribute('aria-label', 'Show things from');
+    this.name = element(doc, 'a', { className: 'things-name' });
+    this.sections = new Map();
+    const holder = this.holder = element(doc, 'div', { className: 'things-sections' });
+    for (const [key, label] of SECTIONS) {
+      const sum = element(doc, 'span', { className: 'sum' }), body = element(doc, 'div', { className: 'things-body' });
+      const summary = element(doc, 'summary', {}, element(doc, 'span', { textContent: label }), sum);
+      const details = element(doc, 'details', { className: 'things-sec', hidden: true }, summary, body);
+      details.dataset.key = key;
+      // What the person folds or opens is kept; the rail sets a fold only as its section appears (paint).
+      details.addEventListener('toggle', () => { if (this.folds) this.folds.set(key, details.open); });
+      holder.append(details);
+      this.sections.set(key, { details, sum, body, drawn: null });
+    }
+    this.nothing = element(doc, 'p', { className: 'things-empty', hidden: true });
+    this.message = element(doc, 'p', { className: 'notice', hidden: true }); this.message.setAttribute('role', 'status');
+    this.retry = element(doc, 'button', { type: 'button', textContent: 'Try again', hidden: true });
+    this.retry.onclick = () => this.reload();
+    this.host.replaceChildren(element(doc, 'div', { className: 'things-head' }, this.heading, this.closer), this.chips, this.name, holder, this.nothing, this.message, this.retry);
+    this.host.hidden = true;
+  }
+  isOpen() { return this.doc.documentElement.hasAttribute('data-things-open'); }
+  // Whether the rail is on screen: beside the page, or open as a sheet or panel.
+  shows() { return !this.host.hidden && (this.wide?.matches || this.isOpen()); }
+  open() {
+    this.doc.documentElement.setAttribute('data-things-open', '');
+    this.backdrop.hidden = false;
+    this.control()?.setAttribute('aria-expanded', 'true');
+    this.closer.focus();
+    if (this.stale || !this.drawnOnce) this.reload();
+  }
+  close(focus) {
+    if (!this.isOpen()) return;
+    this.doc.documentElement.removeAttribute('data-things-open');
+    this.backdrop.hidden = true;
+    const control = this.control();
+    control?.setAttribute('aria-expanded', 'false');
+    if (focus) control?.focus();
+  }
+  control() { return this.doc.getElementById('things-open'); }
+  // A run starts: on a topic or a Conversation the rail shows, and the page's
+  // header gets the button that opens it where it is not beside the page.
+  begin(feed, route = null) {
+    this.close(false);
+    this.host.hidden = !feed;
+    this.unlisten?.(); this.unlisten = null; this.handles = null;
+    this.serial += 1;
+    this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';
+    this.paintHead(); this.clear();
+    if (!feed) return;
+    const row = this.doc.querySelector('#main .eyebrow-row');
+    if (row && !this.control()) {
+      const button = element(this.doc, 'button', { type: 'button', id: 'things-open', className: 'things-open', textContent: 'Pipeline & pages' });
+      button.setAttribute('aria-controls', 'things'); button.setAttribute('aria-expanded', 'false');
+      button.onclick = () => (this.isOpen() ? this.close(true) : this.open());
+      row.append(button);
+    }
+  }
+  ready(handles) {
+    if (!['topic', 'conversation'].includes(handles.route?.kind)) return;
+    this.handles = handles;
+    this.folds ??= new SectionFolds(this.storage, `aim-next.things.${handles.bootstrap.instance_id}.${handles.bootstrap.actor}`);
+    this.scope = handles.route.kind === 'topic' ? 'topic' : 'outcome';
+    this.paintHead(); this.clear();
+    this.unlisten = handles.live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') this.changed(); }) ?? null;
+    this.stale = true;
+    if (this.shows()) this.reload();
+  }
+  changed() { this.stale = true; if (this.shows() && this.doc.visibilityState === 'visible') this.reload(); }
+  topicChanged() { if (this.handles) this.changed(); }
+  shown() { if (this.handles && this.stale && this.shows()) this.reload(); }
+  choose(scope) {
+    if (this.scope === scope) return;
+    this.serial += 1;
+    this.scope = scope; this.paintHead(); this.clear();
+    this.reload();
+  }
+  // Nothing of the place or scope before stays on screen: every section goes,
+  // with its words, until this one's read lands.
+  clear() {
+    for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
+    this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
+    this.drawnOnce = false; this.holder.setAttribute('aria-busy', 'true');
+  }
+  get topicId() { return this.handles?.route?.kind === 'topic' ? this.handles.topic?.id ?? null : null; }
+  get byTopic() { return this.scope === 'topic' && this.topicId !== null; }
+  paintHead() {
+    const handles = this.handles, byTopic = this.byTopic;
+    if (!handles) {
+      // A run on its way: the kind of place is known, its name not yet.
+      this.chips.hidden = true;
+      this.heading.textContent = this.scope === 'topic' ? 'In this topic' : 'This outcome';
+      this.name.textContent = ''; this.name.removeAttribute('href'); this.name.title = '';
+      return;
+    }
+    this.chips.hidden = this.topicId === null;
+    this.onlyTopic.setAttribute('aria-pressed', String(byTopic));
+    this.wholeOutcome.setAttribute('aria-pressed', String(!byTopic));
+    this.heading.textContent = byTopic ? 'In this topic' : 'This outcome';
+    const outcome = handles?.workspaceTitle ?? '';
+    this.name.textContent = byTopic ? handles.topic.title : `${outcome} ›`;
+    if (byTopic) this.name.removeAttribute('href'); else this.name.href = handles ? `?workspace=${encodeURIComponent(handles.workspaceId)}` : '';
+    this.name.title = byTopic ? '' : 'The outcome’s own page';
+  }
+  // Everything the sections show, read again, through the run that is up
+  // (its reads still waiting when it goes are never sent). A read overtaken
+  // by a newer one, or by a move, says nothing; one that fails keeps what was
+  // shown and offers Try again.
+  async load() {
+    const handles = this.handles;
+    if (!handles) return true;
+    const serial = ++this.serial, byTopic = this.byTopic, workspace = handles.workspaceId, topicId = this.topicId;
+    const view = (name, args) => handles.view(name, args);
+    this.stale = false;
+    // A topic the page can no longer read (its updates refused) is not read here either.
+    const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
+    const pipeline = settle(this.readPipeline(view, workspace));
+    const notebook = byTopic && !readable(topicId) ? settle(Promise.resolve(null)) : settle(view('memory_items', { owner_scope: byTopic ? { kind: 'topic', id: topicId } : { kind: 'workspace', id: workspace }, limit: 20 }));
+    const places = (byTopic ? [this.topicPlace(handles)] : await this.outcomePlaces(view, workspace)).filter(place => readable(place.id));
+    if (serial !== this.serial || handles !== this.handles) return true;
+    const reads = places.map(place => settle(this.readPlace(view, place, byTopic ? 24 : 12)));
+    const [pipe, notes, ...found] = await Promise.all([pipeline, notebook, ...reads]);
+    if (serial !== this.serial || handles !== this.handles) return true;
+    const failed = [pipe, notes, ...found].filter(read => read.error && !denied(read.error));
+    const messages = found.flatMap(read => read.value ? read.value.messages.map(message => ({ ...message, place: read.value.place })) : []);
+    const images = new Map();
+    for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
+    const conversation = found.find(read => read.value?.place.conversation)?.value.messages ?? [];
+    this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value?.items ?? (notes.error ? undefined : []),
+      messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation });
+    this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
+    this.message.hidden = this.retry.hidden = !failed.length;
+    if (failed.length) this.message.textContent = 'Some of this could not be read just now; what shows is what was read last.';
+    return !failed.length;
+  }
+  // The places a whole outcome's links and images come from: its Conversation
+  // and its most recently active topics.
+  async outcomePlaces(view, workspace) {
+    const places = [];
+    const [conversation, topics] = await Promise.all([settle(view('conversation', { workspace_id: workspace })), settle(view('workspace_topics', { workspace_id: workspace, limit: OUTCOME_TOPICS }))]);
+    const found = conversation.value?.conversation;
+    if (found?.topic_id) places.push({ id: found.topic_id, title: 'Conversation', conversation: true, version: found.version });
+    for (const topic of topics.value?.items ?? []) places.push({ id: topic.id, title: topic.title, version: topic.version });
+    return places;
+  }
+  // The open topic alone, at the version the page last read it at (it says when that moves: topicChanged).
+  topicPlace(handles) {
+    const topic = handles.currentTopic?.() ?? handles.topic;
+    return { id: topic.id, title: topic.title, version: topic.version };
+  }
+  // One place's newest messages and its images, read again only when its
+  // topic has moved on since (a message, a state), so a commit elsewhere
+  // reads nothing here.
+  async readPlace(view, place, limit) {
+    const kept = this.kept.get(place.id);
+    if (kept && place.version !== undefined && kept.version === place.version && kept.limit === limit) return { ...kept.value, place };
+    const [messages, images] = await Promise.all([
+      view('topic_messages', { topic_id: place.id, direction: 'before', limit: MESSAGES }),
+      view('topic_images', { topic_id: place.id, limit }),
+    ]);
+    const value = { place, messages: messages.items ?? [], images: (images.items ?? []).filter(image => image.topic_id === place.id) };
+    this.kept.set(place.id, { version: place.version, limit, value });
+    return value;
+  }
+  async readPipeline(view, workspace) {
+    const now = await view('pipeline', { workspace_id: workspace, section: 'now', limit: 100 });
+    if (now.pipeline === null) return null;
+    const next = await view('pipeline', { workspace_id: workspace, section: 'next', limit: 20 });
+    return { now, next };
+  }
+  // Each section's words, drawn only when they change, so the pointer's hover
+  // and focus stay where they were. A section takes its kept fold as it
+  // appears, and is left as the person has it after that.
+  paint(found) {
+    const reader = this.handles.bootstrap.actor, nowMs = clock.now();
+    const items = found.pipeline ? this.pipelineRows(found.pipeline, found.byTopic ? found.topicId : null) : null;
+    const { previews, prs } = thingsIn(found.messages);
+    const shown = {
+      pipeline: found.pipeline === undefined ? undefined : this.pipelineSection(items, found, nowMs),
+      waiting: items || found.conversation.length ? this.waitingSection(waitingFor({ reader, now: items?.now ?? [], next: items?.next ?? [], conversation: found.byTopic ? [] : found.conversation, topic: found.byTopic ? found.topicId : null }), nowMs) : null,
+      notebook: found.notebook === undefined ? undefined : this.notebookSection(found.notebook, found),
+      previews: this.linkSection(previews, nowMs, reader, preview => preview.url),
+      prs: this.linkSection(prs, nowMs, reader, pr => pr.href, 'Whether each is open or merged is not recorded here.'),
+      images: this.imageSection(found.images, reader),
+      tools: { sum: '', key: 'tools', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'Skills and tools are not recorded yet.' }) },
+    };
+    let any = false;
+    for (const [key] of SECTIONS) {
+      const part = this.sections.get(key), section = shown[key];
+      if (section === undefined) continue; // not read this time: what showed stays
+      const appears = part.details.hidden && Boolean(section);
+      part.details.hidden = !section;
+      if (!section) { part.drawn = null; part.body.replaceChildren(); continue; }
+      if (key !== 'tools') any = true;
+      part.sum.textContent = section.sum;
+      if (part.drawn !== section.key) {
+        part.drawn = section.key;
+        part.body.replaceChildren(section.node());
+      }
+      if (appears) part.details.open = this.folds.isOpen(key);
+    }
+    this.nothing.hidden = any;
+    this.nothing.textContent = found.byTopic ? 'This topic refers to nothing yet. “All of this outcome” shows the rest.' : 'Nothing here yet.';
+  }
+  pipelineRows({ now, next }, topic) {
+    const titles = new Map((now.items ?? []).map(item => [item.number, item.title]));
+    const pieces = (now.pieces ?? []).filter(piece => !topic || piece.topic?.id === topic);
+    const pieceTopic = new Map();
+    for (const piece of now.pieces ?? []) for (const number of piece.items ?? []) pieceTopic.set(number, piece.topic?.id ?? null);
+    const withTopic = item => ({ ...item, pieceTopic: pieceTopic.get(item.number) ?? null });
+    return { live: now.facts?.live ?? null, pieces, titles, now: (now.items ?? []).map(withTopic), next: (next.items ?? []).map(withTopic), title: now.pipeline?.title ?? 'Pipeline' };
+  }
+  pipelineSection(items, found, nowMs) {
+    const doc = this.doc, workspace = this.handles.workspaceId;
+    if (!items) return found.byTopic ? null : { sum: '', key: 'off', node: () => element(doc, 'p', { className: 'things-quiet', textContent: 'This outcome has no pipeline.' }) };
+    const next = found.byTopic ? [] : items.next;
+    if (found.byTopic && !items.pieces.length) return null;
+    const pieceRows = items.pieces.map(piece => ({
+      title: piece.topic?.title || (piece.items ?? []).map(number => items.titles.get(number) ?? `Item ${number}`).join(', '),
+      topic: piece.topic?.id ?? null, stage: piece.stage?.name ?? null, since: piece.stage?.entered_ms ?? null }));
+    const key = JSON.stringify(['pipe', items.live, pieceRows, next.map(item => [item.number, item.title])]);
+    const sum = found.byTopic ? (pieceRows[0]?.stage ?? '') : `${pieceRows.length} in Now`;
+    return { sum, key, node: () => {
+      const box = element(doc, 'div');
+      if (!found.byTopic) {
+        box.append(element(doc, 'div', { className: 'pipe-label', textContent: 'Live' }),
+          element(doc, 'p', { className: 'things-line', textContent: items.live ? `Release ${items.live.release} · ${shownTime(items.live.deployed_ms, nowMs)}` : 'Nothing released yet' }));
+      }
+      if (pieceRows.length) {
+        box.append(element(doc, 'div', { className: 'pipe-label', textContent: 'Now' }), element(doc, 'ul', { className: 'things-list' }, ...pieceRows.map(row => {
+          const sub = element(doc, 'span', { className: 'sub' }, row.stage ? element(doc, 'b', { textContent: row.stage }) : 'Waiting for a stage', row.since ? ` · since ${shownTime(row.since, nowMs)}` : '');
+          return element(doc, 'li', {}, row.topic ? this.placeLink({ kind: 'topic', id: row.topic }, row.title, sub) : element(doc, 'span', { className: 'row' }, row.title, sub));
+        })));
+      }
+      if (next.length) {
+        const shownNext = next.slice(0, 5);
+        box.append(element(doc, 'div', { className: 'pipe-label', textContent: 'Next' }), element(doc, 'ul', { className: 'things-list' },
+          ...shownNext.map(item => element(doc, 'li', {}, element(doc, 'a', { className: 'row', href: pipelineHref(workspace, item.number), textContent: item.title }))),
+          next.length > shownNext.length ? element(doc, 'li', { className: 'things-quiet', textContent: `and ${next.length - shownNext.length} more` }) : null));
+      }
+      if (!found.byTopic && !pieceRows.length && !next.length) box.append(element(doc, 'p', { className: 'things-quiet', textContent: 'Nothing in Now or Next.' }));
+      box.append(element(doc, 'a', { className: 'pipe-open', href: pipelineHref(workspace), textContent: 'The whole pipeline →' }));
+      return box;
+    } };
+  }
+  waitingSection(rows, nowMs) {
+    if (!rows.length) return null;
+    const doc = this.doc, workspace = this.handles.workspaceId;
+    const where = row => row.where.stage ? `${row.where.stage} · since ${shownTime(row.where.since, nowMs)}` : row.where.words;
+    return { sum: String(rows.length), key: JSON.stringify(['wait', rows.map(row => [row.what, where(row)])]), node: () => element(doc, 'ul', { className: 'things-list' }, ...rows.map(row => {
+      const sub = element(doc, 'span', { className: 'wait-state', textContent: where(row) });
+      if (row.item) return element(doc, 'li', {}, element(doc, 'a', { className: 'row', href: pipelineHref(workspace, row.item.number) }, row.what, sub));
+      return element(doc, 'li', {}, this.placeLink({ kind: 'topic', id: row.message.topic_id, message: row.message.id }, row.what, sub));
+    })) };
+  }
+  notebookSection(items, found) {
+    if (!items.length) return null;
+    const doc = this.doc, scope = found.byTopic ? { kind: 'topic', id: found.topicId } : { kind: 'workspace', id: this.handles.workspaceId };
+    return { sum: String(items.length), key: JSON.stringify(['note', scope, items.map(item => [item.id, item.title, item.revision, item.read_revision])]), node: () => element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
+      const link = this.placeLink({ ...scope, page: item.id }, item.title || 'Notebook page');
+      paintChanged(link, item);
+      return element(doc, 'li', {}, link);
+    })) };
+  }
+  linkSection(rows, nowMs, reader, href, note = null) {
+    if (!rows.length) return null;
+    const doc = this.doc;
+    const from = row => `${row.message.author_id === reader ? 'you' : row.message.author_id}${row.message.place && !this.byTopic ? ` in ${row.message.place.title}` : ''} · ${shownTime(row.message.sent_ms, nowMs)}`;
+    return { sum: String(rows.length), key: JSON.stringify(['link', rows.map(row => [href(row), row.title, from(row)]), note]), node: () => {
+      const list = element(doc, 'ul', { className: 'things-list' }, ...rows.slice(0, 12).map(row => {
+        const link = element(doc, 'a', { className: 'row', href: href(row), target: '_blank', rel: 'noopener' }, row.title, element(doc, 'span', { className: 'sub', textContent: from(row) }));
+        link.title = href(row);
+        return element(doc, 'li', {}, link);
+      }));
+      return note ? element(doc, 'div', {}, list, element(doc, 'p', { className: 'things-quiet', textContent: note })) : list;
+    } };
+  }
+  imageSection(images, reader) {
+    if (!images.length) return null;
+    const doc = this.doc, { api, bootstrap, inTurn } = this.handles;
+    return { sum: String(images.length), key: JSON.stringify(['img', images.map(image => image.attachment.id)]), node: () => element(doc, 'div', { className: 'things-thumbs' }, ...images.map(image => {
+      const label = `${image.attachment.name ?? 'Image'}, from ${image.author_id === reader ? 'you' : image.author_id}, ${datedTime(image.sent_ms)}`;
+      const link = this.placeLink({ kind: 'topic', id: image.topic_id, message: image.source_ref.id }, '');
+      link.className = 'thumb'; link.title = label; link.setAttribute('aria-label', label);
+      paintThumb(link, `${image.source_ref.id}:${image.attachment.id}`, () => inTurn(async () => (await api.media(bootstrap.instance_id, image.attachment, image.source_ref)).blob));
+      return link;
+    })) };
+  }
+  // A place inside the outcome: a link that opens it through the page, so
+  // writing not yet saved still asks first, and a message in the open topic
+  // opens in the Reader.
+  placeLink(target, title, ...rest) {
+    const link = element(this.doc, 'a', { className: 'row', href: '?' + new URLSearchParams(target.kind === 'topic'
+      ? { topic: target.id, ...(target.message ? { message: target.message } : {}), ...(target.page ? { page: target.page } : {}) }
+      : { workspace: target.id, ...(target.page ? { page: target.page } : {}) }) }, title, ...rest);
+    link.onclick = event => {
+      if (!plainClick(event) || !this.handles) return;
+      event.preventDefault();
+      if (!this.wide?.matches) this.close(false);
+      this.handles.open(target, title || 'that page', link);
+    };
+    return link;
+  }
+}
+const denied = error => readFailure(error).kind === 'forbidden';

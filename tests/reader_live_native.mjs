@@ -27,6 +27,8 @@ export async function liveChecks({ check, page, until, control, observations, or
       const { commit_seq: last } = await control({ method: 'counts' });
       await until(() => p.evaluate(`observedFreshness.live.seq >= ${last}`), 'the page heard the last commit');
       await settled(p);
+      // The rails beside the page have read for it too (in-place-navigation.mjs).
+      await until(() => p.evaluate('!document.documentElement.hasAttribute("data-rails-reading")'), 'the rails have nothing waiting or out');
       if (!await reporting(p) && (await control({ method: 'counts' })).commit_seq === last) return;
     }
   };
@@ -854,20 +856,23 @@ export async function liveChecks({ check, page, until, control, observations, or
           pendingOpen: Boolean(observedRegistry.pendingOpen), error: record.error ?? null })), 0); } });
       return Array.prototype.push.call(this, record); }; })()`);
     await p.send('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Response' }, { urlPattern: origin + '/app.mjs', requestStage: 'Response' },
-      { urlPattern: origin + '/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }] });
-    p.intercept((payload, event) => payload?.name === 'source' || event.request.url === away.url);
+      { urlPattern: origin + '/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }, { urlPattern: origin + '/app.mjs?*', requestStage: 'Response' }] });
+    // The next page is a move in place (in-place-navigation.mjs): its run of the page's module is what comes next, not a document.
+    const nextPage = url => url === away.url || url.startsWith(origin + '/app.mjs?place=');
+    p.intercept((payload, event) => payload?.name === 'source' || nextPage(event.request.url));
     await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
     await p.point(card(topic.message));
     const source = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
     await p.evaluate(`document.querySelector(${JSON.stringify(marksRow(away.id))}).scrollIntoView({block:'center'})`);
     await p.point(marksRow(away.id));
-    const next = await until(() => p.held.find(h => h.event.request.url === away.url), 'the next page is held');
+    const next = await until(() => p.held.find(h => nextPage(h.event.request.url)), 'the next page is held');
     p.intercept(null);
     // From here until the next page goes on, nothing is asked of the page.
     await p.send('Fetch.continueResponse', { requestId: source.event.requestId });
     const ended = await until(() => p.events.find(e => e.method === 'Runtime.bindingCalled' && e.params.name === 'leavingOpenEnded'), 'the leaving document reports its open ended');
-    assert.deepEqual(JSON.parse(ended.params.payload), { search: `?topic=${topic.id}`, readerOpen: false, pendingOpen: false, error: null },
-      'the leaving document dropped the open and shows no Reader');
+    // The address has moved with the move in place; the run that left dropped its open and shows no Reader.
+    assert.deepEqual(JSON.parse(ended.params.payload), { search: `?topic=${away.id}`, readerOpen: false, pendingOpen: false, error: null },
+      'the leaving page dropped the open and shows no Reader');
     assert.deepEqual(markCalls(p), [], 'the leaving document sent no clear');
     await p.send('Fetch.continueResponse', { requestId: next.event.requestId });
     await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + away.id)} && document.body?.dataset.ready === 'true'`), 'the next page opens');

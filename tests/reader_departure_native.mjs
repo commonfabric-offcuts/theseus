@@ -31,25 +31,31 @@ export async function departureChecks({check,page,until,facts,view,control,obser
   // Earlier cases in this fixture add topics that sort ahead of t1 and t2, so
   // the instrument pages the rail natively until its target is rendered, and
   // fails by name when neither the target nor More appears. A topic choice
-  // loads a new document, whose rail starts again from the first page. Cases
+  // loads a new document or moves in place, and either way the rail starts again from the first page. Cases
   // reveal before writing, so no More press falls inside a timed or held act;
   // once a document has shown a target, choosing it there presses no More,
   // and a rail that fell back to its first page fails the case.
   const revealed=new WeakMap();
+  // Which run of the page lists the topics: a load, or a move in place between
+  // topics (in-place-navigation.mjs), each starts the list again from its first
+  // page with a fresh list of its own, which this marks when first seen.
+  const listing=p=>p.evaluate(`(list=>list.dataset.listing??=performance.timeOrigin+':'+Math.random())(document.querySelector('#topic-navigation'))`);
   const reveal=async(p,id)=>{
     const selector=`#topics a[data-topic-id="${id}"]`;
     for(let pressed=0;;++pressed){
-      const found=await until(()=>p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(selector)});if(all.length>1)return false;
+      // A list a run that has gone still shows until the new run's list takes
+      // its place is inert (outline-rail.mjs): it is not the page's.
+      const found=await until(()=>p.evaluate(`(()=>{const all=[...document.querySelectorAll(${JSON.stringify(selector)})].filter(e=>!e.closest('[inert]'));if(all.length>1)return false;
         if(all.length===1){const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0&&'rendered';}
-        const more=document.querySelector('#more-topics');return !more.hidden&&!more.hasAttribute('aria-disabled')&&'more';})()`),'unique rendered departure target '+selector+' or More topics');
-      if(found==='rendered'){revealed.set(p,{id,document:await p.evaluate('performance.timeOrigin')});return pressed;}
+        const more=document.querySelector('#more-topics');return !more.hidden&&more.getClientRects().length>0&&!more.hasAttribute('aria-disabled')&&'more';})()`),'unique rendered departure target '+selector+' or More topics');
+      if(found==='rendered'){revealed.set(p,{id,document:await listing(p)});return pressed;}
       const count=await p.evaluate('document.querySelectorAll("#topics a").length');
       await p.evaluate('document.querySelector("#more-topics").scrollIntoView({block:"center",inline:"nearest"})');await p.point('#more-topics');
       await until(()=>p.evaluate(`document.querySelectorAll("#topics a").length>${count}`),'More topics rendered a later page');
     }
   };
   const choose=async(p,id='t2')=>{
-    const shown=revealed.get(p),document=await p.evaluate('performance.timeOrigin');
+    const shown=revealed.get(p),document=await listing(p);
     const pressed=await reveal(p,id);
     if(shown?.id===id&&shown.document===document)assert.equal(pressed,0,`the rail still shows ${id}, already revealed in this document, without More`);
     await point(p,`#topics a[data-topic-id="${id}"]`);return pressed;

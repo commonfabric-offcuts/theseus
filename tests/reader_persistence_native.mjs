@@ -1149,6 +1149,8 @@ try {
 
       await check('correction held Y rejects X neighbors and media then mode cancellation restores X', async () => {
         const p = await page('held-y', null, true); await observeCalls(p);
+        // The right rail's thumbnails read media too; they are in before the page's reads are held (things-rail.mjs).
+        await until(() => p.evaluate('document.body.dataset.ready==="true" && !document.documentElement.hasAttribute("data-rails-reading")'), 'the rails have read');
         let neighborsHeld = 0, mediaHeld = false;
         p.intercept((payload, event) => {
           if (payload?.name === 'topic_messages' && payload.args.audience === 'reader' && neighborsHeld < 2) { ++neighborsHeld; return true; }

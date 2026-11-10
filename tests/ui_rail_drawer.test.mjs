@@ -13,6 +13,8 @@ const SIMPLE = {
   '#new-topic': e => e.id === 'new-topic',
   'a[aria-current="page"]': e => e.tag === 'a' && e.attrs['aria-current'] === 'page',
   'button:not([disabled])': e => e.tag === 'button' && !e.disabled,
+  '#rail-open': e => e.id === 'rail-open',
+  '[data-opens-rail]': e => 'data-opens-rail' in e.attrs,
 };
 const matches = (e, selector) => selector.split(', ').some(one => {
   if (!SIMPLE[one]) throw Error('unexpected selector ' + one);
@@ -53,42 +55,46 @@ function page({ current = 't2' } = {}) {
   const backdrop = new El('div', { id: 'rail-backdrop' }); backdrop.hidden = true;
   const main = new El('main', { id: 'main' }).add(new El('header').add(control));
   const byId = { rail, 'rail-open': control, 'rail-backdrop': backdrop, main };
+  const elsewhereLine = new El('button', { attrs: { 'data-opens-rail': '' } }).add(new El('span'));
+  main.add(elsewhereLine);
   doc.getElementById = id => byId[id] ?? null;
   const phone = { matches: true, listeners: [], addEventListener(name, fn) { assert.equal(name, 'change'); this.listeners.push(fn); } };
   const win = { matchMedia: query => { assert.equal(query, '(max-width: 760px)'); return phone; } };
   const drawer = railDrawer(doc, win);
   const state = () => ({ open: rail.classList.contains('open'), backdrop: !backdrop.hidden, inert: main.inert, expanded: control.attrs['aria-expanded'] });
-  const tap = target => rail.handlers.click({ target });
+  // A tap bubbles from what was tapped to the rail and then to the document.
+  const tap = target => { if (rail.contains(target)) rail.handlers.click({ target }); doc.handlers.click({ target }); };
+  const press = target => doc.handlers.click({ target });
   const key = (name, taken = false) => { const event = { key: name, defaultPrevented: taken, prevented: false, preventDefault() { this.prevented = true; } }; doc.handlers.keydown(event); return event; };
-  return { doc, drawer, rail, control, backdrop, main, topics, wordmark, home, heading, newTopic, topicLine, moreTopics, retryTopics, done, notebookPage, phone, state, tap, key };
+  return { doc, drawer, rail, control, press, byId, El, elsewhereLine, backdrop, main, topics, wordmark, home, heading, newTopic, topicLine, moreTopics, retryTopics, done, notebookPage, phone, state, tap, key };
 }
 const OPEN = { open: true, backdrop: true, inert: true, expanded: 'true' }, SHUT = { open: false, backdrop: false, inert: false, expanded: 'false' };
 
 test('the drawer starts closed, and "☰ Topics" opens it over the topic, on the open topic in its middle', () => {
   const p = page();
   assert.deepEqual(p.state(), SHUT, 'closed as the page starts');
-  p.control.handlers.click();
+  p.press(p.control);
   assert.deepEqual(p.state(), OPEN, 'open, the topic behind it dimmed and out of reach');
   assert.equal(p.doc.activeElement, p.topics[1], 'the focus is on the open topic');
   assert.deepEqual(p.topics[1].focusedWith, { preventScroll: true }, 'focusing it does not scroll on its own');
   assert.deepEqual(p.topics[1].scrolled, [{ block: 'center' }], 'the open topic is brought to the middle, so a lit topic beside it shows whole');
-  p.control.handlers.click();
+  p.press(p.control);
   assert.deepEqual(p.state(), SHUT, '"☰ Topics" again closes it');
 });
 
 test('with no open topic in it, the drawer opens on the first place it can go', () => {
   const p = page({ current: null });
-  p.control.handlers.click();
+  p.press(p.control);
   assert.equal(p.doc.activeElement, p.wordmark);
 });
 
 test('a tap on anything in the drawer that goes somewhere closes it and gives "☰ Topics" the focus; a tap on a heading does not', () => {
   const p = page();
-  p.control.handlers.click();
+  p.press(p.control);
   p.tap(p.heading);
   assert.deepEqual(p.state(), OPEN, 'a heading goes nowhere, so the drawer stays');
   for (const [name, target] of [['a topic, pressed on its words', p.topics[2].children[0]], ['the logo', p.wordmark], ['← Outcomes', p.home], ['a Notebook page', p.notebookPage]]) {
-    if (!p.state().open) p.control.handlers.click();
+    if (!p.state().open) p.press(p.control);
     target.focus();
     p.tap(target);
     assert.deepEqual(p.state(), SHUT, name + ' closes it');
@@ -105,7 +111,7 @@ test('a tap on anything in the drawer that goes somewhere closes it and gives "�
 // to do nothing. So with everything that opens in the drawer itself.
 test('a tap on what opens in the drawer itself (New topic, More topics, Retry, Done) leaves it open with the focus where that tap put it', () => {
   const p = page();
-  p.control.handlers.click();
+  p.press(p.control);
   for (const [name, target, focused] of [['New topic', p.newTopic, p.topicLine], ['its title line', p.topicLine, p.topicLine], ['More topics', p.moreTopics, p.moreTopics],
     ['Retry topics', p.retryTopics, p.retryTopics], ['the Done group', p.done, p.done]]) {
     focused.focus();
@@ -117,7 +123,7 @@ test('a tap on what opens in the drawer itself (New topic, More topics, Retry, D
 
 test('a tap on the dimmed page beside the drawer closes it and gives "☰ Topics" the focus back', () => {
   const p = page();
-  p.control.handlers.click();
+  p.press(p.control);
   // A press on the dimmed page takes the focus off the drawer before its click, as a browser does.
   p.doc.activeElement = null;
   p.backdrop.handlers.click();
@@ -127,7 +133,7 @@ test('a tap on the dimmed page beside the drawer closes it and gives "☰ Topics
 
 test('Escape closes the drawer once; an Escape something else took, another key, or an Escape with it closed is left alone', () => {
   const p = page();
-  p.control.handlers.click();
+  p.press(p.control);
   assert.equal(p.key('Enter').prevented, false); assert.deepEqual(p.state(), OPEN, 'another key leaves it open');
   assert.equal(p.key('Escape', true).prevented, false); assert.deepEqual(p.state(), OPEN, 'an Escape already taken leaves it open');
   const escape = p.key('Escape');
@@ -138,7 +144,7 @@ test('Escape closes the drawer once; an Escape something else took, another key,
 
 test('widening the window past a phone closes the drawer; narrowing it does not open it', () => {
   const p = page();
-  p.control.handlers.click();
+  p.press(p.control);
   p.phone.matches = false; p.phone.listeners.forEach(fn => fn());
   assert.deepEqual(p.state(), SHUT, 'at desktop width the rail stands beside the topic again');
   p.phone.matches = true; p.phone.listeners.forEach(fn => fn());
@@ -150,4 +156,23 @@ test('the drawer refuses to start without its rail, its control, its backdrop or
     const doc = { getElementById: id => id === missing ? null : { addEventListener() {} }, addEventListener() {} };
     assert.throws(() => railDrawer(doc, { matchMedia: () => ({ addEventListener() {} }) }), /needs its rail, its control, its backdrop and the page/, missing);
   }
+});
+
+// Items 272 and 131: on a phone the line under the header that says what is
+// new elsewhere opens the outline too; and a move in place puts back a fresh
+// header, whose "☰ Outcomes" the drawer, which stays, answers and labels.
+test('the line saying what is new elsewhere opens the drawer, and a fresh header after a move works the same', () => {
+  const p = page();
+  p.press(p.elsewhereLine.children[0]);
+  assert.deepEqual(p.state(), OPEN, 'a tap on the words of the line opens it');
+  p.press(p.control);
+  assert.deepEqual(p.state(), SHUT);
+  const fresh = new p.El('button', { id: 'rail-open', attrs: { 'aria-expanded': 'false' } }), freshMain = new p.El('main', { id: 'main' }).add(fresh);
+  p.byId['rail-open'] = fresh; p.byId.main = freshMain;
+  p.press(fresh);
+  assert.deepEqual([p.rail.classList.contains('open'), freshMain.inert, fresh.attrs['aria-expanded'], p.main.inert], [true, true, 'true', false], 'the fresh page is the one dimmed');
+  p.key('Escape');
+  assert.equal(p.doc.activeElement, fresh, 'the focus goes back to the fresh "☰ Outcomes"');
+  p.press(p.topics[0]);
+  assert.deepEqual(p.state().open, false, 'a press on anything else does not open it');
 });

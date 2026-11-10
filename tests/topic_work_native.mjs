@@ -9,12 +9,14 @@ import assert from 'node:assert/strict';
 export async function workChecks({ check, page, until, control, view, shot }) {
   const rowOf = topic => `#topics .nav-item[data-topic-id="${topic}"]`;
   const row = rowOf('t1');
+  // The key under the topics: the topic list's own, or on a topic page the outline's, which holds that list (outline-rail.mjs).
+  const KEY = "([...document.querySelectorAll('#topics-key, .ol-key')].find(e=>e.getClientRects().length>0)??document.querySelector('#topics-key'))";
   const read = (p, selector = row) => p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)});return r?{title:r.title,dot:Boolean(r.querySelector('.topic-work')),words:[...r.querySelectorAll('.sr-only')].map(e=>e.textContent),size:(()=>{const d=r.querySelector('.topic-work');if(!d)return null;const b=d.getBoundingClientRect();return [b.width,b.height]})()}:null})()`);
 
   await check('work a topic someone just posted in carries the dot, and its title says who and when, nothing more', async () => {
     await control({ method: 'agent_message', operation_id: 'work-agent-posts', body: 'Picked this up.', topic_id: 't1', addressees: [] });
     const p = await page('work-row', null, true);
-    const shown = await until(async () => { const r = await read(p); return r?.title.startsWith('fixture-notebook-agent · ') && r; }, 'row shows the agent post as activity');
+    const shown = await until(async () => { const r = await read(p); return r?.title.startsWith('fixture-notebook-agent · ') && r.size?.[0] > 0 && r; }, 'row shows the agent post as activity');
     const work = (await view('topic', { topic_id: 't1' })).topic.work;
     assert.equal(work.observed, true);
     assert.equal(shown.dot, true, 'observed work has the dot');
@@ -27,7 +29,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     for (const r of await p.evaluate(`[...document.querySelectorAll('#topics .nav-item')].map(a=>a.title)`)) assert.doesNotMatch(r, /nobody|no one/i);
     // A hollow ring in the quiet text color, not the filled accent dot of
     // presence and unread; and a key, in words, at laptop and phone width.
-    const ring = async q => q.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(row + ' .topic-work')}),c=getComputedStyle(d),k=document.querySelector('#topics-key'),b=k.getBoundingClientRect();
+    const ring = async q => q.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(row + ' .topic-work')}),c=getComputedStyle(d),k=${KEY},b=k.getBoundingClientRect();
       return {fill:c.backgroundColor,border:[c.borderTopColor,c.borderRightColor,c.borderBottomColor,c.borderLeftColor],quiet:getComputedStyle(k).color,
         key:!k.hidden&&b.height>0&&b.width>0&&b.right<=innerWidth,words:k.textContent.trim(),hiddenFromReaders:k.getAttribute('aria-hidden')}})()`);
     const laptop = await ring(p);
@@ -46,7 +48,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     await until(() => phone.evaluate("document.getElementById('rail').classList.contains('open')"), 'phone: the rail opens over the topic');
     const small = await ring(phone);
     assert.deepEqual([small.fill, small.key, small.words], ['rgba(0, 0, 0, 0)', true, 'Posted in or worked on in the last hour, or waiting on an answer'], 'phone: the key says what the ring means, where no title shows: ' + JSON.stringify(small));
-    await phone.evaluate("document.querySelector('#topics-key').scrollIntoView({block:'center'})");
+    await phone.evaluate(`${KEY}.scrollIntoView({block:'center'})`);
     await shot(phone, 'work-row-ring-phone');
     assert.deepEqual(phone.errors, []);
     await phone.close();

@@ -1,0 +1,138 @@
+/* The two rails of a topic and an outcome's Conversation (items 272 and 131; docs/rails.md).
+   The page carries data-rails on <html> while it is one of those (in-place-navigation.mjs).
+   Left: the outline of every outcome, in the side rail. Right: the outcome's things, beside the
+   page when there is room, a panel from the right at middle widths, a sheet from the bottom on a phone. */
+
+/* The outline takes the place of the outcome's own sections: the outcomes list, "← Outcomes",
+   the Conversation row, the Pipeline row and the topics. The page still reads them (a message's
+   Add to pipeline follows the Pipeline row); they are not shown. */
+[data-rails] :is(#outcomes-home,#outcome-navigation,#conversation-navigation,#pipeline-navigation){display:none!important}
+/* The page's own topic list and the outcome's Notebook move into the outline, under the outcome
+   being read (outline-rail.mjs); until they do they wait out of sight. */
+[data-rails] #rail>:is(#topic-navigation,#outcome-references){display:none}
+/* The rail keeps its scroll from page to page, so the page's own notice (a start that failed, with
+   Reload this page) stays pinned at the top of it rather than scrolled out of sight. */
+@media(min-width:761px){[data-rails] #rail>#app-status:not([hidden]){position:sticky;top:0;z-index:3}}
+#outline[hidden],#things[hidden],.things-backdrop[hidden],#things-open,#outline-elsewhere{display:none}
+
+/* ---- The outline ---- */
+.outline{margin-top:.2rem}
+.ol-sums{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1rem}
+.ol-sums .chip{min-height:2.25rem;padding:.2rem .7rem;font-size:.82rem;cursor:pointer}
+.ol-sums .chip .n{font-weight:700;margin-right:.25rem}
+.ol-sums .chip .outcome-light{margin-right:.35rem}
+/* Pressed: the accent's edge, the words in ink, which read in both schemes. */
+.ol-sums .chip[aria-pressed=true]{border-color:var(--accent);background:var(--soft);color:var(--ink);font-weight:650}
+.ol-sums .chip:disabled{opacity:.55}
+.ol-heading{margin-top:0}
+.ol-heading-tools{display:flex;gap:.1rem}
+.ol-heading-tools button{min-height:2.25rem;padding:.2rem .5rem;font-size:.8rem;color:var(--accent)}
+.ol-list{list-style:none;margin:0;padding:0}
+.ol-outcome{margin:0 0 .15rem}
+.ol-outcome[hidden]{display:none}
+.ol-row{display:flex;align-items:flex-start;gap:.1rem}
+.ol-fold{flex:none;width:2rem;min-height:2.75rem;padding:0;border-color:transparent;background:transparent;color:var(--muted)}
+.ol-fold .tri{display:inline-block;transition:transform .12s ease-out;font-size:.8rem}
+.ol-outcome[data-open]>.ol-row .ol-fold .tri{transform:rotate(90deg)}
+.ol-name{display:block;flex:1;min-width:0;min-height:2.75rem;padding:.45rem .55rem;border:1px solid transparent;border-radius:.5rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
+.ol-name:hover{background:var(--soft)}
+.ol-name[aria-current=page]{background:var(--soft);border-color:var(--line)}
+.ol-name-line{display:block;font-weight:600}
+.ol-name-line .topic-state{font-weight:500}
+.ol-outcome[data-fresh]:not([data-open])>.ol-row .ol-title,.ol-name:has(.unread-count) .ol-title{font-weight:700}
+.ol-name small.standing{display:block;margin-top:.15rem;font-size:.74rem;color:var(--muted)}
+.ol-name small.standing :is(.what,.when){white-space:nowrap}
+.ol-name small.standing[data-light=waiting]{color:var(--ink);font-weight:650}
+.ol-name small.standing[data-light=unknown]{color:var(--warn)}
+.ol-topics{margin:0 0 .5rem 2rem}
+.ol-topics[hidden]{display:none}
+.ol-topics .topic-list{display:block;overflow:visible;padding:0}
+.ol-topics .topic-list a.nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
+.ol-topics .topic-group{margin:.2rem 0}
+.ol-topics .topic-group>summary{cursor:pointer;color:var(--muted);font-size:.85rem;padding:.35rem .2rem}
+.ol-new-topic{min-height:2.5rem;padding:.2rem .5rem;font-size:.85rem;color:var(--accent)}
+.ol-key{display:none;font-size:.78rem;margin:.8rem 0 0}
+.outline:has(.ol-topics:not([hidden]) .topic-work) .ol-key{display:block}
+/* The page's own list, under the outcome being read: its rows as the outline's, New topic at its end. */
+.ol-adopted>.rail-heading{margin:0;justify-content:flex-start}
+.ol-adopted>.rail-heading h2,.ol-adopted #topics-key{display:none!important}
+.ol-adopted #new-topic{min-height:2.5rem;padding:.2rem .5rem;border-color:transparent;background:transparent;font-size:.85rem;color:var(--accent)}
+.ol-adopted #new-topic::before{content:"+ "}
+.ol-adopted #topics{display:block;overflow:visible;padding:0}
+.ol-adopted #topics a.nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
+.ol-adopted #outcome-empty{padding:.3rem .5rem;font-size:.85rem}
+.ol-own[hidden]{display:none}
+/* The outcome's Notebook, after its topics. */
+.ol-notes{margin:.5rem 0 0}
+.ol-notes>.rail-heading{margin:.3rem 0 .2rem}
+.ol-notes #outcome-references-list .nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
+/* "N new" and "N waiting on you" show only what they count: outcomes that hold some, and in them only those topics. */
+.outline[data-only=new] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.unread-count)),
+.outline[data-only=waiting] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.topic-state.mine)),
+.outline:is([data-only=new],[data-only=waiting]) .ol-topics :is(.topic-group,.ol-new-topic,.one-line,.rail-heading,#outcome-empty,.ol-notes){display:none!important}
+
+/* ---- The outcome's things ---- */
+.things{padding:1.3rem 1rem;background:var(--paper)}
+.things-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.things-head h2{margin:0;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.things-close{min-height:2.5rem;color:var(--muted)}
+.things-scope{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 .2rem}
+.things-scope[hidden]{display:none}
+.things-scope .chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.82rem;cursor:pointer}
+.things-scope .chip[aria-pressed=true]{border-color:var(--accent);background:var(--soft);color:var(--ink);font-weight:650}
+.things-name{display:block;margin:.5rem 0 .6rem;font-weight:650;color:var(--ink);overflow-wrap:anywhere;text-decoration:none}
+a.things-name[href]{color:var(--accent)}
+.things-sections[aria-busy=true]{opacity:.6}
+.things-sec{border-top:1px solid var(--line);padding:.15rem 0}
+.things-sec[hidden]{display:none}
+.things-sec>summary{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.75rem;cursor:pointer;font-weight:650;font-size:.9rem}
+.things-sec>summary .sum{color:var(--muted);font-weight:500;font-size:.82rem}
+.things-body{padding:0 0 .6rem}
+.things-list{list-style:none;margin:0;padding:0}
+.things-list li{margin:.1rem 0}
+.things-list a.row,.things-list span.row{display:block;padding:.4rem .5rem;border-radius:.45rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.88rem}
+.things-list a.row:hover{background:var(--soft)}
+.things-list .sub,.things-list .wait-state{display:block;font-size:.76rem;color:var(--muted);margin-top:.1rem}
+.things-list .sub b{color:var(--ink);font-weight:650}
+.pipe-label{margin:.5rem 0 .1rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.things-line{margin:.1rem .5rem;font-size:.88rem}
+.pipe-open{display:inline-block;margin:.5rem .5rem 0;font-size:.85rem}
+.things-quiet,.things-empty{margin:.2rem .5rem;font-size:.82rem;color:var(--muted)}
+.things-empty[hidden]{display:none}
+.things-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(4.2rem,1fr));gap:.4rem}
+.things-thumbs a.thumb{display:block;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:.45rem;background:var(--soft);padding:0}
+.things-thumbs a.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* Wide: three columns, each rail scrolling on its own. */
+@media(min-width:1181px){
+  [data-rails] .workspace-layout{grid-template-columns:18rem minmax(0,1fr) 18rem}
+  [data-rails] .things{position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto;border-left:1px solid var(--line)}
+  .things-close{display:none}
+}
+/* Middle widths and phones: the things open from the header's "Pipeline & pages". */
+@media(max-width:1180px){
+  [data-rails] #main .eyebrow-row{display:flex;align-items:center;gap:.6rem;min-width:0}
+  [data-rails] #main .eyebrow-row .eyebrow{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  [data-rails] #things-open{display:inline-flex;align-items:center;flex:none;margin-left:auto;padding:.3rem .8rem;border-radius:1.4rem;font-size:.85rem;color:var(--accent);-webkit-tap-highlight-color:transparent}
+  /* It slides in as it opens, and is gone at once as it closes: hidden by no clock, so a closed panel
+     never stands over the page while an animation waits (a page in the background runs none). */
+  [data-rails] .things{position:fixed;z-index:25;overflow-y:auto;overscroll-behavior:contain;box-shadow:0 6px 24px rgb(0 0 0 / .25);visibility:hidden}
+  [data-rails][data-things-open] .things{visibility:visible}
+  [data-rails] .things-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:24;background:rgb(0 0 0 / .4)}
+  [data-rails][data-things-open] body{overflow:hidden}
+}
+@media(min-width:761px) and (max-width:1180px){
+  [data-rails] .things{inset:0 0 0 auto;width:min(22rem,90vw);border-left:1px solid var(--line);transform:translateX(100%)}
+  [data-rails][data-things-open] .things{transform:none;transition:transform .16s ease-out}
+}
+@media(max-width:760px){
+  [data-rails] .things{inset:auto 0 0 0;max-height:82dvh;border-top:1px solid var(--line);border-radius:1rem 1rem 0 0;padding-bottom:max(1rem,env(safe-area-inset-bottom));transform:translateY(100%)}
+  [data-rails][data-things-open] .things{transform:none;transition:transform .16s ease-out}
+  /* "☰ Outcomes" carries the total and the light; the line under the header says what is new elsewhere. */
+  [data-rails] #rail-open .unread-count[hidden],[data-rails] #rail-open .outcome-light[hidden]{display:none}
+  [data-rails] #rail-open .outcome-light{margin:0 0 0 .4rem}
+  [data-rails] #outline-elsewhere:not([hidden]){display:flex;align-items:center;gap:.4rem;width:100%;min-height:2.5rem;margin:-.4rem 0 .8rem;padding:.3rem .7rem;border-color:var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);font-size:.85rem;text-align:left;white-space:normal}
+  [data-rails] #outline-elsewhere .outcome-light[hidden]{display:none}
+  [data-rails] #outline-elsewhere .ol-go{margin-left:auto;color:var(--muted)}
+}
+@media(prefers-reduced-motion:reduce){.things,.ol-fold .tri{transition:none!important}}

@@ -8,6 +8,9 @@ import { createHash } from 'node:crypto';
 export async function navigationChecks({ check, page, until, root, evidencePath, facts, view, control, shot, observations }) {
   const link = id => `#topics a[data-topic-id="${id}"]`;
   const topics = [{ id: 't2', title: 'Design discussion' }, { id: 't3', title: 'Greenlight discussion' }];
+  // Which run of the page is up: a load, or a move in place between topics
+  // (in-place-navigation.mjs), each puts back a fresh page, marked when first seen.
+  const run = p => p.evaluate(`(main=>performance.timeOrigin+':'+(main.dataset.run??=String(Math.random())))(document.getElementById('main'))`);
   // A wait that spans a document replacement can probe the new document after
   // it commits and before its body is parsed. Readiness probes read
   // document.body?.dataset, so that moment reads as not ready yet.
@@ -100,7 +103,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await activate('#topics a[data-topic-id="t1"]');await ready(p,'t1');
     await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})');await activate('#inline-writing-body');
     const body='Writing preserved when choosing Outcomes';await p.send('Input.insertText',{text:body});const entered=Date.now();
-    await activate('#outcomes-home');
+    // On a topic the outline stands for "← Outcomes"; the wordmark is the way home (outcome-scope.mjs).
+    await activate('.wordmark');
     assert.ok(Date.now()-entered<450,'outcome link activated before autosave debounce');
     await until(()=>p.evaluate('document.body?.dataset.ready==="true" && !location.search'),'guarded root departure');
     assert.equal((await state()).draft.body,body);
@@ -217,8 +221,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const p = await page('topic-navigation', null, true);
     await until(() => p.evaluate('document.querySelectorAll("#topics a[href]").length===3'), 'Topics must contain discoverable real links');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(link('t1'))}).getAttribute('aria-current')`), 'page');
-    const original = await p.evaluate('performance.timeOrigin'); await click(p, 't1');
-    assert.equal(await p.evaluate('performance.timeOrigin'), original, 'current topic is a no-op');
+    const original = await run(p); await click(p, 't1');
+    assert.equal(await run(p), original, 'current topic is a no-op');
     // Tab/Return activation from ordinary document focus, never click().
     // A press on the logo block's workspace name starts Tab there; Tab passes
     // the notices and ← Outcomes before the topics.
@@ -286,7 +290,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const extra = Array.from({ length: 20 }, (_, n) => ({ id: 'p'+String(n).padStart(2,'0'), title: 'Fixture topic '+n }));
     await control({ method: 'navigation_topics', topics: extra });
     const p = await page('navigation-pages-mobile', null, true);
-    await until(() => p.evaluate('document.querySelectorAll("#topics a").length===21'), 'first20 plus current topic outside the page');
+    // The list shows once the outline has drawn the outcomes above it (outline-rail.mjs).
+    await until(() => p.evaluate('document.querySelectorAll("#topics a").length===21 && document.querySelector("#more-topics").getClientRects().length>0'), 'first20 plus current topic outside the page');
     assert.equal(await p.evaluate('document.querySelectorAll("#topics a[aria-current=page]").length'), 1);
     // The rail lists topics by latest activity, so the next page's first
     // link is whichever of its topics was active last, read from the rail.
@@ -316,7 +321,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await openRail(p);
     await p.evaluate(`document.querySelector(${JSON.stringify(link('t2'))}).scrollIntoView({block:'center',inline:'center'})`);
-    const before = await p.evaluate('performance.timeOrigin'), b = await p.box(link('t2'));
+    const before = await run(p), b = await p.box(link('t2'));
     assert.equal(b.viewportWidth,390, 'the open rail does not widen the mobile layout viewport');
     assert.ok(b.height >= 44 && b.width > 44, 'named link is at least44px tall');
     const touch = async (x,y) => { await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{x,y}] }); await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
@@ -329,7 +334,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await p.evaluate(`(()=>{for(const type of ['touchstart','touchend','click'])document.addEventListener(type,e=>console.log('navigation-touch',JSON.stringify({type,target:e.target.closest('a')?.dataset.topicId??e.target.id,x:e.changedTouches?.[0]?.clientX??e.clientX,y:e.changedTouches?.[0]?.clientY??e.clientY,rawTarget:document.elementFromPoint(e.changedTouches?.[0]?.clientX??e.clientX,e.changedTouches?.[0]?.clientY??e.clientY)?.id})),true)})()`);
     await touch(b.x+b.width/2,gap);
     observations.push({ name: 'actual gap touch', b, neighbor, gap, events: p.events.filter(e=>e.method==='Runtime.consoleAPICalled') });
-    assert.equal(await p.evaluate('performance.timeOrigin'),before,'gap touch must do nothing');
+    assert.equal(await run(p),before,'gap touch must do nothing');
     await touch(b.x+b.width/2,b.y+b.height/2); await ready(p,'t2');
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),topics[0].title);
     noPrompt(p); noActs(p); assert.deepEqual(p.errors,[]); await shot(p,'navigation-narrow');

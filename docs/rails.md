@@ -1,0 +1,181 @@
+# The two rails of a topic and a Conversation
+
+A topic page and an outcome's Conversation have a rail on each side. On the
+left is an outline of every outcome. On the right are the outcome's things.
+Moving between topics and Conversations does not load the page again: the
+outline stays where it was, and only the middle and the right rail change.
+Every other page (the Outcomes home, an outcome's own page, its pipeline,
+Health) keeps the side rail it had.
+
+The code: `web/in-place-navigation.mjs` (the shell that keeps the rails across
+moves), `web/outline-rail.mjs` (left), `web/things-rail.mjs` (right),
+`web/rails.mjs` (wires the two into the shell) and `web/rails.css`. The page
+itself, `web/app.mjs`, changed in only a few ways. It begins a run of the
+shell as it starts, and tells the shell when it is up or that it could not
+start. Its guard hands a confirmed move to the shell, and loads the page as
+before when the shell declines. It renames its own address through the shell.
+
+## The outline
+
+Each outcome has one row: a fold triangle, its light, its name and the line
+that says where it stands. The name opens the outcome's Conversation. When
+Core says the outcome has no Conversation, the name opens the outcome's page
+instead. Under an open outcome are its topics. They look as they do today:
+unread counts, the work ring, Waiting on you and Ready for review, bold titles
+while something in them is unread, and Done (N) and Archived (N) below.
+Each outcome ends with + New topic.
+
+- **Counts.** A folded outcome counts everything new inside it, and what was
+  sent to the reader by name. An open outcome counts only its Conversation,
+  because each topic under it shows its own count. Both counts come from the
+  `workspaces` and `conversation` views and change as the live feed
+  announces each commit.
+- **Chips.** "N new" and "N waiting on you" at the top add up every outcome
+  listed. Pressing one shows only the outcomes, and in them only the topics,
+  that hold what it counts. Pressing it again shows everything.
+- **Folds.** A fold the person chose is kept on this browser, per instance
+  and per person (`localStorage`). An outcome they never folded or opened is
+  open while it is the one being read. It stays open after they move on, for
+  as long as the page lasts. "Fold all" and "Open all" set every fold.
+- **Order.** Outcomes keep the order the `workspaces` view gives them. A new
+  message changes counts and lights, never the order. There is no "Not in an
+  outcome" group.
+- **The outcome being read** always has its row. Before the outline's list has
+  reached it, a provisional row with the page's title for it stands in its
+  place. Its topic list is the page's own (`TopicRail`). Once that list has
+  loaded and the outline has drawn the outcomes above it, the list moves into
+  the outline under its outcome, so nothing above it pushes it down as it is
+  pressed, and its guard, its paging and its live updates are the page's own.
+
+Under the outcome being read, after its topics, is the outcome's Notebook, as
+the side rail had it: its pages wear their light until opened, and open in
+place with what changed. It moves into the outline with the topic list.
+
+On a phone the outline is a drawer behind "☰ Outcomes", which carries the
+total count and the light. A line under the header says what is new in other
+outcomes and what waits there, and tapping it opens the drawer.
+
+## The right rail
+
+The right rail has folding sections: Pipeline, Waiting for…, Notebook pages,
+Previews, Pull requests, Images, and Skills and tools. On a Conversation they
+hold the outcome's things. On a topic they hold the topic's, and the chip
+"All of this outcome" switches to the outcome's. A section with nothing in it
+says so in one quiet line.
+
+- **Pipeline** is what is live, and what is in Now (with its stage) and Next,
+  from the `pipeline` view.
+- **Waiting for…** is the Now and Next items the reader raised, at their
+  stage, and the reader's Conversation posts nobody has taken up yet.
+- **Notebook pages** come from `memory_items`: the topic's own pages on a
+  topic, the outcome's otherwise, each with its light.
+- **Previews and pull requests** are links people posted in messages: a
+  build on the tailnet or this machine, or an address that names a preview or
+  a mockup, and GitHub pull requests. On a whole outcome they come from its
+  Conversation and its six most recently active topics, the newest 50
+  messages of each. Core records no pull request's state, so the section says
+  so and does not guess.
+- **Images** come from `topic_images`.
+- **Skills and tools** are not recorded by Core yet, and the section says so.
+
+Folds are kept per section on this browser. A section takes its kept fold as
+it appears, and stays as the person leaves it after that. The rail reads only while it is
+on screen, and reads a place's messages and images again only when that topic
+has moved on (its version): for the open topic, when the page has read it
+again; elsewhere, by the version the outcome's topic list gives. A topic the
+page can no longer read is not read here either. It shows beside the page at 1181px and wider, as a panel from the
+right between 761px and 1180px, and as a sheet from the bottom on a phone.
+Below 1181px it opens from "Pipeline & pages" in the header, and Escape or a
+tap on the dimmed page closes it.
+
+## Moving in place
+
+Each page is one run of `app.mjs`, which keeps its state in its module. A move
+between two feed pages (topics and Conversations) goes like this:
+
+1. The page's guard (`TopicNavigation.openTarget`) decides first, as it does
+   for a load. Unsent writing that cannot be kept stops the move. A send under
+   way stops it with the same words as before.
+2. The address changes with `pushState`. Each entry the page makes carries
+   its place in the page's history (`aimPlace`).
+3. The old run ends as an unload ends a page. Its `pagehide` listeners run,
+   which stop its live feed, its saves and its recovery locks. Then every
+   listener it added is removed. The shell keeps that record by wrapping
+   `addEventListener`. Listeners on what the shell keeps are not the run's,
+   except on the page's topic list, which the outline only holds for it.
+4. The body's parts go back to how `index.html` drew them. The outline, the
+   right rail and the drawer's backdrop stay as the same elements. The rail
+   that holds the outline is never taken out of the page, so it keeps its
+   scroll and its focus. The retired run keeps finding its own elements by
+   id, so work it still had under way lands there and never on the new page.
+5. A fresh run of `app.mjs` (`app.mjs?place=N`) reads and draws the new place
+   as a full load would: its live feed, its read tracking and its New line are
+   a new page's.
+
+### What a move ends, and what it leaves
+
+A run is `app.mjs` alone. Every other module is loaded once for the whole
+visit, before the first run begins, and keeps its own state across every run.
+Two rules follow, so nothing a module remembers disagrees with what a move
+ends.
+
+- **A listener for the whole page is added as its module loads.** The shell
+  ends only what was added once a run began. A module that keeps one listener
+  for the page (the guard on picture buttons in `image-rows.mjs`, the tap that
+  puts away "You replied at…" in `card-reading.mjs`) adds it at load, never
+  later behind its own note that it has, since a move would take the listener
+  and leave the note. A native check compares the window's and the document's
+  listeners after moves with a fresh load of the same place, after the same
+  acts.
+- **What a module keeps across runs is an answer, let go when the page says
+  it is gone.** Thumbnails (`image-pick.mjs`) keep a picture only once it was
+  read whole, never a read that brought nothing, whether it failed or a move
+  cancelled it. A picture is let go once none of its images is in the page,
+  as the page says (`isConnected`), however its rows went. Each image reads
+  its own bytes, through the run that drew it.
+
+Back and forward to an entry the page made also go through the guard. If the
+guard refuses, the page goes back to the entry it was on, by as many entries
+as the person moved. An entry from before this page, or a page that is not a
+feed, loads as it did before. Reload and copied links work because the
+address is always the real one.
+
+A move can come while the run before it is still on its way: a quick second
+back, a back pressed before the page has drawn, a place chosen in the outline
+or a link pressed meanwhile. None of these loads the page. The newest one
+waits for the run, and the run takes it up, through its guard, as soon as it
+is up. If the run has started on the place the address names by then (a back
+and then a forward), there is nothing more to do. If the run cannot start, what
+waited loads as it would with no feed page up. While a run starts, it renames
+its own address only if a back or forward has not moved it on (`shell.rename`).
+
+Each run owns what the rails draw for it. As a run begins, the rails forget
+the place before: the outline knows no outcome as the one being read until
+the run is up, and the right rail empties its sections and names only the
+kind of place. Each run reads through its own handles. A read it asked for
+that is still waiting for its turn when a newer run is up is never sent
+(`Superseded`), and whatever it did read lands only while its run is still the
+page. Which outcome is being read, which topic is open, and whose topic list
+sits under which outcome are found again from the run that is up each time
+the outline draws. The outline's own topic lists and an outcome's
+Conversation are not any one place's, so they read through whichever run is
+up when their turn comes.
+
+The rails read one read at a time (`oneAtATime`), so they never crowd the
+page's own reads out of the server's admission lanes. The outline reads in
+the foreground lane. The right rail reads in the background lane.
+
+## Known gaps
+
+- Core records no pull request's state, and no skills or tools.
+- The old sections the outline stands for (the outcomes list, the
+  Conversation and Pipeline rows) are still read by the page, hidden, since
+  other parts of the page follow them.
+- The outcome's Notebook shows under its outcome in the outline and, on a
+  Conversation or with "All of this outcome", in the right rail too.
+- Waits in outcomes the reader cannot list are not in the outline's totals.
+- A fold that is open only because its outcome was read is not kept after a
+  reload.
+- A browser never unloads a module it has loaded, so each run's `app.mjs`,
+  with what it held at the top level, stays in memory until the page loads
+  again.

@@ -57,11 +57,16 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, arrangeStacks } from './reply-stacks.mjs';
 import { formatWords } from './message-format.mjs';
-import { railDrawer } from './rail-drawer.mjs';
+import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
 import { showLine, lineText } from './lines.mjs';
 
-const $ = id => document.getElementById(id);
+// Each page is one run of this module (in-place-navigation.mjs). A run that a
+// move in place has ended finds its own elements still, so work it had under
+// way lands there and never on the page that followed it.
+let retired = null;
+const $ = id => retired?.get(id) ?? document.getElementById(id);
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; } });
 const node = (tag, text, className) => {
   const element = document.createElement(tag); if (text !== undefined) element.textContent = text;
   if (className) element.className = className; return element;
@@ -672,6 +677,7 @@ function paintViews(kind) {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
     topic = views.topic;
+    shell.topicChanged();
     // The panel paints the header with the newest topic it has seen.
     if (topicState) topicState.paint(topic, views.participants); else paintHeader(topic);
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
@@ -1390,7 +1396,7 @@ const owe = (error, name, again) => { if (unreached(error)) { owed.set(name, { e
 function settleOwed() {
   for (const [name, { error, again }] of owed) if (answeredSince(error)) { owed.delete(name); run(again); }
 }
-heard(settleOwed);
+const unheard = heard(settleOwed);
 // The page reaches Theseus with the session it holds: a renewal, the session
 // it has confirmed, or the live feed up again. Replies it did not take go on.
 function reached() { registry?.resumeHeld(); }
@@ -1490,7 +1496,7 @@ async function initialize() {
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
   // So does a Notebook page's link, the page and perhaps its revision.
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
-  if (anchored || pageAnchor) { route = { kind: 'topic', id: topicId }; history.replaceState(history.state, '', routeHref(route) + location.hash); }
+  if (anchored || pageAnchor) { route = { kind: 'topic', id: topicId }; shell.rename(route, location.hash); }
   if (route.kind === 'conversation') {
     const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
     if (!found) throw Error('This outcome has no conversation yet.');
@@ -1513,7 +1519,7 @@ async function initialize() {
   if (here.page) {
     // Every link to the conversation's topic opens it as the conversation, keeping any message anchor.
     route = { kind: 'conversation', id: topic.workspace_id };
-    if (new URL(location.href).searchParams.has('topic')) history.replaceState(history.state, '', routeHref(route) + location.hash);
+    if (new URL(location.href).searchParams.has('topic')) shell.rename(route, location.hash);
     document.body.classList.add('conversation-page');
     // The writing box stays below the messages, as in any topic, and says where the writing goes.
     $('inline-writing-body').placeholder = conversationPlaceholder(here.title);
@@ -1683,7 +1689,7 @@ async function initialize() {
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
   topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
-    navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
+    navigateTarget: target => { marks.leave(); if (!shell.go(target)) location.assign(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics.
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic),
@@ -1696,6 +1702,8 @@ async function initialize() {
       return answer;
     },
     open: (id, title) => openDestination({kind:'topic',id},title),
+    // Read once: the outline takes this list in from then on (outline-rail.mjs).
+    updated: () => { $('topic-navigation').dataset.listed = ''; },
   });
   outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'),
     list: $('outcome-references-list'), more: $('more-references'), message: $('outcome-references-status'), pageMax: pageMax(),
@@ -1757,6 +1765,10 @@ async function initialize() {
   // card the page has already counted.
   Promise.allSettled([run(loadMarks), here.page ? conversationShown : null]).then(() => { laidOut = true; noteRead(); });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
+  // The rails beside the page read through this run from now on (rails.mjs).
+  shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
+    view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
+    open: (target, title, from) => openDestination(target, title, from), readable: () => !freshness?.stopped, currentTopic: () => topic });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   if (anchored) {
@@ -2400,9 +2412,10 @@ async function initializeCreationPage(route) {
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
 // Every shown time follows the viewer's day: at midnight today's "4:40 AM"
 // becomes "Yesterday 4:40 AM", with a topic's list held where the reader was.
-watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
-// On a phone the topic comes first, and "☰ Topics" opens the rail over it.
-railDrawer(document, window);
+const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
+// A run ends as a page unloads, or as a move in place ends it: its live feed,
+// its watchers and its timers stop with it.
+window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).
@@ -2411,6 +2424,7 @@ function begin(starting = start) {
   return Promise.resolve().then(starting).then(() => true, error => {
     const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();
     status([error, again]);
+    shell.failed(thisRun);
     return false;
   });
 }

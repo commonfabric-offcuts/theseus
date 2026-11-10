@@ -15,7 +15,7 @@
 // the row's first part and Remove its last; and it holds its place before it
 // loads, so its loading moves nothing in the row or below it. A row under
 // 30rem wide (a phone) shows none (aim.css).
-import { paintThumb, dropThumb } from './image-pick.mjs';
+import { paintThumb } from './image-pick.mjs';
 
 const busy = new WeakSet();
 
@@ -45,9 +45,12 @@ const busy = new WeakSet();
 //   press is forgotten. The button says it holds its press
 //   (data-holds-press), so a page's own touch guard (protectTouchBounds)
 //   leaves its taps to the browser too.
+// These listeners are the whole page's, added once as this module loads, so
+// a move in place, which ends only what the page added since it began
+// (in-place-navigation.mjs), never takes them away.
 const elsewhere = {};
 let finger = null;
-function follow() {
+if (typeof addEventListener === 'function') {
   addEventListener('pointerdown', event => {
     finger = event.pointerType === 'touch' && event.isPrimary ? event.target.closest('[data-holds-press]') ?? elsewhere : null;
   }, true);
@@ -64,9 +67,7 @@ function follow() {
     if (type === 'click') down.click();
   }, true);
 }
-let following = false;
 export function holdsItsPress(button) {
-  if (!following) { following = true; follow(); }
   button.dataset.holdsPress = '';
   button.addEventListener('pointerdown', event => {
     if (!event.isPrimary || event.button !== 0 || event.pointerType === 'touch') return;
@@ -80,7 +81,7 @@ export function holdsItsPress(button) {
 
 export function paintImageRows(host, choices, enabled, press, preview = null) {
   const ids = new Set(choices.map(choice => choice.id));
-  for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) { if (preview) dropThumb(row); row.remove(); }
+  for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) row.remove();
   for (const choice of choices) {
     let row = [...host.children].find(r => r.dataset.selection === choice.id);
     if (!row) {

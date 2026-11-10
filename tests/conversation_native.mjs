@@ -40,8 +40,9 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(cards.map(card => card.row), cards.map((card, i) => [card.id, 0, 0, i < cards.length - 1 ? space : null]), `${label}: every card shown lays out as one standing alone`);
     return cards.map(card => card.id);
   };
+  // The Conversation's row: in the outline, the outcome's own row, open (outline-rail.mjs).
   const row = p => quiet(p, `(r=>r&&{current:r.getAttribute('aria-current'),waiting:r.querySelector('.topic-state')?.textContent??null,
-    unread:r.querySelector('.unread-count')?.textContent??null,shown:r.getClientRects().length>0})(document.querySelector('#conversation-row a'))`);
+    unread:r.querySelector('.unread-count')?.textContent??null,shown:r.getClientRects().length>0})(document.querySelector('#outline .ol-name[data-conversation-of="w1"]'))`);
   const chip = p => quiet(p, `(h=>({hidden:h.hidden||h.getClientRects().length===0,text:h.querySelector('button')?.textContent??null,
     pressed:h.querySelector('button')?.getAttribute('aria-pressed')??null}))(document.querySelector('#conversation-show'))`);
   const post = async (operation, body, args = {}) => (await control({ method: 'agent_message', operation_id: operation, topic_id: conversation.topic_id,

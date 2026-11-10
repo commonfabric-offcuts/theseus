@@ -87,18 +87,16 @@ export function paintReading(card, item, { read, quiet, go }) {
     delete arrow.dataset.shown;
     go(item.replied.id);
   };
-  showOnTap(card.ownerDocument);
 }
 
-// The words a tap showed stay until the next press anywhere but on them.
-const putAway = new WeakSet();
-function showOnTap(doc) {
-  if (putAway.has(doc)) return;
-  putAway.add(doc);
-  doc.addEventListener('pointerdown', event => {
-    for (const arrow of doc.querySelectorAll('.replied-mark[data-shown]')) if (!arrow.contains(event.target)) delete arrow.dataset.shown;
-  }, true);
-}
+// The words a tap showed stay until the next press anywhere but on them: one
+// listener for the whole page, added once as this module loads, so a move in
+// place, which ends only what the page added since it began
+// (in-place-navigation.mjs), never takes it away.
+const page = globalThis.document;
+page?.addEventListener?.('pointerdown', event => {
+  for (const arrow of page.querySelectorAll('.replied-mark[data-shown]')) if (!arrow.contains(event.target)) delete arrow.dataset.shown;
+}, true);
 
 // A quiet message (talk between agents) wakes when the person presses it: a
 // tap or click on its line or card lifts the dim for the rest of the visit,

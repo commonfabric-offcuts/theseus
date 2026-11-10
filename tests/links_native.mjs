@@ -42,15 +42,16 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
 
   await check('header links in a message open a new tab without opening its card, and a link to a topic here opens it here', async () => {
     await topics({ id: 'links-a', title: 'Links in messages' }, { id: 'links-b', title: 'Where the plan carried on' });
-    const body = `The preview is at ${ELSEWHERE} now. The plan carried on in ${facts.origin}/?topic=links-b today.`;
+    // The topic's link opens the words, so it starts its line however narrow the column beside the rails.
+    const body = `${facts.origin}/?topic=links-b is where the plan carried on today. The preview is at ${ELSEWHERE} now.`;
     const id = (await control({ method: 'agent_message', operation_id: 'links-card', topic_id: 'links-a', join: true, source: 'topic', body })).result.message_id;
     const p = await page('links-card', null, true, { url: facts.origin + '/?topic=links-a' });
     const card = `#messages [data-id="${id}"]`;
     await until(() => p.evaluate(`document.querySelectorAll(${JSON.stringify(card + ' a.words-link')}).length === 2`), 'the card shows its two links');
     // A link to a topic here shows the topic's name, its address its title (docs/links.md).
-    await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(card + ' a.words-link')})].at(-1).textContent === 'Where the plan carried on'`), 'the topic link shows its name');
+    await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(card + ' a.words-link')})][0].textContent === 'Where the plan carried on'`), 'the topic link shows its name');
     const links = await p.evaluate(`[...document.querySelectorAll(${JSON.stringify(card + ' a.words-link')})].map(a=>[a.textContent,a.getAttribute('href'),a.target,a.rel,a.title])`);
-    assert.deepEqual(links, [[ELSEWHERE, ELSEWHERE, '_blank', 'noopener noreferrer', ''], ['Where the plan carried on', '?topic=links-b', '', '', `${facts.origin}/?topic=links-b`]]);
+    assert.deepEqual(links, [['Where the plan carried on', '?topic=links-b', '', '', `${facts.origin}/?topic=links-b`], [ELSEWHERE, ELSEWHERE, '_blank', 'noopener noreferrer', '']]);
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card)}).textContent.includes(${JSON.stringify(body.replace(`${facts.origin}/?topic=links-b`, 'Where the plan carried on'))})`), true, 'every word is drawn');
     await shot(p, 'links-card');
     await opensTab(p, `${card} a.words-link[target="_blank"]`, ELSEWHERE);

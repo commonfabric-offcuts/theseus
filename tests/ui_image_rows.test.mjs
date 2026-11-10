@@ -2,8 +2,6 @@
 // composer: a press on Remove lands however the row repaints while it is held.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { paintImageRows } from '../web/image-rows.mjs';
-import { protectTouchBounds } from '../web/creation-view.mjs';
 
 // Just enough of the DOM to see what a repaint does to a held button: a node
 // taken out of its row, even to be put back at once, counts as a move, and a
@@ -54,6 +52,9 @@ class Node {
 const page = [];
 globalThis.addEventListener = (type, listener) => page.push({ type, listener });
 globalThis.document = { createElement: tag => new Node(tag), activeElement: null, elementFromPoint: (x, y) => document.at?.(x, y) ?? null };
+// The rows' page-wide listeners are added as the module loads, so it loads once these stand in for the page.
+const { paintImageRows } = await import('../web/image-rows.mjs');
+const { protectTouchBounds } = await import('../web/creation-view.mjs');
 
 const REMOVE = { label: 'Remove', method: 'remove' }, RETRY = { label: 'Retry upload', method: 'retry' };
 const choice = (id, state, actions = [REMOVE]) => ({ id, text: `${id}.png · ${state}`, view: JSON.stringify([state, actions.map(a => a.label)]), actions });
@@ -296,7 +297,7 @@ test('the new-topic page\'s touch guard leaves a tap on a button that holds its 
   assert.equal(lift(other), true, 'a finger lifted off another button is cancelled, as before');
 });
 
-test('given a preview, a row holds its image small between its words and its buttons (shown first), so Remove is its last part, keeps it through a repaint with one read, and lets it go with the row', async t => {
+test('given a preview, a row holds its image small between its words and its buttons (shown first), so Remove is its last part, keeps it through a repaint with one read, and lets it go once the row has gone', async t => {
   const made = [], freed = [], { createObjectURL, revokeObjectURL } = URL;
   URL.createObjectURL = blob => { made.push(blob); return 'blob:' + blob; };
   URL.revokeObjectURL = url => { freed.push(url); };
@@ -316,7 +317,12 @@ test('given a preview, a row holds its image small between its words and its but
   assert.deepEqual(reads, ['a'], 'a repaint reads the image no second time');
   paint([]);
   await settled();
-  assert.deepEqual([host.children.length, freed], [0, ['blob:a-bytes']], 'the row goes and its thumbnail is let go');
+  assert.equal(host.children.length, 0, 'the row goes');
+  // The page says the image has gone (it is out of the page), whoever took it out: the next thumbnail painted lets it go.
+  paint([choice('c', 'Ready')]);
+  await settled();
+  assert.deepEqual(freed, ['blob:a-bytes'], 'its thumbnail is let go, and the one still shown is kept');
+  assert.deepEqual(reads, ['a', 'c']);
   // Without a preview, a row is its words (in the button that opens its
   // choices) and its buttons.
   const plain = rows();
@@ -324,7 +330,7 @@ test('given a preview, a row holds its image small between its words and its but
   assert.deepEqual(plain.host.children[0].children.map(child => [child.tagName, child.className ?? child.dataset.action]), [['button', 'image-open'], ['button', 'Remove']]);
 });
 
-test('a thumbnail with nothing to show says so, so the strip shows the image\'s name in its place, and one that loads does not', async t => {
+test('a thumbnail with nothing to show leaves its row, so the strip shows the image\'s name in its place, and one that loads does not', async t => {
   const { createObjectURL } = URL;
   URL.createObjectURL = blob => 'blob:' + blob;
   t.after(() => Object.assign(URL, { createObjectURL }));
@@ -333,7 +339,39 @@ test('a thumbnail with nothing to show says so, so the strip shows the image\'s 
   const settled = () => new Promise(resolve => setImmediate(resolve));
   paintImageRows(host, [choice('gone', 'Ready'), choice('kept', 'Ready')], true, () => {}, id => Promise.resolve(id === 'gone' ? null : id + '-bytes'));
   await settled();
+  // The strip shows a row's name in its thumbnail's place when the row holds
+  // no thumbnail that has something to show (aim.css, .image-choice:not(:has(...))).
   const [gone, kept] = host.children.map(row => row.children.find(child => child.className === 'image-thumb'));
-  assert.deepEqual([gone.hidden, 'none' in gone.dataset, gone.src], [true, true, undefined], 'nothing read: the thumbnail stays hidden and says it has nothing');
-  assert.deepEqual([kept.hidden, 'none' in kept.dataset, kept.src], [false, false, 'blob:kept-bytes'], 'an image read is shown, not marked as having nothing');
+  const showsName = thumb => !thumb || 'none' in thumb.dataset;
+  assert.equal(showsName(gone), true, 'nothing read: the row holds no thumbnail with something to show, so its name shows');
+  assert.deepEqual([showsName(kept), kept.hidden, kept.src], [false, false, 'blob:kept-bytes'], 'an image read is shown in place of its name');
+});
+
+// The right rail drops its rows by replacing them, and a read it asked for
+// can be cancelled by a move (in-place-navigation.mjs, Superseded): neither
+// may leave a picture blank for the next row that shows it.
+test('a thumbnail whose read brought nothing keeps nothing, and a picture whose rows went with no word is let go: the next row to show it reads it and shows it', async t => {
+  const { paintThumb } = await import('../web/image-pick.mjs');
+  const freed = [], { createObjectURL, revokeObjectURL } = URL;
+  URL.createObjectURL = blob => 'blob:' + blob;
+  URL.revokeObjectURL = url => { freed.push(url); };
+  t.after(() => Object.assign(URL, { createObjectURL, revokeObjectURL }));
+  const settled = () => new Promise(resolve => setImmediate(resolve));
+  const row = () => { const host = new Node('div'); host.page = true; return host; };
+  const thumb = host => host.querySelector(':scope > img.image-thumb');
+  const first = row();
+  paintThumb(first, 'k', () => Promise.reject(Error('The page moved on before this was read.')));
+  await settled();
+  assert.equal(thumb(first), null, 'a read that brought nothing leaves its row');
+  first.page = false;
+  const second = row();
+  paintThumb(second, 'k', () => Promise.resolve('k-bytes'));
+  await settled();
+  assert.deepEqual([thumb(second)?.src, thumb(second)?.hidden], ['blob:k-bytes', false], 'the next row to show the picture reads it and shows it');
+  // Out of the page, as a rail's rows go when it repaints: nothing is told.
+  second.page = false;
+  const third = row();
+  paintThumb(third, 'other', () => Promise.resolve('other-bytes'));
+  await settled();
+  assert.deepEqual(freed, ['blob:k-bytes'], 'the picture no row shows any more is let go; the one shown is kept');
 });

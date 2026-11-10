@@ -72,7 +72,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
         thisTopic:leaves.some(e=>e.textContent.trim()==='This topic'||e.getAttribute('aria-label')==='This topic'),
         stateInMain:Boolean(document.querySelector('main #topic-state')),stateInDialog:Boolean(document.querySelector('dialog#topic-settings #topic-state'))}})()`);
     assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description'], 'the outcome\'s name, the title row, then the subtitle');
-    assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true]], 'the outcome\'s name, with "☰ Topics" before it shown only on a phone');
+    assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true], ['things-open', false]], 'the outcome\'s name, with "☰ Outcomes" before it shown only on a phone, and "Pipeline & pages" after it only below laptop width');
     // New message, a quiet ✎, ends the row (docs/reader.md).
     assert.deepEqual(top.row, ['topic-title', 'settings-open', 'new-message'], 'the gear shares the title\'s row, after it, and New message ends it');
     assert.deepEqual([top.gear.name, top.gear.title, top.gear.popup, top.gear.hidden, top.gear.size], ['Topic settings', 'Topic settings', 'dialog', false, [44, 44]]);

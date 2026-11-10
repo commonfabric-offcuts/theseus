@@ -176,7 +176,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     observe(target) { this.targets.push(target); }
   }
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
-    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
+    // The window's own location and history are the page's, as in a browser (the shell reads them there).
+    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
@@ -1423,14 +1424,16 @@ test('the Review list acts on the writing registered under its key, even one rep
   assert.deepEqual(checked.map(editor => editor === replacement), [true], 'Check confirmation goes to the registered writing');
 });
 
-// Item 117: the page wires the phone rail's drawer as it starts.
-test('the page wires "☰ Topics" as it starts: a tap opens the rail over the topic, and the dimmed page closes it', () => {
-  const f = fixture(), rail = f.get('rail'), control = f.get('rail-open'), backdrop = f.get('rail-backdrop'), main = f.get('main');
-  assert.equal(typeof control.handlers.click, 'function', '"☰ Topics" answers a tap');
-  control.handlers.click();
-  assert.deepEqual([rail.classList.contains('open'), backdrop.hidden, main.inert, control['aria-expanded']], [true, false, true, 'true'], 'open over the topic');
-  backdrop.handlers.click();
-  assert.deepEqual([rail.classList.contains('open'), backdrop.hidden, main.inert, control['aria-expanded']], [false, true, false, 'false'], 'closed again');
+// Items 272 and 131: each page is a run of the shell that keeps the rails and
+// the phone drawer across moves (in-place-navigation.mjs, which wires the
+// drawer; tests/ui_rail_drawer.test.mjs presses it). The page begins its run
+// as it starts, handing the shell its own way to open a place and to retire.
+test('the page begins its run of the shell as it starts, with its own way to open a place and to retire', () => {
+  const begun = [];
+  fixture('https://fixture/?topic=t1', { shell: { begin: page => begun.push(page), ready() {}, go: () => false, topicChanged() {} } });
+  assert.equal(begun.length, 1, 'once, as the page starts');
+  assert.deepEqual(Object.keys(begun[0]).sort(), ['open', 'retire']);
+  assert.ok(begun.every(page => typeof page.open === 'function' && typeof page.retire === 'function'));
 });
 
 test('every application route reloads a restored closed document before accepting input',async()=>{

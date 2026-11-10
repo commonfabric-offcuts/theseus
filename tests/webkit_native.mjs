@@ -44,10 +44,13 @@ const { webkit } = createRequire(import.meta.url)(playwrightPath);
 const HELD = 'holds a read open with the Chrome harness\'s request interception (intercept), which this harness does not offer';
 const SKIPPED = {
   '--rail': {
-    'rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics in the open rail and the page below do not move when it lands': HELD,
-    'rail an outcome with no conversation never draws its row: on a phone nothing stands there while the conversation\'s read is out, nor after it lands, and nothing moves': HELD,
     'rail a write elsewhere shows with no reload, and an unconfirmed state change says where the topic stands': HELD,
-    'rail waited on only in this outcome, a topic page never lights ← Outcomes as it loads; with a wait elsewhere too it counts one other': 'reads Chrome\'s network event stream (Network.requestWillBeSent) to know when a read was sent',
+    'rail the outline names an outcome by its light and name, which opens its Conversation; one with no conversation opens its page, and nothing moves when that read lands': HELD,
+    'rail a send under way keeps the page where it is, in place; unsent writing is saved as the page moves and is there on coming back': HELD,
+    'rail back and forward across outcomes while the page before is still reading: both rails always show the address as a fresh load does': HELD,
+    'rail a quick second back, a back before the page is up, and a place chosen meanwhile all move in place, with no load': HELD,
+    'rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture opens its message in place': HELD,
+    'rail after moves in place the window and the document hear what a fresh load of the same place hears, after the same acts': 'reads the window\'s and the document\'s listeners through Chrome DevTools (DOMDebugger.getEventListeners) and picks a file through its chooser, which this harness does not offer',
     'rail the opening page follows a save made elsewhere while it holds no unsaved writing, and keeps unsaved writing': 'records response bodies with the Chrome harness\'s recordResponses',
   },
 }[mode] ?? {};
