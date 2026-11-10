@@ -324,7 +324,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.evaluate('document.activeElement?.blur()');
         await p.key('?');
         await until(async () => (await guide())?.open === true, 'laptop: ? opens the guide');
-        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 12 }, 'laptop: the guide, every rule');
+        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 13 }, 'laptop: the guide, every rule');
         await shot(p, 'reading-guide-laptop');
         await p.key('Escape');
         await until(async () => (await guide())?.open === false, 'laptop: Escape closes it');
