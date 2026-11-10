@@ -329,6 +329,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), theme + ': the rail is ready');
       await tap(p, '#rail-open');
       await until(async () => (await drawer(p)).open, theme + ': "☰ Outcomes" opens it');
+      // The page's topic list, New topic at its end, shows once it has moved into the outline (docs/rails.md).
+      await until(() => p.evaluate('document.getElementById("new-topic").getClientRects().length > 0'), theme + ': New topic is in the open drawer');
       // One tap: the line shows in the open drawer, under the Topics heading, with the focus in it.
       const line = () => p.evaluate(`(()=>{const l=document.getElementById('new-topic-title'),r=document.getElementById('rail'),b=l?.getBoundingClientRect(),d=r.getBoundingClientRect();
         return {shown:Boolean(l)&&l.getClientRects().length>0&&b.top>=d.top&&b.bottom<=d.bottom&&b.left>=d.left&&b.right<=d.right,focused:document.activeElement===l,open:r.classList.contains('open'),active:document.activeElement?.id??null}})()`);
@@ -910,6 +912,103 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(() => readerOpen(p), 'the picture\'s message opens in the Reader');
     assert.deepEqual([await sheet(), (await placeOf(p)).origin], [false, start.origin], 'the sheet has closed, on the same page');
     assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail a topic the page can no longer read leaves the right rail at once: its pictures and their bytes go before anything is read again', async () => {
+    await pictured();
+    // Every picture's bytes the page holds (blob: addresses made and not yet let go).
+    const bytes = 'window.railBlobs=new Set();const made=URL.createObjectURL,freed=URL.revokeObjectURL;URL.createObjectURL=function(...args){const url=made.apply(this,args);railBlobs.add(url);return url};URL.revokeObjectURL=function(url){railBlobs.delete(url);return freed.call(this,url)};';
+    const p = await page('rail-denied', null, true, { url: facts.origin + '/?topic=rail-pics-t', beforeNavigate: async q => {
+      await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop);
+      await q.send('Page.addScriptToEvaluateOnNewDocument', { source: bytes });
+    } });
+    await allShown(p, 'the topic\'s pictures show in the right rail');
+    assert.equal(await p.evaluate('railBlobs.size'), PICTURES.length, 'each picture\'s bytes are held');
+    // The right rail's next reads are held, so only what the page does at the refusal itself can hide the pictures.
+    p.intercept(thingsRead);
+    await control({ method: 'read_fault', name: 'changes', status: 200, body: { instance_id: facts.instance_id, error: { code: 'FORBIDDEN', message: 'Fixture FORBIDDEN', retryable: false } }, count: 1 });
+    await control({ method: 'agent_message', operation_id: 'rail-denied-news', topic_id: 'rail-pics-t', source: 'topic', body: 'News the reader may no longer read' });
+    await until(() => p.evaluate("document.getElementById('topic-title').textContent==='Topic unavailable'"), 'the page says the topic is unavailable');
+    assert.deepEqual(await p.evaluate("({pictures:document.querySelectorAll('#things img.image-thumb').length,bytes:railBlobs.size})"), { pictures: 0, bytes: 0 },
+      'the right rail shows none of its pictures and holds none of their bytes, with its reads still held');
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail a back the page refuses while the Reader is open says why in the Reader, where the person is looking', async () => {
+    await control({ method: 'navigation_topics', topics: [{ id: 'rail-stay-a', title: 'Staying topic A' }, { id: 'rail-stay-b', title: 'Staying topic B' }] });
+    const asked = await control({ method: 'agent_message', operation_id: 'rail-stay-ask', topic_id: 'rail-stay-b', join: true, source: 'topic', addressees: [facts.actor], body: 'A question answered while the page tries to go back.' });
+    const words = `#messages .message-card[data-id="${asked.result.message_id}"] > .message-preview`;
+    const p = await open('rail-stay', '/?topic=rail-stay-a');
+    await until(() => p.evaluate('document.querySelector("#outline a[data-topic-id=rail-stay-b]")?.getClientRects().length>0'), 'the outline is ready');
+    const start = await placeOf(p);
+    await press(p, '#outline a[data-topic-id="rail-stay-b"]');
+    await arrived(p, '?topic=rail-stay-b', 'Staying topic B', 'B opens in place');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words)})?.getClientRects().length>0`), 'its message is shown');
+    await press(p, words);
+    await until(() => readerOpen(p), 'the message opens in the Reader');
+    // Offline, the reply cannot be confirmed saved: going back now would leave it so, and the page stays.
+    const network = offline => p.send('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    await p.point('#writing-body');
+    await network(true);
+    await p.send('Input.insertText', { text: 'Written while the page tries to go back' });
+    await p.evaluate('history.back()');
+    await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('not confirmed saved')"), 'the page refuses the back');
+    const seen = await p.evaluate(`(()=>{const n=document.getElementById('reader-notice'),b=n.getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);
+      return {search:location.search,reader:document.getElementById('reader').open,words:n.hidden?'':n.textContent,seen:b.width>0&&b.height>0&&n.contains(hit)}})()`);
+    assert.deepEqual(seen, { search: '?topic=rail-stay-b', reader: true, words: await p.evaluate("document.getElementById('topic-navigation-status').textContent"), seen: true },
+      'the address goes back to B, and the open Reader says why, where it can be read');
+    assert.equal((await placeOf(p)).origin, start.origin, 'in place, with no load');
+    await network(false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // The keyboard is simulated as the Reader's composer checks simulate it
+  // (reader_compose_native.mjs): with the reply focused the window is made
+  // 390×464, which the browser reports as a visual viewport resize.
+  await check('rail at 390 after a move in place the keyboard leaves the Reader\'s reply and Send in view, as on a fresh load', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-keys-o', title: 'Keyboard outcome', topic: { id: 'rail-keys-t', title: 'Keyboard topic' } });
+    const asked = await control({ method: 'agent_message', operation_id: 'rail-keys-ask', topic_id: 'rail-keys-t', source: 'topic', addressees: [facts.actor], body: 'A question to answer on a phone.' });
+    const card = `#messages .message-card[data-id="${asked.result.message_id}"]`, words = card + ' > .message-preview', KEYBOARD = 380;
+    const ready = p => until(() => p.evaluate("document.body?.dataset.ready==='true'").catch(() => false), 'the page is up');
+    for (const moved of [false, true]) {
+      const at = moved ? 'after a move in place' : 'on a fresh load';
+      const p = await open('rail-keys-' + (moved ? 'moved' : 'fresh'), moved ? '/?conversation=rail-keys-o' : '/?topic=rail-keys-t', 'phone');
+      await ready(p);
+      const start = await placeOf(p);
+      if (moved) {
+        // From the Conversation to its topic, through the drawer, in place.
+        await tap(p, '#rail-open');
+        await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens the drawer');
+        const row = '#outline a.nav-item[data-topic-id="rail-keys-t"]';
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.getClientRects().length>0`), at + ': the topic is in the drawer');
+        await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+        await tap(p, row);
+        await arrived(p, '?topic=rail-keys-t', 'Keyboard topic', at + ': the topic opens');
+        assert.equal((await placeOf(p)).origin, start.origin, at + ': in place, with no load');
+      }
+      // A phone's two taps: the first lights the card, the second opens it in the Reader.
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card)})?.getClientRects().length>0`), at + ': the message is shown');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      await tap(p, words);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card)}).classList.contains('lit')`), at + ': the first tap lights the card');
+      await tap(p, words);
+      await until(() => readerOpen(p), at + ': the second tap opens it in the Reader');
+      await until(() => p.evaluate('document.getAnimations().every(a => a.playState !== "running")'), at + ': the Reader has settled');
+      await tap(p, '#writing-body');
+      await until(() => p.evaluate("document.activeElement?.id==='writing-body'"), at + ': the reply has the focus');
+      await p.send('Input.insertText', { text: 'An answer' });
+      await p.send('Emulation.setDeviceMetricsOverride', { ...SIZES.phone, height: SIZES.phone.height - KEYBOARD });
+      await until(() => p.evaluate(`Math.round(visualViewport.height)===${SIZES.phone.height - KEYBOARD}`), at + ': the keyboard is up');
+      await p.evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))');
+      const seen = await p.evaluate(`(()=>{const root=getComputedStyle(document.documentElement),bottom=id=>Math.round(document.getElementById(id).getBoundingClientRect().bottom);
+        return {height:root.getPropertyValue('--vv-height').trim(),keyboard:root.getPropertyValue('--keyboard').trim(),field:bottom('writing-body'),send:bottom('send-reply'),reader:bottom('reader')}})()`);
+      const top = SIZES.phone.height - KEYBOARD;
+      assert.deepEqual([seen.height, seen.keyboard, seen.reader <= top, seen.field <= top, seen.send <= top], [`${top}px`, `${KEYBOARD}px`, true, true, true],
+        at + `: the Reader ends at the keyboard's top, with the reply and Send above it: ${JSON.stringify(seen)}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
   });
 
   await check('rail after moves in place the window and the document hear what a fresh load of the same place hears, after the same acts', async () => {

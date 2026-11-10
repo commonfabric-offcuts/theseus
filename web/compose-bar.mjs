@@ -16,12 +16,13 @@ const KEYBOARD_MIN = 120;
 // The keyboard, read from the visual viewport (web/ has one reader of it):
 // --vv-height and --vv-top follow what is visible, so a phone's dialog sits
 // above the keyboard rather than under it, and --keyboard holds the last
-// keyboard height seen, the height a panel takes in its place.
-let tracking = false;
-export function trackKeyboard(win = globalThis, doc = globalThis.document) {
+// keyboard height seen, the height a panel takes in its place. One reader for
+// the whole page, started as this module loads, so a move in place, which
+// ends only what the page added since it began (in-place-navigation.mjs,
+// docs/rails.md), never takes it away.
+function trackKeyboard(win, doc) {
   const vv = win.visualViewport;
-  if (tracking || !vv) return;
-  tracking = true;
+  if (!vv || !doc) return;
   const root = doc.documentElement;
   let full = 0, width = 0;
   const read = () => {
@@ -38,6 +39,7 @@ export function trackKeyboard(win = globalThis, doc = globalThis.document) {
   doc.addEventListener('focusout', read);
   read();
 }
+trackKeyboard(globalThis, globalThis.document);
 
 const waits = name => `${name} is typed in To but not named yet. Return names them; clear it to send without them.`;
 
@@ -62,7 +64,6 @@ export class ComposeBar {
     this.hear = event => this.heard(event);
     // What Send last said while it waited on a name (holdSend), until it is no longer true.
     this.waiting = '';
-    trackKeyboard(win, this.doc);
     root.dataset.compose = 'line';
     root.addEventListener('focusin', event => {
       // The field takes the keyboard back from a panel.

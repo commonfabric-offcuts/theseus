@@ -83,7 +83,8 @@ it appears, and stays as the person leaves it after that. The rail reads only wh
 on screen, and reads a place's messages and images again only when that topic
 has moved on (its version): for the open topic, when the page has read it
 again; elsewhere, by the version the outcome's topic list gives. A topic the
-page can no longer read is not read here either. It shows beside the page at 1181px and wider, as a panel from the
+page can no longer read is not read here either, and what the rail showed and
+kept of it goes as the page hides the topic's messages. It shows beside the page at 1181px and wider, as a panel from the
 right between 761px and 1180px, and as a sheet from the bottom on a phone.
 Below 1181px it opens from "Pipeline & pages" in the header, and Escape or a
 tap on the dimmed page closes it.
@@ -122,7 +123,8 @@ ends.
 - **A listener for the whole page is added as its module loads.** The shell
   ends only what was added once a run began. A module that keeps one listener
   for the page (the guard on picture buttons in `image-rows.mjs`, the tap that
-  puts away "You replied at…" in `card-reading.mjs`) adds it at load, never
+  puts away "You replied at…" in `card-reading.mjs`, the reader of a phone's
+  keyboard in `compose-bar.mjs`) adds it at load, never
   later behind its own note that it has, since a move would take the listener
   and leave the note. A native check compares the window's and the document's
   listeners after moves with a fresh load of the same place, after the same
@@ -130,13 +132,16 @@ ends.
 - **What a module keeps across runs is an answer, let go when the page says
   it is gone.** Thumbnails (`image-pick.mjs`) keep a picture only once it was
   read whole, never a read that brought nothing, whether it failed or a move
-  cancelled it. A picture is let go once none of its images is in the page,
-  as the page says (`isConnected`), however its rows went. Each image reads
-  its own bytes, through the run that drew it.
+  cancelled it. A picture is let go as soon as none of its images is in the
+  page, as the page says (`isConnected`, heard through a `MutationObserver`
+  while any picture is kept), however its rows went. Each image reads its own
+  bytes, through the run that drew it.
 
 Back and forward to an entry the page made also go through the guard. If the
 guard refuses, the page goes back to the entry it was on, by as many entries
-as the person moved. An entry from before this page, or a page that is not a
+as the person moved, and says why where the person is looking: in the rail,
+and also in the Reader or the New message sheet when one is open over the
+page. An entry from before this page, or a page that is not a
 feed, loads as it did before. Reload and copied links work because the
 address is always the real one.
 

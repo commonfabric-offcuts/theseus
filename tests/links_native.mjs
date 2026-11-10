@@ -615,7 +615,8 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     const row = '#outcome-references-list .reference[data-id="links-reader-notebook"]';
     const p = await page('links-reader-notebook', null, true, { url: facts.origin + '/?topic=links-m' });
     const shown = () => p.evaluate(`!document.querySelector('#reader-menu').hidden && document.querySelector('#reader-menu').getClientRects().length > 0`);
-    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the Notebook page in the rail');
+    // Shown, as the person sees it: the outcome's Notebook waits out of sight until it moves into the outline (docs/rails.md).
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.getClientRects().length > 0`), 'the Notebook page in the rail');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     await p.point(row);
     await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes("A page of the outcome's Notebook.")`), 'the Reader shows the page');

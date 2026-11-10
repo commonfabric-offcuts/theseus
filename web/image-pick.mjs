@@ -44,13 +44,26 @@ function nextRead() {
 // that brought nothing (it failed, or the page moved on before it was sent).
 // A picture is let go once none of its images is in the page any more, as the
 // page itself says (isConnected), however they were taken out; an image made
-// before its row goes in counts from when it has been in the page.
+// before its row goes in counts from when it has been in the page. While any
+// picture is kept, the page says each time something leaves it (a
+// MutationObserver), so a picture goes as its last image goes, not only when
+// the next thumbnail is painted: a place whose access was withdrawn, or a
+// run a move ended, keeps none of its bytes.
 const pictures = new Map(), placed = new WeakSet();
+let watcher = null;
 function letGo() {
   for (const [key, picture] of pictures) {
     for (const image of picture.images) if (image.isConnected) placed.add(image); else if (placed.has(image)) picture.images.delete(image);
     if (!picture.images.size) { pictures.delete(key); URL.revokeObjectURL(picture.url); }
   }
+  if (!pictures.size) { watcher?.disconnect(); watcher = null; }
+}
+function keep(key, blob) {
+  pictures.set(key, { url: URL.createObjectURL(blob), images: new Set() });
+  const doc = globalThis.document;
+  if (watcher || typeof globalThis.MutationObserver !== 'function' || !doc) return;
+  watcher = new globalThis.MutationObserver(() => letGo());
+  watcher.observe(doc, { childList: true, subtree: true });
 }
 const show = (image, picture) => { picture.images.add(image); image.src = picture.url; image.hidden = false; };
 // A thumbnail in the row, at its start unless place(image) puts it elsewhere:
@@ -72,7 +85,7 @@ export function paintThumb(row, key, load, place = image => row.prepend(image)) 
   readInTurn(() => (shown.isConnected ? load() : null)).catch(() => null).then(blob => {
     if (!blob || !shown.isConnected) { shown.remove(); return; }
     letGo();
-    if (!pictures.has(key)) pictures.set(key, { url: URL.createObjectURL(blob), images: new Set() });
+    if (!pictures.has(key)) keep(key, blob);
     placed.add(shown); show(shown, pictures.get(key));
   });
 }

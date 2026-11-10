@@ -210,7 +210,15 @@ export class ThingsRail {
     if (this.shows()) this.reload();
   }
   changed() { this.stale = true; if (this.shows() && this.doc.visibilityState === 'visible') this.reload(); }
-  topicChanged() { if (this.handles) this.changed(); }
+  // The page has read its topic again, or can no longer read it. A topic it
+  // can no longer read is hidden at once, as the page hides its messages:
+  // what the rail shows and keeps of it goes before anything is read again.
+  topicChanged() {
+    if (!this.handles) return;
+    const id = this.handles.topic?.id;
+    if (id && this.handles.readable?.() === false) { this.kept.delete(id); this.serial += 1; this.clear(); }
+    this.changed();
+  }
   shown() { if (this.handles && this.stale && this.shows()) this.reload(); }
   choose(scope) {
     if (this.scope === scope) return;

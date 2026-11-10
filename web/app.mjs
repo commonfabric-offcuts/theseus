@@ -1206,6 +1206,8 @@ async function checkAvailability(read, current, topicDenied = true) {
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; settings?.close();
     paintMarks();
+    // The rails hide what they show of it too.
+    shell.topicChanged();
     for (const session of registry.sessions.values()) {
       if (session.editor.context.kind === 'reply' && session.editor.context.topicId === topic.id) {
         session.editor.unavailable = true; registry.cancelSave(session.editor); changed(session.editor);
@@ -1768,7 +1770,7 @@ async function initialize() {
   // The rails beside the page read through this run from now on (rails.mjs).
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
-    open: (target, title, from) => openDestination(target, title, from), readable: () => !freshness?.stopped, currentTopic: () => topic });
+    open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   if (anchored) {
@@ -2069,7 +2071,11 @@ async function openDestination(target, title, from = null) {
   try { return await pending; }
   catch(error) {
     if(serial!==topicNavigation.serial)return;
-    showLine(notice,error);notice.scrollIntoView({block:'nearest'});
+    showLine(notice,error);
+    // Said where the person is looking: the Reader or the New message sheet,
+    // open over the page, covers the rail's notice, so it says why it stayed too.
+    const near=$('reader').open?'reader-notice':$('new-message-sheet').open?'inline-notice':null;
+    if(near)showLine($(near),error);else notice.scrollIntoView({block:'nearest'});
   }
 }
 // painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).

@@ -47,6 +47,8 @@ const SKIPPED = {
     'rail a write elsewhere shows with no reload, and an unconfirmed state change says where the topic stands': HELD,
     'rail the outline names an outcome by its light and name, which opens its Conversation; one with no conversation opens its page, and nothing moves when that read lands': HELD,
     'rail a send under way keeps the page where it is, in place; unsent writing is saved as the page moves and is there on coming back': HELD,
+    'rail a topic the page can no longer read leaves the right rail at once: its pictures and their bytes go before anything is read again': HELD,
+    'rail a back the page refuses while the Reader is open says why in the Reader, where the person is looking': 'takes the page offline through Chrome DevTools (Network.emulateNetworkConditions), which this harness does not offer',
     'rail back and forward across outcomes while the page before is still reading: both rails always show the address as a fresh load does': HELD,
     'rail a quick second back, a back before the page is up, and a place chosen meanwhile all move in place, with no load': HELD,
     'rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture opens its message in place': HELD,

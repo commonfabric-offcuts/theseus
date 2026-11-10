@@ -224,7 +224,8 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     const topicRows = [...markedIds.map(id => `#messages [data-id="${id}"]`), '#topics [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#done-topic-list [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
     // A done topic is listed under the Done line, which the person opens. Inside
     // an outcome the rail lists no outcomes; "← Outcomes" heads it instead.
-    const listed = "(id => document.querySelector(':is(#topics, #done-topic-list) [data-topic-id=\"' + id + '\"] .unread-count'))";
+    // Listed as the person sees it: the page's topic list waits out of sight until it moves into the outline (docs/rails.md).
+    const listed = "(id => document.querySelector(':is(#topics, #done-topic-list) [data-topic-id=\"' + id + '\"] .unread-count')?.getClientRects().length > 0)";
     for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(${listed}) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-description .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
       // A plain state on the row shaded as the current topic.
       ['done', origin + '/?topic=render-crowd-2', ['#done-topic-list [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(${listed}) && Boolean(document.querySelector('#done-topic-list [aria-current=page] .topic-state[data-state=done]'))`],
@@ -260,8 +261,8 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           const arrived = await p.evaluate('[scrollX, scrollY]');
           await until(async () => {
             if (await p.evaluate(ready)) return true;
-            if (await p.evaluate(`(line => Boolean(line && !line.hidden && !line.open) && (line.scrollIntoView({ block: 'center' }), true))(document.querySelector('#done-topics'))`)) await p.point('#done-topics-label');
-            if (await p.evaluate(`(more => Boolean(more && !more.hidden && more.getAttribute('aria-disabled') !== 'true') && (more.scrollIntoView({ block: 'center', inline: 'center' }), true))(document.querySelector('#more-topics'))`)) await p.point('#more-topics');
+            if (await p.evaluate(`(line => Boolean(line && !line.hidden && !line.open && line.getClientRects().length) && (line.scrollIntoView({ block: 'center' }), true))(document.querySelector('#done-topics'))`)) await p.point('#done-topics-label');
+            if (await p.evaluate(`(more => Boolean(more && !more.hidden && more.getAttribute('aria-disabled') !== 'true' && more.getClientRects().length) && (more.scrollIntoView({ block: 'center', inline: 'center' }), true))(document.querySelector('#more-topics'))`)) await p.point('#more-topics');
             return false;
           }, 'every counted row is drawn with its count');
           for (const row of [null, ...rows]) {
