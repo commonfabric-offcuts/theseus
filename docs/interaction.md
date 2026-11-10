@@ -73,6 +73,53 @@ the pointer's way, the keys' and the phone's.
 - **The saving sign** says when the writing was last saved: "Saved to Theseus ·
   4:40 AM", or the time it was kept on this device (docs/times.md).
 
+## Keys across the panes
+
+A topic and a Conversation have three panes: the outline on the left, the
+messages, and the outcome's things on the right (docs/rails.md). The keys
+move through them as Finder's column view does: ↑ and ↓ within a pane, → and
+← between them, and with ⌘ the same arrows open, fold and reorder. One key
+map (`web/pane-keys.mjs`) says what each key means, and each pane decides
+whether it acts; a pane that is a tree (`web/key-tree.mjs`) keeps one Tab
+stop, a ring on the row the keys are on, and the words a screen reader needs
+(tree, treeitem, level, place in its set, open or folded).
+
+- **The outline.** ↑ and ↓ move between the rows shown: outcomes, their
+  topics, Done (N) and Archived (N) and the topics of one open, More, + New
+  topic and the Notebook's pages. Home and End go to the first and last.
+  Return opens the row in place: a topic, or an outcome's Conversation with
+  its topics, folding every other outcome. ⌘→ opens the focused outcome (or
+  a focused topic's outcome) and ⌘← folds it, with the keys on its row; →
+  opens a folded outcome or goes to its first row, and ← goes to the row it
+  is under or folds an open one. ⇧⌘→ opens every outcome and ⇧⌘← folds every
+  one, from anywhere in the outline; the next place reached tidies back to
+  one open. ⌘↑ and ⌘↓ move an outcome, or a topic within its outcome, one
+  place, the reader's own order kept wherever they sign in
+  (docs/outline-order.md); ⌘Z right after puts the last move back. "Keys"
+  under the outline lists them.
+- **Between the panes.** → on a topic (or on an open outcome after its
+  tree's step, on a row that opens nothing) moves into the messages, onto the
+  message last lit there, else the oldest one not read (just above the New
+  line), else the first in view; ↑ and ↓ then move the light, and Return
+  opens the Reader. → from the messages goes to the right rail and ← back to
+  the outline, on the row of the place being read. In the right rail ↑ and ↓
+  move between its sections and their rows, ⌘→ and ⌘← open and fold a
+  section, Return opens a row, and ← goes back to the messages. Each pane
+  keeps its place, so going there and back never loses it; after a move in
+  place the outline keeps its place and the messages' is the new page's.
+  Escape in the Reader gives the focus back to the message, so the arrows
+  work again.
+- **Where the keys do nothing.** In writing (a text field, the Reader, a
+  composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
+  line's start and end, ⌘↑ and ⌘↓ the writing's. The messages leave their ⌘
+  arrows, and ⇧⌘↑ ⇧⌘↓, free for their own pieces. A pane not on screen (the
+  outline behind "☰ Outcomes" on a phone, the right rail behind "Pipeline &
+  pages" below 1181px) is passed over: the keys never open a drawer or a
+  sheet. While one is open over the dimmed page, the keys never act on what
+  it covers: ← in the right rail's panel or sheet closes it and goes to the
+  messages, and nothing under it takes the keys. Touch is unchanged; on an
+  iPad with a keyboard the same keys work.
+
 ## Everywhere
 
 - **Escape**, or ✕, closes the open pop-up and keeps the writing; a click or tap
@@ -123,3 +170,10 @@ page painted. Its checks, by rule:
   saved …".
 - Escape and a press outside a pop-up: `tests/ui_links.test.mjs` and
   `tests/links_native.mjs`.
+
+The keys across the panes are pressed by `tests/outcome_rail_native.mjs`
+(`native-rail`, `native-webkit-rail`): "rail the arrows move through the
+outline as a tree …", "rail ⇧⌘← and ⇧⌘→ fold and open every outcome …",
+"rail ⌘↑ ⌘↓ move an outcome, and a topic within its outcome, …" and "rail
+→ and ← move between the outline, the messages and the right rail, …". What
+each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.

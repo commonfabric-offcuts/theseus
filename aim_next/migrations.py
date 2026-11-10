@@ -35,6 +35,7 @@ from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
 from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
+from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -134,6 +135,10 @@ STEPS = (
     # whether a message asks for a go-ahead. Stepping back is refused once any
     # of them exists.
     ("32", "33", REACTION_SCHEMA, REACTION_DOWN, REACTION_OCCUPIED),
+    # Version 34 keeps the order each person placed their outcomes in, and
+    # each outcome's topics, for themselves. Stepping back is refused once
+    # anyone has placed one.
+    ("33", "34", ORDER_SCHEMA, ORDER_DOWN, ORDER_OCCUPIED),
 )
 
 

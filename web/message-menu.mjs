@@ -185,7 +185,8 @@ export class MessageMenu {
   key(event) {
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.key === 'Tab') return this.tab(event);
-    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]')) return;
+    // Nor under a drawer or sheet open over the page, which makes the page inert.
+    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
     const at = this.doc.activeElement;
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
     // The bar's own buttons, and every control in the list but a card itself (a

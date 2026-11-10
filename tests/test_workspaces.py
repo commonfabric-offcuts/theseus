@@ -20,7 +20,8 @@ class WorkspacesCase(fixtures.StoreCase):
     def listing(self, actor="owner", **args):
         answer = self.store.view(actor, "workspaces", args)
         self.assertNotIn("error", answer, answer)
-        self.assertEqual(set(answer), {"instance_id", "items", "next_cursor", "reached_count"})
+        # order: the reader's own order of their outcomes (docs/outline-order.md).
+        self.assertEqual(set(answer), {"instance_id", "items", "next_cursor", "reached_count", "order"})
         self.assertEqual(answer["instance_id"], "test-instance")
         return answer
 

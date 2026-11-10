@@ -74,6 +74,12 @@ SCHEMA_BEFORE_HEALTH = SCHEMA_BEFORE_SETTLE
 # the step changes only these two and the fixture's file name.
 BEFORE_REACTIONS, REACTION_VERSION = HEALTH_VERSION, str(int(HEALTH_VERSION) + 1)
 SCHEMA_BEFORE_REACTIONS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_REACTIONS)).read_text().splitlines()
+# The step of each person's own order of their outcomes and topics follows the
+# reactions', so the layout before it is version 33's, read from a fresh
+# instance of release 34's code (801085f). Named here once, so a renumbering of
+# the step changes only these two and the fixture's file name.
+BEFORE_ORDER, ORDER_VERSION = REACTION_VERSION, str(int(REACTION_VERSION) + 1)
+SCHEMA_BEFORE_ORDER = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_ORDER)).read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -93,6 +99,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The order's version keeps each person's own order of their outcomes and topics.
+        db.execute("DROP TABLE outline_orders")
+        if version == BEFORE_ORDER:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The reactions' version keeps each thumbs-up and go-ahead answer, and
         # whether a message asks for a go-ahead.
         db.execute("ALTER TABLE messages DROP COLUMN go_ahead")
@@ -1820,7 +1831,8 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_CHECKS, SCHEMA_BEFORE_CHECKS),
                      (BEFORE_SETTLE, SCHEMA_BEFORE_SETTLE),
                      (BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH),
-                     (BEFORE_REACTIONS, SCHEMA_BEFORE_REACTIONS))
+                     (BEFORE_REACTIONS, SCHEMA_BEFORE_REACTIONS),
+                     (BEFORE_ORDER, SCHEMA_BEFORE_ORDER))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2982,14 +2994,14 @@ class ReactionStepCase(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
-    def test_the_step_is_the_reactions_and_the_head_is_its_version(self):
+    def test_the_step_follows_the_health_page_and_the_order_step_follows_it(self):
         self.assertIn((BEFORE_REACTIONS, REACTION_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, REACTION_VERSION)
+        self.assertIn((REACTION_VERSION, ORDER_VERSION), [step[:2] for step in migrations.STEPS])
 
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_a_thumb_is_kept(self):
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_REACTIONS,
-                                          "schema_version": REACTION_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
         # Each message gains whether it asks for a go-ahead, and none does.
@@ -3031,7 +3043,7 @@ class ReactionStepCase(MigrationCase):
                     self.step_back()
                 self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
                 self.assertEqual(self.unchanged(), before)
-                self.assertEqual(self.metadata()["schema_version"], REACTION_VERSION)
+                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
                 # Cleared by hand (a message refuses an UPDATE by trigger, kept as it was), the step back goes through.
                 with sqlite3.connect(str(self.path)) as db:
                     db.execute("DELETE FROM message_reactions")
@@ -3040,6 +3052,63 @@ class ReactionStepCase(MigrationCase):
                     db.execute("UPDATE messages SET go_ahead=0")
                     db.execute(trigger)
                 self.assertTrue(self.step_back()["migrated"])
+
+class OrderStepCase(MigrationCase):
+    """An instance at the reactions' version: the order's step adds each person's own
+    order of their outcomes and topics, and steps back only while nobody has placed one."""
+
+    VERSION, FIXTURE = BEFORE_ORDER, SCHEMA_BEFORE_ORDER
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_ORDER)
+
+    def place(self, ids, revision):
+        receipt = self.command("outline.order_set", {"ids": ids}, {}, {"order_revision": revision})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_is_the_order_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_ORDER, ORDER_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, ORDER_VERSION)
+
+    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_an_order_is_kept(self):
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_ORDER,
+                                          "schema_version": ORDER_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        upgraded = everything(self.path)
+        self.assertEqual({table: kept for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
+        self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new table starts empty")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        workspace = self.sql("SELECT workspace_id FROM workspace_members WHERE actor_id='owner' ORDER BY workspace_id LIMIT 1")[0][0]
+        self.assertEqual(self.place([workspace], 0)["order_revision"], 1)
+        self.assertEqual(self.sql("SELECT actor_id,within,ids,revision FROM outline_orders"), [("owner", "", '["%s"]' % workspace, 1)])
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_nobody_has_placed_an_order(self):
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_ORDER))
+        self.assertEqual(everything(self.path), stored)
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_an_order_is_kept_even_emptied_and_changes_nothing(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        workspace = self.sql("SELECT workspace_id FROM workspace_members WHERE actor_id='owner' ORDER BY workspace_id LIMIT 1")[0][0]
+        self.place([workspace], 0)
+        # Emptied, it still holds the instance: its revisions would restart.
+        self.place([], 1)
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], ORDER_VERSION)
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DELETE FROM outline_orders")
+        self.assertTrue(self.step_back()["migrated"])
+
 
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
@@ -3089,6 +3158,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(SettleStepCase, _name, None)
     if _name.startswith("test_") and _name not in ReactionStepCase.__dict__:
         setattr(ReactionStepCase, _name, None)
+    if _name.startswith("test_") and _name not in OrderStepCase.__dict__:
+        setattr(OrderStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

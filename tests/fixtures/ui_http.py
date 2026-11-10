@@ -549,6 +549,21 @@ def main():
                             "draft_id": prefix + "-draft", "submission_id": prefix + "-submission", "send_operation_id": prefix + "-send"},
                             {"topic_id": topic_id}, {"draft_revision": 1})
                         answer = command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id})
+                    elif freshness and request["method"] == "order_as":
+                        # The order one viewer keeps (outline_order.py): with "ids", placed
+                        # through the real Store as them ("actor", the person by default), at
+                        # the revision they hold; then read back as they read it.
+                        who = request.get("actor") or actor
+                        within = request.get("workspace_id")
+
+                        def held():
+                            if within:
+                                return store().view(who, "workspace_topics", {"workspace_id": within, "limit": 1})["order"]
+                            return store().view(who, "workspaces", {"limit": 1})["order"]
+                        if "ids" in request:
+                            command("outline.order_set", request["operation_id"], {"ids": request["ids"]},
+                                    {"workspace_id": within} if within else {}, {"order_revision": held()["revision"]}, sender=who)
+                        answer = held()
                     elif freshness and request["method"] == "navigation_workspaces":
                         answer = [command("workspace.create", "navigation-workspace-" + item["id"], item)
                                   for item in request["workspaces"]]

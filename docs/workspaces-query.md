@@ -7,7 +7,9 @@ same view and cannot override the actor through its arguments.
 
 Arguments are optional `cursor` and `limit`. Cursor is an exclusive workspace-ID
 lower bound, initially omitted or `""`. Limit defaults to 50, with a maximum of
-100. Items use workspace-ID order; titles need not be unique.
+100. Items use workspace-ID order; titles need not be unique. Every page also
+carries `order`, the reader's own order of their outcomes, which the page
+places them in (docs/outline-order.md).
 
 ```json
 {
