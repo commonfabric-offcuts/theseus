@@ -40,7 +40,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | merge with the card above or below it | ⇧⌘↑ ⇧⌘↓ | |
 | put the card under the one above it | Tab | |
 | take the card out of its parent | ⇧Tab | |
-| fold away a card's children, or show them | Space, or a click on its count of cards | a tap on its count of cards |
+| fold away a card's children, or show them | ⌘← ⌘→, or a click on its count of cards | a tap on its count of cards |
 | edit the card | Return, or a double click | Edit |
 | finish editing | Escape or ⌘Return | Done |
 | a new card beside this one | ⌘Return while not editing | New card |
@@ -62,7 +62,10 @@ never reverts someone else's change.
 
 Folding is the reader's own view and never touches the page: the folded
 cards are kept in this browser by their titles, so a fold lasts through a
-reload and comes undone when its card's title changes. ↑ and ↓ pass over
+reload and comes undone when its card's title changes. ⌘← and ⌘→ work as in
+any tree: on a card with no children showing, ⌘← goes up to its parent, and on
+a card whose children show, ⌘→ goes down to the first of them; the browser
+never takes them for Back and Forward on the cards. ↑ and ↓ pass over
 folded cards, a phone's swipe holds only the cards that show, and the count
 says how many are folded away. An act that puts a card under a folded card,
 Tab or an undo, unfolds it to show the card where it went; a remove beside a
