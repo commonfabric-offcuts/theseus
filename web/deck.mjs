@@ -1,20 +1,28 @@
-// A deck of cards is a Notebook page (docs/decks.md). Each card is a ##
-// heading and the words under it, up to the next ## heading; a heading inside
-// a fenced block is not one. What comes before the first card is the deck's
-// opening and stays where it is. A card's text, as a person writes it, is its
-// title on the first line and its words below, so a line of theirs that
-// starts with ## starts another card.
+// A deck of cards is a Notebook page (docs/decks.md). Each card is a heading
+// of two to six #s and the words under it, up to the next such heading; a
+// heading inside a fenced block is not one. A card's depth is its #s past two,
+// and the cards after it that are deeper are its children: a ## card is the
+// deck's own, and a ### card under it is one of its children. What comes
+// before the first card is the deck's opening and stays where it is. A card's
+// text, as a person writes it, is its title on the first line and its words
+// below, so a line of theirs that starts with ## starts another card.
 //
-// An act gives a new deck from a deck. Only a card an act writes is written
-// out again, so a card that only moves keeps its exact words, and a deck read
-// and written back with nothing done to it is the page it came from. An act
-// names its card by its text, near where it stood, so the same act can be
-// made again on a newer revision of the page, and it answers the act that
-// takes it back.
+// An act gives a new deck from a deck, and a card's children go where the act
+// takes the card. Only a card an act writes is written out again, so a card
+// that only moves keeps its exact words, and a deck read and written back with
+// nothing done to it is the page it came from. An act names its card by its
+// text, near where it stood, so the same act can be made again on a newer
+// revision of the page, and it answers the act that takes it back.
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})/, CARD = /^ {0,3}##(?:[ \t]+(.*?))?[ \t]*$/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/, CARD = /^ {0,3}(#{2,6})(?:[ \t]+(.*?))?[ \t]*$/;
+// The deepest a card can be, since a heading has at most six #s.
+export const DEEPEST = 4;
 
-const write = card => (card.title ? `## ${card.title}` : '##') + (card.words ? `\n\n${card.words}` : '');
+const heading = depth => '#'.repeat(depth + 2);
+const write = card => (card.title ? `${heading(card.depth)} ${card.title}` : heading(card.depth)) + (card.words ? `\n\n${card.words}` : '');
+// The card at another depth: one read from the page keeps its words exactly, only its heading's #s changed.
+const atDepth = (card, depth) => card.depth === depth ? card
+  : card.written ? { ...card, depth } : { ...card, depth, raw: card.raw.replace(/^( {0,3})#{2,6}/, `$1${heading(depth)}`) };
 const words = text => text.replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
 
 export const cardText = card => card.words ? `${card.title}\n${card.words}` : card.title;
@@ -64,10 +72,25 @@ export function parseDeck(body) {
   }
   const cards = starts.map((start, at) => {
     const raw = body.slice(start, starts[at + 1] ?? body.length), end = raw.indexOf('\n');
-    const title = (CARD.exec(end < 0 ? raw : raw.slice(0, end))[1] ?? '').replace(/(?:^|[ \t]+)#+$/, '').trim();
-    return { raw, at, last: at === starts.length - 1, title, words: end < 0 ? '' : words(raw.slice(end + 1)) };
+    const [, marks, title = ''] = CARD.exec(end < 0 ? raw : raw.slice(0, end));
+    return { raw, at, last: at === starts.length - 1, depth: marks.length - 2, title: title.replace(/(?:^|[ \t]+)#+$/, '').trim(), words: end < 0 ? '' : words(raw.slice(end + 1)) };
   });
   return { opening: body.slice(0, starts[0] ?? body.length), cards };
+}
+
+// Where the card at i ends with its children: the index after the last of them.
+export function groupEnd(cards, i) {
+  let end = i + 1;
+  while (end < cards.length && cards[end].depth > cards[i].depth) end++;
+  return end;
+}
+
+// The card beside the one at i among its parent's children, a step up (-1) or down (1); -1 when none is.
+function sibling(cards, i, step) {
+  const depth = cards[i].depth;
+  if (step > 0) { const next = groupEnd(cards, i); return next < cards.length && cards[next].depth === depth ? next : -1; }
+  for (let j = i - 1; j >= 0; j--) if (cards[j].depth <= depth) return cards[j].depth === depth ? j : -1;
+  return -1;
 }
 
 // The page's words for a deck. A card keeps its words exactly, and only where
@@ -95,55 +118,90 @@ export function findCard(deck, text, near = 0) {
 
 // applyAct(deck, act) gives {deck, at, undo}: the deck after the act, the card
 // it leaves picked and the act that takes it back; or null when there is
-// nothing to do, because a card it names is gone, it would move or merge past
-// either end, or an edit changes nothing.
-//   {kind: 'move', text, step, near}       moves the card one place up (-1) or down (1)
-//   {kind: 'merge', text, step, near}      the card and its neighbour become one under the upper
-//                                          card's title, the lower card's title a ### heading in it
-//   {kind: 'split', text, upper, lower, near}  a merged card becomes its two cards again
+// nothing to do, because a card it names is gone, it would go past the end of
+// its parent's children or deeper than DEEPEST, or an edit changes nothing.
+// Every act takes a card's children with it.
+//   {kind: 'move', text, step, near}       moves the card past the one beside it, up (-1) or down (1)
+//   {kind: 'merge', text, step, near}      the card and the one beside it become one under the upper
+//                                          card's title, the lower card's title a bold line in it
+//   {kind: 'split', text, upper, lower, keep, near}  a merged card becomes its two cards again, the
+//                                          first `keep` children staying with the upper
 //   {kind: 'edit', text, to, near}         the card's text becomes `to`; no text removes the card
-//   {kind: 'add', after, text, near}       a new card after the card `after` (null: first)
+//   {kind: 'add', after, text, depth, rest, near}  a new card right after the card `after` (null:
+//                                          first), and the cards `rest`, each {text, depth}, after it
 //   {kind: 'remove', text, near}
+//   {kind: 'indent', text, near}           the card goes under the one above it, as its last child
+//   {kind: 'outdent', text, near}          the card leaves its parent, to follow the parent's children
+//   {kind: 'place', text, after, depth, near}  the card goes right after the card `after` (null:
+//                                          first), at that depth
 export function applyAct(deck, act) {
   const cards = deck.cards.slice(), i = act.kind === 'add' ? -1 : findCard(deck, act.text, act.near);
   const done = (at, undo) => ({ deck: { ...deck, cards }, at, undo });
   if (act.kind !== 'add' && i < 0) return null;
+  const end = i < 0 ? -1 : groupEnd(cards, i), depth = i < 0 ? 0 : cards[i].depth;
   switch (act.kind) {
     case 'move': {
-      const j = i + act.step;
-      if (j < 0 || j >= cards.length) return null;
-      [cards[i], cards[j]] = [cards[j], cards[i]];
-      return done(j, { kind: 'move', text: act.text, step: -act.step, near: j });
+      const j = sibling(cards, i, act.step);
+      if (j < 0) return null;
+      const [top, bottom] = act.step < 0 ? [j, i] : [i, j], lower = cards.splice(bottom, groupEnd(cards, bottom) - bottom);
+      cards.splice(top, 0, ...lower);
+      const at = act.step < 0 ? j : i + lower.length;
+      return done(at, { kind: 'move', text: act.text, step: -act.step, near: at });
     }
     case 'merge': {
-      const top = Math.min(i, i + act.step);
-      if (top < 0 || top + 1 >= cards.length) return null;
-      const [upper, lower] = cards.slice(top, top + 2);
-      const merged = { title: upper.title, words: [upper.words, lower.title && `### ${lower.title}`, lower.words].filter(Boolean).join('\n\n'), written: true };
-      cards.splice(top, 2, merged);
-      return done(top, { kind: 'split', text: cardText(merged), upper: cardText(upper), lower: cardText(lower), near: top });
+      const j = sibling(cards, i, act.step);
+      if (j < 0) return null;
+      const top = Math.min(i, j), bottom = Math.max(i, j), upper = cards[top], lower = cards[bottom];
+      const merged = { title: upper.title, depth: upper.depth, words: [upper.words, lower.title && `**${lower.title}**`, lower.words].filter(Boolean).join('\n\n'), written: true };
+      cards.splice(bottom, 1);
+      cards[top] = merged;
+      return done(top, { kind: 'split', text: cardText(merged), upper: cardText(upper), lower: cardText(lower), keep: bottom - top - 1, near: top });
     }
-    case 'split':
-      cards.splice(i, 1, textCard(act.upper), textCard(act.lower));
+    case 'split': {
+      const keep = Math.min(act.keep ?? 0, end - i - 1);
+      cards.splice(i, 1, { ...textCard(act.upper), depth });
+      cards.splice(i + 1 + keep, 0, { ...textCard(act.lower), depth });
       return done(i, { kind: 'merge', text: act.upper, step: 1, near: i });
+    }
     case 'edit': {
       if (act.to === act.text) return null;
       const card = textCard(act.to);
       if (!cardText(card)) return applyAct(deck, { kind: 'remove', text: act.text, near: i });
       if (cardText(card) === act.text) return null;
-      cards[i] = card;
+      cards[i] = { ...card, depth };
       return done(i, { kind: 'edit', text: cardText(card), to: act.text, near: i });
     }
     case 'add': {
-      const card = textCard(act.text), anchor = act.after === null ? -1 : findCard(deck, act.after, act.near);
+      const card = { ...textCard(act.text), depth: act.depth ?? 0 }, anchor = act.after === null ? -1 : findCard(deck, act.after, act.near);
       if (!cardText(card)) return null;
       const at = act.after === null ? 0 : anchor >= 0 ? anchor + 1 : Math.min(Math.max(act.near + 1, 0), cards.length);
-      cards.splice(at, 0, card);
+      cards.splice(at, 0, card, ...(act.rest ?? []).map(({ text, depth: under }) => ({ ...textCard(text), depth: under })));
       return done(at, { kind: 'remove', text: cardText(card), near: at });
     }
-    case 'remove':
-      cards.splice(i, 1);
-      return done(Math.min(i, cards.length - 1), { kind: 'add', after: i > 0 ? cardText(deck.cards[i - 1]) : null, text: act.text, near: i - 1 });
+    case 'remove': {
+      const removed = cards.splice(i, end - i), rest = removed.slice(1).map(card => ({ text: cardText(card), depth: card.depth }));
+      return done(Math.min(i, cards.length - 1), { kind: 'add', after: i > 0 ? cardText(deck.cards[i - 1]) : null, text: act.text, depth, rest, near: i - 1 });
+    }
+    case 'indent':
+      if (sibling(cards, i, -1) < 0 || cards.slice(i, end).some(card => card.depth >= DEEPEST)) return null;
+      return applyAct(deck, { kind: 'place', text: act.text, after: cardText(cards[i - 1]), depth: depth + 1, near: i });
+    case 'outdent': {
+      if (depth === 0) return null;
+      let parent = i - 1;
+      while (parent >= 0 && cards[parent].depth >= depth) parent--;
+      const parentEnd = parent < 0 ? end : groupEnd(cards, parent);
+      const after = parentEnd === end ? (i > 0 ? cardText(cards[i - 1]) : null) : cardText(cards[parentEnd - 1]);
+      return applyAct(deck, { kind: 'place', text: act.text, after, depth: depth - 1, near: i });
+    }
+    case 'place': {
+      const block = cards.splice(i, end - i), shift = act.depth - depth;
+      if (block.some(card => card.depth + shift < 0 || card.depth + shift > DEEPEST)) return null;
+      const anchor = act.after === null ? -1 : findCard({ cards }, act.after, i - 1);
+      if (act.after !== null && anchor < 0) return null;
+      if (anchor + 1 === i && shift === 0) return null;
+      cards.splice(anchor + 1, 0, ...block.map(card => atDepth(card, card.depth + shift)));
+      return done(anchor + 1, { kind: 'place', text: act.text, after: i > 0 ? cardText(deck.cards[i - 1]) : null, depth, near: anchor + 1 });
+    }
     default:
       throw new Error(`No such act on a deck: ${act.kind}`);
   }

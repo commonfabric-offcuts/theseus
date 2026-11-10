@@ -1,11 +1,11 @@
-import { applyAct, cardStacks, cardText, deckBody, findCard, parseDeck, stackLine, textCard } from './deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupEnd, parseDeck, stackLine, textCard } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Return edit, Escape done · ⌘Return new card · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
+const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · Space fold · Return edit, Escape done · ⌘Return new card · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
@@ -21,7 +21,8 @@ function balloon(doc) {
 }
 
 // A Notebook page as a deck of cards (docs/decks.md): a list sorted with the
-// keys on a laptop, one card at a time, swiped through, on a phone. An act is
+// keys on a laptop, one card at a time, swiped through, on a phone, a card's
+// children grouped under it and folded away in this browser at will. An act is
 // made on the deck at once and written as the page's next revision; acts made
 // while a save is on its way go together in the next. A save whose answer did
 // not come is sent again exactly as it was, so Core answers with what it
@@ -46,6 +47,8 @@ export class DeckPage {
     // The card picked when this deck was last open in this tab, by its words, so going to a stack and back lands
     // on it; read before the first paint stores the first card in its place.
     try { this.recalled = JSON.parse(globalThis.sessionStorage.getItem(`deck:${item}`)); } catch { this.recalled = null; }
+    // The cards whose children are folded away in this browser, by title: the reader's own view, never the page's.
+    try { this.folded = new Set(JSON.parse(globalThis.localStorage.getItem(`deck-folded:${item}`)) ?? []); } catch { this.folded = new Set(); }
     this.status = this.node('p', 'save-status deck-status'); this.status.setAttribute('role', 'status');
     this.opening = this.node('div', 'deck-opening');
     this.list = this.node('ol', 'deck-cards'); this.list.setAttribute('aria-label', 'Cards');
@@ -277,7 +280,10 @@ export class DeckPage {
     if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
     if ((up || down) && command && !event.altKey) this.act({ kind: event.shiftKey ? 'merge' : 'move', text, step: up ? -1 : 1, near });
-    else if ((up || down) && !event.shiftKey && !event.altKey) this.pick(this.picked + (up ? -1 : 1));
+    else if ((up || down) && !event.shiftKey && !event.altKey) this.pick(this.beside(this.picked, up ? -1 : 1));
+    // Tab and ⇧Tab are the deck's only while there is somewhere to go, so the focus can still leave it.
+    else if (event.key === 'Tab' && !command && !event.altKey) { if (!this.act({ kind: event.shiftKey ? 'outdent' : 'indent', text, near })) return; }
+    else if (event.key === ' ' && card && !command && !event.shiftKey && !event.altKey && groupEnd(this.deck.cards, this.picked) > this.picked + 1) this.fold(this.picked);
     else if (event.key === 'Enter' && command) this.start();
     else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) this.edit();
     else if (event.key === 'Backspace' && command) this.act({ kind: 'remove', text, near });
@@ -285,6 +291,42 @@ export class DeckPage {
     else if (event.key === 'ArrowRight' && !command && !event.shiftKey && !event.altKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
     else return;
     event.preventDefault();
+  }
+
+  // Which cards show, none under a folded card, and each card's parent (-1 for the deck's own).
+  layout() {
+    const cards = this.deck.cards, shown = [], parents = [], open = [];
+    cards.forEach((card, i) => {
+      while (open.length && cards[open.at(-1)].depth >= card.depth) open.pop();
+      parents.push(open.at(-1) ?? -1);
+      shown.push(open.every(at => !this.folded.has(cards[at].title)));
+      open.push(i);
+    });
+    return { shown, parents };
+  }
+  // The next card that shows, a step up (-1) or down (1) from the one at `from`; `from` when none does.
+  beside(from, step) {
+    const { shown } = this.layout();
+    for (let i = from + step; i >= 0 && i < shown.length; i += step) if (shown[i]) return i;
+    return from;
+  }
+  // Space, or a click on a parent's count of the cards under it: those cards folded away, or shown again.
+  fold(index) {
+    const card = this.deck.cards[index];
+    if (!card || groupEnd(this.deck.cards, index) === index + 1) return;
+    if (!this.folded.delete(card.title)) this.folded.add(card.title);
+    try { globalThis.localStorage.setItem(`deck-folded:${this.item}`, JSON.stringify([...this.folded])); } catch {}
+    this.picked = index;
+    this.paint();
+  }
+  foldButton(index, under) {
+    const folded = this.folded.has(this.deck.cards[index].title);
+    const button = this.node('button', 'deck-fold', `${folded ? '▸' : '▾'} ${under === 1 ? '1 card' : `${under} cards`}`);
+    button.type = 'button';
+    button.tabIndex = -1;
+    button.setAttribute('aria-expanded', String(!folded));
+    button.addEventListener('click', event => { event.stopPropagation(); this.fold(index); });
+    return button;
   }
 
   pick(index) {
@@ -297,8 +339,9 @@ export class DeckPage {
   // On a phone the card in view is the one picked.
   scrolled() {
     if (!this.phone || this.editing || this.asking || !this.list.clientWidth) return;
-    const index = Math.round(this.list.scrollLeft / this.list.clientWidth);
-    if (index !== this.picked && index < this.deck.cards.length) { this.picked = index; this.mark(); }
+    const row = this.list.querySelectorAll('.deck-card:not([hidden])')[Math.round(this.list.scrollLeft / this.list.clientWidth)];
+    const index = Number(row?.dataset.index);
+    if (Number.isInteger(index) && index !== this.picked) { this.picked = index; this.mark(); }
   }
   mark() {
     for (const row of this.list.querySelectorAll('.deck-card')) {
@@ -306,7 +349,8 @@ export class DeckPage {
       row.tabIndex = picked ? 0 : -1;
       if (picked) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
     }
-    this.count.textContent = this.deck.cards.length ? `${this.picked + 1} of ${this.deck.cards.length}` : 'No cards yet';
+    const { shown } = this.layout(), seen = shown.filter(Boolean).length, away = shown.length - seen;
+    this.count.textContent = shown.length ? `${shown.slice(0, this.picked + 1).filter(Boolean).length} of ${seen}${away ? ` · ${away} folded` : ''}` : 'No cards yet';
     const card = this.deck.cards[this.picked];
     try { if (card) globalThis.sessionStorage.setItem(`deck:${this.item}`, JSON.stringify({ text: cardText(card), at: this.picked })); } catch {}
   }
@@ -315,7 +359,7 @@ export class DeckPage {
   show(focus) {
     const row = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
     if (!row) return;
-    if (this.phone) { this.list.scrollTo({ left: this.picked * this.list.clientWidth }); return; }
+    if (this.phone) { this.list.scrollTo({ left: [...this.list.querySelectorAll('.deck-card:not([hidden])')].indexOf(row) * this.list.clientWidth }); return; }
     row.scrollIntoView({ block: 'nearest' });
     if (focus) row.focus({ preventScroll: true });
   }
@@ -326,13 +370,13 @@ export class DeckPage {
     const card = this.deck.cards[this.picked];
     if (!card || this.readOnly || this.asking) return;
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null));
-    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, near: this.picked, fresh: false });
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false });
   }
-  // ⌘Return or New card: an empty card after the picked one.
+  // ⌘Return or New card: an empty card beside the picked one, after its children.
   start() {
     if (this.readOnly || !this.base || this.asking) return;
-    const card = this.deck.cards[this.picked];
-    this.open({ text: '', after: card ? cardText(card) : null, near: card ? this.picked : -1, fresh: true });
+    const card = this.deck.cards[this.picked], last = card ? groupEnd(this.deck.cards, this.picked) - 1 : -1;
+    this.open({ text: '', after: card ? cardText(this.deck.cards[last]) : null, depth: card?.depth ?? 0, near: last, fresh: true });
   }
   open(editing) {
     if (this.editing) this.finish();
@@ -352,13 +396,13 @@ export class DeckPage {
     this.editing = null;
     const written = editing.field.value, to = editing.stacks?.length && /\S/.test(written) ? `${written.trimEnd()}\n\n${editing.stacks.join('\n')}` : written;
     let made = false;
-    if (editing.fresh) made = this.act({ kind: 'add', after: editing.after, text: to, near: editing.near });
+    if (editing.fresh) made = this.act({ kind: 'add', after: editing.after, text: to, depth: editing.depth, near: editing.near });
     else if (written !== (editing.shown ?? editing.text)) {
       made = this.act({ kind: 'edit', text: editing.text, to, near: editing.near });
       // Its card changed elsewhere while it was written: what was written goes beside it, over nothing.
       if (!made && findCard(this.deck, editing.text, editing.near) < 0 && /\S/.test(to)) {
         const before = this.deck.cards[Math.min(editing.near, this.deck.cards.length) - 1];
-        made = this.act({ kind: 'add', after: before ? cardText(before) : null, text: to, near: editing.near - 1 });
+        made = this.act({ kind: 'add', after: before ? cardText(before) : null, text: to, depth: editing.depth, near: editing.near - 1 });
         if (made) this.say('That card changed elsewhere while you wrote, so what you wrote is a card of its own beside it.', 'attention');
       }
     }
@@ -415,7 +459,7 @@ export class DeckPage {
     cancel.onclick = () => this.endAsk();
     line.append(this.node('span', 'muted', 'To'), agents.length > 1 ? to : this.node('span', 'deck-ask-agent', agents[0]), send, cancel);
     form.append(field, line);
-    this.asking = { text: cardText(card), near: index, form, field, to, envelope: null, sending: false };
+    this.asking = { text: cardText(card), depth: card.depth, near: index, form, field, to, envelope: null, sending: false };
     this.picked = index;
     this.paint();
     this.fit(field);
@@ -440,11 +484,11 @@ export class DeckPage {
     if (!asking.envelope) {
       const words = asking.field.value.trim(), agent = asking.to.value;
       if (!words || !agent) { asking.field.focus(); return; }
-      // The agent is told where the card is, so it can change the card when the ask is to: a ## heading on a
+      // The agent is told where the card is, so it can change the card when the ask is to: a heading on a
       // Notebook page, with the line naming this stack kept under it.
       const card = textCard(asking.text), quoted = [`**${card.title || 'Untitled'}**`, ...cardStacks(card.words, messageOf).words.split('\n')];
       const body = `${words}\n\n${quoted.map(line => (line ? `> ${line}` : '>')).join('\n')}\n\n` +
-        `The card is a ## heading on the Notebook page ${this.item}, “${this.source.title || 'Notebook page'}”, seen as cards at ` +
+        `The card is a ${'#'.repeat(asking.depth + 2)} heading on the Notebook page ${this.item}, “${this.source.title || 'Notebook page'}”, seen as cards at ` +
         `${placeLink({ kind: 'cards', id: this.item })}. To change it, revise that page and keep its Reply stack line.`;
       asking.envelope = { operation_id: crypto.randomUUID(), agent, args: { body, addressees: [agent], intent: 'ask' } };
     }
@@ -474,6 +518,7 @@ export class DeckPage {
   // The card asked about, as it was when its bubble was pressed, with the ask under it.
   askRow(asking) {
     const card = textCard(asking.text), row = this.node('li', 'deck-card deck-asking');
+    row.style.setProperty('--depth', String(asking.depth));
     row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'),
       formatWords(this.node('div', 'deck-words'), cardStacks(card.words, messageOf).words), asking.form);
     return row;
@@ -488,17 +533,26 @@ export class DeckPage {
     const { cards, opening } = this.deck, editing = this.editing, asking = this.asking;
     this.opening.hidden = !/\S/.test(opening);
     if (!this.opening.hidden) formatWords(this.opening, opening.trim());
+    // A card under a folded one is drawn hidden, so the rows stand where their cards do; a phone shows a child's
+    // parent above it, since it shows one card at a time.
+    const { shown, parents } = this.layout();
+    while (!shown[this.picked] && parents[this.picked] >= 0) this.picked = parents[this.picked];
     const rows = cards.map((card, index) => {
-      const row = this.node('li', 'deck-card'), { words, stacks } = cardStacks(card.words, messageOf);
+      const row = this.node('li', 'deck-card'), { words, stacks } = cardStacks(card.words, messageOf), under = groupEnd(cards, index) - index - 1;
       row.dataset.index = String(index);
+      row.hidden = !shown[index];
+      row.style.setProperty('--depth', String(card.depth));
+      if (parents[index] >= 0) row.append(this.node('p', 'deck-under muted', cards[parents[index]].title || 'Untitled'));
       row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'), formatWords(this.node('div', 'deck-words'), words),
         this.bubbles(index, stacks));
+      if (under) row.append(this.foldButton(index, under));
       row.addEventListener('click', () => { if (this.editing) this.finish(); else this.pick(index); });
       row.addEventListener('dblclick', () => { this.pick(index); this.edit(); });
       return row;
     });
     if (editing) {
       const holder = this.node('li', 'deck-card deck-writing');
+      holder.style.setProperty('--depth', String(editing.depth ?? 0));
       holder.append(editing.field);
       const at = editing.fresh ? (editing.after === null ? 0 : findCard(this.deck, editing.after, editing.near) + 1) : findCard(this.deck, editing.text, editing.near);
       if (editing.fresh) rows.splice(at > 0 ? at : editing.after === null ? 0 : rows.length, 0, holder);

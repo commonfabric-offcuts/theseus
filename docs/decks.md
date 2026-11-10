@@ -1,10 +1,10 @@
-# Cards: a Notebook page as a deck
+# Notebook Cards: a Notebook page as a deck
 
 A tool for sorting ideas and capturing notes, usable from any outcome. Any
 Notebook page opens as a deck of cards: thumbed through one at a time on a
-phone, and sorted as a list with the keys on a laptop. It is deliberately
-light (pipeline item 278): no Core change, and one unit test file for the
-rules that keep a page's words.
+phone, and sorted as a list with the keys on a laptop, a card's children
+grouped under it. It is deliberately light (pipeline item 278): no Core
+change, and one unit test file for the rules that keep a page's words.
 
 ## The page is the deck
 
@@ -12,8 +12,13 @@ A deck is an ordinary Notebook page (notebook-pages.md), so it keeps every
 revision with its author, the Reader shows it and what changed, and an agent
 reads and writes it with `note read` and `note revise` like any other page.
 
-- Each card is a `##` heading and the words under it, up to the next `##`
-  heading. A heading inside a fenced block is not one.
+- Each card is a heading of two to six `#`s and the words under it, up to the
+  next such heading. A heading inside a fenced block is not one, and a `#`
+  heading is words.
+- A card's children are the deeper headings after it, up to the next heading
+  as shallow as its own: a `##` card is the deck's own, a `###` card under it
+  is one of its children, and a `####` card under that is a child of the
+  child. Every act takes a card's children with it.
 - What comes before the first card is the deck's opening; the cards page shows
   it above the cards and never changes it.
 - A card's text, as a person writes it, is its title on the first line and its
@@ -31,19 +36,36 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | act | laptop | phone |
 | --- | --- | --- |
 | pick the card above or below | ↑ ↓ | swipe |
-| move the card up or down | ⌘↑ ⌘↓ | |
-| merge with the card above or below | ⇧⌘↑ ⇧⌘↓ | |
+| move the card past the one above or below it | ⌘↑ ⌘↓ | |
+| merge with the card above or below it | ⇧⌘↑ ⇧⌘↓ | |
+| put the card under the one above it | Tab | |
+| take the card out of its parent | ⇧Tab | |
+| fold away a card's children, or show them | Space, or a click on its count of cards | a tap on its count of cards |
 | edit the card | Return, or a double click | Edit |
 | finish editing | Escape or ⌘Return | Done |
-| a new card after this one | ⌘Return while not editing | New card |
-| remove the card | ⌘⌫ | |
+| a new card beside this one | ⌘Return while not editing | New card |
+| remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
 
-A merge keeps every word of both cards under the upper card's title; the lower
-card's title becomes a `###` heading inside it. Clearing all of a card's text
-removes the card. ⌘Z takes back the person's own acts on this page, newest
-first, each as a new revision; it never reverts someone else's change.
+A move and a merge go between cards with the same parent, never out of it: a
+move takes the card past the one beside it with all its children, and a merge
+keeps every word of both cards under the upper card's title, the lower card's
+title a bold line inside it and its children following the upper card's. Tab
+makes the card the last child of the card above it with the same parent, and
+⇧Tab puts it after its parent's children, beside its parent; with nowhere to
+go, Tab and ⇧Tab move the focus as they do elsewhere. A new card goes beside
+the picked one, after its children. Clearing all of a card's text removes the
+card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the
+person's own acts on this page, newest first, each as a new revision; it
+never reverts someone else's change.
+
+Folding is the reader's own view and never touches the page: the folded
+cards are kept in this browser by their titles, so a fold lasts through a
+reload and comes undone when its card's title changes. ↑ and ↓ pass over
+folded cards, a phone's swipe holds only the cards that show, and the count
+says how many are folded away. On a phone, where one card shows at a time, a
+child card shows its parent's title above its own.
 
 ## Saving
 

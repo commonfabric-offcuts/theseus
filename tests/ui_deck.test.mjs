@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAct, cardStacks, cardText, deckBody, findCard, parseDeck, stackLine, textCard } from '../web/deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupEnd, parseDeck, stackLine, textCard } from '../web/deck.mjs';
 
 const PAGE = '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n## Gamma\n';
 const titles = deck => deck.cards.map(card => card.title).join(',');
@@ -14,12 +14,13 @@ test('a page read as cards and written back with nothing done to it is exactly t
   }
 });
 
-test('the cards are the ## headings outside fenced blocks, each with the words under it', () => {
+test('the cards are the headings of two to six #s outside fenced blocks, each with the words under it', () => {
   const deck = parseDeck(PAGE);
   assert.equal(titles(deck), 'Alpha,Beta,Gamma');
   assert.equal(deck.opening, '# Talk\n\nThe key ideas.\n\n');
   assert.equal(cardText(deck.cards[1]), 'Beta\nsecond words\nmore');
-  assert.equal(titles(parseDeck('## A\n```\n## code\n```\n### sub\n## B ##')), 'A,B');
+  assert.equal(titles(parseDeck('## A\n```\n## code\n```\n### sub\n## B ##')), 'A,sub,B');
+  assert.deepEqual(parseDeck('# Page\n## A\n### sub\n#### deeper\n####### words\n## B').cards.map(card => card.depth), [0, 1, 2, 0]);
   assert.equal(parseDeck('## A\n```\n## code\n```').cards[0].words, '```\n## code\n```');
 });
 
@@ -36,10 +37,10 @@ test('a card moves one place, keeps its exact words, and moving back gives the p
 test('a merge keeps every word of both cards under the upper title, and its undo gives both cards back', () => {
   const done = applyAct(parseDeck(PAGE), { kind: 'merge', text: 'Beta\nsecond words\nmore', step: 1, near: 1 });
   assert.equal(done.at, 1);
-  assert.equal(deckBody(done.deck), '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n### Gamma\n');
+  assert.equal(deckBody(done.deck), '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n**Gamma**\n');
   assert.equal(deckBody(applyAct(parseDeck(deckBody(done.deck)), done.undo).deck), PAGE);
   const up = applyAct(parseDeck(PAGE), { kind: 'merge', text: 'Beta\nsecond words\nmore', step: -1, near: 1 });
-  assert.equal(cardText(up.deck.cards[0]), 'Alpha\nfirst words\n\n### Beta\n\nsecond words\nmore');
+  assert.equal(cardText(up.deck.cards[0]), 'Alpha\nfirst words\n\n**Beta**\n\nsecond words\nmore');
   assert.equal(after(PAGE, { kind: 'merge', text: 'Alpha\nfirst words', step: -1, near: 0 }), null);
 });
 
@@ -90,4 +91,50 @@ test("a card's reply stacks are the lines holding only a link to one of them, ou
   const page = `## A\n\nwords\n\n${stackLine('https://here.example/?topic=t&message=m1')}\n\n## B\n\n${stackLine('https://here.example/?topic=t&message=m2')}\n`;
   assert.equal(deckBody(parseDeck(page)), page);
   assert.deepEqual(cardStacks(parseDeck(after(page, { kind: 'merge', text: cardText(parseDeck(page).cards[0]), step: 1, near: 0 })).cards[0].words, stackOf).stacks, ['m1', 'm2']);
+});
+
+const GROUPS = '## P\n\np words\n\n### P1\n\none\n\n### P2\n\ntwo\n\n## Q\n\nq words\n';
+const P = 'P\np words', P1 = 'P1\none', P2 = 'P2\ntwo', Q = 'Q\nq words';
+// The page after an act and after the act that takes it back, which must be the page it came from.
+const there = (body, act) => {
+  const done = applyAct(parseDeck(body), act), page = deckBody(done.deck);
+  assert.equal(deckBody(applyAct(parseDeck(page), done.undo).deck), body);
+  return page;
+};
+
+test("a card's children are the deeper cards after it, and a move takes them past the card beside it, never out of their parent", () => {
+  assert.equal(groupEnd(parseDeck(GROUPS).cards, 0), 3);
+  assert.equal(groupEnd(parseDeck(GROUPS).cards, 1), 2);
+  assert.equal(there(GROUPS, { kind: 'move', text: Q, step: -1, near: 3 }), '## Q\n\nq words\n\n## P\n\np words\n\n### P1\n\none\n\n### P2\n\ntwo\n');
+  assert.equal(there(GROUPS, { kind: 'move', text: P1, step: 1, near: 1 }), '## P\n\np words\n\n### P2\n\ntwo\n\n### P1\n\none\n\n## Q\n\nq words\n');
+  assert.equal(after(GROUPS, { kind: 'move', text: P1, step: -1, near: 1 }), null);
+  assert.equal(after(GROUPS, { kind: 'move', text: P2, step: 1, near: 2 }), null);
+});
+
+test('Tab puts a card under the one above it and shift-Tab takes it out after its parent\'s children, each undone exactly', () => {
+  assert.equal(there(GROUPS, { kind: 'indent', text: Q, near: 3 }), '## P\n\np words\n\n### P1\n\none\n\n### P2\n\ntwo\n\n### Q\n\nq words\n');
+  assert.equal(there(GROUPS, { kind: 'indent', text: P2, near: 2 }), '## P\n\np words\n\n### P1\n\none\n\n#### P2\n\ntwo\n\n## Q\n\nq words\n');
+  assert.equal(after(GROUPS, { kind: 'indent', text: P1, near: 1 }), null);
+  assert.equal(after(GROUPS, { kind: 'indent', text: P, near: 0 }), null);
+  assert.equal(there(GROUPS, { kind: 'outdent', text: P1, near: 1 }), '## P\n\np words\n\n### P2\n\ntwo\n\n## P1\n\none\n\n## Q\n\nq words\n');
+  assert.equal(there(GROUPS, { kind: 'outdent', text: P2, near: 2 }), '## P\n\np words\n\n### P1\n\none\n\n## P2\n\ntwo\n\n## Q\n\nq words\n');
+  assert.equal(after(GROUPS, { kind: 'outdent', text: Q, near: 3 }), null);
+  // A card's own words, and its children's, stay exactly as they were; a heading goes no deeper than six #s.
+  assert.equal(after('## A\n  odd  spacing\n## B\n### B1\nkept\n', { kind: 'indent', text: 'B', near: 1 }), '## A\n  odd  spacing\n### B\n#### B1\nkept\n');
+  assert.equal(after('## A\n## B\n###### B1\n', { kind: 'indent', text: 'B', near: 1 }), null);
+});
+
+test('a merge takes the lower card\'s children, a removed card takes its own, and each undo gives them back', () => {
+  const merged = there(GROUPS, { kind: 'merge', text: P, step: 1, near: 0 });
+  assert.equal(merged, '## P\n\np words\n\n**Q**\n\nq words\n\n### P1\n\none\n\n### P2\n\ntwo\n');
+  const absorbed = '## A\n\n## B\n\n### B1\n';
+  assert.equal(there(absorbed, { kind: 'merge', text: 'A', step: 1, near: 0 }), '## A\n\n**B**\n\n### B1\n');
+  assert.equal(there(GROUPS, { kind: 'remove', text: P, near: 0 }), '## Q\n\nq words\n');
+  assert.equal(there(GROUPS, { kind: 'remove', text: P1, near: 1 }), '## P\n\np words\n\n### P2\n\ntwo\n\n## Q\n\nq words\n');
+});
+
+test('a new card goes in at the depth it is given, and an edit keeps its card\'s depth', () => {
+  const added = applyAct(parseDeck(GROUPS), { kind: 'add', after: P2, text: 'N', depth: 0, near: 2 });
+  assert.deepEqual(added.deck.cards.map(card => `${card.title}${card.depth}`), ['P0', 'P11', 'P21', 'N0', 'Q0']);
+  assert.equal(after(GROUPS, { kind: 'edit', text: P1, to: 'P1, renamed\none', near: 1 }), GROUPS.replace('### P1\n', '### P1, renamed\n'));
 });
