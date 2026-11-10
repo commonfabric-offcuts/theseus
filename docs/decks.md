@@ -64,7 +64,9 @@ Folding is the reader's own view and never touches the page: the folded
 cards are kept in this browser by their titles, so a fold lasts through a
 reload and comes undone when its card's title changes. ↑ and ↓ pass over
 folded cards, a phone's swipe holds only the cards that show, and the count
-says how many are folded away. On a phone, where one card shows at a time, a
+says how many are folded away. An act that puts a card under a folded card,
+Tab or an undo, unfolds it to show the card where it went; a remove beside a
+folded card leaves it folded. On a phone, where one card shows at a time, a
 child card shows its parent's title above its own.
 
 ## Saving

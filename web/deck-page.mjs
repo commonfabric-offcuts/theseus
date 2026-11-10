@@ -188,6 +188,9 @@ export class DeckPage {
     this.deck = parseDeck(deckBody(done.deck)); this.acts.push(act);
     if (!undoing) this.undos = [...this.undos, done.undo].slice(-UNDO_LIMIT);
     this.picked = Math.max(done.at, 0);
+    // The card an act leaves picked shows, unfolding the cards it now stands under, unless the act removed its
+    // card (its undo adds it back): the card beside it is picked then, and paint picks a folded card over it.
+    if (done.undo.kind !== 'add') this.reveal(this.picked);
     this.paint();
     this.header.description.textContent = this.described();
     this.save();
@@ -269,7 +272,7 @@ export class DeckPage {
       if (event.key === 'Escape' || (plain && empty && event.target === this.asking.field && (up || down || event.key === 'ArrowLeft'))) {
         event.preventDefault();
         this.endAsk(true);
-        if (!this.asking && (up || down)) this.pick(this.picked + (up ? -1 : 1));
+        if (!this.asking && (up || down)) this.pick(this.beside(this.picked, up ? -1 : 1));
       } else if (event.key === 'Enter' && command && event.target === this.asking.field) { event.preventDefault(); this.sendAsk(); }
       return;
     }
@@ -310,14 +313,26 @@ export class DeckPage {
     for (let i = from + step; i >= 0 && i < shown.length; i += step) if (shown[i]) return i;
     return from;
   }
-  // Space, or a click on a parent's count of the cards under it: those cards folded away, or shown again.
+  // Space, or a click on a parent's count of the cards under it: those cards folded away, or shown again. The
+  // fold picks its card, so an ask open on another card closes as it does for a pick, keeping its writing.
   fold(index) {
     const card = this.deck.cards[index];
     if (!card || groupEnd(this.deck.cards, index) === index + 1) return;
     if (!this.folded.delete(card.title)) this.folded.add(card.title);
-    try { globalThis.localStorage.setItem(`deck-folded:${this.item}`, JSON.stringify([...this.folded])); } catch {}
+    this.keepFolds();
     this.picked = index;
+    if (this.asking) this.endAsk(true);
     this.paint();
+  }
+  // Every card that the card at `index` stands under unfolded, so that it shows.
+  reveal(index) {
+    const { parents } = this.layout();
+    let unfolded = false;
+    for (let at = parents[index] ?? -1; at >= 0; at = parents[at]) unfolded = this.folded.delete(this.deck.cards[at].title) || unfolded;
+    if (unfolded) this.keepFolds();
+  }
+  keepFolds() {
+    try { globalThis.localStorage.setItem(`deck-folded:${this.item}`, JSON.stringify([...this.folded])); } catch {}
   }
   foldButton(index, under) {
     const folded = this.folded.has(this.deck.cards[index].title);
@@ -325,7 +340,10 @@ export class DeckPage {
     button.type = 'button';
     button.tabIndex = -1;
     button.setAttribute('aria-expanded', String(!folded));
-    button.addEventListener('click', event => { event.stopPropagation(); this.fold(index); });
+    // While a card is being written a click finishes it, here as on the rest of a card, and a double click is
+    // two folds, never the card's edit.
+    button.addEventListener('click', event => { event.stopPropagation(); if (this.editing) this.finish(); else this.fold(index); });
+    button.addEventListener('dblclick', event => event.stopPropagation());
     return button;
   }
 
