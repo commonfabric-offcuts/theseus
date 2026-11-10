@@ -784,6 +784,21 @@ finally:db.close()
         # left to do at once. A loaded machine changes how long each step
         # takes (SQLite's busy wait counts its sleeps, which stretch at low
         # QoS), never their order.
+        #
+        # When the behaviour under test does not happen, the runner is stopped
+        # too, so the test ends with a failure instead of waiting forever:
+        # - the first read begun after the writer is done is refused (a lock
+        #   outlived its transaction);
+        # - the runner begins two lease renewals with no read begun between
+        #   them while the writer waits at COMMIT or is done. A read is owed
+        #   then (a write hint, or a refused read whose backoff gate is far
+        #   shorter than a renewal interval), and once a read is due the loop
+        #   renews at most once before it reads. So a hint that never comes,
+        #   or a backoff gate that never reopens, ends in this stop, measured
+        #   by the runner's own lease cadence, not by a timer here.
+        # An ok read begun after the writer is done is success's stop: with no
+        # refusal before it (no lock held, as in WAL), it ends a test whose
+        # assertions then fail.
         api=self.api();self.clock_patch.stop()
         self.workspace()
         source=dict(kind='new_topic',id='spill-opening',workspace_id='w1')
@@ -793,8 +808,13 @@ finally:db.close()
         writing=threading.Event();at_commit=threading.Event();done=threading.Event()
         release=threading.Event();final=threading.Event()
         hints=[];reads=[];asked=[];errors=[];receipts=[];threads=[];spill_settings=[];locked=[]
+        stops=[];quiet=[0]
         started=time.monotonic();original_connect=sqlite3.connect
         original_read=Store.runner_schedule;original_loop_read=api.EffectsLoop._read
+        original_renew=Store.renew_runner
+        def stop(reason):
+            # Runs on the runner's own thread, so the stop is seen at its next step.
+            stops.append(reason);os.kill(os.getpid(),signal.SIGTERM)
         def probe():
             # A reader that never waits: refused now only if the spill holds the lock.
             db=original_connect(str(self.path),isolation_level=None,timeout=0)
@@ -836,17 +856,25 @@ finally:db.close()
             finally:done.set()
         def loop_read(loop,hint):
             asked.append(hint);return original_loop_read(loop,hint)
+        def renew(store,*args,**kwargs):
+            if at_commit.is_set():
+                quiet[0]+=1
+                if quiet[0]==2:stop('the runner renewed twice with no read while the writer was at COMMIT or done')
+            return original_renew(store,*args,**kwargs)
         def read(store,routed):
-            row=dict(hint=asked[-1] if asked else None)
+            quiet[0]=0;after_done=done.is_set()
+            row=dict(hint=asked[-1] if asked else None,after_done=after_done)
             try:
                 value=original_read(store,routed)
             except RunnerError as error:
                 reads.append(dict(row,at=time.monotonic()-started,status=error.code))
                 if error.code=='DATABASE_BUSY':release.set()
+                if after_done:stop('a read begun after the writer was done was refused')
                 raise
             # An ok read after a refused one read the ended transaction: the
-            # lock that refused the earlier read is held until the end.
-            if any(r['status']=='DATABASE_BUSY' for r in reads):final.set()
+            # lock that refused the earlier read is held until the end. So did
+            # an ok read begun after the writer was done.
+            if after_done or any(r['status']=='DATABASE_BUSY' for r in reads):final.set()
             reads.append(dict(row,at=time.monotonic()-started,status='ok',due=value['next_due_ms']))
             if not threads:
                 thread=threading.Thread(target=write,name='theseus-spill-writer')
@@ -871,15 +899,17 @@ finally:db.close()
             if event['event']=='settled':os.kill(os.getpid(),signal.SIGTERM)
         try:
             with mock.patch.object(sqlite3,'connect',connect),mock.patch.object(Store,'runner_schedule',read), \
-                    mock.patch.object(api.EffectsLoop,'_read',loop_read),mock.patch.object(api,'NativeWatch',Watch):
+                    mock.patch.object(api.EffectsLoop,'_read',loop_read),mock.patch.object(Store,'renew_runner',renew), \
+                    mock.patch.object(api,'NativeWatch',Watch):
                 result=api.run_foreground(self.profile_path,'spill-loop',self.map_path,
                     selected_executable=str(self.broker),emit=emit)
         finally:
             release.set()
             for thread in threads:thread.join()
-        print(json.dumps(dict(native_spill_commit=commit,hints=hints,reads=reads,locked=locked,
+        print(json.dumps(dict(native_spill_commit=commit,hints=hints,reads=reads,locked=locked,stops=stops,
             spill_settings=spill_settings,loop_result=result,writer_errors=errors)))
         self.assertFalse(errors)
+        self.assertEqual(stops,[],'the runner was stopped because the behaviour under test did not happen')
         self.assertTrue(done.is_set());self.assertTrue(at_commit.is_set())
         self.assertEqual(locked,['database is locked'],'the spill must hold the lock before COMMIT')
         self.assertTrue(any(not row['writer_done'] for row in hints),
