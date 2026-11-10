@@ -41,9 +41,9 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | put the card under the one above it | Tab | |
 | take the card out of its parent | ⇧Tab | |
 | fold away a card's children, or show them | ⌘← ⌘→, or a click on its count of cards | a tap on its count of cards |
-| edit the card | Return, or a double click | Edit |
+| edit the card | ⌘Return, or a double click | Edit |
 | finish editing | Escape or ⌘Return | Done |
-| a new card beside this one | ⌘Return while not editing | New card |
+| a new card beside this one | Return while not editing | New card |
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |

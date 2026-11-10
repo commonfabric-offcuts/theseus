@@ -5,7 +5,7 @@ import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ⌘← fold, ⌘→ unfold · Return edit, Escape done · ⌘Return new card · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
+const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ⌘← fold, ⌘→ unfold · Return new card · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
@@ -288,8 +288,8 @@ export class DeckPage {
     else if (event.key === 'Tab' && !command && !event.altKey) { if (!this.act({ kind: event.shiftKey ? 'outdent' : 'indent', text, near })) return; }
     // ⌘← and ⌘→ are the deck's even where they change nothing, since the browser takes them for Back and Forward.
     else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && command && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft');
-    else if (event.key === 'Enter' && command) this.start();
-    else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) this.edit();
+    else if (event.key === 'Enter' && command) this.edit();
+    else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) this.start();
     else if (event.key === 'Backspace' && command) this.act({ kind: 'remove', text, near });
     else if (event.key.toLowerCase() === 'z' && command && !event.shiftKey && !event.altKey) this.undo();
     else if (event.key === 'ArrowRight' && !command && !event.shiftKey && !event.altKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
@@ -393,7 +393,7 @@ export class DeckPage {
     if (focus) row.focus({ preventScroll: true });
   }
 
-  // Return or Edit: the picked card's text in one box, its first line the title. The lines naming its stacks stay
+  // ⌘Return, Edit or a double click: the picked card's text in one box, its first line the title. The lines naming its stacks stay
   // out of the box and go back under what is written, so writing never loses them.
   edit() {
     const card = this.deck.cards[this.picked];
@@ -401,7 +401,7 @@ export class DeckPage {
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null));
     this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false });
   }
-  // ⌘Return or New card: an empty card beside the picked one, after its children.
+  // Return or New card: an empty card beside the picked one, after its children.
   start() {
     if (this.readOnly || !this.base || this.asking) return;
     const card = this.deck.cards[this.picked], last = card ? groupEnd(this.deck.cards, this.picked) - 1 : -1;
@@ -592,7 +592,7 @@ export class DeckPage {
       const at = findCard(this.deck, asking.text, asking.near);
       rows.splice(at >= 0 ? at : Math.min(asking.near, rows.length), at >= 0 ? 1 : 0, this.askRow(asking));
     }
-    if (!rows.length) rows.push(this.node('li', 'deck-empty muted', this.readOnly ? 'No cards here.' : 'No cards yet. ⌘Return, or New card, starts one.'));
+    if (!rows.length) rows.push(this.node('li', 'deck-empty muted', this.readOnly ? 'No cards here.' : 'No cards yet. Return, or New card, starts one.'));
     const selection = editing && [editing.field.selectionStart, editing.field.selectionEnd], focused = this.doc.activeElement;
     const asked = asking && [asking.field.selectionStart, asking.field.selectionEnd];
     this.list.replaceChildren(...rows);
