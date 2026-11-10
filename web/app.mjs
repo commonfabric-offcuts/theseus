@@ -46,6 +46,7 @@ import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
+import { DeckPage } from './deck-page.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
@@ -1088,7 +1089,8 @@ async function copyPageLink(source, revision, say) {
 }
 // The Reader's ⋯ (docs/reader.md): Copy Link, the mark, Quote selection while
 // there is something to quote, Start a topic from this, Add to pipeline, and
-// Wide or Stacked; for a Notebook page, Copy Link and Copy Link to Revision N.
+// Wide or Stacked; for a Notebook page, Copy Link, Copy Link to Revision N and
+// Open as cards (docs/decks.md).
 // The message's own acts live here, not in a row under it; on a phone the
 // menu opens as a sheet from the bottom.
 function openReaderMenu() {
@@ -1097,7 +1099,8 @@ function openReaderMenu() {
   if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
-      { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
+      { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) },
+      { label: 'Open as cards', act: () => run(() => openDestination({ kind: 'cards', id: ref.id }, p.source.title || 'Cards')) });
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
@@ -2110,6 +2113,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
   if(route.kind==='health')return initializeHealthPage();
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
+  if(route.kind==='cards')return initializeDeckPage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   // A Notebook page's link opens the page in place once the outcome's lists are
   // up; the address then names the outcome alone, as a message's link does.
@@ -2275,6 +2279,24 @@ async function initializeHealthPage() {
   await followCommits(()=>page.load())();
   document.body.dataset.ready='true';
 }
+// A Notebook page as a deck of cards (docs/decks.md): no rail, so the deck has
+// the width; "← Outcomes" and the logo block head it, and the eyebrow goes
+// back to the page in its topic or outcome. The deck reads again on commits.
+async function initializeDeckPage(route) {
+  status('');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  document.querySelector('.rail').hidden=true;
+  $('main').prepend($('outcomes-home'));placeBrand($('main'));
+  const place=async scope=>{
+    const title=scope.kind==='topic'?(await pipelineView('topic',{topic_id:scope.id})).topic.title:(await pipelineView('workspace',{workspace_id:scope.id})).workspace.title;
+    return {title,href:routeHref({kind:scope.kind,id:scope.id,page:route.id})};
+  };
+  const page=new DeckPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
+    item:route.id,read:pipelineView,send:pipelineSend,place});
+  $('deck-page').hidden=false;
+  await followCommits(()=>page.load())();
+  document.body.dataset.ready='true';
+}
 // An outcome's Measurements: every check's readings by release (docs/targets.md). The rail
 // shows this outcome, as on its pipeline page; the page and the rail read again on every commit.
 async function initializeMeasurementsPage(route) {
@@ -2304,7 +2326,7 @@ function outcomePages(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  const here=pageHere=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref)});pageHereOutcome=workspace;
+  const here=pageHere=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref),cards:id=>routeHref({kind:'cards',id})});pageHereOutcome=workspace;
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),list:$('outcome-references-list'),more:$('more-references'),
     message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
     read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>here.open(ref,row))});

@@ -118,7 +118,10 @@ The Reader's ⋯, on a Notebook page, offers Copy Link (the page as it stands,
 so it keeps opening the latest revision) and Copy Link to Revision N (the
 revision shown), naming the tailnet origin as a message's link does. An
 agent prints the same link with `note link ITEM [--revision N] [--origin
-URL]` ([agent-cli.md](agent-cli.md#notebook-pages)).
+URL]` ([agent-cli.md](agent-cli.md#notebook-pages)). It also offers Open as
+cards, the page as a deck at `?cards=ITEM` ([decks.md](decks.md)), which a
+page opened in place on its outcome's page offers too; such a link in a
+message's words opens here as well.
 
 ## A message's menu
 

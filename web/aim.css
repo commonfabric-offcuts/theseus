@@ -882,3 +882,17 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
   .reader-end .end-step { color: #5f6b73; }
   .reading-pane.agent-pane .reader-end .end-step { color: #56616a; }
 }
+/* Cards: a Notebook page as a deck (docs/decks.md). On a laptop a list, the picked card lit and every card's words cut at four lines; on a phone one whole card fills the width and a swipe goes to the next. The count and the buttons stand above the cards. */
+.deck-page{max-width:46rem;display:grid;gap:.6rem}.deck-status{min-height:1.5rem;flex-wrap:wrap;margin:0}.deck-status .deck-again{min-height:2rem;font-size:.78rem;padding:.1rem .6rem}
+.deck-opening{color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
+.deck-cards{list-style:none;margin:0;padding:0;display:grid;gap:.45rem}
+.deck-card{min-width:0;padding:.75rem .95rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);overflow-wrap:anywhere}.deck-card:hover{border-color:color-mix(in srgb,var(--line),var(--ink) 20%)}
+.deck-card[aria-current=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:color-mix(in srgb,var(--soft) 45%,var(--panel))}.deck-card:focus{outline:none}.deck-card:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.deck-title{margin:0;font-size:1rem;font-weight:700;line-height:1.35}.deck-words{margin-top:.3rem;font-size:.92rem;line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}.deck-words:empty{display:none}
+.deck-writing{padding:0;border:0;background:none}.deck-editor{min-height:7rem;overflow:hidden}.deck-empty{padding:1rem 0}
+.deck-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-count{flex:1;color:var(--muted);font-size:.85rem}.deck-keys{margin:0;font-size:.78rem}
+.deck-read-only .deck-bar button,.deck-read-only .deck-keys{display:none}
+@media(max-width:760px){.deck-page{max-width:none}.deck-cards{display:flex;gap:0;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}.deck-cards::-webkit-scrollbar{display:none}.deck-cards.deck-editing{overflow-x:hidden}
+.deck-card,.deck-editor{min-height:min(55dvh,30rem)}.deck-card{flex:0 0 100%;scroll-snap-align:center;max-height:72dvh;overflow-y:auto;padding:1.1rem 1.15rem;border-radius:.9rem}.deck-card[aria-current=true]{box-shadow:none;border-color:var(--line);background:var(--panel)}
+.deck-writing{padding:0}.deck-title{font-size:1.25rem}.deck-words{display:block;-webkit-line-clamp:unset;font-size:1.02rem;line-height:1.65}.deck-keys{display:none}.deck-count{flex-basis:100%;text-align:center}.deck-bar button{flex:1}}
+.page-here-cards{display:inline-flex;align-items:center;min-height:44px;margin-right:.8rem}
