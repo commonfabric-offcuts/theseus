@@ -1197,6 +1197,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(sameOrder((await control({ method: 'order_as' })).ids, expected), 'this reader\'s order is untouched by it');
       await reloaded(p, 'reload after the other reader placed theirs');
       assert.deepEqual(await outcomeOrder(p), expected, 'and the page shows this reader\'s');
+      // The same reader places another order on another device: it shows here with no reload, and a move here starts from it.
+      const elsewhere = [...expected.filter(id => id !== 'rail-kbd-a'), 'rail-kbd-a'];
+      await control({ method: 'order_as', ids: elsewhere, operation_id: 'rail-kbd-other-device' });
+      await until(async () => JSON.stringify(await outcomeOrder(p)) === JSON.stringify(elsewhere), 'another device\'s order shows here, live');
+      await tabToOutline(p);
+      await p.key('ArrowLeft');
+      assert.equal(await keyedAt(p), 'name:rail-kbd-a');
+      await p.key('ArrowUp', 4);
+      const after = swapped(elsewhere, 'rail-kbd-a', -1);
+      await until(async () => JSON.stringify(await outcomeOrder(p)) === JSON.stringify(after), 'a move here starts from it');
+      await until(async () => sameOrder((await control({ method: 'order_as' })).ids, after), 'and Core takes it, with no refusal');
       assert.deepEqual(p.errors, []);
     } finally {
       await p.close();

@@ -111,11 +111,12 @@ export async function listChecks({ check, page, until, control, view, shot }) {
     const p = await page('list-focus', null, true);
     await away(p);
     const before = await until(async () => { const r = await rows(p); return r?.length > 3 && r; }, 'list read');
-    // Keyboard focus reaches the second row from the first with the person's Tab.
+    // Keyboard focus reaches the second row from the first with the person's ↓
+    // (the outline is one Tab stop; docs/interaction.md, "Keys across the panes").
     await p.evaluate("document.querySelector('#topics .nav-item').focus()");
-    await p.key('Tab');
+    await p.key('ArrowDown');
     const focused = await p.evaluate("document.activeElement?.dataset.topicId");
-    assert.equal(focused, before[1], 'Tab reached the second row');
+    assert.equal(focused, before[1], '↓ reached the second row');
     await p.evaluate(`(()=>{window.listBlurs=0;document.activeElement.addEventListener('blur',()=>{window.listBlurs++;});return true})()`);
     await post('list-focus-move', focused);
     await until(async () => (await rows(p))?.[0] === focused, 'the focused topic moves to the top');

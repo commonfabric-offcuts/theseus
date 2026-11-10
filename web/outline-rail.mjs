@@ -35,7 +35,7 @@ import { waitsOnReader } from './outcome-conversation.mjs';
 import { reloader } from './live.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { KEY_WORDS, keyAction } from './pane-keys.mjs';
-import { book, scopeOf, arrangeItems, moved, movedWords } from './outline-order.mjs';
+import { book, scopeOf, arrangeItems, moved, movedWords, orderOf } from './outline-order.mjs';
 import { panes } from './panes.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
@@ -426,14 +426,15 @@ export class OutlineRail {
         target: within === null ? {} : { workspace_id: within }, expected: { authority: { authority_id, authority_epoch }, order_revision: revision }, args: { ids } });
     };
     book.place(scope, shown, send, before).then(result => {
-      if (result.conflict) { this.tree.say('Your order changed on another device; this shows it now.'); this.reload(); this.reloadTopics(within); }
+      if (result.conflict) { this.tree.say('Your order changed on another device; this shows it now.'); this.readOrder(scope, within); }
       else if (result.failed) this.tree.say(`Your order could not be saved, so it is back as it was: ${result.failed.message}`);
     });
   }
-  // An outcome's topic lists read again, the order with them.
-  reloadTopics(id) {
-    const outcome = id && this.outcomes.get(id);
-    if (outcome?.rail) outcome.rail.load();
+  // The order as Core holds it now, read with the first page of its list: the
+  // book tells every list that draws it, the page's own and the outline's.
+  readOrder(scope, within) {
+    const read = within === null ? this.read('workspaces', { limit: 1 }, 'foreground') : this.read('workspace_topics', { workspace_id: within, limit: 1 }, 'foreground');
+    return Promise.resolve(read).then(answer => book.learn(scope, orderOf(answer))).catch(() => false);
   }
   // The keys come to the outline, on the row they were last on; coming back
   // from the messages (reading), on the row of the place being read.

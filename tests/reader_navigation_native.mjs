@@ -223,12 +223,18 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(link('t1'))}).getAttribute('aria-current')`), 'page');
     const original = await run(p); await click(p, 't1');
     assert.equal(await run(p), original, 'current topic is a no-op');
-    // Tab/Return activation from ordinary document focus, never click().
+    // Tab/↓/Return activation from ordinary document focus, never click().
     // A press on the logo block's workspace name starts Tab there; Tab passes
-    // the notices and ← Outcomes before the topics.
+    // the notices and New outcome before the outline, which is one Tab stop on
+    // the topic being read, and ↓ moves on to the next (docs/interaction.md,
+    // "Keys across the panes").
     await p.evaluate('document.querySelector("#instance-label").scrollIntoView({block:"center"})'); await p.point('#instance-label');
     const tabLimit = await p.evaluate('document.querySelectorAll("a[href],button,input,textarea,select,[tabindex]").length + 2');
-    for (let n = 0; n < tabLimit && await p.evaluate('document.activeElement?.dataset.topicId') !== 't2'; ++n) await p.key('Tab');
+    for (let n = 0; n < tabLimit && !await p.evaluate('document.activeElement?.dataset.topicId'); ++n) await p.key('Tab');
+    assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), 't1', 'Tab reaches the outline on the topic being read');
+    // ↑ or ↓, whichever way the second topic is from the one being read.
+    const way = await p.evaluate("(()=>{const rows=[...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()).map(e=>e.dataset.topicId);return rows.indexOf('t2')>rows.indexOf('t1')?'ArrowDown':'ArrowUp'})()");
+    for (let n = 0; n < 10 && await p.evaluate('document.activeElement?.dataset.topicId') !== 't2'; ++n) await p.key(way);
     assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), 't2');
     assert.notEqual(await p.evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'none', 'keyboard focus is visible');
     await p.key('Enter'); await ready(p, 't2');
