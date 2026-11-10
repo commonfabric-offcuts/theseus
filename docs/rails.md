@@ -17,10 +17,12 @@ before when the shell declines. It renames its own address through the shell.
 
 ## The outline
 
-Each outcome has one row: a fold triangle, its light, its name and the line
-that says where it stands. The name opens the outcome's Conversation. When
-Core says the outcome has no Conversation, the name opens the outcome's page
-instead. Under an open outcome are its topics. They look as they do today:
+Each outcome has one row: its light, its name and the line that says where
+it stands, and the whole row is one thing to press, which opens the
+outcome's Conversation with its topics under it. When Core says the outcome
+has no Conversation, it opens the outcome's page instead. There is no fold
+triangle: the name has the rail's width. Under an open outcome are its
+topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
 while something in them is unread, and Done (N) and Archived (N) below.
 Each outcome ends with + New topic.
@@ -33,13 +35,25 @@ Each outcome ends with + New topic.
 - **Chips.** "N new" and "N waiting on you" at the top add up every outcome
   listed. Pressing one shows only the outcomes, and in them only the topics,
   that hold what it counts. Pressing it again shows everything.
-- **Folds.** A fold the person chose is kept on this browser, per instance
-  and per person (`localStorage`). An outcome they never folded or opened is
-  open while it is the one being read. It stays open after they move on, for
-  as long as the page lasts. "Fold all" and "Open all" set every fold.
-- **Order.** Outcomes keep the order the `workspaces` view gives them. A new
-  message changes counts and lights, never the order. There is no "Not in an
-  outcome" group.
+- **Open and folded.** The outline tidies itself. Outcomes are folded, with
+  their counts and Waiting on you rolled up into their rows, but for the one
+  being read, whose topics show. Arriving anywhere, by a press on a row,
+  Return, a topic, a link, back or forward, or the phone's drawer, opens the
+  outcome of the place reached and folds every other. The keys can open
+  another outcome for a look, fold the one being read, or open or fold every
+  one (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←; docs/interaction.md, "Keys across the panes");
+  the next place reached tidies those away. While a chip shows only what is
+  new or waiting, every outcome it shows is open. Nothing about folds is
+  kept on the browser. Whether an outcome is open is on its row for a screen
+  reader (`aria-expanded`), and on screen in its topics under it.
+- **Order.** Outcomes keep the order the `workspaces` view gives them, and
+  topics the order their lists give, until the reader places them with ⌘↑
+  and ⌘↓: then their own order, which Core keeps for them on every device
+  (docs/outline-order.md). A new message changes counts and lights, never the
+  order. There is no "Not in an outcome" group.
+- **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
+  its rows, Return opens one, → and ← take the tree's steps and then move to
+  the messages. A "Keys" line under the outline lists them in plain words.
 - **The outcome being read** always has its row. Before the outline's list has
   reached it, a provisional row with the page's title for it stands in its
   place. Its topic list is the page's own (`TopicRail`). Once that list has
@@ -179,8 +193,8 @@ the foreground lane. The right rail reads in the background lane.
 - The outcome's Notebook shows under its outcome in the outline and, on a
   Conversation or with "All of this outcome", in the right rail too.
 - Waits in outcomes the reader cannot list are not in the outline's totals.
-- A fold that is open only because its outcome was read is not kept after a
-  reload.
+- ⌘→ opens another outcome's topics only from the keys; there is no
+  pointer's way to look without going there.
 - A browser never unloads a module it has loaded, so each run's `app.mjs`,
   with what it held at the top level, stays in memory until the page loads
   again.

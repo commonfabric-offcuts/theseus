@@ -1,5 +1,6 @@
 import { currentImages } from './upload-state.mjs';
 import { paintState, paintWork } from './topic-state.mjs';
+import { book, scopeOf, arrangeItems, orderOf } from './outline-order.mjs';
 
 const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
 const afterId = (id,previous) => {
@@ -78,8 +79,11 @@ export class WorkspacePages {
       previous=item.id;
     }
     if (answer.next_cursor!==null && (!answer.items.length || answer.next_cursor!==previous)) fail();
+    // The person's own order of their outcomes, which every page carries (outline-order.mjs).
+    const order=orderOf(answer);
     if (cursor===null) this.loaded.clear();
     for(const item of answer.items) this.loaded.set(item.id,structuredClone(item));
+    if (order) this.order=order;
     this.next=answer.next_cursor;this.started=true;return true;
   }
   empty() { return new WorkspacePages(this.instanceId); }
@@ -138,8 +142,11 @@ export class TopicPages {
       previous = key(item); ids.add(item.id);
     }
     if (answer.next_cursor !== null && (!answer.items.length || answer.next_cursor !== topicPosition(answer.items.at(-1)))) fail();
+    // The person's own order of the outcome's topics, which every page carries (outline-order.mjs).
+    const order = orderOf(answer);
     if (cursor === null) this.loaded.clear();
     for (const item of answer.items) this.loaded.set(item.id, structuredClone(item));
+    if (order) this.order = order;
     this.next = answer.next_cursor; this.started = true;
     if (groups !== undefined) this.groups = { done: groups.done, archived: groups.archived };
     return true;
@@ -162,7 +169,7 @@ export async function reread(pages, read, pageMax = PAGE) {
     fresh.accept(await read({ limit, ...(cursor === null ? {} : { cursor }) }), cursor);
     cursor = fresh.next;
   } while (cursor !== null && last !== null && fresh.precedes(cursor, last));
-  Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, groups: fresh.groups ?? pages.groups, started: true });
+  Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
 }
 
 export class TopicNavigation {
@@ -290,6 +297,11 @@ export class TopicRail {
       if (touch.clientX < box.left || touch.clientX > box.right || touch.clientY < box.top || touch.clientY > box.bottom) event.preventDefault();
     }, { passive: false });
     this.links = new Map();
+    // The person's own order of these topics (outline-order.mjs): a move, here
+    // or on another device, shows wherever the list is drawn. It is asked for,
+    // so it shows under the pointer too.
+    this.scope = scopeOf(pages.workspaceId);
+    book.listen(scope => { if (scope === this.scope) this.paint(true); }, host);
     this.paint();
   }
   // Which folded lines this person keeps open, on this browser.
@@ -344,7 +356,9 @@ export class TopicRail {
       const held = owner.get(item.id);
       if (!held || list.pages.readAt > held.pages.readAt) owner.set(item.id, list);
     }
-    const rows = this.lists.map(list => list.pages.items.filter(item => owner.get(item.id) === list).map(item => this.row(item)));
+    // Each list in the person's own order; what they never placed where the list puts it.
+    const saved = book.ids(this.scope);
+    const rows = this.lists.map(list => arrangeItems(list.pages.items.filter(item => owner.get(item.id) === list), saved).map(item => this.row(item)));
     const hold = this.pointed && !asked, focused = document.activeElement;
     this.owed = hold;
     if (!hold) {
@@ -406,6 +420,7 @@ export class TopicRail {
     for (const list of lists) list.reading = true;
     this.loading = Promise.all(lists.map(read))
       .then(() => {
+        for (const list of lists) book.learn(this.scope, list.pages.order);
         const focused = document.activeElement;
         this.denied = false;
         this.message.hidden = true; this.retry.hidden = true; this.paint(asked);

@@ -79,6 +79,11 @@ line's list is not read; an open one is read again with the rest after each
 commit. Whether each line is open is kept for the person on this browser
 (`localStorage`, per instance and person); without storage each starts closed.
 
+Once the reader has moved topics with ⌘↑ and ⌘↓, each list shows them in
+the reader's own order, which every list read carries (`order`), and a topic
+they never placed goes right after the one the server lists before it
+(docs/outline-order.md).
+
 The open topic's row sits in the list its own state puts it in, in its place
 by activity, before the lists are read again. A topic that two lists hold,
 because it moved between their reads, shows once, in the list read last.

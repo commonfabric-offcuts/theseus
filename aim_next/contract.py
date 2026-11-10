@@ -10,6 +10,9 @@ LIMITS = {
     "attachment_count": 8, "attachment_bytes": 67108864,
     "memory_references": 32,
     "media_file_bytes": 67108864, "media_name_utf8_bytes": 1024,
+    # The most places one outline order holds, and its most bytes, so every
+    # outcome list and topic list that carries it keeps room for its items (outline_order.py).
+    "order_ids": 500, "order_utf8_bytes": 32768,
 }
 
 # A reader can see a topic as its outcome's owner or member, its creator, or an active participant.

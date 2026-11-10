@@ -48,6 +48,7 @@ COMMANDS = {
     "problem.cover": "_command_problem_cover",
     "outcome.kind_set": "_command_outcome_kind_set",
     "outcome.reach": "_command_outcome_reach",
+    "outline.order_set": "_command_outline_order_set",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -80,7 +81,8 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "problem.file": set(),
             "problem.cover": {"problem_revision"},
             "outcome.kind_set": {"workspace_revision"},
-            "outcome.reach": {"workspace_revision"}}
+            "outcome.reach": {"workspace_revision"},
+            "outline.order_set": {"order_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
@@ -90,7 +92,8 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
                      "message.mark": "mark_revision", "color.set": "color_revision",
                      "message.thumb": "thumb_revision", "message.answer": "answer_revision",
-                     "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision"}
+                     "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision",
+                     "outline.order_set": "order_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},

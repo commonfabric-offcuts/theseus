@@ -1444,17 +1444,223 @@
    }
   },
   {
-   "item": 272,
-   "act": "An outcome the person folds or opens stays that way on this browser",
+   "item": 276,
+   "act": "The outline is one Tab stop, on the place being read, and the keys come back to the row they left",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "      if (el !== this.current) el.tabIndex = -1;",
+     "      if (el !== this.current) el.tabIndex = 0;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Tab from the logo block reaches the outline as one stop"
+   }
+  },
+  {
+   "item": 276,
+   "act": "↑ and ↓ move between the outline's rows, Home and End to the first and last",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    if (action === 'down') return this.go(rows[at + 1]);",
+     "    if (action === 'down') return this.go(rows[at]);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the arrows move through the outline as a tree"
+   }
+  },
+  {
+   "item": 276,
+   "act": "⌘← folds an outcome and puts the keys on its row; ⌘→ opens it",
    "break": [
     [
      "web/outline-rail.mjs",
-     "    try { this.storage?.setItem(this.key, JSON.stringify(this.held)); } catch { /* kept for this page only */ }",
-     "    try { /* not kept */ } catch { /* kept for this page only */ }"
+     "    if (action === 'fold') { this.setOpen(row.outcome, false); this.tree.go(this.tree.list().find(each => each.el === row.outcome.name)); return; }",
+     "    if (action === 'fold') return;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the arrows move through the outline as a tree"
+   }
+  },
+  {
+   "item": 276,
+   "act": "A press or Return on an outcome opens its Conversation and its topics and folds every other; arriving anywhere, back and forward too, tidies the outline the same way",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "    return this.every ?? id === here;",
+     "    return this.every ?? true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "moves in place"
+   }
+  },
+  {
+   "item": 276,
+   "act": "Only the outcome being read starts open, and a key's open or fold lasts only until the next place",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "  tidy() { this.marks.clear(); this.every = null; }",
+     "  tidy() {}"
     ]
    ],
    "check": {
     "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 276,
+   "act": "⇧⌘→ opens every outcome and ⇧⌘← folds every one, from anywhere in the outline",
+   "break": [
+    [
+     "web/pane-keys.mjs",
+     "{ ArrowRight: 'open-all', ArrowLeft: 'fold-all' }",
+     "{}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "chips show only"
+   }
+  },
+  {
+   "item": 276,
+   "act": "The outline's Keys list every key in plain words",
+   "break": [
+    [
+     "web/pane-keys.mjs",
+     "  ['⇧⌘→ ⇧⌘←', 'open every outcome, or fold every one'],\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outline_order.test.mjs"
+   }
+  },
+  {
+   "item": 276,
+   "act": "No key of the panes acts in a text field, the Reader or a composer",
+   "break": [
+    [
+     "web/pane-keys.mjs",
+     "event.altKey || event.ctrlKey || writing(event.target)) return null;",
+     "event.altKey || event.ctrlKey) return null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outline_order.test.mjs"
+   }
+  },
+  {
+   "item": 276,
+   "act": "→ and ← move between the outline, the messages and the right rail, each keeping its place",
+   "break": [
+    [
+     "web/panes.mjs",
+     "    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc);",
+     "    if (to === 'feed') return false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "→ and ← move between the outline"
+   }
+  },
+  {
+   "item": 276,
+   "act": "← from the messages comes back to the topic being read",
+   "break": [
+    [
+     "web/panes.mjs",
+     "rail.focus({ reading: from === 'feed' })",
+     "rail.focus()"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "→ and ← move between the outline"
+   }
+  },
+  {
+   "item": 80,
+   "act": "⌘↑ and ⌘↓ move an outcome one place, the focus kept on it, and the order is kept on reload",
+   "break": [
+    [
+     "web/outline-order.mjs",
+     "  [next[at], next[to]] = [next[to], next[at]];",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "⌘↑ ⌘↓ move an outcome"
+   }
+  },
+  {
+   "item": 80,
+   "act": "⌘Z right after a move puts it back",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "    const last = book.undo();",
+     "    const last = null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "⌘↑ ⌘↓ move an outcome"
+   }
+  },
+  {
+   "item": 80,
+   "act": "The order is the viewer's own: another viewer's never moves it",
+   "break": [
+    [
+     "aim_next/outline_order.py",
+     "WHERE actor_id=? AND within=?\", (actor, within)).fetchone()",
+     "WHERE within=? ORDER BY revision DESC\", (within,)).fetchone()"
+    ]
+   ],
+   "check": {
+    "python": "test_outline_order.py"
+   }
+  },
+  {
+   "item": 80,
+   "act": "An order naming an outcome the viewer is not on is refused",
+   "break": [
+    [
+     "aim_next/outline_order.py",
+     "            if len(on) != len(ids):",
+     "            if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_outline_order.py"
+   }
+  },
+  {
+   "item": 81,
+   "act": "⌘↑ and ⌘↓ move a topic within its outcome, kept on reload",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "      scope = scopeOf(row.outcome.id);",
+     "      scope = scopeOf(null);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "⌘↑ ⌘↓ move an outcome"
    }
   },
   {
@@ -1675,21 +1881,6 @@
      "web/outline-rail.mjs",
      "      chip.onclick = () => { this.filter = this.filter === filter ? null : filter; this.paint(); if (this.filter) this.reload(); };",
      "      chip.onclick = () => {};"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "chips show only"
-   }
-  },
-  {
-   "item": 272,
-   "act": "Fold all and Open all set every outcome's fold, kept on this browser",
-   "break": [
-    [
-     "web/outline-rail.mjs",
-     "      for (const id of this.outcomes.keys()) this.folds.set(id, !anyOpen);\n",
-     ""
     ]
    ],
    "check": {

@@ -26,6 +26,8 @@ import { readFailure } from './freshness.mjs';
 import { pipelineHref } from './pipeline.mjs';
 import { reloader } from './live.mjs';
 import { listen } from './in-place-navigation.mjs';
+import { KeyTree } from './key-tree.mjs';
+import { panes } from './panes.mjs';
 
 export const SECTIONS = [
   ['pipeline', 'Pipeline'], ['waiting', 'Waiting for…'], ['notebook', 'Notebook'], ['previews', 'Previews'],
@@ -125,6 +127,10 @@ export class ThingsRail {
     this.kept = new Map();
     this.reload = reloader(() => this.load());
     this.build();
+    // The keys move through the sections and their rows as one tree
+    // (key-tree.mjs): ↑ ↓ between them, ⌘→ ⌘← open and fold a section,
+    // Return opens a row, ← goes back to the messages (panes.mjs).
+    this.tree = new KeyTree({ root: this.holder, doc, label: 'The outcome\'s things', rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
     listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
     listen(backdrop, 'click', () => this.close(true));
@@ -162,6 +168,29 @@ export class ThingsRail {
     this.host.replaceChildren(element(doc, 'div', { className: 'things-head' }, this.heading, this.closer), this.chips, this.name, holder, this.nothing, this.message, this.retry);
     this.host.hidden = true;
   }
+  // Each section shown, and under an open one what can be pressed in it.
+  treeRows() {
+    const rows = [];
+    for (const [key, part] of this.sections) {
+      if (part.details.hidden) continue;
+      const summary = part.details.querySelector(':scope > summary');
+      rows.push({ el: summary, level: 1, set: this.holder, key: 'section:' + key, parent: null, expanded: part.details.open });
+      if (!part.details.open) continue;
+      for (const el of part.body.querySelectorAll('a[href], button')) {
+        rows.push({ el, level: 2, set: part.details, key: `section:${key}|${el.getAttribute('href') ?? el.textContent.trim()}`, parent: summary });
+      }
+    }
+    return rows;
+  }
+  act(action, row, rows) {
+    const section = row.level === 1 ? row.el.parentElement : row.el.closest('details');
+    if (action === 'left') { panes.step('things', 'left', this.doc); return; }
+    if (action === 'right') { this.tree.stepIn(row, rows, each => { each.el.parentElement.open = true; }); return; }
+    if (action === 'open') { section.open = true; return; }
+    if (action === 'fold') { section.open = false; this.tree.go(this.tree.list().find(each => each.el === section.querySelector(':scope > summary'))); }
+  }
+  // The keys come to the rail, on the row they were last on.
+  focus() { return this.tree.focus(); }
   isOpen() { return this.doc.documentElement.hasAttribute('data-things-open'); }
   // Whether the rail is on screen: beside the page, or open as a sheet or panel.
   shows() { return !this.host.hidden && (this.wide?.matches || this.isOpen()); }

@@ -1,12 +1,12 @@
 // The two rails of a topic and an outcome's Conversation (items 272 and 131,
 // docs/rails.md), in the parts that decide: what an outcome's row counts
-// folded and open, what the chips add up, which folds a person keeps, which
+// folded and open, what the chips add up, which outcomes the outline opens, which
 // moves happen in place, how back and forward go through the page's guard,
 // and what the right rail finds in messages. The native rail checks
 // (tests/outcome_rail_native.mjs) press the same things in a real browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { asksIn, rowCount, totals, elsewhere, elsewhereWords, shownUnder, Folds } from '../web/outline-rail.mjs';
+import { asksIn, rowCount, totals, elsewhere, elsewhereWords, shownUnder, Opened } from '../web/outline-rail.mjs';
 import { movesInPlace, Places, Scope, Shell, Superseded, oneAtATime } from '../web/in-place-navigation.mjs';
 import { linksIn, pullRequest, isPreview, thingsIn, waitingFor, SectionFolds } from '../web/things-rail.mjs';
 
@@ -51,27 +51,23 @@ const memory = (initial = {}) => {
   return { getItem: key => held.get(key) ?? null, setItem: (key, value) => held.set(key, value), held };
 };
 
-test('folds are kept per viewer: a chosen fold is remembered, the outcome being read is open until folded', () => {
-  const storage = memory();
-  const folds = new Folds(storage, 'k');
-  assert.equal(folds.isOpen('w1', 'w1'), true, 'the outcome being read is open by default');
-  assert.equal(folds.isOpen('w2', 'w1'), false, 'any other is folded by default');
-  folds.set('w1', false); folds.set('w2', true);
-  assert.equal(folds.isOpen('w1', 'w1'), false, 'a fold the person chose holds, even where they read');
-  assert.equal(folds.isOpen('w2', 'w1'), true);
-  // Another page on this browser reads the same choices.
-  const again = new Folds(storage, 'k');
-  assert.deepEqual([again.isOpen('w1', 'w1'), again.isOpen('w2', 'w1'), again.isOpen('w3', 'w1')], [false, true, false]);
-  // Another viewer's key is theirs.
-  assert.equal(new Folds(storage, 'other').isOpen('w2', 'w1'), false);
-  // A choice made in another tab is kept when this one writes.
-  new Folds(storage, 'k').set('w3', true); folds.set('w4', true);
-  assert.deepEqual(JSON.parse(storage.held.get('k')), { w1: false, w2: true, w3: true, w4: true });
-  // Storage that refuses or holds nonsense leaves the defaults and the page's own choices.
-  const broken = { getItem: () => { throw Error('blocked'); }, setItem: () => { throw Error('blocked'); } };
-  const kept = new Folds(broken, 'k'); kept.set('w2', true);
-  assert.deepEqual([kept.isOpen('w1', 'w1'), kept.isOpen('w2', 'w1')], [true, true]);
-  assert.equal(new Folds(memory({ k: '[1,2]' }), 'k').isOpen('w1', 'w1'), true);
+test('the outline tidies itself: only the outcome being read is open, a key\'s open or fold or every one lasts until the next place, and nothing is kept on the browser', () => {
+  const opened = new Opened();
+  assert.deepEqual([opened.isOpen('w1', 'w1'), opened.isOpen('w2', 'w1')], [true, false], 'the outcome being read is open, every other folded');
+  opened.set('w2', true); opened.set('w1', false);
+  assert.deepEqual([opened.isOpen('w1', 'w1'), opened.isOpen('w2', 'w1')], [false, true], '⌘→ opens another, ⌘← folds the one being read');
+  opened.tidy();
+  assert.deepEqual([opened.isOpen('w1', 'w2'), opened.isOpen('w2', 'w2')], [false, true], 'arriving at another place tidies to it alone');
+  opened.all(true);
+  assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [true, true, true], '⇧⌘→ opens every one, those listed later too');
+  opened.set('w9', false);
+  assert.equal(opened.isOpen('w9', 'w2'), false, 'one folded after stays folded');
+  opened.all(false);
+  assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [false, false, false], '⇧⌘← folds every one, the one being read too');
+  opened.tidy();
+  assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2')), [false, true], 'and the next place tidies back to it alone');
+  assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2', 'new')), [true, true], 'while a chip shows only some, each shown is open');
+  assert.equal(new Opened().isOpen('w2', 'w1'), false, 'a new page starts tidy: no fold is kept');
 });
 
 test('only moves between an outcome Conversation and topics are made in place', () => {

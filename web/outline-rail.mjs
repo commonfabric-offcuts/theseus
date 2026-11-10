@@ -1,7 +1,8 @@
 // The outline on the left of a topic or an outcome's Conversation (pipeline
-// item 272; docs/rails.md): every outcome, each with its topics folded under
-// it, so what is new anywhere shows at a glance. An outcome's row is its
-// light, its name (its Conversation) and where it stands; folded, it carries
+// item 272; docs/rails.md): every outcome, folded but for the one being read,
+// so what is new anywhere shows at a glance. An outcome's row is its light,
+// its name and where it stands, and the whole row opens its Conversation and
+// its topics (Opened tidies every other away); folded, it carries
 // the count of everything new inside it; open, its own row counts only its
 // Conversation, since each topic shows its own. The topic rows are today's
 // (TopicRail): unread counts, the work ring, Waiting on you and Ready for
@@ -10,22 +11,32 @@
 // and a press on one shows only those.
 //
 // The outline is the shell's (in-place-navigation.mjs): it stays the same
-// element across moves, with its folds and its scroll. It reads what Core
+// element across moves, with its scroll and the keys' place. It reads what Core
 // already serves (workspaces, workspace_topics, conversation) through the
 // page that is up, and again on every commit its live feed announces. It
 // never moves anything by itself: outcomes keep their order, a new message
 // changes only counts and lights, and topics keep the order their list gives.
+// Only the person moves a row (⌘↑ ⌘↓): the order they place is theirs, kept
+// by Core and read back on every device (outline-order.mjs).
+//
+// The keys move through it as one tree (key-tree.mjs, pane-keys.mjs): ↑ ↓
+// between the rows, Return opens one, ⌘→ ⌘← open and fold an outcome, → and
+// ← take the tree's steps and then move to the messages (panes.mjs).
 //
 // Which outcome is being read, which topic is open and whose list sits under
 // it come from the run of the page that is up, and from nothing before it.
 // Each run's reads and drawing are its own: what a run read lands only while
 // it is still the page, and a run that has gone draws nothing.
-import { TopicRail, TopicPages, WorkspacePages, reread, routeHref, paintUnread, PAGE } from './topic-navigation.mjs';
+import { TopicRail, TopicPages, WorkspacePages, reread, routeHref, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
 import { paintRowLight } from './outcome-light.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton } from './quick-create.mjs';
 import { readFailure } from './freshness.mjs';
 import { waitsOnReader } from './outcome-conversation.mjs';
 import { reloader } from './live.mjs';
+import { KeyTree } from './key-tree.mjs';
+import { KEY_WORDS, keyAction } from './pane-keys.mjs';
+import { book, scopeOf, arrangeItems, moved, movedWords } from './outline-order.mjs';
+import { panes } from './panes.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -66,27 +77,37 @@ export function shownUnder(filter, item) {
   return true;
 }
 
-// Which outcomes this person keeps open, on this browser. An outcome they
-// never folded or opened is open while it is the one being read, and folded
-// otherwise. Storage can be missing or refuse; the outline works without it,
-// for this page only.
-export class Folds {
-  constructor(storage, key) { Object.assign(this, { storage, key }); this.held = this.read(); }
-  read() {
-    try { const value = JSON.parse(this.storage?.getItem(this.key) ?? '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; }
-    catch { return {}; }
+// Which outcomes show their topics. The outline tidies itself: only the
+// outcome being read is open, and every other is folded, with its counts
+// rolled up into its row. The keys can open another for a look (⌘→ or →),
+// fold the one being read (⌘← or ←), or open or fold every one (⇧⌘→ ⇧⌘←);
+// the next place the person arrives at, however they get there (a click or
+// Return in the outline, a link, back or forward, the phone's drawer), tidies
+// those away (tidy). While a chip shows only what is new or waiting, every
+// outcome it shows is open. Nothing is kept on the browser.
+export class Opened {
+  constructor() { this.marks = new Map(); this.every = null; }
+  isOpen(id, here = null, filter = null) {
+    if (filter) return true;
+    if (this.marks.has(id)) return this.marks.get(id);
+    return this.every ?? id === here;
   }
-  isOpen(id, here = null) { return typeof this.held[id] === 'boolean' ? this.held[id] : id === here; }
-  set(id, open) {
-    this.held = { ...this.read(), ...this.held, [id]: open };
-    try { this.storage?.setItem(this.key, JSON.stringify(this.held)); } catch { /* kept for this page only */ }
-  }
+  set(id, open) { this.marks.set(id, open); }
+  // Every outcome, those listed later included, open or folded.
+  all(open) { this.marks.clear(); this.every = open; }
+  tidy() { this.marks.clear(); this.every = null; }
 }
 
 const element = (doc, tag, props = {}, ...children) => {
   const node = Object.assign(doc.createElement(tag), props);
   node.append(...children); return node;
 };
+// A topic row's title, without its count and the words read out for it.
+function rowTitle(link) {
+  const copy = link.cloneNode(true);
+  for (const part of copy.querySelectorAll('.sr-only, .unread-count, .topic-state, .topic-work')) part.remove();
+  return copy.textContent.replace(/\s+/g, ' ').trim();
+}
 const plainClick = event => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 export class OutlineRail {
@@ -96,10 +117,23 @@ export class OutlineRail {
   // storage: localStorage, or null.
   constructor({ host, open, read, storage = null, doc = host.ownerDocument }) {
     Object.assign(this, { host, open, read, storage, doc });
-    this.handles = null; this.filter = null; this.outcomes = new Map(); this.left = new Set(); this.unlisten = null; this.started = false;
-    this.pages = null; this.folds = null; this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
+    this.handles = null; this.filter = null; this.outcomes = new Map(); this.unlisten = null; this.started = false;
+    this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     this.reload = reloader(() => this.load());
     this.build();
+    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
+    // ⇧⌘→ and ⇧⌘← open and fold every outcome from anywhere in the outline:
+    // its rows (the tree hears those), its chips, New outcome or its Keys.
+    this.host.addEventListener('keydown', event => {
+      const action = keyAction(event);
+      if (action !== 'open-all' && action !== 'fold-all') return;
+      event.preventDefault();
+      this.setAll(action === 'open-all');
+    });
+    // Undo is for the moves just made: once the keys leave the outline, they are kept as they are.
+    this.list.addEventListener('focusout', event => { if (event.relatedTarget && !this.list.contains(event.relatedTarget)) book.forget(); });
+    // The person's order, as it is now: moved here, on another device, or put back.
+    book.listen(scope => { if (scope === scopeOf(null)) this.paint(); });
   }
   build() {
     const doc = this.doc;
@@ -114,15 +148,9 @@ export class OutlineRail {
     }
     const sums = element(doc, 'div', { className: 'ol-sums' }, this.onlyNew, this.onlyWaiting);
     sums.setAttribute('role', 'group'); sums.setAttribute('aria-label', 'Across every outcome');
-    this.foldAll = element(doc, 'button', { type: 'button', className: 'quiet ol-fold-all', textContent: 'Fold all' });
-    this.foldAll.onclick = () => {
-      const anyOpen = [...this.outcomes.keys()].some(id => this.isOpen(id));
-      for (const id of this.outcomes.keys()) this.folds.set(id, !anyOpen);
-      this.filter = null; this.paint(); this.reload();
-    };
     this.newOutcome = element(doc, 'button', { type: 'button', className: 'quiet ol-new-outcome', textContent: 'New outcome', id: 'outline-new-outcome' });
     const heading = element(doc, 'div', { className: 'rail-heading ol-heading' }, element(doc, 'h2', { textContent: 'Outcomes', id: 'outline-heading' }),
-      element(doc, 'span', { className: 'ol-heading-tools' }, this.foldAll, this.newOutcome));
+      element(doc, 'span', { className: 'ol-heading-tools' }, this.newOutcome));
     this.list = element(doc, 'ul', { className: 'ol-list' });
     this.list.setAttribute('aria-labelledby', 'outline-heading');
     this.empty = element(doc, 'p', { className: 'empty ol-empty', hidden: true });
@@ -133,7 +161,10 @@ export class OutlineRail {
     this.more.onclick = () => this.loadMore();
     const key = element(doc, 'p', { className: 'topics-key muted ol-key' }, element(doc, 'span', { className: 'topic-work' }), ' Posted in or worked on in the last hour, or waiting on an answer');
     key.setAttribute('aria-hidden', 'true');
-    this.host.replaceChildren(sums, heading, this.list, this.empty, this.message, this.retry, this.more, key);
+    // The keys, in plain words, under the outline (pane-keys.mjs).
+    const keys = element(doc, 'details', { className: 'ol-keys muted', id: 'outline-keys' }, element(doc, 'summary', { textContent: 'Keys' }),
+      element(doc, 'dl', {}, ...KEY_WORDS.flatMap(([keys, words]) => [element(doc, 'dt', { textContent: keys }), element(doc, 'dd', { textContent: words })])));
+    this.host.replaceChildren(sums, heading, this.list, this.empty, this.message, this.retry, this.more, key, keys);
     this.host.hidden = true;
   }
   // A run of the page starts (in-place-navigation.mjs): the outline shows on
@@ -142,8 +173,6 @@ export class OutlineRail {
   // the one being read, and nothing the run before read is drawn.
   begin(feed) {
     this.host.hidden = !feed;
-    // An outcome open because it was being read stays open (this.left).
-    if (this.here && this.isOpen(this.here)) this.left.add(this.here);
     this.run += 1; this.handles = null;
     this.unlisten?.(); this.unlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;
@@ -168,13 +197,16 @@ export class OutlineRail {
     if (!['topic', 'conversation'].includes(handles.route?.kind)) return;
     this.handles = handles;
     const { bootstrap } = handles;
+    // What a move of the person's order is sent through, kept for the moments between runs.
+    this.sender = { api: handles.api, bootstrap };
     if (!this.started) {
       this.started = true;
       this.bootstrap = bootstrap; this.pageMax = handles.pageMax ?? PAGE;
       this.pages = new WorkspacePages(bootstrap.instance_id);
-      this.folds = new Folds(this.storage, `aim-next.outline.${bootstrap.instance_id}.${bootstrap.actor}`);
       this.newOutcomeLine();
     }
+    // Arriving anywhere tidies the outline: the outcome being read is open, every other folded.
+    this.opened.tidy();
     this.unlisten?.();
     this.unlisten = handles.live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && this.doc.visibilityState === 'visible') this.reload(); }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
@@ -186,9 +218,8 @@ export class OutlineRail {
   shown() { if (this.handles && this.doc.visibilityState === 'visible') this.reload(); }
   get here() { return this.handles?.workspaceId ?? null; }
   currentTopicIn(id) { const topic = this.handles?.route?.kind === 'topic' ? this.handles.topic : null; return topic && topic.workspace_id === id ? topic : null; }
-  // An outcome open because it was being read stays open when the page moves
-  // on (this.left), for as long as the page is up: the outline never folds by itself.
-  isOpen(id) { return this.filter ? true : this.folds?.isOpen(id, this.here) || (this.folds && typeof this.folds.held[id] !== 'boolean' && this.left.has(id)) || false; }
+  // Whether an outcome shows its topics (Opened): the one being read, a peek, or every one a chip shows.
+  isOpen(id) { return this.opened.isOpen(id, this.here, this.filter); }
   // The outline is how a person moves, so it reads in the foreground lane, as
   // the side rail did. A run's own reads go through that run (handles.view):
   // one still waiting for its turn when the run goes is never sent.
@@ -202,6 +233,7 @@ export class OutlineRail {
     const view = this.own(handles), read = args => view('workspaces', args), here = handles.workspaceId, max = handles.pageMax ?? PAGE;
     try {
       await reread(this.pages, read, max);
+      book.learn(scopeOf(null), this.pages.order);
       // The outcome being read is in the outline, however far down the list it is.
       while (mine() && !this.pages.loaded.has(here) && this.pages.next !== null) this.pages.accept(await read({ limit: max, cursor: this.pages.next }), this.pages.next);
       if (!mine()) return true;
@@ -246,16 +278,18 @@ export class OutlineRail {
     let outcome = this.outcomes.get(item.id);
     if (outcome) { outcome.item = item; return outcome; }
     const doc = this.doc, id = item.id;
-    const fold = element(doc, 'button', { type: 'button', className: 'ol-fold' }, element(doc, 'span', { className: 'tri', textContent: '▸' }));
-    fold.firstChild.setAttribute('aria-hidden', 'true');
     const title = element(doc, 'span', { className: 'ol-title' }), standing = element(doc, 'small', { className: 'standing' });
     const name = element(doc, 'a', { className: 'ol-name' }, element(doc, 'span', { className: 'ol-name-line' }, title), standing);
     name.dataset.conversationOf = id;
-    const row = element(doc, 'div', { className: 'ol-row' }, fold, name);
+    // The whole row (its light, its name and where it stands) is the one thing to press.
+    const row = element(doc, 'div', { className: 'ol-row' }, name);
+    // The tree's rows are the names and the topics (key-tree.mjs); what holds them is no list of its own.
+    row.setAttribute('role', 'none');
     const topics = element(doc, 'div', { className: 'ol-topics', id: `ol-topics-${id}` });
     topics.setAttribute('role', 'group');
-    fold.setAttribute('aria-controls', topics.id);
+    name.setAttribute('aria-controls', topics.id);
     const li = element(doc, 'li', { className: 'ol-outcome' }, row, topics);
+    li.setAttribute('role', 'none');
     li.dataset.workspaceId = id;
     // Attached before its lists are made, so every listener they add is the outline's (in-place-navigation.mjs).
     this.list.append(li);
@@ -275,23 +309,135 @@ export class OutlineRail {
     const own = part('div', { className: 'ol-own' });
     own.append(message, host, more, retry, done.details, archived.details, newTopic);
     topics.append(own);
-    outcome = { id, item, li, fold, name, title, standing, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, notes: null,
+    outcome = { id, item, li, name, title, standing, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, notes: null,
       parts: { host, more, retry, message, done, archived } };
-    fold.onclick = () => {
-      const open = !this.isOpen(id), run = this.run;
-      this.folds.set(id, open); this.filter = null;
-      this.paint();
-      if (open) Promise.all([this.loadTopics(outcome), this.readConversation(outcome)]).then(() => { if (run === this.run) this.paint(); });
-    };
+    // A click or Return opens its Conversation, and with it its topics: the
+    // outline tidies itself, every other outcome folded. Already there, it tidies at once.
     name.onclick = event => {
       if (!plainClick(event)) return;
       event.preventDefault();
+      this.opened.tidy(); this.paint();
       this.open(this.nameTarget(outcome), outcome.item.title);
     };
     this.topicLine(outcome);
     this.outcomes.set(id, outcome);
     return outcome;
   }
+  // Opens or folds one outcome from the keys, until the next place tidies it (Opened).
+  setOpen(outcome, open) {
+    if (this.isOpen(outcome.id) === open && !this.filter) return;
+    const run = this.run;
+    this.opened.set(outcome.id, open); this.filter = null;
+    this.paint();
+    if (open) Promise.all([this.loadTopics(outcome), this.readConversation(outcome)]).then(() => { if (run === this.run) this.paint(); });
+  }
+  // Opens or folds every outcome (⇧⌘→ ⇧⌘←), until the next place tidies them.
+  // Folded, the keys that were on a topic go to its outcome.
+  setAll(open, row = null) {
+    const run = this.run;
+    this.opened.all(open); this.filter = null;
+    this.paint();
+    if (row && row.level > 1) this.tree.go(this.tree.list().find(each => each.el === row.outcome.name));
+    if (!open) return;
+    for (const outcome of this.outcomes.values()) {
+      Promise.all([this.loadTopics(outcome), this.readConversation(outcome)]).then(() => { if (run === this.run) this.paint(); });
+    }
+  }
+  // The rows the keys move through, in order: each outcome's name, and under
+  // an open one everything that can be pressed there (its topics, Done (N)
+  // and Archived (N) with the topics of one open, More and Retry, + New topic,
+  // its Notebook's pages). A title line being typed in is writing, not a row.
+  treeRows() {
+    const rows = [];
+    for (const li of this.list.children) {
+      const outcome = this.outcomes.get(li.dataset.workspaceId);
+      if (!outcome || li.hidden) continue;
+      // Open as drawn: between two runs the outline knows no place, and stays as the run before drew it.
+      const open = li.hasAttribute('data-open'), id = outcome.id;
+      rows.push({ el: outcome.name, level: 1, set: this.list, key: 'outcome:' + id, parent: null, expanded: open, outcome });
+      if (!open) continue;
+      for (const el of outcome.topics.querySelectorAll('a[href], button, summary')) {
+        if (el.closest('.one-line')) continue;
+        const group = el.closest('details.topic-group'), summary = group?.querySelector(':scope > summary') ?? null;
+        if (group && el !== summary && !group.open) continue;
+        const deep = Boolean(group) && el !== summary;
+        const said = el.dataset.topicId ? 'topic:' + el.dataset.topicId : el.getAttribute('href') ?? el.textContent.replace(/\(\d+\)/g, '').replace(/^\+\s*/, '').trim();
+        rows.push({ el, level: deep ? 3 : 2, set: deep ? group : li, key: `${id}|${said}`, parent: deep ? summary : outcome.name,
+          expanded: el === summary ? group.open : undefined, outcome });
+      }
+    }
+    return rows;
+  }
+  // What a key does on a row, beyond moving between rows (key-tree.mjs).
+  act(action, row, rows) {
+    const open = each => (each.level === 1 ? this.setOpen(each.outcome, true) : each.el.parentElement.open = true);
+    const fold = each => (each.level === 1 ? this.setOpen(each.outcome, false) : each.el.parentElement.open = false);
+    if (action === 'right') { if (!this.tree.stepIn(row, rows, open)) panes.step('outline', 'right', this.doc); return; }
+    if (action === 'left') { this.tree.stepOut(row, rows, fold); return; }
+    if (action === 'open') { this.setOpen(row.outcome, true); return; }
+    if (action === 'fold') { this.setOpen(row.outcome, false); this.tree.go(this.tree.list().find(each => each.el === row.outcome.name)); return; }
+    if (action === 'open-all' || action === 'fold-all') { this.setAll(action === 'open-all', row); return; }
+    if (action === 'move-up' || action === 'move-down') { this.reorder(row, action === 'move-up' ? -1 : 1); return; }
+    if (action === 'undo') this.undo();
+  }
+  // ⌘↑ ⌘↓: an outcome among the outcomes shown, a topic within the list that
+  // holds it in its outcome. The row keeps the focus; a screen reader hears
+  // where it went.
+  reorder(row, delta) {
+    let scope, shown, visible, title;
+    if (row.level === 1) {
+      // Only outcomes the reader is on can be placed: one shown only because it is being read stands where it is.
+      if (row.outcome.item.provisional) { this.tree.say('Only the outcomes you are on can be moved'); return; }
+      const placeable = [...this.list.children].filter(li => !this.outcomes.get(li.dataset.workspaceId)?.item.provisional);
+      scope = scopeOf(null);
+      shown = placeable.map(li => li.dataset.workspaceId);
+      visible = new Set(placeable.filter(li => !li.hidden).map(li => li.dataset.workspaceId));
+      title = row.outcome.item.title;
+    } else if (row.el.dataset.topicId) {
+      scope = scopeOf(row.outcome.id);
+      // The list the row is drawn in: the page's own under the outcome being read, else the outline's.
+      const box = row.outcome.adopted?.contains(row.el) ? row.outcome.adopted : row.outcome.own;
+      const links = [...box.querySelectorAll('a[data-topic-id]')];
+      shown = links.map(link => link.dataset.topicId);
+      visible = new Set([...row.el.parentElement.children].filter(link => link.dataset.topicId && link.getClientRects().length).map(link => link.dataset.topicId));
+      title = rowTitle(row.el) || 'The topic';
+    } else return;
+    const id = row.level === 1 ? row.outcome.id : row.el.dataset.topicId, next = moved(shown, id, delta, visible);
+    if (!next) { this.tree.say(`${title} is already ${delta < 0 ? 'first' : 'last'}`); return; }
+    this.save(scope, next, shown);
+    const order = next.filter(each => visible.has(each));
+    this.tree.say(movedWords(title, order.indexOf(id) + 1, order.length));
+  }
+  // ⌘Z: the last move put back.
+  undo() {
+    const last = book.undo();
+    if (!last) { this.tree.say('Nothing to put back'); return; }
+    this.save(last.scope, last.ids, null);
+    this.tree.say('Put back as it was');
+  }
+  // Shows the order at once and sends it; says what went wrong, if anything did.
+  save(scope, shown, before) {
+    const sender = this.sender;
+    if (!sender) return;
+    const within = scope === scopeOf(null) ? null : scope.slice('topics:'.length);
+    const send = ({ ids, revision, operation }) => {
+      const { authority_id, authority_epoch } = sender.bootstrap.authority;
+      return sender.api.command({ v: 1, instance_id: sender.bootstrap.instance_id, operation_id: operation, kind: 'outline.order_set',
+        target: within === null ? {} : { workspace_id: within }, expected: { authority: { authority_id, authority_epoch }, order_revision: revision }, args: { ids } });
+    };
+    book.place(scope, shown, send, before).then(result => {
+      if (result.conflict) { this.tree.say('Your order changed on another device; this shows it now.'); this.reload(); this.reloadTopics(within); }
+      else if (result.failed) this.tree.say(`Your order could not be saved, so it is back as it was: ${result.failed.message}`);
+    });
+  }
+  // An outcome's topic lists read again, the order with them.
+  reloadTopics(id) {
+    const outcome = id && this.outcomes.get(id);
+    if (outcome?.rail) outcome.rail.load();
+  }
+  // The keys come to the outline, on the row they were last on; coming back
+  // from the messages (reading), on the row of the place being read.
+  focus({ reading = false } = {}) { return this.tree.focus(reading ? row => row.el.getAttribute('aria-current') === 'page' : null); }
   // The outline's own topic lists for an outcome (TopicRail, as the side rail
   // drew them), made the first time they are wanted.
   ownRail(outcome) {
@@ -389,12 +535,14 @@ export class OutlineRail {
   paint() {
     // Between runs there is no place to draw for: the next run draws.
     if (!this.handles) return;
-    const items = this.shownItems(), route = this.handles.route;
+    // In the person's own order, what they never placed where Core lists it (outline-order.mjs).
+    const items = arrangeItems(this.shownItems(), book.ids(scopeOf(null))), route = this.handles.route;
     const shown = new Set();
-    items.forEach((item, index) => {
+    // The outcome that holds the focus stays where it is, and the others move around it, so the focus stays.
+    const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
+    items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
       shown.add(item.id);
-      if (this.list.children[index] !== outcome.li) this.list.insertBefore(outcome.li, this.list.children[index] ?? null);
       outcome.li.hidden = !visible;
       outcome.li.toggleAttribute('data-open', open);
       outcome.li.toggleAttribute('data-fresh', count(item.unread) > 0);
@@ -403,8 +551,6 @@ export class OutlineRail {
       // The outcome being read waits for the page's own list, unless the outline has shown its topics before.
       outcome.own.hidden = Boolean(outcome.adopted) || (item.id === this.here && !outcome.rail);
       outcome.topics.setAttribute('aria-label', `Topics in ${item.title}`);
-      outcome.fold.setAttribute('aria-expanded', String(open));
-      outcome.fold.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} the topics in ${item.title}`);
       const target = this.nameTarget(outcome);
       outcome.name.href = routeHref(target);
       if (route?.kind === 'conversation' && route.id === item.id) outcome.name.setAttribute('aria-current', 'page'); else outcome.name.removeAttribute('aria-current');
@@ -430,6 +576,7 @@ export class OutlineRail {
       }
     });
     for (const [id, outcome] of this.outcomes) if (!shown.has(id)) { outcome.li.remove(); this.outcomes.delete(id); }
+    arrange(this.list, items.map(item => this.outcomes.get(item.id).li), focused);
     const sum = totals(this.pages?.items ?? []);
     this.newCount.textContent = String(sum.fresh); this.waitingCount.textContent = String(sum.waiting);
     this.onlyNew.setAttribute('aria-pressed', String(this.filter === 'new'));
@@ -437,7 +584,6 @@ export class OutlineRail {
     this.onlyNew.disabled = !sum.fresh && this.filter !== 'new';
     this.onlyWaiting.disabled = !sum.waiting && this.filter !== 'waiting';
     this.host.dataset.only = this.filter ?? '';
-    this.foldAll.textContent = [...this.outcomes.keys()].some(id => this.isOpen(id)) ? 'Fold all' : 'Open all';
     const anyShown = items.some(item => shownUnder(this.filter, item));
     this.empty.hidden = !this.pages?.started || anyShown && items.length > 0;
     this.empty.textContent = this.filter === 'waiting' ? 'Nothing is waiting on you.' : this.filter === 'new' ? 'Nothing new anywhere.' : 'No outcomes are available yet.';
