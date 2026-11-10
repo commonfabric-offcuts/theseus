@@ -1591,6 +1591,51 @@
    }
   },
   {
+   "item": 276,
+   "act": "← in the right rail open over the page, as a panel or a sheet, closes it and goes to a message in view",
+   "break": [
+    [
+     "web/panes.mjs",
+     "    this[from]?.leave?.();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the keys never act through the right rail open over the page"
+   }
+  },
+  {
+   "item": 276,
+   "act": "While the right rail is open over the page, the keys take nothing in the outline under it",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "    this.cover(!this.wide?.matches);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the keys never act through the right rail open over the page"
+   }
+  },
+  {
+   "item": 276,
+   "act": "↑ ↓ and Return light and open no message under a drawer or sheet open over the page",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     " || this.host.closest('[inert]')) return;",
+     ") return;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the keys never act through the right rail open over the page"
+   }
+  },
+  {
    "item": 80,
    "act": "⌘↑ and ⌘↓ move an outcome one place, the focus kept on it, and the order is kept on reload",
    "break": [

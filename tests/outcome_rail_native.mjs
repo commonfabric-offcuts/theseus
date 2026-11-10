@@ -1300,6 +1300,46 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Below 1181px the right rail opens over the dimmed page, as a panel on an
+  // iPad or a sheet on a phone: the keys never act on what it covers.
+  await check('rail at 900 and 390 the keys never act through the right rail open over the page: ← on it closes it and goes to a message in view; with the keys on nothing, ← ↓ and Return touch nothing under it', async () => {
+    for (const [width, height] of [[900, 800], [390, 844]]) {
+      const p = await page('rail-kbd-over-' + width, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+        await q.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: width < 761 });
+      } });
+      await until(() => p.evaluate("document.body?.dataset.ready === 'true' && document.querySelectorAll('#messages [data-id]').length > 1 && Boolean(document.getElementById('things-open'))").catch(() => false), width + ': the topic and its messages are up');
+      const opened = async () => {
+        await p.point('#things-open');
+        await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open') && [...document.querySelectorAll('#things .things-sec')].some(d => d.checkVisibility())"), width + ': the right rail opens over the page with a section');
+      };
+      // What the keys are on, whether the rail is open, what is lit, and whether the place the keys are on can be seen there.
+      const seen = () => p.evaluate(`(()=>{const at=document.activeElement,card=at?.closest('#messages [data-id]'),b=card?.getBoundingClientRect();
+        const hit=b?document.elementFromPoint(b.left+b.width/2,Math.max(0,Math.min(innerHeight-1,b.top+b.height/2))):null;
+        return {open:document.documentElement.hasAttribute('data-things-open'),backdrop:!document.getElementById('things-backdrop').hidden,
+          inRail:Boolean(at?.closest('#rail')),visible:card?card.contains(hit):null,lit:document.querySelector('#messages [data-id].lit')?.dataset.id??null,
+          reader:Boolean(document.getElementById('reader')?.open)}})()`);
+      await opened();
+      await p.evaluate("[...document.querySelectorAll('#things .things-sec')].find(d => d.checkVisibility()).querySelector(':scope > summary').focus()");
+      assert.match(await keyedAt(p), /^things:[a-z]+$/, width + ': the keys are on a section of the right rail');
+      await p.key('ArrowLeft');
+      const left = await until(async () => { const now = await seen(); return !now.open && now; }, width + ': ← closes the right rail');
+      assert.match(await keyedAt(p), /^message:/, width + ': ← goes to a message');
+      assert.deepEqual([left.backdrop, left.visible], [false, true], width + ': the page is no longer dimmed, and nothing covers the message the keys are on');
+      // Open again, the keys on nothing (a press on its words): nothing under it moves.
+      await opened();
+      await p.evaluate('document.activeElement.blur()');
+      assert.equal(await keyedAt(p), 'body', width + ': the keys are on nothing');
+      const before = await seen();
+      for (const key of ['ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter']) {
+        await p.key(key);
+        const now = await seen();
+        assert.deepEqual([now.open, now.inRail, now.lit, now.reader], [true, false, before.lit, false], `${width}: ${key} leaves the page under the right rail as it was`);
+        assert.equal(await keyedAt(p), 'body', `${width}: ${key} takes the keys nowhere under it`);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('rail the arrows move through the outline as a tree: ↑ ↓ Home End, ← to the outcome, ⌘← ⌘→ and ← → fold and open it, and Return opens a topic or a Conversation in place with the keys kept on the row', async () => {
     const p = await open('rail-kbd-tree', '/?topic=t1');
     await settled(p, 'the topic is up');

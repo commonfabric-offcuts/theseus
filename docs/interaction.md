@@ -115,7 +115,10 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   arrows, and ⇧⌘↑ ⇧⌘↓, free for their own pieces. A pane not on screen (the
   outline behind "☰ Outcomes" on a phone, the right rail behind "Pipeline &
   pages" below 1181px) is passed over: the keys never open a drawer or a
-  sheet. Touch is unchanged; on an iPad with a keyboard the same keys work.
+  sheet. While one is open over the dimmed page, the keys never act on what
+  it covers: ← in the right rail's panel or sheet closes it and goes to the
+  messages, and nothing under it takes the keys. Touch is unchanged; on an
+  iPad with a keyboard the same keys work.
 
 ## Everywhere
 

@@ -4,7 +4,8 @@
 // pane keeps its own place, so going there and back never loses it. A pane
 // not on screen (the outline behind "☰ Outcomes" on a phone, the right rail
 // behind "Pipeline & pages" below 1181px) is passed over: the keys never open
-// a drawer or a sheet.
+// a drawer or a sheet. A pane open over the page is closed as the keys leave
+// it, so they never land on what it covers.
 import { cardIn } from './fold.mjs';
 import { entries } from './reply-stacks.mjs';
 import { keyAction, writing } from './pane-keys.mjs';
@@ -36,7 +37,7 @@ export function feedStop(doc) {
 }
 
 export const panes = {
-  // Set by rails.mjs: each rail's { host, focus() }.
+  // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page.
   outline: null, things: null,
   feed(doc) {
     const stop = feedStop(doc) ?? doc.getElementById('main');
@@ -49,6 +50,8 @@ export const panes = {
   step(from, way, doc) {
     const order = ['outline', 'feed', 'things'], at = order.indexOf(from) + (way === 'right' ? 1 : -1);
     const to = order[at];
+    if (!to) return false;
+    this[from]?.leave?.();
     if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc);
     const rail = this[to];
     // Back from the messages, the outline takes the keys to the place being read.

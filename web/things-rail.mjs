@@ -197,6 +197,7 @@ export class ThingsRail {
   open() {
     this.doc.documentElement.setAttribute('data-things-open', '');
     this.backdrop.hidden = false;
+    this.cover(!this.wide?.matches);
     this.control()?.setAttribute('aria-expanded', 'true');
     this.closer.focus();
     if (this.stale || !this.drawnOnce) this.reload();
@@ -205,10 +206,17 @@ export class ThingsRail {
     if (!this.isOpen()) return;
     this.doc.documentElement.removeAttribute('data-things-open');
     this.backdrop.hidden = true;
+    this.cover(false);
     const control = this.control();
     control?.setAttribute('aria-expanded', 'false');
     if (focus) control?.focus();
   }
+  // Open over the dimmed page, the rail is all that can be reached: the page
+  // and the outline under it take no keys, focus or presses, as under the
+  // outline's drawer (rail-drawer.mjs), so a key never acts on what it covers.
+  cover(on) { for (const id of ['main', 'rail']) { const part = this.doc.getElementById(id); if (part) part.inert = on; } }
+  // The keys leave the rail (panes.mjs): open over the page, it closes first.
+  leave() { this.close(false); }
   control() { return this.doc.getElementById('things-open'); }
   // A run starts: on a topic or a Conversation the rail shows, and the page's
   // header gets the button that opens it where it is not beside the page.
