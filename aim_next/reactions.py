@@ -5,7 +5,9 @@ from __future__ import annotations
 A reaction belongs to one actor, one message and one kind:
 
 - `thumb`: "I read it and I understand", never "do it". Its revision is its
-  whole state, as a mark's is: odd means thumbed, even means taken back.
+  whole state, as a mark's is: odd means thumbed, even means taken back. On
+  an ask that waits on the person who gives it, it also answers yes (item 239,
+  `_thumb_answer`): its value is then `yes` rather than `up`.
 - `answer`: a person's ✅ (`yes`, go ahead) or 🚫 (`no`, don't) to a message
   that asks them for a go-ahead (`messages.go_ahead`, an Ask an agent marks
   with --go-ahead). Its value is the answer; its revision counts the changes.
@@ -13,7 +15,8 @@ A reaction belongs to one actor, one message and one kind:
 Every change adds to the row's revision and rows are never deleted, so a
 revision is never reused, and the sum of a message's revisions (its reaction
 version) only grows. Both settle the reactor's own pending delivery of the
-message, as reading it does, and change no topic state, wait or order.
+message, as reading it does, and change no topic state or order; only a
+thumb that answers an ask, or is taken back from one, changes a wait.
 
 An answer is also said where the asker reads it: the same act posts a short
 reply from the person to the agent (`✅ Go ahead` or `🚫 Don't`), so the agent
@@ -32,8 +35,10 @@ unknown key.
 import json
 
 from .whispers import visible
-from .contract import Refusal, _identifier
+from .contract import READABLE, Refusal, _identifier
 from .delivery import _now_ms
+from .outcome_asks import held_ask, record_ask
+from .standing_conversation import is_conversation
 
 
 # The version after 29 (provisional; the release train renumbers).
@@ -53,6 +58,12 @@ REACTION_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_reactions) OR EXISTS (
 EMPTY = {"version": 0, "thumbs": [], "answers": [], "thumb_revision": 0, "answer_revision": 0}
 ANSWERS = {"yes": "✅ Go ahead", "no": "🚫 Don't"}
 GO_AHEAD_NEEDS_ASK = "--go-ahead goes on an Ask: name who you ask with --asks; nothing was sent"
+
+
+def answered_yes(thumb):
+    """Whether a thumb row answered its ask yes (item 239): the one reading of a thumb's `value`, for
+    the wait a later 👍 moves, the thumb's readers and the person taking it back alike."""
+    return thumb is not None and thumb["value"] == "yes"
 
 
 def go_ahead_flag(args):
@@ -75,7 +86,8 @@ class Reactions:
         # The same reach as reading it: a topic the actor reads, or a message
         # sent to them by name; a whisper they are not in is refused as unknown.
         self._message_access(db, actor, message_id)
-        return db.execute("SELECT id,topic_id,seq,author_id,private_to,addressees,go_ahead FROM messages WHERE id=?", (message_id,)).fetchone()
+        return db.execute("SELECT id,topic_id,seq,author_id,private_to,addressees,go_ahead,intent,sent_ms FROM messages WHERE id=?",
+                          (message_id,)).fetchone()
 
     def _react(self, db, actor, message, kind, value, revision, now):
         db.execute("INSERT INTO message_reactions(actor_id,message_id,kind,topic_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?) "
@@ -120,10 +132,137 @@ class Reactions:
         thumbed = args["thumbed"]
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
         if thumbed == (current % 2 == 1):
-            return dict(result, thumbed=thumbed, thumb_revision=current, changed=False), []
-        version = self._react(db, actor, message, "thumb", "up" if thumbed else None, current + 1, _now_ms())
-        return dict(result, thumbed=thumbed, thumb_revision=current + 1, reaction_version=version, changed=True), [
+            # Unchanged, it reports what the thumb on the message does: a 👍 that answered an ask holds `yes`, a taken-back one nothing.
+            return dict(result, thumbed=thumbed, thumb_revision=current, answered=answered_yes(row), changed=False), []
+        value, waits = self._thumb_answer(db, actor, message, thumbed, answered_yes(row))
+        version = self._react(db, actor, message, "thumb", value, current + 1, _now_ms())
+        return dict(result, thumbed=thumbed, thumb_revision=current + 1, reaction_version=version, answered=value == "yes", changed=True), waits + [
             {"kind": "reaction", "id": message["id"], "version": version}]
+
+    # A thumb that answers an ask (item 239) -----------------------------------
+
+    def _thumb_answer(self, db, actor, message, thumbed, answered_before):
+        """What a thumb does to the waits: (its row's value, affected). The one rule, for topics and conversations alike.
+
+        A person's 👍 on an ask that waits on them answers it yes, as their reply
+        would: the wait clears where it is kept (conversation_waits in an outcome's
+        conversation, topic_waiting in a topic) and the row's value is `yes`. Taking
+        that 👍 back puts back the wait it cleared, unless they have answered the ask
+        since (a reply to it in a conversation, any writing in a topic) or the wait
+        could no longer stand. Nothing else a thumb is on changes a wait: a 👍 by
+        anyone else or by an agent (its "got it"), on a message that asks nothing, on
+        an ask to someone else, on a go-ahead (answered by ✅ or 🚫) or on an ask a
+        record answers (outcome_asks.record_ask)."""
+        if not thumbed and not answered_before:
+            return None, []
+        topic = self._thumb_ask_topic(db, actor, message)
+        if topic is None:
+            return ("up" if thumbed else None), []
+        if is_conversation(topic):
+            if thumbed:
+                answered = changed = db.execute("DELETE FROM conversation_waits WHERE ask_id=? AND actor_id=?", (message["id"], actor)).rowcount > 0
+            else:
+                # The 👍 took the wait away, so unless a reply answered the ask since, it comes back.
+                answered = False
+                changed = not self._answered_since(db, topic, actor, message)
+                if changed:
+                    db.execute("INSERT OR IGNORE INTO conversation_waits(ask_id,actor_id) VALUES (?,?)", (message["id"], actor))
+            if changed:
+                self._sync_waits(db, topic, [actor])
+        else:
+            # Unless their writing has answered the ask since, the 👍 answers it, and taking the 👍 back unanswers it.
+            answered = not self._answered_since(db, topic, actor, message)
+            changed = answered and (self._topic_ask_thumbed if thumbed else self._topic_ask_unthumbed)(db, topic, actor, message)
+        affected = []
+        if changed:
+            version = self._touch_topic(db, topic)
+            self._change(db, "actor", actor, "waiting", topic["id"], version)
+            affected.append({"kind": "topic", "id": topic["id"], "version": version})
+        return ("yes" if answered else "up") if thumbed else None, affected
+
+    def _answered_since(self, db, topic, actor, message):
+        """Whether actor has answered message, an ask in topic, by writing since it was sent: in a conversation a reply
+        to it (StandingConversation._conversation_record), in a topic any writing there, which answers every ask
+        there to its writer (TopicState._answered). A whisper is not writing in the topic and answers neither
+        (conversation.py's publish leaves the waits before it), so only writing on the record counts."""
+        if is_conversation(topic):
+            since, args = "INDEXED BY message_reply_links WHERE reply_to=?", (message["id"],)
+        else:
+            since, args = "INDEXED BY topic_messages WHERE topic_id=? AND seq>?", (topic["id"], message["seq"])
+        return db.execute("SELECT 1 FROM messages " + since + " AND author_id=? AND private_to IS NULL LIMIT 1", args + (actor,)).fetchone() is not None
+
+    def _thumb_ask_topic(self, db, actor, message):
+        """The topic whose wait a thumb by actor on message would answer, or None: the message is a plain
+        ask (no go-ahead, no record's) to actor, a person, in a topic they read that still keeps its waits
+        (not replaced by a conversation, its outcome not reached). A whisper never asks (whispers.py's
+        whisper_shape), and message.thumb refuses a thumb on one's own message, so neither is asked here."""
+        if (message["intent"] != "ask" or message["go_ahead"] or actor not in json.loads(message["addressees"])
+                or self._actor(db, actor)["kind"] != "human"):
+            return None
+        topic = db.execute("SELECT t.*,w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:topic AND t.replaced_by IS NULL "
+                           "AND NOT EXISTS (SELECT 1 FROM outcome_reached r WHERE r.workspace_id=t.workspace_id) AND " + READABLE,
+                           {"topic": message["topic_id"], "actor": actor}).fetchone()
+        if topic is None or record_ask(db, message["id"], topic["workspace_id"], topic["id"]):
+            return None
+        return topic
+
+    def _topic_ask_thumbed(self, db, topic, member, message):
+        """A 👍 answered message, an open ask to member in topic: when the topic's wait on them is from it, the wait
+        moves to their next open ask there, else ends (a wait someone said stays). Whether the wait changed."""
+        row = db.execute("SELECT said,ask_message_id FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic["id"], member)).fetchone()
+        if row is None or row["ask_message_id"] != message["id"]:
+            return False
+        following = self._next_open_ask(db, topic, member, message["seq"])
+        if following is not None:
+            self._wait_from(db, topic, member, following)
+        elif row["said"]:
+            db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (topic["id"], member))
+        else:
+            db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic["id"], member))
+        return True
+
+    def _topic_ask_unthumbed(self, db, topic, member, message):
+        """The 👍 that answered message is taken back and nothing answered it since: the topic waits on member from it
+        again when it is older than the ask the wait is from now, or the wait has none. Whether the wait changed."""
+        row = db.execute("SELECT m.seq FROM topic_waiting q LEFT JOIN messages m ON m.id=q.ask_message_id "
+                         "WHERE q.topic_id=? AND q.actor_id=?", (topic["id"], member)).fetchone()
+        if row is None or row["seq"] is None:
+            # No ask holds the wait (someone may have said it): it waits from this ask as when it was asked.
+            self._ask(db, topic, message["author_id"], message["id"], message["sent_ms"], [member])
+        elif row["seq"] > message["seq"]:
+            self._wait_from(db, topic, member, message)
+        else:
+            return False
+        return True
+
+    def _wait_from(self, db, topic, member, ask):
+        """The topic's wait on member, which an ask holds, is from ask ({id, sent_ms}) now: ordered on the rail by
+        it, unless someone said the topic waits on them, which keeps the time they said it (TopicState)."""
+        db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=CASE WHEN said=1 THEN state_ms ELSE ? END WHERE topic_id=? AND actor_id=?",
+                   (ask["id"], ask["sent_ms"], topic["id"], member))
+
+    def _next_open_ask(self, db, topic, member, after_seq):
+        """The oldest ask to member in topic after after_seq that nothing has answered, or that a record holds open
+        (outcome_asks.held_ask): {id, seq, sent_ms}, or None. Member has not written there since after_seq, or the
+        topic would not be waiting on them from that ask, so none of these asks is theirs; a whisper never asks.
+
+        Each ask is judged by the rule that decides it, never restated here: whether member's own 👍 answered it is
+        their thumb row, read by the key message.thumb fences on (_reaction_row) and read as every reader reads it
+        (answered_yes); whether a record answers it is outcome_asks.record_ask."""
+        found = None
+        for row in db.execute("SELECT m.id,m.seq,m.sent_ms FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
+                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' ORDER BY a.seq",
+                              (topic["id"], member, after_seq)):
+            if not (answered_yes(self._reaction_row(db, member, row["id"], "thumb"))
+                    or record_ask(db, row["id"], topic["workspace_id"], topic["id"])):
+                found = row
+                break
+        held = held_ask(db, topic["id"], member)
+        if held is not None:
+            held = db.execute("SELECT id,seq,sent_ms FROM messages WHERE id=?", (held,)).fetchone()
+            if found is None or held["seq"] < found["seq"]:
+                found = held
+        return found
 
     def _command_message_answer(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
@@ -165,7 +304,9 @@ class Reactions:
             if row["actor_id"] == actor:
                 entry[row["kind"] + "_revision"] = row["revision"]
             if row["kind"] == "thumb" and row["revision"] % 2 == 1:
-                entry["thumbs"].append({"actor_id": row["actor_id"], "at_ms": row["at_ms"]})
+                thumb = {"actor_id": row["actor_id"], "at_ms": row["at_ms"]}
+                # A thumb that answered an ask yes says so (item 239).
+                entry["thumbs"].append(dict(thumb, answered=True) if answered_yes(row) else thumb)
             elif row["kind"] == "answer":
                 entry["answers"].append({"actor_id": row["actor_id"], "answer": row["value"], "at_ms": row["at_ms"]})
         return found

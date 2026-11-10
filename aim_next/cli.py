@@ -940,7 +940,9 @@ class Agent(PipelineVerbs, TargetVerbs):
                              for answer in reactions.get("answers", []))
             self.out.plain("  (asks for a go-ahead%s)" % (": " + said if said else "; not answered yet"))
         if reactions.get("thumbs"):
-            self.out.plain("  (👍 " + ", ".join(thumb["actor_id"] for thumb in reactions["thumbs"]) + ")")
+            # A person's 👍 on an ask to them answers it yes (item 239): "(👍 tony (yes))".
+            self.out.plain("  (👍 " + ", ".join(thumb["actor_id"] + (" (yes)" if thumb.get("answered") else "")
+                                                for thumb in reactions["thumbs"]) + ")")
         about = item.get("about")
         if about and not about.get("hidden"):
             self.out.plain('  (about %s by %s in "%s")' % (about["message_id"], about["author_id"], _one_line(about["topic_title"], 60)))

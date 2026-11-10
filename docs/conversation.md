@@ -80,8 +80,11 @@ always its answerer's; a person's was only while they coordinated, which is
 not kept, so a person's reply is left as it was.
 
 An ask there waits on each person it asks until that person replies to that
-ask (`reply_to` = the ask), or leaves the team and so can no longer read the
-conversation; nothing else clears it. A coordinator the owner replaces stays
+ask (`reply_to` = the ask), gives it a 👍 (a person's 👍 on a plain ask to
+them answers it yes; taking the 👍 back makes it wait again unless they
+replied to it meanwhile; [thumbs.md](thumbs.md#a-thumbs-up-answers-an-ask)), or
+leaves the team and so can no longer read the conversation; nothing else
+clears it. A coordinator the owner replaces stays
 on the team and still owes its asks.
 The conversation's `topic_waiting` rows follow the open asks, so attention and
 the sidebar read its waits as for any topic.

@@ -102,6 +102,15 @@ class Ledger(unittest.TestCase):
                 self.assertTrue(act["break"] and all(len(change) == 3 and change[1] != change[2] for change in act["break"]))
                 acts.command(act["check"], Path("/evidence"))
 
+    def test_every_break_still_applies_to_the_code_it_names(self):
+        # A redraw that rewrites a break's text leaves its act with no proof; tools/acts.py would only say "refused".
+        for act in json.loads((acts.REPO / "tests" / "acts.json").read_text())["acts"]:
+            with self.subTest(item=act["item"], act=act["act"]):
+                try:
+                    mutant.plan([(str(acts.REPO / name), old, new) for name, old, new in act["break"]])
+                except mutant.Refused as refusal:
+                    self.fail("item %s: %s: %s" % (act["item"], act["act"], refusal))
+
 
 if __name__ == "__main__":
     unittest.main()

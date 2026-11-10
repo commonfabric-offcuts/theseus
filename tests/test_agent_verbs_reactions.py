@@ -69,10 +69,15 @@ class ReactionVerbCase(test_agent_verbs.AgentVerbCase):
                                                                   {"answer_revision": 0})))
         waiting = self.post("agent-a", "May I deploy it too?", addressees=["owner"], intent="ask", go_ahead=True)
         quiet = self.post("agent-a", "Nothing to say about this one.")
+        # A person's 👍 on a plain ask to them answers it yes, and read says so (item 239).
+        asked = self.post("agent-a", "Shall I take the copy?", addressees=["owner"], intent="ask")
+        self.committed(self.store.command("owner", self.envelope("message.thumb", {"message_id": asked}, {"thumbed": True},
+                                                                  {"thumb_revision": 0})))
         code, out, _ = self.run_cli("read", "t1")
         self.assertEqual(code, 0)
         blocks = {block.split("\n")[0].split(" ")[1]: block for block in out.split("\n\n")[1:]}
         self.assertIn("\n  (👍 owner, agent-b)\n", blocks[plain] + "\n")
+        self.assertIn("\n  (👍 owner (yes))\n", blocks[asked] + "\n")
         self.assertIn("\n  (asks for a go-ahead: owner ✅ go ahead)\n", blocks[answered] + "\n")
         self.assertIn("\n  (asks for a go-ahead; not answered yet)\n", blocks[waiting] + "\n")
         for message in (plain, quiet):

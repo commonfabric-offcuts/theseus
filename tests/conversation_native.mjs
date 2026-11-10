@@ -5,7 +5,8 @@ import { readFile } from 'node:fs/promises';
 // browser against the real server: the page at ?conversation=w1 is a topic
 // page, messages above the writing box; a card arrives New and turns Answered
 // live; an ask back answers the item and brings "Asks you" and "Waiting on
-// you", and a reply in the Reader clears both; Answered by in the writing box is one tap on a name; the
+// you", and a reply in the Reader clears both, as does the bar's 👍 on the ask
+// (item 239), which brings both back when it is taken back; Answered by in the writing box is one tap on a name; the
 // Reader on a message in a topic sends the writing to the conversation by one
 // tap on To; replies stack as in any topic, with each stacked card's tags,
 // "Asks you", links, keys, menu and Only new at work (item 227, at 1280 wide,
@@ -108,6 +109,44 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(async () => (await tags(p, ask))?.asks === null, 'Asks you goes');
     await until(async () => (await row(p))?.waiting === null, 'the row stops waiting');
     assert.deepEqual((await tags(p, item)).tags, ['Answered'], 'still Answered: the reply to the ask settles nothing more');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('conversation 👍 on an ask to the reader answers it yes: "Asks you" and "Waiting on you" go live, and taking the 👍 back brings them back', async () => {
+    // Item 239: a person's 👍 on an ask that waits on them answers it, in Core, and the page shows what Core says.
+    const p = await open('conversation-thumb', '/?conversation=w1');
+    const item = await post('conversation-thumb-item', 'Shall we launch on Friday?');
+    const ask = await answer('conversation-thumb-ask', `@${person} morning or afternoon?`, { reply_to: item, addressees: [person], intent: 'ask' });
+    const waits = async () => (await view('conversation', { workspace_id: 'w1' })).conversation.waits.filter(wait => wait.ask_message_id === ask).map(wait => wait.on);
+    const waiting = async on => {
+      const word = on ? 'Waiting on you' : null;
+      await until(async () => (await tags(p, ask))?.asks === (on ? 'Asks you' : null), `"Asks you" ${on ? 'shows' : 'goes'}`);
+      await until(async () => { const t = await tags(p, item); return t && JSON.stringify(t.mine) === JSON.stringify(on ? [word] : []); }, `Waiting on you ${on ? 'shows on' : 'goes from'} the item`);
+      await until(async () => (await row(p))?.waiting === word, `the row ${on ? 'waits' : 'stops waiting'}`);
+    };
+    await waiting(true);
+    assert.deepEqual(await waits(), [person], 'Core: the ask waits on the reader');
+    // The bar's 👍, pressed as a person presses it: the pointer rests on the ask's card, then clicks the bar's 👍.
+    const thumb = async on => {
+      const words = `#messages .message-card[data-id="${ask}"] > .message-preview`;
+      await p.evaluate(`document.querySelector(${JSON.stringify(words)}).scrollIntoView({block:'center'})`);
+      await p.point(words, 'move');
+      await until(() => quiet(p, `(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=thumb]')))(document.querySelector('.message-bar'))`), 'the ask lights, with its bar');
+      await p.point('.message-bar [data-act=thumb]');
+      await until(async () => (await view('reactions', { message_id: ask })).reactions.thumbs.some(t => t.actor_id === person && t.answered === true) === on,
+        `Core holds the 👍 ${on ? 'as a yes' : 'taken back'}`);
+    };
+    await thumb(true);
+    assert.deepEqual(await waits(), [], 'Core: the 👍 answered the ask, and the waits agents read say so');
+    await waiting(false);
+    assert.deepEqual((await tags(p, item)).tags, ['Answered'], 'the item stays Answered');
+    await shot(p, 'conversation-thumb-answered');
+    await thumb(false);
+    assert.deepEqual(await waits(), [person], 'Core: taking the 👍 back makes the ask wait again');
+    await waiting(true);
+    // A 👍 again answers it again, and leaves nothing waiting on the reader for the checks after this one.
+    await thumb(true);
+    await waiting(false);
     assert.deepEqual(p.errors, []); await p.close();
   });
 

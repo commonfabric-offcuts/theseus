@@ -27,6 +27,18 @@ def held_ask(db, topic_id, writer):
     return None
 
 
+def record_ask(db, message_id, workspace_id, topic_id):
+    """Whether a record names message_id as its ask, open or settled: a target wording's (D8) or an
+    owner-gated stage entry's (D24). Its record answers it, so a thumbs-up never does (item 239).
+
+    A target's revisions are read by their outcome; a stage entry's ask is in its piece's topic, so only
+    the entries of that topic's pieces are read."""
+    return db.execute(
+        "SELECT 1 FROM outcome_target_revisions WHERE workspace_id=? AND ask_message_id=? "
+        "UNION ALL SELECT 1 FROM pipeline_pieces p CROSS JOIN pipeline_stage_entries e INDEXED BY piece_entries ON e.piece_id=p.id "
+        "WHERE p.topic_id=? AND e.ask_message_id=? LIMIT 1", (workspace_id, message_id, topic_id, message_id)).fetchone() is not None
+
+
 def release_held(store, db, message_id):
     """Clear the wait an ask kept once its record is settled, when nothing else holds it; the owner's change is written."""
     rows = db.execute("SELECT topic_id,actor_id,said FROM topic_waiting WHERE ask_message_id=?", (message_id,)).fetchall()

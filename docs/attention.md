@@ -136,9 +136,10 @@ and a person's message that says neither is a tell. An asking message makes its
 topic wait on each person it asks, in the same act that sends it, and the
 wait ends by itself when that person next writes in the topic, whatever they
 write and whoever they name: writing there answers every ask that waits on
-them in that topic. Until replies record which message they answer, that is
-the only rule. Agents asking agents wait the same way. Asking yourself waits
-on nobody, and a tell waits on nobody.
+them in that topic. A person's 👍 on one ask to them answers that ask alone,
+yes, and taking the 👍 back makes it wait again ([thumbs.md](thumbs.md#a-thumbs-up-answers-an-ask)).
+Agents asking agents wait the same way. Asking yourself waits on nobody, and a
+tell waits on nobody.
 
 There is one record of who a topic waits on: a row per topic and person in
 `topic_waiting`, which holds either reason or both. `said` is a wait someone
@@ -148,6 +149,9 @@ so the wait shows how long they have been waited on. The row lives while
 either holds, and ends with neither:
 
 - a reply in the topic clears the ask and leaves a said wait as it was;
+- a person's 👍 on the ask the row holds moves it to their next open ask there,
+  or clears it, and leaves a said wait as it was; taking it back puts the ask
+  back when it is older than the one the row holds;
 - `topic.update` changes only what was said: a new state ends the said waits
   and leaves each ask, and naming someone already asked makes the same row
   said as well;

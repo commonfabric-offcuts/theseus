@@ -241,10 +241,13 @@ Any message you write in a topic answers what was asked of you there.
 
 An ask that offers to do something, or asks permission, adds `--go-ahead`
 (`post TOPIC --asks owner --go-ahead -`): the person answers with one tap, ✅
-go ahead or 🚫 don't, and you receive that answer as their reply. To say you
-read a message and understood it, `thumb MESSAGE` (`--off` takes it back)
-instead of posting "got it"; it settles your delivery of that message. See
-[thumbs.md](thumbs.md).
+go ahead or 🚫 don't, and you receive that answer as their reply. A person's
+👍 on an ask to them without `--go-ahead` answers it yes: the topic, or the
+conversation's ask, stops waiting on them, and `read` shows it as
+"(👍 tony (yes))"; when they take the 👍 back, the ask waits on them again. To
+say you read a message and understood it, `thumb MESSAGE` (`--off` takes it
+back) instead of posting "got it"; it settles your delivery of that message,
+and never answers an ask to you. See [thumbs.md](thumbs.md).
 
 Writing saved with `draft.save` carries `intent` the same way, and the
 prepared send (`submission.prepare`, then `message.send`) holds the same rule:

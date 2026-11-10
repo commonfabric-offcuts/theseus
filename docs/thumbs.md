@@ -1,9 +1,11 @@
 # Thumbs-up and go-ahead answers
 
 A thumbs-up on a message says "I read it and I understand", never "do it".
-An agent that offers to do something, or asks permission, marks its Ask as
-asking for a go-ahead; the people it asks then answer with one tap, ✅ (go
-ahead) or 🚫 (don't). Core keeps both on the message (`aim_next/reactions.py`).
+On a question asked of the person who gives it, it also says yes, and the
+question stops waiting on them (item 239, below). An agent that offers to do
+something, or asks permission, marks its Ask as asking for a go-ahead; the
+people it asks then answer with one tap, ✅ (go ahead) or 🚫 (don't). Core
+keeps both on the message (`aim_next/reactions.py`).
 
 ## Writing
 
@@ -26,11 +28,64 @@ someone else's message. Only a person a go-ahead ask names can answer it
 (`NOT_A_GO_AHEAD`).
 
 Both settle the actor's own pending delivery of the message, as reading it
-does, and change no topic state, wait, order or version. An answer also posts
+does, and change no topic state or order; a thumbs-up changes a wait only
+when it answers an ask (below). An answer also posts
 a short reply from the person to the asker in the same act: `✅ Go ahead` or
 `🚫 Don't`, with "(I changed my answer)" when it replaces one. The agent hears
 it through its delivery like any reply, and the topic stops waiting on the
 person for that ask.
+
+## A thumbs-up answers an ask
+
+A person's 👍 on a message whose ask waits on them answers it yes, as their
+reply would, in the same act (`Reactions._thumb_answer`, the one place the
+rule is kept):
+
+- In an outcome's conversation the ask's own wait on them
+  (`conversation_waits`) goes, and the conversation's `topic_waiting` row
+  follows it (docs/conversation.md).
+- In a topic the ask answered is that one ask, not every ask to them there,
+  as writing would be: when the topic's wait on them is from it, the wait
+  moves to their next ask there that nothing has answered, or ends; a wait
+  someone said stays (docs/attention.md).
+
+When the wait moves on, it passes over the asks the person's own 👍 already
+answered: their thumb row on each, read by the key `message.thumb` writes it
+under, so another person's 👍 on an ask to both of them leaves it waiting on
+this one.
+
+The thumb's row then holds `value: "yes"` rather than `"up"`, readers see
+`answered: true` on that thumb, and the result of `message.thumb` carries
+`answered`, also when it changes nothing (a 👍 sent again reports whether
+the one already there answered). Taking that 👍 back makes the ask wait on
+them again, unless the person answered the ask meanwhile (in a conversation
+a reply to that ask, in a topic any writing there; a whisper is neither) or
+the wait could no longer stand (they no longer read the topic, its outcome
+was reached, or a conversation replaced it). A wait put back is as it would
+be had the 👍 never been given: archived when its topic is, ordered on the
+rail by the ask it waits from, or, when someone said it waits, by when they
+said so. A thumb that answered nothing puts nothing back. When a wait changes, the topic
+is touched and the person gets an actor-scoped `waiting` change, so every
+reader of waits (Waiting on you on the rail and its outcome light, the
+topic's asks, the conversation's tags and "Asks you", and the `conversation`
+view's `waits` that agents read) shows it at once.
+
+Nothing else a thumb is on changes a wait:
+
+- a 👍 by anyone the ask does not ask, or by an agent, whose 👍 is its "got
+  it" and whose reply is how it answers;
+- a 👍 on a message that asks nothing, or asks someone else;
+- a 👍 on a go-ahead ask. Its answer is ✅ or 🚫, which the agent hears as a
+  reply and acts on, and which is never unsaid; a 👍 can be taken back
+  silently after the agent has acted, so it cannot be a go-ahead, and the ask
+  keeps waiting, with its ✅ and 🚫 in view, until one of them is pressed;
+- a 👍 on an ask a record answers: a target wording's or an owner-gated
+  stage's (`outcome_asks.record_ask`), which its decision settles.
+
+A 👍 given before this rule (value `up`) answered nothing then, and taking it
+back puts nothing back; a 👍 given again answers. No schema step: a thumb's
+`value` already allowed `yes`, and earlier code reads a thumb by its revision
+alone.
 
 `message.post` takes `go_ahead: true` beside `intent: "ask"`; anywhere else
 (a tell, a whisper, no addressees) it is refused before anything is saved.
@@ -43,10 +98,12 @@ it". Hosted agents' instructions name both.
 `topic_messages` items and the `source` view carry, for a message with any,
 `reactions: {version, thumbs: [{actor_id, at_ms}], answers: [{actor_id,
 answer, at_ms}], thumb_revision, answer_revision}` (the last two are the
-reader's own), and `go_ahead: true` on a message that asks for one.
+reader's own; a thumb that answered an ask also carries `answered: true`), and
+`go_ahead: true` on a message that asks for one.
 `reactions {message_id}` reads one message's. `version` is the sum of the
-message's revisions, so it only grows. `read` prints "(👍 tony, …)" and "(asks
-for a go-ahead: tony ✅ go ahead)" under the heading.
+message's revisions, so it only grows. `read` prints "(👍 tony, …)", with
+"tony (yes)" for a thumb that answered an ask, and "(asks for a go-ahead: tony
+✅ go ahead)" under the heading.
 
 ## Changes
 

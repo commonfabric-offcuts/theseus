@@ -182,7 +182,7 @@
    "break": [
     [
      "aim_next/cli.py",
-     "self.out.plain(\"  (👍 \" + \", \".join(thumb[\"actor_id\"] for thumb in reactions[\"thumbs\"]) + \")\")",
+     "self.out.plain(\"  (👍 \" + \", \".join(thumb[\"actor_id\"] + (\" (yes)\" if thumb.get(\"answered\") else \"\")\n                                                for thumb in reactions[\"thumbs\"]) + \")\")",
      "pass"
     ]
    ],
@@ -1205,6 +1205,91 @@
    ],
    "check": {
     "node": "tests/ui_journal_pagehide.test.mjs"
+   }
+  },
+  {
+   "item": 239,
+   "act": "A person's 👍 on an ask to them in the conversation answers it: \"Asks you\" and \"Waiting on you\" go, and taking it back brings them back",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "answered = changed = db.execute(\"DELETE FROM conversation_waits WHERE ask_id=? AND actor_id=?\", (message[\"id\"], actor)).rowcount > 0",
+     "answered = changed = False"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "👍 on an ask to the reader answers it yes"
+   }
+  },
+  {
+   "item": 239,
+   "act": "A person's 👍 on an ask to them in a topic answers that ask, and the topic's wait moves on or ends",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "changed = answered and (self._topic_ask_thumbed if thumbed else self._topic_ask_unthumbed)(db, topic, actor, message)",
+     "changed = False"
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
+   }
+  },
+  {
+   "item": 239,
+   "act": "Taking back a 👍 in an archived topic brings its wait back archived: it stays off Waiting on you and the outcome light",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "sent_ms, topic[\"archived\"], message_id)",
+     "sent_ms, 0, message_id)"
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
+   }
+  },
+  {
+   "item": 239,
+   "act": "A whisper is neither writing in a topic nor a reply in the conversation: a 👍 after one still answers the ask, and taking it back still brings the wait back",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "\" AND author_id=? AND private_to IS NULL LIMIT 1\"",
+     "\" AND author_id=? LIMIT 1\""
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
+   }
+  },
+  {
+   "item": 239,
+   "act": "A wait someone said keeps its place on Waiting on you when a 👍 moves its ask on or brings it back",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "state_ms=CASE WHEN said=1 THEN state_ms ELSE ? END WHERE",
+     "state_ms=? WHERE"
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
+   }
+  },
+  {
+   "item": 239,
+   "act": "A 👍 sent again says whether the one already there answered the ask",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "answered=answered_yes(row), changed=False",
+     "answered=False, changed=False"
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
    }
   }
  ]

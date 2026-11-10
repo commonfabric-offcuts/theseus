@@ -579,7 +579,9 @@ MESSAGE_READS = {
     "aim_next/standing_conversation.py": ("a conversation's items, answers and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
                                           "and a pipeline item's message sources, which _source_rows refused as whispers", 8),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
-    "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked", 4),
+    "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked; "
+                              "for a thumb that answers an ask (item 239): the asked person's replies and writing on the record (private_to IS NULL), "
+                              "their next ask, and the asks topic_waiting and held_ask name, which a whisper never is", 8),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE", 1),

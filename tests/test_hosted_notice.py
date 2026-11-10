@@ -118,6 +118,11 @@ class NoticeCase(unittest.TestCase):
         self.assertIn("Your CLI: /usr/bin/python3 -I /abs/bin/aim-next --profile /abs/agent-x.json", text.splitlines())
         self.assertIn("never rebind", text)
 
+    def test_developer_instructions_say_a_persons_thumb_on_an_ask_answers_it_yes(self):
+        words = " ".join(hosted_notice.developer_instructions("agent-x", "aim-next", "/abs/agent-x.json").split())
+        self.assertIn("a person's 👍 on an ask to them without --go-ahead answers it yes: the wait on them ends, "
+                      "and read shows it as \"(👍 NAME (yes))\"; if they take the 👍 back, the ask waits again", words)
+
     def test_developer_instructions_say_an_ask_back_answers_the_item_and_part_keeps_what_is_still_owed_new(self):
         words = " ".join(hosted_notice.developer_instructions("agent-x", "aim-next", "/abs/agent-x.json").split())
         self.assertIn("Your reply answers an item even when it asks its author back; when you take only part of an item, "
