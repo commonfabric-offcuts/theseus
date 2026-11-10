@@ -1137,8 +1137,13 @@ export async function liveChecks({ check, page, until, control, observations, or
     const revise = (expected, title, body) => control({ method: 'memory_revise', operation_id: `live-notebook-revision-${expected}`, item_id: id,
       expected_revision: expected, title, body });
     const has = (selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
+    // After a reload the row takes its title before the outline takes the
+    // Notebook in (until then rails.css keeps it out of view under #rail),
+    // so it is scrolled to once it shows and holds its place.
     const open = async title => {
-      await until(() => p.evaluate(`(row => row && ${pageTitle}(row))(document.querySelector(${JSON.stringify(row)})) === ${JSON.stringify(title)}`), `the outcome Notebook lists ${title}`);
+      await until(() => p.evaluate(`(row => row?.getClientRects().length > 0 && ${pageTitle}(row))(document.querySelector(${JSON.stringify(row)})) === ${JSON.stringify(title)}`), `the outcome Notebook shows ${title}`);
+      let last;
+      await until(async () => { const now = JSON.stringify(await p.box(row)), same = now === last; last = now; return same; }, `${title} holds its place`);
       await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
       await p.point(row);
       await until(() => p.evaluate("document.querySelector('#reader').open"), 'the Reader opens the page');
