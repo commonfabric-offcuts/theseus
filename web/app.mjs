@@ -38,7 +38,7 @@ import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
-import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, switchWriting } from './outcome-conversation.mjs';
+import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, switchWriting, PLACE as CONVERSATION_PLACE } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from './links.mjs';
@@ -341,7 +341,9 @@ function reviewControl(host, entry) {
   if (!entry) { host.replaceChildren(); return; }
   let control = host.firstElementChild;
   if (!control) { control = node('button'); control.type = 'button'; host.append(control); }
+  // A small chip on the reply's line; what it is about is in its name.
   control.textContent = entry.label; control.onclick = () => run(() => showPending(entry.editor.key, control));
+  control.setAttribute('aria-label', `${entry.count} ${entry.count === 1 ? 'reply' : 'replies'} may not have sent. Review`);
 }
 // The replies in doubt of the writing registered under this key, read again
 // from the registry at each draw and each act.
@@ -889,7 +891,8 @@ function closeStartLine(focus = false) {
   if (!startLine) return;
   startLine.line.root.remove(); startLine = null;
   $('start-from-message').setAttribute('aria-expanded', 'false');
-  if (focus) $('start-from-message').focus();
+  // The line was opened from the Reader's ⋯, where focus goes back.
+  if (focus) $('reader-menu').focus();
 }
 function openStartLine() {
   if (startLine) { closeStartLine(true); return; }
@@ -948,7 +951,7 @@ function openPipelineAdd() {
 function closePipelineAdd(refocus) {
   pipelineAddFor = null;
   const host = $('pipeline-add'); host.hidden = true; host.replaceChildren();
-  if (refocus) $('add-to-pipeline').focus();
+  if (refocus) $('reader-menu').focus();
 }
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;
@@ -1077,8 +1080,11 @@ async function copyPageLink(source, revision, say) {
   if (!await copyText(link)) { status(`The link could not be copied here. Select it to copy it: ${link}`); return; }
   if (say?.getClientRects().length) sayOn(say, 'Link copied'); else status('Link copied.');
 }
-// The Reader's ⋯: Copy Link and the mark for a message, Copy Link and Copy
-// Link to Revision N for a Notebook page, and Wide or Stacked.
+// The Reader's ⋯ (docs/reader.md): Copy Link, the mark, Quote selection while
+// there is something to quote, Start a topic from this, Add to pipeline, and
+// Wide or Stacked; for a Notebook page, Copy Link and Copy Link to Revision N.
+// The message's own acts live here, not in a row under it; on a phone the
+// menu opens as a sheet from the bottom.
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
@@ -1089,8 +1095,11 @@ function openReaderMenu() {
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
+  if (reader.quotable) items.push({ label: 'Quote selection', act: () => reader.quote() });
+  if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', act: () => openStartLine() });
+  if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, act: () => reader.toggleLayout() });
-  openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message' });
+  openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
 // The source a page's link names: that revision, or the page as it stands,
 // which Core is asked for by name (memory_current).
@@ -1603,7 +1612,7 @@ async function initialize() {
     },
     destination: value => run(() => switchDestination(value)),
     destinations: (host, source, topicId) => offerConversation(host, source, topicId),
-    toConversation: topicId => Boolean(here?.view && topicId === here.view.topic_id),
+    place: topicId => conversationPlace(topicId),
     audiencePainted: topicId => paintReaderAudience(topicId),
     recipientsPainted: (names, topicId) => paintReaderAudience(topicId, names),
     reconcile: editor => run(() => registry.checkConfirmation(editor)),
@@ -1935,16 +1944,18 @@ function answeredBy(composer, audience, names, on) {
   // Off, a row that was never turned on is already the plain Address row.
   if (!on && !answering.delete(audience)) return;
   if (on) answering.add(audience);
-  const label = audience.querySelector(':scope > span.muted'), input = audience.querySelector(':scope > input');
-  const chips = audience.querySelector(':scope > .chips');
+  // The row's label is the who panel's To (index.html), which it renames.
+  // The topic's people and the name field are the naming sheet's (index.html).
+  const label = audience.closest('.who-row').querySelector(':scope > .who-label'), input = audience.querySelector('.name-filter');
+  const chips = audience.querySelector('.chips');
   if (!label.dataset.words) label.dataset.words = label.textContent;
   label.textContent = on ? 'Answered by' : label.dataset.words;
   input.placeholder = on ? 'Someone else' : 'Add a name';
   audience.classList.toggle('answered-by', on);
-  let choices = audience.querySelector(':scope > .answerer-chips');
+  let choices = audience.querySelector('.answerer-chips');
   if (!choices) {
     choices = document.createElement('span'); choices.className = 'answerer-chips'; choices.setAttribute('role', 'group');
-    choices.setAttribute('aria-label', 'Who answers'); audience.insertBefore(choices, chips);
+    choices.setAttribute('aria-label', 'Who answers'); chips.parentElement.insertBefore(choices, chips);
   }
   choices.hidden = !on;
   const team = (outcomeMembers ?? []).filter(person => person.enabled !== false).map(person => person.actor_id);
@@ -1961,11 +1972,14 @@ function offerConversation(host, source, topicId) {
   conversationDestination(host, { topic, conversation: here.view.topic_id, outcome: here.title, chosen: topicId });
   return true;
 }
+// The outcome's conversation, when a reply's topic is it: the words for
+// where the reply goes, and the line saying what going there means. The
+// Reader says them wherever writing goes there from another topic.
+function conversationPlace(topicId) {
+  return here?.view && topicId === here.view.topic_id ? { name: CONVERSATION_PLACE, note: CONVERSATION_NOTE(here.view.coordinator?.actor_id) } : null;
+}
 function paintReaderAudience(topicId, names = null) {
   const on = Boolean(here?.view && !here.page && topicId === here.view.topic_id);
-  const note = $('destination-note');
-  note.textContent = on ? CONVERSATION_NOTE(here.view.coordinator?.actor_id) : '';
-  note.hidden = !on;
   if (reader?.sessions && (on || answering.size)) answeredBy(reader, $('reply-audience'), names ?? reader.names(), on);
 }
 // Switching the Reader between this topic and the conversation opens the same

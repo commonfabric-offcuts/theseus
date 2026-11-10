@@ -73,7 +73,8 @@ export async function headerChecks({ check, page, until, control, view, facts, s
         stateInMain:Boolean(document.querySelector('main #topic-state')),stateInDialog:Boolean(document.querySelector('dialog#topic-settings #topic-state'))}})()`);
     assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description'], 'the outcome\'s name, the title row, then the subtitle');
     assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true]], 'the outcome\'s name, with "☰ Topics" before it shown only on a phone');
-    assert.deepEqual(top.row, ['topic-title', 'settings-open'], 'the gear shares the title\'s row, after it');
+    // New message, a quiet ✎, ends the row (docs/reader.md).
+    assert.deepEqual(top.row, ['topic-title', 'settings-open', 'new-message'], 'the gear shares the title\'s row, after it, and New message ends it');
     assert.deepEqual([top.gear.name, top.gear.title, top.gear.popup, top.gear.hidden, top.gear.size], ['Topic settings', 'Topic settings', 'dialog', false, [44, 44]]);
     assert.ok(top.gear.middle >= top.line.top && top.gear.middle <= top.line.top + top.line.height, 'the gear\'s middle is level with the title\'s first line: ' + JSON.stringify(top));
     assert.ok(top.gear.left >= top.line.right, 'the gear is at the upper right, beside the title');

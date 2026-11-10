@@ -678,7 +678,7 @@ export class EditorRegistry {
   // An editor not registered here has none: it answers for nothing.
   doubt(editor) {
     const session = this.sessions.get(editor.key);
-    if (editor.context.kind !== 'reply' || session?.editor !== editor) return { ids: new Set(), items: [], unread: false, label: null };
+    if (editor.context.kind !== 'reply' || session?.editor !== editor) return { ids: new Set(), items: [], unread: false, count: 0, label: null };
     const page = this.pages.get(editor.key), unread = page?.next_cursor !== null;
     const local = new Map(editor.submissions.map(item => [item.id, item])), listed = new Map((page?.items ?? []).map(item => [item.id, item]));
     const sent = id => local.get(id)?.status === 'confirmed' || listed.get(id)?.send_status === 'committed' ||
@@ -686,7 +686,7 @@ export class EditorRegistry {
     const items = [...new Map([...listed, ...local]).values()].filter(({ id }) => !sent(id) &&
       !local.has(local.get(id)?.correctedBy) && session.underWay(id) !== true), ids = new Set(items.map(item => item.id));
     const count = unread ? (ids.size ? ids.size + '+' : 'more') : ids.size;
-    return { ids, items, unread, label: ids.size || unread ? `Review ${count} ${count === 1 ? 'reply' : 'replies'}` : null };
+    return { ids, items, unread, count, label: ids.size || unread ? `Review ${count} ${count === 1 ? 'reply' : 'replies'}` : null };
   }
   // The Review buttons, and the replies the departure guard asks about: one
   // for each registered writing with a reply in doubt, in the order the

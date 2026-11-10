@@ -61,7 +61,9 @@ export function paintThumb(row, key, load, place = image => row.prepend(image)) 
     thumbs.set(key, entry);
   }
   entry.users++;
-  entry.url.then(url => { if (url && image.isConnected && image.dataset.key === key) { image.src = url; image.hidden = false; } });
+  // One with nothing to show says so (data-none), so a strip can show the
+  // image's name in its place rather than an empty one (aim.css).
+  entry.url.then(url => { if (!image.isConnected || image.dataset.key !== key) return; if (url) { image.src = url; image.hidden = false; } else image.dataset.none = ''; });
 }
 // The row no longer shows its thumbnail; the last row to let a key go frees it.
 export function dropThumb(row) {

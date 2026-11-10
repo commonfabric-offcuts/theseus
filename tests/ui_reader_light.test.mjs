@@ -44,7 +44,8 @@ function fixture(passages) {
   globalThis.Node = { ELEMENT_NODE: 1 };
   globalThis.document = { createElement: tag => new Element(tag), createTextNode: data => new Text(data) };
   const body = new Element('div');
-  const reader = Object.assign(Object.create(Reader.prototype), { sourceBody: body, source: { body: source }, hover: null });
+  // A laptop's Reader: no end line under the passages (placeEnd).
+  const reader = Object.assign(Object.create(Reader.prototype), { sourceBody: body, source: { body: source }, hover: null, narrow: { matches: false } });
   reader.drawSource(source);
   assert.deepEqual(body.children.map(span => span.textContent), passages.map(passage => (typeof passage === 'string' ? [passage] : passage).map(words).join('')), 'drawn as the passages the test names');
   // Each passage's first text node, and the text of the link in it.
@@ -128,7 +129,8 @@ function drawn(t, body) {
   globalThis.document = { createElement: tag => new Element(tag), createTextNode: data => ({ text: data }) };
   t.after(() => { globalThis.document = previous; });
   const sourceBody = new Element('div');
-  Object.assign(Object.create(Reader.prototype), { sourceBody }).drawSource(body);
+  // A laptop's width: the message ends with no "↑ Newer · ↓ Older" line.
+  Object.assign(Object.create(Reader.prototype), { sourceBody, narrow: { matches: false } }).drawSource(body);
   return sourceBody.children.map(span => ({ start: Number(span.dataset.start), end: Number(span.dataset.end), text: span.text,
     links: span.children.filter(child => child.tag === 'a').map(a => a.textContent) }));
 }

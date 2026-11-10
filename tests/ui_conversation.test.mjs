@@ -9,7 +9,7 @@ import { itemTags, paintItemTags, paintAbout, paintAsksYou, paintOnlyNew, paintE
   answererChoices, paintAnswerers, subtitle, CONVERSATION_NOTE, NOBODY_ANSWERS, switchWriting } from '../web/outcome-conversation.mjs';
 import { parseRoute, routeHref, routeKey } from '../web/topic-navigation.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
-import { Editor, WRITING_FIELDS, noWriting } from '../web/editor.mjs';
+import { Editor, WRITING_FIELDS, noWriting, written } from '../web/editor.mjs';
 import { choiceOf, chosen, naming, sending } from '../web/whisper-choice.mjs';
 
 const AT = Date.UTC(2026, 10, 6, 18, 0);
@@ -312,6 +312,7 @@ test("Whisper, Tell or Ask is never mixed between drafts: onto writing it stays 
     assert.deepEqual([namesOf(there), sends(there.draft, namesOf(there), shownIn(CONVERSATION))[1]], [[agent], { whisper: true, intent: null }],
       `still a Whisper to ${agent} where it arrived (${offeredThere ? 'offered there too' : 'not offered there'})`);
     assert.deepEqual([namesOf(left), writingOf(left)], [[agent], noWriting()], 'and the place it left offers the author again, with nothing written');
+    assert.deepEqual([written(there.draft), written(left.draft)], [false, false], 'a choice moved is not writing: on both sides nothing is written, so 👍 stays beside Send');
   }
 });
 

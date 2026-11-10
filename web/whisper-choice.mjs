@@ -81,30 +81,59 @@ export function sending(draft, names, kindOf, options = {}) {
 }
 
 // [who, what always shows, what a phone leaves out to keep Send in view]
-export function audienceWords({ choice, switched }, names, everyone, { answeringWhisper = false } = {}) {
+// place: where the writing is posted when that is not the topic being read
+// ("the conversation"), or null; its readers are that place's, so this
+// topic's people are not named as them.
+export function audienceWords({ choice, switched }, names, everyone, { answeringWhisper = false, place = null } = {}) {
   if (choice === 'whisper') {
     return [`Only you and ${names[0]}`, ' will see this.', ` No other agent gets it, and ${names[0]} takes it as a question, not an instruction.`];
   }
-  const all = everyone.length ? ` That is ${list(everyone)}.` : '';
+  const readers = place ? `Everyone in ${place}` : 'Everyone in this topic';
+  const all = !place && everyone.length ? ` That is ${list(everyone)}.` : '';
   if (switched) {
-    return ['Everyone in this topic', ' will see this. A whisper goes to one agent. Nothing you wrote is lost.',
+    return [readers, ' will see this. A whisper goes to one agent. Nothing you wrote is lost.',
       ` Adding ${names.at(-1)} made this a Tell. To reach ${list(names)} privately, send each a whisper.`];
   }
-  if (answeringWhisper && choice === 'tell') return ['Everyone in this topic', ' will see this. The whisper itself stays private.', all];
-  if (!names.length) return ['Everyone in this topic', ' will see this.', `${all} It goes to no one by name.`];
+  if (answeringWhisper && choice === 'tell') return [readers, ' will see this. The whisper itself stays private.', all];
+  if (!names.length) return [readers, ' will see this.', `${all} It goes to no one by name.`];
   if (choice === 'ask') {
-    return ['Everyone in this topic', ` will see this, and it waits on ${list(names)} until ${names.length > 1 ? 'each replies' : 'they reply'}.`, all];
+    return [readers, ` will see this, and it waits on ${list(names)} until ${names.length > 1 ? 'each replies' : 'they reply'}.`, all];
   }
-  return ['Everyone in this topic', ' will see this.', `${all} It goes to ${list(names)} by name; nothing is owed back.`];
+  return [readers, ' will see this.', `${all} It goes to ${list(names)} by name; nothing is owed back.`];
 }
 
-// Paints the choice and its line into row, the Send button's word and the
-// writing field's dashed line; returns the choice. The choice is three chips
+// The who chip's words (docs/reader.md): what Send does and, from the same
+// words as the line above (audienceWords), who sees it, said short.
+// "Tell fable · everyone here", "Whisper to fable · only you two",
+// "Ask fable and warp · everyone here", or "Everyone here" with nobody named;
+// posted elsewhere (place), "Tell fable · in the conversation", or
+// "Everyone in the conversation".
+export function chipWords(state, names, everyone = [], options = {}) {
+  const [who] = audienceWords(state, names, everyone, options);
+  const elsewhere = who.replace(/^Everyone in /, '');
+  const short = who.startsWith('Only you and ') ? 'only you two' : who === 'Everyone in this topic' ? 'everyone here' : `in ${elsewhere}`;
+  if (!names.length) return who === 'Everyone in this topic' ? 'Everyone here' : who;
+  const verb = state.choice === 'whisper' ? 'Whisper to' : state.choice === 'ask' ? 'Ask' : 'Tell';
+  return `${verb} ${list(names)} · ${short}`;
+}
+
+// The word on Send: what pressing it does. A message to nobody by name is
+// sent to the topic, so it says Send.
+export function sendWord(state, names) {
+  return state.choice === 'whisper' ? 'Whisper' : state.choice === 'ask' ? 'Ask' : names.length ? 'Tell' : 'Send';
+}
+
+// Paints the choice and its line into row, the Send button's word, the who
+// chip's words (chip, when the composer has one) and the writing field's
+// dashed line; returns the choice. The choice is three chips
 // tapped once (aria-pressed says which is on), never round buttons; an arrow
 // key moves the choice along them, as it did on round buttons. The chips are
 // made once per row, so a choice that keeps the focus keeps it across paints.
-export function paintChoice(row, { draft, names, kindOf, everyone, send, field, readOnly = false, answeringWhisper = false,
-  conversation = false, onChoose }) {
+// lineHost: where the sentence saying who sees it goes, when not under the
+// chips (the composer's who panel puts it first).
+// place: where the writing is posted when that is not the topic being read (audienceWords).
+export function paintChoice(row, { draft, names, kindOf, everyone, send, field, chip = null, lineHost = null, readOnly = false, answeringWhisper = false,
+  conversation = false, place = null, onChoose }) {
   if (!row.querySelector('.intent-choice')) {
     const group = node('div', undefined, 'intent-choice');
     group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'How this is sent');
@@ -124,7 +153,7 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
       next.focus(); next.onclick();
     });
     const line = node('p', undefined, 'audience-line'); line.setAttribute('aria-live', 'polite');
-    row.replaceChildren(group, line);
+    if (lineHost) { row.replaceChildren(group); lineHost.replaceChildren(line); } else row.replaceChildren(group, line);
   }
   row.choose = onChoose;
   const state = choiceOf(draft, names, kindOf, { conversation });
@@ -138,19 +167,23 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
     chip.title = why;
     if (why) chip.setAttribute('aria-label', `${WORDS[value]}, ${why}`); else chip.removeAttribute('aria-label');
   }
-  const [who, words, more] = audienceWords(state, names, everyone, { answeringWhisper });
-  const line = row.querySelector('.audience-line');
+  const [who, words, more] = audienceWords(state, names, everyone, { answeringWhisper, place });
+  const line = (lineHost ?? row).querySelector('.audience-line');
   line.classList.toggle('switched', state.switched);
   line.replaceChildren(node('strong', who), state.switched ? node('span', words, 'switch-words') : words, node('span', more, 'audience-more'));
   field?.classList.toggle('whispering', state.choice === 'whisper');
   const word = send?.querySelector('.send-word');
-  if (word) word.textContent = state.choice === 'whisper' ? 'Whisper' : state.choice === 'ask' ? 'Ask' : 'Send';
+  if (word) word.textContent = sendWord(state, names);
+  if (chip) {
+    chip.textContent = chipWords(state, names, everyone, { answeringWhisper, place });
+    chip.classList.toggle('whispering', state.choice === 'whisper');
+  }
   return state;
 }
 
 // Takes the choice away, as a private note or a closed composer has none.
-export function clearChoice(row, field, send) {
-  row.replaceChildren(); row.choose = null;
+export function clearChoice(row, field, send, lineHost = null) {
+  row.replaceChildren(); lineHost?.replaceChildren(); row.choose = null;
   field?.classList.remove('whispering');
   const word = send?.querySelector('.send-word');
   if (word) word.textContent = 'Send';

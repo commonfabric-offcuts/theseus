@@ -1,6 +1,7 @@
 // One isolated Chrome for Testing, actual CDP input, graceful Browser.close.
 // This fixture proves UI interactions only; it has no Store or HTTP adapter.
 import assert from 'node:assert/strict';
+import { reachWith } from './compose-reach.mjs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -78,6 +79,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   const box = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()`);
   const point = async (selector, kind = 'click') => {
+    if (kind === 'click' && await reach(selector)) return;
     const b = await box(selector); assert.ok(b && b.width > 0 && b.height > 0, `visible target ${selector}`);
     const x = b.x + Math.min(12, b.width / 2), y = b.y + Math.min(12, b.height / 2);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
@@ -86,6 +88,8 @@ try {
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
     }
   };
+  // A control the composer or the ⋯ keeps out of sight is reached first, as a person does (compose-reach.mjs).
+  const reach = reachWith({ evaluate, point: selector => point(selector), until });
   const key = async (name, modifiers = 0, extra = {}) => {
     const code = { Enter: 13, Escape: 27, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 }[name] ?? name.toUpperCase().charCodeAt(0);
     const data = { key: name, code: name.length === 1 ? `Key${name.toUpperCase()}` : name, windowsVirtualKeyCode: code, modifiers, ...extra };
@@ -248,19 +252,22 @@ try {
     assert.equal(state.events.find(event => event.type === 'close')?.reason, 'gallery');
   });
 
-  await check('divider click is inert, native drag changes proportions and preserves typing', async () => {
-    await point('#writing-body'); await send('Input.insertText', { text: 'Keep the paragraph through resize' });
-    const before = await box('.writing-pane');
-    await point('#reader-divider');
-    assert.ok(Math.abs((await box('.writing-pane')).height - before.height) < 2, 'bare click cannot move split');
-    const grip = await box('#reader-divider');
-    const x = grip.x + grip.width / 2, y = grip.y + grip.height / 2;
-    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
-    for (let step = 1; step <= 8; step++) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: y - step * 10, button: 'left', buttons: 1 });
-    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: y - 80, button: 'left', buttons: 0, clickCount: 1 });
-    assert.ok((await box('.writing-pane')).height > before.height + 40, 'native drag expands writing');
-    assert.equal((await snapshot()).reply.draft.body, 'Keep the paragraph through resize');
+  // Stacked, the reply is as tall as its writing and the message takes the
+  // rest (docs/reader.md): there is no divider to drag.
+  await check('stacked has no divider: the message takes all the room the reply does not, and writing grows the reply only to its field\'s height', async () => {
+    const panes = async () => ({ reading: await box('.reading-pane'), writing: await box('.writing-pane'), dialog: await box('#reader'),
+      divider: await evaluate('document.querySelector("#reader-divider").getClientRects().length') });
+    const line = await panes();
+    observations.push({ label: 'reading', ...line });
+    assert.equal(line.divider, 0, 'no divider in the stacked Reader');
+    assert.ok(Math.abs(line.reading.y + line.reading.height - line.writing.y) < 2, 'the message runs down to the reply');
+    assert.ok(line.writing.height < 90, `reading, the reply is its one line (${line.writing.height}px)`);
+    await point('#writing-body'); await send('Input.insertText', { text: Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of the reply`).join('\n') });
+    const writing = await panes();
+    observations.push({ label: 'writing twelve lines', ...writing });
+    assert.ok(writing.writing.height > line.writing.height, 'writing grows the reply');
+    assert.ok(writing.writing.height < writing.dialog.height * .45, `the reply stops at its field's height and the message keeps the rest (${writing.writing.height}px of ${writing.dialog.height}px)`);
+    assert.ok(Math.abs(writing.reading.y + writing.reading.height - writing.writing.y) < 2, 'the message still runs down to the reply');
     assert.equal((await snapshot()).events.filter(event => event.type === 'send').length, 0);
   });
 
@@ -279,7 +286,7 @@ try {
     assert.equal(await evaluate('document.querySelector("#reader").open'), true);
   });
 
-  await check('wide pointer, both-axis keyboard steps and double-click reset preserve writing', async () => {
+  await check('wide pointer, keyboard steps and double-click reset preserve writing', async () => {
     const body = 'Keep this text through every kind of divider movement.';
     await point('#writing-body'); await send('Input.insertText', { text: body });
     await switchLayout();
@@ -295,17 +302,11 @@ try {
     await doubleClickDivider();
     assert.equal(await share(), 45, 'wide double-click resets its share');
     assert.ok(Math.abs((await box('.writing-pane')).width - before.width) < 1);
-    await switchLayout();
-    await point('#reader-divider');
-    await key('ArrowUp'); assert.equal(await share(), 50, 'stacked arrow changes share two points');
-    await key('ArrowDown', 8); assert.equal(await share(), 40, 'stacked Shift arrow changes share ten points');
-    await key('ArrowLeft'); assert.equal(await share(), 40, 'stacked wrong-axis arrow is inert');
-    await doubleClickDivider(); assert.equal(await share(), 48, 'stacked double-click resets its share');
     assert.equal((await snapshot()).reply.draft.body, body);
     assert.equal((await snapshot()).events.filter(event => event.type === 'send').length, 0);
   });
 
-  await check('layout switches and both native drags preserve the actual field selection and source anchor', async () => {
+  await check('layout switches and the wide drag preserve the actual field selection and source anchor', async () => {
     const anchoring = await evaluate('getComputedStyle(document.querySelector("#source-body")).overflowAnchor');
     observations.push({ label: 'computed source anchoring', overflowAnchor: anchoring });
     assert.equal(anchoring, 'none', 'explicit source-place restoration owns layout changes');
@@ -339,20 +340,19 @@ try {
     await switchLayout(); await preserved('switch to wide');
     await dragDivider(-70, 0); await preserved('wide drag');
     await switchLayout(); await preserved('switch to stacked');
-    await dragDivider(0, -60); await preserved('stacked drag');
   });
 
   // The Reader and reply box, finished (--finished): what the page shows and
   // what real presses and keys do. Each case is broken below by a mutant.
-  await check('finished heading is the topic name and goes back to it; no Reply row; the hint says what Shift-click and Return do', async () => {
+  await check('finished heading is the topic name and goes back to it; no Reply row; the quote pill says what Shift-click and Return do', async () => {
     const page = await evaluate(`(()=>{const h=document.querySelector('#reader-title'),back=document.querySelector('#reader-parent');
       return {heading:h.textContent,button:h.querySelector('button')?.textContent??null,origin:document.querySelector('#reader-origin').textContent,
-        back:back.textContent,backName:back.getAttribute('aria-label'),hint:document.querySelector('.source-actions .muted').textContent,
+        back:back.textContent,backName:back.getAttribute('aria-label'),hint:document.querySelector('#quote-selection').title,
         placeholder:document.querySelector('#writing-body').placeholder,
         writingWords:[...document.querySelectorAll('.writing-pane h3,.writing-pane .writing-heading')].map(e=>e.textContent)}})()`);
     observations.push({ label: 'page', ...page });
     assert.deepEqual(page, { heading: 'Fixture topic', button: 'Fixture topic', origin: 'Fixture writer', back: '←', backName: 'Back to the topic',
-      hint: 'Shift-click extends the lit passage · Return inserts it as a quote', placeholder: 'Write a reply…', writingWords: [] },
+      hint: 'Shift-click extends the lit passage · Return inserts it as a quote', placeholder: 'Reply…', writingWords: [] },
     'the topic\'s name heads the message, with no "Message" or "Topic" words and no Reply row');
     await point('#reader-title button');
     await until(() => evaluate('!document.querySelector("#reader").open'), 'a press on the heading closes the Reader');
@@ -379,23 +379,28 @@ try {
     assert.deepEqual([tabbed.active, tabbed.ring], ['source-body', 'solid'], 'a keyboard user who Tabs onto the message sees the ring');
   });
 
-  await check('finished Add note sits before Add image and looks like it; Done keeps the Reader open; a note shows in yellow, light and dark', async () => {
+  await check('finished + holds Add note after Add image, looking like it; Done keeps the Reader open; a note shows in yellow, light and dark', async () => {
     const look = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),c=getComputedStyle(e),b=e.getBoundingClientRect();
       return {text:e.textContent,x:b.x,right:b.right,y:Math.round(b.y),height:Math.round(b.height),font:c.fontSize+' '+c.fontWeight+' '+c.fontFamily,
         padding:c.padding,border:c.borderTopWidth+' '+c.borderTopStyle,radius:c.borderRadius,background:c.backgroundColor,borderColor:c.borderTopColor}})()`);
+    const plusOpen = async () => { if (await evaluate('document.querySelector("#plus-panel").hidden')) await point('#plus-button'); await until(() => evaluate('!document.querySelector("#plus-panel").hidden'), 'the + panel'); };
     // The Mac's own scheme can be either; each look says which it measures.
     const scheme = value => send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
     await scheme('light');
+    await plusOpen();
     const plain = await look('#toggle-note'), image = await look('#add-image');
     observations.push({ label: 'no note', plain, image });
     assert.equal(plain.text, 'Add note');
-    assert.ok(plain.right <= image.x && image.x - plain.right < 16, 'Add note sits just before Add image');
+    assert.ok(image.right <= plain.x && plain.x - image.right < 16 && plain.y === image.y, 'Add note sits just after Add image');
     for (const property of ['y', 'height', 'font', 'padding', 'border', 'radius', 'background', 'borderColor']) assert.equal(plain[property], image[property], `Add note has Add image's ${property}`);
-    await point('#toggle-note'); await send('Input.insertText', { text: 'Ask about the deploy' });
+    await point('#toggle-note');
+    await until(() => evaluate('document.querySelector("#plus-panel").hidden && document.activeElement.id === "writing-body"'), 'the note tile puts + away, the writing focused');
+    await send('Input.insertText', { text: 'Ask about the deploy' });
     assert.equal(await evaluate("document.querySelector('#send-reply').textContent"), 'Done');
     await point('#send-reply');
     await until(() => evaluate("document.querySelector('#toggle-note').textContent === 'Show note'"), 'Done goes back to the reply');
     assert.equal(await evaluate('document.querySelector("#reader").open'), true, 'Done keeps the Reader open');
+    await plusOpen();
     const light = await look('#toggle-note');
     await scheme('dark');
     const dark = await look('#toggle-note'), darkImage = await look('#add-image');
@@ -409,6 +414,7 @@ try {
     assert.equal(await evaluate("document.querySelector('#writing-body').value"), '', 'the note is emptied');
     await point('#send-reply');
     await until(() => evaluate("document.querySelector('#toggle-note').textContent === 'Add note'"), 'an emptied note brings back Add note');
+    await plusOpen();
     assert.equal((await look('#toggle-note')).background, image.background, 'and its plain look');
     assert.equal((await snapshot()).events.filter(event => event.type === 'close').length, 0, 'nothing closed the Reader');
     await send('Emulation.setEmulatedMedia', { features: [] });
@@ -444,7 +450,7 @@ try {
     let opened = 0;
     const measure = surface => evaluate(`(()=>{const at=s=>{const b=document.querySelector(s).getBoundingClientRect();return [b.x,b.y,b.width,b.height].map(n=>Math.round(n*2)/2)};
       const lines=e=>{const r=document.createRange();r.selectNodeContents(e);return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size};
-      const ids=${JSON.stringify(surface)}==='reader'?['#writing-body','#send-reply','#add-image','#toggle-note','#reader .writing-footer']:['#inline-writing-body','#inline-send','#inline-add-image','#inline-composer .writing-footer'];
+      const ids=${JSON.stringify(surface)}==='reader'?['#writing-body','#send-reply','#plus-button','#who-chip','#reader .compose-head']:['#inline-writing-body','#inline-send','#inline-plus-button','#inline-who-chip','#inline-composer .compose-head'];
       const status=document.querySelector(${JSON.stringify(surface)}==='reader'?'#save-state':'#inline-save-state'),hint=document.querySelector(${JSON.stringify(surface)}==='reader'?'#writing-hint':'#inline-writing-hint');
       return {boxes:ids.map(at),footer:at(ids.at(-1))[2],status:at('#'+status.id),statusLines:lines(status),whole:status.scrollWidth<=status.clientWidth,hintLines:lines(hint)}})()`);
     const say = (status, text) => evaluate(`document.querySelector(${JSON.stringify(status)}).textContent = ${JSON.stringify(text)}`);
@@ -473,6 +479,8 @@ try {
               assert.equal(await share(), view.endsWith('narrowest') ? 20 : 80, `${view}: the divider is at its end`);
             }
           }
+          // The status shows in the head row while writing (docs/reader.md).
+          await point(surface === 'reader' ? '#writing-body' : '#inline-writing-body');
           await until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled layout');
           const label = `${width}px ${view}`, status = surface === 'reader' ? '#save-state' : '#inline-save-state';
           const shown = [];
@@ -482,12 +490,14 @@ try {
           for (const item of shown) assert.deepEqual(item.boxes, first.boxes, `${label}: "${item.text}" moves nothing: the writing and the buttons stay still`);
           for (const item of shown) assert.equal(item.statusLines, 1, `${label}: "${item.text}" takes one line`);
           if (first.footer < roomy) continue;
-          assert.equal(first.whole, true, `${label}: "Saved to Theseus" reads whole beside the buttons`);
+          assert.equal(first.whole, true, `${label}: "Saved to Theseus" reads whole beside the who chip`);
           assert.ok(first.hintLines <= 2, `${label}: the hint takes at most two lines`);
           if (width !== 1440 || view !== 'stacked') continue;
           // A tap on a status too long for its line shows all of it, in place;
           // a tap back in the writing returns it to its line.
-          await say(status, long);
+          // The head row gives the status the width the who chip leaves, so the
+          // longest file name stands in for a status too long for it.
+          await say(status, words[6]);
           assert.equal((await measure(surface)).whole, false, `${label}: the long status ends in an ellipsis`);
           await point(status);
           const tapped = await measure(surface);
@@ -512,9 +522,13 @@ try {
         // Falling through to Send: an empty draft is not sent (Reader.send
         // refuses it), so what fails is that the Reader stays open.
         to: "if (false) return 'return-gallery';", expected: /empty Shift-Cmd-Return returns to the gallery/ },
-      { name: 'divider-ignores-real-pointer-movement', file: 'web/reader.mjs', index: 4,
-        from: 'this.layout.setShare(drag.share + delta / drag.extent, drag.shape);',
-        to: 'this.layout.setShare(drag.share, drag.shape);', expected: /native drag expands writing/ },
+      { name: 'divider-ignores-real-pointer-movement', file: 'web/reader.mjs', index: 6,
+        from: "this.layout.setShare(drag.share + delta / drag.extent, 'wide');",
+        to: "this.layout.setShare(drag.share, 'wide');", expected: /wide native drag expands writing/ },
+      // The stacked Reader as it was: a share of the height for the reply, whatever it holds.
+      { name: 'stacked-reply-keeps-a-share', file: 'web/aim.css', index: 4,
+        from: 'grid-template-rows:auto minmax(0,1fr) auto;height:100%', to: 'grid-template-rows:auto minmax(0,52fr) minmax(min-content,48fr);height:100%',
+        expected: /reading, the reply is its one line/ },
       // The quote as the preview had it when the cursor did not show: the
       // message's selection let go last, after the field had focus and its
       // caret, which clears the caret it was drawing.
@@ -528,40 +542,41 @@ try {
         from: '#source-body:focus-visible:not([data-tabbed]){outline:none}', to: '', expected: /no ring when the Reader puts focus on it/ },
       { name: 'tab-not-told-apart', file: 'web/reader.mjs', index: 9,
         from: "if (event.key === 'Tab') this.tabbing = true;", to: 'void event;', expected: /Tabs onto the message sees the ring/ },
-      { name: 'add-note-unlike-add-image', file: 'web/aim.css', index: 10,
-        from: '#toggle-note,#add-image,#choose-image,#cancel-image{', to: '#add-image,#choose-image,#cancel-image{', expected: /Add note has Add image's/ },
+      { name: 'add-note-unlike-add-image', file: 'web/index.html', index: 10,
+        from: '<button id="toggle-note" type="button" class="tile">', to: '<button id="toggle-note" type="button">', expected: /Add note has Add image's/ },
       { name: 'done-closes-the-reader', file: 'web/reader.mjs', index: 10,
         from: "if (saved) { this.notice(''); this.switchMode('reply'); }", to: "if (saved) { this.notice(''); this.finishClose(); }", expected: /Done goes back to the reply/ },
       { name: 'no-yellow-for-a-note', file: 'web/aim.css', index: 10,
         from: '#toggle-note[data-has-note]{background:var(--note);', to: '#toggle-note[data-has-note]{', expected: /a soft yellow in light/ },
       { name: 'arrows-for-a-page-oldest-on-top', file: 'web/reader.mjs', index: 11,
         from: 'const NEWEST_ON_TOP = true;', to: 'const NEWEST_ON_TOP = false;', expected: /up is the newer message, and comes first/ },
-      // The status's room as the branch first had it: only on a phone, so a
-      // narrow Wide layout squeezed "Saved to Theseus" to a word or two.
-      { name: 'status-room-only-on-a-phone', file: 'web/aim.css', index: 12,
-        from: '@container writing-footer (max-width:34rem){#reader', to: '@media(max-width:760px){#reader',
-        expected: /\d+px wide[^:]*: "Saved to Theseus" reads whole/ },
+      // The who chip let take the head row whole, so "Saved to Theseus" is squeezed to a word or two.
+      { name: 'who-chip-takes-the-status-room', file: 'web/aim.css', index: 12,
+        from: '.compose-head>.note-chip{flex:0 1 auto;min-width:min(35%,9rem);max-width:calc(100% - 8rem)}', to: '.compose-head>.note-chip{flex:0 1 auto;min-width:min(35%,9rem);max-width:100%}',
+        expected: /: "Saved to Theseus" reads whole/ },
       // The status's room as the last round had it: as tall as its words, so a
       // long file name or the cleanup error grows the footer.
       { name: 'status-as-tall-as-its-words', file: 'web/aim.css', index: 12,
         from: '.save-status>span{display:block;min-width:0;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
         to: '.save-status>span{display:block;min-width:0;font-size:.78rem;color:var(--muted)}',
-        expected: /"Finish or remove the image Screenshot 2026-11-07 at 10\.32\.15 AM\.png before sending\." moves nothing/ },
+        expected: /\.png before sending\." moves nothing/ },
       { name: 'tap-shows-nothing-more', file: 'web/aim.css', index: 12,
         from: '.save-status>span:focus{white-space:normal;overflow-wrap:anywhere;outline:none}', to: '',
         expected: /a tap shows all its words/ },
-      { name: 'composer-status-squeezed', file: 'web/aim.css', index: 12,
-        from: '@container writing-footer (max-width:28rem){#inline-composer .writing-footer>div{order:-1;flex:1 0 100%}#inline-composer .writing-footer>button:last-child{margin-left:auto}}', to: '',
-        expected: /px composer: "Saved to Theseus" reads whole/ },
+      // The status's room following its words, so a longer status takes room
+      // from the who chip and moves it.
+      { name: 'status-room-follows-its-words', file: 'web/aim.css', index: 12,
+        from: '.compose-head>.save-status{flex:1 1 0;', to: '.compose-head>.save-status{flex:1 1 auto;',
+        expected: /moves nothing: the writing and the buttons stay still/ },
     ] : [
       { name: 'nonempty-reply-misread-as-empty', file: 'web/reader.mjs', index: 5,
-        from: 'writingEmpty: !reply.body.trim() && !reply.attachments.length', to: 'writingEmpty: true', expected: /nonempty Shift-Cmd-Return sends exactly once/ },
+        from: 'writingEmpty: !written(reply)', to: 'writingEmpty: true', expected: /nonempty Shift-Cmd-Return sends exactly once/ },
       { name: 'wide-divider-sign-reversed', file: 'web/reader.mjs', index: 6,
         from: 'drag.x - event.clientX', to: 'event.clientX - drag.x', expected: /wide native drag expands writing/ },
       { name: 'keyboard-large-step-ignored', file: 'web/reader.mjs', index: 6,
         from: 'direction * (event.shiftKey ? .1 : .02)', to: 'direction * .02', expected: /wide Shift arrow changes share ten points/ },
       { name: 'double-click-keeps-custom-share', file: 'web/reader.mjs', index: 6,
-        from: 'this.layout.resetShare(this.layoutShape);', to: 'this.layout.share(this.layoutShape);', expected: /wide double-click resets its share/ },
+        from: "this.layout.resetShare('wide');", to: "this.layout.share('wide');", expected: /wide double-click resets its share/ },
       { name: 'layout-loses-field-selection', file: 'web/reader.mjs', index: 7,
         from: 'this.restoreVisiblePlace(place);', to: 'this.restoreVisiblePlace(place); this.field.setSelectionRange(0, 0);', expected: /field selection is preserved/ },
       { name: 'layout-does-not-restore-reading-anchor', file: 'web/reader.mjs', index: 7,

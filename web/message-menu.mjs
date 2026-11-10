@@ -239,7 +239,9 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 // anchor: a ⋯ button, or the card a right-click landed on; at: where the
 // pointer was for a right-click, else the menu sits under the anchor. items:
 // [{ label, act }] in order; act may answer a promise.
-export function openMessageMenu({ anchor, at = null, items, label = 'Message', doc = globalThis.document, win = globalThis }) {
+// sheet: on a phone (a narrow window) the menu opens as a sheet from the
+// bottom of the window, its items full width, rather than under its button.
+export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, doc = globalThis.document, win = globalThis }) {
   if (open?.anchor === anchor && !at) { open.close(true); return null; }
   open?.close(false);
   if (!items.length) return null;
@@ -284,7 +286,13 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', d
   anchor.setAttribute?.('aria-expanded', 'true');
   // Inside the Reader's dialog it belongs to the dialog's layer; elsewhere, to the page.
   (anchor.closest?.('dialog[open]') ?? doc.body).append(root);
-  const box = anchor.getBoundingClientRect(), width = root.offsetWidth || 0, height = root.offsetHeight || 0;
+  const box = anchor.getBoundingClientRect();
+  if (sheet && win.matchMedia?.('(max-width: 760px)').matches) {
+    root.classList.add('menu-sheet');
+    buttons[0].focus({ preventScroll: true });
+    return menu;
+  }
+  const width = root.offsetWidth || 0, height = root.offsetHeight || 0;
   const W = win.innerWidth ?? Infinity, H = win.innerHeight ?? Infinity;
   // At the pointer for a right-click; else under the ⋯, its right edge on the ⋯'s, or above it with no room below.
   const x = at ? at.x : box.right - width, below = at ? at.y : box.bottom + 4, above = (at ? at.y : box.top - 4) - height;

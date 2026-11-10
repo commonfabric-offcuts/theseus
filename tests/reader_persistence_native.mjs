@@ -3,6 +3,7 @@
 // product debug endpoints, or other member's identity. Cases explicitly label
 // injected payload boundaries (such as paste); those do not prove OS ingestion.
 import assert from 'node:assert/strict';
+import { reachWith } from './compose-reach.mjs';
 import { imageInstrumentation, imageChecks } from './reader_images_native.mjs';
 import { freshnessInstrumentation, freshnessChecks, observeUploadProof } from './reader_freshness_native.mjs';
 import { liveChecks } from './reader_live_native.mjs';
@@ -198,10 +199,12 @@ try {
       last = now; return !now || same;
     }, `${selector} holds its place`); };
     const point = async (selector, kind = 'click', { covered = false } = {}) => {
+      if (kind === 'click' && !covered && await reach(selector)) return;
       await still(selector);
-      const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
+      const bounds = await box(selector);
+      if (!(bounds && bounds.width > 0 && bounds.height > 0)) assert.fail(`visible target ${selector}: ${JSON.stringify(bounds)}, ${await evaluate(`JSON.stringify({ messages: document.querySelectorAll('#messages [data-id]').length, ids: [...document.querySelectorAll('#messages [data-id]')].slice(0, 4).map(e => e.dataset.id), status: document.querySelector('#app-status')?.textContent, ready: document.body.dataset.ready })`)}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);
-      assert.ok(x >= 0 && y >= 0 && x < bounds.viewportWidth && y < bounds.viewportHeight, `target ${selector} is inside the viewport before a native pointer action`);
+      if (!(x >= 0 && y >= 0 && x < bounds.viewportWidth && y < bounds.viewportHeight)) assert.fail(`target ${selector} is inside the viewport before a native pointer action: ${JSON.stringify(bounds)}, ${await evaluate('JSON.stringify({ scrollY, scrollHeight: document.documentElement.scrollHeight })')}`);
       const hit = await evaluate(`(target => { const hit = document.elementFromPoint(${x}, ${y}); return target?.contains(hit) ? '' : hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') + (typeof hit.className === 'string' && hit.className ? '.' + hit.className.trim().split(/\\s+/).join('.') : '') + (hit.closest('dialog[open]') ? ' in ' + (hit.closest('dialog[open]').id ? '#' + hit.closest('dialog[open]').id : 'an open dialog') : '') : 'nothing'; })(document.querySelector(${JSON.stringify(selector)}))`);
       if (covered) assert.notEqual(hit, '', `${selector} was meant to be covered at the point pressed`);
       else assert.equal(hit, '', `${selector} is covered by ${hit} where it would be pressed`);
@@ -211,11 +214,15 @@ try {
         await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
       }
     };
+    // A control the composer or the ⋯ keeps out of sight is reached first, as a person does (compose-reach.mjs).
+    const reach = reachWith({ evaluate, point: selector => point(selector), until });
     const key = async (name, modifiers = 0) => {
-      const code = { Enter: 13, Escape: 27, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 }[name] ?? name.toUpperCase().charCodeAt(0);
+      const code = { Enter: 13, Escape: 27, Tab: 9, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 }[name] ?? name.toUpperCase().charCodeAt(0);
       const data = { key: name, code: name.length === 1 ? `Key${name.toUpperCase()}` : name, windowsVirtualKeyCode: code, modifiers };
+      // A key that edits names the editing command the browser runs for it, as a real key press does.
       await send('Input.dispatchKeyEvent', { type: name === 'Enter' && !modifiers ? 'keyDown' : 'rawKeyDown', ...data,
         ...(modifiers === 4 && ['a','z'].includes(name) ? { commands: [name === 'a' ? 'selectAll' : 'undo'] } : {}),
+        ...(name === 'Backspace' && !modifiers ? { commands: ['deleteBackward'] } : {}),
         ...(name === 'Enter' && !modifiers ? { text: '\r', unmodifiedText: '\r' } : {}) });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
     };

@@ -158,8 +158,9 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(() => quiet(p, `document.querySelectorAll('#inline-composer .answerer-chips button').length===2 && document.querySelectorAll('#messages [data-seq]').length>0`),
       'the page knows who answers and shows its messages');
     await p.evaluate(`document.querySelector('#inline-composer').scrollIntoView({block:'center'})`);
-    await p.point('#inline-writing-body');
-    const chips = () => quiet(p, `(h=>h&&{label:h.querySelector(':scope > span.muted').textContent,
+    // The names are in the who panel, which the who chip opens (docs/reader.md).
+    await p.point('#inline-writing-body'); await p.point('#inline-who-chip');
+    const chips = () => quiet(p, `(h=>h&&{label:h.closest('.who-row').querySelector(':scope > .who-label').textContent,
       chips:[...h.querySelectorAll('.answerer-chips button')].filter(b=>b.getClientRects().length).map(b=>[b.dataset.answerer,b.getAttribute('aria-pressed')]),
       named:[...h.querySelectorAll('.chips .chip')].filter(c=>c.getClientRects().length).map(c=>c.dataset.name)})(document.querySelector('#inline-composer .audience'))`);
     const first = await until(async () => { const c = await chips(); return c?.chips.length === 2 && c; }, 'the team as chips');
@@ -433,7 +434,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     };
     const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row button[data-intent][aria-pressed=true]')].map(c=>c.dataset.intent),
       send:document.querySelector('#send-reply .send-word').textContent,body:document.querySelector('#writing-body').value,
-      who:document.querySelector('#intent-row .audience-line strong')?.textContent??null,
+      who:document.querySelector('#who-sentence .audience-line strong')?.textContent??null,
       names:[...document.querySelectorAll('#recipient-chips [data-name]')].filter(c=>c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true').map(c=>c.dataset.name),
       notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent,
       to:[...document.querySelectorAll('#reply-destination button')].map(b=>b.getAttribute('aria-pressed'))})`);
@@ -478,9 +479,10 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await replace(p, status);
     await until(async () => (await draft(conversation.topic_id)).body === status, 'saved in the conversation');
     const there = await reply();
-    assert.deepEqual([there.checked, there.send, there.who], [['tell'], 'Send', 'Everyone in this topic'], 'the conversation shows a Tell');
+    // The sentence says where the reply goes: the conversation (docs/reader.md, "Where it goes").
+    assert.deepEqual([there.checked, there.send, there.who], [['tell'], 'Tell', 'Everyone in the conversation'], 'the conversation shows a Tell');
     const back = await tap(0, status, 'This topic is chosen, with the writing');
-    assert.deepEqual([back.checked, back.send, back.who, back.names, back.notice], [['tell'], 'Send', 'Everyone in this topic', [other], null],
+    assert.deepEqual([back.checked, back.send, back.who, back.names, back.notice], [['tell'], 'Tell', 'Everyone in this topic', [other], null],
       'the moved writing keeps the Tell the Reader showed');
     const told = await sentAs();
     assert.deepEqual(told, [place, false, null, 'tell', status], 'sent on the record as a Tell, as shown');

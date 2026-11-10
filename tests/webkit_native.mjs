@@ -12,6 +12,7 @@
 // Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading [case filter]
 // playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
 import assert from 'node:assert/strict';
+import { reachWith } from './compose-reach.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
@@ -196,6 +197,7 @@ try {
     }, `${selector} holds its place`); };
     // As in the Chrome harness: a pointer action lands on its target or fails by naming what covers it.
     const point = async (selector, kind = 'click', { covered = false } = {}) => {
+      if (kind === 'click' && !covered && await reach(selector)) return;
       await still(selector);
       const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);
@@ -206,6 +208,8 @@ try {
       await pw.mouse.move(x, y);
       if (kind === 'click') { await pw.mouse.down(); await pw.mouse.up(); }
     };
+    // A control the composer or the ⋯ keeps out of sight is reached first, as a person does (compose-reach.mjs).
+    const reach = reachWith({ evaluate, point: selector => point(selector), until });
     const key = async (name, modifiers = 0) => {
       const held = [[1, 'Alt'], [2, 'Control'], [4, 'Meta'], [8, 'Shift']].filter(([bit]) => modifiers & bit).map(([, word]) => word);
       // Safari's plain Tab reaches only fields unless "Press Tab to highlight each item" is on;

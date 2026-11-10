@@ -83,6 +83,36 @@ test('Whisper greys out unless exactly one agent is named, and Ask while nobody 
   assert.deepEqual(f.chosenBy.at(-1), 'tell', 'Whisper cannot be chosen for a person, so the arrow goes on to Tell');
 });
 
+test('the who chip says in words what Send does and who sees it, in the short form of the line the panel shows, and a whisper\'s chip is dashed', t => {
+  const f = painted(t);
+  const chip = f.document.createElement('button');
+  const words = (draft, names, options = {}) => { f.paint(draft, names, { chip, ...options }); return [chip.textContent, chip.classList.contains('whispering')]; };
+  assert.deepEqual(words({}, ['fable']), ['Whisper to fable · only you two', true]);
+  assert.deepEqual(words({ intent: 'tell' }, ['fable']), ['Tell fable · everyone here', false]);
+  assert.deepEqual(words({ intent: 'ask' }, ['fable', 'warp']), ['Ask fable and warp · everyone here', false]);
+  assert.deepEqual(words({}, []), ['Everyone here', false]);
+  // The short form follows the full sentence the panel shows: who sees it comes from audienceWords, never a second rule.
+  for (const [draft, names] of [[{}, ['fable']], [{ intent: 'tell' }, ['fable']], [{}, []]]) {
+    const [who] = audienceWords(choiceOf(draft, names, kindOf), names, EVERYONE);
+    assert.equal(words(draft, names)[0].endsWith('only you two'), who.startsWith('Only you and '), `${who} → ${chip.textContent}`);
+  }
+});
+
+test('writing that goes somewhere other than the topic being read says where, on the who chip and in the panel\'s sentence, and never names this topic\'s people as its readers', t => {
+  const f = painted(t);
+  const chip = f.document.createElement('button');
+  const words = (draft, names, place) => { f.paint(draft, names, { chip, place }); return [chip.textContent, f.line().querySelector('strong').text, f.line().text]; };
+  assert.deepEqual(words({ intent: 'tell' }, ['fable'], 'the conversation'),
+    ['Tell fable · in the conversation', 'Everyone in the conversation', 'Everyone in the conversation will see this. It goes to fable by name; nothing is owed back.']);
+  assert.deepEqual(words({ intent: 'ask' }, ['fable', 'warp'], 'the conversation'),
+    ['Ask fable and warp · in the conversation', 'Everyone in the conversation', 'Everyone in the conversation will see this, and it waits on fable and warp until each replies.']);
+  assert.deepEqual(words({}, [], 'the conversation'), ['Everyone in the conversation', 'Everyone in the conversation', 'Everyone in the conversation will see this. It goes to no one by name.']);
+  // A whisper is between the two of you wherever it is posted.
+  assert.deepEqual(words({}, ['fable'], 'the conversation').slice(0, 2), ['Whisper to fable · only you two', 'Only you and fable']);
+  // Read where it is written, the same writing is this topic's.
+  assert.deepEqual(words({ intent: 'tell' }, ['fable'], null).slice(0, 2), ['Tell fable · everyone here', 'Everyone in this topic']);
+});
+
 test('the line above Send says in words who will see it, for each choice, and a phone keeps who', t => {
   const f = painted(t);
   const words = () => [f.line().querySelector('strong').text, f.line().text, f.line().querySelector('.audience-more')?.text];
@@ -103,14 +133,16 @@ test('the line above Send says in words who will see it, for each choice, and a 
   assert.deepEqual(audienceWords({ choice: 'tell', switched: false }, [], []), ['Everyone in this topic', ' will see this.', ' It goes to no one by name.']);
 });
 
-test('Send says Whisper, Send or Ask, and only a whisper\'s writing box wears the dashed line, never italics', t => {
+test('Send names what it does, Whisper, Tell or Ask, Send when it goes to no one by name, and only a whisper\'s writing box wears the dashed line, never italics', t => {
   const f = painted(t);
   f.paint({}, ['fable']);
   assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Whisper', true]);
   f.paint({ intent: 'ask' }, ['fable']);
   assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Ask', false]);
   f.paint({ intent: 'tell' }, ['fable']);
-  assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Send', false]);
+  assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Tell', false]);
+  f.paint({}, []);
+  assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Send', false], 'to no one by name it is sent, not told');
   f.paint({}, ['fable']);
   clearChoice(f.row, f.field, f.send);
   assert.deepEqual([f.row.children.length, f.word.textContent, f.field.classList.contains('whispering')], [0, 'Send', false], 'a private note has no choice');
@@ -197,12 +229,16 @@ function reader(t, { source, offered = ['fable'], kinds = kindOf } = {}) {
   const r = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply }, mode: 'reply', presentation: {}, source, field: document.createElement('textarea'),
     sourceBody: document.createElement('div'), $: id => id === 'send-reply' ? send : document.byId(id), disarm() {},
+    // The composer bar, as far as the Reader asks it: whether Send waits on a
+    // name typed in To and not named (compose-bar.mjs holdSend, which says why
+    // and is checked in ui_compose_naming), and To repainted (settle).
+    compose: { typed: '', holdSend() { return Boolean(this.typed); }, settle() {} },
     callbacks: { admits: () => true, writes: () => true, edit() {}, reach: () => ({ reachable: true }), actor: () => 'tony',
       people: () => ({ kindOf: kinds, everyone: EVERYONE }), send: editor => { sent.push({ ...editor.draft }); return Promise.resolve(); } },
   });
   send.append(Object.assign(document.createElement('span'), { className: 'send-word', textContent: 'Send' }));
   const checked = () => document.byId('intent-row').querySelectorAll('button[data-intent]').find(chip => chip.getAttribute('aria-pressed') === 'true')?.dataset.intent;
-  return { r, reply, sent, checked, line: () => document.byId('intent-row').querySelector('.audience-line').text, document, send };
+  return { r, reply, sent, checked, line: () => document.byId('who-sentence').querySelector('.audience-line').text, document, send };
 }
 
 test('in the Reader a reply to one agent\'s message starts as a whisper, whether that message was a whisper, a Tell or an Ask', t => {
@@ -234,12 +270,25 @@ test('a Tell answering a whisper says the whisper stays private, and each reply 
   assert.deepEqual([f.sent[2].whisper, f.sent[2].intent], [false, 'ask']);
   // Adding a second agent to a whisper, then taking them away, in the Reader's own controls.
   f.r.choose('whisper');
-  f.document.byId('recipient-input').value = 'warp'; f.r.addRecipient();
+  f.r.addName('warp');
   assert.equal(f.checked(), 'tell');
   assert.match(f.line(), /^Everyone in this topic will see this\. A whisper goes to one agent\. Nothing you wrote is lost\./);
   const chip = f.document.byId('recipient-chips').children.find(node => node.dataset.name === 'warp');
   chip.querySelector('button').onclick();
   assert.equal(f.checked(), 'whisper', 'with warp gone it is a whisper again');
+});
+
+test('in the Reader, Send with a name typed in To and not named sends nothing; the whisper is still a whisper', async t => {
+  const f = reader(t, { source: { source_ref: { kind: 'message', id: 'm-w' }, body: 'Words', author: 'fable' } });
+  f.r.paintChoice();
+  f.reply.edit({ body: 'Just between us.' });
+  f.r.compose.typed = 'warp';
+  await f.r.send(false);
+  assert.deepEqual(f.sent, [], 'nothing is sent');
+  assert.deepEqual([f.r.names(f.reply), f.checked()], [['fable'], 'whisper'], 'warp is not named, and Send still whispers to fable');
+  f.r.compose.typed = '';
+  await f.r.send(false);
+  assert.deepEqual(f.sent.map(draft => [draft.addressees, draft.whisper]), [[['fable'], true]], 'with To cleared, it goes as the whisper it showed');
 });
 
 test('the Reader says a whisper is one, from the reader\'s side, and its words wear the dashed line', t => {

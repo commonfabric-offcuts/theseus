@@ -324,7 +324,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.evaluate('document.activeElement?.blur()');
         await p.key('?');
         await until(async () => (await guide())?.open === true, 'laptop: ? opens the guide');
-        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 10 }, 'laptop: the guide, every rule');
+        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 12 }, 'laptop: the guide, every rule');
         await shot(p, 'reading-guide-laptop');
         await p.key('Escape');
         await until(async () => (await guide())?.open === false, 'laptop: Escape closes it');
@@ -509,16 +509,48 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const ids = await seed(topic, [['theirs', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A message to thumb up in the Reader.' }],
         ['mine', { sender: 'person', addressees: ['aim-core'], body: 'My own message.' }]]);
       const p = await open('reading-reader-thumb-' + device, device, topic, ids.theirs);
-      const button = () => p.evaluate(`(()=>{const b=document.querySelector('#thumb-source');return b.hidden||!b.getClientRects().length?null:{text:b.textContent,pressed:b.getAttribute('aria-pressed'),beside:b.nextElementSibling?.id}})()`);
+      // 👍 as it shows, or null: its words, whether it is pressed, what follows it, and whether it is whole,
+      // under nothing at its middle and clear of Send's left edge when Send shows.
+      const button = () => p.evaluate(`(()=>{const b=document.querySelector('#thumb-source'),s=document.querySelector('#send-reply');if(b.hidden||!b.getClientRects().length)return null;
+        const r=b.getBoundingClientRect(),t=s.getClientRects().length?s.getBoundingClientRect():null;
+        return {text:b.textContent,pressed:b.getAttribute('aria-pressed'),beside:b.nextElementSibling?.id,clear:b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))&&(!t||r.right<=t.left)}})()`);
       await openReader(p, device, ids.theirs, 'A message to thumb up');
-      assert.deepEqual(await button(), { text: '👍', pressed: 'false', beside: 'send-reply' }, device + ': 👍 beside Send');
+      // Return on a laptop puts the cursor in the reply, which is then writing,
+      // with nothing written: 👍 is beside Send there too, not only on the quiet line.
+      const state = () => p.evaluate(`({composer:document.querySelector('#reader-composer').dataset.compose,focus:document.activeElement?.id,words:document.querySelector('#writing-body').value})`);
+      if (device === 'laptop') assert.deepEqual(await state(), { composer: 'writing', focus: 'writing-body', words: '' }, 'laptop: Return leaves the cursor in an empty reply');
+      assert.deepEqual(await button(), { text: '👍', pressed: 'false', beside: 'send-reply', clear: true }, device + ': 👍 beside Send');
       for (const on of [true, false]) {
         await press(p, device, '#thumb-source');
         await until(async () => await thumbsBy(ids.theirs, facts.actor) === (on ? 1 : 0), `${device}: Core holds the thumbs-up ${on ? 'on' : 'taken back'}`);
         await until(async () => (await button())?.pressed === String(on), `${device}: the Reader's 👍 shows it ${on ? 'on' : 'taken back'}`);
         assert.equal((await button()).text, on ? '👍 1' : '👍', device + ': and counts it');
       }
+      // In the reply, writing and still empty, 👍 stays beside Send; it goes once a word is
+      // typed, while Send can send it.
+      await into(p, device, '#writing-body');
+      await until(async () => (await state()).composer === 'writing', `${device}: the reply is writing`);
+      assert.deepEqual(await button(), { text: '👍', pressed: 'false', beside: 'send-reply', clear: true }, device + ': writing an empty reply, 👍 beside Send');
+      await p.send('Input.insertText', { text: 'Thanks' });
+      await until(async () => await button() === null, `${device}: 👍 goes once a word is typed`);
+      assert.equal(await p.evaluate(`(s=>s.disabled||s.getAttribute('aria-disabled')==='true')(document.querySelector('#send-reply'))`), false, device + ': with a word written Send can send it');
       if (device === 'phone') await shot(p, 'reading-reader-thumb-phone');
+      // Each letter taken back with Backspace, the reply is empty again, as before a word was typed:
+      // 👍 is back beside Send, the reply holds nothing, and that is what Theseus keeps.
+      const empty = () => p.evaluate(`(()=>{const c=document.querySelector('#reader-composer');return {composer:c.dataset.compose,words:document.querySelector('#writing-body').value,
+        writing:c.hasAttribute('data-has-writing'),draft:!document.querySelector('#draft-tag').hidden}})()`);
+      for (let n = 'Thanks'.length; n > 0; n--) await p.key('Backspace');
+      await until(async () => await valueOf(p, '#writing-body') === '', `${device}: Backspace takes every letter back`);
+      await until(async () => (await button()) !== null, `${device}: emptied, 👍 comes back`);
+      assert.deepEqual(await button(), { text: '👍', pressed: 'false', beside: 'send-reply', clear: true }, device + ': emptied, 👍 is beside Send again');
+      assert.deepEqual(await empty(), { composer: 'writing', words: '', writing: false, draft: false }, device + ': the emptied reply holds nothing');
+      await until(() => p.evaluate(`document.querySelector('#save-state').textContent === 'Saved to Theseus'`), `${device}: the emptied reply is saved`);
+      await closeReader(p, device);
+      // Opened again, and on a new page, the reply is still empty and 👍 still shows, with no Draft on the line.
+      const shown = { text: '👍', pressed: 'false', beside: 'send-reply', clear: true };
+      const unwritten = device === 'laptop' ? { composer: 'writing', words: '', writing: false, draft: false } : { composer: 'line', words: '', writing: false, draft: false };
+      await openReader(p, device, ids.theirs, 'A message to thumb up');
+      assert.deepEqual([await button(), await empty()], [shown, unwritten], device + ': opened again, the reply is empty and 👍 shows');
       await closeReader(p, device);
       // The person's own message offers no 👍.
       await openReader(p, device, ids.mine, 'My own message.');
@@ -526,6 +558,14 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await closeReader(p, device);
       assert.deepEqual(p.errors, []);
       await p.close();
+      const q = await open('reading-reader-thumb-again-' + device, device, topic, ids.theirs);
+      await openReader(q, device, ids.theirs, 'A message to thumb up');
+      assert.deepEqual(await q.evaluate(`(()=>{const b=document.querySelector('#thumb-source'),c=document.querySelector('#reader-composer');
+        return {thumb:!b.hidden&&b.getClientRects().length>0,composer:c.dataset.compose,writing:c.hasAttribute('data-has-writing'),draft:!document.querySelector('#draft-tag').hidden}})()`),
+        { thumb: true, composer: unwritten.composer, writing: false, draft: false }, device + ': on a new page, the reply is empty and 👍 shows');
+      await closeReader(q, device);
+      assert.deepEqual(q.errors, []);
+      await q.close();
     }
   });
 
@@ -632,10 +672,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.equal(await list('#inline-writing-body'), null, device + ' composer: the list closes');
       assert.equal(await valueOf(p, '#inline-writing-body'), 'Here it is: ', device + ' composer: the #img words come out of the writing');
       assert.equal(await p.evaluate(`document.activeElement?.id`), 'inline-writing-body', device + ' composer: the writing keeps the cursor');
-      // Its row shows the image small where the row is wide; a phone's narrow row shows none.
+      // The strip over the writing shows the image's thumbnail, on a phone as on a laptop (docs/reader.md).
       const thumb = () => p.evaluate(`(()=>{const t=document.querySelector('#inline-attachments .image-choice>img.image-thumb'),r=t?.getBoundingClientRect();return Boolean(t&&!t.hidden&&t.complete&&t.naturalWidth>0&&r.width>0&&r.height>0)})()`);
-      if (device === 'laptop') await until(thumb, 'laptop composer: the row shows the image\'s thumbnail');
-      else assert.equal(await thumb(), false, 'phone composer: the row shows no thumbnail');
+      await until(thumb, device + ' composer: the strip shows the image\'s thumbnail');
       if (device === 'laptop') {
         // The #img words came out as one edit Undo takes back; the image stays.
         await undoes(p, '#inline-writing-body', 'Here it is: #img', 'laptop composer: ⌘Z puts the #img words back');
@@ -669,15 +708,25 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const topic = 'reading-paste';
     const ids = await seed(topic, [['m', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A message to answer with an image.' }]]);
     const p = await open('reading-paste', 'laptop', topic, ids.m);
-    // The image button's words, and whether Choose file shows beside it: '' for the Reader's, 'inline-' for the composer's.
-    const button = at => p.evaluate(`(()=>{const b=document.getElementById('${at}add-image'),c=document.getElementById('${at}choose-image');return [b.textContent,!c.hidden&&c.getClientRects().length>0]})()`);
+    // The image button in the + panel, as it shows: its words, or null while it is not shown, and whether Choose
+    // file shows beside it: '' for the Reader's, 'inline-' for the composer's.
+    const shown = el => !el.hidden && el.getClientRects().length > 0;
+    const button = at => p.evaluate(`(()=>{const b=document.getElementById('${at}add-image'),c=document.getElementById('${at}choose-image'),shown=${shown};return [shown(b)?b.textContent:null,shown(c)]})()`);
     const settled = () => p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    // The image tiles are in the + panel: + opens it, as the person opens it, when it is shut.
+    const plus = async at => {
+      if (await p.evaluate(`!document.getElementById('${at}plus-panel').hidden`)) return;
+      await p.point(`#${at}plus-button`);
+      await until(() => p.evaluate(`(${shown})(document.getElementById('${at}plus-panel'))`), `${at || 'Reader '}+ opens its panel`);
+    };
     if (!grant) {
       // Safari's engine: nothing tells the page what the clipboard holds without a press, so the button stays Add image.
       await into(p, 'laptop', '#inline-writing-body');
+      await plus('inline-');
       await settled();
       assert.deepEqual(await button('inline-'), ['Add image', false], 'webkit composer: Add image');
       await openReader(p, 'laptop', ids.m, 'A message to answer');
+      await plus('');
       await settled();
       assert.deepEqual(await button(''), ['Add image', false], 'webkit Reader: Add image');
       await closeReader(p, 'laptop');
@@ -691,6 +740,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await p.send('Page.setInterceptFileChooserDialog', { enabled: true });
     await into(p, 'laptop', '#inline-writing-body');
+    await plus('inline-');
     await settled();
     assert.deepEqual(await button('inline-'), ['Add image', false], 'composer: an empty clipboard leaves Add image');
     // An image copied, as a person's copy puts it on the clipboard; the writing then takes the focus again.
@@ -701,13 +751,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       document.activeElement?.blur();return [allowed,held]}catch(error){return String(error)}})()`);
     assert.deepEqual(copied, ['granted', ['image/png']], 'the clipboard holds the image copied, and the page may read it');
     await into(p, 'laptop', '#inline-writing-body');
+    await plus('inline-');
     await until(async () => JSON.stringify(await button('inline-')) === JSON.stringify(['Paste image', true]), 'composer: the button says Paste image, with Choose file beside it');
     await shot(p, 'reading-paste-composer');
     const chooser = () => p.events.filter(event => event.method === 'Page.fileChooserOpened').length;
     const chosen = chooser();
     await p.point('#inline-choose-image');
     await until(async () => chooser() === chosen + 1, 'composer: Choose file opens the file picker');
+    // A tile puts the panel away; the picker's Cancel is in it, under +.
+    await plus('inline-');
     await p.point('#inline-cancel-image');
+    await plus('inline-');
     await until(async () => JSON.stringify(await button('inline-')) === JSON.stringify(['Paste image', true]), 'composer: the picker let go, Paste image is back');
     await p.point('#inline-add-image');
     await until(async () => (await imageRows(p, '#inline-attachments')).join() === 'pasted.png · Ready', 'composer: Paste image adds the clipboard\'s image, and Theseus holds it');
@@ -719,6 +773,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await until(async () => (await imageRows(p, '#inline-attachments')).join() === 'pasted.png · Ready,image.png · Ready', 'composer: ⌘V pastes the image into the writing as well, as Chrome names it');
     // The Reader's button reads the clipboard as its writing takes the focus.
     await openReader(p, 'laptop', ids.m, 'A message to answer');
+    await plus('');
     await until(async () => JSON.stringify(await button('')) === JSON.stringify(['Paste image', true]), 'Reader: the button says Paste image, with Choose file beside it');
     await p.point('#add-image');
     await until(async () => (await imageRows(p, '#writing-attachments')).join() === 'pasted.png · Ready', 'Reader: Paste image adds the clipboard\'s image, and Theseus holds it');

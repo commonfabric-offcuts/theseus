@@ -11,10 +11,11 @@ the pointer's way, the keys' and the phone's.
 - **The light.** The message under the pointer lights, as a passage lights in
   the Reader, and a bar sits over its top corner: 👍, ✅ and 🚫 when it asks you
   for a go-ahead, Reply, and ⋯, the message's menu (Copy Link, Mark read or
-  unread; docs/links.md), which a right-click on the message also opens. The
-  bar is only as wide as its buttons, and never covers the reply arrow beside
-  the card's time (docs/topic-reading.md): where it would, it sits above that
-  line, or below it at the window's top. ↑ and ↓
+  unread; docs/links.md; in the Reader also Start a topic from this and Add to
+  pipeline, as a sheet from the bottom on a phone), which a right-click on the
+  message also opens. The bar is only as wide as its buttons, and never covers
+  the reply arrow beside the card's time (docs/topic-reading.md): where it
+  would, it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through
   its bar's buttons, ⋯ last, then on from the message (Shift-Tab from the
   bar's first button comes back to it). A click on a lit message opens
@@ -33,6 +34,10 @@ the pointer's way, the keys' and the phone's.
   finger, and not the page. Where a finger scrolls, the excerpt is never taller
   than 60% of the window, so a drag outside the lit message still scrolls the
   page. (`web/card-scroll.mjs`)
+- **New message.** A quiet ✎ beside the topic's title opens the topic's
+  composer on its own, with no message above it and the cursor in the field;
+  Escape, ✕ or a press outside puts it back at the page's end with the writing
+  kept. (docs/reader.md)
 - **👍** means read and understood, never "do it"; pressing it again takes it
   back. The count on a message names who: on hover, or where nothing hovers (a
   phone), on the lit message, whose count then reads the names. A press on the
@@ -42,6 +47,18 @@ the pointer's way, the keys' and the phone's.
   bar, and the agent hears it as a reply (docs/thumbs.md).
 
 ## Writing
+
+- **The reply in the Reader** is one quiet line while you read (+, the field
+  saying whom it answers, 👍) and opens to the who chip, the field and Send when
+  you write, with 👍 beside Send until a word is typed, and again once it is deleted. The who chip and + open panels; Done, Escape or a press outside
+  closes them and the writing stays. On a phone, naming someone is two
+  steps: To shows who is named and + Someone, which opens the naming sheet
+  over the screen; Done, ← or Escape comes back with the writing as it was,
+  and names whoever was left typed in its field. A name typed and not
+  named stays in To with its reply, and Send waits on it.
+  A draft begun on one message is kept when the Reader moves on, and says
+  so. Every control is reached with Tab, and on a phone each is at least
+  44px. (docs/reader.md)
 
 - **Images.** Paste, Add image, Paste image when the browser can tell the
   clipboard holds one, and `#img` to pick one of the topic's recent images
@@ -96,8 +113,8 @@ page painted. Its checks, by rule:
 - Images: "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and
   takes the #img words out as one edit ⌘Z puts back; "reading Paste image: …"
-  reads the button, presses it, presses Choose file beside it and pastes with
-  ⌘V in Chrome, and in Safari's engine, which tells a page nothing of the
+  opens + and reads the button there, presses it, presses Choose file beside it
+  and pastes with ⌘V in Chrome, and in Safari's engine, which tells a page nothing of the
   clipboard, reads Add image. A paste into the Reader and a row's thumbnail:
   `tests/reader_images_native.mjs`.
 - ⌥↑ and ⌥↓: "reading ⌥↑ and ⌥↓ move the line …", in the composer and the

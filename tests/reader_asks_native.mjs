@@ -59,6 +59,9 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
     await replace(p, 'Holding the name down.');
     const chip = `#recipient-chips .choice-chip[data-name=${JSON.stringify(facts.agent)}]`;
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)})?.getAttribute('aria-pressed') === 'false'`), 'the agent is a name to tap');
+    // The names are in the who panel, opened from the who chip (docs/reader.md).
+    if (await p.evaluate('document.querySelector("#who-panel").hidden')) await p.point('#who-chip');
+    await until(() => p.evaluate('!document.querySelector("#who-panel").hidden'), 'the who panel is open');
     await p.evaluate(`document.querySelector(${JSON.stringify(chip)}).scrollIntoView({block:'center'})`);
     const b = await p.box(chip), x = b.x + b.width / 2, y = b.y + b.height / 2;
     assert.equal(await p.evaluate(`document.elementFromPoint(${x}, ${y}) === document.querySelector(${JSON.stringify(chip)})`), true, 'the agent\'s name is what is pressed');

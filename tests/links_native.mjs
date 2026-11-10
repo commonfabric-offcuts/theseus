@@ -570,11 +570,12 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await p.point(about);
     await readerShows(p, menuWords); await settled(p);
     await clipboard(p);
-    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Mark unread', 'Wide layout']); await choose(p, 'Copy Link');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Mark unread', 'Start a topic from this', 'Wide layout']); await choose(p, 'Copy Link');
     assert.deepEqual(await p.evaluate('window.copied'), [`${facts.origin}/?topic=links-m&message=${menuId}`], 'the link opens the message in its own topic');
     assert.deepEqual(p.errors, []);
   });
 
+  // Start a topic from this is the message's own act, in the ⋯ with the rest (docs/reader.md).
   await check('header the Reader\'s ⋯ holds Copy Link, the mark and Wide or Stacked layout, and at a phone\'s width no layout', async () => {
     const p = await page('links-reader-menu', null, true, { url: facts.origin + '/?topic=links-m' });
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard + ' .message-preview')}))`), 'the card is drawn');
@@ -583,14 +584,14 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await clipboard(p);
     assert.equal(await p.evaluate(`document.querySelector('#reader-layout')`), null, 'no Wide/Stacked button: the ⋯ holds it');
     await p.point('#reader-menu');
-    await menuOpen(p, ['Copy Link', 'Mark unread', 'Wide layout']);
+    await menuOpen(p, ['Copy Link', 'Mark unread', 'Start a topic from this', 'Wide layout']);
     assert.equal(await p.evaluate(`document.querySelector('.message-menu-list').parentElement.id`), 'reader', 'inside the Reader, above the page');
     await shot(p, 'links-reader-menu');
     await choose(p, 'Wide layout');
     await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'wide'`), 'the Reader is wide');
-    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Mark unread', 'Stacked layout']); await choose(p, 'Stacked layout');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Mark unread', 'Start a topic from this', 'Stacked layout']); await choose(p, 'Stacked layout');
     await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'stacked'`), 'the Reader is stacked');
-    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Mark unread', 'Wide layout']); await choose(p, 'Copy Link');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Mark unread', 'Start a topic from this', 'Wide layout']); await choose(p, 'Copy Link');
     assert.deepEqual(await p.evaluate('window.copied'), [`${facts.origin}/?topic=links-m&message=${menuId}`]);
     assert.equal(await p.evaluate(`document.querySelector('#reader-menu').textContent`), 'Link copied');
     await p.key('Shift');
@@ -599,9 +600,10 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await until(() => p.evaluate(`matchMedia('(max-width: 760px)').matches`), 'a phone\'s width');
     await settled(p);
     await p.point('#reader-menu');
-    await menuOpen(p, ['Copy Link', 'Mark unread']);
+    await menuOpen(p, ['Copy Link', 'Mark unread', 'Start a topic from this']);
     const list = await p.box('.message-menu-list');
-    assert.ok(list.x >= 8 && list.x + list.width <= 390 - 8, 'inside the screen: ' + JSON.stringify(list));
+    // On a phone the ⋯ is a sheet across the bottom of the screen (docs/reader.md).
+    assert.ok(list.x >= 0 && list.x + list.width <= 390 && Math.abs(list.y + list.height - 844) <= 1, 'a sheet across the bottom of the screen: ' + JSON.stringify(list));
     await shot(p, 'links-reader-menu-phone');
     assert.deepEqual(p.errors, []);
   });
@@ -644,6 +646,71 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
       await until(() => p.evaluate(`location.search === '?conversation=w1' && document.body.classList.contains('conversation-page') && document.querySelector('#topic-title').textContent === 'Conversation'`), 'the conversation opened here');
       if (reader) await readerShows(p, 'Where does the launch stand?');
       else { await frame(p); assert.equal(await open(p, 'reader'), false); }
+      assert.deepEqual(p.errors, []);
+    }
+  });
+
+  await check('header formatted words draw in the Reader as on their card, on a laptop and a phone, and a link in a paragraph, a table cell, a quote or a list item opens from the Reader as from plain words', async () => {
+    await topics({ id: 'links-fr', title: 'Formatted in the Reader' }, { id: 'links-fr-b', title: 'Where the list points' });
+    const target = await post('links-fr-target', 'links-fr', 'The message a quote links to.');
+    const body = '## A heading\n\nA paragraph with **bold**, *italics*, ~~struck~~, `code` and a [named link](' + ELSEWHERE + '). A second sentence.\n\n' +
+      `- an item linking ${facts.origin}/?topic=links-fr-b\n- [x] a task done\n  1. a nested number\n\n` +
+      `> a quote linking ${facts.origin}/?topic=links-fr&message=${target}\n\n` +
+      '| col | where |\n|:--|--:|\n| one | ' + ELSEWHERE + ' |\n\n```js\nconst x = 1;\n```';
+    const id = await post('links-fr-message', 'links-fr', body);
+    const card = `#messages [data-id="${id}"] .message-preview`;
+    // What a message's formatted words draw, by kind, each with the look that tells it apart, and every link with where it goes.
+    // (A cell's alignment and a code block's spacing are its own; around them a card and the Reader differ, as a button and an article do.)
+    const shape = root => p => p.evaluate(`(r=>{const look=e=>{const s=getComputedStyle(e);return [s.fontWeight,s.fontStyle,s.fontFamily,s.textDecorationLine,s.display,
+        e.matches('th,td')?s.textAlign:'',e.matches('.md-pre')?s.whiteSpace:''].join(' ')};
+      const kinds=['.md-heading','.md-item-words','.md-marker','.md-quote','.md-pre','.md-code','.md-table th','.md-table td','strong','em','s','a.words-link'];
+      return {words:r.textContent.replace(/\\s+/g,''),kinds:kinds.map(k=>[k,...[...r.querySelectorAll(k)].map(e=>[e.textContent,look(e)])]),
+        links:[...r.querySelectorAll('a.words-link')].map(a=>[a.textContent,a.getAttribute('href'),a.target,a.title])}})(document.querySelector(${JSON.stringify(root)}))`);
+    const views = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
+    // A press on a link's first line: a link that wraps covers other words inside its box.
+    const pressLink = async (p, selector) => {
+      const [x, y, hit] = await p.evaluate(`(a=>{a.scrollIntoView({block:'center'});const r=a.getClientRects()[0],x=r.x+Math.min(6,r.width/2),y=r.y+r.height/2;
+        return [x,y,a.contains(document.elementFromPoint(x,y))]})(document.querySelector(${JSON.stringify(selector)}))`);
+      assert.equal(hit, true, selector + ' is under the press');
+      await pressAt(p, x, y);
+    };
+    for (const [device, metrics] of Object.entries(views)) {
+      const p = await page('links-formatted-' + device, null, true, { url: facts.origin + '/?topic=links-fr', beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', metrics) });
+      await until(() => p.evaluate(`(c=>Boolean(c?.querySelector('.md-table-wrap'))&&c.querySelectorAll('a.words-link').length===4&&[...c.querySelectorAll('a.words-link')].every(a=>a.textContent!==a.title))(document.querySelector(${JSON.stringify(card)}))`), device + ': the card draws its blocks and names its links\' topics');
+      const onCard = await shape(card)(p);
+      assert.deepEqual(onCard.links, [['named link', ELSEWHERE, '_blank', ''], ['Where the list points', '?topic=links-fr-b', '', `${facts.origin}/?topic=links-fr-b`],
+        ['Message in Formatted in the Reader', `?topic=links-fr&message=${target}`, '', `${facts.origin}/?topic=links-fr&message=${target}`], [ELSEWHERE, ELSEWHERE, '_blank', '']], device + ': the card\'s links');
+      const openFormatted = async () => {
+        await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+        await p.point(card);
+        await until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(document.querySelector('#source-body .md-table-wrap'))`), device + ': the Reader shows the formatted message');
+        await settled(p);
+      };
+      await openFormatted();
+      assert.deepEqual(await shape('#source-body')(p), onCard, device + ': the Reader draws the words, blocks, marks and links its card draws, and they look as they do there');
+      // A phone's Reader ends the message with ↑ Newer · ↓ Older, after every block; a laptop's has none.
+      assert.deepEqual(await p.evaluate(`(b=>[b.lastElementChild.classList.contains('reader-end'),b.querySelectorAll('.reader-end').length])(document.querySelector('#source-body'))`),
+        device === 'phone' ? [true, 1] : [false, 0], device + ': the end line');
+      await shot(p, 'links-formatted-reader-' + device);
+      await p.evaluate('(()=>{window.stayed=true;return true})()');
+      // An address in a paragraph's [named link] and one in a table cell each open a new tab; the Reader stays, and nothing lights to quote.
+      for (const link of ['#source-body a.words-link[target="_blank"]', '#source-body td a.words-link']) {
+        await opensTab(p, link, ELSEWHERE);
+        await frame(p);
+        assert.deepEqual([await open(p, 'reader'), await p.evaluate(`document.querySelectorAll('#source-body .hover-quote').length`)], [true, 0], device + ': the Reader stays, and no passage lit, after ' + link);
+      }
+      // A message's link in a quote opens that message in the Reader, in place.
+      await pressLink(p, '#source-body .md-quote a.words-link');
+      await readerShows(p, 'The message a quote links to.');
+      assert.deepEqual([await p.evaluate('window.stayed === true'), await p.evaluate('location.search')], [true, '?topic=links-fr'], device + ': the message opened in place, the page kept');
+      await p.point('#reader-close');
+      await until(async () => !await open(p, 'reader'), device + ': the Reader closed');
+      // A topic's address in a list item opens that topic here, in this tab, as one in a card's plain words does.
+      await openFormatted();
+      const before = await tabs();
+      await pressLink(p, '#source-body .md-item-words a.words-link');
+      await until(() => p.evaluate(`location.search === '?topic=links-fr-b' && document.querySelector('#topic-title').textContent === 'Where the list points'`), device + ': the list item\'s topic opened here');
+      assert.deepEqual([...(await tabs()).keys()].sort(), [...before.keys()].sort(), device + ': in this tab, no other opened');
       assert.deepEqual(p.errors, []);
     }
   });

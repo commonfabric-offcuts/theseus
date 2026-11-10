@@ -496,7 +496,9 @@ export async function liveChecks({ check, page, until, control, observations, or
     await control({ method: 'seed', topic_id: topicId, source: 'topic', messages: 45, memory_items: 24 });
     await control({ method: 'agent_message', operation_id: topicId + '-answered', topic_id: topicId, sender: 'person', whole_topic: true, read: true, body: 'Answering the topic, so nothing older waits on me.' });
     const entry = "'#messages > [data-seq]'";
-    for (const screen of [{ name: 'laptop', width: 1440, height: 900, mobile: false }, { name: 'phone', width: 390, height: 844, mobile: true }]) {
+    // A laptop window lower than the page below More, so More can reach the top edge:
+    // the page ends in the reply's one quiet line, not a whole writing box.
+    for (const screen of [{ name: 'laptop', width: 1440, height: 820, mobile: false }, { name: 'phone', width: 390, height: 844, mobile: true }]) {
       const p = await page(`live-more-edge-${screen.name}`, null, true, { url: `${origin}/?topic=${topicId}` });
       await p.send('Emulation.setDeviceMetricsOverride', { width: screen.width, height: screen.height, deviceScaleFactor: 1, mobile: screen.mobile });
       if (screen.mobile) await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
@@ -610,11 +612,16 @@ export async function liveChecks({ check, page, until, control, observations, or
     const small = await measure();
     for (let n = 0; n < 3; n++) {
       const before = await loaded();
-      for (const more of ['#more-messages', '#more-memory']) {
-        await p.evaluate(`document.querySelector('${more}').scrollIntoView({ block: 'center' })`);
-        await p.point(more);
-      }
-      await until(async () => { const now = await loaded(); return now.messages >= before.messages + 30 && now.notebook >= before.notebook + 20; }, 'a page more of each is loaded');
+      // One More at a time, each pressed once what the last loaded has come
+      // in: a page that ends in the reply's one quiet line (docs/reader.md)
+      // leaves no room below the Notebook's More, so More for the messages,
+      // loading above it, would otherwise move it out of view under the press.
+      await p.evaluate(`document.querySelector('#more-messages').scrollIntoView({ block: 'center' })`);
+      await p.point('#more-messages');
+      await until(async () => (await loaded()).messages >= before.messages + 30, 'a page more of messages is loaded');
+      await p.evaluate(`document.querySelector('#more-memory').scrollIntoView({ block: 'center' })`);
+      await p.point('#more-memory');
+      await until(async () => (await loaded()).notebook >= before.notebook + 20, 'a page more of the Notebook is loaded');
     }
     const large = await measure();
     const seen = JSON.stringify({ small, large });

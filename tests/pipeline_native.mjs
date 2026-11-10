@@ -383,13 +383,14 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     await until(() => r.evaluate(`Boolean(document.querySelector('${card}'))`).catch(() => false), 'the message is drawn');
     await tap(r, card);
     await until(() => r.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader shows it');
-    await until(() => r.evaluate(`(()=>{const b=document.getElementById('add-to-pipeline');return Boolean(b)&&!b.hidden&&b.getClientRects().length>0})()`), 'a message offers Add to pipeline while it is on');
+    await until(() => r.evaluate(`(()=>{const b=document.getElementById('add-to-pipeline');return Boolean(b)&&!b.hidden})()`), 'a message offers Add to pipeline while it is on');
     assert.equal(await r.evaluate(`document.querySelector('#pipeline-links a')?.textContent`), 'Release pipeline', 'the rail inside the outcome has its Pipeline row');
     await r.point('#add-to-pipeline');
     const first = await until(async () => { const f = await focused(r); return f.role === 'add-title' && f.value; }, 'one line opens under the message, focused');
     assert.equal(first, 'Could the page say which release is live?', 'its title is the message’s first sentence');
     await r.key('Escape');
-    await until(async () => (await focused(r)).id === 'add-to-pipeline', 'Escape closes it, back onto Add to pipeline');
+    // Add to pipeline is in the Reader's ⋯ (docs/reader.md): Escape goes back there.
+    await until(async () => (await focused(r)).id === 'reader-menu', 'Escape closes it, back onto the ⋯ that held Add to pipeline');
     assert.equal(await r.evaluate(`document.getElementById('pipeline-add').hidden`), true);
     const before = await kept('candidates');
     await r.point('#add-to-pipeline');
@@ -432,7 +433,7 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
       await tap(r, card);
       await until(() => r.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(words)})`), 'the Reader shows it');
     };
-    const offered = () => r.evaluate(`(()=>{const b=document.getElementById('add-to-pipeline');return Boolean(b)&&!b.hidden&&b.getClientRects().length>0})()`);
+    const offered = () => r.evaluate(`(()=>{const b=document.getElementById('add-to-pipeline');return Boolean(b)&&!b.hidden})()`);
     await show(message, said);
     await until(offered, 'a message on the record offers Add to pipeline');
     await show(whisper, kept);

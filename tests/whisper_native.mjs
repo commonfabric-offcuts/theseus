@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 // Whispers in the real browser against the real server (docs/whispers.md):
-// the choice above Send by keys and by pointer, the dashed line as you write
+// the choice in the who panel by keys and by pointer, the dashed line as you write
 // and on the card, an answer arriving as a whisper, a second name making a
 // Tell, the Reader that starts no topic from a whisper, New message, a phone's
 // width, and light and dark.
@@ -11,12 +11,19 @@ export async function whispersChecks({ check, page, until, control, view, facts,
   // Each choice is a chip tapped once; aria-pressed says which is on.
   const choice = (p, row = '#intent-row') => p.evaluate(`Object.fromEntries([...document.querySelectorAll(${JSON.stringify(row + ' button[data-intent]')})].map(c=>[c.dataset.intent,
     (c.getAttribute('aria-pressed')==='true'?'checked':'')+(c.disabled?'disabled':'')]))`);
-  const line = (p, row = '#intent-row') => p.evaluate(`document.querySelector(${JSON.stringify(row + ' .audience-line')})?.textContent ?? null`);
+  // The sentence saying who sees it heads the who panel (docs/reader.md).
+  const line = (p, host = '#who-sentence') => p.evaluate(`document.querySelector(${JSON.stringify(host + ' .audience-line')})?.textContent ?? null`);
   const word = (p, button = '#send-reply') => p.evaluate(`document.querySelector(${JSON.stringify(button + ' .send-word')}).textContent`);
   const dashed = (p, selector) => p.evaluate(`(e=>e&&getComputedStyle(e).borderTopStyle)(document.querySelector(${JSON.stringify(selector)}))`);
   const addressTo = async (p, name, input = '#recipient-input', chips = '#recipient-chips') => {
     await p.point(input); await p.send('Input.insertText', { text: name }); await p.key('Enter');
     await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(chips + ' [data-name]')})].some(c=>c.dataset.name===${JSON.stringify(name)}&&(c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true'))`), 'recipient named');
+    // On a phone the name was typed in the naming sheet: Done goes back to the who panel.
+    const done = input.replace(/-input$/, '-done');
+    if (await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}).closest('dialog')?.open)`)) {
+      await p.point(done);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(input)}).closest('dialog').open`), 'back in the who panel');
+    }
   };
   // Someone in the topic is a name tapped once, and a second tap takes them off; anyone else has a ×.
   const unname = async (p, name, chips = '#recipient-chips') => {
@@ -64,7 +71,7 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await p.evaluate(`document.querySelector('#intent-row button[data-intent="whisper"]').focus()`);
     await p.key('ArrowRight');
     await until(async () => (await choice(p)).tell === 'checked', 'an arrow chooses Tell');
-    assert.equal(await word(p), 'Send');
+    assert.equal(await word(p), 'Tell', 'Send names what it does');
     assert.notEqual(await dashed(p, '#writing-body'), 'dashed', 'a Tell has no dashed line');
     assert.match(await line(p), /^Everyone in this topic will see this\./);
     await p.key('ArrowRight');
@@ -131,7 +138,7 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     assert.deepEqual(await choice(p), { whisper: 'disabled', tell: 'checked', ask: '' }, 'two names cannot whisper');
     assert.equal(await p.evaluate(`document.querySelector('#intent-row button[data-intent="whisper"]').title`), 'A whisper goes to one agent. With more than one name, choose Tell or Ask.');
     assert.match(await line(p), new RegExp(`^Everyone in this topic will see this\\. A whisper goes to one agent\\. Nothing you wrote is lost\\. Adding ${second} made this a Tell\\.`));
-    assert.equal(await word(p), 'Send');
+    assert.equal(await word(p), 'Tell');
     assert.equal(await field(p), 'Who has the launch copy?', 'the words stay');
     await shot(p, 'whispers-switched');
     await unname(p, second);
@@ -145,10 +152,10 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await p.evaluate('document.querySelector("#inline-composer").scrollIntoView({block:"center"})');
     await until(async () => (await choice(p, '#inline-intent-row')).tell === 'checked', 'New message offers its choice');
     assert.deepEqual(await choice(p, '#inline-intent-row'), { whisper: 'disabled', tell: 'checked', ask: 'disabled' });
-    assert.match(await line(p, '#inline-intent-row'), /It goes to no one by name\.$/);
+    assert.match(await line(p, '#inline-who-sentence'), /It goes to no one by name\.$/);
     await addressTo(p, agent, '#inline-recipient-input', '#inline-recipient-chips');
     assert.deepEqual(await choice(p, '#inline-intent-row'), { whisper: 'checked', tell: '', ask: '' });
-    assert.match(await line(p, '#inline-intent-row'), new RegExp(`^Only you and ${agent} will see this\\.`));
+    assert.match(await line(p, '#inline-who-sentence'), new RegExp(`^Only you and ${agent} will see this\\.`));
     assert.equal(await word(p, '#inline-send'), 'Whisper');
     assert.equal(await dashed(p, '#inline-writing-body'), 'dashed');
     await shot(p, 'whispers-new-message');
@@ -163,14 +170,14 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await addressTo(p, agent);
     assert.equal((await choice(p)).whisper, 'checked');
     const fit = await p.evaluate(`(()=>{const v=innerWidth,r=e=>e.getBoundingClientRect(),send=r(document.querySelector('#send-reply'));
-      const out=[...document.querySelectorAll('#intent-row button, #intent-row .audience-line, #send-reply')].filter(e=>{const b=r(e);return b.left<0||b.right>v+0.5}).map(e=>e.id||e.className||e.dataset.intent);
+      const out=[...document.querySelectorAll('#intent-row button, #who-sentence .audience-line, #send-reply')].filter(e=>{const b=r(e);return b.left<0||b.right>v+0.5}).map(e=>e.id||e.className||e.dataset.intent);
       return {sideways:document.scrollingElement.scrollWidth>v,dialog:document.querySelector('#reader').scrollWidth>document.querySelector('#reader').clientWidth,out,
-        send:send.top>=0&&send.bottom<=innerHeight+0.5,where:[send.top,send.bottom,innerHeight],more:getComputedStyle(document.querySelector('#intent-row .audience-more')).display,
+        send:send.top>=0&&send.bottom<=innerHeight+0.5,where:[send.top,send.bottom,innerHeight],more:getComputedStyle(document.querySelector('#who-sentence .audience-more')).display,
         header:r(document.querySelector('#reader .reader-header')).height}})()`);
     await shot(p, 'whispers-phone');
     // The passage gives way to the reply's rows, and the header keeps its own height.
     assert.ok(fit.header < 100, `the Reader's header is not stretched (${fit.header}px)`);
-    assert.deepEqual(fit, { sideways: false, dialog: false, out: [], send: true, where: fit.where, more: 'none', header: fit.header }, 'everything fits the width, Send is in view, and the line keeps its first words ' + JSON.stringify(fit.where));
+    assert.deepEqual(fit, { sideways: false, dialog: false, out: [], send: true, where: fit.where, more: 'inline', header: fit.header }, 'everything fits the width, Send is in view, and the who panel says the whole sentence ' + JSON.stringify(fit.where));
     assert.match(await line(p), new RegExp(`^Only you and ${agent} will see this\\.`));
     assert.deepEqual(p.errors, []);
   });

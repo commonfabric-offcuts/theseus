@@ -183,21 +183,30 @@ export function paintConversationRow(container, { view, title, reader, current =
   return true;
 }
 
+// The words for where a reply goes when it is sent from a topic to its
+// outcome's conversation: "Tell fable · in the conversation".
+export const PLACE = 'the conversation';
 // The Reader's To choice on a message in an ordinary topic: this topic, or the outcome's conversation.
 export const CONVERSATION_NOTE = coordinator => coordinator
   ? `Goes to the outcome's conversation with a link to this message. ${coordinator} answers there; nobody in this topic is woken.`
   : 'Goes to the outcome\'s conversation with a link to this message; nobody in this topic is woken.';
 // Two chips tapped once, "This topic" and "Conversation", each naming its
 // place in full on hover; the one the reply goes to now is pressed. The Reader
-// follows a tap (reader.mjs).
+// follows a tap (reader.mjs). Painted again, chips for the same two places are
+// kept and only their pressed state and words change, so the chip just
+// chosen keeps the focus.
 export function conversationDestination(host, { topic, conversation, outcome, chosen, doc = document }) {
   const at = chosen === conversation ? conversation : topic.id;
-  const chip = (value, label, title) => {
-    const button = element(doc, 'button', { type: 'button', className: 'choice-chip', textContent: label, title, dataset: { destination: value } });
+  const places = [[topic.id, 'This topic', `This topic: ${topic.title}`], [conversation, 'Conversation', `${outcome} conversation`]];
+  const chips = [...host.children];
+  if (chips.length !== places.length || places.some(([value], i) => chips[i].dataset?.destination !== value)) {
+    host.replaceChildren(...places.map(([value]) => element(doc, 'button', { type: 'button', className: 'choice-chip', dataset: { destination: value } })));
+  }
+  places.forEach(([value, label, title], i) => {
+    const button = host.children[i];
+    button.textContent = label; button.title = title;
     button.setAttribute('aria-pressed', String(value === at));
-    return button;
-  };
-  host.replaceChildren(chip(topic.id, 'This topic', `This topic: ${topic.title}`), chip(conversation, 'Conversation', `${outcome} conversation`));
+  });
 }
 
 // Switching the Reader's To never merges two drafts. The writing is every

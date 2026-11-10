@@ -18,7 +18,7 @@ export function closeOnOutsideClick(dialog, close, win = globalThis) {
   // Seen on the way down, before a smaller pop-up's own outside press removes it.
   win.addEventListener('pointerdown', event => {
     pressed = dialog.open && event.target === dialog && event.button === 0 && event.isPrimary !== false &&
-      outside(dialog, event) && !dialog.querySelector('[role="dialog"]');
+      outside(dialog, event) && !dialog.querySelector('[role="dialog"]:not([hidden])');
   }, true);
   dialog.addEventListener('click', event => {
     const started = pressed; pressed = false;

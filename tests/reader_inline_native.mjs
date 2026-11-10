@@ -363,7 +363,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     observations.push({ name: 'inline exact publication', receipt, source, modalDraft });
     await shot(p, 'inline-after-send'); assert.deepEqual(p.errors, []);
   });
-  await check('inline Remove moves focus to Add image only while the person has not moved it', async () => {
+  await check('inline Remove moves focus to the writing only while the person has not moved it', async () => {
     const p = await page('inline-remove-focus', null, true);
     const inlineBody = () => p.evaluate('document.querySelector("#inline-writing-body").value');
     const center = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
@@ -395,10 +395,11 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(await p.evaluate('document.activeElement.id'), 'inline-writing-body', 'a finished Remove leaves focus where the person put it');
     await p.send('Input.insertText', { text: ' and after' });
     assert.equal(await inlineBody(), 'Typed while Remove waits and after', 'typing goes on into the writing');
-    // Untouched, focus leaves the removed button for Add image.
+    // Untouched, focus leaves the removed button for the writing: Add image
+    // is in the + panel, put away (docs/reader.md).
     await choose(); await p.point('[data-inline-remove]');
     await until(removed, 'second Remove finished');
-    await until(() => p.evaluate('document.activeElement.id === "inline-add-image"'), 'focus on Add image after an untouched Remove');
+    await until(() => p.evaluate('document.activeElement.id === "inline-writing-body"'), 'focus in the writing after an untouched Remove');
     assert.equal(await inlineBody(), 'Typed while Remove waits and after');
     assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
     // The topic draft is shared with any case that follows: leave it empty.
@@ -429,12 +430,12 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     });
   }
   // On a phone, with a finger: Remove is held on the second image while the
-  // first's upload fails, and the first row, growing as Retry upload comes in
-  // and its long name wraps, pushes the second row's Remove from under the
-  // finger, with focus in the message field. Remove removes the second image
-  // only, the tap's mouse events and click reach nothing under the finger,
-  // and focus leaves the message field for Add image.
-  await check('inline Remove held by a finger below a row whose upload fails removes its own image and nothing under the finger is pressed', async () => {
+  // first's upload fails, with focus in the message field. Each image is a
+  // thumbnail in the strip (docs/reader.md), so the first's failing moves
+  // nothing and the second's × keeps its place under the finger. Remove
+  // removes the second image only, the tap's mouse events and click reach
+  // nothing under the finger but Remove, and the message field keeps the focus.
+  await check('inline Remove held by a finger beside an image whose upload fails removes its own image, nothing under the finger is pressed, and the field keeps the focus', async () => {
     const names = await namedImages(root);
     try {
       const p = await page('inline-remove-tap-below', null, true);
@@ -454,9 +455,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
       // The second image's upload waits its turn behind the first's.
       await until(() => p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice span")].some(s=>s.textContent==="screen.png · Ready to continue upload")'), 'the second image waiting to upload');
       await center('#inline-attachments');
-      const { focus, ring } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'moved', touch: true, fail: true, from: '#inline-writing-body' });
-      assert.deepEqual({ focus, ring }, { focus: 'inline-add-image', ring: false }, 'focus leaves the message field for Add image, with no ring, not for what slid under the finger');
-      assert.equal(await p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]).join("|")'), LONG_NAME, 'the first image\'s row stays');
+      const { focus } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'kept', touch: true, fail: true, from: '#inline-writing-body' });
+      assert.equal(focus, 'inline-writing-body', 'the message field keeps the focus');
+      assert.equal(await p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]).join("|")'), LONG_NAME, 'the first image stays');
       await until(async () => (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft?.attachments.length === 0, 'the topic draft saved with no image, the first one\'s upload having failed');
       assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
       assert.deepEqual(p.errors, []);
@@ -464,11 +465,11 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
   });
 
   // The inverse, on a phone: a finger goes down on the composer just below
-  // the second image's row, on no image button, while the first's upload
-  // fails. The first row grows and moves the second row's Remove down under
-  // the finger, so the browser now aims the tap at that Remove. Nothing is
-  // pressed: both images stay, and focus stays in the message field.
-  await check('inline a finger that goes down below the image rows presses no Remove the row above moves under it', async () => {
+  // the second image, on no image button, while the first's upload fails.
+  // Each image is a thumbnail in the strip (docs/reader.md), so the first's
+  // failing moves nothing: no Remove comes under the finger, nothing is
+  // pressed, both images stay, and focus stays in the message field.
+  await check('inline a finger that goes down below the image strip presses nothing there as an upload above fails', async () => {
     const names = await namedImages(root);
     try {
       const p = await page('inline-field-tap-below', null, true);
@@ -498,9 +499,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
       await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
       p.intercept(null); await p.fail(first);
       await until(() => p.evaluate(`JSON.parse([...document.querySelectorAll('#inline-attachments .image-choice')].find(r=>r.firstElementChild.textContent.startsWith(${JSON.stringify(LONG_NAME)}))?.dataset.view||'[]')[4]===false`), 'the first row repainted as its upload failed');
-      assert.equal(await under(), 'Remove', 'the first row grew and moved the second image\'s Remove under the finger');
+      assert.notEqual(await under(), 'Remove', 'the first image\'s failing moved no Remove under the finger');
       await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-      assert.deepEqual(await tapReached(p, until), [], 'the tap reaches nothing: the Remove slid under the finger is not pressed');
+      assert.deepEqual((await tapReached(p, until)).filter(([, target]) => target === 'pressed'), [], 'the tap presses no image button');
       assert.deepEqual(await p.evaluate('({rows:[...document.querySelectorAll("#inline-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]),remove:!document.querySelector("[data-slid]").disabled,focus:document.activeElement?.id})'), { rows: [LONG_NAME, 'screen.png'], remove: true, focus: 'inline-writing-body' }, 'both images stay, Remove was never pressed, and focus stays in the message field');
       assert.equal(chooser(), opened, 'and nothing else was pressed');
       assert.deepEqual(p.errors, []);

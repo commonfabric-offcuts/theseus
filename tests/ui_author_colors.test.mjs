@@ -254,12 +254,12 @@ test('the Reader shows an agent\'s message on its color, and anything else on th
 test('every word on the Reader\'s page keeps 4.5:1, on the neutral page and on every agent\'s color, and the page is never Fable\'s green', () => {
   const block = (text, selector) => { const at = text.indexOf(selector + ' {'); assert.ok(at >= 0, 'aim.css sets ' + selector); return text.slice(at, text.indexOf('}', at)); };
   const hex = (text, property) => { const m = text.match(new RegExp(property + ':\\s*(#[0-9a-f]{6})')); assert.ok(m, property + ' in ' + text); return m[1]; };
-  const lightAt = css.indexOf('@media (prefers-color-scheme: light) {\n  .source-actions .muted'), darkAt = css.indexOf('@media (prefers-color-scheme: dark) {\n  .reading-pane');
+  const lightAt = css.indexOf('@media (prefers-color-scheme: light) {\n  .reader-end .end-step'), darkAt = css.indexOf('@media (prefers-color-scheme: dark) {\n  .reading-pane');
   assert.ok(lightAt >= 0 && darkAt >= 0, 'aim.css sets the Reader\'s page for light and dark');
   assert.equal(block(css, '.reading-pane.agent-pane').includes('background: var(--agent-hover)'), true, 'an agent\'s page is its hover color');
   const themes = {
     light: { page: tokens(css, ':root'), neutral: hex(block(css, '.reading-pane'), 'background'),
-      hint: { neutral: hex(block(css.slice(lightAt), '.source-actions .muted'), 'color'), agent: hex(block(css.slice(lightAt), '.reading-pane.agent-pane .source-actions .muted'), 'color') }, colors: css },
+      hint: { neutral: hex(block(css.slice(lightAt), '.reader-end .end-step'), 'color'), agent: hex(block(css.slice(lightAt), '.reading-pane.agent-pane .reader-end .end-step'), 'color') }, colors: css },
     dark: { page: tokens(css, '@media(prefers-color-scheme:dark){:root'), neutral: hex(block(css.slice(darkAt), '.reading-pane'), 'background'), colors: dark },
   };
   themes.dark.hint = { neutral: themes.dark.page.muted, agent: themes.dark.page.muted };

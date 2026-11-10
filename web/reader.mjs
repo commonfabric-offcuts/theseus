@@ -1,21 +1,31 @@
-import { keyAction } from './editor.mjs';
+import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange, paintSaveTime } from './writing-helpers.mjs';
-import { paintImageRows } from './image-rows.mjs';
+import { paintImageRows, openImage } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { drawPassages, sourcePosition } from './message-format.mjs';
-import { paintChoice, clearChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
+import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
+import { ComposeBar } from './compose-bar.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
 const QUOTE_STOPS = 'button,a,input,select,summary,[role="separator"]';
+// What offers Quote selection: the pill, the ⋯ and +. A press on one moves
+// the focus and can let the selection go, so what it would quote is taken as
+// it is pressed (Reader.hold); what the ⋯ or + then opens is where it is used.
+const QUOTE_OFFERS = '#quote-selection,#reader-menu,#plus-button';
+const KEPT = 'Your reply to the last one is kept.';
+// A blocked image named where the save status sits, short enough for its one
+// line: "Finish IMG_3307.heic first". Send says the whole sentence when pressed.
+const BLOCKED = /^Finish or remove the image (.+) before sending\.$/;
+const shortBarrier = barrier => { const named = BLOCKED.exec(barrier); return named ? `Finish ${named[1]} first` : barrier; };
 
 const node = (tag, text, className) => {
   const el = document.createElement(tag);
@@ -24,6 +34,9 @@ const node = (tag, text, className) => {
   return el;
 };
 const visible = el => el.getClientRects().length && !el.disabled && !el.hidden;
+// The same message, shown again: its reply sent elsewhere (In), a saved
+// version adopted, its access checked. Your place holds through it.
+const sameSource = (a, b) => Boolean(a && b && a.kind === b.kind && a.id === b.id);
 
 // The topic page shows its newest message on top, so the message above the
 // one open is the next (newer) one and the one below is the previous
@@ -44,12 +57,13 @@ export class Reader {
     this.mode = 'reply';
     this.positions = new Map();
     this.hover = null;
+    this.held = null;
     this.pointer = null;
     this.source = null;
     this.sessions = null;
     this.viewToken = 0;
     this.narrow = window.matchMedia('(max-width: 760px)');
-    this.narrow.addEventListener('change', () => { if (this.dialog.open) this.applyLayout(); });
+    this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
   }
   $(id) { return this.dialog.querySelector(`#${id}`); }
@@ -59,6 +73,47 @@ export class Reader {
   writes(editor = this.editor, presentation = this.presentation) { return this.callbacks.writes?.(presentation, editor) ?? this.admits(editor, presentation); }
 
   bind() {
+    // Naming someone on a phone: the who panel's named chips and + Someone,
+    // then the naming sheet (docs/reader.md).
+    this.naming = { opener: this.$('recipient-open'), sheet: this.$('recipient-sheet'), field: this.$('recipient-input'),
+      back: [this.$('recipient-back'), this.$('recipient-done')], named: this.$('recipient-named'), add: name => this.addName(name), names: () => this.names() };
+    this.compose = new ComposeBar({ root: this.$('reader-composer'), field: this.field, notice: this.$('reader-notice'),
+      panels: { who: this.$('who-panel'), plus: this.$('plus-panel') }, openers: { who: this.$('who-chip'), plus: this.$('plus-button') },
+      // + asks the clipboard as it opens, so its first tile says Paste image when it can.
+      taller: this.$('taller-field'), naming: this.naming, changed: (_state, panel) => { if (panel === 'plus') this.checkClipboard(); this.paintLine(); } });
+    this.$('note-chip').onclick = () => this.switchMode('reply');
+    // A mouse's press on Quote keeps the selection; a finger's is not held
+    // back, since WebKit then sends no click (what + was pressed on is held).
+    this.$('plus-quote').onpointerdown = event => { if (event.pointerType === 'mouse') event.preventDefault(); };
+    this.$('plus-quote').onclick = () => { this.compose.close(); this.quote(); };
+    // A quote pill shows while words are selected or a passage is pressed lit.
+    document.addEventListener('selectionchange', () => { if (this.dialog.open) this.paintQuote(); });
+    // A tap on the message on a phone puts the keyboard away and folds the
+    // reply to its line, its writing kept. A press that selects words, a
+    // long-press, a link or a control is not such a tap.
+    this.sourceBody.addEventListener('pointerdown', event => { this.pressedBy = event.pointerType; }, true);
+    this.sourceBody.addEventListener('click', event => {
+      if (this.pressedBy !== 'touch' || event.target.closest?.('a,button') || window.getSelection()?.isCollapsed === false) return;
+      this.compose?.fold();
+    });
+    // The passage just quoted stays above the reply while the message's room
+    // changes: the reply growing with the quote, the keyboard coming up.
+    new ResizeObserver(() => { if (this.dialog.open) this.alignKept(); }).observe(this.sourceBody);
+    for (const forget of ['wheel', 'touchmove', 'keydown']) this.sourceBody.addEventListener(forget, () => { this.kept = null; }, { passive: true });
+    // ↑ Newer · ↓ Older at the end of the message, where a thumb reaches on a
+    // phone (placeEnd); they are the header's arrows, by another way. Their words are
+    // drawn by aim.css, so the message's text stays the message's alone.
+    this.endLine = node('p', undefined, 'reader-end');
+    this.endLine.setAttribute('aria-label', 'Other messages');
+    for (const where of ['above', 'below']) {
+      const header = this.$(`${neighborAt(where)}-message`), newer = neighborAt(where) === 'next';
+      const end = node('button', undefined, 'end-step'); end.type = 'button';
+      end.dataset.words = `${STEPPING[where].glyph} ${newer ? 'Newer' : 'Older'}`;
+      end.setAttribute('aria-label', newer ? 'Newer message' : 'Older message');
+      end.onclick = () => header.click();
+      new MutationObserver(() => { end.disabled = header.disabled; }).observe(header, { attributes: true, attributeFilter: ['disabled'] });
+      this.endLine.append(end);
+    }
     this.$('reader-close').onclick = () => this.close();
     this.dialog.addEventListener('cancel', event => { event.preventDefault(); this.escape(); });
     // A click outside closes as × does: the writing, quotes and images are kept.
@@ -66,8 +121,25 @@ export class Reader {
     this.$('reader-parent').onclick = () => this.close('parent');
     this.bindDivider();
     this.$('toggle-note').onclick = () => this.switchMode();
-    this.$('quote-selection').onpointerdown = event => event.preventDefault();
-    this.$('quote-selection').onclick = () => this.quote();
+    // What a press on the pill, the ⋯ or + would quote is taken as it
+    // presses (hold), or as its key is pressed: each press takes it afresh.
+    this.dialog.addEventListener('pointerdown', event => {
+      const offer = event.target.closest?.(QUOTE_OFFERS);
+      if (offer) this.hold(offer.id);
+    }, true);
+    this.dialog.addEventListener('keydown', event => {
+      if ((event.key === 'Enter' || event.key === ' ') && event.target.matches?.(QUOTE_OFFERS)) this.hold(event.target.id);
+    }, true);
+    // A mouse's press on the pill is kept from taking the selection and focus.
+    // A finger's cannot be, since WebKit then sends no click, and in Chrome it
+    // lets go of the selection before the click: the pill quotes what was held
+    // as it was pressed, and stays until the click or the finger slides off.
+    const pill = this.$('quote-selection');
+    pill.onpointerdown = event => { if (event.pointerType === 'mouse') event.preventDefault(); };
+    const letGo = () => { if (this.held?.by === 'quote-selection') this.held = null; this.paintQuote(); };
+    pill.addEventListener('pointercancel', letGo);
+    pill.addEventListener('pointerleave', event => { if (event.buttons) letGo(); });
+    pill.onclick = () => this.quote();
     this.$('send-reply').onclick = () => this.mode === 'note' ? this.saveNote() : this.send(false);
     // Add image, or Paste image when the clipboard is known to hold one
     // (image-pick.mjs); Choose file beside it then still opens the picker.
@@ -99,9 +171,6 @@ export class Reader {
       button.onclick = () => this.stepTo(where);
       this.$('reader-stepping').append(button);
     }
-    this.$('recipient-input').addEventListener('keydown', event => {
-      if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
-    });
     // A tap on the other destination's chip moves the reply there; the chips
     // then show where it went, or stay put if it could not move.
     this.$('reply-destination').onclick = event => {
@@ -110,8 +179,9 @@ export class Reader {
       Promise.resolve(this.callbacks.destination(chip.dataset.destination)).finally(() => this.paintDestination());
     };
     // Writing can take the author a reply is offered to, so the choice is redrawn with it.
+    // A notice says what last happened; writing on is the next thing, so it goes.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
-      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintChoice();this.images?.update();}});
+      beforeEdit:()=>this.disarm(),changed:editor=>{if(!this.quoting)this.notice('');this.callbacks.edit(editor);this.paintStatus();this.paintChoice();this.images?.update();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // #img lists the topic's recent images under the writing (image-pick.mjs).
     this.images = new ImagePick({ field: this.field, host: this.field,
@@ -125,9 +195,9 @@ export class Reader {
     // from growing beside it, so what lights is what quotes.
     this.sourceBody.addEventListener('pointerdown', event => {
       // A link is only a link: pressing it lights no passage to quote.
-      if (event.target.closest?.('a')) return;
+      if (event.target.closest?.('a,.reader-end')) return;
       this.sourceBody.focus({ preventScroll: true });
-      if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey);
+      if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey, true);
     });
     this.sourceBody.addEventListener('mousedown', event => { if (event.shiftKey && event.button === 0 && this.hover) event.preventDefault(); });
     // The message wears its focus ring only when a keyboard user Tabs onto it,
@@ -193,9 +263,16 @@ export class Reader {
   show(source, sessions, { opener, topics = [], canPrevious = false, canNext = false, presentation, mode = 'reply' } = {}) {
     ++this.viewToken;
     this.presentation = presentation;
+    // Moving on to another message from one whose reply holds writing says it
+    // is kept. The same message shown again is no move: the composer, its
+    // panel, the focus and the place in the message stay as they are.
+    const same = this.dialog.open && sameSource(this.source?.source_ref, source.source_ref);
+    const left = this.dialog.open && this.sessions && !same && holdsWriting(this.sessions.reply.draft);
     if (this.source) this.rememberPlace();
     this.source = source;
     this.sessions = sessions;
+    // A name typed in To stays with the reply to the message it was typed for.
+    this.compose?.writes(this.placeKey());
     if (this.layoutInstance !== sessions.reply.context.instanceId) {
       this.layoutInstance = sessions.reply.context.instanceId;
       let storage;
@@ -212,11 +289,12 @@ export class Reader {
     this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
-    // topic, a choice of this topic or the outcome's conversation (outcome-conversation.mjs).
+    // topic, a choice of this topic or the outcome's conversation
+    // (outcome-conversation.mjs), whose chips stay, so the one pressed keeps the focus.
     const destination = this.$('reply-destination');
     const here = topics.find(topic => topic.id === sessions.reply.context.topicId) ?? topics[0];
-    destination.replaceChildren(node('span', here?.title ?? '', 'destination-title'));
     this.offered = Boolean(this.callbacks.destinations?.(destination, source, sessions.reply.context.topicId));
+    if (!this.offered) destination.replaceChildren(node('span', here?.title ?? '', 'destination-title'));
     this.$('reader-parent').disabled = !source.topic_id;
     this.$('reader-stepping').hidden = source.source_ref.kind !== 'message';
     this.$('previous-message').disabled = !canPrevious;
@@ -226,9 +304,12 @@ export class Reader {
     this.drawEditor();
     this.paintPending();
     if (!this.dialog.open) this.dialog.showModal();
+    // A message opens to be read: the reply is its one line until written in.
+    if (!same) { this.kept = null; this.held = null; this.compose?.fold(); }
+    if (left) this.notice(KEPT);
     this.applyLayout();
     this.sourceBody.scrollTop = this.positions.get(this.placeKey()) ?? 0;
-    this.sourceBody.focus({ preventScroll: true });
+    if (!same) this.sourceBody.focus({ preventScroll: true });
   }
 
   // What changed in the Notebook page shown since the revision the reader
@@ -249,22 +330,24 @@ export class Reader {
 
   applyLayout() {
     const place = this.captureVisiblePlace();
-    const shape = this.layoutShape, share = this.layout.share(shape);
+    const shape = this.layoutShape, share = this.layout.share('wide');
     this.dialog.dataset.layout = shape;
     // In hundredths of the room, so when one pane keeps a floor (aim.css) the other
     // still takes all that is left: shares that sum to under 1fr would leave a gap.
     this.dialog.style.setProperty('--reading-share', `${(1 - share) * 100}fr`);
     this.dialog.style.setProperty('--writing-share', `${share * 100}fr`);
-    this.$('reader-divider').setAttribute('aria-orientation', shape === 'wide' ? 'vertical' : 'horizontal');
     this.$('reader-divider').setAttribute('aria-valuenow', String(Math.round(share * 100)));
     this.$('reader-divider').setAttribute('aria-valuetext', `${Math.round(share * 100)} percent writing space`);
     this.restoreVisiblePlace(place);
+    this.compose?.fit();
     // Native selection paints the line box, while an inline background paints
-    // the glyph box. Extend only the paint, using this source's actual metrics.
+    // the glyph box. Extend only the paint, using this source's actual metrics,
+    // to whole pixels: a selection paints every pixel its line box touches, at
+    // whatever fraction of a pixel the line starts.
     const glyphHeight = (this.sourceBody.querySelector(':scope > span:not(.md-block)') ?? this.sourceBody.firstElementChild)?.getClientRects()[0]?.height;
     const lineHeight = parseFloat(getComputedStyle(this.sourceBody).lineHeight);
     if (glyphHeight > 0 && Number.isFinite(lineHeight)) {
-      this.sourceBody.style.setProperty('--quote-overhang', `${Math.max(0, lineHeight - glyphHeight) / 2}px`);
+      this.sourceBody.style.setProperty('--quote-overhang', `${Math.ceil(Math.max(0, lineHeight - glyphHeight) / 2)}px`);
     }
   }
 
@@ -284,38 +367,46 @@ export class Reader {
       if (event.button !== 0 || !this.layout) return;
       event.preventDefault(); divider.focus({ preventScroll: true });
       const main = this.dialog.querySelector('.reader-main').getBoundingClientRect();
-      const header = this.dialog.querySelector('.reader-header').getBoundingClientRect();
-      const grip = divider.getBoundingClientRect(), shape = this.layoutShape;
-      this.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, shape,
-        share: this.layout.share(shape), extent: shape === 'wide' ? main.width - grip.width : main.height - header.height - grip.height };
+      const grip = divider.getBoundingClientRect();
+      this.drag = { id: event.pointerId, x: event.clientX, share: this.layout.share('wide'), extent: main.width - grip.width };
       divider.setPointerCapture(event.pointerId);
     });
     divider.addEventListener('pointermove', event => {
       const drag = this.drag;
       if (!drag || drag.id !== event.pointerId || drag.extent <= 0) return;
-      const delta = drag.shape === 'wide' ? drag.x - event.clientX : drag.y - event.clientY;
+      const delta = drag.x - event.clientX;
       if (!drag.moved && Math.abs(delta) < 4) return;
       drag.moved = true;
-      this.layout.setShare(drag.share + delta / drag.extent, drag.shape);
+      this.layout.setShare(drag.share + delta / drag.extent, 'wide');
       this.applyLayout();
     });
     const end = event => { if (this.drag?.id === event.pointerId) this.drag = null; };
     divider.addEventListener('pointerup', end);
     divider.addEventListener('pointercancel', end);
     divider.addEventListener('lostpointercapture', end);
-    divider.addEventListener('dblclick', () => { this.layout.resetShare(this.layoutShape); this.applyLayout(); });
+    divider.addEventListener('dblclick', () => { this.layout.resetShare('wide'); this.applyLayout(); });
     divider.addEventListener('keydown', event => {
-      const arrows = this.layoutShape === 'wide' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+      const arrows = ['ArrowLeft', 'ArrowRight'];
       if (!arrows.includes(event.key) || event.metaKey || event.ctrlKey || event.altKey) return;
       event.preventDefault(); event.stopPropagation();
       const direction = event.key === arrows[0] ? 1 : -1;
-      this.layout.setShare(this.layout.share(this.layoutShape) + direction * (event.shiftKey ? .1 : .02), this.layoutShape);
+      this.layout.setShare(this.layout.share('wide') + direction * (event.shiftKey ? .1 : .02), 'wide');
       this.applyLayout();
     });
   }
 
   // The source as passages, its Markdown shown as written to be read (message-format.mjs).
-  drawSource(body) { drawPassages(this.sourceBody, body, document); }
+  drawSource(body) {
+    drawPassages(this.sourceBody, body, document);
+    this.placeEnd();
+  }
+
+  // The end line is there only on a phone, where the header's arrows are out
+  // of a thumb's reach; elsewhere the message's passages are all it holds.
+  placeEnd() {
+    if (this.narrow.matches && this.source?.source_ref?.kind === 'message') this.sourceBody.append(this.endLine);
+    else this.endLine?.remove();
+  }
 
   point(event) {
     if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a')) return;
@@ -334,14 +425,40 @@ export class Reader {
     return !!at && this.dialog.contains(at) && at !== this.field && !at.closest(QUOTE_STOPS);
   }
 
-  light(target, extend) {
+  light(target, extend, pressed = false) {
     const span = target.closest('[data-start]');
     if (!span || !this.sourceBody.contains(span)) return;
     if (extend) this.adoptSelection();
     const start = Number(span.dataset.start), end = Number(span.dataset.end);
     const anchor = extend && this.hover ? this.hover.anchor : { start, end };
-    this.hover = { anchor, start: Math.min(anchor.start, start), end: Math.max(anchor.end, end) };
+    this.hover = { anchor, start: Math.min(anchor.start, start), end: Math.max(anchor.end, end), pressed: pressed || Boolean(extend && this.hover?.pressed) };
     for (const part of this.sourceBody.children) part.classList.toggle('hover-quote', Number(part.dataset.start) < this.hover.end && Number(part.dataset.end) > this.hover.start);
+    this.paintQuote();
+  }
+
+  // Something to quote: words selected in the message, or a passage pressed
+  // lit. A passage lit only by the pointer passing over it shows no pill;
+  // Return still quotes it.
+  get chosen() {
+    const p = this.presentation;
+    if (!this.source || p?.sourceUnavailable || p?.availabilityUnconfirmed) return false;
+    const selection = window.getSelection();
+    const selected = selection?.rangeCount && !selection.isCollapsed && this.sourceBody.contains(selection.getRangeAt(0).commonAncestorContainer);
+    return Boolean(selected || this.hover?.pressed);
+  }
+  // Quote selection, in the ⋯ and in +: what is chosen now, or what was
+  // chosen as the ⋯ or + was pressed.
+  get quotable() { return this.chosen || Boolean(this.held && this.source); }
+  // Takes what a press on an offer of Quote (by: its id) would quote, before
+  // the press moves the focus or lets the selection go; nothing when nothing is chosen.
+  hold(by) {
+    this.held = this.chosen ? { excerpt: this.selectedPassage(), passage: this.lastQuoted(), by } : null;
+    this.paintQuote();
+  }
+  paintQuote() {
+    if (!this.compose) return;
+    this.$('quote-selection').hidden = !this.chosen && this.held?.by !== 'quote-selection';
+    this.$('plus-quote').disabled = !this.quotable;
   }
 
   // A light extended after a drag grows from what was dragged: the passages
@@ -379,6 +496,17 @@ export class Reader {
     this.hover = null;
     this.pointer = null;
     for (const span of this.sourceBody.querySelectorAll('.hover-quote')) span.classList.remove('hover-quote');
+    this.paintQuote();
+  }
+
+  // The passage last quoted sits just above the reply, so what is answered
+  // shows while it is answered; kept there as the keyboard comes up, until
+  // the person scrolls the message.
+  keepAbove(passage) { this.kept = passage ?? null; this.alignKept(); }
+  alignKept() {
+    if (!this.kept?.isConnected) { this.kept = null; return; }
+    const box = this.sourceBody.getBoundingClientRect(), bottom = box.bottom - parseFloat(getComputedStyle(this.sourceBody).paddingBottom);
+    this.sourceBody.scrollTop += this.kept.getBoundingClientRect().bottom - bottom;
   }
 
   // The source's own words a selection covers, never what the page shows for
@@ -397,8 +525,19 @@ export class Reader {
 
   quote() {
     if (this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed) { this.notice('Source availability needs to be checked before quoting.'); return; }
-    const excerpt = this.selectedPassage();
+    const held = this.held; this.held = null;
+    const excerpt = this.selectedPassage() || held?.excerpt;
     if (!excerpt || !this.sessions) return;
+    const passage = this.lastQuoted() ?? held?.passage;
+    // A quote is writing on, so the last notice goes as it starts; what the
+    // quote itself does (leaving a note cancels a step that waits) is said
+    // after, and its own writing does not take that away.
+    this.notice('');
+    this.quoting = true;
+    try { this.quoteInto(excerpt, passage); } finally { this.quoting = false; }
+  }
+
+  quoteInto(excerpt, passage) {
     if (this.mode === 'note') this.switchMode('reply');
     const editor = this.sessions.reply;
     if (!this.writes(editor)) return;
@@ -420,9 +559,25 @@ export class Reader {
     // leave the caret drawn before a trailing newline, or short of the
     // field's bottom padding.
     const end = this.field.value.length;
+    this.compose?.fit();
     this.field.setSelectionRange(end, end);
     this.field.scrollTop = this.field.scrollHeight;
     this.disarm();
+    this.keepAbove(passage);
+  }
+
+  // The last passage a quote takes words from: the lit passages', or the
+  // selection's end.
+  lastQuoted() {
+    if (!this.compose) return null;
+    const selection = window.getSelection();
+    if (selection?.rangeCount && !selection.isCollapsed) {
+      let at = selection.getRangeAt(0).endContainer;
+      at = at.nodeType === Node.ELEMENT_NODE ? at : at.parentElement;
+      while (at && at.parentElement !== this.sourceBody) at = at.parentElement;
+      if (at) return at;
+    }
+    return [...this.sourceBody.querySelectorAll('.hover-quote')].at(-1) ?? null;
   }
 
   // The reply, with the cursor after what is already written: Reply, or Return,
@@ -469,16 +624,34 @@ export class Reader {
     this.$('reply-audience').hidden = note;
     this.$('pending-submissions').hidden = note;
     this.$('writing-hint').textContent = note ? 'Only you · saved as you write · ⌘ Return when done' : 'Return for a new line · ⌘ Return to send';
+    this.$('who-chip').hidden = note; this.$('note-chip').hidden = !note;
+    this.field.classList.toggle('noting', note);
     // The note saves as it is written; Done only finishes, so it is not a second save.
     if (note) this.$('send-reply').textContent = 'Done';
     else { const word = node('span', 'Send', 'send-word'), keys = node('span', '⌘↵'); keys.setAttribute('aria-hidden', 'true'); this.$('send-reply').replaceChildren(word, ' ', keys); }
     this.$('send-reply').classList.toggle('primary', !note);
-    this.field.placeholder = note ? 'Write a private note only you can see…' : 'Write a reply…';
     this.field.value = this.editor.draft.body;
     this.paintImages();
     this.paintRecipients();
     this.paintChoice();
     this.paintStatus();
+    this.compose?.fit();
+  }
+
+  // The reply's one line while reading: who it answers, in the words Send
+  // will act on ("Reply to fable…", "Whisper to fable…"), or "Draft" with the
+  // writing's start when there is some; 👍 sits at its end while there is none.
+  paintLine() {
+    const editor = this.sessions?.reply, root = this.$('reader-composer');
+    if (!editor || !this.editor || !root) return;
+    const note = this.mode === 'note', names = this.names(editor);
+    const { choice } = choiceOf(editor.draft, names, this.kindOf, { conversation: this.toConversation(editor) });
+    const who = list(names), place = this.place(editor), at = place ? ` in ${place.name}` : '';
+    this.field.placeholder = note ? 'Write a private note only you can see…' : !who ? `Reply${at}…`
+      : choice === 'whisper' ? `Whisper to ${who}${at}…` : choice === 'ask' ? `Ask ${who}${at}…` : `Reply to ${who}${at}…`;
+    const writing = written(this.editor.draft);
+    if (writing) root.dataset.hasWriting = ''; else delete root.dataset.hasWriting;
+    this.$('draft-tag').hidden = !writing || this.compose?.state !== 'line';
   }
 
   // The note's button says what a press does: write one, see the one you
@@ -501,21 +674,15 @@ export class Reader {
     const named = recipientChoices(this.names(editor)).map(({ name }) => name);
     const off = name => this.removeName(name, editor, presentation);
     paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [], named: [...new Set(named)],
-      reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.addName(name) : off(name) });
+      reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.addName(name) : off(name),
+      summary: this.naming && { host: this.naming.named, opener: this.naming.opener } });
     this.callbacks.recipientsPainted?.(this.names(editor), editor.context.topicId);
+    // Who is named may have changed: what Send said goes if no longer true.
+    this.compose?.settle();
   }
 
-  // The small field beside the topic's people names anyone else; Return adds them.
-  addRecipient() {
-    const input = this.$('recipient-input');
-    const name = input.value.trim().replace(/^@/, '');
-    if (!name || !this.addName(name)) return;
-    input.value = '';
-    input.focus();
-  }
-
-  // Names someone in the reply (the field's Return, or a name tapped once);
-  // false when the reply cannot change now.
+  // Names someone in the reply (a name typed in the name field, compose-bar.mjs
+  // takeName, or tapped once); false when the reply cannot change now.
   addName(name) {
     const editor = this.sessions?.reply;
     if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
@@ -544,16 +711,26 @@ export class Reader {
   names(editor = this.sessions?.reply) { return editor ? [...(editor.offeredAddressees ?? []), ...editor.draft.addressees] : []; }
   get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
   // Writing that goes to an outcome's conversation starts as a Tell (I3).
-  toConversation(editor = this.sessions?.reply) { return Boolean(this.callbacks.toConversation?.(editor?.context?.topicId)); }
+  toConversation(editor = this.sessions?.reply) { return Boolean(this.callbacks.place?.(editor?.context?.topicId)); }
+  // Where the reply is posted when that is not the message's own topic, or
+  // null: { name: "the conversation", note: what going there means }. The who
+  // chip, its sentence, the field and the line under the chip say it.
+  place(editor = this.sessions?.reply) {
+    const to = editor?.context?.topicId, from = this.source?.topic_id;
+    return to && from && to !== from ? this.callbacks.place?.(to) ?? { name: 'another topic', note: '' } : null;
+  }
 
   // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above Send.
   // A reply to one agent starts as a whisper; a private note has no choice.
+  // Writing posted elsewhere says where under the chip, and what that means.
   paintChoice() {
-    const editor = this.sessions?.reply, row = this.$('intent-row');
-    if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply')); return; }
+    const editor = this.sessions?.reply, row = this.$('intent-row'), place = this.mode === 'note' ? null : this.place(editor), note = this.$('destination-note');
+    note.textContent = place?.note ?? ''; note.hidden = !place?.note;
+    if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply'), this.$('who-sentence')); this.paintLine(); return; }
     paintChoice(row, { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf, everyone: this.callbacks.people?.().everyone ?? [],
-      send: this.$('send-reply'), field: this.field, readOnly: Boolean(this.field?.readOnly), answeringWhisper: Boolean(this.source?.whisper),
-      conversation: this.toConversation(editor), onChoose: choice => this.choose(choice) });
+      send: this.$('send-reply'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly: Boolean(this.field?.readOnly), answeringWhisper: Boolean(this.source?.whisper),
+      conversation: this.toConversation(editor), place: place?.name ?? null, onChoose: choice => this.choose(choice) });
+    this.paintLine();
   }
 
   choose(choice) {
@@ -579,7 +756,7 @@ export class Reader {
   }
 
   // Whether the image button can say Paste image: asked when the writing or
-  // the window takes focus, never by prompting (image-pick.mjs).
+  // the window takes focus, or + opens, never by prompting (image-pick.mjs).
   async checkClipboard() {
     const ready = await clipboardHoldsImage();
     if (ready !== Boolean(this.pasteReady)) { this.pasteReady = ready; this.paintStatus(); }
@@ -600,9 +777,9 @@ export class Reader {
       try {
         if (!this.admits(editor, presentation)) return;
         await uploads[item.method](e.id);
-        // Remove takes its own button away; focus lands on Add image only if it
-        // was still there. Where the person has since put it, it stays.
-        if (item.method === 'remove' && this.admits(editor, presentation) && [null, document.body, b].includes(document.activeElement)) this.$('add-image').focus();
+        // Remove takes its own button away; focus lands in the field only if
+        // it was still there. Where the person has since put it, it stays.
+        if (item.method === 'remove' && this.admits(editor, presentation) && [null, document.body, b].includes(document.activeElement)) this.field.focus();
       } catch (error) { if (this.admits(editor, presentation)) this.notice(error); }
       finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); }
     }, id => uploads.preview(id));
@@ -612,9 +789,14 @@ export class Reader {
     if (!this.editor) return;
     const editor = this.editor;
     const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status, sign: this.callbacks.sign });
-    this.$('save-state').textContent = state.message; this.$('save-state').dataset.save = state.sign;
+    const barrier = this.mode === 'note' ? null : imageBarrier(editor), send = this.$('send-reply');
+    this.$('save-state').textContent = barrier ? shortBarrier(barrier) : state.message; this.$('save-state').dataset.save = state.sign;
+    if (barrier) this.$('save-state').dataset.blocked = ''; else delete this.$('save-state').dataset.blocked;
     if (this.callbacks.savedAt) paintSaveTime(this.$('save-state'), state.sign ? this.callbacks.savedAt(editor) : null);
-    this.$('send-reply').disabled = state.sendDisabled;
+    // A blocked image dims Send rather than disabling it: a press says why
+    // and opens that image's choices (send).
+    send.disabled = state.sendDisabled && !barrier;
+    send.ariaDisabled = barrier ? 'true' : null;
     const change = sourceChange(editor, this.source.source_ref);
     this.$('source-update').textContent = change;
     this.$('source-update').hidden = !change;
@@ -629,6 +811,7 @@ export class Reader {
     this.$('recipient-input').disabled = this.field.readOnly;
     this.paintChoice();
     this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
+    this.paintQuote();
     this.paintImages();
     this.paintOffer();
     this.paintAccess();
@@ -739,12 +922,23 @@ export class Reader {
     if (!this.admits(this.sessions?.reply)) { if (this.writes(this.sessions?.reply)) this.notice(STEP_WAITS); return; }
     this.disarm();
     const editor = this.sessions.reply;
+    // A blocked image: the whole sentence, and that image's choices open.
+    const barrier = imageBarrier(editor);
+    if (barrier) {
+      this.notice(barrier);
+      const name = BLOCKED.exec(barrier)?.[1];
+      const row = name && [...this.$('writing-attachments').children].find(item => item.querySelector('.image-open span')?.textContent.startsWith(`${name} · `));
+      if (row) { openImage(row); row.querySelector('.image-open').focus({ preventScroll: true }); }
+      return;
+    }
     if (editor.submissions.some(item => item.status === 'preparing' && !item.detached)) {
       this.notice('The earlier reply is still being prepared. Your next reply is kept separately.'); return;
     }
     if (editor.authorityRecovery || editor.conflict || (!editor.draft.body.trim() && !editor.draft.attachments.length)) {
       this.notice(editor.authorityRecovery || editor.conflict ? 'Review the saved versions before sending.' : 'Write a reply before sending.'); return;
     }
+    // A name typed in To and not named: Send waits, and says so (compose-bar.mjs).
+    if (this.compose.holdSend()) return;
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
     editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }));
     const draft = editor.draft;
@@ -768,6 +962,9 @@ export class Reader {
 
   finishClose() {
     ++this.viewToken;
+    this.held = null;
+    // The naming sheet is a modal of its own: it goes with the Reader.
+    if (this.naming?.sheet.open) this.naming.sheet.close();
     this.dialog.close();
     this.disarm();
     // An opener the open itself hid (Read it, once the last mark clears)
@@ -779,6 +976,8 @@ export class Reader {
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }
   // Steps to the message above or below the open one, as the page shows them.
   stepTo(where) { return this.step(neighborAt(where) === 'next' ? 1 : -1); }
+  // Escape with no panel of the reply open (compose-bar.mjs heard takes it
+  // while one is).
   escape() {
     if (this.hover || !window.getSelection()?.isCollapsed) { this.disarm(); window.getSelection()?.removeAllRanges(); return; }
     this.close();
@@ -827,7 +1026,7 @@ export class Reader {
     }
     const reply = this.sessions.reply.draft;
     const action = keyAction(event, { context: this.mode === 'note' && event.metaKey ? 'note' : inEditor ? this.mode : 'reader',
-      quoteArmed: !!this.selectedPassage(), writingEmpty: !reply.body.trim() && !reply.attachments.length });
+      quoteArmed: !!this.selectedPassage(), writingEmpty: !written(reply) });
     if (action === 'quote') { event.preventDefault(); this.quote(); }
     else if (action === 'send-return' || action === 'send-stay') { event.preventDefault(); this.send(action === 'send-stay'); }
     else if (action === 'save-note') { event.preventDefault(); this.saveNote(); }

@@ -84,25 +84,36 @@ export function paintImageRows(host, choices, enabled, press, preview = null) {
   for (const choice of choices) {
     let row = [...host.children].find(r => r.dataset.selection === choice.id);
     if (!row) {
+      // The row's first part is a button holding its words: in a composer's
+      // strip (docs/reader.md) it lies over the thumbnail, and a press on it
+      // opens the image's choices in place (openImage).
       row = document.createElement('div'); row.className = 'image-choice'; row.dataset.selection = choice.id;
-      row.append(document.createElement('span')); host.append(row);
+      const opener = document.createElement('button'); opener.type = 'button'; opener.className = 'image-open';
+      opener.setAttribute('aria-expanded', 'false'); opener.onclick = () => openImage(row, !row.hasAttribute('data-open'));
+      opener.append(document.createElement('span')); row.append(opener); host.append(row);
       if (preview) paintThumb(row, choice.id, () => preview(choice.id), image => row.firstElementChild.after(image));
     }
-    if (row.dataset.view === choice.view) continue;
-    row.dataset.view = choice.view;
-    const words = row.firstElementChild; words.textContent = choice.text;
+    // Repainted when its state or its choices change.
+    const methods = JSON.stringify(choice.actions.map(action => action.method));
+    if (row.dataset.view === choice.view && row.dataset.methods === methods) continue;
+    row.dataset.view = choice.view; row.dataset.methods = methods;
+    const words = row.firstElementChild.firstElementChild; words.textContent = choice.text;
+    // A mark sits on an image that still needs a choice: more than Remove.
+    row.toggleAttribute('data-needs', choice.actions.length > 1);
     const labels = new Set(choice.actions.map(action => action.label));
     const kept = new Map();
     // After its words, a row holds its thumbnail, then its buttons (data-action).
     for (const button of [...row.children].slice(1).filter(part => part.dataset.action !== undefined)) {
       if (labels.has(button.dataset.action)) kept.set(button.dataset.action, button); else button.remove();
     }
-    let before = row.querySelector(':scope > img.image-thumb') ?? words;
+    let before = row.querySelector(':scope > img.image-thumb') ?? row.firstElementChild;
     for (const action of choice.actions) {
       let button = kept.get(action.label);
       if (!button) {
         button = document.createElement('button'); button.type = 'button';
-        button.textContent = action.label; button.dataset.action = action.label; holdsItsPress(button);
+        button.textContent = action.label; button.dataset.action = action.label; button.dataset.method = action.method; holdsItsPress(button);
+        // In a strip Remove is the thumbnail's ×, so its name says which image.
+        if (action.method === 'remove') button.setAttribute('aria-label', `Remove ${choice.text.split(' · ')[0]}`);
       }
       button.onclick = async () => {
         if (busy.has(button)) return;
@@ -116,4 +127,11 @@ export function paintImageRows(host, choices, enabled, press, preview = null) {
       before = button;
     }
   }
+}
+
+// Opens or closes one image's choices; one is open at a time.
+export function openImage(row, open = true) {
+  if (open) for (const other of row.parentElement?.children ?? []) if (other !== row) openImage(other, false);
+  row.toggleAttribute('data-open', open);
+  row.firstElementChild?.setAttribute('aria-expanded', String(open));
 }

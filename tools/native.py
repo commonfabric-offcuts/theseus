@@ -59,7 +59,7 @@ def main(argv=None):
     step = steps[args.step]
     try:
         chrome = release_check.chrome_path(args.chrome)
-        playwright = release_check.playwright_path(args.playwright) if step.harness == release_check.WEBKIT else None
+        playwright = release_check.playwright_path(args.playwright) if step.harness in release_check.PLAYWRIGHT_HARNESSES else None
         if not args.out.is_absolute() or (args.out.exists() and any(args.out.iterdir())):
             raise release_check.Refused("--out must be a fresh absolute directory: %s" % args.out)
         if args.case_filter is not None and step.harness == release_check.READER:

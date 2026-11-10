@@ -818,6 +818,13 @@ class NativeCoverage(unittest.TestCase):
             self.assertEqual((steps["webkit-" + mode].harness, steps["webkit-" + mode].flags), (release_check.WEBKIT, ("--" + mode,)))
             self.assertIn("native-webkit-" + mode, release_check.REQUIRED)
 
+    def test_the_compose_mode_is_a_step(self):
+        # The Reader's composer, naming someone in two steps on a phone, in Chrome and Safari's engine (docs/reader.md).
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual((steps["compose"].harness, steps["compose"].flags), (release_check.COMPOSE, ()))
+        self.assertIn("native-compose", release_check.REQUIRED)
+        self.assertIn(release_check.COMPOSE, release_check.PLAYWRIGHT_HARNESSES)
+
     def test_every_harness_mode_is_a_step(self):
         steps = [(step.harness, tuple(step.flags)) for step in release_check.NATIVE_STEPS]
         self.assertEqual(len(steps), len(set(steps)), "a mode runs twice")

@@ -51,3 +51,19 @@ test('a page\'s changes show open, even after the person closed the panel on the
   r.showChanges(2, 'Ship on Monday.', 'Ship on Tuesday.');
   assert.equal($('source-changes').open, true, 'the next page\'s changes are open again');
 });
+
+// The Reader tells its composer whose writing it shows (compose-bar.mjs
+// writes), once per show, by the message the reply answers, so a name typed
+// in To stays with that reply: the same message shown again is the same
+// writing, another message is another.
+test('the Reader tells its composer whose writing each show is', () => {
+  const { r } = reader();
+  const told = [];
+  r.compose = { writes: key => told.push(key), fold() {} };
+  r.show(page('p1', 3, 'Ship on Monday.'), sessions);
+  r.show(page('p1', 3, 'Ship on Monday.'), sessions);
+  r.show(page('p2', 1, 'A page never read.'), sessions);
+  assert.equal(told.length, 3, 'told on every show');
+  assert.equal(told[1], told[0], 'the same page again is the same writing');
+  assert.notEqual(told[2], told[0], 'another page is another writing');
+});

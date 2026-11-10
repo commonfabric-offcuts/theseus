@@ -9,7 +9,7 @@ import { protectTouchBounds } from '../web/creation-view.mjs';
 // taken out of its row, even to be put back at once, counts as a move, and a
 // press held on a moved or replaced button clicks nothing.
 class Node {
-  constructor(tag) { this.tagName = tag; this.children = []; this.parent = null; this.dataset = {}; this.textContent = ''; this.disabled = false; this.onclick = null; this.moves = 0; this.listeners = []; this.place = { left: 0, top: 0, right: 0, bottom: 0 }; this.captured = null; }
+  constructor(tag) { this.tagName = tag; this.children = []; this.parent = null; this.dataset = {}; this.words = ''; this.attributes = new Map(); this.disabled = false; this.onclick = null; this.moves = 0; this.listeners = []; this.place = { left: 0, top: 0, right: 0, bottom: 0 }; this.captured = null; }
   addEventListener(type, listener, options) { this.listeners.push({ type, listener, once: Boolean(options?.once) }); }
   removeEventListener(type, listener) { this.listeners = this.listeners.filter(l => l.type !== type || l.listener !== listener); }
   fire(type, event) { for (const l of [...this.listeners]) if (l.type === type) { if (l.once) this.removeEventListener(type, l.listener); l.listener(event); } }
@@ -26,6 +26,14 @@ class Node {
   click() { if (!this.disabled) this.onclick?.(); }
   // A disabled button or one out of the page takes no focus.
   focus(options) { if (!this.disabled && this.isConnected) { document.activeElement = this; this.focusedWith = options; } }
+  // A node's words are its own, or else those of what it holds, as the row's
+  // words are inside the button that opens its choices.
+  get textContent() { return this.children.length ? this.children.map(child => child.textContent).join('') : this.words; }
+  set textContent(words) { this.words = words; }
+  setAttribute(name, value) { this.attributes.set(name, String(value)); }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
+  hasAttribute(name) { return this.attributes.has(name); }
+  toggleAttribute(name, on = !this.attributes.has(name)) { if (on) this.attributes.set(name, ''); else this.attributes.delete(name); return on; }
   get firstElementChild() { return this.children[0] ?? null; }
   get nextElementSibling() { return this.parent ? this.parent.children[this.parent.children.indexOf(this) + 1] ?? null : null; }
   // In the page: under the host, which stands for the document.
@@ -175,7 +183,7 @@ const fingerPress = (button, under, { cancel = false } = {}, meanwhile = () => {
 const pressedRemove = () => {
   const { host, presses, paint } = rows();
   paint([choice('a', 'Uploading')]);
-  const row = host.children[0], remove = buttons(row)[0], words = row.firstElementChild;
+  const row = host.children[0], remove = buttons(row)[0], words = row.firstElementChild.firstElementChild;
   remove.place = { left: 100, top: 0, right: 160, bottom: 40 };
   const moved = () => { remove.place = { left: 100, top: 38, right: 160, bottom: 78 }; };
   // Focus is in the reply field, where a person who pasted an image keeps typing.
@@ -309,8 +317,23 @@ test('given a preview, a row holds its image small between its words and its but
   paint([]);
   await settled();
   assert.deepEqual([host.children.length, freed], [0, ['blob:a-bytes']], 'the row goes and its thumbnail is let go');
-  // Without a preview, a row is its words and its buttons.
+  // Without a preview, a row is its words (in the button that opens its
+  // choices) and its buttons.
   const plain = rows();
   plain.paint([choice('b', 'Ready')]);
-  assert.deepEqual(plain.host.children[0].children.map(child => child.tagName), ['span', 'button']);
+  assert.deepEqual(plain.host.children[0].children.map(child => [child.tagName, child.className ?? child.dataset.action]), [['button', 'image-open'], ['button', 'Remove']]);
+});
+
+test('a thumbnail with nothing to show says so, so the strip shows the image\'s name in its place, and one that loads does not', async t => {
+  const { createObjectURL } = URL;
+  URL.createObjectURL = blob => 'blob:' + blob;
+  t.after(() => Object.assign(URL, { createObjectURL }));
+  const host = new Node('div');
+  host.page = true;
+  const settled = () => new Promise(resolve => setImmediate(resolve));
+  paintImageRows(host, [choice('gone', 'Ready'), choice('kept', 'Ready')], true, () => {}, id => Promise.resolve(id === 'gone' ? null : id + '-bytes'));
+  await settled();
+  const [gone, kept] = host.children.map(row => row.children.find(child => child.className === 'image-thumb'));
+  assert.deepEqual([gone.hidden, 'none' in gone.dataset, gone.src], [true, true, undefined], 'nothing read: the thumbnail stays hidden and says it has nothing');
+  assert.deepEqual([kept.hidden, 'none' in kept.dataset, kept.src], [false, false, 'blob:kept-bytes'], 'an image read is shown, not marked as having nothing');
 });

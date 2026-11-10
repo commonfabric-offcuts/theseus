@@ -21,8 +21,9 @@ export function assertDepartureTrace(trace, expectedReceipts) {
 
 export async function departureChecks({check,page,until,facts,view,control,observations,shot}) {
   const ready=(p,id)=>until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')===${JSON.stringify(id)}`);}catch{return false;}},'ready '+id);
+  // A control the composer keeps in a panel is reached through its opener by p.point (compose-reach.mjs).
   const point=async(p,selector)=>{
-    await until(()=>p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(selector)});if(all.length!==1)return false;const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0;})()`),'unique rendered departure target '+selector);
+    await until(()=>p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(selector)});if(all.length!==1)return false;const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0||Boolean(all[0].closest('.composer'));})()`),'unique rendered departure target '+selector);
     await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);await p.point(selector);
   };
   // The rail lists a workspace's topics in ID order, 20 to a page, behind More

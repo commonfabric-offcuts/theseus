@@ -31,9 +31,10 @@ file chosen with Add image.
 
 ## Thumbnails
 
-Each image row in the writing that is at least 30rem wide starts with a small
-thumbnail, which holds its place before it loads: the file as chosen while it
-is in memory, else the copy saved on this device, else the verified
+Each image in a composer is a small thumbnail in the strip above the field,
+at every width (docs/reader.md). It holds its place before it loads, and one
+with nothing to show gives its place to the image's name. A thumbnail is
+the file as chosen while it is in memory, else the copy saved on this device, else the verified
 original read back from Theseus (`Uploads.preview`). Each image in the #img
 list has one too, read through its message. Theseus keeps no smaller copy and
 refuses a second image read while one is under way, so the page's image reads

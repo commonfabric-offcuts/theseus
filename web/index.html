@@ -60,7 +60,7 @@
     <div id="rail-backdrop" class="rail-backdrop" aria-hidden="true" hidden></div>
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
     <main id="main" tabindex="-1">
-      <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
+      <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button><button id="new-message" type="button" class="new-message quiet" aria-label="New message" title="New message"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="topic-target" class="topic-target" aria-label="This outcome's target" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
@@ -85,26 +85,44 @@
       <button id="more-messages" type="button" hidden>More messages</button>
       <section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">People</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section>
       <section id="notebook" aria-label="Notebook"><div class="section-heading"><h2>Notebook</h2><span class="muted">Shared grounding</span></div><div id="memory-items"></div><button id="more-memory" type="button" hidden>More Notebook items</button></section>
-      <section id="inline-composer" class="inline-composer" aria-labelledby="inline-writing-title" hidden>
+      <dialog id="new-message-sheet" class="composer-home" aria-labelledby="inline-writing-title">
+      <section id="inline-composer" class="inline-composer composer" aria-labelledby="inline-writing-title" hidden>
         <h2 id="inline-writing-title">New message</h2>
-        <p id="inline-destination" class="field-label"></p>
-        <div class="audience"><span class="muted">Address</span><div id="inline-recipient-chips" class="chips"></div><input id="inline-recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the new message" placeholder="Someone else" autocomplete="off" enterkeyhint="done"></div>
-        <div id="inline-intent-row" class="intent-row"></div>
+        <button id="new-message-close" type="button" class="sheet-close" aria-label="Put the new message back at the page's end" title="Close, keeping the writing">✕</button>
         <div id="inline-notice" class="notice" role="status" hidden></div>
         <button id="inline-retry" type="button" hidden>Retry composer</button>
-        <div id="inline-pending" class="pending-submissions" aria-label="Submitted writing"></div>
-        <label class="sr-only" for="inline-writing-body">New message</label>
-        <textarea id="inline-writing-body" spellcheck="true" aria-describedby="inline-save-state inline-writing-hint" placeholder="Write a new message…"></textarea>
-        <div id="inline-attachments" class="attachments"></div>
+        <div class="compose-head">
+          <button id="inline-who-chip" type="button" class="who-chip" aria-haspopup="dialog" title="Who sees this message"></button>
+          <div class="save-status"><span id="inline-save-state" role="status" tabindex="-1"></span></div>
+          <div class="review-chips"><div id="inline-pending" class="pending-submissions" aria-label="Submitted writing"></div><button id="inline-review-versions" type="button" hidden>Review versions</button></div>
+        </div>
+        <div id="inline-who-panel" class="compose-panel who-panel" role="dialog" aria-label="Who sees this message" hidden>
+          <button id="inline-who-done" type="button" class="panel-done" data-done>Done</button>
+          <div id="inline-who-sentence" class="who-sentence"></div>
+          <div class="who-row"><span class="who-label" aria-hidden="true">How</span><div id="inline-intent-row" class="intent-row"></div></div>
+          <div class="who-row"><span class="who-label" id="inline-address-words">To</span><div class="audience" role="group" aria-labelledby="inline-address-words"><div id="inline-recipient-named" class="named-chips"></div><button id="inline-recipient-open" type="button" class="someone" aria-haspopup="dialog" aria-controls="inline-recipient-sheet">+ Someone</button><dialog id="inline-recipient-sheet" class="naming-sheet" aria-labelledby="inline-recipient-title"><div class="naming-head"><button id="inline-recipient-back" type="button" class="naming-back" aria-label="Back to your message" title="Back to your message"><span aria-hidden="true">←</span></button><h2 id="inline-recipient-title">Name someone</h2><button id="inline-recipient-done" type="button" class="naming-done">Done</button></div><div class="naming-people"><div id="inline-recipient-chips" class="chips"></div></div><input id="inline-recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the new message" placeholder="+ Someone" autocomplete="off" enterkeyhint="done"></dialog></div></div>
+          <div class="who-row destination-row"><p id="inline-destination" class="field-label"></p></div>
+        </div>
+        <div id="inline-plus-panel" class="compose-panel plus-panel" role="dialog" aria-label="Add to this message" hidden>
+          <button id="inline-plus-done" type="button" class="panel-done" data-done>Done</button>
+          <div class="tiles">
+            <button id="inline-add-image" type="button" class="tile">Add image</button>
+            <button id="inline-choose-image" type="button" class="tile" hidden>Choose file</button>
+            <button id="inline-cancel-image" type="button" class="tile" hidden>Cancel image selection</button>
+          </div>
+        </div>
+        <div id="inline-attachments" class="attachments image-strip"></div>
         <input id="inline-image-file" type="file" accept="image/*" hidden>
-        <footer class="writing-footer">
-          <button id="inline-add-image" type="button">Add image</button>
-          <button id="inline-choose-image" type="button" hidden>Choose file</button>
-          <button id="inline-cancel-image" type="button" hidden>Cancel image selection</button>
-          <div><div class="save-status"><span id="inline-save-state" role="status" tabindex="-1"></span></div><button id="inline-review-versions" type="button" hidden>Review versions</button><span id="inline-writing-hint" class="muted">Return for a new line · ⌘ Return to send</span></div>
-          <button id="inline-send" type="button" class="primary"><span class="send-word">Send</span> <span aria-hidden="true">⌘↵</span></button>
-        </footer>
+        <button id="inline-plus-button" type="button" class="plus-button" aria-haspopup="dialog" aria-label="Add to this message" title="Add an image"><span aria-hidden="true">+</span></button>
+        <div class="field-box">
+          <label class="sr-only" for="inline-writing-body">New message</label>
+          <textarea id="inline-writing-body" rows="1" spellcheck="true" aria-describedby="inline-save-state inline-writing-hint" placeholder="Write a new message…"></textarea>
+          <button id="inline-taller-field" type="button" class="taller-field" aria-pressed="false" aria-label="Taller writing" title="Taller writing"><span aria-hidden="true">⤢</span></button>
+        </div>
+        <span id="inline-writing-hint" class="muted">Return for a new line · ⌘ Return to send</span>
+        <button id="inline-send" type="button" class="primary compose-send"><span class="send-word">Send</span> <span aria-hidden="true">⌘↵</span></button>
       </section>
+      </dialog>
     </main>
   </div>
 
@@ -113,6 +131,7 @@
     <header class="reader-header">
       <button id="reader-parent" type="button" class="quiet" aria-label="Back to the topic" title="Back to the topic">←</button>
       <div class="reader-heading"><h2 id="reader-title">Message</h2><p id="reader-origin" class="muted"></p></div>
+      <div id="reader-stepping"><button id="next-message" type="button" aria-label="Newer message (above)" title="Newer message (above)">↑</button><button id="previous-message" type="button" aria-label="Older message (below)" title="Older message (below)">↓</button></div>
       <button id="reader-menu" type="button" class="message-menu" aria-haspopup="menu" aria-label="More for this message" title="More">⋯</button>
       <button id="reader-close" type="button" aria-label="Close reader">✕</button>
     </header>
@@ -124,37 +143,53 @@
         <article id="source-body" tabindex="0" aria-label="Read and select source text"></article>
         <div id="source-attachments" class="attachments"></div>
         <footer class="source-actions">
-          <button id="quote-selection" type="button">Quote selection</button>
           <button id="retry-source" type="button" hidden>Retry access</button>
-          <button id="mark-unread" type="button" aria-pressed="false" hidden>Mark unread</button>
-          <button id="start-from-message" type="button" hidden>Start a topic from this</button>
-          <button id="add-to-pipeline" type="button" hidden>Add to pipeline</button>
-          <span class="muted">Shift-click extends the lit passage · Return inserts it as a quote</span>
-          <div id="reader-stepping"><button id="next-message" type="button" aria-label="Newer message (above)" title="Newer message (above)">↑</button><button id="previous-message" type="button" aria-label="Older message (below)" title="Older message (below)">↓</button></div>
+          <button id="mark-unread" class="menu-source" type="button" aria-pressed="false" hidden>Mark unread</button>
+          <button id="start-from-message" class="menu-source" type="button" hidden>Start a topic from this</button>
+          <button id="add-to-pipeline" class="menu-source" type="button" hidden>Add to pipeline</button>
         </footer>
         <div id="pipeline-add" class="pipeline-add" hidden></div>
+        <div class="quote-float"><button id="quote-selection" type="button" class="quote-pill" title="Shift-click extends the lit passage · Return inserts it as a quote" hidden><span aria-hidden="true">❝</span> Quote<span class="quote-key" aria-hidden="true">↵</span></button></div>
       </section>
-      <div id="reader-divider" role="separator" tabindex="0" aria-label="Resize reading and writing panes" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="48" title="Drag or use arrow keys to resize. Double-click to reset."><span aria-hidden="true"></span></div>
-      <section class="writing-pane" aria-label="Your writing">
-        <div id="destination-label" class="field-label destination-row"><span id="destination-words">To</span><span id="reply-destination" class="destination-chips" role="group" aria-labelledby="destination-words"></span></div>
-        <p id="destination-note" class="muted destination-note" hidden></p>
-        <div id="reply-audience" class="audience"><span class="muted">Address</span><div id="recipient-chips" class="chips"></div><input id="recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the reply" placeholder="Someone else" autocomplete="off" enterkeyhint="done"></div>
-        <div id="intent-row" class="intent-row"></div>
+      <div id="reader-divider" role="separator" tabindex="0" aria-label="Resize reading and writing panes" aria-orientation="vertical" aria-valuemin="20" aria-valuemax="80" aria-valuenow="45" title="Drag or use arrow keys to resize. Double-click to reset."><span aria-hidden="true"></span></div>
+      <section class="writing-pane composer" id="reader-composer" aria-label="Your writing">
         <div id="reader-notice" class="notice" role="status" hidden></div>
-        <div id="pending-submissions" class="pending-submissions" aria-label="Submitted writing"></div>
-        <label class="sr-only" id="writing-label" for="writing-body">Reply</label>
-        <textarea id="writing-body" spellcheck="true" aria-describedby="save-state writing-hint" placeholder="Write a reply…"></textarea>
-        <div id="writing-attachments" class="attachments"></div>
+        <div class="compose-head">
+          <button id="who-chip" type="button" class="who-chip" aria-haspopup="dialog" title="Who sees this reply"></button>
+          <button id="note-chip" type="button" class="note-chip" title="Back to your reply" hidden>Private note · only you<span aria-hidden="true"> ✕</span></button>
+          <div class="save-status"><span id="save-state" role="status" tabindex="-1">Saved</span></div>
+          <div class="review-chips"><div id="pending-submissions" class="pending-submissions" aria-label="Submitted writing"></div><button id="review-versions" type="button" hidden>Review versions</button></div>
+          <p id="destination-note" class="muted destination-note" hidden></p>
+        </div>
+        <div id="who-panel" class="compose-panel who-panel" role="dialog" aria-label="Who sees this reply" hidden>
+          <button id="who-done" type="button" class="panel-done" data-done>Done</button>
+          <div id="who-sentence" class="who-sentence"></div>
+          <div class="who-row"><span class="who-label" aria-hidden="true">How</span><div id="intent-row" class="intent-row"></div></div>
+          <div class="who-row"><span class="who-label" id="address-words">To</span><div id="reply-audience" class="audience" role="group" aria-labelledby="address-words"><div id="recipient-named" class="named-chips"></div><button id="recipient-open" type="button" class="someone" aria-haspopup="dialog" aria-controls="recipient-sheet">+ Someone</button><dialog id="recipient-sheet" class="naming-sheet" aria-labelledby="recipient-title"><div class="naming-head"><button id="recipient-back" type="button" class="naming-back" aria-label="Back to your reply" title="Back to your reply"><span aria-hidden="true">←</span></button><h2 id="recipient-title">Name someone</h2><button id="recipient-done" type="button" class="naming-done">Done</button></div><div class="naming-people"><div id="recipient-chips" class="chips"></div></div><input id="recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the reply" placeholder="+ Someone" autocomplete="off" enterkeyhint="done"></dialog></div></div>
+          <div id="destination-label" class="who-row destination-row"><span id="destination-words" class="who-label">In</span><span id="reply-destination" class="destination-chips" role="group" aria-labelledby="destination-words"></span></div>
+        </div>
+        <div id="plus-panel" class="compose-panel plus-panel" role="dialog" aria-label="Add to this reply" hidden>
+          <button id="plus-done" type="button" class="panel-done" data-done>Done</button>
+          <div class="tiles">
+            <button id="add-image" type="button" class="tile">Add image</button>
+            <button id="choose-image" type="button" class="tile" hidden>Choose file</button>
+            <button id="cancel-image" type="button" class="tile" hidden>Cancel image selection</button>
+            <button id="toggle-note" type="button" class="tile">Add note</button>
+            <button id="plus-quote" type="button" class="tile">Quote selection</button>
+          </div>
+        </div>
+        <div id="writing-attachments" class="attachments image-strip"></div>
         <input id="image-file" type="file" accept="image/*" hidden>
-        <footer class="writing-footer">
-          <button id="toggle-note" type="button">Add note</button>
-          <button id="add-image" type="button">Add image</button>
-          <button id="choose-image" type="button" hidden>Choose file</button>
-          <button id="cancel-image" type="button" hidden>Cancel image selection</button>
-          <div><div class="save-status"><span id="save-state" role="status" tabindex="-1">Saved</span></div><button id="review-versions" type="button" hidden>Review versions</button><span id="writing-hint" class="muted">Return for a new line · ⌘ Return to send</span></div>
-          <button id="thumb-source" type="button" aria-pressed="false" hidden>👍</button>
-          <button id="send-reply" type="button" class="primary">Send <span aria-hidden="true">⌘↵</span></button>
-        </footer>
+        <button id="plus-button" type="button" class="plus-button" aria-haspopup="dialog" aria-label="Add to this reply" title="Add an image, a private note or a quote"><span aria-hidden="true">+</span></button>
+        <div class="field-box">
+          <span id="draft-tag" class="draft-tag" aria-hidden="true">Draft</span>
+          <label class="sr-only" id="writing-label" for="writing-body">Reply</label>
+          <textarea id="writing-body" rows="1" spellcheck="true" aria-describedby="save-state writing-hint" placeholder="Write a reply…"></textarea>
+          <button id="taller-field" type="button" class="taller-field" aria-pressed="false" aria-label="Taller writing" title="Taller writing"><span aria-hidden="true">⤢</span></button>
+        </div>
+        <span id="writing-hint" class="muted">Return for a new line · ⌘ Return to send</span>
+        <button id="thumb-source" type="button" aria-pressed="false" hidden>👍</button>
+        <button id="send-reply" type="button" class="primary compose-send">Send <span aria-hidden="true">⌘↵</span></button>
       </section>
     </div>
   </dialog>

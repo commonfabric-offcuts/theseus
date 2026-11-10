@@ -135,16 +135,21 @@ test('a quote lets go of the message\'s selection before the field takes focus, 
   assert.equal(f.field.scrollTop, f.field.scrollHeight, 'the field scrolls so the cursor is in view');
 });
 
-test('the page: the note button sits before Add image, no Reply row, the hint says what Shift-click and Return do, the arrows go up and down', () => {
+test('the page: + holds Add image, the note and Quote, the message keeps no row of buttons under it, the pill says what Shift-click and Return do, the arrows go up and down', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
-  const reader = html.slice(html.indexOf('<dialog id="reader"'), html.indexOf('</dialog>', html.indexOf('<dialog id="reader"')));
-  const footer = reader.slice(reader.indexOf('<footer class="writing-footer">'), reader.indexOf('</footer>', reader.indexOf('<footer class="writing-footer">')));
-  assert.match(footer, /^<footer class="writing-footer">\s*<button id="toggle-note" type="button">Add note<\/button>\s*<button id="add-image"/, 'Add note opens the reply\'s lower row, just before Add image');
+  // The Reader runs to the dialog after it: its who panel holds a dialog of its own, the naming sheet.
+  const reader = html.slice(html.indexOf('<dialog id="reader"'), html.indexOf('<dialog id="topic-settings"'));
+  const tiles = reader.slice(reader.indexOf('<div id="plus-panel"'), reader.indexOf('</div>', reader.indexOf('<div class="tiles">')));
+  assert.match(tiles, /<button id="add-image"[^>]*>Add image<\/button>[\s\S]*<button id="toggle-note"[^>]*>Add note<\/button>\s*<button id="plus-quote"[^>]*>Quote selection<\/button>/, '+ holds Add image, then the note, then Quote');
   assert.equal((reader.match(/id="toggle-note"/g) ?? []).length, 1, 'there is one note button');
   assert.doesNotMatch(reader, /writing-heading|<h3[^>]*>Reply</, 'no "Reply" heading row over the writing');
-  assert.match(reader, /<textarea id="writing-body"[^>]*placeholder="Write a reply…"/, 'the field says what it is');
-  assert.match(reader, /<span class="muted">Shift-click extends the lit passage · Return inserts it as a quote<\/span>/);
+  assert.match(reader, /<textarea id="writing-body"[^>]*placeholder="Write a reply…"/, 'the field says what it is before the Reader paints whom it answers');
+  const under = reader.slice(reader.indexOf('<footer class="source-actions">'), reader.indexOf('</footer>'));
+  for (const id of ['mark-unread', 'start-from-message', 'add-to-pipeline'])
+    assert.match(under, new RegExp(`<button id="${id}" class="menu-source"[^>]*hidden>`), `${id} is the ⋯'s, never a box under the message`);
+  assert.match(reader, /<button id="quote-selection"[^>]*class="quote-pill" title="Shift-click extends the lit passage · Return inserts it as a quote" hidden>/);
   assert.match(reader, /<button id="reader-parent"[^>]*aria-label="Back to the topic"[^>]*>←<\/button>/, 'the back button is its arrow, named for a screen reader');
   assert.match(reader, /<div id="reader-stepping"><button id="next-message"[^>]*aria-label="Newer message \(above\)"[^>]*>↑<\/button><button id="previous-message"[^>]*aria-label="Older message \(below\)"[^>]*>↓<\/button><\/div>/,
     'up (newer) comes first, then down (older)');
+  assert.ok(reader.indexOf('id="reader-stepping"') < reader.indexOf('id="reader-menu"') && reader.indexOf('id="reader-menu"') < reader.indexOf('id="reader-close"'), 'the header holds ↑ ↓, then ⋯, then ✕');
 });

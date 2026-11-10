@@ -145,7 +145,12 @@ function placeChips(host, chips) {
 // press held across a commit's repaint is not lost. A chip that held the focus
 // and was drawn afresh hands it to the same person's new chip, or to field
 // when there is none.
-export function paintAddress(host, field, { people, named, toggle, remove, reach }) {
+//
+// summary, when given ({ host, opener }), is the first step of naming on a
+// phone (docs/reader.md): everyone named, each with only a ×, and opener
+// (+ Someone) for the rest. It never lists anyone not named, so it is the
+// same size however big the team.
+export function paintAddress(host, field, { people, named, toggle, remove, reach, summary = null }) {
   const at = document.activeElement, holder = [...host.children].find(chip => chip === at || [...chip.children ?? []].includes(at));
   const held = holder ? { name: holder.dataset.name, inner: holder !== at ? at.textContent : null } : null;
   const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
@@ -162,8 +167,9 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
     chip.onclick = () => toggle(id, !named.includes(id));
     return chip;
   });
+  const answers = new Map();
   for (const name of named.filter(id => !offered.includes(id))) {
-    const answer = reach?.(name);
+    const answer = reach?.(name); answers.set(name, answer);
     const key = JSON.stringify(['named', answer ? [answer.reachable === true, answer.disabled === true, Boolean(answer.add), answer.scope ?? null] : null]);
     const chip = kept(name, key, () => {
       const fresh = element('span', { className: 'chip', textContent: name }), out = element('button', { type: 'button', textContent: '×' });
@@ -174,11 +180,36 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
     chips.push(chip);
   }
   placeChips(host, chips);
+  if (summary) paintNamed(summary, named, remove, answers);
   if (!held) return;
   const next = chips.find(chip => chip.dataset.name === held.name);
   // The same button on the new chip (its words say which), or the chip itself.
   const inner = held.inner === null ? next : [...next?.children ?? []].find(node => node.textContent === held.inner);
   (inner ?? field).focus();
+}
+
+// Everyone named, each a chip with its ×; one not in the topic is marked so
+// (its offer to add them is in the naming sheet). A chip is kept while it
+// shows the same, so a press held across a repaint still clicks, and a ×
+// that held the focus as its chip went hands it to opener.
+function paintNamed({ host, opener }, named, remove, answers) {
+  const held = [...host.children].some(chip => chip.contains(document.activeElement));
+  const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
+  const chips = [...new Set(named)].map(name => {
+    const answer = answers.get(name), away = Boolean(answer && !answer.reachable);
+    let chip = was.get(name);
+    if (chip?.away !== away) {
+      chip = element('span', { className: away ? 'chip unreachable' : 'chip', textContent: name });
+      const out = element('button', { type: 'button', textContent: '×' });
+      out.setAttribute('aria-label', `Remove ${name}`);
+      if (away) chip.title = `${name} is not in this topic, so a message to them is refused. + Someone says more.`;
+      chip.append(out); Object.assign(chip, { out, away }); chip.dataset.name = name;
+    }
+    chip.out.onclick = () => remove(name);
+    return chip;
+  });
+  placeChips(host, chips);
+  if (held && !chips.some(chip => chip.contains(document.activeElement))) opener.focus();
 }
 
 // The people in a team or a topic, for a reader who may change them: each a

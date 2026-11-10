@@ -2,7 +2,7 @@
 // removes them, and a reply card says which message it answers.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Editor } from '../web/editor.mjs';
+import { Editor, holdsWriting, written } from '../web/editor.mjs';
 import { Reader } from '../web/reader.mjs';
 import { replyLine } from '../web/replies.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
@@ -38,6 +38,67 @@ test('a declined author is not added, and other recipients are kept beside an ac
   images.offerAddressees(['fable']);
   images.edit({ attachments: [{ id: 'media-1' }] });
   assert.deepEqual(images.draft.addressees, ['fable'], 'an image alone is writing too');
+});
+
+test('a reply emptied of all that was written offers its author again, as before the first word, and keeps a name the person chose', () => {
+  const emptied = (reply, why) => assert.deepEqual([reply.draft.addressees, reply.offeredAddressees, holdsWriting(reply.draft)], [[], ['fable'], false], why);
+  const typed = editor();
+  typed.offerAddressees(['fable']);
+  typed.edit({ body: 'T' });
+  assert.deepEqual(typed.draft.addressees, ['fable'], 'the first letter took the offered author');
+  typed.edit({ body: '' });
+  emptied(typed, 'a letter typed and deleted leaves the reply holding nothing, its author offered again');
+  typed.edit({ body: 'Again' });
+  assert.deepEqual(typed.draft.addressees, ['fable'], 'and the next word takes them once more');
+  const quoted = editor();
+  quoted.offerAddressees(['fable']);
+  quoted.edit({ quotes: [{ source: { kind: 'message', id: 'm-1' }, excerpt: 'Words' }] });
+  quoted.edit({ quotes: [] });
+  emptied(quoted, 'a quote taken out again holds nothing');
+  // Saved so before this rule: only the offered author named, nothing written.
+  const saved = editor({ addressees: ['fable'] });
+  saved.offerAddressees(['fable']);
+  emptied(saved, 'a saved reply naming only who it is offered to holds nothing');
+  // What the person chose stays theirs, written words or not.
+  const chosen = editor();
+  chosen.offerAddressees(['fable']);
+  chosen.edit({ body: 'T' });
+  chosen.edit({ addressees: ['fable', 'warp'] });
+  chosen.edit({ body: '' });
+  assert.deepEqual([chosen.draft.addressees, holdsWriting(chosen.draft)], [['fable', 'warp'], true], 'a name the person added keeps the reply, its author with it');
+  const again = editor();
+  again.offerAddressees(['fable']);
+  again.declineAddressee('fable');
+  again.edit({ addressees: ['fable'] });
+  again.edit({ body: 'T' });
+  again.edit({ body: '' });
+  assert.deepEqual([again.draft.addressees, holdsWriting(again.draft)], [['fable'], true], 'an author taken off and named again is the person\'s choice');
+  const other = editor({ addressees: ['warp'] });
+  other.offerAddressees(['fable']);
+  assert.deepEqual([other.draft.addressees, holdsWriting(other.draft)], [['warp'], true], 'a saved reply naming someone not offered keeps them');
+  const words = editor({ body: 'Earlier', addressees: ['fable'] });
+  words.offerAddressees(['fable']);
+  assert.deepEqual(words.draft.addressees, ['fable'], 'saved words keep their recipients');
+});
+
+// Send's dimming, 👍 beside it and the line's Draft read whether anything is
+// written: words or an image. Names, a choice of how it asks, and a quote whose
+// words were taken out are not writing, though Core holds the draft for them.
+test('nothing is written until there are words or an image, whoever the reply names and however it asks', () => {
+  const reply = editor();
+  reply.offerAddressees(['fable']);
+  const seen = () => [written(reply.draft), holdsWriting(reply.draft)];
+  assert.deepEqual(seen(), [false, false], 'an empty reply');
+  reply.edit({ addressees: ['fable', 'warp'], intent: 'ask' });
+  assert.deepEqual(seen(), [false, true], 'named and asked, nothing written: Core keeps the choices, and nothing is written');
+  reply.edit({ body: ' \n' });
+  assert.deepEqual(seen(), [false, true], 'blank lines are not words');
+  reply.edit({ body: 'Hi' });
+  assert.deepEqual(seen(), [true, true], 'a word is written');
+  reply.edit({ body: '', quotes: [{ source: { kind: 'message', id: 'm-1' }, excerpt: 'Words' }] });
+  assert.deepEqual(seen(), [false, true], 'a quote whose words were all deleted is not written');
+  reply.edit({ attachments: [{ id: 'media-1' }] });
+  assert.deepEqual(seen(), [true, true], 'an image is written');
 });
 
 test('writing kept from before is left with the recipients it has', () => {
@@ -117,10 +178,15 @@ test('after typing, one press on the offered author\'s remove takes them off, an
 });
 
 test('a reply offered to an agent shows Whisper from the start, and typing that takes the author keeps it', t => {
-  const previous = { document: globalThis.document, window: globalThis.window };
+  const previous = { document: globalThis.document, window: globalThis.window, MutationObserver: globalThis.MutationObserver, ResizeObserver: globalThis.ResizeObserver };
   const document = miniDocument();
+  // The page's own listeners and its end-of-message line are not what this checks.
+  document.addEventListener = () => {};
+  globalThis.MutationObserver = class { observe() {} };
+  globalThis.ResizeObserver = class { observe() {} };
   globalThis.document = document;
-  const win = { listeners: {}, getSelection: () => null, addEventListener(type, listener, capture) { this.listeners[type] = [listener, capture]; } };
+  const win = { listeners: {}, getSelection: () => null, addEventListener(type, listener, capture) { this.listeners[type] = [listener, capture]; },
+    matchMedia: () => ({ matches: false, addEventListener() {} }) };
   globalThis.window = win;
   t.after(() => Object.assign(globalThis, previous));
   // The Reader's own wiring: every element it binds listens, and the writing
@@ -148,7 +214,7 @@ test('a reply offered to an agent shows Whisper from the start, and typing that 
   // No smaller pop-up is open inside it.
   const named = reader.dialog.querySelector;
   Object.assign(reader.dialog, { open: true, getBoundingClientRect: () => ({ left: 100, right: 900, top: 50, bottom: 750 }),
-    querySelector: selector => selector === '[role="dialog"]' ? null : named(selector) });
+    querySelector: selector => selector === '[role="dialog"]:not([hidden])' ? null : named(selector) });
   assert.ok(win.listeners.pointerdown, 'the Reader listens for a press outside it');
   const [down, capture] = win.listeners.pointerdown;
   assert.equal(capture, true, 'the press is seen on the window, on its way down');
@@ -178,7 +244,7 @@ test('a reply begun with a quote still goes to the author it was offered', t => 
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply }, presentation: {}, mode: 'reply', field, writes: () => true,
     source: { source_ref: { kind: 'message', id: 'm-1' }, body: 'Ship it' },
-    selectedPassage: () => 'Ship it', disarm() {},
+    selectedPassage: () => 'Ship it', disarm() {}, notice() {},
     // The writing field reports each insertion to its editor, as typing does.
     insertText(text) { field.value += text; reply.edit({ body: field.value }); },
   });
@@ -192,4 +258,26 @@ test('a reply begun with a quote still goes to the author it was offered', t => 
   Object.assign(reader, { sessions: { reply: declined }, insertText(text) { declined.edit({ body: text }); } });
   reader.quote();
   assert.deepEqual(declined.draft.addressees, [], 'a declined author stays off a quoted reply');
+});
+
+test('a reply posted to another topic than the message\'s says where on its chip, its field and the line under the chip; one posted where the message is says nothing more', t => {
+  const previous = globalThis.document;
+  const document = miniDocument();
+  globalThis.document = document;
+  t.after(() => { globalThis.document = previous; });
+  const element = id => document.byId(id);
+  const field = Object.assign(document.createElement('textarea'), { value: '' });
+  const conversation = { name: 'the conversation', note: 'Goes to the outcome\'s conversation; nobody in this topic is woken.' };
+  const shown = (from, to) => {
+    const reply = new Editor({ ...context, topicId: to }, { id: 'reply', revision: 0, generation: 'g', body: 'Hi', addressees: ['fable'], intent: 'tell' });
+    const reader = Object.assign(Object.create(Reader.prototype), { $: element, field, mode: 'reply', sessions: { reply }, source: { topic_id: from, source_ref: context.sourceRef },
+      callbacks: { place: id => id === 'c1' ? conversation : null, people: () => ({ kindOf: () => 'agent', everyone: ['fable'] }) } });
+    reader.paintChoice();
+    const note = element('destination-note');
+    return [element('who-chip').textContent, field.placeholder, note.hidden ? '' : note.textContent];
+  };
+  assert.deepEqual(shown('t1', 'c1'), ['Tell fable · in the conversation', 'Reply to fable in the conversation…', conversation.note]);
+  assert.deepEqual(shown('t1', 't1'), ['Tell fable · everyone here', 'Reply to fable…', '']);
+  // Read in the conversation itself, a reply there goes to everyone here.
+  assert.deepEqual(shown('c1', 'c1'), ['Tell fable · everyone here', 'Reply to fable…', '']);
 });

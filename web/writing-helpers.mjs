@@ -1,5 +1,5 @@
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
-import { holdsWriting } from './editor.mjs';
+import { holdsWriting, written } from './editor.mjs';
 import { timeNode } from './times.mjs';
 
 // Shared descriptions and admission decisions only. Each surface keeps its
@@ -19,7 +19,7 @@ export function writingState(editor, { active = true, writable = active, note = 
       : editor.conflict ? 'Not saved — another version needs review' : editor.dirty ? 'Not yet saved to AIM' : 'Saved to AIM'),
     sign: barrier || !status ? '' : sign?.(editor) ?? '',
     sendDisabled: Boolean(!active || barrier || editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
-      (!note && (preparing || !editor.context.topicId || (!editor.draft.body.trim() && !editor.draft.attachments.length)))),
+      (!note && (preparing || !editor.context.topicId || !written(editor.draft)))),
     addDisabled: Boolean(!active || readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
       editor.uploadState?.entries.some(e => e.selected && e.owner.id === editor.clientCycleId && e.origin === 'retained-ref' && !e.ready_descriptor)),
   };

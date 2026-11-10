@@ -20,6 +20,16 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       // The person's own long card answers their first message, so it sits in that message's reply stack, folded away under the agents' later replies.
       await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(own)}))`),'own card drawn');
       await p.unfold(own);
+      // The quiet words on the message's own color: ↑ Newer · ↓ Older at its
+      // end, shown on a phone (docs/reader.md), read there and the window put back.
+      const endHint=async()=>{
+        await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+        await until(()=>p.evaluate("document.querySelector('#reader .reader-end')?.getClientRects().length>0"),'the end line on a phone');
+        const words=await style('.reader-end .end-step'),pane=await style('.reading-pane');
+        await p.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+        await until(()=>p.evaluate("!matchMedia('(max-width: 760px)').matches&&document.getAnimations().every(animation=>animation.playState!=='running')"),'the window put back');
+        return {color:words.color,background:pane.background};
+      };
       const initialOwn=await style(own),initialOther=await style(`#messages [data-id="${original.result.message_id}"]`);
       expect(initialOwn.background==='rgb(0, 0, 0)'&&initialOther.background!=='rgb(0, 0, 0)',theme+': initial paint distinguishes own and other');
       const incoming=await control({method:'agent_message',operation_id:'reading-colors-'+theme,body:'Other author for reading colors '+theme+'.'});
@@ -74,19 +84,19 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       const agentSource=await style('.reading-pane'),agentSample=await behindWords();
       expect(agentSource.background===topicHover.background,theme+': an agent message is read on its card hover color');
       expect(painted(agentSample,topicHover.background),theme+': painted background behind the agent message words matches its card hover');
-      const agentHint=await style('.source-actions .muted');
-      expect(contrast(agentHint.color,agentSource.background)>=4.5,theme+': source action hint contrast on the agent color is at least 4.5:1');
+      const agentHint=await endHint();
+      expect(contrast(agentHint.color,agentHint.background)>=4.5,theme+': the end line\'s contrast on the agent color is at least 4.5:1');
       await shot(p,'reading-colors-'+theme+'-agent-source');
       await p.point('#reader-close');
       await until(()=>p.evaluate('!document.querySelector("#reader").open'),'agent message Reader closed');
       await p.open(1);
+      const hint=await endHint(),hintContrast=contrast(hint.color,hint.background);
+      expect(hintContrast>=4.5,theme+': the end line\'s contrast is at least 4.5:1');
       const geometry=()=>p.evaluate(`['#source-body','#writing-body'].map(s=>{const e=document.querySelector(s),r=e.getBoundingClientRect();return {s,x:r.x,y:r.y,width:r.width,height:r.height,scrollHeight:e.scrollHeight,text:e.value??e.textContent}})`);
       const before=await geometry(),writing=await style('#writing-body'),source=await style('.reading-pane');
       expect(source.background===neutral[theme],theme+': the person\'s own message is read on the neutral page, not an agent\'s color');
       const {point:backgroundPoint,pixel:sourcePixel}=await behindWords();
       expect(painted({pixel:sourcePixel},neutral[theme]),theme+': painted background behind source words is the neutral page');
-      const hint=await style('.source-actions .muted'),hintContrast=contrast(hint.color,source.background);
-      expect(hintContrast>=4.5,theme+': source action hint contrast is at least 4.5:1');
       const target=await p.evaluate(`(()=>{const spans=[...document.querySelectorAll('#source-body [data-start]')];const s=spans.find(e=>e.getClientRects().length>1&&e.getBoundingClientRect().bottom<innerHeight/2)||spans[0];const range=document.createRange();range.selectNodeContents(s);const r=range.getClientRects()[0];return {start:s.dataset.start,x:r.x+2,y:r.y+r.height/2}})()`);
       await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:target.x,y:target.y});
       const hovered=await style('#source-body .hover-quote');

@@ -11,10 +11,21 @@ const NO_WRITING = { body: '', attachments: [], quotes: [], addressees: [], inte
 export const WRITING_FIELDS = Object.freeze(Object.keys(NO_WRITING));
 export const noWriting = () => copy(NO_WRITING);
 
+// Whether there is anything to send: words (a quote is words in the field) or
+// an image. With nothing written Send is dimmed, 👍 stands beside it, and the
+// quiet line shows no Draft. Who the reply goes to, how it asks and where it
+// is posted are choices about the writing, not writing, so however a name
+// reaches the reply (offered, moved with it, or chosen) none of these change.
+export const written = draft => Boolean(draft.body.trim() || draft.attachments.length);
 // Whether a reply or note holds anything the person wrote or chose. Core keeps
 // the same rule: only writing holds on to the Notebook revision it is about.
 export const holdsWriting = draft => Boolean(draft && (draft.body || draft.attachments?.length || draft.quotes?.length ||
   draft.addressees?.length || ['reply_to', 'exchange_id', 'opening'].some(name => draft[name] != null)));
+// Names a reply took from its offer go back to being offered when nothing else
+// is written (Editor.offerAddressees).
+const reoffer = (draft, offered) => {
+  if (draft.addressees.length && draft.addressees.every(name => offered?.includes(name)) && !holdsWriting({ ...draft, addressees: [] })) draft.addressees = [];
+};
 
 function topicCompositionError(context, sourceRef, draft) {
   if (context.sourceRef?.kind !== 'topic') return null;
@@ -100,7 +111,11 @@ export class Editor {
   // message it answers. They are offered while the reply holds nothing, become
   // its recipients with the first thing written, and are dropped when the
   // person removes them. Writing kept from before keeps its own recipients.
-  offerAddressees(names) { this.offered = [...names]; }
+  // A reply that names only who it is offered to, with nothing else written,
+  // holds nothing: once all that was written is gone (typed and deleted, a
+  // quote or image removed, or so saved before), those names are offered again,
+  // as before the first word, so the empty reply is empty everywhere.
+  offerAddressees(names) { this.offered = [...names]; reoffer(this.draft, this.offered); }
   declineAddressee(name) { if (this.offered) this.offered = this.offered.filter(item => item !== name); }
   get offeredAddressees() {
     return holdsWriting(this.draft) ? [] : (this.offered ?? []).filter(name => !this.draft.addressees.includes(name));
@@ -122,6 +137,7 @@ export class Editor {
     if (offered.length && holdsWriting(this.draft)) {
       this.draft.addressees = [...offered, ...this.draft.addressees.filter(name => !offered.includes(name))];
     }
+    reoffer(this.draft, this.offered);
     this.localVersion += 1;
   }
 

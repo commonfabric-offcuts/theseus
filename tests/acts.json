@@ -105,6 +105,143 @@
    }
   },
   {
+   "item": 126,
+   "act": "With the cursor in an empty reply, as Return leaves it, the Reader's 👍 stays beside Send",
+   "break": [
+    [
+     "web/aim.css",
+     ".composer[data-has-writing]>#thumb-source{display:none}",
+     ".composer[data-compose=writing]>#thumb-source,.composer[data-has-writing]>#thumb-source{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "👍 in the Reader beside Send"
+   }
+  },
+  {
+   "item": 126,
+   "act": "The Reader's 👍 goes once a word is typed in the reply",
+   "break": [
+    [
+     "web/aim.css",
+     ".composer[data-has-writing]>#thumb-source{display:none}",
+     ".composer[data-has-writing]>#thumb-source{}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "👍 in the Reader beside Send"
+   }
+  },
+  {
+   "item": 126,
+   "act": "A reply typed in and deleted again is empty: the Reader's 👍 comes back beside Send, and stays when the Reader or the page opens again",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    const writing = written(this.editor.draft);",
+     "    const writing = holdsWriting(this.editor.draft);"
+    ],
+    [
+     "web/editor.mjs",
+     "    reoffer(this.draft, this.offered);\n    this.localVersion += 1;",
+     "    this.localVersion += 1;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "👍 in the Reader beside Send"
+   }
+  },
+  {
+   "item": 126,
+   "act": "With nothing written the Reader's 👍 stays beside the dimmed Send whoever the reply names and wherever it goes: moved to the outcome's conversation and emptied, Ask and the conversation chosen first, or someone named",
+   "break": [
+    [
+     "web/editor.mjs",
+     "export const written = draft => Boolean(draft.body.trim() || draft.attachments.length);",
+     "export const written = draft => Boolean(draft.body.trim() || draft.attachments.length || draft.addressees.length);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: with nothing written 👍"
+   }
+  },
+  {
+   "item": 126,
+   "act": "Whether a reply is written is read from its words and images alone, never from who it names or how it asks",
+   "break": [
+    [
+     "web/editor.mjs",
+     "export const written = draft => Boolean(draft.body.trim() || draft.attachments.length);",
+     "export const written = draft => Boolean(draft.body.trim() || draft.attachments.length || draft.addressees.length);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reply_to.test.mjs"
+   }
+  },
+  {
+   "item": 126,
+   "act": "A typed and deleted reply gives its author back to the offer, so it holds nothing",
+   "break": [
+    [
+     "web/editor.mjs",
+     "    reoffer(this.draft, this.offered);\n    this.localVersion += 1;",
+     "    this.localVersion += 1;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reply_to.test.mjs"
+   }
+  },
+  {
+   "item": 126,
+   "act": "A reply saved naming only its offered author, with nothing written, opens empty with 👍",
+   "break": [
+    [
+     "web/editor.mjs",
+     "offerAddressees(names) { this.offered = [...names]; reoffer(this.draft, this.offered); }",
+     "offerAddressees(names) { this.offered = [...names]; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reply_to.test.mjs"
+   }
+  },
+  {
+   "item": 126,
+   "act": "In the Wide layout the reply field keeps the column's width with nothing written, so the first word does not move it",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(:has(>#thumb-source:not([hidden])))>.field-box{grid-column:2/3}",
+     ":has(>#thumb-source:not([hidden]))>.field-box{grid-column:2/3}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "laptop wide light"
+   }
+  },
+  {
+   "item": 126,
+   "act": "Stacked, with nothing written, the reply field ends before 👍 beside Send",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(:has(>#thumb-source:not([hidden])))>.field-box{grid-column:2/3}",
+     ":where(:has(>#thumb-source:not([hidden])))>.field-box{}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "laptop stacked light"
+   }
+  },
+  {
    "item": 25,
    "act": "A thumbs-up someone else gives reaches an open page's card without a reload",
    "break": [
@@ -1079,7 +1216,7 @@
   },
   {
    "item": 121,
-   "act": "An image row in the topic's composer shows its thumbnail where the row is wide",
+   "act": "An image in the topic's composer shows its thumbnail in the strip, on a phone as on a laptop",
    "break": [
     [
      "web/inline-composer.mjs",
@@ -1094,7 +1231,7 @@
   },
   {
    "item": 121,
-   "act": "An image row in a wide reply shows its thumbnail",
+   "act": "An image in a reply's strip shows its thumbnail",
    "break": [
     [
      "web/image-rows.mjs",
@@ -1104,7 +1241,7 @@
    ],
    "check": {
     "native": "images",
-    "case": "images a row thumbnail holds its place"
+    "case": "images a strip thumbnail holds its place"
    }
   },
   {

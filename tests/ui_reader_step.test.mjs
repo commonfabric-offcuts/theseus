@@ -20,7 +20,7 @@ function reader(t, { admits, writes }) {
   const note = new Editor({ ...context, kind: 'note' }, { id: 'note', revision: 1, body: 'A private note' });
   const elements = { 'reader-notice': Object.assign(document.createElement('p'), { hidden: true }), 'recipient-input': document.createElement('input'),
     'recipient-chips': Object.assign(document.createElement('div'), { root: true }), 'intent-row': Object.assign(document.createElement('div'), { id: 'intent-row' }),
-    'send-reply': document.createElement('button') };
+    'send-reply': document.createElement('button'), 'destination-note': Object.assign(document.createElement('p'), { hidden: true }) };
   const kinds = { fable: 'agent', warp: 'agent', tony: 'human' };
   const acts = [], inserted = [];
   const r = Object.assign(Object.create(Reader.prototype), {
@@ -39,7 +39,7 @@ function reader(t, { admits, writes }) {
 
 test('while a step waits, recipients and quotes reach the Reader\'s writing', t => {
   const f = reader(t, { admits: false, writes: true });
-  f.elements['recipient-input'].value = 'fable'; f.r.addRecipient();
+  f.r.addName('fable');
   assert.deepEqual(f.reply.draft.addressees, ['fable'], 'a recipient is added');
   f.elements['recipient-chips'].children[0].children.find(node => node.tag === 'button').onclick();
   assert.deepEqual(f.reply.draft.addressees, [], 'a recipient is removed');
@@ -63,15 +63,15 @@ test('Whisper, Tell or Ask follows who the reply names, keeps the person\'s choi
   assert.equal(f.reply.draft.intent, 'ask', 'a choice made before naming anyone is still the person\'s');
   f.r.paintChoice();
   assert.equal(state().checked, 'tell', 'but a reply to nobody goes as neither');
-  f.elements['recipient-input'].value = 'tony'; f.r.addRecipient();
+  f.r.addName('tony');
   assert.deepEqual(state(), { checked: 'ask', disabled: ['whisper'] }, 'named, the Ask chosen earlier holds; a person is never whispered to');
   remove('tony');
   assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, f.reply.draft.whisper], [[], null, null], 'the last name taken away takes the choice with it');
-  f.elements['recipient-input'].value = 'fable'; f.r.addRecipient();
+  f.r.addName('fable');
   assert.deepEqual(state(), { checked: 'whisper', disabled: [] }, 'one agent named: a whisper');
   f.r.choose('ask');
   assert.deepEqual([f.reply.draft.intent, f.reply.draft.whisper, state().checked], ['ask', false, 'ask']);
-  f.elements['recipient-input'].value = 'warp'; f.r.addRecipient();
+  f.r.addName('warp');
   remove('fable');
   assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, state().checked], [['warp'], 'ask', 'ask'], 'Ask stays while someone is named');
   f.r.choose('tell');
@@ -97,7 +97,7 @@ test('while a step waits, sending and a note\'s Done wait and say why', async t 
 
 test('a Reader that no longer holds its writing takes nothing and says nothing', async t => {
   const f = reader(t, { admits: false, writes: false });
-  f.elements['recipient-input'].value = 'fable'; f.r.addRecipient();
+  f.r.addName('fable');
   f.r.quote(); await f.r.send(false); f.r.mode = 'note'; f.commandReturn(); f.r.saveNote();
   assert.deepEqual([f.reply.draft.addressees, f.inserted, f.acts, f.notice()], [[], [], [], '']);
 });

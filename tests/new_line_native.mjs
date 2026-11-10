@@ -391,9 +391,10 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
     for (const theme of ['light', 'dark']) {
       // A page of agent messages: the oldest ones are below the first screen.
       // A screen lower than what follows the line, so the line can reach the
-      // top with the oldest card wholly above it.
+      // top with the oldest card wholly above it: the page ends in the reply's
+      // one quiet line (docs/reader.md), not a whole writing box.
       const topic = 'new-line-read-' + theme, ids = await topicWith(topic, 24);
-      const p = await open(topic, 'new-line-' + theme, theme, 520);
+      const p = await open(topic, 'new-line-' + theme, theme, 400);
       // What shows on the first screen is read; the oldest message is not on it.
       await settle(p, topic, theme + ': the line drawn where the server says');
       const oldest = await unread(topic);

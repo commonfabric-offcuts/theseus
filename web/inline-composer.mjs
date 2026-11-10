@@ -5,11 +5,8 @@ import { WritingInput } from './writing-input.mjs';
 import { paintChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { showLine } from './lines.mjs';
+import { ComposeBar } from './compose-bar.mjs';
 
-const node = (tag, text, className) => {
-  const el = document.createElement(tag); if (text !== undefined) el.textContent = text;
-  if (className) el.className = className; return el;
-};
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
 // It has no source body, note editor, storage or retry scheduler of its own.
@@ -17,6 +14,26 @@ export class InlineComposer {
   constructor(callbacks) {
     this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
     this.field = this.$('writing-body');
+    // The Reader's composer, with no message above it (docs/reader.md).
+    // Naming someone on a phone: the who panel's named chips and + Someone,
+    // then the naming sheet (docs/reader.md).
+    this.naming = { opener: this.$('recipient-open'), sheet: this.$('recipient-sheet'), field: this.$('recipient-input'),
+      back: [this.$('recipient-back'), this.$('recipient-done')], named: this.$('recipient-named'), add: name => this.addName(name),
+      names: () => this.editor?.draft.addressees ?? [] };
+    this.bar = new ComposeBar({ root: this.root, field: this.field, notice: this.$('notice'), panels: { who: this.$('who-panel'), plus: this.$('plus-panel') },
+      openers: { who: this.$('who-chip'), plus: this.$('plus-button') }, taller: this.$('taller-field'), naming: this.naming });
+    // New message at the top of a topic page pops this composer up on its
+    // own, ready to type; Escape, ✕ or a press outside puts it back at the
+    // page's end, its writing kept. Shown only where the composer is
+    // (aim.css), so it is never one more row of buttons.
+    this.sheet = document.querySelector('#new-message-sheet');
+    document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
+    document.querySelector('#new-message-close')?.addEventListener('click', () => this.sheet?.close());
+    this.sheet?.addEventListener('close', () => { this.bar.fold(); document.querySelector('#new-message')?.focus({ preventScroll: true }); });
+    // Only a press that starts and ends on the sheet's backdrop puts it back.
+    let outside = false;
+    this.sheet?.addEventListener('pointerdown', event => { outside = event.target === this.sheet; });
+    this.sheet?.addEventListener('click', event => { if (outside && event.target === this.sheet) this.sheet.close(); outside = false; });
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
       changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();this.images?.update();}});
     // #img lists the topic's recent images under the writing (image-pick.mjs).
@@ -34,9 +51,6 @@ export class InlineComposer {
     });
     this.field.addEventListener('paste', event => this.paste(event));
     this.$('send').onclick = () => this.send();
-    this.$('recipient-input').onkeydown = event => {
-      if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); if (!event.repeat) this.addRecipient(); }
-    };
     // Add image, or Paste image when the clipboard is known to hold one;
     // Choose file beside it then still opens the picker.
     this.$('add-image').onclick = async () => {
@@ -81,8 +95,17 @@ export class InlineComposer {
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
   state() { return writingState(this.editor, { active: this.admits(), status: this.callbacks.status, sign: this.callbacks.sign }); }
   caret() { return this.input.caret(); }
+  pop() {
+    if (!this.sheet || this.sheet.open || this.root.hidden) return;
+    this.sheet.showModal();
+    this.field.focus();
+    this.field.setSelectionRange(this.field.value.length, this.field.value.length);
+  }
   show(p) {
+    if (this.sheet?.open && this.presentation !== p) this.sheet.close();
     this.presentation = p; this.root.hidden = false;
+    // A name typed in To stays with the new message of the topic it was typed in.
+    this.bar.writes(p.topic.id);
     this.field.disabled = false; showLine(this.$('notice'), '');
     this.$('destination').textContent = `To ${p.topic.title}`;
     this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice();
@@ -116,8 +139,10 @@ export class InlineComposer {
     const off = name => this.removeName(name, p, editor);
     paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [],
       named: recipientChoices(editor.draft.addressees).map(({ name }) => name), reach: this.callbacks.reach, remove: off,
-      toggle: (name, on) => on ? this.addName(name) : off(name) });
+      toggle: (name, on) => on ? this.addName(name) : off(name), summary: { host: this.naming.named, opener: this.naming.opener } });
     this.callbacks.recipientsPainted?.(editor.draft.addressees);
+    // Who is named may have changed: what Send said goes if no longer true.
+    this.bar.settle();
   }
   // In an outcome's conversation a message starts as a Tell, even to one agent (I3).
   get conversation() { return Boolean(this.callbacks.conversation?.()); }
@@ -127,7 +152,7 @@ export class InlineComposer {
     const editor = this.editor;
     if (!editor) return;
     paintChoice(this.$('intent-row'), { draft: editor.draft, names: editor.draft.addressees, kindOf: this.kindOf,
-      everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, readOnly,
+      everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly,
       conversation: this.conversation, onChoose: choice => this.choose(choice) });
   }
   choose(choice) {
@@ -135,12 +160,8 @@ export class InlineComposer {
     if (!this.admits(p, editor) || this.state().readOnly) { this.paintChoice(); return; }
     editor.edit(chosen(choice)); this.callbacks.edit(editor, p); this.paintChoice();
   }
-  addRecipient() {
-    const input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');
-    if (!name || !this.addName(name)) return;
-    input.value = ''; input.focus();
-  }
-  // Names someone in the message (the field's Return, or a name tapped once);
+  // Names someone in the message (a name typed in the name field, compose-bar.mjs
+  // takeName, or tapped once);
   // false when the writing cannot change now.
   addName(name) {
     const p = this.presentation, editor = this.editor;
@@ -165,9 +186,9 @@ export class InlineComposer {
       try {
         if (!this.admits(p, editor) || this.state().readOnly) return;
         await uploads[action.method](choice.id);
-        // Remove takes its own button away; focus lands on Add image only if
-        // it was still there. Where the person has since put it, it stays.
-        if (action.method === 'remove' && this.admits(p, editor) && [null, document.body, control].includes(document.activeElement)) this.$('add-image').focus();
+        // Remove takes its own button away; focus lands in the writing only
+        // if it was still there. Where the person has since put it, it stays.
+        if (action.method === 'remove' && this.admits(p, editor) && [null, document.body, control].includes(document.activeElement)) this.field.focus();
       }
       catch (error) { this.notice(error, p, editor); }
       finally { if (control.isConnected) control.disabled = !this.admits(p, editor) || this.state().readOnly; this.paintStatus(); }
@@ -238,6 +259,8 @@ export class InlineComposer {
   async send() {
     const p = this.presentation, editor = this.editor;
     if (!this.admits(p, editor) || this.state().sendDisabled) return;
+    // A name typed in To and not named: Send waits, and says so (compose-bar.mjs).
+    if (this.bar.holdSend()) return;
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
     editor.edit(sending(editor.draft, editor.draft.addressees, this.kindOf, { conversation: this.conversation }));
     const draft = editor.draft;

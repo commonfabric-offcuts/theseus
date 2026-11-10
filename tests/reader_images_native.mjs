@@ -39,7 +39,8 @@ export async function holdRemoveThroughUpload(p, host, held, until, { name = 'sc
   if (!touch) await p.point('[data-held-remove]', 'move');
   if (from) assert.equal(await p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(from)});f.focus();return document.activeElement===f})()`), true, `focus is in ${from} before the press`);
   const place = () => p.evaluate(`(()=>{const b=document.querySelector('[data-held-remove]');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,words:b.parentElement.firstElementChild.textContent,removes:[...b.parentElement.querySelectorAll('button')].filter(x=>x.textContent==='Remove').length}})()`);
-  const before = await place(), x = before.x + before.width - 3, y = aim === 'bottom' ? before.y + before.height - 3 : before.y + 3;
+  // Near its top or bottom edge, across its middle: a strip's × is round, so its corners are not it.
+  const before = await place(), x = before.x + before.width / 2, y = aim === 'bottom' ? before.y + before.height - 3 : before.y + 3;
   const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held-remove]')`);
   assert.equal(await over(), true, 'the press is aimed at Remove');
   await recordTap(p);
@@ -160,7 +161,8 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'delayed image confirmation');
     assert.equal(await field(p), 'Writing beside a pasted image');
     assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'paste sends nothing');
-    assert.equal(await p.evaluate('document.querySelector("#send-reply").disabled'), true, 'unconfirmed image cannot be omitted from Send');
+    // Send is held while an image waits (dimmed with aria-disabled, docs/reader.md): a press says why.
+    assert.equal(await p.evaluate('(b=>b.disabled||b.getAttribute("aria-disabled")==="true")(document.querySelector("#send-reply"))'), true, 'unconfirmed image cannot be omitted from Send');
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close original source');
     await p.open(0); const other = await field(p);
     p.intercept(null); await p.release(held);
@@ -217,7 +219,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
       const saving = await mark();
       assert.equal(saving.state, 'saving'); assert.equal(saving.fill, 'rgba(0, 0, 0, 0)', 'a ring while the save is under way'); assert.notEqual(saving.ring, 'rgba(0, 0, 0, 0)');
       assert.notEqual(saving.width, '0px', 'the mark is drawn');
-      const selectors = ['#add-image', '#send-reply', '#writing-body'];
+      const selectors = ['#plus-button', '#send-reply', '#writing-body'];
       const before = await Promise.all(selectors.map(s => p.box(s)));
       await shot(p, `restoration-footer-${layout}-pending`);
       p.intercept(null); await p.release(held);
@@ -242,7 +244,8 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled narrow reader');
     await replace(p, 'Footer touch narrow');
     await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'touch fixture saved');
-    const add = await p.box('#add-image'), send = await p.box('#send-reply');
+    // The field and Send, with the gap between them (docs/reader.md).
+    const add = await p.box('#reader-composer .field-box'), send = await p.box('#send-reply');
     const touch = async (x, y) => {
       await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
       await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -266,7 +269,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.equal(p.events.filter(e => e.method === 'Page.fileChooserOpened').length, chooserCount, 'touching the gap does not choose an image');
     await touch(add.x + add.width + 2, add.y + add.height / 2);
     assert.equal(await field(p), 'Footer touch narrow');
-    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'an Add image edge touch cannot send');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'a touch at the field\'s edge cannot send');
     // While an image is being chosen the footer says why Send waits, and at a
     // phone's width, under the Whisper/Tell/Ask row and a reply under review,
     // the writing pane scrolls to its Cancel as a person would.
@@ -337,13 +340,13 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await released(b, () => lingering.evaluate('(async()=>{await granted;letGo()})()'));
     await b.point('#review-versions');
     await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Keep current writing")'), 'explicit keep-current choice');
-    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), true);
+    assert.equal(await b.evaluate('(b=>b.disabled||b.getAttribute("aria-disabled")==="true")(document.querySelector("#send-reply"))'), true);
     await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Keep current writing").id="keep-current-refusal"');
     await b.point('#keep-current-refusal');
     await until(() => b.evaluate('document.querySelector("#review-status").textContent.includes("Current writing kept")'), 'keep-current inspection committed');
     await b.point('#review-close');
     assert.equal(await field(b), 'Current B goes alone');
-    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), false);
+    assert.equal(await b.evaluate('(b=>b.disabled||b.getAttribute("aria-disabled")==="true")(document.querySelector("#send-reply"))'), false);
     await b.point('#writing-body'); await b.key('Enter', 12);
     const sent = await until(() => b.calls.find(c=>c.payload?.kind==='message.send'), 'current B sent');
     const receipt = await view('operation',{operation_id:sent.payload.operation_id}); assert.equal(receipt.status,'committed');
@@ -366,7 +369,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").id="unknown-recover"');
     await b.point('#unknown-recover'); await until(() => b.evaluate('!document.querySelector("#version-review").open'), 'unknown comparison restored');
     assert.equal(await field(b), 'Current B survives reload');
-    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), true);
+    assert.equal(await b.evaluate('(b=>b.disabled||b.getAttribute("aria-disabled")==="true")(document.querySelector("#send-reply"))'), true);
     b.intercept(payload => payload?.name==='editor_state');
     await b.point('#review-versions'); const held = await until(() => b.held[0], 'unknown remote reread');
     await b.send('Fetch.fulfillRequest', {requestId:held.event.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'}],body:Buffer.from(JSON.stringify({error:{code:'SERVER_BUSY',message:'Typed busy read'}})).toString('base64')});
@@ -376,7 +379,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await shot(b, 'unknown-remote-comparison'); b.intercept(null); await b.point('#review-retry');
     await until(() => b.evaluate('document.querySelector("#review-content").textContent.includes("Refused A image reply")'), 'explicit retry reads saved remote');
     assert.equal(await field(b), 'Current B survives reload');
-    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), true);
+    assert.equal(await b.evaluate('(b=>b.disabled||b.getAttribute("aria-disabled")==="true")(document.querySelector("#send-reply"))'), true);
     assert.equal(b.calls.filter(c=>c.payload?.kind==='message.send').length,0);
     observations.push({name:'X4 interruption', setup:'real recorded refusal; close owning tab mid read after durable block; typed HTTP200 error injected only for explicit Review', proof:'native recovery and Retry preserve B; Send stays blocked; no publication'});
     await b.close();
@@ -404,10 +407,12 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   });
   await check('images keyboard chooser file assignment and exact send retain the Reader', async () => {
     const p = await page('images-main', null, true); await p.open(1);
-    assert.ok(await p.box('#add-image'), 'Add image must be visible and discoverable');
+    // Add image is in +, beside the field: Shift-Tab to +, and Return opens it on Add image.
     await p.point('#writing-body');
-    for (let i = 0; i < 12 && await p.evaluate('document.activeElement.id') !== 'add-image'; i++) await p.key('Tab');
-    assert.equal(await p.evaluate('document.activeElement.id'), 'add-image');
+    for (let i = 0; i < 12 && await p.evaluate('document.activeElement.id') !== 'plus-button'; i++) await p.key('Tab', 8);
+    assert.equal(await p.evaluate('document.activeElement.id'), 'plus-button');
+    await p.key('Enter');
+    await until(() => p.evaluate('document.activeElement.id === "add-image"'), '+ opens on Add image');
     await p.send('Page.setInterceptFileChooserDialog', { enabled: true });
     await p.key('Enter');
     const chooser = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'native file chooser activation');
@@ -630,7 +635,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.equal(puts.at(-1).bytes, 14);
   });
 
-  await check('images Remove moves focus to Add image only while the person has not moved it', async () => {
+  await check('images Remove moves focus to the writing only while the person has not moved it', async () => {
     const p = await page('remove-focus', null, true); await p.open(1);
     await replace(p, 'Writing kept through Remove');
     const choose = async () => {
@@ -641,23 +646,23 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
       await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.imageRemove=""');
     };
     // Another tab of this person holds the recovery store, so Remove's strict
-    // write finishes only after the person has clicked back into the writing.
+    // write finishes only after the person has clicked into the message.
     await choose();
     const holder = await page('remove-focus-holder');
     await holder.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors','readwrite',{durability:'strict'}),s=t.objectStore('editors');window.release=false;const keep=()=>{if(!window.release)s.get('remove-focus-hold').onsuccess=keep};keep();t.oncomplete=()=>{d.close();window.released=true};resolve()}})`);
     await p.point('[data-image-remove]');
     assert.equal(await p.evaluate('Boolean(document.querySelector("[data-image-remove]")?.isConnected)'), true, 'Remove is still writing behind the held store');
-    await p.point('#writing-body');
+    await p.point('#source-body');
     await holder.evaluate('window.release=true');
     await until(() => holder.evaluate('window.released===true'), 'held store released');
     await until(() => p.evaluate('!document.querySelector("#writing-attachments").textContent.includes("screen.png")'), 'Remove finished');
     await p.evaluate('new Promise(resolve=>setTimeout(resolve,0))');
-    assert.equal(await p.evaluate('document.activeElement.id'), 'writing-body', 'a finished Remove leaves focus where the person put it');
+    assert.equal(await p.evaluate('document.activeElement.id'), 'source-body', 'a finished Remove leaves focus where the person put it');
     await replace(p, 'Typed after a late Remove');
-    // Untouched, focus leaves the removed button for Add image.
+    // Untouched, focus leaves the removed button for the writing, as × does (docs/reader.md).
     await choose(); await p.point('[data-image-remove]');
     await until(() => p.evaluate('!document.querySelector("#writing-attachments").textContent.includes("screen.png")'), 'second Remove finished');
-    await until(() => p.evaluate('document.activeElement.id === "add-image"'), 'focus on Add image after an untouched Remove');
+    await until(() => p.evaluate('document.activeElement.id === "writing-body"'), 'focus on the writing after an untouched Remove');
     assert.equal(await field(p), 'Typed after a late Remove');
     assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
     assert.deepEqual(p.errors, []);
@@ -689,24 +694,30 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [file] });
   };
   const uploading = p => p.held.filter(x => x.event.request.url.endsWith('/api/media/upload'));
-  // A row's thumbnail shows where the reply is wide, and holds its place
-  // before it loads, so its loading moves nothing (docs/images.md,
-  // "Thumbnails"). A phone's row has none, so the rows below lay out on a
-  // phone as they did before thumbnails.
-  await check('images a row thumbnail holds its place before it loads on a wide reply, and a phone row has none', async () => {
+  // An image's thumbnail holds its place before it loads, so its loading
+  // moves nothing (docs/images.md, "Thumbnails"). A composer's images are a
+  // strip of thumbnails at every width, a phone's too (docs/reader.md).
+  await check('images a strip thumbnail holds its place before it loads, and its × shows whole, on a wide reply and on a phone', async () => {
     const p = await page('thumb-place', null, true);
     await p.open(1);
     await choose(p, path.join(root, 'tests/fixtures/media/screen.png'));
     const thumb = `document.querySelector('#writing-attachments .image-choice>img.image-thumb')`;
     await until(() => p.evaluate(`Boolean(${thumb}&&!${thumb}.hidden&&${thumb}.complete)`), 'the row thumbnail loaded');
     const size = () => p.evaluate(`(r=>[r.width,r.height])(${thumb}.getBoundingClientRect())`);
+    // The image's × shows whole at its corner: the strip leaves it room, so
+    // no edge of it is cut off where a finger would press it.
+    const wholeX = () => p.evaluate(`(()=>{const b=document.querySelector('#writing-attachments .image-choice>button[data-method=remove]'),r=b.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;return [[x,r.top+2],[x,r.bottom-2],[r.left+2,y],[r.right-2,y]].filter(([a,c])=>!b.contains(document.elementFromPoint(a,c)))})()`);
     const loaded = await size();
     assert.ok(loaded[0] > 30 && loaded[1] > 30, `a wide row shows its thumbnail (${loaded})`);
+    assert.deepEqual(await wholeX(), [], 'on a wide reply the image\'s × shows whole');
     await p.evaluate(`${thumb}.hidden=true`);
     assert.deepEqual(await size(), loaded, 'a thumbnail not yet loaded holds the place it takes once loaded');
     await p.evaluate(`${thumb}.hidden=false`);
     await narrow(p);
-    assert.deepEqual(await size(), [0, 0], 'a phone row shows no thumbnail');
+    assert.deepEqual(await size(), loaded, 'a phone\'s strip shows the same thumbnail');
+    assert.deepEqual(await wholeX(), [], 'on a phone the image\'s × shows whole');
+    await p.evaluate(`${thumb}.hidden=true`);
+    assert.deepEqual(await size(), loaded, 'and holds its place there too');
     assert.deepEqual(p.errors, []);
   });
   for (const [width, name] of [[1440, LONG_NAME], [390, SCREENSHOT_NAME], [390, LONG_NAME]]) {
@@ -729,15 +740,14 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
 
   // The same on a phone, pressed with a finger near Remove's bottom edge,
   // with focus in the reply field (the person pasted the image there, or went
-  // back to typing, so the keyboard is open): with the long name the row
-  // grows as Check confirmation comes in, and the Reader moves Remove up from
-  // under the finger, which lifts over the row's words. Remove removes the
-  // image, the tap's mouse events and click reach nothing under the finger,
-  // and focus lands on Add image with no ring, as a tap on a Remove the page
-  // left in place does (the screenshot's name, whose words keep their lines,
-  // and screen.png at the desktop width), so the keyboard closes either way.
-  for (const [name, width, place] of [[LONG_NAME, 390, 'moved'], [SCREENSHOT_NAME, 390, 'kept'], ['screen.png', 1440, 'kept']]) {
-    await check(`images Remove held by a finger while its upload finishes removes the image, nothing under the finger is pressed, and focus leaves the reply field for Add image, with the name ${name} at ${width} wide`, async () => {
+  // back to typing, so the keyboard is open). The image is a thumbnail in the
+  // strip above the field, its × at its corner, so whatever its name, Remove
+  // keeps its place as Check confirmation comes in (docs/reader.md). Remove
+  // removes the image, the tap's mouse events and click reach nothing under
+  // the finger but Remove, and the writing keeps the focus, as Remove leaves it
+  // in the Reader's composer.
+  for (const [name, width, place] of [[LONG_NAME, 390, 'kept'], [SCREENSHOT_NAME, 390, 'kept'], ['screen.png', 1440, 'kept']]) {
+    await check(`images Remove held by a finger while its upload finishes removes the image, nothing under the finger is pressed, and the writing keeps the focus, with the name ${name} at ${width} wide`, async () => {
       const names = await namedImages(root);
       try {
         const p = await page(`remove-tap-${name.length}`, null, true);
@@ -747,8 +757,8 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
         p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
         await choose(p, name === 'screen.png' ? path.join(root, 'tests/fixtures/media/screen.png') : names.file(name));
         const held = await until(() => uploading(p)[0], 'held upload');
-        const { focus, ring } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place, aim: 'bottom', touch: true, from: '#writing-body' });
-        assert.deepEqual({ focus, ring }, { focus: 'add-image', ring: false }, 'focus leaves the reply field for Add image, with no ring, not for what slid under the finger');
+        const { focus } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place, aim: 'bottom', touch: true, from: '#writing-body' });
+        assert.equal(focus, 'writing-body', 'the writing keeps the focus');
         await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
         assert.deepEqual(p.errors, []);
       } finally { await names.done(); }
@@ -777,19 +787,18 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
       await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       assert.deepEqual(await tapReachedElsewhere(p, until), [], 'the tap reaches nothing but Remove');
       await until(() => p.evaluate('document.querySelector("#writing-attachments").children.length===0'), 'the tap removed the image');
-      assert.equal(await p.evaluate('document.activeElement?.id'), 'add-image', 'focus lands on Add image, as a tap on Remove leaves it');
+      assert.equal(await p.evaluate('document.activeElement?.id'), 'writing-body', 'the writing has the focus, as a tap on Remove leaves it');
       await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
       assert.deepEqual(p.errors, []);
     });
   }
 
   // On a phone, with the keyboard open, a finger goes down in the reply field
-  // just above an uploading image's Remove, to place the caret, and the
-  // upload fails before it lifts. With the long name the row's change of
-  // height lets the reply field move up, and Remove with it, under the
-  // finger; the browser now aims the tap at Remove. Nothing is pressed: the
-  // image stays and focus stays in the reply field. With screen.png nothing
-  // moves and the tap reaches the reply field, as it always did.
+  // under an uploading image, to place the caret, and the upload fails before
+  // it lifts. The image is a thumbnail in the strip above the field, its name
+  // in its thumbnail's name rather than in words beside it, so whatever the
+  // name, its failing moves nothing (docs/reader.md): the tap reaches the
+  // reply field, the image stays, and nothing is pressed.
   for (const name of [LONG_NAME, 'screen.png']) {
     await check(`images a finger that goes down in the reply field presses no Remove the page moves under it, with the name ${name}`, async () => {
       const names = await namedImages(root);
@@ -805,7 +814,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
         await until(() => p.evaluate(`[...document.querySelectorAll('#writing-attachments button')].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'Remove');
         await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.slid=""');
         const remove = await p.box('[data-slid]'), body = await p.box('#writing-body');
-        const x = remove.x + remove.width / 2, y = body.y + body.height - 14;
+        const x = Math.max(remove.x + remove.width / 2, body.x + 24), y = body.y + body.height - 14;
         const under = () => p.evaluate(`(e=>e?.closest('[data-slid]')?'Remove':e?.id||e?.tagName)(document.elementFromPoint(${x},${y}))`);
         assert.equal(await under(), 'writing-body', 'the finger goes down in the reply field');
         assert.equal(await p.evaluate('(()=>{const f=document.querySelector("#writing-body");f.focus();return document.activeElement===f})()'), true, 'focus is in the reply field');
@@ -813,10 +822,10 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
         await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
         p.intercept(null); await p.fail(held);
         await until(() => p.evaluate(`JSON.parse(document.querySelector('#writing-attachments .image-choice')?.dataset.view||'[]')[4]===false`), 'the row repainted as its upload failed');
-        assert.equal(await under(), name === 'screen.png' ? 'writing-body' : 'Remove', name === 'screen.png' ? 'nothing moved' : 'the page moved Remove under the finger');
+        assert.equal(await under(), 'writing-body', 'nothing moved');
         await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         const reached = (await tapReached(p, until)).map(([type, target]) => [type, target]);
-        assert.deepEqual(reached, name === 'screen.png' ? [['mousedown', 'writing-body'], ['mouseup', 'writing-body'], ['click', 'writing-body']] : [], name === 'screen.png' ? 'the tap reaches the reply field' : 'the tap reaches nothing: Remove, slid under the finger, is not pressed');
+        assert.deepEqual(reached, [['mousedown', 'writing-body'], ['mouseup', 'writing-body'], ['click', 'writing-body']], 'the tap reaches the reply field');
         assert.deepEqual(await p.evaluate('({rows:document.querySelectorAll("#writing-attachments .image-choice").length,focus:document.activeElement?.id,remove:!document.querySelector("[data-slid]").disabled})'), { rows: 1, focus: 'writing-body', remove: true }, 'the image stays, Remove was never pressed, and focus stays in the reply field');
         assert.equal(await field(p), 'Typing a reply on the phone');
         assert.deepEqual(p.errors, []);
@@ -825,12 +834,11 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   }
 
   // Two images on a phone: Remove is pressed, near its bottom edge, on the
-  // first, which is ready, while the second's upload finishes. The second
-  // row grows as Check confirmation squeezes its long name onto more lines,
-  // and the Reader, which keeps its footer in place, moves the first row's
-  // Remove up from under the press, which comes up over the second row's
-  // Remove. The press still removes the first image, and only that. A press
-  // then dragged off the second row's Remove onto its words lets go.
+  // first, which is ready, while the second's upload finishes. Each is a
+  // thumbnail in the strip, so the second's finishing moves nothing: the
+  // first's Remove keeps its place under the press, which removes the first
+  // image, and only that. A press then dragged off the second's Remove onto
+  // its thumbnail lets go.
   await check('images Remove held above a row whose upload finishes removes its own image, and a press dragged off Remove lets go', async () => {
     const names = await namedImages(root);
     try {
@@ -841,7 +849,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
       p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
       await choose(p, names.file(LONG_NAME), 'second reply chooser');
       const second = await until(() => uploading(p)[0], 'second held upload');
-      await holdRemoveThroughUpload(p, '#writing-attachments', second, until, { name: 'screen.png', finishing: LONG_NAME, place: 'moved', aim: 'bottom' });
+      await holdRemoveThroughUpload(p, '#writing-attachments', second, until, { name: 'screen.png', finishing: LONG_NAME, place: 'kept', aim: 'bottom' });
       await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 1, 'the saved reply keeps the second image only');
       assert.equal(await p.evaluate('[...document.querySelectorAll("#writing-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]).join("|")'), LONG_NAME, 'the second image\'s row stays');
       await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.dragged=""');
@@ -892,7 +900,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await p.point('[data-image-fallback]');
     // "Ready to continue upload" is not a completed attachment. The old
     // substring probe sent while Uploading; native-12 records the disabled gate.
-    await until(() => p.evaluate('document.querySelector("#writing-attachments .image-choice span")?.textContent.endsWith(" · Ready") && !document.querySelector("#send-reply").disabled'), 'explicit download ready and Send enabled');
+    await until(() => p.evaluate('document.querySelector("#writing-attachments .image-choice span")?.textContent.endsWith(" · Ready") && !(b=>b.disabled||b.getAttribute("aria-disabled")==="true")(document.querySelector("#send-reply"))'), 'explicit download ready and Send enabled');
     observations.push({name:'Notebook before send readiness',status:await p.evaluate('({attachments:document.querySelector("#writing-attachments").textContent,disabled:document.querySelector("#send-reply").disabled,save:document.querySelector("#save-state").textContent})')});
     await p.point('#writing-body'); await p.key('Enter', 12);
     let firstSend;

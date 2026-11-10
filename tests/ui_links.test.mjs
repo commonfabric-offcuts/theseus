@@ -131,7 +131,7 @@ test('a link to one of this Theseus\'s places opens it here, and a modified clic
 function popup({ box = { left: 400, right: 1000, top: 100, bottom: 700 }, open = true } = {}) {
   const win = { handlers: {}, addEventListener(name, fn, capture) { assert.equal(capture, true, 'seen on the way down'); this.handlers[name] = fn; } };
   const dialog = { open, inner: null, handlers: {}, addEventListener(name, fn) { this.handlers[name] = fn; },
-    getBoundingClientRect: () => box, querySelector: selector => (assert.equal(selector, '[role="dialog"]'), dialog.inner) };
+    getBoundingClientRect: () => box, querySelector: selector => (assert.equal(selector, '[role="dialog"]:not([hidden])'), dialog.inner) };
   let closed = 0;
   closeOnOutsideClick(dialog, () => { closed++; dialog.open = false; }, win);
   const at = (x, y, target = dialog, more = {}) => ({ target, clientX: x, clientY: y, button: 0, isPrimary: true, ...more });

@@ -115,6 +115,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
     // Where it is on screen: wholly in view, unless a check places it (box).
     getBoundingClientRect() { return this.box ?? { top: 0, bottom: 40, height: 40 }; }
+    // Shown unless it or what holds it is hidden.
+    getClientRects() { for (let at = this; at; at = at.parent) if (at.hidden) return []; return [this.getBoundingClientRect()]; }
     replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
@@ -129,6 +131,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
     createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
+    removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
     get defaultView() { return { ResizeObserver: class { observe() {} }, ...context.window }; } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
@@ -172,7 +175,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -1878,7 +1881,7 @@ const add = async (host, id) => {
   await drain();
 };
 // Return in the composer's small field names someone else.
-const nameIn = (f, id, name) => { f.get(id).value = name; f.get(id).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {}, stopPropagation() {} }); };
+const nameIn = (f, id, name) => { f.get(id).value = name; f.get(id).handlers.keydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {}, stopPropagation() {} }); };
 const removeButton = (host, id) => walk(host).find(node => node['aria-label'] === `Remove ${id}`);
 // Envelopes come from the page's realm; compare them as data.
 const sentOf = (f, kind, field) => JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === kind).map(call => [call.envelope.expected[field], call.envelope.args])));
@@ -2051,6 +2054,92 @@ const showComposer = f => {
   f.editor.edit = patch => Object.assign(f.editor.draft, patch);
   f.owners().inline.show(f.p);
 };
+
+// A name typed in To and not named holds Send (compose-bar.mjs holdSend):
+// sending with or without them would reach people the who chip did not say.
+test('the New message composer\'s Send with a name typed in To and not named sends nothing and says so; with To cleared it sends as shown', async () => {
+  const f = fixture('https://fixture/?topic=t1', { window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+    getComputedStyle: () => ({ getPropertyValue: () => 'none' }) } });
+  const sent = [];
+  f.inline.callbacks.send = editor => { sent.push(JSON.parse(JSON.stringify(editor.draft.addressees))); return Promise.resolve(); };
+  f.editor.edit = patch => Object.assign(f.editor.draft, patch);
+  f.get('inline-writing-body').style = {};
+  f.get('inline-recipient-input').value = 'warp';
+  await f.inline.send();
+  assert.deepEqual([sent, f.editor.draft.addressees, f.get('inline-notice').textContent],
+    [[], [], 'warp is typed in To but not named yet. Return names them; clear it to send without them.'], 'nothing is sent, no one is named, and it says why');
+  assert.deepEqual([f.get('inline-who-panel').hidden, f.document.activeElement === f.get('inline-recipient-input')], [false, true], 'To is open on the name');
+  f.get('inline-recipient-input').value = '';
+  await f.inline.send();
+  assert.deepEqual(sent, [[]], 'cleared, it goes to no one by name, as it showed');
+});
+
+// What Send said goes as soon as it is no longer true (compose-bar.mjs
+// settle), however the name stops being typed and not named: Return in To, a
+// tap on them among the topic's people, or To cleared.
+for (const [way, act] of [
+  ['Return in To names them', f => nameIn(f, 'inline-recipient-input', 'warp')],
+  ['a tap on them names them', f => f.inline.addName('warp')],
+  ['To is cleared', f => { f.get('inline-recipient-input').value = ''; f.get('inline-recipient-input').handlers.input({}); }],
+]) test(`in the New message composer, what Send said about warp typed in To goes when ${way}`, async () => {
+  const f = fixture('https://fixture/?topic=t1', { window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+    getComputedStyle: () => ({ getPropertyValue: () => 'none' }) } });
+  f.inline.callbacks.send = () => { throw Error('sent while a name waited'); };
+  f.editor.edit = patch => Object.assign(f.editor.draft, patch);
+  f.get('inline-writing-body').style = {};
+  f.get('inline-recipient-input').value = 'warp';
+  await f.inline.send();
+  const notice = () => f.get('inline-notice').hidden ? '' : f.get('inline-notice').textContent;
+  assert.equal(notice(), 'warp is typed in To but not named yet. Return names them; clear it to send without them.', 'Send waits, and says why');
+  act(f);
+  assert.equal(notice(), '', `${way}: nothing says warp is not named`);
+});
+
+// Escape with focus outside the open who panel (on +, on Send) is heard by
+// the composer itself, on the document, wherever the composer is: at the
+// page's end, in no dialog, and in the popped New message sheet, whose own
+// cancel then never comes. It puts the panel away as the panel's own Escape
+// does, naming what was typed in To (docs/reader.md).
+for (const on of ['inline-plus-button', 'inline-send']) test(`the New message composer hears Escape with focus on ${on}, outside the open who panel: it puts the panel away and names what was typed in To; with no panel open it leaves Escape to the page`, () => {
+  const f = fixture('https://fixture/?topic=t1', { window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+    getComputedStyle: () => ({ getPropertyValue: () => 'none' }) } });
+  f.editor.edit = patch => Object.assign(f.editor.draft, patch);
+  f.get('inline-writing-body').style = {};
+  // To's field sits in the who panel, as the page has it.
+  f.get('inline-who-panel').append(f.get('inline-recipient-input'));
+  const listening = () => f.events.filter(([kind, name]) => kind === 'document-handler' && name === 'keydown').map(([, , fn]) => fn);
+  const before = listening();
+  f.get('inline-who-chip').handlers.click({});
+  assert.equal(f.get('inline-who-panel').hidden, false, 'the who panel is open');
+  f.get('inline-recipient-input').value = 'warp';
+  f.get(on).focus();
+  const escape = () => {
+    const event = { type: 'keydown', key: 'Escape', isComposing: false, target: f.get(on), defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+    for (const fn of listening().filter(fn => !before.includes(fn))) fn(event);
+    return event.defaultPrevented;
+  };
+  assert.equal(escape(), true, 'the Escape was the panel\'s');
+  assert.deepEqual([JSON.parse(JSON.stringify(f.editor.draft.addressees)), f.get('inline-recipient-input').value, f.get('inline-who-panel').hidden, f.document.activeElement === f.get('inline-who-chip')],
+    [['warp'], '', true, true], 'warp is named, To is empty, and focus is back on the who chip');
+  assert.equal(escape(), false, 'with no panel open, Escape is the page\'s (the popped sheet\'s, which puts it away)');
+  assert.deepEqual(listening(), before, 'and the composer no longer listens');
+});
+
+test('a name typed in the New message composer\'s To stays with the topic it was typed in: another topic\'s message starts with To empty and never names it', () => {
+  const f = fixture();
+  const other = { ...structuredClone(f.editor), key: 'inline-t2', context: { ...f.editor.context, topicId: 't2', sourceRef: { kind: 'topic', id: 't2' } } };
+  for (const editor of [f.editor, other]) editor.edit = patch => Object.assign(editor.draft, patch);
+  const p2 = { ...f.p, topic: { ...f.topic, id: 't2', title: 'Other' }, editors: { reply: other } };
+  f.get('inline-recipient-input').value = 'warp';
+  f.inline.show(p2);
+  assert.equal(f.get('inline-recipient-input').value, '', 'the other topic\'s To is empty');
+  f.get('inline-recipient-input').handlers.keydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify([f.editor.draft.addressees, other.draft.addressees])), [[], []], 'Return there names no one');
+  f.inline.show(f.p);
+  assert.equal(f.get('inline-recipient-input').value, 'warp', 'back in the first topic, warp is typed in To as it was');
+  nameIn(f, 'inline-recipient-input', 'warp');
+  assert.deepEqual(JSON.parse(JSON.stringify([f.editor.draft.addressees, other.draft.addressees])), [['warp'], []], 'and Return names warp there alone');
+});
 
 test('addressing someone outside the topic offers its manager to add them, and the chip clears once they are in', async () => {
   const f = fixture();

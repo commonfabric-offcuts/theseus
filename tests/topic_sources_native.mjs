@@ -44,7 +44,8 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     // The line opens with its words selected, so typing replaces them.
     await p.send('Input.insertText', { text: 'Release name' });
     await p.key('Escape');
-    await until(() => quiet(p, `!document.querySelector('#start-topic-title') && document.activeElement?.id==='start-from-message'`), 'Escape closes the line and gives the focus back');
+    // Start a topic from this is in the Reader's ⋯ (docs/reader.md): the focus goes back there.
+    await until(() => quiet(p, `!document.querySelector('#start-topic-title') && document.activeElement?.id==='reader-menu'`), 'Escape closes the line and gives the focus back to the ⋯');
     assert.equal(await p.evaluate(`document.querySelector('#reader').open`), true, 'and leaves the Reader open');
     assert.equal((await openLine(p)).value, 'Release name', 'the line opens again with the title as it was left');
     // The Reader steps to another message, which closes the line, and back.

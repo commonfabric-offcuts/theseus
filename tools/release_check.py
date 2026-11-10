@@ -38,7 +38,7 @@ CHROME_SUFFIX = "/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for
 # --chrome nor AIM_CHROME_FOR_TESTING names one and exactly one version is there.
 CHROME_CACHE = Path("Library/Caches/aim-chrome-for-testing/chrome")
 CHROME_IN_VERSION = "chrome-mac-arm64" + CHROME_SUFFIX
-# Where playwright-core is cached, for the WebKit modes (Safari's engine); used
+# Where playwright-core is cached, for the harnesses that load it (PLAYWRIGHT_HARNESSES); used
 # when neither --playwright nor AIM_PLAYWRIGHT_CORE names one and exactly one
 # version is there. Playwright finds its own WebKit build.
 PLAYWRIGHT_CACHE = Path("Library/Caches/deno/npm/registry.npmjs.org/playwright-core")
@@ -48,6 +48,10 @@ PERSISTENCE = "tests/reader_persistence_native.mjs"
 READER = "tests/reader_native.mjs"
 WEBKIT = "tests/webkit_native.mjs"
 WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading")
+# The Reader's composer, in Chrome for Testing and Safari's engine (docs/reader.md).
+COMPOSE = "tests/reader_compose_native.mjs"
+# The harnesses that load playwright-core, and so are handed its directory.
+PLAYWRIGHT_HARNESSES = (WEBKIT, COMPOSE)
 # Every mode of every native entry point. tests/test_tools_release_check.py
 # reads the harnesses and fails when a mode or an entry point is missing here.
 NATIVE_STEPS = tuple(
@@ -59,7 +63,8 @@ NATIVE_STEPS = tuple(
     + [NativeStep("reader-" + mode, READER, ("--" + mode,), "results.json")
        for mode in ("keyboard", "review-gaps", "anchor-control", "mutations", "finished")]
     # The same checks in Safari's engine, and the phone check page (docs/device-evidence.md).
-    + [NativeStep("webkit-" + mode, WEBKIT, ("--" + mode,), "native.json") for mode in WEBKIT_MODES])
+    + [NativeStep("webkit-" + mode, WEBKIT, ("--" + mode,), "native.json") for mode in WEBKIT_MODES]
+    + [NativeStep("compose", COMPOSE, (), "native.json")])
 UNIT_STEPS = ("python-units", "node-units")
 DEPLOY_REFUSALS = "deploy-refusals"
 WAKE_REPLAY = "wake-replay"
@@ -130,7 +135,7 @@ def chrome_path(explicit=None, environ=None, home=None):
 
 
 def playwright_path(explicit=None, environ=None, home=None):
-    """The playwright-core package directory the WebKit modes load, or Refused."""
+    """The playwright-core package directory PLAYWRIGHT_HARNESSES load, or Refused."""
     environ = os.environ if environ is None else environ
     chosen = explicit or environ.get("AIM_PLAYWRIGHT_CORE")
     if not chosen:
@@ -485,7 +490,7 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
     the summary's `skipped` says so (item 166). base: (cli, profile) to read the live release with and rerun the
     replayed steps on its code; report:
     (cli, profile, outcome) to report the run on the outcome's open release piece; playwright is the playwright-core
-    directory the WebKit modes load, without which they find none and fail."""
+    directory PLAYWRIGHT_HARNESSES load, without which they find none and fail."""
     started = now()
     commit = preflight(root, out, chrome, python, node)
     names = list(REQUIRED) if only is None else list(only)
@@ -547,7 +552,7 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
             evidence.mkdir(parents=True)
             return run_step(name, [node, step.harness, chrome, str(evidence)] + list(step.flags),
                             root, out, lambda text: native_counts(step, evidence), step.harness,
-                            playwright=playwright if step.harness == WEBKIT else None)
+                            playwright=playwright if step.harness in PLAYWRIGHT_HARNESSES else None)
         base_steps, steps = [], []
         if reporter is not None:
             reporter.start(len(names))

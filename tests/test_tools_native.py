@@ -83,6 +83,13 @@ class Main(unittest.TestCase):
             self.assertEqual(code, 0, printed)
             found.assert_called_once_with("/named")
             self.assertIsNone(json.loads((out / "evidence" / "playwright.json").read_text()))
+            # The composer's checks load playwright-core for Chrome as well as WebKit.
+            out = self.base / "compose"
+            code, printed = self.main("--out", str(out), "--playwright", "/named", "compose", "bad")
+            self.assertEqual(code, 1, printed)
+            self.assertEqual(found.call_count, 2)
+            self.assertEqual(json.loads((out / "evidence" / "argv.json").read_text()), [release_check.COMPOSE, CHROME, str(out / "evidence"), "bad"])
+            self.assertEqual(json.loads((out / "evidence" / "playwright.json").read_text()), "/stub/playwright-core")
 
     def test_a_failed_case_exits_one_and_is_listed(self):
         code, printed = self.main("--out", str(self.base / "run"), "openings", "bad")
