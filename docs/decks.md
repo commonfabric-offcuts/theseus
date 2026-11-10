@@ -40,7 +40,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | merge with the card above or below it | ⇧⌘↑ ⇧⌘↓ | |
 | put the card under the one above it | Tab | |
 | take the card out of its parent | ⇧Tab | |
-| fold away a card's children, or show them | ← →, or a click on its count of cards | a tap on its count of cards |
+| fold away a card's children, or show them | ← →, or a click on the chevron before its title | a tap on its chevron |
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | ⌘Return, or a double click | Edit |
 | finish editing | Escape or ⌘Return | Done |

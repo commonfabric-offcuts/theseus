@@ -10,12 +10,14 @@ const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
-// The speech balloon on a card's bubble, drawn as nodes in the bubble's own color; aim.css fills it while a
-// reply waits unread.
-function balloon(doc) {
+// A card's marks, drawn as nodes in their button's own color: the speech balloon on its bubble, which aim.css
+// fills while a reply waits unread, and the chevron before a parent's title, which aim.css turns down while the
+// cards under it show.
+const BALLOON = 'M4.5 3.5h11a2 2 0 0 1 2 2V12a2 2 0 0 1-2 2H9.5l-4 3v-3h-1a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2z', CHEVRON = 'M8 5.5l4.5 4.5L8 14.5';
+function mark(doc, d) {
   const ns = 'http://www.w3.org/2000/svg', svg = doc.createElementNS(ns, 'svg'), path = doc.createElementNS(ns, 'path');
   for (const [name, value] of Object.entries({ viewBox: '0 0 20 20', width: '17', height: '17', 'aria-hidden': 'true', focusable: 'false' })) svg.setAttribute(name, value);
-  path.setAttribute('d', 'M4.5 3.5h11a2 2 0 0 1 2 2V12a2 2 0 0 1-2 2H9.5l-4 3v-3h-1a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2z');
+  path.setAttribute('d', d);
   svg.append(path);
   return svg;
 }
@@ -363,7 +365,7 @@ export class DeckPage {
     for (let i = from + step; i >= 0 && i < shown.length; i += step) if (shown[i]) return i;
     return from;
   }
-  // ← or →, or a click on a parent's count of the cards under it: those cards folded away, or shown again.
+  // ← or →, or a click on a parent's chevron: the cards under it folded away, or shown again.
   // The fold picks its card, so an ask open on another card closes as it does for a pick, keeping its writing.
   fold(index) {
     const card = this.deck.cards[index];
@@ -404,12 +406,14 @@ export class DeckPage {
   keepFolds() {
     try { globalThis.localStorage.setItem(`deck-folded:${this.item}`, JSON.stringify([...this.folded])); } catch {}
   }
-  foldButton(index, under) {
-    const folded = this.folded.has(this.deck.cards[index].title);
-    const button = this.node('button', 'deck-fold', `${folded ? '▸' : '▾'} ${under === 1 ? '1 card' : `${under} cards`}`);
+  // A parent's chevron, at the start of its title.
+  foldButton(index) {
+    const button = this.node('button', 'deck-fold');
     button.type = 'button';
     button.tabIndex = -1;
-    button.setAttribute('aria-expanded', String(!folded));
+    button.setAttribute('aria-label', 'Cards under this one');
+    button.setAttribute('aria-expanded', String(!this.folded.has(this.deck.cards[index].title)));
+    button.append(mark(this.doc, CHEVRON));
     // While a card is being written a click finishes it, here as on the rest of a card, and a double click is
     // two folds, never the card's edit.
     button.addEventListener('click', event => { event.stopPropagation(); if (this.editing) this.finish(); else this.fold(index); });
@@ -511,7 +515,7 @@ export class DeckPage {
     const holder = this.node('div', 'deck-bubbles');
     for (const { topicId, messageId } of stacks) {
       const talk = this.talks.get(messageId), link = this.node('a', 'deck-bubble'), words = !talk ? null : talk.replies ? String(talk.replies) : 'Sent';
-      link.append(balloon(this.doc), ...(words ? [this.node('span', '', words)] : []));
+      link.append(mark(this.doc, BALLOON), ...(words ? [this.node('span', '', words)] : []));
       link.href = routeHref({ kind: 'topic', id: topicId, message: messageId });
       link.tabIndex = -1;
       link.setAttribute('aria-label', !talk ? 'Reply stack' : talk.replies ? `Reply stack: ${talk.replies === 1 ? '1 reply' : `${talk.replies} replies`}${talk.unread ? `, ${talk.unread} not read` : ''}` : 'Reply stack: asked, no reply yet');
@@ -521,7 +525,7 @@ export class DeckPage {
     }
     if (!stacks.length && this.room?.agents.length && !this.readOnly) {
       const ask = this.node('button', 'deck-bubble deck-ask');
-      ask.append(balloon(this.doc));
+      ask.append(mark(this.doc, BALLOON));
       ask.type = 'button';
       ask.tabIndex = -1;
       ask.setAttribute('aria-label', 'Ask an agent about this card');
@@ -634,14 +638,14 @@ export class DeckPage {
     const { shown, parents } = this.layout();
     while (!shown[this.picked] && parents[this.picked] >= 0) this.picked = parents[this.picked];
     const rows = cards.map((card, index) => {
-      const row = this.node('li', 'deck-card'), { words, stacks } = cardStacks(card.words, messageOf), under = groupEnd(cards, index) - index - 1;
+      const row = this.node('li', 'deck-card'), { words, stacks } = cardStacks(card.words, messageOf);
+      const title = this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled');
+      if (groupEnd(cards, index) > index + 1) title.prepend(this.foldButton(index));
       row.dataset.index = String(index);
       row.hidden = !shown[index];
       row.style.setProperty('--depth', String(card.depth));
       if (parents[index] >= 0) row.append(this.node('p', 'deck-under muted', cards[parents[index]].title || 'Untitled'));
-      row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'), formatWords(this.node('div', 'deck-words'), words),
-        this.bubbles(index, stacks));
-      if (under) row.append(this.foldButton(index, under));
+      row.append(title, formatWords(this.node('div', 'deck-words'), words), this.bubbles(index, stacks));
       // ⌘-click and ⇧-click select, never selecting the page's text, and leave a link or button its own click.
       const selecting = event => (event.metaKey || event.ctrlKey || event.shiftKey) && !event.target.closest('a, button');
       row.addEventListener('mousedown', event => { if (selecting(event)) event.preventDefault(); });
