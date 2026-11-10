@@ -107,7 +107,11 @@ so Core records it once. Escape goes back to the cards, and so do ↑, ↓ and �
 from a box with nothing written, ↑ and ↓ going on to the card beside; picking
 another card does the same. What was written waits for that card's next ask
 while the page stays open, and Cancel drops it. The box, like the edit box,
-asks the browser not to offer AutoFill.
+asks the browser not to offer AutoFill. Safari, and Apple's iCloud Passwords
+extension in Chrome, ignore that request and judge a box with no label element
+by the words on the page around it, so beside a card about tokens or codes an
+empty box reads as a field for a one-time code. Each box is therefore named by
+a label element of its own, whose words name nothing AutoFill fills.
 
 Once Core has the ask, the card keeps the link to its reply stack as a line of
 its words, `[Reply stack](ADDRESS)`. A line that holds only a link to a message

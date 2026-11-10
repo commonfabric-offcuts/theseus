@@ -59,8 +59,14 @@ export class DeckPage {
     this.bar = this.node('div', 'deck-bar');
     this.bar.append(this.count, this.editButton, button('New card', () => this.start()), button('Undo', () => this.undo()));
     this.keys = this.node('p', 'deck-keys muted', KEYS);
+    // Safari's AutoFill, and Apple's iCloud Passwords extension in Chrome, ignore autocomplete="off" and judge a
+    // box that has no label element by the page's words around it, so beside a card about tokens or codes an empty
+    // box reads as a field for a one-time code. A box named by aria-labelledby is judged by its label's words
+    // alone, and these name nothing AutoFill fills: not card, title or name, which read as a credit card or contact.
+    const label = (id, text) => { const node = this.node('span', '', text); node.id = id; node.hidden = true; return node; };
     // The count and the buttons stand above the cards, where a phone's keyboard never covers Done.
-    host.replaceChildren(this.status, this.opening, this.bar, this.keys, this.list);
+    host.replaceChildren(this.status, this.opening, this.bar, this.keys, this.list,
+      label('deck-editor-label', 'Writing: the first line is the heading, the rest its words'), label('deck-ask-label', 'Ask an agent about this'));
     doc.addEventListener('keydown', event => this.key(event));
     this.list.addEventListener('scroll', () => this.scrolled(), { passive: true });
   }
@@ -412,7 +418,7 @@ export class DeckPage {
     const field = this.node('textarea', 'deck-editor');
     field.setAttribute('autocomplete', 'off');
     field.value = editing.shown ?? editing.text;
-    field.setAttribute('aria-label', 'The card: its first line is its title');
+    field.setAttribute('aria-labelledby', 'deck-editor-label');
     field.addEventListener('input', () => this.fit(field));
     this.editing = { ...editing, field };
     this.paint();
@@ -472,9 +478,9 @@ export class DeckPage {
     if (!card || !this.room?.agents.length || this.readOnly || this.asking) return;
     if (this.editing) this.finish();
     const form = this.node('div', 'deck-ask-form'), field = this.node('textarea', 'deck-ask-field'), to = this.node('select', 'deck-ask-to');
-    field.setAttribute('aria-label', 'Ask an agent about this card');
+    field.setAttribute('aria-labelledby', 'deck-ask-label');
     field.setAttribute('autocomplete', 'off');
-    field.placeholder = 'Ask an agent about this card…';
+    field.placeholder = 'Ask an agent about this…';
     field.value = this.drafts.get(cardText(card)) ?? '';
     field.addEventListener('input', () => this.fit(field));
     let last = null;
