@@ -1309,6 +1309,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       } });
       await until(() => p.evaluate("document.body?.dataset.ready === 'true' && document.querySelectorAll('#messages [data-id]').length > 1 && Boolean(document.getElementById('things-open'))").catch(() => false), width + ': the topic and its messages are up');
       const opened = async () => {
+        // The header may have scrolled away with the message the keys went to.
+        await p.evaluate("document.getElementById('things-open').scrollIntoView({ block: 'center' })");
         await p.point('#things-open');
         await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open') && [...document.querySelectorAll('#things .things-sec')].some(d => d.checkVisibility())"), width + ': the right rail opens over the page with a section');
       };
