@@ -5,6 +5,8 @@ import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
+const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Return edit, Escape done · ⌘Return new card · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
+const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
@@ -40,7 +42,7 @@ export class DeckPage {
     // held: a refusal stopped saving until Try again. notebook: the Notebook's version when the page was read.
     // room: where an ask goes. talks: each stack's {replies, unread}, by its first message. asking: the ask being written.
     Object.assign(this, { base: null, source: null, notebook: null, acts: [], undos: [], sending: null, owed: false, held: false,
-      readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, talks: new Map(), asking: null });
+      readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, talks: new Map(), asking: null, drafts: new Map() });
     // The card picked when this deck was last open in this tab, by its words, so going to a stack and back lands
     // on it; read before the first paint stores the first card in its place.
     try { this.recalled = JSON.parse(globalThis.sessionStorage.getItem(`deck:${item}`)); } catch { this.recalled = null; }
@@ -53,7 +55,7 @@ export class DeckPage {
     this.editButton = button('Edit', () => (this.editing ? this.finish() : this.edit()));
     this.bar = this.node('div', 'deck-bar');
     this.bar.append(this.count, this.editButton, button('New card', () => this.start()), button('Undo', () => this.undo()));
-    this.keys = this.node('p', 'deck-keys muted', '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Return edit, Escape done · ⌘Return new card · ⌘⌫ remove · ⌘Z undo · → its speech bubble');
+    this.keys = this.node('p', 'deck-keys muted', KEYS);
     // The count and the buttons stand above the cards, where a phone's keyboard never covers Done.
     host.replaceChildren(this.status, this.opening, this.bar, this.keys, this.list);
     doc.addEventListener('keydown', event => this.key(event));
@@ -257,9 +259,15 @@ export class DeckPage {
       if (event.target === this.editing.field && (event.key === 'Escape' || (event.key === 'Enter' && command))) { event.preventDefault(); this.finish(); }
       return;
     }
+    // In the ask box, Escape goes back to the cards, and so does an arrow from a box with nothing written,
+    // ↑ and ↓ going on to the card beside; the writing waits for the card's next ask.
     if (this.asking?.form.contains(event.target)) {
-      if (event.key === 'Escape') { event.preventDefault(); this.endAsk(); }
-      else if (event.key === 'Enter' && command && event.target === this.asking.field) { event.preventDefault(); this.sendAsk(); }
+      const plain = !command && !event.shiftKey && !event.altKey, empty = !/\S/.test(this.asking.field.value);
+      if (event.key === 'Escape' || (plain && empty && event.target === this.asking.field && (up || down || event.key === 'ArrowLeft'))) {
+        event.preventDefault();
+        this.endAsk(true);
+        if (!this.asking && (up || down)) this.pick(this.picked + (up ? -1 : 1));
+      } else if (event.key === 'Enter' && command && event.target === this.asking.field) { event.preventDefault(); this.sendAsk(); }
       return;
     }
     if (event.target !== this.doc.body && !this.list.contains(event.target)) return;
@@ -282,6 +290,7 @@ export class DeckPage {
   pick(index) {
     if (!this.deck.cards.length) return;
     this.picked = Math.min(Math.max(index, 0), this.deck.cards.length - 1);
+    if (this.asking && this.picked !== this.asking.near) this.endAsk(true);
     this.mark();
     this.show(true);
   }
@@ -328,6 +337,7 @@ export class DeckPage {
   open(editing) {
     if (this.editing) this.finish();
     const field = this.node('textarea', 'deck-editor');
+    field.setAttribute('autocomplete', 'off');
     field.value = editing.shown ?? editing.text;
     field.setAttribute('aria-label', 'The card: its first line is its title');
     field.addEventListener('input', () => this.fit(field));
@@ -390,7 +400,9 @@ export class DeckPage {
     if (this.editing) this.finish();
     const form = this.node('div', 'deck-ask-form'), field = this.node('textarea', 'deck-ask-field'), to = this.node('select', 'deck-ask-to');
     field.setAttribute('aria-label', 'Ask an agent about this card');
+    field.setAttribute('autocomplete', 'off');
     field.placeholder = 'Ask an agent about this card…';
+    field.value = this.drafts.get(cardText(card)) ?? '';
     field.addEventListener('input', () => this.fit(field));
     let last = null;
     try { last = globalThis.localStorage.getItem('deck-agent'); } catch {}
@@ -406,12 +418,18 @@ export class DeckPage {
     this.asking = { text: cardText(card), near: index, form, field, to, envelope: null, sending: false };
     this.picked = index;
     this.paint();
+    this.fit(field);
     field.focus({ preventScroll: true });
   }
-  endAsk() {
-    if (this.asking?.sending) return;
+  // Leaving the ask: kept, its writing waits for the card's next ask in this page; dropped by Cancel.
+  endAsk(keep = false) {
+    const asking = this.asking;
+    if (!asking || asking.sending) return;
+    if (keep && /\S/.test(asking.field.value)) this.drafts.set(asking.text, asking.field.value);
+    else this.drafts.delete(asking.text);
     this.asking = null;
     this.paint();
+    this.show(true);
   }
   // The ask goes as a new message where the deck's asks go, to the agent, the card quoted and the deck linked;
   // once Core has it, the card keeps the link to its stack as a line of its words. An ask whose answer does not
@@ -439,6 +457,7 @@ export class DeckPage {
     if (receipt?.status === 'committed') {
       try { globalThis.localStorage.setItem('deck-agent', asking.envelope.agent); } catch {}
       if (this.asking === asking) this.asking = null;
+      this.drafts.delete(asking.text);
       const line = stackLine(messageLink(this.room.topicId, receipt.result.message_id));
       if (!this.act({ kind: 'edit', text: asking.text, to: `${asking.text}\n\n${line}`, near: asking.near })) {
         this.paint();
@@ -495,6 +514,7 @@ export class DeckPage {
     const asked = asking && [asking.field.selectionStart, asking.field.selectionEnd];
     this.list.replaceChildren(...rows);
     this.list.classList.toggle('deck-editing', Boolean(editing || asking));
+    this.keys.textContent = asking ? ASKING_KEYS : KEYS;
     this.editButton.textContent = editing ? 'Done' : 'Edit';
     this.mark();
     if (editing) {

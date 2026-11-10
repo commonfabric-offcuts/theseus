@@ -76,7 +76,11 @@ that is what is asked. It goes to one agent: the only agent among the topic's
 participants, or, of several, the one asked last in this browser, which the
 person may change. Not to all of them, since each one asked would start on the
 same work. An ask whose answer is lost is sent again as it was on Try again,
-so Core records it once.
+so Core records it once. Escape goes back to the cards, and so do ↑, ↓ and ←
+from a box with nothing written, ↑ and ↓ going on to the card beside; picking
+another card does the same. What was written waits for that card's next ask
+while the page stays open, and Cancel drops it. The box, like the edit box,
+asks the browser not to offer AutoFill.
 
 Once Core has the ask, the card keeps the link to its reply stack as a line of
 its words, `[Reply stack](ADDRESS)`. A line that holds only a link to a message
