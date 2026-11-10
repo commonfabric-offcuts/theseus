@@ -787,6 +787,13 @@ finally:db.close()
         #
         # When the behaviour under test does not happen, the runner is stopped
         # too, so the test ends with a failure instead of waiting forever:
+        # - a read is refused before the writer has started. Nothing writes
+        #   beside the runner then (its own writes end before its reads
+        #   begin), so the refusal is itself the fault: a lock left held, or
+        #   storage refused from its first call. The writer starts only on
+        #   the first ok read, so while such a refusal lasts no stop below is
+        #   reached: the loop reads on behind its backoff gate, and when its
+        #   lease is refused too it never renews;
         # - the first read begun after the writer is done is refused (a lock
         #   outlived its transaction);
         # - the runner begins two lease renewals with no read begun between
@@ -869,6 +876,7 @@ finally:db.close()
             except RunnerError as error:
                 reads.append(dict(row,at=time.monotonic()-started,status=error.code))
                 if error.code=='DATABASE_BUSY':release.set()
+                if not threads:stop('a read was refused before the writer started')
                 if after_done:stop('a read begun after the writer was done was refused')
                 raise
             # An ok read after a refused one read the ended transaction: the
