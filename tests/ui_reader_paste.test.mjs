@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Reader } from '../web/reader.mjs';
 import { lineText } from '../web/lines.mjs';
+import { AttemptError } from '../web/api.mjs';
 
 function fixture({ mode = 'reply', readOnly = false, authorityRecovery = null } = {}) {
   const calls = [], notices = [], selected = [];
@@ -74,3 +75,19 @@ for (const [closing, notice] of [[true, 'This reply is closing, so the image was
     assert.deepEqual(f.notices, [notice]);
   });
 }
+
+// An image picked from #img whose bytes could not be read says its name and
+// why, and hands the line the failure itself (lines.mjs), so a line about not
+// reaching Theseus goes once the page reaches it again, and a refusal Theseus
+// answered stays; words made from the failure would always stay.
+test('an image picked from #img that could not be read hands its line the failure itself', async () => {
+  for (const failure of [new AttemptError('Connection interrupted.'), new AttemptError('Not found.', 404, { code: 'NOT_FOUND' })]) {
+    const f = fixture(), said = [];
+    Object.assign(f.reader, { input: { deleteSelection() {} }, notice: what => said.push(what) });
+    f.reader.callbacks.imageBytes = async () => { throw failure; };
+    await f.reader.pickImage({ attachment: { id: 'a1', name: 'board.png' }, source_ref: { kind: 'message', id: 'm1' } });
+    assert.deepEqual(said.map(lineText), [`board.png: ${failure.message}`]);
+    assert.deepEqual([said[0]].flat().filter(part => typeof part !== 'string'), [failure], `${failure.message}: the line is handed the failure itself`);
+    assert.equal(f.calls.length, 0, 'nothing is added');
+  }
+});

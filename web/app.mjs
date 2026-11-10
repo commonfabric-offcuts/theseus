@@ -53,9 +53,10 @@ import { MessageMenu, openMessageMenu, sayOn, copyText } from './message-menu.mj
 import { Reactions, learnReactions, paintReaderThumb } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
-// How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks.
+// How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, arrangeStacks } from './reply-stacks.mjs';
+import { formatWords } from './message-format.mjs';
 import { railDrawer } from './rail-drawer.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
 import { showLine, lineText } from './lines.mjs';
@@ -702,7 +703,7 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(linkWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;

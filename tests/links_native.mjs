@@ -243,6 +243,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Mark unread', 'Down moves to the next item');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'Escape closes it');
+    // The words are formatted (docs/topic-reading.md), so their first text is inside a paragraph.
     // On a Mac a right-click on a word selects that word before the page hears
     // it; that selection is the press's own, not the person's, and the menu
     // opens all the same, leaving no word selected.
@@ -451,6 +452,111 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
       .catch(error => assert.fail(error.message + ': ' + JSON.stringify(last)));
     const sent = await view('source', { source_ref: { kind: 'message', id: receipt.result.message_id } });
     assert.deepEqual(sent.quotes.map(q => q.excerpt), quoted, 'each quote holds the source\'s words');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header quoting a selection in the Reader over formatted words, a task item or a table quotes the author\'s own Markdown for it', async () => {
+    await topics({ id: 'links-f', title: 'Formatted quoting' });
+    const body = 'Some **bold** words and a [named link](https://a.example/x) here.\n\n- [ ] task *one*\n- two\n\n| a | b |\n|---|---|\n| 1 | **2** |';
+    const id = await post('links-quote-format', 'links-f', body);
+    const p = await page('links-quote-format', null, true, { url: facts.origin + '/?topic=links-f' });
+    const preview = `#messages [data-id="${id}"] .message-preview`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(preview + ' .md-table-wrap')}))`), 'the card draws its table');
+    await p.evaluate(`document.querySelector(${JSON.stringify(preview)}).scrollIntoView({block:'center'})`);
+    await p.point(preview);
+    await until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(document.querySelector('#source-body .md-table-wrap'))`), 'the Reader shows the table');
+    await settled(p);
+    const quoted = [];
+    // A selection from one text node to another, each named by its words; the quote button then quotes it.
+    const quote = async ([from, fromAt], [to, toAt], excerpt) => {
+      await p.evaluate(`(()=>{const find=words=>{const walk=document.createTreeWalker(document.querySelector('#source-body'),NodeFilter.SHOW_TEXT);
+        for(let node;(node=walk.nextNode());)if(node.data===words)return node;throw new Error('no text '+words)};
+        getSelection().setBaseAndExtent(find(${JSON.stringify(from)}),${fromAt},find(${JSON.stringify(to)}),${toAt});return true})()`);
+      await p.point('#quote-selection');
+      quoted.push(excerpt);
+      const writing = quoted.map(words => words.split('\n').map(line => `> ${line}`).join('\n')).join('\n\n') + '\n\n';
+      await until(() => p.evaluate(`document.querySelector('#writing-body').value === ${JSON.stringify(writing)}`), 'the writing quotes ' + excerpt)
+        .catch(async error => assert.equal(await p.evaluate(`document.querySelector('#writing-body').value`), writing, error.message));
+    };
+    await quote(['bold', 0], ['bold', 4], '**bold**');
+    await quote(['Some ', 0], [' words and a ', 6], 'Some **bold** words');
+    await quote([' words and a ', 7], ['named link', 3], 'and a [named link](https://a.example/x)');
+    await quote(['☐', 0], ['one', 3], '- [ ] task *one*');
+    await quote(['a', 0], ['2', 1], '| a | b |\n|---|---|\n| 1 | **2** |');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header a message with an agent\'s table, a drawn table, a task list and a wide table reads on a phone and a laptop, light and dark, and the wide table fades where it goes on', async () => {
+    await topics({ id: 'links-t', title: 'Tables and tasks' });
+    const body = 'Status, as agents write it:\n\nlane | owner | state\nweaver | warp | landed\nservice | gpt6 | open\n\n' +
+      '  ┌────────┬───────┐\n  │ Lane   │ Owner │\n  ├────────┼───────┤\n  │ Weaver │ warp  │\n  └────────┴───────┘\n\n' +
+      '- [x] tables read as tables\n- [ ] a phone shows they scroll\n- a plain item\n\n' +
+      '| Item | Owner | What changed | Where it stands | Next step |\n|---|---|---|---|---|\n' +
+      '| 11 | fable | Agent tables, drawn tables and task lists | In review on the road one stack | Release once the checks pass |';
+    const id = await post('links-tables', 'links-t', body);
+    const p = await page('links-tables', null, true, { url: facts.origin + '/?topic=links-t' });
+    const card = `#messages [data-id="${id}"] .message-preview`;
+    await until(() => p.evaluate(`document.querySelectorAll(${JSON.stringify(card + ' .md-table-wrap')}).length === 2`), 'the card draws both tables');
+    const drawn = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card)});return {heads:[...c.querySelectorAll('.md-table-wrap')].map(w=>[...w.querySelectorAll('th')].map(th=>th.textContent)),
+      box:c.querySelector('.md-box')?.textContent.split('\\n').length,font:getComputedStyle(c.querySelector('.md-box')).fontFamily,marks:[...c.querySelectorAll('.md-marker')].map(m=>m.textContent)}})()`);
+    assert.deepEqual(drawn.heads, [['lane', 'owner', 'state'], ['Item', 'Owner', 'What changed', 'Where it stands', 'Next step']]);
+    assert.equal(drawn.box, 5);
+    assert.match(drawn.font, /mono|Menlo/i, 'the drawn table is monospace');
+    assert.deepEqual(drawn.marks, ['☑', '☐', '•']);
+    // The tables' borders are separate, one pixel a line: collapsed borders
+    // cost the browser a table's rows times its columns to lay out.
+    const lines = await p.evaluate(`(()=>{const px=(node,side)=>parseFloat(getComputedStyle(node)['border'+side+'Width']);
+      return [...document.querySelectorAll(${JSON.stringify(card + ' .md-table')})].map(table=>{const rows=[...table.rows],seen=new Set();
+        rows.forEach((row,r)=>[...row.cells].forEach((cell,k)=>{
+          seen.add(k?px(row.cells[k-1],'Right')+px(cell,'Left'):px(table,'Left')+px(cell,'Left'));
+          seen.add(r?px(rows[r-1].cells[Math.min(k,rows[r-1].cells.length-1)],'Bottom')+px(cell,'Top'):px(table,'Top')+px(cell,'Top'));
+          if(k===row.cells.length-1)seen.add(px(cell,'Right'));if(r===rows.length-1)seen.add(px(cell,'Bottom'));}));
+        return {collapse:getComputedStyle(table).borderCollapse,spacing:getComputedStyle(table).borderSpacing,widths:[...seen]};})})()`);
+    assert.deepEqual(lines, [{ collapse: 'separate', spacing: '0px', widths: [1] }, { collapse: 'separate', spacing: '0px', widths: [1] }], JSON.stringify(lines));
+    const wide = `${card} .md-table-wrap:last-of-type`;
+    const edges = () => p.evaluate(`(()=>{const w=document.querySelectorAll(${JSON.stringify(card + ' .md-table-wrap')})[1];return {left:w.classList.contains('md-more-left'),right:w.classList.contains('md-more-right'),
+      over:w.scrollWidth-w.clientWidth,page:document.documentElement.scrollWidth-innerWidth,mask:getComputedStyle(w).maskImage||getComputedStyle(w).webkitMaskImage}})()`);
+    const views = [['laptop', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }], ['phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }]];
+    for (const [device, metrics] of views) {
+      await p.send('Emulation.setDeviceMetricsOverride', metrics);
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'start'})`);
+      await frame(p);
+      if (device === 'phone') {
+        // Wider than a phone: the right edge fades, the page does not scroll sideways.
+        let state;
+        await until(async () => (state = await edges()).right && !state.left, 'the right edge fades').catch(error => assert.fail(error.message + ': ' + JSON.stringify(state)));
+        assert.ok(state.over > 40 && state.page <= 0 && /gradient/.test(state.mask), JSON.stringify(state));
+        for (const scheme of ['light', 'dark']) {
+          await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+          await frame(p); await shot(p, `format-card-${device}-${scheme}`);
+        }
+        // A native sideways wheel over the table scrolls it to its end: the left edge fades, the right no longer.
+        const [x, y] = await centre(p, wide);
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 2000, deltaY: 0 });
+        await until(async () => (state = await edges()).left && !state.right, 'the left edge fades at the end').catch(error => assert.fail(error.message + ': ' + JSON.stringify(state)));
+        await shot(p, `format-card-${device}-scrolled`);
+      } else {
+        for (const scheme of ['light', 'dark']) {
+          await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+          await frame(p); await shot(p, `format-card-${device}-${scheme}`);
+        }
+      }
+    }
+    // The same message in the Reader, on both.
+    await p.send('Emulation.setDeviceMetricsOverride', views[0][1]);
+    await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+    await p.point(card);
+    await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelectorAll('#source-body .md-table-wrap').length === 2`), 'the Reader shows both tables');
+    await settled(p);
+    for (const [device, metrics] of views) {
+      await p.send('Emulation.setDeviceMetricsOverride', metrics);
+      await frame(p); await settled(p);
+      for (const scheme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+        await frame(p); await shot(p, `format-reader-${device}-${scheme}`);
+      }
+    }
+    await p.send('Emulation.setEmulatedMedia', { features: [] });
     assert.deepEqual(p.errors, []);
   });
 

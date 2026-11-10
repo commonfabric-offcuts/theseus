@@ -40,7 +40,9 @@ test('only an http or https address is a link, and one written inside a word is 
   assert.deepEqual(words('HTTPS://A.EXAMPLE/Path'), ['HTTPS://A.EXAMPLE/Path'], 'the scheme in capitals is still a web address');
   for (const text of ['javascript:alert(1)', 'ftp://a.example/x', 'mailto:tony@example.com', 'file:///etc/hosts', 'data:text/html,<b>x</b>', 'www.example.com', 'https://', 'https://?x'])
     assert.deepEqual(words(text), [], text + ' is words');
-  assert.deepEqual(words('xhttps://a.example/x 1https://b.example _https://c.example'), [], 'a scheme run on from a word or number is not an address');
+  assert.deepEqual(words('xhttps://a.example/x 1https://b.example'), [], 'a scheme run on from a word or number is not an address');
+  assert.deepEqual(words('caféhttps://a.example/x 日本https://b.example e\u0301https://c.example'), [], 'in any script: a letter, or a mark that is part of one');
+  assert.deepEqual(words('$https://a.example/x 。https://b.example'), ['https://a.example/x', 'https://b.example'], 'punctuation and symbols are no part of a word');
   assert.deepEqual(words('(https://a.example/x)'), ['https://a.example/x'], 'an opening bracket before it is not part of a word');
   assert.equal(webLinks('go https://a.example/a b')[0].href, 'https://a.example/a', 'the link goes where its words say');
   assert.deepEqual(webLinks(''), []);
@@ -57,6 +59,10 @@ test('an address ends at a space, angle bracket, quote mark or ellipsis, and lea
   assert.deepEqual(words('“https://a.example/x” ‘https://b.example/y’ https://c.example/z…more'), ['https://a.example/x', 'https://b.example/y', 'https://c.example/z']);
   assert.deepEqual(words('one\nhttps://a.example/x\ttwo'), ['https://a.example/x']);
   assert.deepEqual(words('*https://a.example/x*'), ['https://a.example/x'], 'emphasis marks stay outside');
+  assert.deepEqual(words('**https://a.example/x** _https://b.example/y_ __https://c.example/z__ ~~https://d.example/w~~ (https://e.example/v_~*).'),
+    ['https://a.example/x', 'https://b.example/y', 'https://c.example/z', 'https://d.example/w', 'https://e.example/v'], 'every mark a line reads (*, _, ~) stays outside, as GFM leaves it');
+  assert.deepEqual(words('https://a.example/a_b~c*d'), ['https://a.example/a_b~c*d'], 'a mark inside an address is its own');
+  assert.deepEqual(words('x_https://a.example/x a~https://b.example/y'), ['https://a.example/x', 'https://b.example/y'], 'a mark before an address is no word it continues');
 });
 
 test('an excerpt leaves an address it may have cut short as words, and keeps every whole one', () => {
@@ -295,6 +301,7 @@ test('a topic\'s id standing on its own is a link that shows the topic\'s name a
   assert.deepEqual(drawn(wordNodes(text, { doc })), ['See ', ['Launch copy', T1, `?topic=${T1}`],
     `, then x${T2} and ${T2}x and ${T2}-2 and `, NOWHERE, '.'], 'the id no topic answers to is words, in its own text node');
   assert.deepEqual(words(`(${T2})`), [T2], 'a bracket is not part of a word');
+  assert.deepEqual(words(`_${T1}_ __${T2}__ ~~${T1}~~ *${T2}*`), [T1, T2, T1, T2], 'nor is a mark: an id in italics, bold or struck words is its own');
   assert.deepEqual(words('t-' + '1'.repeat(31) + ' t-' + 'A'.repeat(32)), [], 'only the ids Theseus makes: 32 lowercase hex digits');
   const [, link] = wordNodes(text, { doc });
   assert.equal(link.dataset.words, String(T1.length), 'the Reader counts the words the link stands for');

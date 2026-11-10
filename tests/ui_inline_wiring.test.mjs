@@ -27,14 +27,14 @@ import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
+import { entries } from '../web/reply-stacks.mjs';
+// A message's entry in the list, on its own or in its reply stack (reply-stacks.mjs).
+const entryIn = (f, id) => entries(f.get('messages')).find(entry => entry.dataset.id === id);
 import { SessionRenewal } from '../web/session-renewal.mjs';
 import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
 import * as apiExports from '../web/api.mjs';
 import { showLine, lineText } from '../web/lines.mjs';
-import { entries } from '../web/reply-stacks.mjs';
-// A message's entry in the list, on its own or in its reply stack (reply-stacks.mjs).
-const entryIn = (f, id) => entries(f.get('messages')).find(entry => entry.dataset.id === id);
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // The page's own scope. Each name app.mjs imports, and each name the modules loaded here import in turn, that the scope does
 // not already hold (a fake below, a test's override, or a module imported natively above) comes from its module's own source:
@@ -86,8 +86,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get lastChild() { return this.children[this.children.length - 1] ?? null; }
     getAttributeNames() { return []; }
     hasAttribute(name) { return name in this; }
-    // A bare tag name finds the first such element inside; any other selector names an element by id.
+    // A bare tag name finds the first such element inside, a :scope chain the first it reaches; any other selector names an element by id.
     querySelector(selector) {
+      if (selector.startsWith(':scope')) return this.querySelectorAll(selector)[0] ?? null;
       if (!/^[a-z][a-z0-9]*$/.test(selector)) return get(selector.slice(1));
       for (const child of this.children) { if (child.tagName === selector.toUpperCase()) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
       return null;
@@ -117,9 +118,12 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
-  // One step of a selector: [data-name], .class or a tag.
-  const isStep = (el, step) => step.startsWith('[data-') ? el.dataset[step.slice(6, -1).replace(/-(.)/g, (_, c) => c.toUpperCase())] !== undefined
-    : step.startsWith('.') ? String(el.className ?? '').split(' ').includes(step.slice(1)) : el.tagName === step.toUpperCase();
+  // One step of a selector: [data-name], or a tag, a .class or both (tag.class).
+  const isStep = (el, step) => {
+    if (step.startsWith('[data-')) return el.dataset[step.slice(6, -1).replace(/-(.)/g, (_, c) => c.toUpperCase())] !== undefined;
+    const [tag, ...classes] = step.split('.'), names = String(el.className ?? '').split(' ');
+    return (tag === '' || el.tagName === tag.toUpperCase()) && classes.every(name => names.includes(name));
+  };
   // Whether el is reached from root through these child steps.
   const inChain = (el, chain, root) => { let at = el; for (let i = chain.length - 1; i >= 0; i--, at = at.parent) if (!at || !isStep(at, chain[i])) return false; return at === root; };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
@@ -764,6 +768,13 @@ test('a line a caller put into words goes once the page reaches Theseus, and a p
       f.api.view = view;
       await back(how);
       assert.equal(said('inline-notice'), '', `${name}, ${how}: the composer's access line still says what the restart did`);
+      // An image picked from #img whose bytes could not be read: its name and why.
+      f.api.media = (...args) => api.media(...args);
+      await f.owners().inline.pickImage({ attachment: { id: 'a2', name: 'board.png' }, source_ref: { kind: 'message', id: 'm7' } }); await drain();
+      assert.match(said('inline-notice'), /^board\.png: /, `${name}: the picked image says so`);
+      delete f.api.media;
+      await back(how);
+      assert.equal(said('inline-notice'), '', `${name}, ${how}: the picked image's line still says what the restart did`);
       // The topic's composer.
       let tries = 0;
       f.registry.inline = null;
@@ -1514,6 +1525,14 @@ test('a topic page reports read-through only for what the person sees, and never
   assert.deepEqual(ranges().slice(count), [[26, 26]], 'under a Reader only the message it shows is read');
   f.registry.current = null; f.registry.options.closed(presentation); await settle();
   assert.deepEqual(ranges().at(-1), [33, 33], 'closing the Reader reads the cards on screen');
+
+  // A reply and the message it answers read as one stack (reply-stacks.mjs):
+  // each card in it on screen is read, not only the stack's newest.
+  message(36); f.views.messages.set('m37', { ...f.views.messages.get('m36'), id: 'm37', seq: 37, body: 'Body 37', reply_to: 'm36', reply_to_author: 'agent-a', reply_to_excerpt: 'Body 36' });
+  f.views.newest = 37; f.paintViews('messages'); await settle();
+  assert.ok(card(36).parent !== f.get('messages') && card(37).parent !== f.get('messages'), 'both cards are in a stack');
+  show([36, 37], [33]); await settle();
+  assert.deepEqual(ranges().at(-1), [36, 37], 'both cards of the stack on screen are read');
 });
 
 async function readingPage() {
@@ -2176,22 +2195,8 @@ test('a reply card says quietly which message it answers, and a message answerin
   const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
-  // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card.
-  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview'], 'the line sits between the author and the words, and the card carries no ⋯ of its own');
-});
-
-test('a card shows a message\'s words as they were written: Markdown marks, tables and lists stay words, and only addresses link', async () => {
-  const f = fixture();
-  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
-  await f.initialize();
-  const body = '# Plan\n| a | b |\n|---|---|\n| 1 | 2 |\n- **one** at https://a.example/x\n> `two`';
-  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body, topic_id: 't1', sent_ms: null, reply_to: null });
-  f.paintViews('messages');
-  const preview = entryIn(f, 'm1').children.find(node => String(node.className).startsWith('message-preview'));
-  const text = node => node.children?.length ? node.children.map(text).join('') : (node.textContent ?? node.data ?? '');
-  assert.equal(preview.className, 'message-preview');
-  assert.equal(text(preview), body, 'every character as written, in order');
-  assert.deepEqual(preview.children.filter(node => node.tagName).map(node => node.tagName), ['A'], 'one element, the address\'s link; no heading, table, list or code');
+  // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card; the words are formatted (message-format.mjs).
+  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview formatted'], 'the line sits between the author and the words, and the card carries no ⋯ of its own');
 });
 
 test('a reply to someone else\'s message in this topic is offered to its author, once; one to anything else is not', () => {

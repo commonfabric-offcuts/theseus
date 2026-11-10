@@ -8,7 +8,7 @@
 // the card moves. Where a finger scrolls, the excerpt is never taller than
 // most of the window (aim.css), so the page still scrolls beside the card.
 // Opening it still shows it whole.
-import { linkWords } from './links.mjs';
+import { formatWords } from './message-format.mjs';
 
 export const SCROLL_CUE = 'Scroll here for the rest · Open to read it whole';
 
@@ -26,7 +26,7 @@ export class CardScroll {
       // The box keeps the height the excerpt had, so the list holds still.
       const height = Math.max(preview.getBoundingClientRect().height, 96);
       preview.style.maxHeight = `${Math.ceil(height)}px`;
-      linkWords(preview, source.body);
+      formatWords(preview, source.body);
       preview.classList.add('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (cue) cue.textContent = SCROLL_CUE;

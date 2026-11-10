@@ -164,7 +164,11 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     const first = await view('source', { source_ref: { kind: 'memory', id: linked, revision: 1 } });
     const revised = await control({ method: 'memory_revise', operation_id: `${linked}-link`, item_id: linked, expected_revision: 1, title: 'Linked page', body: 'The linked page, revised.' });
     assert.equal(revised.status, 'committed', JSON.stringify(revised));
-    const shows = (p, title, body) => until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent === ${JSON.stringify(title)} && document.querySelector('#source-body').textContent === ${JSON.stringify(body)}`), `the Reader shows ${title}`);
+    // The Reader draws a page's words as their Markdown reads (docs/topic-reading.md, "Formatted words"):
+    // whitespace at the end is no words and is not drawn, yet its passages cover every character of the page.
+    const shows = (p, title, body) => until(() => p.evaluate(`(()=>{const s=document.querySelector('#source-body'),b=${JSON.stringify(body)};
+      return document.querySelector('#reader').open && document.querySelector('#reader-title').textContent === ${JSON.stringify(title)}
+        && s.textContent.trimEnd() === b.trimEnd() && s.firstElementChild?.dataset.start === '0' && s.lastElementChild?.dataset.end === String(b.length)})()`), `the Reader shows ${title}`);
     const items = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
     const choose = async (p, label) => {
       await p.point('#reader-menu');

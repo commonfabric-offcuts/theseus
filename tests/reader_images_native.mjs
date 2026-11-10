@@ -137,7 +137,8 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.match(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent`), /Open to read the rest/, 'long preview must expose the way to the full message');
     const original = await view('source', facts.sources[0]);
     await p.open(0);
-    assert.equal(await p.evaluate('document.querySelector("#source-body").textContent'), original.body);
+    // Every word of it, as the Reader formats it (docs/topic-reading.md, "Formatted words"): a paragraph's trailing space is not drawn.
+    assert.equal(await p.evaluate('document.querySelector("#source-body").textContent'), original.body.trimEnd());
     await replace(p, 'Short restoration message'); await p.key('Enter', 4);
     const sent = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'short message send');
     const receipt = await view('operation', { operation_id: sent.payload.operation_id });

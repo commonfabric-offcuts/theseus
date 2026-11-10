@@ -10,9 +10,27 @@ the message a new topic answers. `web/links.mjs` draws them.
 
 - Only an `http://` or `https://` address becomes a link. The words are drawn
   as text nodes and anchors, never as markup.
-- An address ends at a space, an angle bracket, a quote mark or an ellipsis.
-  Sentence punctuation (`.,;:!?`) after it, and a closing bracket it did not
-  open, stay outside the link.
+- An address ends at a space, an angle bracket, a quote mark or an ellipsis,
+  and in a message's formatted words at an escape, as in
+  `https://a.example/my\_page`, which links to `https://a.example/my`, or
+  code. It holds brackets, as in `https://a.example/q?ids[]=1`. Whether a `[`
+  opens a `[words](address)` is read before anything after it, by matching
+  brackets as CommonMark does, so `[a https://a.example/x[b] c](https://d.example/)`
+  is one link with those words and no address in them, while in
+  `[see https://a.example/q?ids[]=1 now] tail` the `[` is words and the
+  address is `https://a.example/q?ids[]=1`, as it is with no `[` before it.
+  Sentence punctuation and the marks a line reads
+  (`.,;:!?*_~`) at its end, and a closing bracket it did not open, stay
+  outside the link, as GFM leaves them, so `~~see https://a.example/x~~` is
+  struck words holding a link to `https://a.example/x`. A letter, digit or
+  other part of a word straight before an address or a topic's id runs it
+  into a word; punctuation, a mark among it, does not (`web/characters.mjs`
+  says which is which, for the marks too). An address the browser cannot read
+  is words to the end of its run.
+- A topic's id after a mark is a link as an address there is, so
+  `snake_case_t-…` links the id once its name is known, as GFM would link an
+  address there; whether an id run on from a word by `_` should stay words is
+  the product's call.
 - An excerpt may have cut an address short, so on an excerpt an address that
   runs to its end (or to the ellipsis that ends it) is left as words. A
   folded message's line shows the message's first line, so it counts as cut
@@ -24,6 +42,17 @@ the message a new topic answers. `web/links.mjs` draws them.
   `rel="noopener noreferrer"`.
 - Clicking a link only follows it: it does not open the card it sits on, fold
   or unfold a message, or light a passage in the Reader to quote.
+- A link written as `[words](address)` shows the words and goes to the
+  address as written, whole: brackets that close inside it (as in
+  `https://en.wikipedia.org/wiki/Markdown_(disambiguation)`), quote marks and
+  closing punctuation are its own, and none of a bare address's endings
+  apply. An escaped bracket in it is that bracket as written, neither opening
+  nor closing it: `[a](https://a.example/x\)y)` goes to
+  `https://a.example/x)y`. Its words end at the `]` that closes its `[`, brackets in between
+  balanced, and may hold bold, italics and code, but no other link; an
+  address with a space in it is no such link, and nor is one with no words. When the target is no address,
+  the brackets that would end there, and any inside it, are words. A link written this way to a
+  topic keeps its words; it does not show the topic's name.
 - Writing stays plain text: nothing becomes a link while it is written.
 
 ## Topics named in a message

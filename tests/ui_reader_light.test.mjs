@@ -2,55 +2,55 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Reader } from '../web/reader.mjs';
 
-// A source drawn as the reader draws it: one span per passage, holding its
-// text nodes and, for a web address, an anchor with its own text node; and a
-// browser selection the test places by hand. A passage is a string, or a list
-// of strings and { link } pieces.
-function fixture(passages) {
-  const body = { children: [] };
-  body.contains = node => { for (let at = node; at; at = at.parentElement) if (at === body) return true; return false; };
-  let start = 0;
-  // A string's own .link is a method, so a piece's words are read by its type.
-  const words = piece => typeof piece === 'string' ? piece : piece.link;
-  for (const passage of passages) {
-    const pieces = typeof passage === 'string' ? [passage] : passage;
-    const text = pieces.map(words).join('');
-    const span = { nodeType: 1, dataset: { start: String(start), end: String(start + text.length) }, textContent: text, parentElement: body, lit: false,
-      classList: { toggle(name, on) { assert.equal(name, 'hover-quote'); span.lit = on; } }, texts: [] };
-    span.closest = () => span;
-    // No piece here is a link showing a topic's name (data-words); links_native.mjs covers those.
-    span.querySelectorAll = selector => { assert.equal(selector, 'a[data-words]'); return []; };
-    for (const piece of pieces) {
-      const linked = typeof piece !== 'string';
-      const node = { nodeType: 3, data: words(piece), parentElement: linked ? { nodeType: 1, parentElement: span } : span };
-      if (linked) span.link = node;
-      span.texts.push(node);
-    }
-    span.text = span.texts[0];
-    body.children.push(span);
-    start += text.length;
+// A source drawn as the reader draws it (drawPassages, on a small document
+// whose nodes know their parents), and a browser selection the test places by
+// hand. A passage is a string, or a list of strings and { link } pieces.
+class Node0 {
+  get parentElement() { return this.parentNode?.nodeType === 1 ? this.parentNode : null; }
+}
+class Text extends Node0 {
+  constructor(data) { super(); Object.assign(this, { nodeType: 3, data: String(data), parentNode: null }); }
+  get textContent() { return this.data; }
+}
+class Element extends Node0 {
+  constructor(tag) {
+    super();
+    Object.assign(this, { nodeType: 1, tagName: tag.toUpperCase(), childNodes: [], parentNode: null, className: '', dataset: {}, href: '', target: '', rel: '', title: '' });
+    this.style = { setProperty() {} };
   }
-  const source = body.children.map(span => span.textContent).join('');
-  const passageOf = node => { let at = node; while (at.parentElement !== body) at = at.parentElement; return at; };
-  // Where a boundary falls, counted as the page counts it: the passage's start, then its text before the boundary.
-  const at = (container, offset) => {
-    const span = passageOf(container);
-    if (container === span) return Number(span.dataset.start) + span.texts.slice(0, offset).reduce((n, node) => n + node.data.length, 0);
-    const before = span.texts.slice(0, span.texts.indexOf(container)).reduce((n, node) => n + node.data.length, 0);
-    return Number(span.dataset.start) + before + offset;
-  };
+  get children() { return this.childNodes.filter(node => node.nodeType === 1); }
+  get classList() {
+    const names = () => this.className.split(' ').filter(Boolean);
+    return { add: (...more) => { this.className = [...new Set([...names(), ...more])].join(' '); },
+      toggle: (name, on) => { this.className = (on ? [...new Set([...names(), name])] : names().filter(n => n !== name)).join(' '); },
+      contains: name => names().includes(name) };
+  }
+  append(...nodes) { for (let node of nodes) { if (typeof node === 'string') node = new Text(node); node.parentNode = this; this.childNodes.push(node); } }
+  replaceChildren(...nodes) { this.childNodes = []; this.append(...nodes); }
+  addEventListener() {}
+  get textContent() { return this.childNodes.map(node => node.textContent).join(''); }
+  set textContent(value) { this.childNodes = []; if (String(value)) this.append(new Text(value)); }
+  closest(selector) { assert.equal(selector, '[data-start]'); for (let at = this; at; at = at.parentElement) if (at.dataset?.start !== undefined) return at; return null; }
+  contains(node) { for (let at = node; at; at = at.parentNode) if (at === this) return true; return false; }
+}
+function fixture(passages) {
+  const words = piece => typeof piece === 'string' ? piece : piece.link;
+  const source = passages.map(passage => (typeof passage === 'string' ? [passage] : passage).map(words).join('')).join('');
+  const previous = { window: globalThis.window, document: globalThis.document, Node: globalThis.Node };
   const selection = { ranges: [],
     get rangeCount() { return this.ranges.length; }, get isCollapsed() { return !this.ranges.length; }, getRangeAt(n) { return this.ranges[n]; },
-    toString() { const [range] = this.ranges; return source.slice(at(range.startContainer, range.startOffset), at(range.endContainer, range.endOffset)); },
     removeAllRanges() { this.ranges = []; } };
-  const previous = { window: globalThis.window, document: globalThis.document, Node: globalThis.Node };
   globalThis.window = { getSelection: () => selection };
   globalThis.Node = { ELEMENT_NODE: 1 };
-  // A range from a passage's start to a boundary in it, as the reader measures one.
-  globalThis.document = { createRange: () => ({ setStart(node, offset) { assert.equal(offset, 0); this.from = node; },
-    setEnd(node, offset) { this.to = [node, offset]; }, toString() { return source.slice(Number(this.from.dataset.start), at(...this.to)); } }) };
+  globalThis.document = { createElement: tag => new Element(tag), createTextNode: data => new Text(data) };
+  const body = new Element('div');
   const reader = Object.assign(Object.create(Reader.prototype), { sourceBody: body, source: { body: source }, hover: null });
-  const lit = () => body.children.filter(span => span.lit).map(span => span.textContent).join('');
+  reader.drawSource(source);
+  assert.deepEqual(body.children.map(span => span.textContent), passages.map(passage => (typeof passage === 'string' ? [passage] : passage).map(words).join('')), 'drawn as the passages the test names');
+  // Each passage's first text node, and the text of the link in it.
+  const texts = node => node.nodeType === 3 ? [node] : node.childNodes.flatMap(texts);
+  for (const span of body.children) { span.text = texts(span)[0]; span.link = texts(span).find(node => node.parentNode.tagName === 'A'); }
+  const lit = () => body.children.filter(span => span.classList.contains('hover-quote')).map(span => span.textContent).join('');
   return { reader, spans: body.children, selection, lit, restore: () => Object.assign(globalThis, previous) };
 }
 
@@ -143,12 +143,4 @@ test('the Reader never cuts a link between passages: the passages one spans are 
   assert.equal(parts.at(-1).end, body.length);
   // Without a link, the passages are the sentences, as before.
   assert.deepEqual(drawn(t, 'One? Two! Three.').map(part => part.text), ['One? ', 'Two! ', 'Three.']);
-});
-
-test('the Reader shows a message\'s words as they were written: Markdown marks, tables and lists stay words in sentence passages', t => {
-  const body = '# Plan\n| a | b |\n|---|---|\n| 1 | 2 |\n- **one** at https://a.example/x\n> `two`.';
-  const parts = drawn(t, body);
-  assert.equal(parts.map(part => part.text).join(''), body, 'every character as written, in order');
-  for (const part of parts) assert.equal(body.slice(part.start, part.end), part.text, 'each passage knows where its words lie in the source');
-  assert.deepEqual(parts.flatMap(part => part.links), ['https://a.example/x'], 'only the address links');
 });

@@ -8,8 +8,8 @@ import { recipientChoices, writingState, pasteImageError, namedPastedImage, imag
 import { paintImageRows } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
-import { wordNodes, webLinks } from './links.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
+import { drawPassages, sourcePosition } from './message-format.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 
@@ -261,7 +261,7 @@ export class Reader {
     this.restoreVisiblePlace(place);
     // Native selection paints the line box, while an inline background paints
     // the glyph box. Extend only the paint, using this source's actual metrics.
-    const glyphHeight = this.sourceBody.firstElementChild?.getClientRects()[0]?.height;
+    const glyphHeight = (this.sourceBody.querySelector(':scope > span:not(.md-block)') ?? this.sourceBody.firstElementChild)?.getClientRects()[0]?.height;
     const lineHeight = parseFloat(getComputedStyle(this.sourceBody).lineHeight);
     if (glyphHeight > 0 && Number.isFinite(lineHeight)) {
       this.sourceBody.style.setProperty('--quote-overhang', `${Math.max(0, lineHeight - glyphHeight) / 2}px`);
@@ -314,26 +314,8 @@ export class Reader {
     });
   }
 
-  drawSource(body) {
-    this.sourceBody.replaceChildren();
-    const segments = typeof Intl.Segmenter === 'function'
-      ? [...new Intl.Segmenter(undefined, { granularity: 'sentence' }).segment(body)]
-      : [...body.matchAll(/[^\n]+(?:\n+|$)|\n+/g)].map(match => ({ segment: match[0], index: match.index }));
-    // A link is never cut between passages: the passages one spans join.
-    const links = webLinks(body), parts = [];
-    for (const { segment, index } of segments) {
-      const last = parts.at(-1);
-      if (last && links.some(link => link.start < index && link.end > index)) last.segment += segment;
-      else parts.push({ segment, index });
-    }
-    for (const part of parts) {
-      const span = node('span');
-      span.append(...wordNodes(part.segment, { doc: document }));
-      span.dataset.start = String(part.index);
-      span.dataset.end = String(part.index + part.segment.length);
-      this.sourceBody.append(span);
-    }
-  }
+  // The source as passages, its Markdown shown as written to be read (message-format.mjs).
+  drawSource(body) { drawPassages(this.sourceBody, body, document); }
 
   point(event) {
     if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a')) return;
@@ -378,30 +360,19 @@ export class Reader {
     selection.removeAllRanges();
   }
 
-  // Where a selection boundary falls in the source text: in a passage's text
-  // (a link's among it), on a passage, or between passages; null outside the source.
-  // A boundary inside a link showing a topic's name falls at the start of the
-  // words it stands for, or at their end when end is set, so the link is whole.
+  // Where a selection boundary falls in the source text; null outside the
+  // source. Each node the passages drew knows the characters of the source it
+  // shows (message-format.mjs, sourcePosition), so a selection over formatted
+  // words, a list or a table quotes the author's own Markdown for it, a mark
+  // it covers whole among it. A link showing other words than the source's
+  // (a topic's name, a [named](link)) is taken whole: from its start, or to
+  // its end when end is set.
   sourceOffset(container, offset, end = false) {
     if (container === this.sourceBody) return Number(this.sourceBody.children[offset]?.dataset.start ?? this.source.body.length);
     let span = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
     while (span && span.parentElement !== this.sourceBody) span = span.parentElement;
     if (!span) return null;
-    const before = document.createRange();
-    before.setStart(span, 0); before.setEnd(container, offset);
-    let length = before.toString().length;
-    // A link showing a topic's name counts as the words it stands for: wholly
-    // before the boundary, by their length; holding it, from its start or end.
-    for (const link of span.querySelectorAll('a[data-words]')) {
-      const words = Number(link.dataset.words), whole = document.createRange();
-      whole.selectNodeContents(link);
-      if (before.compareBoundaryPoints(Range.END_TO_END, whole) >= 0) length += words - link.textContent.length;
-      else if (before.compareBoundaryPoints(Range.START_TO_END, whole) > 0) {
-        const into = document.createRange(); into.setStart(whole.startContainer, whole.startOffset); into.setEnd(container, offset);
-        length += (end ? words : 0) - into.toString().length;
-      }
-    }
-    return Number(span.dataset.start) + length;
+    return sourcePosition(container, offset, end) ?? Number(end ? span.dataset.end : span.dataset.start);
   }
 
   disarm() {
