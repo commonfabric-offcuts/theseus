@@ -5,7 +5,7 @@ import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ⌘← fold, ⌘→ unfold · Return new card · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
+const KEYS = '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold · Return new card · ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
@@ -292,13 +292,14 @@ export class DeckPage {
     else if ((up || down) && !event.shiftKey && !event.altKey) this.pick(this.beside(this.picked, up ? -1 : 1));
     // Tab and ⇧Tab are the deck's only while there is somewhere to go, so the focus can still leave it.
     else if (event.key === 'Tab' && !command && !event.altKey) { if (!this.act({ kind: event.shiftKey ? 'outdent' : 'indent', text, near })) return; }
-    // ⌘← and ⌘→ are the deck's even where they change nothing, since the browser takes them for Back and Forward.
-    else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && command && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft');
+    // ← and →, or ⌘← and ⌘→, are the deck's even where they change nothing, since the browser takes ⌘← and ⌘→
+    // for Back and Forward.
+    else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft');
     else if (event.key === 'Enter' && command) this.edit();
     else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) this.start();
     else if (event.key === 'Backspace' && command) this.act({ kind: 'remove', text, near });
     else if (event.key.toLowerCase() === 'z' && command && !event.shiftKey && !event.altKey) this.undo();
-    else if (event.key === 'ArrowRight' && !command && !event.shiftKey && !event.altKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
+    else if (event.key === 'ArrowRight' && event.altKey && !command && !event.shiftKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
     else return;
     event.preventDefault();
   }
@@ -320,7 +321,7 @@ export class DeckPage {
     for (let i = from + step; i >= 0 && i < shown.length; i += step) if (shown[i]) return i;
     return from;
   }
-  // ⌘← or ⌘→, or a click on a parent's count of the cards under it: those cards folded away, or shown again.
+  // ← or →, or a click on a parent's count of the cards under it: those cards folded away, or shown again.
   // The fold picks its card, so an ask open on another card closes as it does for a pick, keeping its writing.
   fold(index) {
     const card = this.deck.cards[index];
@@ -331,8 +332,8 @@ export class DeckPage {
     if (this.asking) this.endAsk(true);
     this.paint();
   }
-  // ⌘← and ⌘→ as in any tree: the picked card's children folded away or shown again, and from a card with no
-  // children showing, ⌘← goes up to its parent; from one whose children show, ⌘→ goes down to the first.
+  // ← and → as in any tree: the picked card's children folded away or shown again, and from a card with no
+  // children showing, ← goes up to its parent; from one whose children show, → goes down to the first.
   tree(left) {
     const cards = this.deck.cards, i = this.picked, card = cards[i];
     if (!card) return;
