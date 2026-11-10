@@ -19,6 +19,33 @@ const words = text => text.replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
 
 export const cardText = card => card.words ? `${card.title}\n${card.words}` : card.title;
 
+// The fence a line leaves open: the one it opens, none when it closes the one
+// open, or the one open still.
+function fenceAfter(fence, line) {
+  const open = FENCE.exec(line);
+  if (fence) return open && open[1][0] === fence[0] && open[1].length >= fence.length && !/\S/.test(line.slice(open[0].length)) ? null : fence;
+  return open ? open[1] : null;
+}
+
+// A card's reply stacks: each line of its words, outside a fenced block, that
+// holds only a link stackOf(address) names, written bare or as
+// [words](address). Gives the words without those lines, and what stackOf
+// named for each line, in order.
+const LINK_LINE = /^[ \t]*(?:\[[^\]\n]*\]\([ \t]*<?([^\s<>()]+)>?[ \t]*\)|<?(https?:\/\/[^\s<>]+)>?)[ \t]*$/;
+export function cardStacks(text, stackOf) {
+  const kept = [], stacks = [];
+  let fence = null;
+  for (const line of text.split('\n')) {
+    const before = fence;
+    fence = fenceAfter(fence, line);
+    const link = !before && !fence && LINK_LINE.exec(line), stack = link && stackOf(link[1] ?? link[2]);
+    if (stack) stacks.push(stack); else kept.push(line);
+  }
+  return { words: words(kept.join('\n')), stacks };
+}
+// The line that names a card's reply stack, as the deck writes it.
+export const stackLine = address => `[Reply stack](${address})`;
+
 // A card from the text a person wrote: the first line that is not blank is
 // its title, any heading marks on it dropped; the rest are its words.
 export function textCard(text) {
@@ -31,11 +58,9 @@ export function parseDeck(body) {
   const lines = body.split('\n'), starts = [];
   let fence = null;
   for (let i = 0, offset = 0; i < lines.length; offset += lines[i].length + 1, i++) {
-    const open = FENCE.exec(lines[i]);
-    if (fence) {
-      if (open && open[1][0] === fence[0] && open[1].length >= fence.length && !/\S/.test(lines[i].slice(open[0].length))) fence = null;
-    } else if (open) fence = open[1];
-    else if (CARD.test(lines[i])) starts.push(offset);
+    const before = fence;
+    fence = fenceAfter(fence, lines[i]);
+    if (!before && !fence && CARD.test(lines[i])) starts.push(offset);
   }
   const cards = starts.map((start, at) => {
     const raw = body.slice(start, starts[at + 1] ?? body.length), end = raw.indexOf('\n');

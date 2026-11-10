@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAct, cardText, deckBody, findCard, parseDeck, textCard } from '../web/deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, parseDeck, stackLine, textCard } from '../web/deck.mjs';
 
 const PAGE = '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n## Gamma\n';
 const titles = deck => deck.cards.map(card => card.title).join(',');
@@ -76,4 +76,18 @@ test("a person's text: the first line that is not blank is the title", () => {
   assert.deepEqual(textCard('\n\n  Title  \n\nwords\n  more\n\n'), { title: 'Title', words: 'words\n  more', written: true });
   assert.deepEqual(textCard('### Heading\nx'), { title: 'Heading', words: 'x', written: true });
   assert.deepEqual(textCard('#1 priority'), { title: '#1 priority', words: '', written: true });
+});
+
+test("a card's reply stacks are the lines holding only a link to one of them, outside a fenced block", () => {
+  const stackOf = address => (address.startsWith('https://here.example/?topic=') ? address.slice(-2) : null);
+  const words = `first words\n${stackLine('https://here.example/?topic=t&message=m1')}\n\n### Merged in\n\nhttps://here.example/?topic=t&message=m2\n` +
+    'see https://here.example/?topic=t&message=m3 here\n[elsewhere](https://else.example/x)\n```\nhttps://here.example/?topic=t&message=m4\n```';
+  const found = cardStacks(words, stackOf);
+  assert.deepEqual(found.stacks, ['m1', 'm2']);
+  assert.equal(found.words, 'first words\n\n### Merged in\n\nsee https://here.example/?topic=t&message=m3 here\n[elsewhere](https://else.example/x)\n```\nhttps://here.example/?topic=t&message=m4\n```');
+  assert.deepEqual(cardStacks('no stacks', stackOf), { words: 'no stacks', stacks: [] });
+  // A merge keeps both cards' stacks, and a card read back with nothing done to it keeps its lines exactly.
+  const page = `## A\n\nwords\n\n${stackLine('https://here.example/?topic=t&message=m1')}\n\n## B\n\n${stackLine('https://here.example/?topic=t&message=m2')}\n`;
+  assert.equal(deckBody(parseDeck(page)), page);
+  assert.deepEqual(cardStacks(parseDeck(after(page, { kind: 'merge', text: cardText(parseDeck(page).cards[0]), step: 1, near: 0 })).cards[0].words, stackOf).stacks, ['m1', 'm2']);
 });

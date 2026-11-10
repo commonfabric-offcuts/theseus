@@ -2293,8 +2293,15 @@ async function initializeDeckPage(route) {
     try { return {href,title:scope.kind==='topic'?(await pipelineView('topic',{topic_id:scope.id})).topic.title:(await pipelineView('workspace',{workspace_id:scope.id})).workspace.title}; }
     catch { return {href,title:'The page'}; }
   };
+  // A card's ask goes to the page's topic, or to its outcome's conversation, and to an agent there (docs/decks.md).
+  const askIn=async scope=>{
+    const topicId=scope.kind==='topic'?scope.id:(await pipelineView('conversation',{workspace_id:scope.id})).conversation?.topic_id;
+    if(!topicId)return null;
+    const {participants}=await pipelineView('topic',{topic_id:topicId});
+    return {topicId,agents:participants.filter(p=>p.kind==='agent'&&p.enabled).map(p=>p.actor_id)};
+  };
   const page=new DeckPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place});
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn});
   $('deck-page').hidden=false;
   await followCommits(()=>page.load())();
   document.body.dataset.ready='true';

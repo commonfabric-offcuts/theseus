@@ -1,10 +1,22 @@
-import { applyAct, cardText, deckBody, findCard, parseDeck } from './deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, parseDeck, stackLine, textCard } from './deck.mjs';
+import { messageLink, messageOf, placeLink } from './links.mjs';
 import { formatWords } from './message-format.mjs';
+import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
+
+// The speech balloon on a card's bubble, drawn as nodes in the bubble's own color; aim.css fills it while a
+// reply waits unread.
+function balloon(doc) {
+  const ns = 'http://www.w3.org/2000/svg', svg = doc.createElementNS(ns, 'svg'), path = doc.createElementNS(ns, 'path');
+  for (const [name, value] of Object.entries({ viewBox: '0 0 20 20', width: '17', height: '17', 'aria-hidden': 'true', focusable: 'false' })) svg.setAttribute(name, value);
+  path.setAttribute('d', 'M4.5 3.5h11a2 2 0 0 1 2 2V12a2 2 0 0 1-2 2H9.5l-4 3v-3h-1a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2z');
+  svg.append(path);
+  return svg;
+}
 
 // A Notebook page as a deck of cards (docs/decks.md): a list sorted with the
 // keys on a laptop, one card at a time, swiped through, on a phone. An act is
@@ -13,18 +25,25 @@ const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 // not come is sent again exactly as it was, so Core answers with what it
 // recorded ("A retry keeps the same operation identity"). One the page changed
 // under first is made again, under a new operation, on the newer revision,
-// each act finding its card by its words.
+// each act finding its card by its words. A card's speech bubble asks an agent
+// about it in a new reply stack, whose link the card keeps as a line of its
+// words.
 export class DeckPage {
   // read(name, args): a view's answer. send(kind, target, args, expected, operation_id): a command's receipt.
   // header: the page's {eyebrow, title, description}. place(scope): {href, title} of the topic or outcome the page is in.
-  constructor({ host, header, item, read, send, place, doc = globalThis.document, narrow = globalThis.matchMedia?.('(max-width: 760px)') }) {
-    Object.assign(this, { host, header, item, read, send, place, doc, narrow });
+  // askIn(scope): where a card's ask goes, {topicId, agents}, or null when there is nowhere.
+  constructor({ host, header, item, read, send, place, askIn, doc = globalThis.document, narrow = globalThis.matchMedia?.('(max-width: 760px)') }) {
+    Object.assign(this, { host, header, item, read, send, place, askIn, doc, narrow });
     // base: the page as Core last confirmed it. acts: the person's acts since, in order. undos: what takes back
     // each of their acts, newest last. sending: the save on its way, sent again as it is until Core answers it
     // (failed while its last send went unanswered).
     // held: a refusal stopped saving until Try again. notebook: the Notebook's version when the page was read.
+    // room: where an ask goes. talks: each stack's {replies, unread}, by its first message. asking: the ask being written.
     Object.assign(this, { base: null, source: null, notebook: null, acts: [], undos: [], sending: null, owed: false, held: false,
-      readOnly: false, deck: parseDeck(''), picked: 0, editing: null });
+      readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, talks: new Map(), asking: null });
+    // The card picked when this deck was last open in this tab, by its words, so going to a stack and back lands
+    // on it; read before the first paint stores the first card in its place.
+    try { this.recalled = JSON.parse(globalThis.sessionStorage.getItem(`deck:${item}`)); } catch { this.recalled = null; }
     this.status = this.node('p', 'save-status deck-status'); this.status.setAttribute('role', 'status');
     this.opening = this.node('div', 'deck-opening');
     this.list = this.node('ol', 'deck-cards'); this.list.setAttribute('aria-label', 'Cards');
@@ -34,7 +53,7 @@ export class DeckPage {
     this.editButton = button('Edit', () => (this.editing ? this.finish() : this.edit()));
     this.bar = this.node('div', 'deck-bar');
     this.bar.append(this.count, this.editButton, button('New card', () => this.start()), button('Undo', () => this.undo()));
-    this.keys = this.node('p', 'deck-keys muted', '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Return edit, Escape done · ⌘Return new card · ⌘⌫ remove · ⌘Z undo');
+    this.keys = this.node('p', 'deck-keys muted', '↑ ↓ pick · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Return edit, Escape done · ⌘Return new card · ⌘⌫ remove · ⌘Z undo · → its speech bubble');
     // The count and the buttons stand above the cards, where a phone's keyboard never covers Done.
     host.replaceChildren(this.status, this.opening, this.bar, this.keys, this.list);
     doc.addEventListener('keydown', event => this.key(event));
@@ -60,7 +79,7 @@ export class DeckPage {
       let notebook = null;
       if (this.source) {
         notebook = (await this.read('memory_items', { owner_scope: this.source.owner_scope, limit: 1 })).relevant_versions.notebook;
-        if (notebook === this.notebook) return this.resume();
+        if (notebook === this.notebook) { await this.loadTalks(); return this.resume(); }
       }
       const source = await this.read('memory_current', { item_id: this.item });
       if (this.sending) { this.owed = true; return true; }
@@ -68,10 +87,13 @@ export class DeckPage {
       Object.assign(this, { source, notebook });
       if (source.source_ref.revision !== this.base?.revision) this.rebase({ revision: source.source_ref.revision, body: source.body ?? '' });
       if (first) {
+        const at = typeof this.recalled?.text === 'string' ? findCard(this.deck, this.recalled.text, this.recalled.at) : -1;
+        if (at >= 0 && at !== this.picked) this.pick(at);
         await this.paintHeader();
         // A phone opens on the cards themselves, the header above scrolled away.
         if (this.phone) this.bar.scrollIntoView({ block: 'start' });
       }
+      await this.loadTalks();
       return this.resume();
     } catch (error) {
       this.say(`${error.message} The page could not be read.`, 'attention');
@@ -107,6 +129,37 @@ export class DeckPage {
     const place = await this.place(this.source.owner_scope), back = this.node('a', '', `← ${place.title}`);
     back.href = place.href;
     eyebrow.replaceChildren(back);
+    // Where asks go is read once; a read that fails leaves the cards without asks, and their stacks still open.
+    this.room = (await this.askIn?.(this.source.owner_scope).catch(() => null)) ?? null;
+    this.paint();
+  }
+
+  // How many replies each card's stack has, and how many of them wait unread
+  // for this person, from its topic's latest messages, read on every load as
+  // the conversation page reads its topic. A read that fails keeps the counts.
+  // SHORTCUT: only the topic's latest 100 messages are read, so a stack begun
+  // before them shows its bubble with no count. To harden: a Core view of one
+  // stack's replies and unread count, by its first message.
+  async loadTalks() {
+    const roots = new Map(), talks = new Map();
+    for (const card of this.deck.cards) for (const { topicId, messageId } of cardStacks(card.words, messageOf).stacks) roots.set(messageId, topicId);
+    try {
+      for (const topicId of new Set(roots.values())) {
+        const { items } = await this.read('topic_messages', { topic_id: topicId, direction: 'before', limit: 100 });
+        const parents = new Map(items.map(item => [item.id, item.reply_to]));
+        for (const id of parents.keys()) if (roots.has(id)) talks.set(id, { replies: 0, unread: 0 });
+        for (const item of items) {
+          for (let up = item.reply_to; up; up = parents.get(up)) {
+            if (!roots.has(up)) continue;
+            const talk = talks.get(up) ?? { replies: 0, unread: 0 };
+            talks.set(up, { replies: talk.replies + 1, unread: talk.unread + (item.unread ? 1 : 0) });
+            break;
+          }
+        }
+      }
+    } catch { return; }
+    const told = map => JSON.stringify([...map].sort());
+    if (told(talks) !== told(this.talks)) { this.talks = talks; this.paint(); }
   }
   described() {
     const count = this.deck.cards.length;
@@ -137,7 +190,7 @@ export class DeckPage {
   }
   // ⌘Z or Undo: the person's own last act, taken back as an act of its own.
   undo() {
-    if (this.editing || this.readOnly) return;
+    if (this.editing || this.asking || this.readOnly) return;
     const undo = this.undos.at(-1);
     if (!undo) { this.say('Nothing to take back.'); return; }
     this.undos = this.undos.slice(0, -1);
@@ -204,7 +257,16 @@ export class DeckPage {
       if (event.target === this.editing.field && (event.key === 'Escape' || (event.key === 'Enter' && command))) { event.preventDefault(); this.finish(); }
       return;
     }
+    if (this.asking?.form.contains(event.target)) {
+      if (event.key === 'Escape') { event.preventDefault(); this.endAsk(); }
+      else if (event.key === 'Enter' && command && event.target === this.asking.field) { event.preventDefault(); this.sendAsk(); }
+      return;
+    }
     if (event.target !== this.doc.body && !this.list.contains(event.target)) return;
+    // A speech bubble with the focus presses as a link or a button does, and ← gives the focus back to its card.
+    const bubble = event.target.closest?.('.deck-bubble');
+    if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
+    if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
     if ((up || down) && command && !event.altKey) this.act({ kind: event.shiftKey ? 'merge' : 'move', text, step: up ? -1 : 1, near });
     else if ((up || down) && !event.shiftKey && !event.altKey) this.pick(this.picked + (up ? -1 : 1));
@@ -212,6 +274,7 @@ export class DeckPage {
     else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) this.edit();
     else if (event.key === 'Backspace' && command) this.act({ kind: 'remove', text, near });
     else if (event.key.toLowerCase() === 'z' && command && !event.shiftKey && !event.altKey) this.undo();
+    else if (event.key === 'ArrowRight' && !command && !event.shiftKey && !event.altKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
     else return;
     event.preventDefault();
   }
@@ -224,7 +287,7 @@ export class DeckPage {
   }
   // On a phone the card in view is the one picked.
   scrolled() {
-    if (!this.phone || this.editing || !this.list.clientWidth) return;
+    if (!this.phone || this.editing || this.asking || !this.list.clientWidth) return;
     const index = Math.round(this.list.scrollLeft / this.list.clientWidth);
     if (index !== this.picked && index < this.deck.cards.length) { this.picked = index; this.mark(); }
   }
@@ -235,6 +298,8 @@ export class DeckPage {
       if (picked) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
     }
     this.count.textContent = this.deck.cards.length ? `${this.picked + 1} of ${this.deck.cards.length}` : 'No cards yet';
+    const card = this.deck.cards[this.picked];
+    try { if (card) globalThis.sessionStorage.setItem(`deck:${this.item}`, JSON.stringify({ text: cardText(card), at: this.picked })); } catch {}
   }
   // The picked card in view; on a laptop it takes the focus when the deck has it (or nothing does).
   // A phone has no keys for the deck, so its cards never take the focus.
@@ -246,21 +311,24 @@ export class DeckPage {
     if (focus) row.focus({ preventScroll: true });
   }
 
-  // Return or Edit: the picked card's text in one box, its first line the title.
+  // Return or Edit: the picked card's text in one box, its first line the title. The lines naming its stacks stay
+  // out of the box and go back under what is written, so writing never loses them.
   edit() {
     const card = this.deck.cards[this.picked];
-    if (card && !this.readOnly) this.open({ text: cardText(card), near: this.picked, fresh: false });
+    if (!card || this.readOnly || this.asking) return;
+    const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null));
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, near: this.picked, fresh: false });
   }
   // ⌘Return or New card: an empty card after the picked one.
   start() {
-    if (this.readOnly || !this.base) return;
+    if (this.readOnly || !this.base || this.asking) return;
     const card = this.deck.cards[this.picked];
     this.open({ text: '', after: card ? cardText(card) : null, near: card ? this.picked : -1, fresh: true });
   }
   open(editing) {
     if (this.editing) this.finish();
     const field = this.node('textarea', 'deck-editor');
-    field.value = editing.text;
+    field.value = editing.shown ?? editing.text;
     field.setAttribute('aria-label', 'The card: its first line is its title');
     field.addEventListener('input', () => this.fit(field));
     this.editing = { ...editing, field };
@@ -272,10 +340,10 @@ export class DeckPage {
     const editing = this.editing;
     if (!editing) return;
     this.editing = null;
-    const to = editing.field.value;
+    const written = editing.field.value, to = editing.stacks?.length && /\S/.test(written) ? `${written.trimEnd()}\n\n${editing.stacks.join('\n')}` : written;
     let made = false;
     if (editing.fresh) made = this.act({ kind: 'add', after: editing.after, text: to, near: editing.near });
-    else if (to !== editing.text) {
+    else if (written !== (editing.shown ?? editing.text)) {
       made = this.act({ kind: 'edit', text: editing.text, to, near: editing.near });
       // Its card changed elsewhere while it was written: what was written goes beside it, over nothing.
       if (!made && findCard(this.deck, editing.text, editing.near) < 0 && /\S/.test(to)) {
@@ -287,19 +355,125 @@ export class DeckPage {
     if (!made) this.paint();
     this.show(true);
   }
+  // A card's speech bubbles: one for each of its reply stacks, which opens it, saying Sent until its first reply
+  // and then counting them, and marked only while one waits unread; or, on a card with none, one that asks an
+  // agent about it. A stack begun before the messages read says nothing.
+  bubbles(index, stacks) {
+    const holder = this.node('div', 'deck-bubbles');
+    for (const { topicId, messageId } of stacks) {
+      const talk = this.talks.get(messageId), link = this.node('a', 'deck-bubble'), words = !talk ? null : talk.replies ? String(talk.replies) : 'Sent';
+      link.append(balloon(this.doc), ...(words ? [this.node('span', '', words)] : []));
+      link.href = routeHref({ kind: 'topic', id: topicId, message: messageId });
+      link.tabIndex = -1;
+      link.setAttribute('aria-label', !talk ? 'Reply stack' : talk.replies ? `Reply stack: ${talk.replies === 1 ? '1 reply' : `${talk.replies} replies`}${talk.unread ? `, ${talk.unread} not read` : ''}` : 'Reply stack: asked, no reply yet');
+      link.classList.toggle('deck-unread', Boolean(talk?.unread));
+      link.addEventListener('click', event => event.stopPropagation());
+      holder.append(link);
+    }
+    if (!stacks.length && this.room?.agents.length && !this.readOnly) {
+      const ask = this.node('button', 'deck-bubble deck-ask');
+      ask.append(balloon(this.doc));
+      ask.type = 'button';
+      ask.tabIndex = -1;
+      ask.setAttribute('aria-label', 'Ask an agent about this card');
+      ask.addEventListener('click', event => { event.stopPropagation(); this.ask(index); });
+      holder.append(ask);
+    }
+    return holder;
+  }
+  // The speech bubble on a card with no stack: an ask about it, written in a box in its place, to one agent:
+  // the only one where the deck's asks go, or, of several, the one asked last (kept in this browser), and the
+  // person may choose another. One agent and not all, since each one asked would start on the same work.
+  ask(index) {
+    const card = this.deck.cards[index];
+    if (!card || !this.room?.agents.length || this.readOnly || this.asking) return;
+    if (this.editing) this.finish();
+    const form = this.node('div', 'deck-ask-form'), field = this.node('textarea', 'deck-ask-field'), to = this.node('select', 'deck-ask-to');
+    field.setAttribute('aria-label', 'Ask an agent about this card');
+    field.placeholder = 'Ask an agent about this card…';
+    field.addEventListener('input', () => this.fit(field));
+    let last = null;
+    try { last = globalThis.localStorage.getItem('deck-agent'); } catch {}
+    const agents = this.room.agents.includes(last) ? [last, ...this.room.agents.filter(agent => agent !== last)] : this.room.agents;
+    for (const agent of agents) { const option = this.node('option', '', agent); option.value = agent; to.append(option); }
+    to.setAttribute('aria-label', 'The agent it goes to');
+    const line = this.node('div', 'deck-ask-line'), send = this.node('button', '', 'Ask'), cancel = this.node('button', '', 'Cancel');
+    send.type = cancel.type = 'button';
+    send.onclick = () => this.sendAsk();
+    cancel.onclick = () => this.endAsk();
+    line.append(this.node('span', 'muted', 'To'), agents.length > 1 ? to : this.node('span', 'deck-ask-agent', agents[0]), send, cancel);
+    form.append(field, line);
+    this.asking = { text: cardText(card), near: index, form, field, to, envelope: null, sending: false };
+    this.picked = index;
+    this.paint();
+    field.focus({ preventScroll: true });
+  }
+  endAsk() {
+    if (this.asking?.sending) return;
+    this.asking = null;
+    this.paint();
+  }
+  // The ask goes as a new message where the deck's asks go, to the agent, the card quoted and the deck linked;
+  // once Core has it, the card keeps the link to its stack as a line of its words. An ask whose answer does not
+  // come is sent again as it was, on Try again, so Core records it once.
+  async sendAsk() {
+    const asking = this.asking;
+    if (!asking || asking.sending) return;
+    if (!asking.envelope) {
+      const words = asking.field.value.trim(), agent = asking.to.value;
+      if (!words || !agent) { asking.field.focus(); return; }
+      // The agent is told where the card is, so it can change the card when the ask is to: a ## heading on a
+      // Notebook page, with the line naming this stack kept under it.
+      const card = textCard(asking.text), quoted = [`**${card.title || 'Untitled'}**`, ...cardStacks(card.words, messageOf).words.split('\n')];
+      const body = `${words}\n\n${quoted.map(line => (line ? `> ${line}` : '>')).join('\n')}\n\n` +
+        `The card is a ## heading on the Notebook page ${this.item}, “${this.source.title || 'Notebook page'}”, seen as cards at ` +
+        `${placeLink({ kind: 'cards', id: this.item })}. To change it, revise that page and keep its Reply stack line.`;
+      asking.envelope = { operation_id: crypto.randomUUID(), agent, args: { body, addressees: [agent], intent: 'ask' } };
+    }
+    asking.sending = asking.field.readOnly = asking.to.disabled = true;
+    this.say('Asking…', 'saving');
+    let receipt;
+    try { receipt = await this.send('message.post', { topic_id: this.room.topicId }, asking.envelope.args, {}, asking.envelope.operation_id); }
+    catch (error) { receipt = { status: 'retryable', error }; }
+    asking.sending = false;
+    if (receipt?.status === 'committed') {
+      try { globalThis.localStorage.setItem('deck-agent', asking.envelope.agent); } catch {}
+      if (this.asking === asking) this.asking = null;
+      const line = stackLine(messageLink(this.room.topicId, receipt.result.message_id));
+      if (!this.act({ kind: 'edit', text: asking.text, to: `${asking.text}\n\n${line}`, near: asking.near })) {
+        this.paint();
+        this.say('Asked, in a new reply stack. The card changed meanwhile, so it does not show the stack.', 'attention');
+      }
+      return;
+    }
+    if (receipt?.status === 'retryable') { this.say(`Not asked yet. ${receipt.error?.message ?? 'Theseus is busy.'}`, 'attention', () => this.sendAsk()); return; }
+    // Refused, and recorded so: what was written stays, to change and send as a new ask.
+    asking.envelope = null;
+    asking.field.readOnly = asking.to.disabled = false;
+    this.say(`Not asked: ${receipt?.error?.message ?? 'Theseus did not take it.'}`, 'attention');
+  }
+  // The card asked about, as it was when its bubble was pressed, with the ask under it.
+  askRow(asking) {
+    const card = textCard(asking.text), row = this.node('li', 'deck-card deck-asking');
+    row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'),
+      formatWords(this.node('div', 'deck-words'), cardStacks(card.words, messageOf).words), asking.form);
+    return row;
+  }
+
   fit(field) {
     field.style.height = 'auto';
     field.style.height = `${field.scrollHeight + 2}px`;
   }
 
   paint() {
-    const { cards, opening } = this.deck, editing = this.editing;
+    const { cards, opening } = this.deck, editing = this.editing, asking = this.asking;
     this.opening.hidden = !/\S/.test(opening);
     if (!this.opening.hidden) formatWords(this.opening, opening.trim());
     const rows = cards.map((card, index) => {
-      const row = this.node('li', 'deck-card');
+      const row = this.node('li', 'deck-card'), { words, stacks } = cardStacks(card.words, messageOf);
       row.dataset.index = String(index);
-      row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'), formatWords(this.node('div', 'deck-words'), card.words));
+      row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'), formatWords(this.node('div', 'deck-words'), words),
+        this.bubbles(index, stacks));
       row.addEventListener('click', () => { if (this.editing) this.finish(); else this.pick(index); });
       row.addEventListener('dblclick', () => { this.pick(index); this.edit(); });
       return row;
@@ -312,10 +486,15 @@ export class DeckPage {
       else if (at >= 0) rows.splice(at, 1, holder);
       else rows.splice(Math.min(editing.near, rows.length), 0, holder);
     }
+    if (asking) {
+      const at = findCard(this.deck, asking.text, asking.near);
+      rows.splice(at >= 0 ? at : Math.min(asking.near, rows.length), at >= 0 ? 1 : 0, this.askRow(asking));
+    }
     if (!rows.length) rows.push(this.node('li', 'deck-empty muted', this.readOnly ? 'No cards here.' : 'No cards yet. ⌘Return, or New card, starts one.'));
-    const selection = editing && [editing.field.selectionStart, editing.field.selectionEnd];
+    const selection = editing && [editing.field.selectionStart, editing.field.selectionEnd], focused = this.doc.activeElement;
+    const asked = asking && [asking.field.selectionStart, asking.field.selectionEnd];
     this.list.replaceChildren(...rows);
-    this.list.classList.toggle('deck-editing', Boolean(editing));
+    this.list.classList.toggle('deck-editing', Boolean(editing || asking));
     this.editButton.textContent = editing ? 'Done' : 'Edit';
     this.mark();
     if (editing) {
@@ -323,6 +502,10 @@ export class DeckPage {
       if (selection) editing.field.setSelectionRange(...selection);
       this.fit(editing.field);
       editing.field.closest('li').scrollIntoView({ block: 'nearest', inline: 'center' });
-    } else this.show(this.list.contains(this.doc.activeElement) || this.doc.activeElement === this.doc.body);
+    } else if (asking && asking.form.contains(focused)) {
+      focused.focus({ preventScroll: true });
+      if (focused === asking.field) asking.field.setSelectionRange(...asked);
+      this.fit(asking.field);
+    } else if (!asking) this.show(this.list.contains(this.doc.activeElement) || this.doc.activeElement === this.doc.body);
   }
 }

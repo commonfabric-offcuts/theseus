@@ -33,17 +33,21 @@ export function nameTopicsWith(name) { namer = name; }
 // one, so a link copied on the Mac opens on a phone too. A link naming it is
 // one of this Theseus's own places wherever the page is open.
 export function shareLinksFrom(origin) { shareOrigin = typeof origin === 'string' && origin ? origin : null; }
-// The link that opens one message in the Reader, from any device that reaches the instance.
-export function messageLink(topicId, messageId) {
-  return new URL(routeHref({ kind: 'topic', id: topicId, message: messageId }), shareOrigin ?? globalThis.location.origin).href;
+// The link to one of this Theseus's places, from any device that reaches the instance.
+export const placeLink = route => new URL(routeHref(route), shareOrigin ?? globalThis.location.origin).href;
+// The link that opens one message in the Reader.
+export const messageLink = (topicId, messageId) => placeLink({ kind: 'topic', id: topicId, message: messageId });
+// The message a link names when it is one of this Theseus's own: {topicId, messageId}, or null.
+export function messageOf(address) {
+  const url = webAddress(String(address), null), route = url && ownPlace(url);
+  return route?.kind === 'topic' && route.message ? { topicId: route.id, messageId: route.message } : null;
 }
 // The link that opens one Notebook page: in the Reader on its topic's page, or
 // in place on its outcome's page. scope: the page's owner_scope; revision: a
 // number to name that revision, or none for the page as it stands.
 export function pageLink(scope, itemId, revision = null) {
   if (!['topic', 'workspace'].includes(scope?.kind)) throw Error('A Notebook page belongs to a topic or an outcome.');
-  const route = { kind: scope.kind, id: scope.id, page: itemId, ...(revision === null ? {} : { revision: String(revision) }) };
-  return new URL(routeHref(route), shareOrigin ?? globalThis.location.origin).href;
+  return placeLink({ kind: scope.kind, id: scope.id, page: itemId, ...(revision === null ? {} : { revision: String(revision) }) });
 }
 
 // Sentence punctuation and a mark's closer after an address stay outside it,

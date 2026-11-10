@@ -38,6 +38,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | a new card after this one | ⌘Return while not editing | New card |
 | remove the card | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
+| ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
 
 A merge keeps every word of both cards under the upper card's title; the lower
 card's title becomes a `###` heading inside it. Clearing all of a card's text
@@ -53,13 +54,44 @@ elsewhere first (`REVISION_CONFLICT`), the deck reads the page again and makes
 the waiting acts again on it, each finding its card by its words; an act whose
 card is gone is dropped, and the page says so. A save whose answer was lost
 goes again exactly as it was, under the same operation, so Core records it
-once: on Try again, or by itself the next time Theseus is heard from. On every commit the live feed announces, the deck reads its Notebook's
-version, and reads the page again only when that has moved, so a change made
-on a laptop shows on the phone. An edit in progress is kept through a re-read;
+once: on Try again, or by itself the next time Theseus is heard from. On every
+commit the live feed announces, the deck reads its Notebook's version, and
+reads the page again only when that has moved, so a change made on a laptop
+shows on the phone. An edit in progress is kept through a re-read;
 if its card changed elsewhere meanwhile, the edit is added as a card beside
 it rather than written over it. A person who may read the page but not write
 it (`FORBIDDEN`, `OUTCOME_REACHED`) gets the deck to read, and the page says
 why.
+
+## Asking about a card
+
+Each card has a speech bubble at its right edge. On a laptop it shows on the
+picked card and under the pointer; → gives it the focus and ← gives the focus
+back to the card. On a phone it shows on every card. On a card with no reply
+stack, the bubble asks an agent about it: a box in the card's place takes the
+ask, and Ask or ⌘Return sends it as a new message (`message.post`, an ask) in
+the page's topic, or for an outcome's page in its conversation. The message
+quotes the card and says where it is, so the agent can change the card when
+that is what is asked. It goes to one agent: the only agent among the topic's
+participants, or, of several, the one asked last in this browser, which the
+person may change. Not to all of them, since each one asked would start on the
+same work. An ask whose answer is lost is sent again as it was on Try again,
+so Core records it once.
+
+Once Core has the ask, the card keeps the link to its reply stack as a line of
+its words, `[Reply stack](ADDRESS)`. A line that holds only a link to a message
+of this Theseus is a stack: the deck draws it as the card's bubble rather than
+as words, and it moves with the card through moves, merges and edits (the
+edit box leaves it out and puts it back under what is written). The back and
+forth is the topic's own feed. The bubble says Sent until the stack's first
+reply and then counts its replies. It stays quiet, in the muted color, except
+while one of them waits unread for the reader: then it is filled in the accent
+color and marked with a dot, from the deliveries Core already keeps
+([attention.md](attention.md)). It opens the stack in its topic,
+and coming back to the deck in the same tab lands on the same card. The counts
+come from the topic's latest 100 messages, read on every load as the
+conversation page reads its topic, so a stack begun before them shows its
+bubble without a count.
 
 ## Where it opens
 
