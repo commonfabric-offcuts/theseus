@@ -11,6 +11,33 @@ Core keeps it, any device can resume it, and a send happens exactly once.
 Agents are members like people are: they read, write, are addressed, and
 are reachable when work needs them.
 
+## Where Theseus is headed
+
+Theseus is a system for building systems. It is oriented around improving how
+it improves itself, and around shared understanding. Where it is headed is
+proactivity and speculative execution.
+
+It started as a way to harness many agents, and so far it has been focused on
+building itself. Its predecessor was AIM, with which Tony shipped a lot of code
+into the Weaver, loom and labs (Estuary). AIM descends from loom, and loom from
+an early move into agent teams based on GTD.
+
+All roads lead to Common Fabric, which will be a new ecosystem built on the
+labs runtime. That runtime enforces a new security model around CFC, and in it
+agents write code in Common TypeScript to produce patterns. The notion is that
+agents also speculatively execute and build things for people based on their
+needs, intentions, wishes and wants: agents find the opportunities and offer
+them as suggestions, proactively. In this way people and agents work together
+and achieve things with a constantly evolving shared understanding, while also
+unleashing what is possible when untrusted code can be evolved continuously to
+good effect, even distributed to strangers and run on intimate, personal data.
+
+Theseus is Tony's workbench. Over time it will draw more and more on loom, labs
+and the Weaver, and most immediately it will help build them. Even now, an
+agent here can use the connectors Tony maintains from his laptop into all of
+his services, to get things done and to know what is coming. In the end we
+will be building patterns, and doing so without Tony asking.
+
 ## We build Theseus with Theseus
 
 The team that builds Theseus works inside it. Our outcomes, our topics and
