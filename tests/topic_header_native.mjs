@@ -999,9 +999,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     const remove = `#topic-people [aria-label="Remove ${agent}"]`;
     await p.evaluate(`document.querySelector(${JSON.stringify(remove)}).scrollIntoView({block:'center'})`);
     // The pointer goes to the button as a person's does, and the press is aimed
-    // where the button then shows: a pointer that rested over a folded reply
-    // stack and leaves it hides that stack's reply line (docs/reply-stacks.md),
-    // which moves what is below it.
+    // where the button then shows.
     const centre = async () => { const out = await p.box(remove); return [out.x + out.width / 2, out.y + out.height / 2]; };
     const [x0, y0] = await centre();
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });

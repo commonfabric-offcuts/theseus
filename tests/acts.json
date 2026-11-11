@@ -433,8 +433,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      if (entry && entry !== this.lit) this.light(entry);\n    });\n    // What was lit",
-     "    });\n    // What was lit"
+     "      if (still || this.menuOpen()) return;\n      const entry = this.entryOf(event.target);\n      if (entry && entry !== this.lit) this.light(entry);",
+     "      if (still || this.menuOpen()) return;\n      const entry = this.entryOf(event.target);\n      if (false && entry && entry !== this.lit) this.light(entry);"
     ]
    ],
    "check": {
@@ -3295,81 +3295,6 @@
    ],
    "check": {
     "python": "test_stacks.py"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A stack with replies ends in its reply line",
-   "break": [
-    [
-     "web/reply-stacks.mjs",
-     "...(single ? [] : [p.foot])]);",
-     "]);"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks the reply line sits at the foot"
-   }
-  },
-  {
-   "item": 283,
-   "act": "The reply line shows on a folded stack only while the person is in it",
-   "break": [
-    [
-     "web/stack-look.css",
-     ".reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:none}",
-     ".reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:block}"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks the reply line sits at the foot"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A folded stack's reply line shows while a press last landed in it",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "    doc.addEventListener('click', event => this.focusIn(event.target), true);\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks the reply line sits at the foot"
-   }
-  },
-  {
-   "item": 283,
-   "act": "The reply line opens the Reader replying to the stack's newest message",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "    this.reply(newest.id, cardIn(entry));",
-     "    this.reply(stack.id, cardIn(entry));"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks the reply line sits at the foot"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A press moves the focused stack only once its click has landed, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "doc.addEventListener('focusin', event => { if (!press.down) this.focusIn(event.target); }, true);",
-     "doc.addEventListener('focusin', event => this.focusIn(event.target), true);"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks the reply line sits at the foot"
    }
   },
   {

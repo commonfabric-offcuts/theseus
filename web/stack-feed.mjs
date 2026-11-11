@@ -54,11 +54,10 @@ export class StackFeed {
   // reread(): reads the acts again from Core, after a refusal. starsChanged():
   // the reader's stars moved (the right rail's Starred). status(error): says a failure.
   // hold(paint): repaints keeping the page where the person is. press: the
-  // press held down on the page (press-hold.mjs). reply(id, card): the Reader
-  // on a message with the cursor in the reply, as its bar's Reply.
+  // press held down on the page (press-hold.mjs).
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, reread = () => {}, starsChanged = () => {}, status = () => {},
-    hold = paint => paint(), press, reply = () => {}, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, press, reply, clock, doc });
+    hold = paint => paint(), press, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, press, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
@@ -74,23 +73,6 @@ export class StackFeed {
       this.swipe = touch && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
     }, { passive: true });
     list.addEventListener('touchend', event => this.swiped(event), { passive: true });
-    // The stack the keys are in, or a press last landed in, is data-focused,
-    // and shows its reply line folded (stack-look.css). The keys move it at
-    // once; a press moves it only once its click has landed, so nothing moves
-    // under a pointer that is still pressing and the click lands where it
-    // began. The message bar and its menu belong to the lit message.
-    this.focused = null;
-    doc.addEventListener('focusin', event => { if (!press.down) this.focusIn(event.target); }, true);
-    doc.addEventListener('focusout', event => { if (!press.down && !event.relatedTarget) this.focusIn(null); }, true);
-    doc.addEventListener('click', event => this.focusIn(event.target), true);
-  }
-  focusIn(target) {
-    if (target?.closest?.('.message-bar, .message-menu-list')) return;
-    const stack = target?.nodeType === 1 && this.list.contains(target) ? target.closest('.reply-stack') : null;
-    if (stack === this.focused) return;
-    if (this.focused) delete this.focused.dataset.focused;
-    if (stack) stack.dataset.focused = 'true';
-    this.focused = stack;
   }
   get state() { return stackState(this.list); }
   // A message's acts as the page shows them: what Core holds, with each act
@@ -114,18 +96,9 @@ export class StackFeed {
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
-      split: item => this.split(item), unplace: stack => this.unplace(stack), reply: stack => this.replyIn(stack),
+      split: item => this.split(item), unplace: stack => this.unplace(stack),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
     } }));
-  }
-  // A stack's reply line: the Reader replying to its newest message, shown
-  // first if it was folded away, so the Reader gives the keys back to it.
-  replyIn(stack) {
-    const newest = [stack.head, ...stack.replies].reduce((most, item) => (item.seq > most.seq ? item : most));
-    const entry = entries(this.list).find(each => each.dataset.id === newest.id);
-    if (!entry) return;
-    reveal(entry);
-    this.reply(newest.id, cardIn(entry));
   }
   // Says what just happened, for a screen reader.
   say(words) { this.said.textContent = ''; this.said.textContent = words; }
