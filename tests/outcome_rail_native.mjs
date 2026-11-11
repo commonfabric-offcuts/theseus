@@ -1459,4 +1459,56 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await keyedAt(phone), 'topic-title', 'the focus is on the Conversation\'s heading');
     assert.deepEqual(phone.errors, []); await phone.close();
   });
+
+  await check('rail a press on a right-rail row that moves in place puts the focus on the page reached, with no ring, so Space rings nothing; Return on the row keeps the keys on it, with its ring', async () => {
+    // A piece being built on another topic of w1: the Conversation's right rail lists it under Pipeline, Now.
+    const pipeline = (operation, kind, target, args) => control({ method: 'pipeline', kind, operation_id: 'rail-things-press-' + operation, target, args });
+    await control({ method: 'navigation_topics', topics: [{ id: 'rv-pipe-t', title: 'Piece topic' }] });
+    await pipeline('on', 'pipeline.configure', { workspace_id: 'w1' }, { enabled: true });
+    try {
+      await pipeline('stages', 'pipeline.stages_set', { workspace_id: 'w1' }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+      const { result: { number } } = await pipeline('item', 'pipeline.item_add', { workspace_id: 'w1' }, { title: 'Piece on its topic', section: 'now', size: 'small', sources: [{ note: 'the check' }] });
+      await pipeline('start', 'pipeline.piece_start', { workspace_id: 'w1' }, { numbers: [number], topic_id: 'rv-pipe-t', stage_id: 'build' });
+      const row = '#things [data-key=pipeline] a.row[href="?topic=rv-pipe-t"]', name = 'things:pipeline:?topic=rv-pipe-t';
+      const p = await open('rail-things-press', '/?conversation=w1');
+      await settled(p, 'the Conversation is up');
+      await until(() => p.evaluate(`Boolean(document.querySelector('${row}')?.checkVisibility())`), 'the right rail lists the piece under Now');
+      const start = await placeOf(p);
+      // What the person would see ringed: anything in either rail that matches :focus-visible, and the heading's own outline.
+      const rings = () => p.evaluate(`(()=>{const h=document.getElementById('topic-title');
+        return {rails:[...document.querySelectorAll('#rail :focus-visible, #things :focus-visible')].map(e=>e.getAttribute('href')??e.dataset.topicId??e.className??e.tagName),heading:getComputedStyle(h).outlineStyle}})()`);
+      // The mouse: the piece's topic opens in place, the focus on its heading; Space, a key that scrolls, then rings nothing.
+      await p.evaluate(`document.querySelector('${row}').scrollIntoView({block:'center'})`);
+      await p.point(row);
+      assert.equal((await arrived(p, '?topic=rv-pipe-t', 'Piece topic', 'the piece\'s topic opens')).origin, start.origin, 'in place, with no load');
+      // Once both rails have drawn the topic, so a rail that took the focus back would have done so.
+      await settled(p, 'the topic is up');
+      assert.equal(await keyedAt(p), 'topic-title', 'the focus is on the topic\'s heading, not the row pressed');
+      assert.deepEqual(await rings(), { rails: [], heading: 'none' }, 'nothing wears a ring');
+      await p.key(' ');
+      assert.equal(await keyedAt(p), 'topic-title', 'Space leaves the focus on the heading');
+      assert.deepEqual(await rings(), { rails: [], heading: 'none' }, 'after Space, still no ring in the rails or on the heading');
+      // Back to the Conversation; → from its heading goes to the right rail, Home and ↓ reach the row.
+      await p.evaluate('history.back()');
+      await arrived(p, '?conversation=w1', null, 'back to the Conversation');
+      await settled(p, 'the Conversation is up again');
+      await until(() => p.evaluate(`Boolean(document.querySelector('${row}')?.checkVisibility())`), 'the row is listed again');
+      await p.key('ArrowRight');
+      assert.match(await keyedAt(p), /^things:/, '→ from the heading goes to the right rail');
+      await p.key('Home');
+      const rows = await p.evaluate("[...document.querySelectorAll('#things [role=treeitem]')].filter(e=>e.checkVisibility()).length");
+      for (let n = 0; n < rows && await keyedAt(p) !== name; ++n) await p.key('ArrowDown');
+      assert.equal(await keyedAt(p), name, '↓ reaches the piece\'s row');
+      // Return: the topic opens in place, and the keys stay on the row, with its ring.
+      await p.key('Enter');
+      await arrived(p, '?topic=rv-pipe-t', 'Piece topic', 'Return on the row opens the topic');
+      await settled(p, 'the topic is up');
+      await until(async () => await keyedAt(p) === name, 'the keys stay on the row');
+      assert.deepEqual(await rings(), { rails: ['?topic=rv-pipe-t'], heading: 'none' }, 'the row wears the keys\' ring, and nothing else does');
+      assert.equal((await placeOf(p)).origin, start.origin, 'every move in place');
+      assert.deepEqual(p.errors, []); await p.close();
+    } finally {
+      await pipeline('off', 'pipeline.configure', { workspace_id: 'w1' }, { enabled: false });
+    }
+  });
 }

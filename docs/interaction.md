@@ -184,5 +184,6 @@ outline as a tree …", "rail ⇧⌘← and ⇧⌘→ fold and open every outcom
 "rail ⌘↑ ⌘↓ move an outcome, and a topic within its outcome, …" and "rail
 → and ← move between the outline, the messages and the right rail, …"; where
 a move leaves the focus: "rail a press on an outline row puts the focus on
-the page reached, …". What
+the page reached, …" and "rail a press on a right-rail row that moves in place
+puts the focus on the page reached, …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.

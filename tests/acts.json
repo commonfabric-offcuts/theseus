@@ -2112,6 +2112,21 @@
     "native": "rail",
     "case": "rail a press on an outline row puts the focus on the page reached"
    }
+  },
+  {
+   "item": 286,
+   "act": "A press on a right-rail row that moves in place puts the focus on the page reached, so Space rings nothing; Return on it keeps the keys on the row",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "const RAILS = '#rail, #things';",
+     "const RAILS = '#rail';"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on a right-rail row that moves in place puts the focus on the page reached"
+   }
   }
  ]
 }
