@@ -131,8 +131,11 @@ their acts.
   focus only once its click has landed, so a reply line going away never
   moves what is being pressed. Nor does anything that arrives while a press
   is held: a new message or reply, a stack drawn again, a reaction line or the
-  New line waits until the pointer or finger lets go, then shows at once
-  (`web/press-hold.mjs`). The header and the people repaint in place. A press on it, a tap, or Return while it holds
+  New line waits until the press ends, then shows at once
+  (`web/press-hold.mjs`). A press ends when the pointer or finger lets go,
+  and also where no letting go comes: a finger that scrolls the page, a
+  context menu the press opens, or the window losing the focus. The header
+  and the people repaint in place. A press on it, a tap, or Return while it holds
   the keys opens the Reader replying to the stack's newest message, as Reply
   on that message's bar does, opening the stack first when that message was
   folded away. A placed message on its own has no reply line; its bar's
@@ -259,6 +262,7 @@ Only new the stacks draw nothing.
 | the migration | `tests/test_migrations.py` (`StacksStepCase`) |
 | the display order | `tests/ui_stack_order.test.mjs` |
 | on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
+| a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
 

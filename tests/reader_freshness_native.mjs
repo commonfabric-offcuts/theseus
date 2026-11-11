@@ -245,10 +245,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     };
     // The command measurement uses the same visible documents and actual
     // inside-permit delay. Peer navigation starts paired reads as Send
-    // is clicked; no model call substitutes for either user action.
+    // is clicked; no model call substitutes for either user action. Source 1
+    // answers Source 0, so the page shows it in Source 0's reply stack, under
+    // it, and the Reader's ↑ (#next-message, the message above) is the step.
     await a.open(0); await replace(a, 'Identical workload command-dispatch sample'); await b.open(1);
-    await until(() => b.evaluate('!document.querySelector("#previous-message").disabled'), 'peer navigation ready');
-    await b.point('#previous-message');
+    await until(() => b.evaluate('!document.querySelector("#next-message").disabled'), 'peer navigation ready');
+    await b.point('#next-message');
     const clickedAt = Date.now(); await a.point('#send-reply');
     const request = await until(() => a.network.find(e => publicSendRequest(e, clickedAt)), 'native public Send dispatch during peer navigation');
     const response = await until(() => a.network.find(e => e.method === 'Network.responseReceived' && e.params.requestId === request.params.requestId), 'native Send socket timing');
@@ -256,6 +258,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     assert.ok(requestStartMs < 1000, 'foreground command does not wait for paired reads');
     const send = await until(() => a.calls.find(c => c.payload?.kind === 'message.send' && c.at >= clickedAt), 'native sample actually sent');
     await until(async () => (await Promise.all([a,b].map(p=>p.evaluate('freshEvidence.opens.every(r=>r.end!==undefined) && freshEvidence.neighbors.every(r=>r.end!==undefined)')))).every(Boolean), 'peer foreground reads settled before external verification');
+    await until(() => b.evaluate(`observedRegistry.current.source.source_ref.id === ${JSON.stringify(facts.sources[0].id)}`), 'the peer stepped up to Source 0, its stack\'s head');
     const verification = [];
     const sent = await until(async () => {
       const answer = await view('operation', { operation_id: send.payload.operation_id }); verification.push(answer);
@@ -302,13 +305,14 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
   await check('freshness C3 public Send dispatch while a foreground callback is held', async () => {
     const a = await page('public-send-a', null, true, {newWindow:true});
     const b = await page('public-send-b', null, true, {newWindow:true});
+    // Source 0 is the message above Source 1 on the page, its stack's head (C2).
     await a.open(0); await replace(a, 'Exact public Send under a held foreground read'); await b.open(1);
-    await until(() => b.evaluate('!document.querySelector("#previous-message").disabled'), 'peer has a previous message');
+    await until(() => b.evaluate('!document.querySelector("#next-message").disabled'), 'peer has a message above');
     const holdId = operation('send-foreground'), admissionBefore = await control({method:'admission_events'});
     await control({method:'read_delay',ms:25});
     await control({method:'read_hold',hold_id:holdId,name:'source',phase:'callback',read_class:'foreground'});
     try {
-      await b.point('#previous-message');
+      await b.point('#next-message');
       const held = await until(async () => (await control({method:'admission_events',after:admissionBefore.next})).events.find(e=>e.event==='hold-enter' && e.hold_id===holdId), 'peer source callback actually holds a read permit');
       await a.evaluate('document.querySelector("#send-reply").addEventListener("click",()=>{window.nativeSendClickAt=performance.timeOrigin+performance.now()},{once:true,capture:true})');
       const gestureStartedAt = Date.now(); await a.point('#send-reply');

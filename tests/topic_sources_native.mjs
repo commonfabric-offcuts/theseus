@@ -49,9 +49,12 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     assert.equal(await p.evaluate(`document.querySelector('#reader').open`), true, 'and leaves the Reader open');
     assert.equal((await openLine(p)).value, 'Release name', 'the line opens again with the title as it was left');
     // The Reader steps to another message, which closes the line, and back.
-    await p.point('#previous-message');
-    await until(() => quiet(p, `!document.querySelector('#start-topic-title') && !document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader shows another message, without the line');
+    // The question answers the topic's first message (the fixture's default
+    // source), so it reads last in that message's reply stack: ↑ (#next-message)
+    // steps up to the reply above, and ↓ comes back.
     await p.point('#next-message');
+    await until(() => quiet(p, `!document.querySelector('#start-topic-title') && !document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader shows another message, without the line');
+    await p.point('#previous-message');
     await until(() => quiet(p, `document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader is back on the question');
     assert.equal((await openLine(p)).value, 'Release name', 'stepping away and back keeps the title too');
     const publish = await enter(p);

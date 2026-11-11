@@ -157,6 +157,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => (await name()).startsWith('Can we lock') && (await actsOf(topic, ids.root, other))?.name === null, 'an empty name gives back the first line, for everyone');
     const ellipsis = await p.evaluate(`(n=>getComputedStyle(n).textOverflow)(document.querySelector(${JSON.stringify(card(ids.root) + ' .stack-name')}))`);
     assert.equal(ellipsis, 'ellipsis', 'a long name ends in …');
+    // The keys leaving the name save it, as Return does: the field closes, and Core holds it for everyone.
+    await p.point(`${card(ids.root)} .stack-name`);
+    await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), 'open to rename once more');
+    await p.send('Input.insertText', { text: 'Boat keys' });
+    await p.key('Tab');
+    await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'the keys leaving the name close it');
+    await until(async () => (await name()) === 'Boat keys' && (await actsOf(topic, ids.root, other))?.name?.text === 'Boat keys', 'and save it, for everyone');
     await shot(p, 'stack-rename');
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -584,6 +591,79 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(arrived))})?.closest('.reply-stack')?.dataset.stack === ${JSON.stringify(ids.root)}`), 'laptop: once the press ends the new reply is drawn into its stack');
     assert.deepEqual(p.errors, []);
     await p.close();
+  });
+
+  // A press that ends with no pointerup ends all the same, or every repaint
+  // after it would wait for the next tap (press-hold.mjs). Chrome's own input
+  // gives each ending: a finger that scrolls (pointercancel), ⌃ and a press
+  // on a Mac (its context menu), and the window losing the focus (blur, as
+  // the focus going into a frame gives it). Safari's engine in this harness
+  // has no finger drag, no ⌃-press menu and no blur of its own to give.
+  if (engine === 'chrome') await check('reading stacks a press ends however it ends: a finger that scrolls, a context menu from the press, the window losing the focus; and what arrives is drawn without another press', async () => {
+    const arrives = async (p, topic, root, label, device) => {
+      const body = `A reply after ${label}.`;
+      const id = (await control({ method: 'agent_message', operation_id: `${topic}-${label.replace(/\W+/g, '-')}`, topic_id: topic, source: 'topic', sender: other, reply_to: root, addressees: [facts.actor], body })).result.message_id;
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(id))})?.closest('.reply-stack')?.dataset.stack === ${JSON.stringify(root)}`), `${device}: after ${label}, a reply arriving is drawn into its stack with no other press`);
+    };
+    // Each press and how it ended, as the page heard them.
+    const HEARD_ENDS = `(()=>{window.pressEvents=[];for(const n of ['pointerdown','pointerup','pointercancel','contextmenu'])document.addEventListener(n,e=>pressEvents.push(n),true);addEventListener('blur',()=>pressEvents.push('blur'))})()`;
+    const ended = p => p.evaluate('window.pressEvents.join()');
+
+    // A phone: a finger that scrolls the page. The browser takes the touch for
+    // the scroll and cancels the pointer; no pointerup comes.
+    {
+      const topic = 'stack-press-scroll';
+      const said = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Who has the spare paddle?', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'It is in the shed.', read: true }]];
+      for (let n = 0; n < 12; n++) said.push([`later${n}`, { sender: other, addressees: [facts.actor], body: `Another stack, ${n}, long enough to fill the phone's window as a topic does.`, read: true }]);
+      const ids = await seed(topic, said);
+      const p = await open(topic, 'phone', topic, ids.root);
+      await p.evaluate(HEARD_ENDS);
+      const scrolled = () => p.evaluate('Math.round(document.scrollingElement.scrollTop)');
+      const before = await scrolled();
+      await p.send('Input.synthesizeScrollGesture', { x: 195, y: 650, yDistance: -300, speed: 800, gestureSourceType: 'touch' });
+      await until(async () => (await scrolled()) !== before, 'phone: the finger scrolled the page');
+      assert.deepEqual(await ended(p), 'pointerdown,pointercancel', 'phone: the finger went down and the scroll cancelled it, with no pointerup');
+      await arrives(p, topic, ids.root, 'a finger that scrolls', 'phone');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+    // A laptop: ⌃ and a press on a message opens its menu (a Mac's context
+    // menu from the primary button), and the window losing the focus while a
+    // press is held. In each, the button is still down when the reply arrives.
+    {
+      const topic = 'stack-press-ends';
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'When does the ferry leave?', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'At nine.', read: true }],
+        ['later', { sender: other, addressees: [facts.actor], body: 'The tickets are booked.', read: true }]]);
+      const p = await open(topic, 'laptop', topic, ids.later);
+      await p.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+      await p.evaluate(HEARD_ENDS);
+      await centre(p, words(ids.later));
+      const at = await p.box(words(ids.later)), x = at.x + at.width / 2, y = at.y + at.height / 2;
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1, modifiers: 2 });
+      await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'laptop: ⌃ and a press opens the message\'s menu');
+      assert.equal(await ended(p), 'pointerdown,contextmenu', 'laptop: the press opened the context menu, its button still down');
+      await arrives(p, topic, ids.root, 'a context menu from the press', 'laptop');
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1, modifiers: 2 });
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'laptop: Esc closes the menu');
+      // The window loses the focus with the press held: the focus goes into a frame on the page.
+      await p.evaluate(`(()=>{const f=document.createElement('iframe');f.id='press-elsewhere';f.srcdoc='<p>elsewhere</p>';f.style.cssText='position:fixed;right:0;bottom:0;width:40px;height:40px';document.body.append(f);return new Promise(done=>f.onload=done)})()`);
+      await p.evaluate('window.pressEvents=[]');
+      await centre(p, words(ids.later));
+      const again = await p.box(words(ids.later)), ax = again.x + again.width / 2, ay = again.y + again.height / 2;
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ax, y: ay });
+      await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: ax, y: ay, button: 'left', clickCount: 1 });
+      await p.evaluate(`document.getElementById('press-elsewhere').contentWindow.focus()`);
+      await until(async () => (await ended(p)) === 'pointerdown,blur', 'laptop: the window lost the focus, the press still held');
+      await arrives(p, topic, ids.root, 'the window losing the focus', 'laptop');
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ax, y: ay, button: 'left', clickCount: 1 });
+      await p.evaluate(`document.getElementById('press-elsewhere').remove()`);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
   });
 
   await check('reading stacks the one New line sits under the lowest stack holding anything new, never inside one', async () => {

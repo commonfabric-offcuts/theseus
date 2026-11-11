@@ -1080,13 +1080,16 @@ try {
           return await inspect(`fetch(${JSON.stringify(url)}).then(r=>r.ok,()=>false)`);
         } finally { await cdp('Target.closeTarget', { targetId }); pages.delete(targetId); }
       };
-      const arrowReady = p => until(() => p.evaluate('!document.querySelector("#next-message").disabled'), 'neighbor arrow ready');
+      // Source 1 answers Source 0, so the page shows it under Source 0 in that
+      // stack (docs/reply-stacks.md): the Reader's ↓ (#previous-message, the
+      // message below) steps from Source 0 to Source 1, and ↑ (#next-message) back.
+      const arrowReady = p => until(() => p.evaluate('!document.querySelector("#previous-message").disabled'), 'neighbor arrow ready');
       // also: other answers the case holds while the step waits.
       const newHeldStep = async (p, also = () => false) => {
         await arrowReady(p);
         const before = p.held.length, step = payload => payload?.name === 'source' && payload.args.id === facts.sources[1].id;
         p.intercept(payload => also(payload) || step(payload));
-        await p.point('#next-message');
+        await p.point('#previous-message');
         return until(() => p.held.slice(before).find(entry => step(entry.payload)), 'held neighboring source');
       };
       // A held private save keeps the device copy unacknowledged, so cleanup
@@ -1111,7 +1114,7 @@ try {
         const place = await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})");
         p.intercept(null); for (const held of p.held) await p.release(held);
         await settled(p, neighborCall);
-        assert.deepEqual(await p.evaluate("({previous:document.querySelector('#previous-message').disabled,next:document.querySelector('#next-message').disabled})"), { previous: true, next: false }, 'resolved arrows survive the mode switch');
+        assert.deepEqual(await p.evaluate("({previous:document.querySelector('#previous-message').disabled,next:document.querySelector('#next-message').disabled})"), { previous: false, next: true }, 'resolved arrows survive the mode switch: ↓ to Source 1, nothing above');
         await observeURLs(p); await openAttachment(p, 'passive.png');
         await settled(p, await started(p, 'media', facts.sources[0]));
         await until(() => p.evaluate('fixtureURLs.length === 1'), 'verified image Blob created');
@@ -1119,7 +1122,7 @@ try {
         await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth > 0'), 'actual decoded PNG');
         assert.equal(await p.evaluate("document.querySelector('#source-body').firstChild===fixtureSourceNode"), true);
         assert.deepEqual(await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})"), { ...place, focus: '' }, 'media does not redraw source or writing space');
-        await p.point('#next-message');
+        await p.point('#previous-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'exact next source');
         await settled(p, await started(p, 'open', facts.sources[1]));
         assert.equal(xNeighborReads(), 2, 'Next reuses the exact resolved X neighbor pair');
@@ -1172,7 +1175,7 @@ try {
         await observeURLs(p); await openAttachment(p, 'passive.png');
         const media = await started(p, 'media', facts.sources[0]);
         const mediaResponse = await until(() => p.held.find(entry => entry.event.request.url.endsWith('/api/media/read')), 'X media held');
-        await p.point('#source-body'); await p.key('ArrowUp', 4);
+        await p.point('#source-body'); await p.key('ArrowDown', 4);
         const heldY = await until(() => p.held.find(entry => entry.payload?.name === 'source'), 'Y source held');
         const openingY = await started(p, 'open', facts.sources[1]);
         assert.equal((await callState(p, openingY.id)).settled, false);
@@ -1215,7 +1218,7 @@ try {
         p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
         await openAttachment(p, 'passive.png'); const held = await until(() => p.held[0], 'held media bytes');
         const media = await started(p, 'media', facts.sources[0]);
-        await p.point('#next-message'); await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'new source before old media');
+        await p.point('#previous-message'); await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'new source before old media');
         const before = await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})");
         // The stale verified answer reaches the application's consumer; since
         // 3270cbe it is refused before it becomes an object URL, and any URL a
@@ -1275,7 +1278,7 @@ try {
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled navigation stays cancelled after failed close');
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false);
         await p.evaluate('IDBDatabase.prototype.transaction=fixtureTransaction'); p.intercept(null);
-        await replace(p, 'Recovered local persistence'); await p.point('#next-message');
+        await replace(p, 'Recovered local persistence'); await p.point('#previous-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'fresh step after restored persistence'); assert.deepEqual(p.errors, []);
       });
 
@@ -1334,7 +1337,7 @@ try {
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false, 'the Reader takes typing again');
         assert.ok((await p.evaluate('document.querySelector("#save-state").textContent')).includes('Recovery copy unavailable'), 'the warning stays with the writing');
         await p.evaluate('IDBDatabase.prototype.transaction=fixtureTransaction'); p.intercept(null);
-        await p.point('#next-message');
+        await p.point('#previous-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'a fresh step once the device keeps writing');
         assert.ok((await localRows(p)).some(row => row.snapshot.draft.body === body && row.snapshot.context.sourceRef.id === facts.sources[0].id), 'the writing the step left is kept on this device');
         assert.deepEqual(p.errors, []);
@@ -1459,12 +1462,11 @@ try {
       assert.equal(await field(p), '', 'new B is visible immediately after the send act');
       await p.send('Input.insertText', { text: 'Native delayed B' });
       await until(() => p.held[0], 'held real prepare response');
-      // Y is the message below on the page: Source 0, or a reply an earlier case left in Source 1's stack, which reads above it (docs/reply-stacks.md).
-      const below = await p.evaluate(`(()=>{const cards=[...document.querySelectorAll('#messages .message-card[data-id]')],at=cards.findIndex(c=>c.dataset.id===${JSON.stringify(facts.sources[1].id)});
-        return at<0?null:(cards[at+1]?.querySelector('.message-preview')?.textContent??'').slice(0,20)})()`);
-      assert.ok(below, 'a message below Source 1 on the page');
-      const onY = `document.querySelector("#source-body").textContent.startsWith(${JSON.stringify(below)})`;
-      await p.point('#source-body'); await p.key('ArrowDown', 4);
+      // Y is Source 0, the message above Source 1 on the page: the head of the
+      // stack Source 1 answers in (docs/reply-stacks.md), whatever replies
+      // earlier cases left under it. ⌘↑ steps there.
+      const onY = 'document.querySelector("#source-body").textContent.startsWith("Source 0 ")';
+      await p.point('#source-body'); await p.key('ArrowUp', 4);
       await until(() => p.evaluate(onY), 'neighbor Y');
       await p.point('#source-body'); const focused = await p.evaluate('document.activeElement.id');
       const original = p.held[0].payload; await p.release(p.held[0]);

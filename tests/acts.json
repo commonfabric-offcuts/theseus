@@ -2929,6 +2929,125 @@
     "native": "header",
     "case": "header the people are one filled pill each after the last message"
    }
+  },
+  {
+   "item": 283,
+   "act": "A finger that scrolls ends the press it began, so what arrives after it is drawn without another tap",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "['pointerup', 'pointercancel', 'contextmenu']",
+     "['pointerup', 'contextmenu']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a press ends however it ends"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A context menu opened by a press (⌃ and a press on a Mac) ends it",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "['pointerup', 'pointercancel', 'contextmenu']",
+     "['pointerup', 'pointercancel']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a press ends however it ends"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The window losing the focus ends a press held on the page",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "    doc.defaultView.addEventListener('blur', end);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a press ends however it ends"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Only the primary button or the first finger holds the repaints; a right or middle press, or a second finger, does not",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "if (event.isPrimary && event.button === 0) this.down = true;",
+     "this.down = true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_hold.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The keys leaving a stack's name while it is renamed save it, as Return does",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  input.addEventListener('blur', () => finish(true));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The Reader's correction checks step from a stack's first message down to its reply, as the page shows them",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (at < 0 || !core) return core;\n",
+     "  return core;\n"
+    ]
+   ],
+   "check": {
+    "native": "correction",
+    "case": "correction source controls survive mode and quote"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The Reader's composer checks step up a stack to the older message and back down, as the page shows them",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (at < 0 || !core) return core;\n",
+     "  return core;\n"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "stacked: every control of the Reader and its composer"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A card focused in a reply stack shows the focus: its edge in the focus colour, inside the folder's ring",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}",
+     ".reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:none}"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors reading colors distinguish authors"
+   }
   }
  ]
 }

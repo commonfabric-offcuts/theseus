@@ -61,7 +61,12 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       await p.evaluate(`(()=>{const o=document.querySelector(${JSON.stringify(own)}),all=[...document.querySelectorAll('button,input,textarea,a[href],[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled&&!e.closest('[inert]')&&e.getClientRects().length&&!e.contains(o)&&o.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_PRECEDING);all.at(-1).focus({preventScroll:true})})()`);
       for(let n=0;n<8&&!await p.evaluate(`document.activeElement.matches(${JSON.stringify(own)})`);n++)await p.key('Tab');
       assert.equal(await p.evaluate(`document.activeElement.matches(${JSON.stringify(own)})`),true,'own message reachable by native Tab: '+await p.evaluate(`(()=>{const o=document.querySelector(${JSON.stringify(own)}),a=document.activeElement,s=o.closest('.reply-stack');return JSON.stringify({own:{tag:o.tagName,hidden:o.hidden,tab:o.tabIndex,rects:o.getClientRects().length,inert:Boolean(o.closest('[inert]')),fold:s?.dataset.fold,head:s?.dataset.headOpen,cls:o.className},active:{tag:a.tagName,id:a.id,cls:a.className,text:a.textContent.slice(0,40)}})})()`));
-      expect((await style(own)).outline==='solid',theme+': keyboard focus stays visible on own black card');
+      // On its own a focused card wears the focus outline; in a reply stack the stack's look draws the focus instead
+      // (docs/reply-stacks.md, "The look"): the card's own edge in the focus colour, and the focus ring round the folder.
+      const focusShown=await p.evaluate(`(()=>{const o=document.querySelector(${JSON.stringify(own)}),s=o.closest('.reply-stack'),probe=document.createElement('span');
+        probe.style.color='var(--focus)';document.body.append(probe);const focus=getComputedStyle(probe).color;probe.remove();
+        return s?getComputedStyle(o).boxShadow.includes(focus)&&getComputedStyle(s).boxShadow.includes(focus):getComputedStyle(o).outlineStyle==='solid'})()`);
+      expect(focusShown,theme+': keyboard focus stays visible on own black card');
       await p.evaluate(`document.querySelector(${JSON.stringify(other)}).scrollIntoView({block:'center'})`);
       await p.point(other,'move');const topicHover=await style(other);
       // Any card but your own shows a neutral ring under the pointer, one
