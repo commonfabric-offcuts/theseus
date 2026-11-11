@@ -95,6 +95,7 @@
 /* The message the keys are on: its own hairline edge takes the focus colour. The folder's ring is the only ring. */
 .reply-stack:not(.only-new *) .message-card.lit,
 .reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}
+.reply-stack:not(.only-new *) .message-fold>.fold-line:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}
 /* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */
 .only-new .stack-head{display:none}
 
@@ -102,14 +103,21 @@
 .reply-stack:not(.only-new *):focus-within{box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring),var(--stack-lift)}
 
 /* The head's card: no box of its own while it shows only its row; shown whole, it is the first sheet. */
-.reply-stack:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card){position:static}
+.reply-stack:not(.only-new *) .stack-head-card{position:static}
+/* Agent talk may dim the message's contents, never the folder tab it holds.
+   Dimming the whole card makes the body's ring show through the tab. */
+.reply-stack:not(.only-new *) .stack-head-card[data-talk=agents]{opacity:1;transition:none}
+.reply-stack:not(.only-new *) .stack-head-card[data-talk=agents]>:not(.stack-head){opacity:.62;transition:opacity .15s ease}
+.reply-stack:not(.only-new *) .stack-head-card[data-talk=agents]:is(:hover,:focus-visible,[data-woken],:focus-within,.lit,:has(.unread-mark))>:not(.stack-head),
+.reply-stack:not(.only-new *) .message-fold:is([data-woken],:focus-within,.lit)>.stack-head-card[data-talk=agents]>:not(.stack-head){opacity:1}
 /* The tab stands above the head's own box (none at all while it shows only its row), so the head brought into
    view (the keys, a link) brings the tab with it, and the focus ring round it. */
-.reply-stack[data-single=false]:not(.only-new *)>:is([data-id],.message-fold>.stack-head-card){scroll-margin-top:calc(var(--stack-pad) + var(--stack-tab-h) + 4px)}
-.reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card){
+.reply-stack[data-single=false]:not(.only-new *)>[data-id],
+.reply-stack[data-single=false]:not(.only-new *) .stack-head-card{scroll-margin-top:calc(var(--stack-pad) + var(--stack-tab-h) + 4px)}
+.reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card{
   min-height:0;height:0;padding:0;border:0;background:none;box-shadow:none;outline:none;overflow:visible}
-.reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:none}
-.reply-stack[data-head-open=true]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card){margin-bottom:var(--stack-sheet-gap)}
+.reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card>:not(.stack-head){display:none}
+.reply-stack[data-head-open=true]:not(.only-new *) .stack-head-card{margin-bottom:var(--stack-sheet-gap)}
 .reply-stack[data-single=false]>.message-fold>.fold-line{display:none}
 
 /* The tab: the head row (or, while renaming, the rename field) standing on the folder's top edge, two lines high. */
