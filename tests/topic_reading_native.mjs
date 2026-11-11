@@ -116,7 +116,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   const light = async (p, device, id) => {
     await centre(p, card(id));
     const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
-    if (device === 'phone') await tap(p, row ? card(id) + ' > .stack-head' : words(id)); else await p.point(row ? card(id) + ' > .stack-head' : words(id), 'move');
+    // The left edge now belongs to the separate reply chevron. Light the
+    // head on its author text, which still opens the head's own message.
+    const target = row ? card(id) + ' > .stack-head > .stack-who' : words(id);
+    if (device === 'phone') await tap(p, target); else await p.point(target, 'move');
     await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === row, `${device}: ${id} lights, ${row ? 'with no bar on a head shown as one row' : 'with its bar'}`);
   };
   // The pointer leaves the messages for a spot where no message, bar or control is.

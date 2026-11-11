@@ -575,8 +575,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await p.key('ArrowUp');
       await until(async () => await focusedOn(p) === ids.root, `laptop, head ${shown}: ↑ puts the keys on the head`);
       await twoFrames(p);
-      const row = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(card(ids.root))}).querySelector(':scope > .stack-head'),b=r.getBoundingClientRect();
-        const hit=document.elementFromPoint(b.left+Math.min(12,b.width/2),b.top+b.height/2);return {top:b.top,bottom:b.bottom,window:innerHeight,shown:b.top>=0&&b.bottom<=innerHeight&&r.contains(hit)}})()`);
+      const row = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(card(ids.root))}).querySelector(':scope > .stack-head'),b=r.getBoundingClientRect(),who=r.querySelector('.stack-who'),w=who.getBoundingClientRect();
+        const hit=document.elementFromPoint(w.left+w.width/2,w.top+w.height/2);return {top:b.top,bottom:b.bottom,window:innerHeight,shown:b.top>=0&&b.bottom<=innerHeight&&who.contains(hit)}})()`);
       assert.equal(row.shown, true, `laptop, head ${shown}: the head's row is in the window, uncovered: ${JSON.stringify(row)}`);
     }
     assert.deepEqual(p.errors, []);
