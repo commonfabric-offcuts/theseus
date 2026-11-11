@@ -5,7 +5,7 @@ import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
+const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 const WRITING_KEYS = '⌘Return or Escape done · Tab under the card above, ⇧Tab out · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // Refusals that say this person can read the page but not change it.
@@ -351,13 +351,13 @@ export class DeckPage {
     else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && command && event.shiftKey && !event.altKey) this.foldAll(event.key === 'ArrowLeft');
     // ← and →, or ⌘← and ⌘→, are the deck's even where they change nothing, since the browser takes ⌘← and ⌘→
     // for Back and Forward.
-    else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft');
+    else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft', command);
     else if (event.key === 'Enter' && command) this.edit();
     else if (event.key === 'Enter' && !event.shiftKey) this.start(event.altKey);
     else if (event.key === 'Backspace' && command) this.actOn('remove');
     else if (event.key === 'Escape' && this.selected.size) this.pick(this.picked);
     else if (event.key.toLowerCase() === 'z' && command && !event.shiftKey && !event.altKey) this.undo();
-    else if (event.key === 'ArrowRight' && event.altKey && !command && !event.shiftKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
+    else if (event.key === 'ArrowRight' && event.altKey && !command && !event.shiftKey) this.toBubble();
     else return;
     event.preventDefault();
   }
@@ -400,15 +400,22 @@ export class DeckPage {
     if (this.asking) this.endAsk(true);
     this.paint();
   }
-  // ← and → as in any tree: the picked card's children folded away or shown again, and from a card with no
-  // children showing, ← goes up to its parent; from one whose children show, → goes down to the first.
-  tree(left) {
+  // ← and → as in a tree: the picked card's children folded away or shown again, and from a card with no
+  // children showing, ← goes up to its parent. From a card with none folded away, → gives the focus to its speech
+  // bubble, and ⌘→ goes down to its first child.
+  tree(left, command) {
     const cards = this.deck.cards, i = this.picked, card = cards[i];
     if (!card) return;
     const children = groupEnd(cards, i) > i + 1, folded = this.folded.has(card.title);
     if (left && children && !folded) this.fold(i);
     else if (left) { const parent = this.layout().parents[i]; if (parent >= 0) this.pick(parent); }
-    else if (children) { if (folded) this.fold(i); else this.pick(i + 1); }
+    else if (children && folded) this.fold(i);
+    else if (!command) this.toBubble();
+    else if (children) this.pick(i + 1);
+  }
+  // → or ⌥→: the picked card's speech bubble takes the focus, and ← gives it back to the card.
+  toBubble() {
+    this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
   }
   // Every card that the card at `index` stands under unfolded, so that it shows.
   reveal(index) {

@@ -370,4 +370,32 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('notebook on the cards page, → gives a card\'s speech bubble the focus, once none of its children are folded away', async () => {
+    // Each card has a reply stack, so its bubble shows whoever the page's agents are.
+    const stack = name => `[Reply stack](${facts.origin}/?topic=t1&message=m-${name})`;
+    const id = 'notebook-cards-bubble', p = await cards(id, `## Plan\n\nShip it.\n\n${stack('plan')}\n\n### Steps\n\nOne, two.\n\n${stack('steps')}\n\n## Notes\n\nDan reviews.\n\n${stack('notes')}\n`);
+    // The card with the focus, whether its speech bubble has it, and whether Steps shows.
+    const focus = () => p.evaluate(`(()=>{const a=document.activeElement,row=a?.closest?.('#deck-page .deck-card');
+      return {card:row?.querySelector('.deck-title')?.textContent??null,bubble:Boolean(a?.classList.contains('deck-bubble')),steps:[...document.querySelectorAll('#deck-page .deck-card')].some(r=>!r.hidden&&r.querySelector('.deck-title')?.textContent==='Steps')}})()`);
+    const focused = (want, words) => until(async () => JSON.stringify(await focus()) === JSON.stringify(want), words)
+      .catch(async error => { assert.deepEqual(await focus(), want, words); throw error; });
+    await until(() => p.evaluate("document.querySelectorAll('#deck-page .deck-bubble').length === 3"), 'each card has its speech bubble');
+    await p.key('ArrowRight');
+    await focused({ card: 'Plan', bubble: true, steps: true }, '→ on Plan, its child showing, gives its speech bubble the focus');
+    await p.key('ArrowLeft');
+    await focused({ card: 'Plan', bubble: false, steps: true }, '← gives the focus back to Plan');
+    await p.key('ArrowLeft');
+    await focused({ card: 'Plan', bubble: false, steps: false }, '← folds Steps away');
+    await p.key('ArrowRight');
+    await focused({ card: 'Plan', bubble: false, steps: true }, '→ shows Steps again, the focus staying on Plan');
+    await p.key('ArrowRight');
+    await focused({ card: 'Plan', bubble: true, steps: true }, 'and the next → gives the speech bubble the focus');
+    await p.key('ArrowLeft'); await p.key('ArrowRight', 4);
+    await focused({ card: 'Steps', bubble: false, steps: true }, '⌘→ goes down to Plan\'s first child');
+    await p.key('ArrowRight');
+    await focused({ card: 'Steps', bubble: true, steps: true }, '→ on Steps, which has no children, gives its speech bubble the focus');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

@@ -2614,6 +2614,36 @@
     "native": "notebook",
     "case": "notebook while a card is written, the keys an input method composes with stay its own"
    }
+  },
+  {
+   "item": 315,
+   "act": "→ on a card with none of its children folded away gives the focus to its speech bubble, and ← gives it back",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    else if (!command) this.toBubble();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
+   }
+  },
+  {
+   "item": 315,
+   "act": "⌘→ on a card whose children show still goes down to the first of them",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    else if (children) this.pick(i + 1);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
+   }
   }
  ]
 }

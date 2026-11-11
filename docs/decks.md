@@ -51,7 +51,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | select several cards, to act on them as one | ⇧↑ ⇧↓, ⌘-click or ⇧-click | |
-| ask an agent about the card, or open its reply stack | ⌥→ then Return, or a click on its speech bubble | its speech bubble |
+| ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
 
 A move and a merge go between cards with the same parent, never out of it: a
 move takes the card past the one beside it with all its children, and a merge
@@ -100,10 +100,12 @@ card, asking about one and folding. The rules are `groupAct` in
 
 Folding is the reader's own view and never touches the page: the folded
 cards are kept in this browser by their titles, so a fold lasts through a
-reload and comes undone when its card's title changes. ← and → work as in any
+reload and comes undone when its card's title changes. ← and → work as in a
 tree: on a card with no children showing, ← goes up to its parent, and on a
-card whose children show, → goes down to the first of them. ⌘← and ⌘→ do the
-same, and the browser never takes them for Back and Forward on the cards.
+card with none folded away, → gives the focus to its speech bubble. ⌘← and ⌘→
+fold and show the same way, ⌘→ going down to the first child of a card whose
+children show, and the browser never takes them for Back and Forward on the
+cards.
 ⇧⌘← folds every card's children away and ⇧⌘→ shows them all again. ↑ and ↓ pass over
 folded cards, a phone's swipe holds only the cards that show, and the count
 says how many are folded away. An act that puts a card under a folded card,
@@ -132,8 +134,9 @@ why.
 ## Asking about a card
 
 Each card has a speech bubble at its right edge. On a laptop it shows on the
-picked card and under the pointer; ⌥→ gives it the focus and ← gives the focus
-back to the card. On a phone it shows on every card. On a card with no reply
+picked card and under the pointer; → gives it the focus, from a card with no
+children folded away, as ⌥→ does from any card, and ← gives the focus back to
+the card. On a phone it shows on every card. On a card with no reply
 stack, the bubble asks an agent about it: a box in the card's place takes the
 ask, and Ask or ⌘Return sends it as a new message (`message.post`, an ask) in
 the page's topic, or for an outcome's page in its conversation. The message
