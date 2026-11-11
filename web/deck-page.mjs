@@ -3,11 +3,12 @@ import { messageLink, messageOf, placeLink } from './links.mjs';
 import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
+import { WritingInput } from './writing-input.mjs';
 
 const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
+const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = '⌘Return or Escape done · Tab under the card above, ⇧Tab out · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = '⌘Return or Escape done · ⌘↑ ⌘↓ move · Tab under the card above, ⇧Tab out · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
@@ -64,7 +65,11 @@ export class DeckPage {
     this.editButton = button('Edit', () => (this.editing ? this.finish() : this.edit()));
     this.bar = this.node('div', 'deck-bar');
     this.bar.append(this.count, this.editButton, button('New card', () => this.start()), button('Undo', () => this.undo()));
-    this.keys = this.node('p', 'deck-keys muted', KEYS);
+    // The lines of keys for the cards, for a card being written and for an ask stand in one place, all but the one
+    // that applies hidden, so the line keeps the height of the longest and the cards below it stay where they are.
+    this.keys = this.node('p', 'deck-keys muted');
+    this.keyLines = [KEYS, WRITING_KEYS, ASKING_KEYS].map(words => this.node('span', '', words));
+    this.keys.append(...this.keyLines);
     // Safari's AutoFill, and Apple's iCloud Passwords extension in Chrome, ignore autocomplete="off" and judge a
     // box that has no label element by the page's words around it, so beside a card about tokens or codes an empty
     // box reads as a field for a one-time code. A box named by aria-labelledby is judged by its label's words
@@ -74,6 +79,17 @@ export class DeckPage {
     host.replaceChildren(this.status, this.opening, this.bar, this.keys, this.list,
       label('deck-editor-label', 'Writing: the first line is the heading, the rest its words'), label('deck-ask-label', 'Ask an agent about this'));
     doc.addEventListener('keydown', event => this.key(event));
+    // A card under the pointer shows its speech bubble, and the pointer's highlights, only while the pointer is in
+    // use: macOS hides the pointer while a person types, and the cards the keys scroll under it would light up one
+    // by one. A move of the mouse itself, not of the page under it, puts the pointer in use, and any key but a
+    // modifier takes it out of use.
+    let pointer = null;
+    doc.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'mouse') return;
+      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');
+      pointer = { x: event.screenX, y: event.screenY };
+    });
+    doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); });
     this.list.addEventListener('scroll', () => this.scrolled(), { passive: true });
   }
   node(tag, className, text) {
@@ -304,19 +320,24 @@ export class DeckPage {
     else if (this.owed) { this.owed = false; this.load(); }
   }
 
-  // The keys work while the deck or nothing has the focus, and while a card is written, only its own.
+  // The keys work while the deck or nothing has the focus, and while a card is written, only its own. An input
+  // method's keys are its own, among them the key that ends a composition, which Safari sends with isComposing false
+  // and keyCode 229.
   key(event) {
-    if (this.host.hidden || event.defaultPrevented || event.isComposing) return;
+    if (this.host.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
-    // A card's box keeps every key but these: Escape and ⌘Return finish the card, Tab and ⇧Tab move it, and ↑ at
-    // the box's very start or ↓ at its very end goes on into the card beside. Tab stays the box's where there is
-    // nowhere to go, as in an outliner, and so does ⌥Tab, Safari's Tab for every item, so no Tab takes the focus
-    // out of a card half written.
+    // A card's box keeps every key but these: Escape and ⌘Return finish the card, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it as
+    // they move a picked card, and ↑ at the box's very start or ↓ at its very end goes on into the card beside. Tab
+    // stays the box's where there is nowhere to go, as in an outliner, and so does ⌥Tab, Safari's Tab for every item,
+    // so no Tab takes the focus out of a card half written.
     if (this.editing) {
       const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
       if (event.target !== field) return;
+      // The composer's writing keys come first: ⌥↑ and ⌥↓ move a line, and the line keys of a Mac (writing-input.mjs).
+      if (this.editing.input.writingKey(event)) return;
       if (event.key === 'Escape' || (event.key === 'Enter' && command)) this.finish();
-      else if (event.key === 'Tab' && !command) this.nestWriting(event.shiftKey ? 'outdent' : 'indent');
+      else if (event.key === 'Tab' && !command) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });
+      else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });
       else if (plain && up && field.selectionEnd === 0) { if (!this.writeBeside(-1)) return; }
       else if (plain && down && field.selectionStart === field.value.length) { if (!this.writeBeside(1)) return; }
       else return;
@@ -349,13 +370,13 @@ export class DeckPage {
     else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && command && event.shiftKey && !event.altKey) this.foldAll(event.key === 'ArrowLeft');
     // ← and →, or ⌘← and ⌘→, are the deck's even where they change nothing, since the browser takes ⌘← and ⌘→
     // for Back and Forward.
-    else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft');
+    else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey) this.tree(event.key === 'ArrowLeft', command);
     else if (event.key === 'Enter' && command) this.edit();
     else if (event.key === 'Enter' && !event.shiftKey) this.start(event.altKey);
     else if (event.key === 'Backspace' && command) this.actOn('remove');
     else if (event.key === 'Escape' && this.selected.size) this.pick(this.picked);
     else if (event.key.toLowerCase() === 'z' && command && !event.shiftKey && !event.altKey) this.undo();
-    else if (event.key === 'ArrowRight' && event.altKey && !command && !event.shiftKey) this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
+    else if (event.key === 'ArrowRight' && event.altKey && !command && !event.shiftKey) this.toBubble();
     else return;
     event.preventDefault();
   }
@@ -398,15 +419,22 @@ export class DeckPage {
     if (this.asking) this.endAsk(true);
     this.paint();
   }
-  // ← and → as in any tree: the picked card's children folded away or shown again, and from a card with no
-  // children showing, ← goes up to its parent; from one whose children show, → goes down to the first.
-  tree(left) {
+  // ← and → as in a tree: the picked card's children folded away or shown again, and from a card with no
+  // children showing, ← goes up to its parent. From a card with none folded away, → gives the focus to its speech
+  // bubble, and ⌘→ goes down to its first child.
+  tree(left, command) {
     const cards = this.deck.cards, i = this.picked, card = cards[i];
     if (!card) return;
     const children = groupEnd(cards, i) > i + 1, folded = this.folded.has(card.title);
     if (left && children && !folded) this.fold(i);
     else if (left) { const parent = this.layout().parents[i]; if (parent >= 0) this.pick(parent); }
-    else if (children) { if (folded) this.fold(i); else this.pick(i + 1); }
+    else if (children && folded) this.fold(i);
+    else if (!command) this.toBubble();
+    else if (children) this.pick(i + 1);
+  }
+  // → or ⌥→: the picked card's speech bubble takes the focus, and ← gives it back to the card.
+  toBubble() {
+    this.list.querySelector(`.deck-card[data-index="${this.picked}"] .deck-bubble`)?.focus();
   }
   // Every card that the card at `index` stands under unfolded, so that it shows.
   reveal(index) {
@@ -479,7 +507,8 @@ export class DeckPage {
     const card = this.deck.cards[this.picked];
     if (!card || this.readOnly || this.asking) return;
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null));
-    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false, at });
+    const height = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`)?.getBoundingClientRect().height ?? 0;
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false, at, height });
   }
   // A click on a card: a card being written is finished first, and the clicked one, found again by its text in case
   // that moved it, opens in its box with the cursor at `at`.
@@ -513,22 +542,30 @@ export class DeckPage {
     if (this.editing) this.finish();
     this.selected = new Set(); this.anchor = null;
     const field = this.node('textarea', 'deck-editor');
+    field.rows = 1;
     field.setAttribute('autocomplete', 'off');
     field.value = editing.shown ?? editing.text;
     field.setAttribute('aria-labelledby', 'deck-editor-label');
     field.addEventListener('input', () => this.fit(field));
-    this.editing = { ...editing, field };
+    this.editing = { ...editing, field, input: new WritingInput({ field }) };
     this.paint();
+    // On a laptop the box keeps the height its card showed at, less the room around it, and grows only when what is
+    // written needs more, so the text stays where it stood (aim.css reads --kept there; a phone's box has its own).
+    if (editing.height) {
+      const around = field.closest('li').getBoundingClientRect().height - field.getBoundingClientRect().height;
+      field.style.setProperty('--kept', `${Math.max(0, editing.height - around)}px`);
+      this.fit(field);
+    }
     const at = Math.min(editing.at ?? field.value.length, field.value.length);
     field.setSelectionRange(at, at);
   }
-  // Tab or ⇧Tab while a card is written: the card goes under the card above or out of its parent by the rules of a
-  // picked card, and is saved there, while the writing and the cursor stay as they were; the writing is saved when
-  // the card is finished. A new card not yet made only changes where it will go.
-  nestWriting(kind) {
+  // Tab, ⇧Tab, ⌘↑ or ⌘↓ while a card is written: the card moves by the rules of a picked card, and is saved there,
+  // while the writing and the cursor stay as they were; the writing is saved when the card is finished. A new card
+  // not yet made only changes where it will go.
+  moveWriting(act) {
     const editing = this.editing;
-    if (!editing.fresh) { this.act({ kind, text: editing.text, near: editing.near }); return; }
-    const placed = placeNew(this.deck, editing, kind);
+    if (!editing.fresh) { this.act({ ...act, text: editing.text, near: editing.near }); return; }
+    const placed = placeNew(this.deck, editing, act);
     if (placed) { Object.assign(editing, placed); this.paint(); }
   }
   // ↑ at the very start of the card being written, or ↓ at its very end: the card is finished, and the card that
@@ -538,7 +575,9 @@ export class DeckPage {
     // A card being written stands in its card's place; a new one, between the card it follows and the next.
     const at = editing.fresh ? (editing.after === null ? -1 : findCard(this.deck, editing.after, editing.near)) : findCard(this.deck, editing.text, editing.near);
     if (at < 0 && !(editing.fresh && editing.after === null)) return false;
-    let to = step > 0 ? at + 1 : editing.fresh ? at : at - 1;
+    // A card cleared of all its text goes with its children when it is finished, so ↓ goes on past them.
+    const cleared = !editing.fresh && !cardText(textCard(editing.field.value));
+    let to = step > 0 ? (cleared ? groupEnd(this.deck.cards, at) : at + 1) : editing.fresh ? at : at - 1;
     while (to >= 0 && to < shown.length && !shown[to]) to += step;
     if (to < 0 || to >= shown.length) return false;
     this.editAt(cardText(this.deck.cards[to]), to, step < 0 ? null : 0);
@@ -680,9 +719,11 @@ export class DeckPage {
     return row;
   }
 
+  // A box takes a height of its own only when what is written needs more than it has: scrollHeight counts whole
+  // pixels, so a box fitted to it would stand up to a pixel off its card's height.
   fit(field) {
     field.style.height = 'auto';
-    field.style.height = `${field.scrollHeight + 2}px`;
+    if (field.scrollHeight > field.clientHeight) field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
   }
 
   paint() {
@@ -727,7 +768,16 @@ export class DeckPage {
       // The box stands in its card's place at its card's depth, wherever an act or a read of the page has put it.
       if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });
       holder.style.setProperty('--depth', String(editing.depth ?? 0));
+      // A card with children keeps its chevron, laid out in a line of the title's own, so it stands where it showed
+      // and the title starts after it; a card with words keeps them on the lines they showed on. A press around the
+      // box leaves the writing its focus.
+      const parent = !editing.fresh && at >= 0 && groupEnd(cards, at) > at + 1;
+      holder.classList.toggle('deck-parent', parent);
+      holder.classList.toggle('deck-worded', !editing.fresh && at >= 0 && Boolean(cardStacks(cards[at].words, messageOf).words));
+      const chevron = parent ? this.node('span', 'deck-title deck-chevron') : null;
+      if (chevron) { chevron.append(this.foldButton(at)); holder.append(chevron); }
       holder.append(editing.field);
+      holder.addEventListener('mousedown', event => { if (event.target === holder) event.preventDefault(); });
       if (editing.fresh) rows.splice(at > 0 ? at : editing.after === null ? 0 : rows.length, 0, holder);
       else if (at >= 0) rows.splice(at, 1, holder);
       else rows.splice(Math.min(editing.near, rows.length), 0, holder);
@@ -741,7 +791,7 @@ export class DeckPage {
     const asked = asking && [asking.field.selectionStart, asking.field.selectionEnd];
     this.list.replaceChildren(...rows);
     this.list.classList.toggle('deck-editing', Boolean(editing || asking));
-    this.keys.textContent = asking ? ASKING_KEYS : editing ? WRITING_KEYS : KEYS;
+    this.keyLines.forEach((line, i) => { line.style.visibility = i === (asking ? 2 : editing ? 1 : 0) ? '' : 'hidden'; });
     this.editButton.textContent = editing ? 'Done' : 'Edit';
     this.mark();
     if (editing) {

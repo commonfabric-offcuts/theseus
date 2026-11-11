@@ -69,7 +69,8 @@ the pointer's way, the keys' and the phone's.
   can move the keys do what they normally do. A list item carries the lines
   indented under it and moves only past an item at its own depth; a plain line
   moves within its paragraph; a paragraph that is wholly the cursor's moves
-  past the next one. A phone's keyboard has no such key. (`web/line-move.mjs`)
+  past the next one. A phone's keyboard has no such key. A card being written
+  on the cards page has them too (docs/decks.md). (`web/line-move.mjs`)
 - **The saving sign** says when the writing was last saved: "Saved to Theseus ·
   4:40 AM", or the time it was kept on this device (docs/times.md).
 
@@ -201,7 +202,8 @@ page painted. Its checks, by rule:
   clipboard, reads Add image. A paste into the Reader and a row's thumbnail:
   `tests/reader_images_native.mjs`.
 - ⌥↑ and ⌥↓: "reading ⌥↑ and ⌥↓ move the line …", in the composer and the
-  Reader; which line moves: `tests/ui_line_move.test.mjs`.
+  Reader, and "notebook while a card is written, option-Up and option-Down …"
+  on the cards page; which line moves: `tests/ui_line_move.test.mjs`.
 - The saving sign's time: "reading the save status says when the writing was
   saved …".
 - Escape and a press outside a pop-up: `tests/ui_links.test.mjs` and

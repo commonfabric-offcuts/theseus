@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 // it stands or at a revision, in the Reader or in place, from the address bar
 // or from a message's words, and the Reader's ⋯ copies it. On the cards page,
 // a card being written moves with Tab and ⇧Tab, and goes on into the card
-// beside with ↑ and ↓, each act read back from the page as saved.
+// beside with ↑ and ↓, each act read back from the page as saved, while the
+// keys an input method composes with stay its own.
 export async function notebookChecks({ check, page, until, control, view, facts, shot }) {
   const id = 'notebook-release-plan', row = `#outcome-references-list .reference[data-id="${id}"]`;
   const light = p => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(row + ' .unread-count')});return b?{text:b.textContent,className:b.className,said:document.querySelector(${JSON.stringify(row + ' .sr-only')})?.textContent}:null})()`);
@@ -277,6 +278,15 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await writing(p, { words: 'Later', at: [5, 5], depth: '1', above: 'Risks', focused: true }, 'Tab puts the new card under Notes');
     await p.key('Escape');
     await saved(id, `${under}\n### Later\n`, 'the new card is made where Tab put it');
+    // A new card begun among siblings, after Risks with Later still to come: shift-Tab takes it out of Notes after all
+    // the children of Notes, as it would a made card there, so Later stays under Notes and not under the new card.
+    await p.key('ArrowUp'); await p.key('Enter');
+    await writing(p, { words: '', at: [0, 0], depth: '1', above: 'Risks', focused: true }, 'a new card opens between Risks and Later');
+    await p.send('Input.insertText', { text: 'Soon' });
+    await p.key('Tab', 8);
+    await writing(p, { words: 'Soon', at: [4, 4], depth: '0', above: 'Later', focused: true }, 'shift-Tab takes the new card out of Notes, after Later');
+    await p.key('Escape');
+    await saved(id, `${under}\n### Later\n\n## Soon\n`, 'the new card is made beside Notes, and Later stays under Notes');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -321,6 +331,208 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await writing(p, { words: 'Risks\nNone yet.', at: [15, 15], depth: '0', above: 'Notes', focused: true }, 'Risks opens at its end');
     await saved(id, `${notes}\n## Later\n`, 'the new card is made as written');
     await p.key('Escape');
+    // Plan, its child Steps shown again with →, cleared of all its text: ↓ removes it with Steps, as finishing does,
+    // and goes on into Notes, the card after them.
+    await p.key('ArrowUp'); await p.key('ArrowUp'); await p.key('ArrowRight'); await p.key('Enter', 4);
+    await writing(p, { words: 'Plan\nShip it.', at: [13, 13], depth: '0', above: null, focused: true }, 'Plan opens for writing');
+    await p.key('a', 4); await p.key('Backspace');
+    await writing(p, { words: '', at: [0, 0], depth: '0', above: null, focused: true }, 'Plan is cleared');
+    await p.key('ArrowDown');
+    await writing(p, { words: 'Notes\nDan reviews. Warp signs off.', at: [0, 0], depth: '0', above: null, focused: true }, '↓ goes on into Notes, past the child that went with Plan');
+    await saved(id, '## Notes\n\nDan reviews. Warp signs off.\n\n## Risks\n\nNone yet.\n\n## Later\n', 'Plan is removed with Steps');
+    await p.key('Escape');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook while a card is written, the keys an input method composes with stay its own', async () => {
+    const id = 'notebook-cards-composing', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    // A key sent into the box as a browser sends it while an input method composes (isComposing), as Safari sends the
+    // key that ends a composition (keyCode 229, isComposing false), or plainly; true when the page left it alone.
+    const dispatch = (key, { composing = false, keyCode = 0 } = {}) => p.evaluate(`(()=>{const e=new KeyboardEvent('keydown',{key:${JSON.stringify(key)},isComposing:${composing},bubbles:true,cancelable:true});
+      if(${keyCode})Object.defineProperty(e,'keyCode',{value:${keyCode}});return document.querySelector('#deck-page .deck-writing textarea').dispatchEvent(e)})()`);
+    const notes = at => ({ words: 'Notes\nDan reviews.', at: [at, at], depth: '0', above: 'Plan', focused: true });
+    await p.key('ArrowDown'); await p.key('Enter', 4);
+    await writing(p, notes(18), 'Notes opens for writing');
+    for (const [key, at] of [['ArrowUp', 0], ['ArrowDown', 18], ['Tab', 18], ['Escape', 18]]) {
+      for (const how of [{ composing: true }, { keyCode: 229 }]) {
+        await cursor(p, at);
+        assert.equal(await dispatch(key, how), true, `${key} ${JSON.stringify(how)} is the input method's`);
+        assert.deepEqual(await box(p), notes(at), `${key} ${JSON.stringify(how)} leaves the card as it was`);
+      }
+    }
+    // The same ↓ sent plainly is the deck's, and goes on into Risks.
+    await cursor(p, 18);
+    assert.equal(await dispatch('ArrowDown'), false, 'a plain ↓ at the very end is the deck\'s');
+    await writing(p, { words: 'Risks\nNone yet.', at: [0, 0], depth: '0', above: 'Notes', focused: true }, 'the plain ↓ goes on into Risks');
+    assert.equal((await view('memory_current', { item_id: id })).body, body, 'no key of the input method\'s moved or saved a card');
+    await p.key('Escape');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook on the cards page, → gives a card\'s speech bubble the focus, once none of its children are folded away', async () => {
+    // Each card has a reply stack, so its bubble shows whoever the page's agents are.
+    const stack = name => `[Reply stack](${facts.origin}/?topic=t1&message=m-${name})`;
+    const id = 'notebook-cards-bubble', p = await cards(id, `## Plan\n\nShip it.\n\n${stack('plan')}\n\n### Steps\n\nOne, two.\n\n${stack('steps')}\n\n## Notes\n\nDan reviews.\n\n${stack('notes')}\n`);
+    // The card with the focus, whether its speech bubble has it, and whether Steps shows.
+    const focus = () => p.evaluate(`(()=>{const a=document.activeElement,row=a?.closest?.('#deck-page .deck-card');
+      return {card:row?.querySelector('.deck-title')?.textContent??null,bubble:Boolean(a?.classList.contains('deck-bubble')),steps:[...document.querySelectorAll('#deck-page .deck-card')].some(r=>!r.hidden&&r.querySelector('.deck-title')?.textContent==='Steps')}})()`);
+    const focused = (want, words) => until(async () => JSON.stringify(await focus()) === JSON.stringify(want), words)
+      .catch(async error => { assert.deepEqual(await focus(), want, words); throw error; });
+    await until(() => p.evaluate("document.querySelectorAll('#deck-page .deck-bubble').length === 3"), 'each card has its speech bubble');
+    await p.key('ArrowRight');
+    await focused({ card: 'Plan', bubble: true, steps: true }, '→ on Plan, its child showing, gives its speech bubble the focus');
+    await p.key('ArrowLeft');
+    await focused({ card: 'Plan', bubble: false, steps: true }, '← gives the focus back to Plan');
+    await p.key('ArrowLeft');
+    await focused({ card: 'Plan', bubble: false, steps: false }, '← folds Steps away');
+    await p.key('ArrowRight');
+    await focused({ card: 'Plan', bubble: false, steps: true }, '→ shows Steps again, the focus staying on Plan');
+    await p.key('ArrowRight');
+    await focused({ card: 'Plan', bubble: true, steps: true }, 'and the next → gives the speech bubble the focus');
+    await p.key('ArrowLeft'); await p.key('ArrowRight', 4);
+    await focused({ card: 'Steps', bubble: false, steps: true }, '⌘→ goes down to Plan\'s first child');
+    await p.key('ArrowRight');
+    await focused({ card: 'Steps', bubble: true, steps: true }, '→ on Steps, which has no children, gives its speech bubble the focus');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it, keeping the writing and the cursor', async () => {
+    const id = 'notebook-cards-move', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    await p.key('ArrowDown'); await p.key('Enter', 4);
+    await p.send('Input.insertText', { text: ' Warp too.' });
+    await cursor(p, 3);
+    const notes = (above, words) => writing(p, { words: 'Notes\nDan reviews. Warp too.', at: [3, 3], depth: '0', above, focused: true }, words);
+    await p.key('ArrowUp', 4);
+    await notes(null, 'cmd-Up takes Notes past Plan, still written, the cursor where it was');
+    await saved(id, '## Notes\n\nDan reviews.\n\n## Plan\n\nShip it.\n\n## Risks\n\nNone yet.\n', 'the move is saved at once, the words when the card is finished');
+    await p.key('ArrowUp', 4);
+    assert.deepEqual(await box(p), { words: 'Notes\nDan reviews. Warp too.', at: [3, 3], depth: '0', above: null, focused: true }, 'cmd-Up on the first card moves nothing and keeps the box');
+    await p.key('ArrowDown', 4);
+    await notes('Plan', 'cmd-Down takes it back past Plan');
+    await saved(id, body, 'and that is saved too');
+    await p.key('ArrowDown', 4);
+    await notes('Risks', 'cmd-Down takes it past Risks');
+    await p.key('Escape');
+    const moved = '## Plan\n\nShip it.\n\n## Risks\n\nNone yet.\n\n## Notes\n\nDan reviews. Warp too.\n';
+    await saved(id, moved, 'finishing saves what was written where the card went');
+    // A new card, not yet made, only changes where it will go: past Notes, after Risks.
+    await p.key('Enter');
+    await writing(p, { words: '', at: [0, 0], depth: '0', above: 'Notes', focused: true }, 'a new card opens after Notes');
+    await p.send('Input.insertText', { text: 'Later' });
+    await p.key('ArrowUp', 4);
+    await writing(p, { words: 'Later', at: [5, 5], depth: '0', above: 'Risks', focused: true }, 'cmd-Up takes the new card past Notes');
+    await p.key('Escape');
+    await saved(id, moved.replace('## Notes', '## Later\n\n## Notes'), 'the new card is made where cmd-Up put it');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook while a card is written, option-Up and option-Down move the line the cursor is on, and the composer\'s line keys work', async () => {
+    const id = 'notebook-cards-lines', p = await cards(id, '## Plan\n\nShip it.\n\n## Notes\n\nOne.\nTwo.\nThree.\n');
+    const notes = (words, at) => ({ words, at: [at, at], depth: '0', above: 'Plan', focused: true });
+    await p.key('ArrowDown'); await p.key('Enter', 4);
+    await writing(p, notes('Notes\nOne.\nTwo.\nThree.', 22), 'Notes opens for writing');
+    await cursor(p, 12); await p.key('ArrowUp', 1);
+    await writing(p, notes('Notes\nTwo.\nOne.\nThree.', 7), 'option-Up moves Two. above One., the cursor with it');
+    await p.key('z', 4);
+    await writing(p, notes('Notes\nOne.\nTwo.\nThree.', 12), 'cmd-Z puts it back, the cursor where it was');
+    await p.key('ArrowUp', 1);
+    await writing(p, notes('Notes\nTwo.\nOne.\nThree.', 7), 'option-Up moves it again');
+    await p.key('ArrowDown', 1); await p.key('ArrowDown', 1);
+    await writing(p, notes('Notes\nOne.\nThree.\nTwo.', 19), 'option-Down twice moves it below Three.');
+    // Control-U, a line key of the composer's, deletes back to the start of the line.
+    await cursor(p, 22); await p.key('u', 2);
+    await writing(p, notes('Notes\nOne.\nThree.\n', 18), 'control-U deletes back to the start of the line');
+    await p.key('Escape');
+    await saved(id, '## Plan\n\nShip it.\n\n## Notes\n\nOne.\nThree.\n', 'what was written is saved');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook a card keeps its height and its text stays where it stood between showing and being written', async () => {
+    const long = 'A title long enough to wrap beside its bubble while it shows, and fit one line in its box';
+    const id = 'notebook-cards-still', p = await cards(id, `## Plan\n\n## Notes\n\nDan reviews the slides.\nWarp signs off.\n\n### Steps\n\nOne, two.\n\n## Risks\n\nNone yet.\n\n## ${long}\n`);
+    // Where a card's title and the first line of its words stand, its chevron, its height and the top of the card
+    // after it: from the letters while it shows, from its box's lines while it is written.
+    const where = title => p.evaluate(`(()=>{const rows=[...document.querySelectorAll('#deck-page .deck-card')],box=document.querySelector('#deck-page .deck-writing textarea');
+      const row=box?box.closest('li'):rows.find(r=>r.querySelector('.deck-title')?.lastChild?.textContent===${JSON.stringify(title)}),next=rows[rows.indexOf(row)+1];
+      const letter=node=>{const range=document.createRange();range.setStart(node,0);range.setEnd(node,1);const r=range.getBoundingClientRect();return {left:r.left,middle:(r.top+r.bottom)/2};};
+      const fold=row.querySelector('.deck-fold')?.getBoundingClientRect(),r=row.getBoundingClientRect();let title,words=null,lines=null;
+      if(box){const s=getComputedStyle(box),b=box.getBoundingClientRect(),line=parseFloat(s.lineHeight),top=b.top+parseFloat(s.borderTopWidth)+parseFloat(s.paddingTop);
+        title={left:b.left+parseFloat(s.borderLeftWidth)+parseFloat(s.paddingLeft)+parseFloat(s.textIndent),middle:top+line/2};if(box.value.includes('\\n'))words=top+line*1.5;}
+      else{const h=row.querySelector('.deck-title');title=letter(h.lastChild);lines=Math.round(h.getBoundingClientRect().height/parseFloat(getComputedStyle(h).lineHeight));
+        const walk=document.createTreeWalker(row.querySelector('.deck-words'),NodeFilter.SHOW_TEXT);let node;while((node=walk.nextNode())&&!/\\S/.test(node.textContent));if(node)words=letter(node).middle;}
+      return {height:r.height,next:next?next.getBoundingClientRect().top:null,scroll:scrollY,left:title.left,words,title:title.middle,lines,fold:fold?[fold.left,fold.top]:null}})()`);
+    // The card keeps its height and the cards after it stay where they are, both laid out from the faces' line heights
+    // alone, and its words stay on their lines. The title takes the words' face while it is written, so it may move by
+    // the difference between the two faces' lines.
+    const near = (shown, written, by) => shown === written || Math.abs(shown - written) <= by;
+    const still = (shown, written, words) => {
+      for (const key of ['scroll', 'height', 'next']) assert.ok(near(shown[key], written[key], 0.1), `${words}: ${key} ${shown[key]} shown, ${written[key]} written`);
+      for (const key of ['left', 'words']) assert.ok(near(shown[key], written[key], 1), `${words}: ${key} ${shown[key]} shown, ${written[key]} written`);
+      assert.ok(near(shown.title, written.title, 6), `${words}: the title's line at ${shown.title} shown, ${written.title} written`);
+      assert.equal(Boolean(written.fold), Boolean(shown.fold), `${words}: the chevron ${shown.fold ? 'stays' : 'stays away'} while it is written`);
+      assert.ok(!shown.fold || shown.fold.every((at, i) => near(at, written.fold[i], 1)), `${words}: the chevron at ${shown.fold} shown, ${written.fold} written`);
+    };
+    for (const [title, words] of [['Plan', 'a card with a title alone'], ['Notes', 'a card with words and a child'], ['Steps', 'a child card'],
+      ['Risks', 'a card with a line of words'], [long, 'a card whose title wraps beside its bubble while it shows']]) {
+      const shown = await where(title);
+      if (title === long) assert.ok(shown.lines >= 2, `the long title takes ${shown.lines} lines while it shows`);
+      if (title === 'Notes') await shot(p, 'notebook-cards-shown');
+      await p.key('Enter', 4);
+      await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), `${title} opens for writing`);
+      if (title === 'Notes') await shot(p, 'notebook-cards-written');
+      still(shown, await where(title), words);
+      await p.key('Escape'); await p.key('ArrowDown');
+    }
+    // A press around the box, in the card's own margin, leaves the writing as it was.
+    for (let n = 0; n < 4; n++) await p.key('ArrowUp');
+    await p.key('Enter', 4);
+    await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), 'Plan opens for writing');
+    const plan = await where('Plan');
+    const margin = await p.evaluate("(()=>{const r=document.querySelector('#deck-page .deck-writing').getBoundingClientRect();return {x:r.left+40,y:r.top+4}})()");
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, ...margin, button: 'left', clickCount: 1 });
+    assert.ok(await p.evaluate("document.activeElement === document.querySelector('#deck-page .deck-writing textarea')"), 'a press in the card around its box leaves the box the focus');
+    // Words that need more room make the box taller, and only then.
+    await p.send('Input.insertText', { text: ' for the week' });
+    await until(() => p.evaluate("document.querySelector('#deck-page .deck-writing textarea').value === 'Plan for the week'"), 'the words go in where the cursor was');
+    assert.equal((await where('Plan')).height, plan.height, 'words that fit the line leave the card its height');
+    for (const line of ['One.', 'Two.', 'Three.']) { await p.key('Enter'); await p.send('Input.insertText', { text: line }); }
+    await until(async () => (await where('Plan')).height > plan.height + 60, 'three more lines make the box three lines taller');
+    await p.key('Escape');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves', async () => {
+    // A page in t1, where the fixture's agent takes part, so each card has a bubble to ask it about the card.
+    const item = (await control({ method: 'seed', memory_items: 1 })).item_ids[0];
+    const revised = await control({ method: 'memory_revise', operation_id: 'notebook-cards-pointer-revise', item_id: item, title: 'Cards', expected_revision: 1,
+      body: '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n\n## Later\n' });
+    assert.equal(revised.status, 'committed', JSON.stringify(revised));
+    const p = await page('notebook-cards-pointer', null, true, { url: `${facts.origin}/?cards=${item}` });
+    await until(() => p.evaluate("document.querySelectorAll('#deck-page .deck-ask').length === 4"), 'each card has a bubble to ask about it');
+    // The cards whose bubbles show, and those with a border of their own: the picked card's, or the pointer's highlight.
+    const lit = () => p.evaluate(`(()=>{const rows=[...document.querySelectorAll('#deck-page .deck-card')],plain=getComputedStyle(rows.at(-1)).borderColor,title=r=>r.querySelector('.deck-title').textContent;
+      return {bubbles:rows.filter(r=>getComputedStyle(r.querySelector('.deck-ask')).opacity==='1').map(title),borders:rows.filter(r=>getComputedStyle(r).borderColor!==plain).map(title)}})()`);
+    const showing = (want, words) => until(async () => JSON.stringify(await lit()) === JSON.stringify(want), words)
+      .catch(async error => { assert.deepEqual(await lit(), want, words); throw error; });
+    const risks = await p.evaluate("(()=>{const r=[...document.querySelectorAll('#deck-page .deck-card')].find(r=>r.querySelector('.deck-title').textContent==='Risks').getBoundingClientRect();return {x:r.left+r.width/3,y:r.top+r.height/2}})()");
+    const move = dx => p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: risks.x + dx, y: risks.y });
+    const only = cards => ({ bubbles: cards, borders: cards });
+    await showing(only(['Plan']), 'at first the picked card alone shows its bubble');
+    await move(0); await move(6);
+    await showing(only(['Plan', 'Risks']), 'the card under a moving pointer shows its bubble and the pointer\'s highlight');
+    // macOS hides the pointer while a person types, so the card it rests on shows nothing until the mouse moves.
+    await p.key('ArrowDown');
+    await showing(only(['Notes']), 'once a key is pressed the card under the still pointer shows neither, and the picked card its own');
+    await move(6);
+    await showing(only(['Notes']), 'a move to where the pointer already is, as the page sends when it scrolls under it, shows neither');
+    await move(12);
+    await showing(only(['Notes', 'Risks']), 'a move of the mouse shows them again');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

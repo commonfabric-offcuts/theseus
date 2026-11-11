@@ -2392,21 +2392,6 @@
   },
   {
    "item": 300,
-   "act": "While a card is written, Tab puts it under the card above and ⇧Tab takes it out, saved at once, keeping what is written and the cursor",
-   "break": [
-    [
-     "web/deck-page.mjs",
-     "      else if (event.key === 'Tab' && !command) this.nestWriting(event.shiftKey ? 'outdent' : 'indent');\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "notebook",
-    "case": "notebook while a card is written, Tab puts it under the card above"
-   }
-  },
-  {
-   "item": 300,
    "act": "The card being written shows where Tab or ⇧Tab put it, at its new depth",
    "break": [
     [
@@ -3654,6 +3639,426 @@
    "check": {
     "native": "reading",
     "case": "reading stacks ↑ onto a stack's head from a reply at the top of the window"
+   }
+  },
+  {
+   "item": 300,
+   "act": "While a card is written, Tab puts it under the card above and ⇧Tab takes it out, saved at once, keeping what is written and the cursor",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if (event.key === 'Tab' && !command) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 311,
+   "act": "↓ from a card cleared of all its text goes on past the children that go with it, into the card after them",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "step > 0 ? (cleared ? groupEnd(this.deck.cards, at) : at + 1) :",
+     "step > 0 ? at + 1 :"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 311,
+   "act": "⇧Tab on a new card begun among siblings takes it out after all its parent's children, so the siblings after it stay where they were",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "const placed = placeNew(this.deck, editing, act);",
+     "const placed = act.kind === 'outdent' && editing.depth > 0 ? { depth: editing.depth - 1 } : placeNew(this.deck, editing, act);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 311,
+   "act": "Keys an input method composes with stay its own while a card is written: ↑, ↓, Tab and Escape move, save and finish nothing",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     " || event.isComposing || event.keyCode === 229) return;",
+     " || event.keyCode === 229) return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, the keys an input method composes with stay its own"
+   }
+  },
+  {
+   "item": 311,
+   "act": "The key that ends a composition, which Safari sends with isComposing false and keyCode 229, stays the input method's too",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     " || event.isComposing || event.keyCode === 229) return;",
+     " || event.isComposing) return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, the keys an input method composes with stay its own"
+   }
+  },
+  {
+   "item": 315,
+   "act": "→ on a card with none of its children folded away gives the focus to its speech bubble, and ← gives it back",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    else if (!command) this.toBubble();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
+   }
+  },
+  {
+   "item": 315,
+   "act": "⌘→ on a card whose children show still goes down to the first of them",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    else if (children) this.pick(i + 1);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
+   }
+  },
+  {
+   "item": 313,
+   "act": "⌘↑ and ⌘↓ while a card is written move it past the card beside it, saved at once, keeping what is written and the cursor",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it"
+   }
+  },
+  {
+   "item": 313,
+   "act": "⌘↑ and ⌘↓ on a new card not yet made change where it will go, and it is made there",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  const done = applyAct({ ...deck, cards }, { ...act, text, near: anchor + 1 });",
+     "  const done = applyAct({ ...deck, cards }, { kind: act.kind, text, near: anchor + 1 });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it"
+   }
+  },
+  {
+   "item": 314,
+   "act": "⌥↑ and ⌥↓ while a card is written move the line the cursor is on, as in the composer",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (this.editing.input.writingKey(event)) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 314,
+   "act": "A card being written has the composer's other writing keys, ⌃U deleting back to the start of the line",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "  writingKey(event) { return this.terminalKey(event)||this.moveKey(event); }",
+     "  writingKey(event) { return this.moveKey(event); }"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 314,
+   "act": "The composer's writing keys serve a box with no Editor behind it, as the cards page's is",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "    if(this.editorless)return Boolean(!this.admits()||this.field.readOnly||this.surfaceReadOnly());\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card being written keeps the height it showed at, unless what is written needs more",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      field.style.setProperty('--kept', `${Math.max(0, editing.height - around)}px`);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with a title alone is no taller while it is written than while it shows",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    field.rows = 1;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the text of a card being written starts where the card's text started, in its words' face",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-editor{min-height:var(--kept,0px);padding:0;border:0;",
+     ".deck-editor{min-height:var(--kept,0px);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with words keeps them on the lines they showed on while it is written",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-worded>.deck-editor{padding-top:calc(1.35rem + .3rem - .92rem * 1.55)}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with a title alone keeps its line where the title's line stood",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-writing:not(.deck-worded)>.deck-editor{margin:calc((1.35rem - .92rem * 1.55) / 2) 0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with children keeps its chevron where it showed while it is written",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (chevron) { chevron.append(this.foldButton(at)); holder.append(chevron); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the title of a card with children starts after its chevron while it is written, as when it shows",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-parent>.deck-editor{text-indent:1.3rem}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with children is as tall as its text, its chevron fitting the title line",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(min-width:761px){.deck-fold{min-height:0}",
+     "@media(min-width:761px){"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the cards stay where they are as the line of keys changes between showing and writing",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    this.keyLines.forEach((line, i) => { line.style.visibility = i === (asking ? 2 : editing ? 1 : 0) ? '' : 'hidden'; });\n",
+     "    this.keys.textContent = asking ? ASKING_KEYS : editing ? WRITING_KEYS : KEYS;\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the box takes a height of its own only when what is written needs more, never a pixel off its card",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (field.scrollHeight > field.clientHeight) field.style.height = ",
+     "    field.style.height = "
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a press in a card being written, around its box, leaves the writing as it was",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      holder.addEventListener('mousedown', event => { if (event.target === holder) event.preventDefault(); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the card under a still pointer shows no speech bubble once a key is pressed, until the mouse moves",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(.deck-pointing) .deck-card:hover .deck-ask,",
+     ".deck-card:hover .deck-ask,"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the card under a still pointer loses the pointer's highlight once a key is pressed",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(.deck-pointing) .deck-card:hover{",
+     ".deck-card:hover{"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "a key takes the pointer out of use, so the card under it goes quiet",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the page moving under a still pointer is not the mouse moving",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');\n",
+     "      if (pointer) this.list.classList.add('deck-pointing');\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "a move of the mouse shows the speech bubble of the card under it",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
    }
   }
  ]
