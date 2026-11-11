@@ -516,7 +516,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
       assert.deepEqual(last, expected, label);
     };
     const p = await open('conversation-stacks', '/?conversation=w1', desk('light'));
-    await settles(() => stack(p), { head: item, replies: [[answered, false], [followUp, true], [ask, true], [noted, false], [late, true]], lines: ['1 earlier reply', '1 more reply'], after: 'new' },
+    await settles(() => stack(p), { head: item, replies: [[answered, false], [followUp, true], [ask, true], [noted, false], [late, true]], lines: [], after: 'new' },
       'the replies gather into the stack of the message they answer, oldest first, folded to the newest with the New item and the ask waiting on you kept in view where they sit, and the New line under the stack');
     const seen = [await tags(p, item), await tags(p, followUp), await tags(p, ask)];
     assert.deepEqual([seen[0].mine, seen[1].tags, seen[1].shown, seen[2].asks, seen[2].shown], [['Waiting on you'], ['New'], true, 'Asks you', true],

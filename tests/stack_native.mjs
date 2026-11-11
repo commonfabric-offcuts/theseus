@@ -21,7 +21,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       return {fold:s.dataset.fold,headOpen:s.dataset.headOpen,placed:s.dataset.placed,head:names[s.firstElementChild.dataset.id],
         name:row?.querySelector('.stack-name')?.textContent??null,meta:row?.querySelector('.stack-meta')?.textContent??null,isNew:Boolean(row?.querySelector('.stack-new')),
         full:shown(c.querySelector(':scope > .message-preview')),
-        rows:[...s.querySelector(':scope > .stack-replies').children].filter(shown).map(e=>e.dataset.id?names[e.dataset.id]:e.classList.contains('stack-fold-line')?'fold: '+e.textContent:e.classList.contains('stack-join-line')?'join: '+e.querySelector('.stack-join-words').textContent.replace(/, .*$/,''):e.className)}})()`);
+        rows:[...s.querySelector(':scope > .stack-replies').children].filter(shown).map(e=>e.dataset.id?names[e.dataset.id]:e.classList.contains('stack-join-line')?'join: '+e.querySelector('.stack-join-words').textContent.replace(/, .*$/,''):e.className)}})()`);
   };
   // The stacks down the page, each by its head's name.
   const stacks = (p, ids) => {
@@ -75,7 +75,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, `.message-menu-list button:nth-of-type(${at + 1})`);
   };
 
-  await check('reading stacks read as a chat: the head on top as one row, replies oldest first, a line for each folded run with its new count in red, and a press on the head shows its full message', async () => {
+  await check('reading stacks read as a chat with one header chevron, no repeated fold bars, and the reply count in the header', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-chat-' + device;
       const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Can we lock the cabin for July 12?\nThe owner wants an answer by Friday.' }],
@@ -89,19 +89,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const p = await open('stack-chat-' + device, device, topic, ids.root);
       // Read through four; five and six are unread and in view. Two, starred, stays in view in its place in time; each run either side folds behind a line of its own.
       await becomes(() => look(p, ids, 'root'), { fold: 'folded', headOpen: 'false', placed: 'false', head: 'root', name: 'Can we lock the cabin for July 12?',
-        meta: `6 replies · ${other}, aim-ux · 2 new`, isNew: false, full: false, rows: ['fold: 1 earlier reply', 'two', 'fold: 2 more replies', 'five', 'six'] },
+        meta: `6 replies · ${other}, aim-ux · 2 new`, isNew: false, full: false, rows: ['two', 'five', 'six'] },
         device + ': the head is one row; the replies oldest first, the starred one and the unread ones in view where they sit, a line for each folded run');
       await shot(p, 'stack-chat-' + device);
       // ⌘← (on a laptop) folds to the head alone: the line then counts the unread in red.
       if (device === 'laptop') {
         await keyTo(p, ids.root);
         await p.key('ArrowLeft', 4);
-        await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply', 'two', 'fold: 4 more replies · 2 new'], 'laptop: ⌘← on the head folds to the head and the starred reply; the line counts 2 new');
-        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#messages .stack-fold-new')).color`), await alertColour(p), 'laptop: the count is in the alert red');
+        await becomes(async () => (await look(p, ids, 'root')).rows, ['two'], 'laptop: ⌘← on the head folds to the head and the starred reply; the line counts 2 new');
+        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#messages .stack-fresh')).color`), await alertColour(p), 'laptop: the count is in the alert red');
         await p.key('ArrowRight', 4);
         await until(async () => (await look(p, ids, 'root')).full, 'laptop: ⌘→ on the head first shows its full message');
         await p.key('ArrowRight', 4);
-        await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply', 'two', 'fold: 2 more replies', 'five', 'six'], 'laptop: ⌘→ again opens the replies a step');
+        await becomes(async () => (await look(p, ids, 'root')).rows, ['two', 'five', 'six'], 'laptop: ⌘→ again opens the replies a step');
         await p.key('ArrowLeft', 4); await p.key('ArrowLeft', 4);
         await until(async () => !(await look(p, ids, 'root')).full && (await look(p, ids, 'root')).fold === 'head', 'laptop: ⌘← ⌘← fold it back to the head and hide its full message');
         await p.key('z', 4);
@@ -122,10 +122,21 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await press(p, device, `${card(ids.root)} .stack-who`);
       await until(async () => !(await look(p, ids, 'root')).full, device + ': another press on the head row hides it');
       // A press on a fold line opens every reply; again folds them.
-      const line = `#messages .reply-stack[data-stack="${ids.root}"] .stack-fold-line`;
+      const line = `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`;
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(line)}).getAttribute('aria-expanded')`), 'false', device + ': the chevron starts collapsed');
+      assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-fold-line').length`), 0, device + ': no repeated fold bars');
+      assert.equal(await p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(line)}).getBoundingClientRect(),n=document.querySelector(${JSON.stringify(card(ids.root) + ' .stack-name')}).getBoundingClientRect();return t.right<=n.left+1&&t.top<n.bottom&&t.bottom>n.top})()`), true, device + ': the chevron sits beside the title');
       await centre(p, line);
       await press(p, device, line);
-      await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: Fold 3 earlier replies', 'one', 'two', 'three', 'four', 'five', 'six'], device + ': a fold line opens every reply, oldest first');
+      await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'two', 'three', 'four', 'five', 'six'], device + ': a fold line opens every reply, oldest first');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(line)}).getAttribute('aria-expanded')`), 'true', device + ': the chevron now says expanded');
+      if (device === 'laptop') {
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).focus({preventScroll:true})`);
+        await p.key('Tab');
+        assert.equal(await p.evaluate(`document.activeElement.matches('.stack-toggle')`), true, 'Tab reaches the chevron');
+        await p.key('Enter');
+      } else await press(p, device, line);
+      await until(async () => (await look(p, ids, 'root')).fold === 'folded', device + ': the same control collapses again, with the keyboard or a tap');
       assert.equal(await readerOn(p), null, device + ': the line opens no message');
       assert.deepEqual(p.errors, []);
       await p.close();
@@ -188,8 +199,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two.' }],
       ['three', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply three.', read: true }]]);
     const p = await open('stack-star', 'laptop', topic, ids.root);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 2 earlier replies', 'three'], 'read through: the newest reply alone shows');
-    await press(p, 'laptop', `#messages .reply-stack .stack-fold-line`);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['three'], 'read through: the newest reply alone shows');
+    await press(p, 'laptop', `#messages .reply-stack .stack-toggle`);
     await until(async () => (await look(p, ids, 'root')).fold === 'open', 'opened');
     const items = await menuOf(p, 'laptop', ids.one);
     assert.ok(items.includes('Star for me') && items.some(item => item.startsWith('Move its stack up')) && items.some(item => item.startsWith('Join the stack above')),
@@ -203,7 +214,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     // Folded to its head (⌘←, ⌘←), the starred reply still shows.
     await keyTo(p, ids.root);
     await p.key('ArrowLeft', 4); await p.key('ArrowLeft', 4);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'fold: 2 more replies'], 'folded to the head, the starred reply stays in view in its place');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one'], 'folded to the head, the starred reply stays in view in its place');
     assert.match(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(card(ids.one) + ' > .message-author')}),'::after').content`), /★/, 'the starred reply shows its star after its author');
     // The rail's Starred: this topic's star, and a press lands on it.
     // Stars elsewhere (another check's) sit under Elsewhere, after this topic's.
@@ -221,7 +232,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => (await actsOf(topic, ids.one))?.starred === false, 'Unstar takes it back, in Core');
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(row)})`), 'and the rail lists it no more');
     // Unstarred, it folds with the stack's head again; opened, starred again, the rail's own Unstar takes it off too.
-    await press(p, 'laptop', `#messages .reply-stack[data-stack="${ids.root}"] .stack-fold-line`);
+    await press(p, 'laptop', `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`);
     await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the stack opened again');
     await menuOf(p, 'laptop', ids.one);
     await choose(p, 'laptop', 'Star for me');
@@ -500,15 +511,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // The pointer over a folded stack, on no message, shows it, and a click on it replies.
         await light(p, 'laptop', ids.nearReply); await away(p);
         await becomes(async () => (await footing()).shown, false, 'laptop: the light and the keys elsewhere');
-        await centre(p, `${stack} .stack-fold-line`);
-        await p.point(`${stack} .stack-fold-line`, 'move');
+        await centre(p, `${stack} .stack-toggle`);
+        await p.point(`${stack} .stack-toggle`, 'move');
         await becomes(async () => (await footing()).shown, true, 'laptop: the pointer over a folded stack shows its reply line');
         await p.point(line);
         await replying('a click on the reply line');
       }
       // Open, it always shows its reply line, with the person elsewhere.
-      await centre(p, `${stack} .stack-fold-line`);
-      await press(p, device, `${stack} .stack-fold-line`);
+      await centre(p, `${stack} .stack-toggle`);
+      await press(p, device, `${stack} .stack-toggle`);
       await becomes(async () => (await footing()).fold, 'open', `${device}: the fold line opens the stack`);
       await light(p, device, ids.nearReply);
       if (device === 'laptop') await away(p);
@@ -652,7 +663,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Room four is booked, so room six.', read: true }],
       ['three', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Room six it is.', read: true }]]);
     const p = await open(topic, 'laptop', topic, ids.root);
-    const line = `#messages .reply-stack[data-stack="${ids.root}"] .stack-fold-line`;
+    const line = `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`;
     const shows = async () => (await look(p, ids, 'root')).rows.includes('one');
     await centre(p, line);
     await press(p, 'laptop', line);
@@ -920,7 +931,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
     // Coming back, the replies dealt with fold; three, newer, stays.
     p = await open('stack-dealt-back', 'laptop', topic, ids.root);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 2 earlier replies', 'three'], 'coming back, the replies up to the thumbs-up fold, read');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['three'], 'coming back, the replies up to the thumbs-up fold, read');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -944,7 +955,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(p.errors, []);
     await p.close();
     p = await open('stack-replied-back', 'laptop', topic, ids.root);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 2 earlier replies', 'mine'], 'coming back, the stack folds to the reader\'s reply');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['mine'], 'coming back, the stack folds to the reader\'s reply');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -955,13 +966,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, read.', read: true }],
       ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two, read.', read: true }]]);
     let p = await open('stack-arrive', 'laptop', topic, ids.root);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply', 'two'], 'the newest reply shows, the earlier one folded');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['two'], 'the newest reply shows, the earlier one folded');
     ids.three = (await control({ method: 'agent_message', operation_id: 'stack-arrive-three', topic_id: topic, source: 'topic', sender: other,
       reply_to: ids.root, addressees: [facts.actor], body: 'Reply three, read.', read: true })).result.message_id;
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply', 'two', 'three'], 'the new reply shows under two, which does not fold under the person\'s eyes');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['two', 'three'], 'the new reply shows under two, which does not fold under the person\'s eyes');
     await p.close();
     p = await open('stack-arrive-back', 'laptop', topic, ids.root);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 2 earlier replies', 'three'], 'coming back, two folds with the earlier reply');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['three'], 'coming back, two folds with the earlier reply');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -974,7 +985,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const linking = (await control({ method: 'agent_message', operation_id: 'stack-link-to', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
       body: `See ${facts.origin}/?topic=${topic}&message=${ids.one} for that.`, read: true })).result.message_id;
     const p = await open('stack-link', 'laptop', topic, ids.root);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply', 'two'], 'reply one is folded away');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['two'], 'reply one is folded away');
     await centre(p, `${card(linking)} a.words-link`);
     await p.point(`${card(linking)} a.words-link`);
     await until(async () => (await look(p, ids, 'root')).fold === 'open' && await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).getClientRects().length>0`), 'the link opens its stack, the reply in view');
@@ -1053,7 +1064,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual((await look(p, ids, 'root')).rows, ['one', 'wide', 'two'], `phone: a drag on the ${what} folds nothing`);
     }
     await drag(card(ids.one), 20, 160);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply · 1 new', 'wide', 'two'], 'phone: swiped right, reply one folds into the earlier replies');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['wide', 'two'], 'phone: swiped right, reply one folds into the earlier replies');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

@@ -4127,13 +4127,14 @@ test('on the conversation page replies stack under the message they answer, as i
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
   assert.deepEqual(list.children.map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
-  const [head, replies] = stack.children;
-  assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['stack-fold-line', 'm2', 'm3', 'm4', 'm5']],
-    'the message on top, its replies under it oldest first, as a chat reads, the folded one behind its line where it sits');
+  const [head, toggle, replies] = stack.children;
+  assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
+    'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');
   // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.
   assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, false, false, true],
     'the New item and the ask waiting on the reader stay in view; the plain answer folds');
-  assert.equal(replies.children[0].children[0].textContent, '1 earlier reply');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(toggle.className, 'stack-toggle');
   // The conversation's marks are painted on every message entry, stacked or not, with its item.
   assert.deepEqual([...painted.tags.keys()].sort(), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 'each card gets its tags, stacked ones included');
   assert.deepEqual(['m1', 'm3', 'm6', 'm2'].map(id => entryIn(f, id).dataset.item), ['settled', 'new', 'new', 'none'], 'each entry says its item for Only new');

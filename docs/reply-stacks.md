@@ -111,10 +111,12 @@ their acts.
   reply, at or after it. Such a reply is not newly kept, so coming back to
   the page folds it. Coming back also hides a full message a head was
   showing, where it is off screen.
-- **Fold lines.** Each run of replies folded away is one line where the run
-  sits: "3 earlier replies", "1 more reply", or "6 replies" when all are
-  folded. The line ends in red with how many in the run are new ("· 2 new").
-  Opening the stack gives one line on top, "Fold N earlier replies".
+- **Expand and collapse.** One chevron beside the stack's title opens all
+  its replies or folds them again. It points right when collapsed and down
+  when expanded. It is a button reachable by Tab and operable by Return or
+  Space, with `aria-expanded` and a label naming the stack. The header already
+  gives the reply and new counts; no repeated count or fold bar sits between
+  the messages. Starred and otherwise kept replies still remain visible.
 - **The head.** The first message is one compact row: its short name, ✎,
   who began the stack, "New" when the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. On a phone the
@@ -147,7 +149,7 @@ their acts.
   bar sits under the card rather than over its words and answers. Once the
   row has gone above the window, the bar scrolls away with its card, as any
   message's bar does. A lit reply that its stack folds away loses its light
-  and its bar, so no bar is left over the stack's fold line.
+  and its bar, so no message bar is left over the stack's chevron.
 - **One New line.** It goes under the lowest stack that holds the line's
   message or anything newer that is not the reader's own (`lineUnder`). It is
   never inside a stack, and nothing new sits below it. While the line's
@@ -229,9 +231,10 @@ the semantic colour tokens of `web/aim.css` and only the names that
     `.stack-who`, `.stack-new`, `.stack-star`, `.stack-meta` (with
     `.stack-repliers` and `.stack-fresh`) and `.stack-hide`.
   - `.stack-rename`, holding `.stack-rename-input` and `.stack-rename-hint`.
-  - `.stack-replies`, with each reply's entry, `.stack-fold-line`
-    (`data-fresh`, `data-all`, `.stack-fold-words` and `.stack-fold-new`)
-    and `.stack-join-line` (`.stack-join-words` and `.stack-split`).
+  - `.stack-toggle`, the header's native expand/collapse button, a sibling of
+    the message button, with `aria-expanded` and `aria-controls`.
+  - `.stack-replies`, with each reply's entry and `.stack-join-line`
+    (`.stack-join-words` and `.stack-split`).
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
   - last, on a stack with replies, `.stack-foot`, holding `.stack-reply`,
     the reply line (a button, with `.stack-reply-words` and `.stack-key`,
@@ -243,9 +246,9 @@ colour, a border or a spacing. The look now is the Dossier: a stack is one
 folder pressed into the page. Its head row is the folder's tab, two lines high,
 with the short name on the first and who started it, how many replied, who
 and what is new on the second; the tab and the body are one cut, joined by a
-curved corner. The replies are the sheets inside, each card in its own colours,
-and a run folded away is the edge of the sheets filed under its line, one edge
-for one reply and two for more. Shown whole, the head's card is the first
+curved corner. A compact chevron sits beside the name. The replies are the
+sheets inside, each card in its own colours; folded replies draw no extra bar.
+Shown whole, the head's card is the first
 sheet; while the stack is renamed, the field takes the tab's place. The focused
 stack has the focus ring round the whole folder, tab and all, and the message
 the keys are on inside it has its own edge in the focus colour. A placed message

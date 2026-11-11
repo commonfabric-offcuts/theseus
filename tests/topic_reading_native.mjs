@@ -460,7 +460,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const p = await open('reading-replied-' + device, device, topic, ids.root);
       // Replied to, it reads as read and folds behind the stack's line, under the newest reply (the person's own): the line opens it.
       const unfold = async (q, head, id) => {
-        const line = `#messages .reply-stack[data-stack="${head}"] .stack-fold-line`;
+        const line = `#messages .reply-stack[data-stack="${head}"] .stack-toggle`;
         await centre(q, line);
         await press(q, device, line);
         await until(() => q.evaluate(`document.querySelector(${JSON.stringify(card(id))}).getClientRects().length > 0`), `${device}: the stack's line opens the reply`);
@@ -672,20 +672,20 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const p = await open('reading-stack-' + device, device, topic, ids.root);
       const stack = async () => {
         const seen = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),head=list.querySelector(${JSON.stringify(card(ids.root))}),s=head?.closest('.reply-stack');
-          if(!s)return null;const t=s.querySelector(':scope > .stack-replies > .stack-fold-line'),own=list.querySelector(${JSON.stringify(entry(ids.other))});
+          if(!s)return null;const t=s.querySelector(':scope > .stack-toggle'),own=list.querySelector(${JSON.stringify(entry(ids.other))});
           return {top:s.parentElement===list,head:s.firstElementChild.dataset.id,replies:[...s.querySelectorAll(':scope > .stack-replies > [data-id]')].map(e=>[e.dataset.id,e.getClientRects().length>0]),
-            line:t?t.textContent:null,fold:s.dataset.fold,aboveOther:Boolean(s.compareDocumentPosition(own)&Node.DOCUMENT_POSITION_FOLLOWING),otherAlone:own.parentElement===list}})()`);
+            expanded:t?.getAttribute('aria-expanded')??null,fold:s.dataset.fold,aboveOther:Boolean(s.compareDocumentPosition(own)&Node.DOCUMENT_POSITION_FOLLOWING),otherAlone:own.parentElement===list}})()`);
         return seen && { ...seen, head: name[seen.head], replies: seen.replies.map(([id, shown]) => [name[id], shown]) };
       };
-      await becomes(stack, { top: true, head: 'root', replies: [['one', false], ['two', false], ['three', true], ['four', true]], line: '2 earlier replies', fold: 'folded',
+      await becomes(stack, { top: true, head: 'root', replies: [['one', false], ['two', false], ['three', true], ['four', true]], expanded: 'false', fold: 'folded',
         aboveOther: true, otherAlone: true }, device + ': the replies under the message, oldest first as a chat reads; the unread ones and the newest in view, the rest folded behind one line; the stack above the message on its own, as its newest reply is newer');
       await shot(p, 'reading-stack-' + device);
-      const line = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-replies > .stack-fold-line`;
+      const line = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
       await centre(p, line);
       await press(p, device, line);
       await until(async () => (await stack())?.fold === 'open', device + ': a press on the line opens the stack');
       assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [true, true, true, true], device + ': every reply shows');
-      assert.equal((await stack()).line, 'Fold 2 earlier replies', device + ': and the line folds them again');
+      assert.equal((await stack()).expanded, 'true', device + ': and the line folds them again');
       await press(p, device, line);
       await until(async () => (await stack())?.fold === 'folded', device + ': a second press folds them');
       assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [false, false, true, true], device + ': as they were');

@@ -250,11 +250,11 @@ try {
     const unfold = async selector => {
       const way = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),s=e?.closest('.reply-stack');
           if(!s||s.dataset.single==='true')return null;
-          if(!e.getClientRects().length){const t=s.querySelector(':scope > .stack-replies > .stack-fold-line');t.scrollIntoView({block:'center'});return 'fold'}
+          if(!e.getClientRects().length){const t=s.querySelector(':scope > .stack-toggle');t.scrollIntoView({block:'center'});return 'fold'}
           const h=e.classList.contains('stack-head-card')?e:e.querySelector(':scope > .stack-head-card');
           if(h&&s.dataset.headOpen==='false'){h.scrollIntoView({block:'center'});return 'head'}return null})()`);
       if (way === 'fold') {
-        await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-replies > .stack-fold-line`);
+        await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-toggle`);
         await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
       } else if (way === 'head') {
         await point(`${selector} .stack-head`);

@@ -155,8 +155,10 @@ const element = (doc, tag, className, text) => {
 
 function makeStack(doc, id) {
   const section = element(doc, 'div', 'reply-stack'), replies = element(doc, 'div', 'stack-replies');
+  const toggle = element(doc, 'button', 'stack-toggle'); toggle.type = 'button';
+  replies.id = `stack-replies-${id}`; toggle.setAttribute('aria-controls', replies.id);
   section.dataset.stack = id; section.setAttribute('role', 'group');
-  parts.set(section, { replies, lines: new Map(), placed: null, rename: null, foot: makeFoot(doc) });
+  parts.set(section, { replies, toggle, lines: new Map(), placed: null, rename: null, foot: makeFoot(doc) });
   return section;
 }
 
@@ -254,6 +256,9 @@ function paintStack(section, stack, byId, context) {
   head.hidden = false;
   if (!single) opened(head);
   const shown = single ? { name: firstLine(stack.head.body) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
+  p.toggle.setAttribute('aria-expanded', String(level === 'open'));
+  p.toggle.setAttribute('aria-label', `${level === 'open' ? 'Collapse' : 'Expand'} replies: ${shown.name}`);
+  p.toggle.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
   const rows = single ? [] : rowsOf(stack, { level, kept, handFolded: state.handFolded, unread });
   // The newest reply a folded stack shows stays in view once drawn, as a kept
@@ -273,13 +278,8 @@ function paintStack(section, stack, byId, context) {
       join.split.onclick = () => state.on?.split?.(row.item);
       desired.push(join); continue;
     }
-    const key = row.kind === 'fold-all' ? 'fold-all' : `fold:${row.items[0].id}`;
-    const fold = line(section, key, () => { const node = element(doc, 'button', 'stack-fold-line'); node.type = 'button'; return node; });
-    fold.replaceChildren(element(doc, 'span', 'stack-fold-words', row.words), ...(row.fresh ? [element(doc, 'span', 'stack-fold-new', ` · ${row.fresh} new`)] : []));
-    fold.dataset.fresh = String(Boolean(row.fresh)); fold.dataset.all = String(row.kind === 'fold-all');
-    fold.setAttribute('aria-expanded', String(level === 'open'));
-    fold.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };
-    desired.push(fold);
+    // Folded runs need no repeated count or control between the messages:
+    // the header already gives the count, and its chevron opens every run.
     for (const item of row.items ?? []) { const entry = byId.get(item.id); entry.hidden = true; desired.push(entry); }
   }
   const used = new Set(desired);
@@ -296,7 +296,8 @@ function paintStack(section, stack, byId, context) {
     p.foot.reply.setAttribute('aria-label', `Reply in this stack: ${shown.name}`);
     p.foot.reply.onclick = () => state.on?.reply?.(stack);
   }
-  reconcile(section, [head, ...(rename ? [rename] : []), p.replies, ...(stack.placed !== null ? [p.placed] : []), ...(single ? [] : [p.foot])]);
+  reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : []), ...(single ? [] : [p.foot])]);
+  if (single || rename) p.toggle.remove();
   if (stack.placed === null) p.placed?.remove();
   if (single) p.foot.remove();
   Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
