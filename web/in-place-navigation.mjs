@@ -87,6 +87,11 @@ const BRAND = '.brand';
 // A part of the page a kept part holds for it (the page's topic list in the
 // outline, outline-rail.mjs) is still the run's: its ids and its listeners.
 const PAGE_PART = '[data-page-part]';
+// The rails, where the focus a move leaves behind would otherwise stay.
+const RAILS = '#rail, #things';
+const inRails = el => Boolean(el?.closest?.(RAILS));
+// The keys that only change another key: pressed alone, they say nothing of how the person moves.
+const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn']);
 const selectorOf = node => node.nodeType === 1 ? [...HOLDERS, ...KEPT, BRAND].find(selector => node.matches(selector)) ?? null : null;
 // Puts host's children in the order the pristine copy has them: a kept part
 // is the live element itself; anything else is a fresh copy of the pristine
@@ -149,6 +154,10 @@ export class Shell {
     // What was asked while no run was up to take it (a back, a forward, a
     // place chosen): the run on its way takes it up as soon as it is up.
     this.owed = null; this.begun = null; this.placeOfRun = 0; this.up = null;
+    // How the person last acted ('pointer' or 'keys'), and how the move under
+    // way lands: 'keys' leaves the focus in the rail it began in, 'page' puts it
+    // on the page reached, as a load does (land).
+    this.by = null; this.landing = null;
     // While the rails have a read waiting or out, the page says so (data-rails-reading), for whoever waits for them to be quiet.
     this.inTurn = oneAtATime(busy => this.doc?.documentElement?.toggleAttribute('data-rails-reading', busy));
   }
@@ -184,6 +193,8 @@ export class Shell {
     };
     this.places = new Places(this.win.history);
     listen(this.win, 'popstate', event => this.popstate(event));
+    listen(doc, 'pointerdown', () => { this.by = 'pointer'; }, true);
+    listen(doc, 'keydown', event => { if (!MODIFIERS.has(event.key)) this.by = 'keys'; }, true);
     this.drawer = railDrawer(doc, this.win, listen);
     for (const make of this.makers) make(doc, this.win);
   }
@@ -207,7 +218,7 @@ export class Shell {
   // asked while it started goes as it would with no feed page up.
   failed(page) {
     if (page !== this.page || this.handles) return;
-    this.feed = false;
+    this.feed = false; this.landing = null;
     const owed = this.owed; this.owed = null;
     if (owed?.pop) this.win.location.reload();
     else if (owed) { this.win.location.assign(routeHref(owed.go ?? owed.open)); owed.resolve?.(false); }
@@ -227,6 +238,8 @@ export class Shell {
     Object.assign(mine, handles, { route, current, inTurn: own, view: (name, args, readClass) => own(() => handles.view(name, args, readClass)) });
     this.handles = mine; this.read = handles.view;
     for (const listener of this.listeners) listener.ready?.(mine);
+    if (this.landing === 'page') this.land();
+    this.landing = null;
     const waiting = this.up; this.up = null; waiting?.resolve();
     // What was asked meanwhile, once the run has finished starting.
     const owed = this.owed; this.owed = null;
@@ -252,6 +265,16 @@ export class Shell {
     this.win.history.replaceState(this.win.history.state, '', routeHref(route) + hash);
     this.begun = route;
   }
+  // A move the keys did not begin in a rail ends as a load does: the focus
+  // on the page reached, on its heading, which wears no ring (aim.css), so a
+  // key pressed next (one that scrolls, say) rings nothing. Where the page
+  // has put the focus itself as it started, it stays.
+  land() {
+    const doc = this.doc, at = doc?.activeElement, heading = doc?.querySelector('#main h1');
+    if (!heading || (at && at !== doc.body && !inRails(at))) return;
+    if (!heading.hasAttribute('tabindex')) heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }
   // The page has read its topic again (a message, a state): what the rails show of it may have moved on.
   topicChanged() { if (this.handles) for (const listener of this.listeners) listener.topicChanged?.(); }
   // listener: { begin(feed, route), ready(handles), topicChanged() }; each hears every run.
@@ -272,6 +295,13 @@ export class Shell {
     if (!this.installed || !this.page || this.moving || !movesInPlace(from, target)) return false;
     if (!this.handles) { this.owe({ go: target }); return true; }
     if (!popped) this.places.push(routeHref(target));
+    // Return on a row (the keys, in a rail) keeps the keys there. A press or a
+    // tap, a link in the page, back and forward land on the page reached: the
+    // rail lets the focus go now (its tree no longer holds it), so a key meanwhile
+    // rings nothing there, and the phone's drawer, closing, hands it to no button.
+    const at = this.doc?.activeElement ?? null;
+    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';
+    if (this.landing === 'page' && inRails(at)) at.blur();
     this.move();
     return true;
   }

@@ -2007,6 +2007,126 @@
     "native": "rail",
     "case": "rail New outcome in the outline, on a topic and on a Conversation"
    }
+  },
+  {
+   "item": 286,
+   "act": "A press on an outline row moves in place and puts the focus on the page reached, on its heading, so the next key rings nothing in the rails",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (this.landing === 'page') this.land();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row puts the focus on the page reached"
+   }
+  },
+  {
+   "item": 286,
+   "act": "Return on an outline row moves in place with the keys kept on the row",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';",
+     "    this.landing = 'page';"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row puts the focus on the page reached"
+   }
+  },
+  {
+   "item": 286,
+   "act": "Back and forward land on the page reached, on its heading, even from a row the keys were on",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';",
+     "    this.landing = this.by === 'keys' && inRails(at) ? 'keys' : 'page';"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row puts the focus on the page reached"
+   }
+  },
+  {
+   "item": 286,
+   "act": "The heading a move lands on wears no ring, even after a key",
+   "break": [
+    [
+     "web/aim.css",
+     "main:focus,main h1:focus{outline:none}",
+     "main:focus{outline:none}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row puts the focus on the page reached"
+   }
+  },
+  {
+   "item": 286,
+   "act": "At 390 a tap on a row in the outline's drawer lands on the page's heading, not on ☰ Outcomes",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (this.landing === 'page' && inRails(at)) at.blur();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row puts the focus on the page reached"
+   }
+  },
+  {
+   "item": 286,
+   "act": "← from the heading a move landed on takes the keys to the outline, on the place being read, with its ring",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (pageItself(at, doc)) return true;",
+     "  if (!at || at === doc.body || at.id === 'main') return true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row puts the focus on the page reached"
+   }
+  },
+  {
+   "item": 286,
+   "act": "↓ from the heading a move landed on lights a message, as on a fresh page",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "onPage = pageItself(at, this.doc) || inList;",
+     "onPage = !at || at === this.doc.body || at.id === 'main' || inList;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row puts the focus on the page reached"
+   }
+  },
+  {
+   "item": 286,
+   "act": "A press on a right-rail row that moves in place puts the focus on the page reached, so Space rings nothing; Return on it keeps the keys on the row",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "const RAILS = '#rail, #things';",
+     "const RAILS = '#rail';"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on a right-rail row that moves in place puts the focus on the page reached"
+   }
   }
  ]
 }

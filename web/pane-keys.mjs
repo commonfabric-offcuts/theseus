@@ -15,6 +15,13 @@ export function writing(target) {
   return Boolean(target?.closest?.(WRITING));
 }
 
+// Whether the focus is on the page itself, where the keys are the page's:
+// nothing, the page (main), or its heading, where a move in place puts the
+// focus as a load leaves it on the page (in-place-navigation.mjs).
+export function pageItself(at, doc) {
+  return !at || at === doc.body || at.id === 'main' || Boolean(at.matches?.('#main h1'));
+}
+
 // What a key press means, or null when it means nothing here: 'up', 'down',
 // 'first', 'last', 'left', 'right' (plain), 'open' and 'fold' (⌘→ ⌘←),
 // 'open-all' and 'fold-all' (⇧⌘→ ⇧⌘←), 'move-up' and 'move-down' (⌘↑ ⌘↓),

@@ -109,6 +109,13 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   place the outline keeps its place and the messages' is the new page's.
   Escape in the Reader gives the focus back to the message, so the arrows
   work again.
+- **Where a move leaves the focus.** Return on a row keeps the keys on that
+  row, drawn again for the page reached. A press or a tap on a row in the
+  outline or the right rail, a link in a message, and back and forward land
+  as a load does: the focus is on the page reached, on its heading, which
+  wears no ring, so the next key (one that scrolls, say) rings nothing in the
+  rails. From there ↑ and ↓ light the messages and ← goes to the outline, as
+  on a fresh page.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
   line's start and end, ⌘↑ and ⌘↓ the writing's. The messages leave their ⌘
@@ -175,5 +182,8 @@ The keys across the panes are pressed by `tests/outcome_rail_native.mjs`
 (`native-rail`, `native-webkit-rail`): "rail the arrows move through the
 outline as a tree …", "rail ⇧⌘← and ⇧⌘→ fold and open every outcome …",
 "rail ⌘↑ ⌘↓ move an outcome, and a topic within its outcome, …" and "rail
-→ and ← move between the outline, the messages and the right rail, …". What
+→ and ← move between the outline, the messages and the right rail, …"; where
+a move leaves the focus: "rail a press on an outline row puts the focus on
+the page reached, …" and "rail a press on a right-rail row that moves in place
+puts the focus on the page reached, …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.

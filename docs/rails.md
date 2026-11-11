@@ -129,6 +129,17 @@ between two feed pages (topics and Conversations) goes like this:
    as a full load would: its live feed, its read tracking and its New line are
    a new page's.
 
+Where the focus goes follows how the move began. Return on a row of the
+outline or the right rail keeps the keys in that rail, on the row drawn for
+the place reached. Any other move (a press or a tap on a row, a link in the
+page, back or forward) lands as a load does: as the move begins, the rail
+lets go of the focus, and once the run is up it is on the page's heading
+(`#main h1`, focused with no ring), unless the page has put it somewhere
+itself, such as the Reader on a message's link. Otherwise the row pressed
+would keep the focus, and the next key, even one that scrolls, would ring
+it. The shell tells the two apart by the last thing the person did, a press
+or a key, and by whether the focus was in a rail.
+
 ### What a move ends, and what it leaves
 
 A run is `app.mjs` alone. Every other module is loaded once for the whole

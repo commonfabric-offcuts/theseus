@@ -17,6 +17,7 @@
 // the cards themselves (buttons, folded into quiet lines between others) keep
 // their shape. The bar never covers the reply arrow beside a card's time.
 import { cardIn } from './fold.mjs';
+import { pageItself } from './pane-keys.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf } from './reply-stacks.mjs';
 
@@ -192,7 +193,7 @@ export class MessageMenu {
     // The bar's own buttons, and every control in the list but a card itself (a
     // folded line, a link in the words, a reaction, the reply arrow, a stack's
     // line), answer Return themselves.
-    const inList = at && this.host.contains(at), onPage = !at || at === this.doc.body || at.id === 'main' || inList;
+    const inList = at && this.host.contains(at), onPage = pageItself(at, this.doc) || inList;
     const entry = inList && this.entryOf(at);
     if (!onPage || inList && event.key === 'Enter' && !(entry && at === cardIn(entry))) return;
     if (event.key === 'Enter') {
