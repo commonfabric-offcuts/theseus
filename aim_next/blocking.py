@@ -36,6 +36,10 @@ BLOCKS_SCHEMA = [
 BLOCKS_DOWN = ("DROP TABLE message_blocks",)
 BLOCKS_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_blocks)"
 
+# A topic waits on someone from an ask, and counts (it is not archived for them): the first thing _ask_waits asks,
+# and the only thing a reader of blocking asks may narrow by before asking _ask_waits, so the two never differ.
+WAITS_FROM_AN_ASK = "topic_waiting.ask_message_id IS NOT NULL AND topic_waiting.archived=0"
+
 KINDS = ("piece", "release")
 # How long the Held line's words may be: the ask's first line, cut.
 LINE_CHARS = 160
@@ -101,7 +105,7 @@ class Blocking:
         needs waits (outcome_asks.held_ask), one a settled record answered does not, and otherwise it waits
         until member writes there on the record or gives it a 👍 that answered it (their thumb row)."""
         if (message["intent"] != "ask" or member == message["author_id"] or member not in json.loads(message["addressees"])
-                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL AND archived=0",
+                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND " + WAITS_FROM_AN_ASK,
                               (topic["id"], member)).fetchone() is None):
             return False
         if is_conversation(topic):
@@ -125,15 +129,16 @@ class Blocking:
 
     def _blocking_on(self, db, actor, workspace_id=None):
         """The blocking asks that still wait on this reader, in unarchived topics: each release's first, then each
-        piece's, newest first within each. Read from the reader's own waits (an ask waits only where its topic does,
-        and no sooner than the oldest ask that wait holds), so the cost follows what waits on the reader."""
+        piece's, newest first within each. Every blocking ask in a topic whose wait on the reader is from an ask is
+        read, by the same words _ask_waits asks first (WAITS_FROM_AN_ASK), and _ask_waits alone decides: which ask
+        that wait points at says nothing about the others (outcome_asks.release_held moves it on to a newer held ask
+        while older asks still wait), so no reader narrows by it."""
         rows = db.execute(
             "SELECT b.kind,b.ref,m.*,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.kind AS topic_kind,t.workspace_id,"
             "substr(CAST(w.title AS BLOB),1,1025) AS workspace_title_prefix "
-            "FROM topic_waiting q INDEXED BY reader_waiting CROSS JOIN messages a ON a.id=q.ask_message_id "
-            "CROSS JOIN message_blocks b INDEXED BY topic_blocks ON b.topic_id=q.topic_id AND b.seq>=a.seq "
-            "CROSS JOIN messages m ON m.id=b.message_id CROSS JOIN topics t ON t.id=q.topic_id JOIN workspaces w ON w.id=t.workspace_id "
-            "WHERE q.actor_id=? AND q.archived=0" + (" AND b.workspace_id=?" if workspace_id is not None else ""),
+            "FROM topic_waiting INDEXED BY reader_waiting CROSS JOIN message_blocks b INDEXED BY topic_blocks ON b.topic_id=topic_waiting.topic_id "
+            "CROSS JOIN messages m ON m.id=b.message_id CROSS JOIN topics t ON t.id=b.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+            "WHERE topic_waiting.actor_id=? AND " + WAITS_FROM_AN_ASK + (" AND b.workspace_id=?" if workspace_id is not None else ""),
             (actor,) + ((workspace_id,) if workspace_id is not None else ())).fetchall()
         found = []
         for row in rows:

@@ -18,6 +18,7 @@ from unittest import mock
 from aim_next.blocking import first_line
 import test_pipeline_stages
 import test_pipeline_steering
+import test_targets
 
 
 class BlockingCase(test_pipeline_steering.PipelineCase):
@@ -26,6 +27,7 @@ class BlockingCase(test_pipeline_steering.PipelineCase):
     start, topic = test_pipeline_stages.StagesCase.start, test_pipeline_stages.StagesCase.topic
     release_stages, combine = test_pipeline_stages.StagesCase.release_stages, test_pipeline_stages.StagesCase.combine
     CHECKS = test_pipeline_stages.StagesCase.CHECKS
+    propose, revision, checks_view = test_targets.TargetCase.propose, test_targets.TargetCase.revision, test_targets.TargetCase.checks_view
 
     def setUp(self):
         super().setUp()
@@ -86,6 +88,15 @@ class BlockingCase(test_pipeline_steering.PipelineCase):
         self.assertNotIn("blocking", light["lead"])
         self.assertNotIn("blocking", self.row_light()["short"] or {})
         self.assertEqual(self.held(piece), [], "the pipeline's row holds nothing")
+
+    def agree(self, piece, held, actor="owner"):
+        """Waiting on you, the light (the outcome's and its row on the home) and the pipeline's row all say the same: held
+        are the asks that hold piece and wait on actor, and nothing else holds anything for them."""
+        self.assertEqual([message for message, _ in self.blocking(actor)], held, "Waiting on you")
+        light = self.light(actor)
+        for short in (light["light"]["short"] or {}, light["lead"], self.row_light(actor)["short"] or {}):
+            self.assertEqual(short.get("blocking"), "piece" if held else None, "the light")
+        self.assertEqual([message for message, waiting, _ in self.held(piece, actor) if actor in waiting], held, "the pipeline's row")
 
 
 class RecordingCase(BlockingCase):
@@ -294,6 +305,26 @@ class ClearingCase(BlockingCase):
         self.assertEqual(self.held(self.piece), [(held, ["other-reader"], "Please both look.")])
         self.assertEqual(self.blocking(), [])
         self.assertEqual([message for message, _ in self.blocking("other-reader")], [held])
+
+    def test_it_holds_everywhere_while_the_wait_moves_on_to_a_newer_wording_the_owner_is_asked_about(self):
+        # A newer held ask (a target wording proposed to the owner, D8) can take over the topic's wait from an older one
+        # while the blocking ask between them is still unanswered; that ask still holds the piece in all three places.
+        self.committed(self.propose("First words."))
+        self.committed(self.propose("Other words.", ask={"topic_id": "t1", "body": "Use these words?"}))
+        held = self.asked("Please restart fseventsd.", blocks={"kind": "piece", "ref": self.piece})
+        self.agree(self.piece, [held])
+        newer = self.committed(self.propose("Third words.", ask={"topic_id": "t1", "body": "Or these?"}))["ask_message_id"]
+        self.assertEqual(self.sql("SELECT ask_message_id FROM topic_waiting WHERE topic_id='t1' AND actor_id='owner'"), [(newer,)],
+                         "the wait moved on to the newer wording's ask")
+        self.agree(self.piece, [held])
+        # Answering it clears it everywhere; the wording still waits on the owner, holding nothing.
+        self.thumb(held)
+        self.agree(self.piece, [])
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 1)
+        self.thumb(held, on=False)
+        self.agree(self.piece, [held])
+        self.post("Restarted.", actor="owner")
+        self.agree(self.piece, [])
 
 
 class FirstLineCase(unittest.TestCase):

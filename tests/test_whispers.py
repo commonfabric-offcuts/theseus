@@ -583,7 +583,7 @@ MESSAGE_READS = {
                               "for a thumb that answers an ask (item 239): the asked person's replies and writing on the record (private_to IS NULL), "
                               "their next ask, and the asks topic_waiting and held_ask name, which a whisper never is", 8),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
-    "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 4),
+    "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE", 1),
     "aim_next/topic_state.py": ("asks, an ask an open record still holds, the conversation asks to someone who can no longer read it, "
