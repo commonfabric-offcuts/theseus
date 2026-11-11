@@ -237,9 +237,15 @@ handshake settles that claim `unavailable`, and Core's backoff spaces the next.
 `initialize` (client `theseus_host`, `experimentalApi`, the delta
 notifications opted out), then `initialized`, then `account/read
 {"refreshToken": false}`. The child is used only if the first token of
-`userAgent` is `theseus_host/0.163.0-alpha.10.2` and `codexHome` resolves to
-the pinned home (else `incompatible`), and only if `requiresOpenaiAuth` is
-false or `account` is present (else `auth_missing`). A refused child's input is
+`userAgent` is `theseus_host/0.167.0-alpha.3.2` (the broker's reviewed
+version, docs/codex-broker.md) and `codexHome` resolves to the pinned home,
+and only if `requiresOpenaiAuth` is false or `account` is present (else
+`auth_missing`). The refusal names why, as the broker's does:
+`codex_version:<found>:<reviewed>` for another Codex version, `codex_home`
+for another home, `codex_protocol` for a shape it does not accept, and
+`incompatible` for an error answer to `initialize`. That code is the child's
+state, its `child_refused` reason, and the reason every claim on its home
+settles with, so Health names both versions rather than asking about the app. A refused child's input is
 closed; every claim on its home settles `unavailable` until it exits and a
 later claim spawns a new one.
 

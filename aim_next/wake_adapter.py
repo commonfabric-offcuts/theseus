@@ -6,6 +6,7 @@ import errno
 import json
 import os
 from pathlib import Path
+import re
 import select
 import signal
 import stat
@@ -44,6 +45,69 @@ class PreparedRoute:
 # A broker's exit when the notice it would add is already waiting unread in
 # the agent's chat: nothing new reached the agent, so it is not an unanswered wake.
 QUEUED_EXIT = 10
+
+# A broker that refuses may say why: its whole standard output is one line,
+# {"refused": CODE, ...}, at most REFUSAL_BYTES. CODE is a fixed code, and a
+# Codex version refusal carries the version found and the version reviewed
+# ("codex_version:0.167.0-alpha.3.2:0.163.0-alpha.10.2"). Fields it does not
+# know are ignored; any other output, or none (an older broker), is the
+# anonymous "broker_exit" as before (docs/codex-broker.md).
+REFUSAL_BYTES = 1024
+REFUSAL = re.compile(r"(?:codex|broker)_[a-z_]{1,24}(?::[0-9A-Za-z][0-9A-Za-z.+-]{0,39}:[0-9A-Za-z][0-9A-Za-z.+-]{0,39})?")
+# Output is read as it comes, so a broker never blocks on a full pipe; past
+# REFUSAL_BYTES it is no refusal line and the rest is discarded unread.
+_OUTPUT_BLOCK = 65536
+
+
+def refusal_reason(output):
+    """The reason in a broker's standard output, or None when it is not exactly one refusal line."""
+    if not isinstance(output, (bytes, bytearray)) or len(output) > REFUSAL_BYTES or output.count(b"\n") != 1 \
+            or not output.endswith(b"\n"):
+        return None
+    try:
+        value = json.loads(bytes(output).decode("utf-8"), object_pairs_hook=_unique, parse_constant=_constant)
+    except (RouteUnavailable, ValueError, UnicodeError, RecursionError):
+        return None
+    reason = value.get("refused") if isinstance(value, dict) else None
+    return reason if isinstance(reason, str) and REFUSAL.fullmatch(reason) else None
+
+
+class _Output:
+    """A broker's standard output, read without blocking, keeping only what could be a refusal line."""
+
+    def __init__(self, fd):
+        self.fd = fd
+        self.kept = bytearray()
+        self.over = False
+        self.ended = False
+
+    def drain(self, limit=None):
+        """Read what is there now (at most limit blocks); True once the output has ended.
+
+        A read that fails is no refusal line and ends the reading: what the
+        broker printed never decides more than its reason."""
+        count = 0
+        while not self.ended and (limit is None or count < limit):
+            try:
+                block = os.read(self.fd, _OUTPUT_BLOCK)
+            except (BlockingIOError, InterruptedError):
+                return False
+            except OSError:
+                self.over = self.ended = True
+                break
+            count += 1
+            if not block:
+                self.ended = True
+                break
+            if not self.over:
+                self.kept.extend(block)
+                if len(self.kept) > REFUSAL_BYTES:
+                    self.over = True
+                    self.kept.clear()
+        return self.ended
+
+    def reason(self):
+        return None if self.over else refusal_reason(self.kept)
 
 
 @dataclass(frozen=True)
@@ -360,7 +424,7 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
     except (OSError, AttributeError, ValueError):
         return RouteResult("unavailable", None, "invocation_unavailable")
 
-    child = queue = None
+    child = queue = output = None
     fault = None
     timed_out = False
     unavailable = False
@@ -407,8 +471,10 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
                 installed.append(number)
         child = subprocess.Popen(prepared.argv, executable=prepared.executable,
             shell=False, start_new_session=True, pass_fds=pass_fds, env=environment,
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         child.aim_started_at = started_at
+        os.set_blocking(child.stdout.fileno(), False)
+        output = _Output(child.stdout.fileno())
         # Deliver only after ownership and restoration, within the managed try.
         drain_signals()
         registered = record_child(child.pid, started_at)
@@ -418,6 +484,9 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
             raise AdapterFault("child_registration_failed")
         queue = select.kqueue()
         exited = _watch_exit(queue, child, bound)
+        # Its output wakes the loop as it comes, so the broker never blocks writing it.
+        queue.control([select.kevent(output.fd, filter=select.KQ_FILTER_READ,
+                                     flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE)], 0, 0)
         os.set_blocking(child.stdin.fileno(), False)
         pending = memoryview(prepared.stdin)
         while not exited:
@@ -437,11 +506,17 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
                     pending = pending[len(pending):]
             if not pending and not child.stdin.closed:
                 child.stdin.close()
-            events = queue.control(None, 1, min(left, 0.025))
+            events = queue.control(None, 2, min(left, 0.025))
             for event in events:
                 if event.flags & select.KQ_EV_ERROR:
                     raise AdapterFault("exit_observation_failed")
-                if event.ident == child.pid and event.fflags & select.KQ_NOTE_EXIT:
+                if event.filter == select.KQ_FILTER_READ:
+                    if output.drain():
+                        # Ended: a read filter at end of file would fire on every wait.
+                        queue.control([select.kevent(output.fd, filter=select.KQ_FILTER_READ,
+                                                     flags=select.KQ_EV_DELETE)], 0, 0)
+                    continue
+                elif event.ident == child.pid and event.fflags & select.KQ_NOTE_EXIT:
                     exited = True
     except BaseException as error:
         if child is None:
@@ -471,6 +546,15 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
     except BaseException as error:
         _UNCONFIRMED_CHILDREN.append(child)
         raise AdapterFault("cleanup_unconfirmed", child=(child.pid, started_at)) from error
+    finally:
+        # Its group is gone (or never confirmed so): read what it left, without
+        # waiting on any writer outside the group, then close the pipe.
+        if output is not None:
+            output.drain(limit=64)
+        try:
+            child.stdout.close()
+        except OSError:
+            pass
     if fault is not None:
         raise fault from None
     if timed_out:
@@ -483,7 +567,7 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
         return RouteResult("queued", QUEUED_EXIT, "already_queued")
     if exit_code == 75:
         return RouteResult("busy", 75, "busy")
-    return RouteResult("error", exit_code, "broker_exit")
+    return RouteResult("error", exit_code, output.reason() or "broker_exit")
 
 
 def _identity(value):
