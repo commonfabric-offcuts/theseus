@@ -436,7 +436,7 @@ Views:
   being put together ([the release](#the-release)), what waits on the reader, the pieces in Now and the
   table of typical stage times. Section `shipped` gives groups, newest first.
   Each piece in Now, and the release being put together, carries `held`: the
-  asks that hold it until they are answered, oldest first, `[{message_id,
+  asks that hold it until they are answered, newest first, `[{message_id,
   topic_id, by, since_ms, waiting_on, line}]`
   ([attention.md](attention.md#an-ask-that-holds-work)). Its row on the page
   then says "Held: waiting on you — Please restart fseventsd." above its

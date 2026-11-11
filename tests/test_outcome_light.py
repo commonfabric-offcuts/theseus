@@ -84,6 +84,13 @@ class LightRulesCase(unittest.TestCase):
         answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, [release] + holds)
         self.assertEqual(light(answer)[1]["blocking"], "release")
         self.assertEqual([fact["topic_id"] for fact in answer["facts"]], ["t-header", "t-notes"])
+        # The facts follow the blocking asks' order, not the asks': here the release is held by the older question.
+        on_notes = {"topic_id": "t-notes", "blocks": {"kind": "release", "release": 44}}
+        on_header = {"topic_id": "t-header", "blocks": {"kind": "piece", "piece_id": "p-1", "items": [69]}}
+        answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, [on_notes, on_header])
+        self.assertEqual(answer["lead"]["blocking"], "release")
+        self.assertEqual([(fact["topic_id"], fact["blocking"]) for fact in answer["facts"]],
+                         [("t-notes", on_notes["blocks"]), ("t-header", on_header["blocks"])])
         # Its neighbour: nothing held, newest first and no blocking anywhere.
         plain = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED)
         self.assertEqual((light(plain)[1], plain["lead"]), ({"kind": "asks", "count": 2}, {"kind": "asks", "count": 2}))

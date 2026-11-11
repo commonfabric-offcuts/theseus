@@ -202,15 +202,18 @@ Archiving the topic answers nothing, but an archived topic counts nowhere
 places, and unarchiving it puts them back.
 
 - `attention` adds `blocking`: the reader's blocking asks that still wait on
-  them, in unarchived topics, each a release's first and then newest first,
+  them, in unarchived topics, in the one order every list of blocking asks
+  keeps (a release's first, then a piece's, newest first within each),
   at most 5, each `{message_id, topic_id, title, workspace, by, since_ms,
   line, blocks}`, `blocks` being `{kind: "release", release: N}` or `{kind:
   "piece", piece_id, items}` and `line` the ask's first line.
 - The outcome light's `short` and `lead` keep kind `asks` and add `blocking`
-  (`"release"` or `"piece"`), and its facts list the blocking topics' asks
-  first ([outcome-light.md](outcome-light.md)).
+  (`"release"` or `"piece"`, what the first of `blocking` holds), and its
+  facts list the blocking topics' asks first, in that same order, so the
+  card's first question is the one the lead names
+  ([outcome-light.md](outcome-light.md)).
 - Each open piece in `pipeline` carries `held`: `[{message_id, topic_id, by,
-  since_ms, waiting_on, line}]`, oldest first, `waiting_on` being whoever has
+  since_ms, waiting_on, line}]`, newest first (the same order), `waiting_on` being whoever has
   not answered yet ([pipeline.md](pipeline.md)).
 
 On the Outcomes home, "Waiting on you" lists each blocking ask above every

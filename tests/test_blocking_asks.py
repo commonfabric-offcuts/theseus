@@ -12,6 +12,7 @@ when the ask does: a reply in the topic or a 👍 that answers it.
 """
 
 import sqlite3
+import time
 import unittest
 from unittest import mock
 
@@ -44,6 +45,17 @@ class BlockingCase(test_pipeline_steering.PipelineCase):
 
     def asked(self, *args, **kwargs):
         return self.committed(self.ask(*args, **kwargs))["message_id"]
+
+    def one_second_apart(self):
+        """From here each message is sent a second after the one before, so which ask is newer is exact."""
+        clock = [int(time.time() * 1000)]
+
+        def tick():
+            clock[0] += 1000
+            return clock[0]
+        patch = mock.patch("aim_next.conversation._now_ms", side_effect=tick)
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def thumb(self, message, on=True, actor="owner"):
         revision = self.store.view(actor, "reactions", {"message_id": message})["reactions"]["thumb_revision"]
@@ -142,6 +154,49 @@ class RecordingCase(BlockingCase):
         self.assertEqual(self.held(release["piece_id"]), [(on_release, ["owner"], "Restart fseventsd, please")])
         self.assertEqual(self.held(second), [(on_piece, ["owner"], "May I rebase it?")])
         self.assertEqual(self.now()["facts"]["next_release"]["release"], 23)
+
+    def test_a_release_ask_asked_before_a_piece_ask_is_first_everywhere_and_the_card_lists_its_question_first(self):
+        # Release first and newest first disagree here: the release's ask is the older one. The card's lead says
+        # "Work can't go on until you answer the first (blocking a release)", so its first question is the release's.
+        self.one_second_apart()
+        self.release_stages(*test_pipeline_stages.STAGES[:3], self.CHECKS)
+        self.topic("t2")
+        first = self.committed(self.start(stage="wait"))["piece_id"]
+        second = self.committed(self.start(numbers=(3,), topic="t2", stage="wait"))["piece_id"]
+        self.assertEqual(self.committed(self.combine([first]))["release_number"], 23)
+        on_release = self.asked("Restart fseventsd, please", blocks={"kind": "release", "ref": 23})
+        on_piece = self.asked("May I rebase it?", blocks={"kind": "piece", "ref": second}, topic="t2")
+        release_blocks, piece_blocks = {"kind": "release", "release": 23}, {"kind": "piece", "piece_id": second, "items": [3]}
+        self.assertEqual(self.blocking(), [(on_release, release_blocks), (on_piece, piece_blocks)], "Waiting on you")
+        light = self.light()
+        self.assertEqual(light["lead"], {"kind": "asks", "count": 2, "blocking": "release"})
+        self.assertEqual(light["light"]["short"], {"kind": "asks", "count": 2, "blocking": "release"})
+        self.assertEqual([(fact["topic_id"], fact.get("blocking")) for fact in light["facts"]],
+                         [("t1", release_blocks), ("t2", piece_blocks)], "the card")
+        self.assertEqual(self.row_light()["short"]["blocking"], "release")
+
+    def test_blocking_asks_are_listed_a_releases_first_then_a_pieces_newest_first_within_each_in_every_reader(self):
+        # Four asks, each kind asked twice and the kinds interleaved, so neither newest first nor oldest first within
+        # a kind agrees with the one order: release before piece, newest first within each.
+        self.one_second_apart()
+        self.release_stages(*test_pipeline_stages.STAGES[:3], self.CHECKS)
+        for topic in ("t2", "t3", "t4"):
+            self.topic(topic)
+        first = self.committed(self.start(stage="wait"))["piece_id"]
+        second = self.committed(self.start(numbers=(3,), topic="t2", stage="wait"))["piece_id"]
+        release = self.committed(self.combine([first]))
+        old_release = self.asked("Restart fseventsd, please", blocks={"kind": "release", "ref": 23})
+        old_piece = self.asked("May I rebase it?", blocks={"kind": "piece", "ref": second}, topic="t2")
+        new_release = self.asked("May release 23 ship tonight?", blocks={"kind": "release", "ref": 23}, topic="t3")
+        new_piece = self.asked("May I squash it?", blocks={"kind": "piece", "ref": second}, topic="t4")
+        order = [new_release, old_release, new_piece, old_piece]
+        self.assertEqual([message for message, _ in self.blocking()], order, "Waiting on you")
+        light = self.light()
+        self.assertEqual(light["lead"]["blocking"], "release")
+        self.assertEqual([fact["topic_id"] for fact in light["facts"]], ["t3", "t1", "t4", "t2"], "the card, in the same order")
+        # The pipeline's Held lines, one piece or release each, in the same order.
+        self.assertEqual([message for message, _, _ in self.held(release["piece_id"])], [new_release, old_release], "the release's row")
+        self.assertEqual([message for message, _, _ in self.held(second)], [new_piece, old_piece], "the piece's row")
 
     def test_the_lights_card_lists_the_blocking_question_first_however_new_the_others(self):
         # The card's lead says "Work can't go on until you answer the first", so the first must be the one that holds work.

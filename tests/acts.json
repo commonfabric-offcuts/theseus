@@ -2649,6 +2649,48 @@
    "check": {
     "node": "tests/ui_topic_state.test.mjs"
    }
+  },
+  {
+   "item": 259,
+   "act": "The light's card lists the blocking questions in Waiting on you's order, so its first is the one whose kind the lead names",
+   "break": [
+    [
+     "aim_next/outcome_rules.py",
+     "[dict(by_topic[topic], blocking=blocks) for topic, blocks in held.items() if topic in by_topic]",
+     "[dict(fact, blocking=held[fact[\"topic_id\"]]) for fact in facts if fact[\"topic_id\"] in held]"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Blocking asks are listed a release's first, then a piece's, though the release's ask is the older",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "return (kind != \"release\", -(row[\"sent_ms\"] or 0), row[\"id\"])",
+     "return (-(row[\"sent_ms\"] or 0), row[\"id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Blocking asks of one kind are listed newest first, in Waiting on you, on the light's card and on a piece's Held lines",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "return (kind != \"release\", -(row[\"sent_ms\"] or 0), row[\"id\"])",
+     "return (kind != \"release\", (row[\"sent_ms\"] or 0), row[\"id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
   }
  ]
 }

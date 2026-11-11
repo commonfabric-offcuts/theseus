@@ -1653,3 +1653,20 @@ test('an ask that holds a release or a piece is listed first, labelled with what
   assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text), ['Speaker notes, in Building Theseus — fable asked at 6:20 AM']);
   assert.equal(host.all().some(node => node.classes?.has?.('blocking-label') || node.className === 'blocking-label'), false);
 });
+
+test('Waiting on you lists the blocking asks in the order Core gives them, though the release is the older (item 259)', t => {
+  // Core's one order (a release's first, newest first within each) disagrees here with newest first and with oldest first.
+  dom(t);
+  const host = new Element('section'), outcome = { id: 'w1', title: 'Building Theseus', title_truncated: false };
+  const at = minute => new Date(2026, 10, 6, 6, minute).getTime();
+  const ask = (message, topic, minute, blocks) => ({ message_id: message, topic_id: topic, title: topic, title_truncated: false, workspace: outcome, by: 'fable',
+    since_ms: at(minute), line: 'Please', blocks });
+  paintWaiting(host, { waiting_on_me: 3, latest_waiting: [], blocking: [
+    ask('m1', 'Deploy', 10, { kind: 'release', release: 44 }),
+    ask('m3', 'Squash', 40, { kind: 'piece', piece_id: 'p-1', items: [259] }),
+    ask('m2', 'Rebase', 20, { kind: 'piece', piece_id: 'p-1', items: [259] })] }, () => {});
+  assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text), [
+    'Blocking a release (release 44): Deploy, in Building Theseus — fable asked at 6:10 AM',
+    'Blocking a piece (item 259): Squash, in Building Theseus — fable asked at 6:40 AM',
+    'Blocking a piece (item 259): Rebase, in Building Theseus — fable asked at 6:20 AM']);
+});

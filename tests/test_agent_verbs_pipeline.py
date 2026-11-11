@@ -145,6 +145,26 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertNotIn("held:", self.ok("pipeline", "w1", "--section", "now"))
         self.assertEqual(self.ok("outcomes", actor="owner"), line % "waiting on you · 1 question")
 
+    def test_the_listing_prints_the_asks_that_hold_a_piece_newest_first(self):
+        # Item 259: the one order every reader of blocking asks keeps; the clock moves on by hand, so newer is exact.
+        clock = [1_800_000_000_000]
+        patch = mock.patch("aim_next.conversation._now_ms", side_effect=lambda: clock[0])
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.ok("pipeline-on", "w1")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}]))
+        self.ok("stages", "w1", "--set", str(stages))
+        self.ok("add", "w1", "--title", "Build me", "--section", "now", "--size", "medium", "--note", "n", "-")
+        piece = self.ok("piece", "w1", "1", "--topic", "t1", "--stage", "build").split()[2]
+        messages = []
+        for words in ("Please restart fseventsd.", "May I rebase it?"):
+            clock[0] += 1000
+            messages.append(self.ok("post", "t1", "--asks", "owner", "--blocks", "piece:" + piece, words).split()[1])
+        held = [line for line in self.ok("pipeline", "w1", "--section", "now").splitlines() if line.startswith("     held:")]
+        self.assertEqual(held, ["     held: waiting on owner — May I rebase it? (%s)" % messages[1],
+                                "     held: waiting on owner — Please restart fseventsd. (%s)" % messages[0]])
+
     def test_stages_and_a_piece_of_work_move_along_from_the_command_line(self):
         self.ok("pipeline-on", "w1")
         stages = Path(self.temp.name) / "stages.json"

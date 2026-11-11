@@ -52,6 +52,13 @@ def first_line(body):
     return line if len(line) <= LINE_CHARS else line[:LINE_CHARS - 1].rstrip() + "…"
 
 
+def order(kind, row):
+    """The one order of blocking asks, wherever they are listed (Waiting on you, the light's card, a piece's Held
+    lines, and so the CLI and the pages that keep the order they are given): a release's asks before a piece's,
+    newest first within each. row is the ask's message row (sent_ms, id)."""
+    return (kind != "release", -(row["sent_ms"] or 0), row["id"])
+
+
 def _shape(blocks):
     """(kind, ref) from a post's `blocks`, refused when it is not one piece or one release."""
     if not isinstance(blocks, dict) or set(blocks) != {"kind", "ref"} or blocks["kind"] not in KINDS:
@@ -128,11 +135,12 @@ class Blocking:
         return {"kind": "piece", "piece_id": ref, "items": items}
 
     def _blocking_on(self, db, actor, workspace_id=None):
-        """The blocking asks that still wait on this reader, in unarchived topics: each release's first, then each
-        piece's, newest first within each. Every blocking ask in a topic whose wait on the reader is from an ask is
-        read, by the same words _ask_waits asks first (WAITS_FROM_AN_ASK), and _ask_waits alone decides: which ask
-        that wait points at says nothing about the others (outcome_asks.release_held moves it on to a newer held ask
-        while older asks still wait), so no reader narrows by it."""
+        """The blocking asks that still wait on this reader, in unarchived topics, in the one order (order): each
+        release's first, then each piece's, newest first within each. Every blocking ask in a topic whose wait on
+        the reader is from an ask is read, by the same words _ask_waits asks first (WAITS_FROM_AN_ASK), and
+        _ask_waits alone decides: which ask that wait points at says nothing about the others
+        (outcome_asks.release_held moves it on to a newer held ask while older asks still wait), so no reader
+        narrows by it."""
         rows = db.execute(
             "SELECT b.kind,b.ref,m.*,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.kind AS topic_kind,t.workspace_id,"
             "substr(CAST(w.title AS BLOB),1,1025) AS workspace_title_prefix "
@@ -141,7 +149,7 @@ class Blocking:
             "WHERE topic_waiting.actor_id=? AND " + WAITS_FROM_AN_ASK + (" AND b.workspace_id=?" if workspace_id is not None else ""),
             (actor,) + ((workspace_id,) if workspace_id is not None else ())).fetchall()
         found = []
-        for row in rows:
+        for row in sorted(rows, key=lambda row: order(row["kind"], row)):
             topic = {"id": row["topic_id"], "kind": row["topic_kind"], "workspace_id": row["workspace_id"]}
             if not self._ask_waits(db, topic, row, actor):
                 continue
@@ -151,16 +159,16 @@ class Blocking:
                           "workspace": {"id": row["workspace_id"], "title": outcome, "title_truncated": outcome_truncated},
                           "by": row["author_id"], "since_ms": row["sent_ms"], "line": first_line(row["body"]),
                           "blocks": self._blocked_words(db, row["kind"], row["ref"])})
-        found.sort(key=lambda item: (item["blocks"]["kind"] != "release", -(item["since_ms"] or 0), item["message_id"]))
         return found
 
     def _held(self, db, workspace_id, kind, ref):
-        """The asks that hold one piece or release and still wait on someone, oldest first: {message_id, topic_id, by,
-        since_ms, waiting_on, line}, waiting_on in the order the ask named them."""
+        """The asks that hold one piece or release and still wait on someone, in the one order (newest first): {message_id,
+        topic_id, by, since_ms, waiting_on, line}, waiting_on in the order the ask named them."""
         held = []
-        for row in db.execute("SELECT m.*,t.kind AS topic_kind,t.workspace_id FROM message_blocks b INDEXED BY blocks_held "
-                              "CROSS JOIN messages m ON m.id=b.message_id CROSS JOIN topics t ON t.id=b.topic_id "
-                              "WHERE b.workspace_id=? AND b.kind=? AND b.ref=? ORDER BY b.seq", (workspace_id, kind, str(ref))):
+        rows = db.execute("SELECT m.*,t.kind AS topic_kind,t.workspace_id FROM message_blocks b INDEXED BY blocks_held "
+                          "CROSS JOIN messages m ON m.id=b.message_id CROSS JOIN topics t ON t.id=b.topic_id "
+                          "WHERE b.workspace_id=? AND b.kind=? AND b.ref=?", (workspace_id, kind, str(ref))).fetchall()
+        for row in sorted(rows, key=lambda row: order(kind, row)):
             topic = {"id": row["topic_id"], "kind": row["topic_kind"], "workspace_id": row["workspace_id"]}
             waiting = [member for member in json.loads(row["addressees"]) if self._ask_waits(db, topic, row, member)]
             if waiting:

@@ -74,9 +74,10 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, b
       open topics, or None (none seen, or the scan stopped on its cap).
     created: {by, ms | None}, who started the outcome and when.
     blocking: [{topic_id, blocks: {kind}, ...}] the asks among them that hold a
-      piece or a release and still wait on the reader, a release's first
-      (blocking.py). Waiting on you then says what it blocks, and its topics'
-      questions come first.
+      piece or a release and still wait on the reader, in the one order
+      (blocking.order: a release's first, newest first within each). Waiting
+      on you then says what the first blocks, and its topics' questions come
+      first, in that order.
     """
     reached = done_facts.get("reached")
     if reached:
@@ -102,11 +103,14 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, b
         facts = [dict(ask, kind="ask") for ask in asks]
         if blocking:
             # What it blocks rides on the same kind, so a page that knows no more says Waiting on you as before.
+            # Its topics' questions come first in blocking's own order (blocking.order), the one the lead names first,
+            # so "the first" on the card is the question whose kind the lead says; the rest stay newest first.
             short["blocking"] = blocking[0]["blocks"]["kind"]
+            by_topic = {fact["topic_id"]: fact for fact in facts}
             held = {}
             for ask in blocking:
                 held.setdefault(ask["topic_id"], ask["blocks"])
-            facts = ([dict(fact, blocking=held[fact["topic_id"]]) for fact in facts if fact["topic_id"] in held]
+            facts = ([dict(by_topic[topic], blocking=blocks) for topic, blocks in held.items() if topic in by_topic]
                      + [fact for fact in facts if fact["topic_id"] not in held])
         return {"light": _light("waiting", short), "lead": dict(short), "facts": facts, "also": also}
 
