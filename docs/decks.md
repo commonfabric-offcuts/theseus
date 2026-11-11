@@ -85,6 +85,17 @@ them, as in the composer (interaction.md), and on a Mac ⌃A and ⌃E go to the
 start and end of the line, and ⌃K, ⌃U and ⌃W delete to its end, back to its
 start and the word before the cursor.
 
+On a laptop a card being written stays where it showed: its box takes the
+card's own place and height, its words stay on the lines they showed on, a
+card with children keeps its chevron where it stood, and the cards around it
+do not move. The box grows only when what is written needs more room. The
+title takes the words' face while it is written, so it moves by the
+difference between the two faces' lines, and a title that wrapped beside the
+speech bubble may take a line fewer. Words that show as a list, a quote or
+paragraphs are written as their markdown, a blank line a whole line, so such
+a card can grow while it is written. The line of keys above the cards keeps
+the height of its longest form, so it moves nothing when it changes.
+
 Clearing all of a card's text removes the
 card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the
 person's own acts on this page, newest first, each as a new revision; it

@@ -451,4 +451,59 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('notebook a card keeps its height and its text stays where it stood between showing and being written', async () => {
+    const long = 'A title long enough to wrap beside its bubble while it shows, and fit one line in its box';
+    const id = 'notebook-cards-still', p = await cards(id, `## Plan\n\n## Notes\n\nDan reviews the slides.\nWarp signs off.\n\n### Steps\n\nOne, two.\n\n## Risks\n\nNone yet.\n\n## ${long}\n`);
+    // Where a card's title and the first line of its words stand, its chevron, its height and the top of the card
+    // after it: from the letters while it shows, from its box's lines while it is written.
+    const where = title => p.evaluate(`(()=>{const rows=[...document.querySelectorAll('#deck-page .deck-card')],box=document.querySelector('#deck-page .deck-writing textarea');
+      const row=box?box.closest('li'):rows.find(r=>r.querySelector('.deck-title')?.lastChild?.textContent===${JSON.stringify(title)}),next=rows[rows.indexOf(row)+1];
+      const letter=node=>{const range=document.createRange();range.setStart(node,0);range.setEnd(node,1);const r=range.getBoundingClientRect();return {left:r.left,middle:(r.top+r.bottom)/2};};
+      const fold=row.querySelector('.deck-fold')?.getBoundingClientRect(),r=row.getBoundingClientRect();let title,words=null,lines=null;
+      if(box){const s=getComputedStyle(box),b=box.getBoundingClientRect(),line=parseFloat(s.lineHeight),top=b.top+parseFloat(s.borderTopWidth)+parseFloat(s.paddingTop);
+        title={left:b.left+parseFloat(s.borderLeftWidth)+parseFloat(s.paddingLeft)+parseFloat(s.textIndent),middle:top+line/2};if(box.value.includes('\\n'))words=top+line*1.5;}
+      else{const h=row.querySelector('.deck-title');title=letter(h.lastChild);lines=Math.round(h.getBoundingClientRect().height/parseFloat(getComputedStyle(h).lineHeight));
+        const walk=document.createTreeWalker(row.querySelector('.deck-words'),NodeFilter.SHOW_TEXT);let node;while((node=walk.nextNode())&&!/\\S/.test(node.textContent));if(node)words=letter(node).middle;}
+      return {height:r.height,next:next?next.getBoundingClientRect().top:null,scroll:scrollY,left:title.left,words,title:title.middle,lines,fold:fold?[fold.left,fold.top]:null}})()`);
+    // The card keeps its height and the cards after it stay where they are, both laid out from the faces' line heights
+    // alone, and its words stay on their lines. The title takes the words' face while it is written, so it may move by
+    // the difference between the two faces' lines.
+    const near = (shown, written, by) => shown === written || Math.abs(shown - written) <= by;
+    const still = (shown, written, words) => {
+      for (const key of ['scroll', 'height', 'next']) assert.ok(near(shown[key], written[key], 0.1), `${words}: ${key} ${shown[key]} shown, ${written[key]} written`);
+      for (const key of ['left', 'words']) assert.ok(near(shown[key], written[key], 1), `${words}: ${key} ${shown[key]} shown, ${written[key]} written`);
+      assert.ok(near(shown.title, written.title, 6), `${words}: the title's line at ${shown.title} shown, ${written.title} written`);
+      assert.equal(Boolean(written.fold), Boolean(shown.fold), `${words}: the chevron ${shown.fold ? 'stays' : 'stays away'} while it is written`);
+      assert.ok(!shown.fold || shown.fold.every((at, i) => near(at, written.fold[i], 1)), `${words}: the chevron at ${shown.fold} shown, ${written.fold} written`);
+    };
+    for (const [title, words] of [['Plan', 'a card with a title alone'], ['Notes', 'a card with words and a child'], ['Steps', 'a child card'],
+      ['Risks', 'a card with a line of words'], [long, 'a card whose title wraps beside its bubble while it shows']]) {
+      const shown = await where(title);
+      if (title === long) assert.ok(shown.lines >= 2, `the long title takes ${shown.lines} lines while it shows`);
+      if (title === 'Notes') await shot(p, 'notebook-cards-shown');
+      await p.key('Enter', 4);
+      await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), `${title} opens for writing`);
+      if (title === 'Notes') await shot(p, 'notebook-cards-written');
+      still(shown, await where(title), words);
+      await p.key('Escape'); await p.key('ArrowDown');
+    }
+    // A press around the box, in the card's own margin, leaves the writing as it was.
+    for (let n = 0; n < 4; n++) await p.key('ArrowUp');
+    await p.key('Enter', 4);
+    await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), 'Plan opens for writing');
+    const plan = await where('Plan');
+    const margin = await p.evaluate("(()=>{const r=document.querySelector('#deck-page .deck-writing').getBoundingClientRect();return {x:r.left+40,y:r.top+4}})()");
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, ...margin, button: 'left', clickCount: 1 });
+    assert.ok(await p.evaluate("document.activeElement === document.querySelector('#deck-page .deck-writing textarea')"), 'a press in the card around its box leaves the box the focus');
+    // Words that need more room make the box taller, and only then.
+    await p.send('Input.insertText', { text: ' for the week' });
+    await until(() => p.evaluate("document.querySelector('#deck-page .deck-writing textarea').value === 'Plan for the week'"), 'the words go in where the cursor was');
+    assert.equal((await where('Plan')).height, plan.height, 'words that fit the line leave the card its height');
+    for (const line of ['One.', 'Two.', 'Three.']) { await p.key('Enter'); await p.send('Input.insertText', { text: line }); }
+    await until(async () => (await where('Plan')).height > plan.height + 60, 'three more lines make the box three lines taller');
+    await p.key('Escape');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

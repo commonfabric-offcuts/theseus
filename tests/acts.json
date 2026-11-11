@@ -2719,6 +2719,171 @@
     "native": "notebook",
     "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
    }
+  },
+  {
+   "item": 312,
+   "act": "a card being written keeps the height it showed at, unless what is written needs more",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      field.style.setProperty('--kept', `${Math.max(0, editing.height - around)}px`);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with a title alone is no taller while it is written than while it shows",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    field.rows = 1;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the text of a card being written starts where the card's text started, in its words' face",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-editor{min-height:var(--kept,0px);padding:0;border:0;",
+     ".deck-editor{min-height:var(--kept,0px);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with words keeps them on the lines they showed on while it is written",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-worded>.deck-editor{padding-top:calc(1.35rem + .3rem - .92rem * 1.55)}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with a title alone keeps its line where the title's line stood",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-writing:not(.deck-worded)>.deck-editor{margin:calc((1.35rem - .92rem * 1.55) / 2) 0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with children keeps its chevron where it showed while it is written",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (chevron) { chevron.append(this.foldButton(at)); holder.append(chevron); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the title of a card with children starts after its chevron while it is written, as when it shows",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-parent>.deck-editor{text-indent:1.3rem}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with children is as tall as its text, its chevron fitting the title line",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(min-width:761px){.deck-fold{min-height:0}",
+     "@media(min-width:761px){"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the cards stay where they are as the line of keys changes between showing and writing",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    this.keyLines.forEach((line, i) => { line.style.visibility = i === (asking ? 2 : editing ? 1 : 0) ? '' : 'hidden'; });\n",
+     "    this.keys.textContent = asking ? ASKING_KEYS : editing ? WRITING_KEYS : KEYS;\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the box takes a height of its own only when what is written needs more, never a pixel off its card",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (field.scrollHeight > field.clientHeight) field.style.height = ",
+     "    field.style.height = "
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a press in a card being written, around its box, leaves the writing as it was",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      holder.addEventListener('mousedown', event => { if (event.target === holder) event.preventDefault(); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
   }
  ]
 }
