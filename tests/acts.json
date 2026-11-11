@@ -4060,6 +4060,21 @@
     "native": "notebook",
     "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
    }
+  },
+  {
+   "item": 283,
+   "act": "A lit reply its stack folds away loses its light, so no bar is left lying over the stack's fold line",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    if (this.lit && !this.lit.getClientRects().length) { this.light(null); return; }\n",
+     "    if (this.lit && !this.lit.isConnected) { this.light(null); return; }\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a lit reply its stack folds away takes its light and its bar with it"
+   }
   }
  ]
 }

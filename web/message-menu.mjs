@@ -84,9 +84,10 @@ export class MessageMenu {
     this.sizes = new doc.defaultView.ResizeObserver(() => this.place());
     this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.bar);
     // A reply stack's head that comes to show only its row loses its bar, and
-    // gets it back once its full message shows again (tabOnly).
+    // gets it back once its full message shows again (tabOnly). A lit message
+    // its stack folds away loses its light, and its bar with it (place).
     new doc.defaultView.MutationObserver(() => { if (this.lit) this.paintBar(); })
-      .observe(host, { subtree: true, attributes: true, attributeFilter: ['data-head-open'] });
+      .observe(host, { subtree: true, attributes: true, attributeFilter: ['data-head-open', 'hidden'] });
   }
   buildBar() {
     const doc = this.doc, bar = doc.createElement('div');
@@ -165,9 +166,12 @@ export class MessageMenu {
   // the window, so it never crosses where the tab meets the stack; once the tab
   // has gone above the window it scrolls away with the card as any bar does.
   // Where the tab leaves no room above the reply arrow, it sits under the card
-  // rather than over its words and answers.
+  // rather than over its words and answers. A lit message no longer on show
+  // (gone from the page, or folded away in its stack) has no box to sit
+  // over: its light goes, so no bar is left over the stack's fold line.
   place() {
-    if (this.bar.hidden || !this.lit?.isConnected) { if (this.lit && !this.lit.isConnected) this.light(null); return; }
+    if (this.lit && !this.lit.getClientRects().length) { this.light(null); return; }
+    if (this.bar.hidden || !this.lit) return;
     const box = this.lit.getBoundingClientRect(), width = this.bar.offsetWidth, height = this.bar.offsetHeight;
     const view = this.doc.documentElement.clientWidth;
     const left = Math.max(8, Math.min(box.right - width - 12, view - width - 8));

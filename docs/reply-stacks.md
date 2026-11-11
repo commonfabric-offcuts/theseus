@@ -146,7 +146,8 @@ their acts.
   is in the window; where that leaves no room above a card's reply arrow, the
   bar sits under the card rather than over its words and answers. Once the
   row has gone above the window, the bar scrolls away with its card, as any
-  message's bar does.
+  message's bar does. A lit reply that its stack folds away loses its light
+  and its bar, so no bar is left over the stack's fold line.
 - **One New line.** It goes under the lowest stack that holds the line's
   message or anything newer that is not the reader's own (`lineUnder`). It is
   never inside a stack, and nothing new sits below it. While the line's
