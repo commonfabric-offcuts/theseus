@@ -16,7 +16,7 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { replyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
-import { cardClass, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
+import { cardClass, paintCardColor, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
 import { AgentColors } from '../web/colors.mjs';
 import { openColorPicker } from '../web/color-picker.mjs';
 import * as times from '../web/times.mjs';
@@ -175,7 +175,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
@@ -2818,12 +2818,14 @@ test('clicking an agent\'s name on its card opens its color picker, not the mess
   assert.equal(opened[0].back, card('m3'), 'closing it gives the focus to the card, which can hold it');
   assert.equal(opens(), before, 'the message was not opened');
   // Choosing goes to Core, and every card of that agent changes.
+  card('m1').classList.add('stack-head-card');
+  card('m1').classList.add('lit');
   f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return { status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'rose', color_revision: 1 } }; };
   assert.equal((await opened[0].choose('rose')).status, 'committed');
   const sent = f.calls.find(c => c.kind === 'color.set').envelope;
   assert.deepEqual([sent.target, sent.args, sent.expected.color_revision], [{ actor_id: 'fable' }, { color: 'rose' }, 0]);
   assert.deepEqual(['m1', 'm2', 'm3', 'm4'].map(id => card(id).className),
-    ['message-card agent-card agent-rose', 'message-card own-message', 'message-card agent-card agent-rose', 'message-card']);
+    ['message-card agent-card stack-head-card lit agent-rose', 'message-card own-message', 'message-card agent-card agent-rose', 'message-card']);
   // Your own name and a person's open no picker.
   for (const id of ['m2', 'm4']) await card(id).onclick({ target: name(id) });
   assert.equal(opened.length, 1, 'only an agent\'s name opens a picker');

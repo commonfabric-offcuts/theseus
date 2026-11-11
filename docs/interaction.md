@@ -18,7 +18,11 @@ the pointer's way, the keys' and the phone's.
   would, it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through
   its bar's buttons, ⋯ last, then on from the message (Shift-Tab from the
-  bar's first button comes back to it). A click on a lit message opens
+  bar's first button comes back to it). Moving the pointer off the messages
+  and their bar, or focusing another pane, clears the feed's light. Its last
+  message is still remembered for returning with the keys. A rail's old DOM
+  focus never draws a second ring while the pointer selects a message;
+  using the rail keys gives the light back to that rail. A click on a lit message opens
   it in the Reader. On a phone a tap lights a message and shows its bar, a
   second tap opens it, and a tap anywhere but a message, its bar or a pop-up lets the
   light go; scrolling keeps it. The bar stays inside the window while any of

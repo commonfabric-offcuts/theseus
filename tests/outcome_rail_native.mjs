@@ -1279,6 +1279,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowRight');
     const things = await keyedAt(p);
     assert.match(things, /^things:[a-z]+$/, '→ from the messages goes to the right rail, on a section: ' + things);
+    assert.equal(await p.evaluate("Boolean(document.querySelector('#messages .lit'))"), false, 'the rail owns the highlight; the feed remembers its place without a second light');
     const sections = await p.evaluate("[...document.querySelectorAll('#things .things-sec')].filter(d=>d.checkVisibility()).map(d=>d.dataset.key)");
     // ↓ to the next section's header, past what the first holds.
     const rows = await p.evaluate("[...document.querySelectorAll('#things [role=treeitem]')].filter(e=>e.checkVisibility()).length");
@@ -1297,6 +1298,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await keyedAt(p), lit, '← from the right rail comes back to the message last lit');
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'topic:t1', '← from the messages comes back to the topic in the outline');
+    assert.equal(await p.evaluate("Boolean(document.querySelector('#messages .lit'))"), false, 'the outline alone owns the highlight');
     // → from a topic not being read goes to the messages being read all the same, and ← comes back to the topic they are in.
     const start = await placeOf(p), topics = (await keyTree(p)).rows;
     for (let n = 0; n < topics.length && await keyedAt(p) !== 'topic:rail-kbd-p2'; ++n) await p.key(topics.indexOf('topic:rail-kbd-p2') > topics.indexOf('topic:t1') ? 'ArrowDown' : 'ArrowUp');

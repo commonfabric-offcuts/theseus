@@ -32,7 +32,7 @@ import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, opened } from './fold.mjs';
-import { cardClass, agentColor, paneClass } from './author-colors.mjs';
+import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
@@ -845,7 +845,7 @@ function goToMessage(id) {
 function paintAgentColors() {
   for (const entry of entries($('messages'))) {
     const card = cardIn(entry), item = views?.messages.get(card.dataset.id);
-    if (item) card.className = cardClass(item, bootstrap.actor, agentShown);
+    if (item) paintCardColor(card, item, bootstrap.actor, agentShown);
   }
   if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintTone(reader.source);
   participantsPanel?.paint();

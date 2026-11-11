@@ -101,7 +101,7 @@
 /* The stack owns the ring only on its compact header or its own controls.
    Selecting a message, in any stack, takes that ring away. */
 .reply-stack[data-head-open=false]:not(.only-new *):has(.stack-head-card.lit),
-#messages:not(:has(.lit)) .reply-stack:not(.only-new *):focus-within{
+#messages:not(:has(.lit)) .reply-stack:not(.only-new *):has(:is(.stack-toggle,.stack-rename-input,.stack-reply):focus){
   box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring),var(--stack-lift);
   --stack-tab-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring);
   --stack-tab-fillet:radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - 4.5px),

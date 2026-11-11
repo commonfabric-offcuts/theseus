@@ -52,6 +52,9 @@
 .ol-key{display:none;font-size:.78rem;margin:.8rem 0 0}
 /* The keys move through the outline and the right rail as trees (key-tree.mjs): the row the keys are on wears the ring. */
 [role=tree] [role=treeitem]:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+/* Pointer selection in the feed leaves the rail's DOM focus in place. It
+   must not draw a second selection; the next key restores the focused pane. */
+body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{outline:none}
 /* The keys, in plain words, under the outline (pane-keys.mjs). */
 .ol-keys{margin:.8rem 0 0;font-size:.78rem}
 .ol-keys>summary{cursor:pointer;width:fit-content;min-height:2.25rem;padding:.4rem 0}

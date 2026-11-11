@@ -26,6 +26,15 @@ export function cardClass(item, actor, color = agentColor) {
   return 'message-card' + whisper;
 }
 
+// Recolor an existing card without erasing the stack, selection or reading
+// classes owned by other painters. A refresh can happen while it is in use.
+const COLOR_CLASSES = ['message-card', 'own-message', 'agent-card', 'whisper', ...AGENT_PALETTE.map(name => 'agent-' + name)];
+export function paintCardColor(card, item, actor, color = agentColor) {
+  const next = cardClass(item, actor, color).split(' ');
+  for (const name of COLOR_CLASSES) if (!next.includes(name)) card.classList.remove(name);
+  for (const name of next) card.classList.add(name);
+}
+
 // The Reader's page for a source: an agent's message on its card's color
 // under the pointer, the card the person just pressed; the person's own
 // message, another person's and a Notebook page on the neutral page, never
