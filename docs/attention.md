@@ -197,6 +197,9 @@ from an ask (its `topic_waiting` row), and this ask is not answered, by their
 writing in the topic after it or their 👍 on it (in a conversation, its
 `conversation_waits` row). So a reply or a 👍 that clears the ask clears
 every place below in the same act, and taking the 👍 back puts them back.
+Archiving the topic answers nothing, but an archived topic counts nowhere
+(above), so while it is archived its asks hold nothing in any of the three
+places, and unarchiving it puts them back.
 
 - `attention` adds `blocking`: the reader's blocking asks that still wait on
   them, in unarchived topics, each a release's first and then newest first,

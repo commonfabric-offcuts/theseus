@@ -11,7 +11,9 @@ nothing of the topic's outcome or is not an ask, and the three readers of it
 when the ask does: a reply in the topic or a 👍 that answers it.
 """
 
+import sqlite3
 import unittest
+from unittest import mock
 
 from aim_next.blocking import first_line
 import test_pipeline_stages
@@ -130,6 +132,33 @@ class RecordingCase(BlockingCase):
         self.assertEqual(self.held(second), [(on_piece, ["owner"], "May I rebase it?")])
         self.assertEqual(self.now()["facts"]["next_release"]["release"], 23)
 
+    def test_the_lights_card_lists_the_blocking_question_first_however_new_the_others(self):
+        # The card's lead says "Work can't go on until you answer the first", so the first must be the one that holds work.
+        piece = self.committed(self.start())["piece_id"]
+        self.topic("t2")
+        held = self.asked("Please restart fseventsd.", blocks={"kind": "piece", "ref": piece})
+        self.asked("Which colour for the header?", topic="t2")
+        light = self.light()
+        self.assertEqual(light["lead"], {"kind": "asks", "count": 2, "blocking": "piece"})
+        self.assertEqual([(fact["topic_id"], fact.get("blocking")) for fact in light["facts"]],
+                         [("t1", {"kind": "piece", "piece_id": piece, "items": [1, 2]}), ("t2", None)])
+        # Once it is answered the topics' waits are newest first again, and none says it blocks.
+        self.thumb(held)
+        self.asked("Anything else?")
+        self.post("Blue.", actor="owner", topic="t2")
+        self.asked("And the footer?", topic="t2")
+        light = self.light()
+        self.assertEqual(light["lead"], {"kind": "asks", "count": 2})
+        self.assertEqual([(fact["topic_id"], fact.get("blocking")) for fact in light["facts"]], [("t2", None), ("t1", None)])
+
+    def test_a_read_that_fails_after_the_questions_still_says_what_they_hold(self):
+        piece = self.committed(self.start())["piece_id"]
+        self.asked("Please restart fseventsd.", blocks={"kind": "piece", "ref": piece})
+        with mock.patch("aim_next.outcome_light.OutcomeLight._light_reads", side_effect=sqlite3.DatabaseError("database disk image is malformed")):
+            light = self.light()
+        self.assertEqual((light["light"]["short"], light["light"]["unreadable"]), ({"kind": "asks", "count": 1, "blocking": "piece"}, True))
+        self.assertEqual(light["facts"][0]["blocking"]["piece_id"], piece)
+
     def test_a_plain_ask_and_an_older_message_read_as_before(self):
         piece = self.committed(self.start())["piece_id"]
         plain = self.asked("Which colour for the header?")
@@ -237,6 +266,23 @@ class ClearingCase(BlockingCase):
         self.shows_nothing_held(self.piece)
         self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 1, "the later question still waits")
         self.assertEqual(self.light()["light"]["short"], {"kind": "asks", "count": 1})
+
+    def archive(self, archived=True, topic="t1"):
+        version = self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]
+        self.committed(self.command("topic.update", {"archived": archived}, target={"topic_id": topic}, expected={"topic_revision": version}))
+
+    def test_archiving_its_topic_takes_it_off_every_reader_and_unarchiving_brings_it_back(self):
+        # Archiving answers nothing, but an archived topic counts nowhere (docs/attention.md): not in Waiting on
+        # you, not on the light, and not on the pipeline's row either, so the three never disagree.
+        held = self.asked("Please restart fseventsd.", blocks={"kind": "piece", "ref": self.piece})
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 1)
+        self.archive()
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 0)
+        self.shows_nothing_held(self.piece)
+        self.archive(False)
+        self.assertEqual([message for message, _ in self.blocking()], [held], "unarchived, it holds the piece again")
+        self.assertEqual(self.held(self.piece), [(held, ["owner"], "Please restart fseventsd.")])
+        self.assertEqual(self.light()["light"]["short"]["blocking"], "piece")
 
     def test_an_ask_to_two_waits_on_whoever_has_not_answered(self):
         version = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]

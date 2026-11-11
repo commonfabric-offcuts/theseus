@@ -133,11 +133,17 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertIn("  (holds piece %s until it is answered)\n" % piece, self.ok("read", "t1"))
         held = "     held: waiting on owner — Please restart fseventsd. (%s)\n" % message
         self.assertIn(held, self.ok("pipeline", "w1", "--section", "now"))
+        # The owner's outcomes line says it holds work; whoever was not asked sees no wait at all.
+        line = "w1  Isolated test  (owner owner, to keep)  %s\n"
+        self.assertEqual(self.ok("outcomes", actor="owner"), line % "blocking a piece: waiting on you · 1 question")
+        self.assertNotIn("waiting on you", self.ok("outcomes"))
         self.ok("post", "t1", "Restarted.", actor="owner")
         self.assertNotIn("held:", self.ok("pipeline", "w1", "--section", "now"))
-        # A plain ask leaves the listing as it was.
+        self.assertNotIn("waiting on you", self.ok("outcomes", actor="owner"))
+        # A plain ask leaves the listing as it was, and the outcomes line counts it without saying it blocks.
         self.ok("post", "t1", "--asks", "owner", "Anything else?")
         self.assertNotIn("held:", self.ok("pipeline", "w1", "--section", "now"))
+        self.assertEqual(self.ok("outcomes", actor="owner"), line % "waiting on you · 1 question")
 
     def test_stages_and_a_piece_of_work_move_along_from_the_command_line(self):
         self.ok("pipeline-on", "w1")

@@ -442,8 +442,9 @@ Views:
   then says "Held: waiting on you — Please restart fseventsd." above its
   stages, the reader named "you" and anyone else by name, the ask's first
   line linking to the ask in its topic; once everyone asked has answered, the
-  line goes in the same commit. A piece no ask holds carries `held: []` and
-  its row is as before.
+  line goes in the same commit, and while the ask's topic is archived it is
+  not shown either. A piece no ask holds carries `held: []` and its row is as
+  before.
 - `pipeline_item {workspace_id, number}`: one item with every source, piece and
   event.
 - `pipeline_row {workspace_id}`: the rail's row (title, how many asks wait on

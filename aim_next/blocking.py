@@ -94,12 +94,14 @@ class Blocking:
         """Whether message, an ask in topic, still waits on member: the one rule that clears an ask, read where it is kept.
 
         The topic waits on member from an ask (its topic_waiting row) only while some ask there does, so none
-        waits without that row: losing the topic, a Reached outcome and writing in the topic all end it. In a
+        waits without that row: losing the topic, a Reached outcome and writing in the topic all end it. An
+        archived topic counts nowhere (docs/attention.md), so while it is archived its asks wait on no one here
+        either, and unarchiving it brings them back, its row kept. In a
         conversation each ask's own wait is kept (conversation_waits). In a topic an ask an open record still
         needs waits (outcome_asks.held_ask), one a settled record answered does not, and otherwise it waits
         until member writes there on the record or gives it a 👍 that answered it (their thumb row)."""
         if (message["intent"] != "ask" or member == message["author_id"] or member not in json.loads(message["addressees"])
-                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL",
+                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL AND archived=0",
                               (topic["id"], member)).fetchone() is None):
             return False
         if is_conversation(topic):
