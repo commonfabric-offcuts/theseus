@@ -22,7 +22,17 @@ export function edges(box) {
 }
 
 export class CardScroll {
-  constructor({ read }) { this.read = read; this.loading = new WeakSet(); }
+  constructor({ read }) { this.read = read; this.loading = new WeakSet(); this.wholes = new Map(); }
+  // The whole of a cut-off message, read from its source once (a read that
+  // fails is asked again next time); known(id) has it once it has come.
+  async whole(id) {
+    if (this.wholes.has(id)) return this.wholes.get(id);
+    const source = await this.read(id);
+    if (source?.source_ref?.id !== id || typeof source.body !== 'string') throw Error('The message could not be read whole.');
+    this.wholes.set(id, source.body);
+    return source.body;
+  }
+  known(id) { return this.wholes.get(id); }
   // card: the message's card; item: its topic_messages item.
   async expand(card, item) {
     if (!item?.preview || card.dataset.whole === 'shown' || this.loading.has(card)) return false;
@@ -30,12 +40,12 @@ export class CardScroll {
     if (!preview) return false;
     this.loading.add(card);
     try {
-      const source = await this.read(item.id);
-      if (!card.isConnected || source?.source_ref?.id !== item.id || typeof source.body !== 'string') return false;
+      const body = await this.whole(item.id);
+      if (!card.isConnected) return false;
       // The box keeps the height the excerpt had, so the list holds still.
       const height = Math.max(preview.getBoundingClientRect().height, 96);
       preview.style.maxHeight = `${Math.ceil(height)}px`;
-      formatWords(preview, source.body);
+      formatWords(preview, body);
       preview.classList.add('scroll-in-place');
       edges(preview);
       preview.addEventListener('scroll', () => edges(preview), { passive: true });

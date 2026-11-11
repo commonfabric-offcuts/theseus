@@ -28,6 +28,13 @@ the pointer's way, the keys' and the phone's.
   lit message with the cursor in the reply and nothing quoted; to quote part of
   it, select that part in the Reader and press Return. Return in writing, on a
   folded line or on another control does what it does there.
+- **⌘C** (Ctrl-C off a Mac, as ⌘A is, `web/writing-input.mjs`) with no words
+  selected copies the lit message's words as written: the message the pointer
+  or the keys lit last, the one Return answers, and a cut-off message whole.
+  They are the words the Reader's ⇧⌘C copies of the message it shows. Words
+  selected anywhere copy as the browser copies them, and in writing or a
+  pop-up ⌘C is theirs; with nothing lit it does nothing of the page's. Nothing
+  is said when it copies, as in the Reader; a refusal says how else to copy.
 - **A cut-off message** (the first 1,024 bytes are shown) reads on in place:
   once the pointer rests on it, the keys light it or a finger taps it, its words
   become a box of the same height that scrolls under the wheel, trackpad or a
@@ -39,10 +46,16 @@ the pointer's way, the keys' and the phone's.
   Escape, ✕ or a press outside puts it back at the page's end with the writing
   kept. (docs/reader.md)
 - **👍** means read and understood, never "do it"; pressing it again takes it
-  back. The count on a message names who: on hover, or where nothing hovers (a
+  back. It marks that message read at once, and only that one: its card, the
+  counts and the New line follow, here and on every page and device the person
+  has open, and taking it back leaves it read (docs/thumbs.md). The count on a
+  message names who: on hover, or where nothing hovers (a
   phone), on the lit message, whose count then reads the names. A press on the
   count thumbs up; a tap on it on a phone lights the message and names who, and
-  the bar's 👍 thumbs up. In the Reader 👍 sits beside Send. **✅ and 🚫**
+  the bar's 👍 thumbs up. In the Reader 👍 sits beside Send; pressed while the
+  reply is open (writing, not the quiet line) it is a reply of one thumb, and
+  once Core holds it the Reader closes as after Send, keeping what the reply
+  holds. Refused, it leaves the Reader and the reply open. **✅ and 🚫**
   answer an agent's go-ahead ask in one tap or click, on the message or its
   bar, and the agent hears it as a reply (docs/thumbs.md).
 
@@ -183,7 +196,12 @@ page painted. Its checks, by rule:
   and to stay under 60% of the window; the drag runs in Chrome.
 - 👍: "reading the bar's 👍 and the card's 👍 count …", "reading 👍 in the
   Reader beside Send …" and "reading a thumbs-up an agent gives shows on the
-  card …"; an agent's `thumb`: `tests/test_agent_verbs_reactions.py`. ✅ and
+  card …"; the Reader closing on a 👍 given while the reply is open, and staying
+  open when Core refuses it: "reading 👍 given while the reply is open closes
+  the Reader …"; a 👍 reading its message, with the counts and the New line,
+  on a second page and after a reload: "reading a 👍 on an unread message reads
+  that message at once …", and in Core `tests/test_reactions.py`; an agent's
+  `thumb`: `tests/test_agent_verbs_reactions.py`. ✅ and
   🚫: "reading ✅ and 🚫 on a go-ahead ask …"; an agent's `--go-ahead` and what
   `read` says of both: `tests/test_agent_verbs_reactions.py`.
 - How cards read (docs/topic-reading.md): "reading read cards sit back on the
@@ -193,6 +211,8 @@ page painted. Its checks, by rule:
   back out, ⌘→ ⌘← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
   and swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
   (docs/reply-stacks.md).
+- ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",
+  with a selection, the composer and no lit message left to the browser.
 - ?: "reading ? and the rail's "? Pointer, keys and taps" open the guide …".
 - Images: "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and

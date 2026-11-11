@@ -13,6 +13,7 @@ import { drawPassages, sourcePosition } from './message-format.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { ComposeBar } from './compose-bar.mjs';
+import { copyText, COPY_REFUSED } from './message-menu.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -1018,7 +1019,7 @@ export class Reader {
     }
     const inEditor = target === this.field;
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
-      event.preventDefault(); navigator.clipboard.writeText(this.source.body).catch(error => this.notice(Error('Could not copy. Select the text and use Copy.', { cause: error }))); return;
+      event.preventDefault(); copyText(this.source.body).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     const where = Object.keys(STEPPING).find(at => STEPPING[at].key === event.key);
     if (!inEditor && event.metaKey && !event.shiftKey && where) {

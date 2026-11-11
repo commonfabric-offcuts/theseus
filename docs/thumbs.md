@@ -29,7 +29,24 @@ someone else's message. Only a person a go-ahead ask names can answer it
 
 Both settle the actor's own pending delivery of the message, as reading it
 does, and change no topic state or order; a thumbs-up changes a wait only
-when it answers an ask (below). An answer also posts
+when it answers an ask (below). A thumb's result says whether it did
+(`settled`: the message was unread for the actor and is read now; false for a
+thumb taken back, one that changed nothing, and one on a message already
+read). Only that message is read: messages before and after it that are
+unread stay so. Taking a thumb back settles nothing and unsettles nothing, so
+the message stays read, and a mark (docs/attention.md) is left as it is, as a
+reply leaves it.
+
+In the topic page a thumbs-up reads its card at once (`readNow`,
+`web/card-reading.mjs`: any revision of the reader's own thumb), and the
+counts follow the commit as any read does. A thumb whose result says
+`settled` places the New line afresh, as Mark read does; one that read
+nothing moves it nowhere. Every other page and device the person has open
+hears the `reaction` change, reads the message's reactions and shows the card
+read, and reads its counts and New line again after the commit. Given from
+the Reader's 👍 while the reply is open, a thumbs-up is a reply of one thumb:
+once Core holds it, the Reader closes as after Send, keeping what the reply
+holds (docs/reader.md); a refusal leaves the Reader and the reply open. An answer also posts
 a short reply from the person to the asker in the same act: `✅ Go ahead` or
 `🚫 Don't`, with "(I changed my answer)" when it replaces one. The agent hears
 it through its delivery like any reply, and the topic stops waiting on the

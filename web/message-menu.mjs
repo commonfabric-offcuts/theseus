@@ -17,7 +17,8 @@
 // the cards themselves (buttons, folded into quiet lines between others) keep
 // their shape. The bar never covers the reply arrow beside a card's time.
 import { cardIn } from './fold.mjs';
-import { pageItself } from './pane-keys.mjs';
+import { pageItself, writing } from './pane-keys.mjs';
+import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf } from './reply-stacks.mjs';
 
@@ -29,8 +30,9 @@ export class MessageMenu {
   // thumb(item, on) and answer(item, yes|no): the person's acts.
   // expand(card, item): reads a cut-off card on in place. more(item, button):
   // the message's ⋯ menu, opened from the bar's ⋯ (openMessageMenu).
-  constructor({ host, item, viewer, kind, reply, thumb, answer, more, expand = () => {}, doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, thumb, answer, more, expand, doc });
+  // copy(item): puts the message's words on the clipboard (⌘C, copies).
+  constructor({ host, item, viewer, kind, reply, thumb, answer, more, expand = () => {}, copy = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, thumb, answer, more, expand, copy, mac, doc });
     this.lit = null; this.touch = false; this.before = null;
     this.bar = this.buildBar();
     host.addEventListener('pointerover', event => {
@@ -203,6 +205,7 @@ export class MessageMenu {
   // ↑ ↓ move the light and Return replies to the lit message, anywhere on the page
   // but in writing, in a pop-up, or on another control.
   key(event) {
+    if (this.copies(event)) return;
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.key === 'Tab') return this.tab(event);
     // Nor under a drawer or sheet open over the page, which makes the page inert.
@@ -232,6 +235,22 @@ export class MessageMenu {
     target?.focus({ preventScroll: true });
     next.scrollIntoView({ block: 'nearest' });
     this.place();
+  }
+  // ⌘C (Ctrl-C off a Mac) with no words selected copies the lit message's
+  // words as written, as the Reader's ⇧⌘C copies the message it shows: the
+  // message the pointer or the keys lit last, which Return would answer. Words
+  // selected anywhere, the focus in writing or a pop-up, or no lit message
+  // leave the key to the browser, which copies as it always does. Whether it
+  // took the key.
+  copies(event) {
+    if (event.defaultPrevented || event.isComposing || !copyKey(event, this.mac) || !this.lit?.isConnected) return false;
+    if (this.doc.querySelector('dialog[open]') || this.host.closest('[inert]') || writing(this.doc.activeElement)) return false;
+    if (this.doc.getSelection?.()?.isCollapsed === false) return false;
+    const item = this.item(this.lit.dataset.id);
+    if (!item) return false;
+    event.preventDefault();
+    this.copy(item);
+    return true;
   }
   // The bar sits at the end of the page, so the keys reach it from its card:
   // Tab from the lit card goes to the bar's first button, as the card's own ⋯
@@ -348,6 +367,8 @@ export function unsay(button) {
   delete button.dataset.said;
 }
 
+// What a copy the clipboard refused says, wherever a message's words are copied.
+export const COPY_REFUSED = 'Could not copy. Select the text and use Copy.';
 // Puts text on the clipboard. Settles true when it is there.
 export async function copyText(text, nav = globalThis.navigator) {
   try { await nav.clipboard.writeText(text); return true; } catch { return false; }

@@ -30,9 +30,14 @@ const BAR = '.message-bar';
 // After a press's click is heard, what it sent is known, so "sends nothing" needs no wait.
 // window.watchFor = {read, words}: a check waits for the page to read the view named read and get an answer
 // holding words; window.watched turns true when it has.
+// window.holdReads: the page's reports of what it read on screen (topic.read_through) are held unanswered, as a
+// lost connection holds them, so Core keeps those messages unread and a check sees what one act read.
+// window.staleThumb: the next thumbs-up goes fenced on a revision Core does not hold, so Core refuses it.
 const HEARD = `(()=>{window.sent=[];window.taps=0;const f=window.fetch;window.fetch=function(input,init){
   let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}
-  const answer=f.apply(this,arguments),watch=window.watchFor;
+  if(b&&b.kind==='topic.read_through'&&window.holdReads)return new Promise(()=>{});
+  if(b&&b.kind==='message.thumb'&&window.staleThumb){window.staleThumb=false;b.expected.thumb_revision+=99;init={...init,body:JSON.stringify(b)}}
+  const answer=f.call(this,input,init),watch=window.watchFor;
   if(watch&&b&&b.name===watch.read)answer.then(r=>r.clone().text()).then(t=>{if(t.includes(watch.words))window.watched=true},()=>{});
   return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
@@ -53,11 +58,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
     return ids;
   };
-  // The page at a device's size; on the phone, with touch from its start.
-  const open = async (name, device, topic, first) => {
+  // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
+  const open = async (name, device, topic, first, init = '') => {
     const metrics = DEVICES[device];
     const p = await page(name, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
+      if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
       await q.send('Emulation.setDeviceMetricsOverride', metrics);
       if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
     } });
@@ -368,7 +374,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.evaluate('document.activeElement?.blur()');
         await p.key('?');
         await until(async () => (await guide())?.open === true, 'laptop: ? opens the guide');
-        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 14 }, 'laptop: the guide, every rule');
+        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 15 }, 'laptop: the guide, every rule');
         await shot(p, 'reading-guide-laptop');
         await p.key('Escape');
         await until(async () => (await guide())?.open === false, 'laptop: Escape closes it');
@@ -576,6 +582,14 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const state = () => p.evaluate(`({composer:document.querySelector('#reader-composer').dataset.compose,focus:document.activeElement?.id,words:document.querySelector('#writing-body').value})`);
       if (device === 'laptop') assert.deepEqual(await state(), { composer: 'writing', focus: 'writing-body', words: '' }, 'laptop: Return leaves the cursor in an empty reply');
       assert.deepEqual(await button(), { text: '👍', pressed: 'false', beside: 'send-reply', clear: true }, device + ': 👍 beside Send');
+      if (device === 'laptop') {
+        // A 👍 given while the reply is open closes the Reader, as Send does (the next check); on the quiet line
+        // it is given and taken back with the Reader open. A click on the lit message opens it to be read.
+        await closeReader(p, device);
+        await light(p, device, ids.theirs);
+        await p.point(words(ids.theirs));
+        await until(async () => (await readerOn(p))?.startsWith('A message to thumb up') && (await state()).composer === 'line', 'laptop: a click opens the Reader with its reply one quiet line');
+      }
       for (const on of [true, false]) {
         await press(p, device, '#thumb-source');
         await until(async () => await thumbsBy(ids.theirs, facts.actor) === (on ? 1 : 0), `${device}: Core holds the thumbs-up ${on ? 'on' : 'taken back'}`);
@@ -623,6 +637,183 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(q.errors, []);
       await q.close();
     }
+  });
+
+  await check('reading 👍 given while the reply is open closes the Reader as Send does, keeping what the reply holds; a 👍 Theseus refuses leaves it open', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-thumb-close-' + device;
+      const ids = await seed(topic, [['theirs', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A message to answer with a thumbs-up.' }]]);
+      const p = await open('reading-thumb-close-' + device, device, topic, ids.theirs);
+      const reader = () => p.evaluate(`(()=>{const n=document.querySelector('#reader-notice');return {open:document.querySelector('#reader').open,composer:document.querySelector('#reader-composer').dataset.compose,
+        chip:document.querySelector('#who-chip').textContent,thumb:document.querySelector('#thumb-source').getAttribute('aria-pressed'),notice:n.hidden?'':n.textContent}})()`);
+      await openReader(p, device, ids.theirs, 'A message to answer');
+      // On a laptop Return leaves the cursor in the reply; on a phone the reply opens with a tap in it.
+      if (device === 'phone') await into(p, device, '#writing-body');
+      await until(async () => (await reader()).composer === 'writing', device + ': the reply is open');
+      // What the reply holds, with nothing written, so 👍 still shows: it goes as a whisper.
+      await press(p, device, '#who-chip');
+      await until(() => p.evaluate(`!document.querySelector('#who-panel').hidden`), device + ': the who panel opens');
+      await press(p, device, '#who-panel [data-intent="whisper"]');
+      await until(async () => (await reader()).chip.startsWith('Whisper to aim-core'), device + ': the chip says the reply is a whisper');
+      await press(p, device, '#who-done');
+      await until(async () => (await reader()).composer === 'writing' && await p.evaluate(`document.querySelector('#who-panel').hidden && !document.querySelector('#thumb-source').hidden`),
+        device + ': the panel is put away, the reply still open, 👍 beside Send');
+      const chip = (await reader()).chip;
+      // Refused: the 👍 goes fenced on a revision Core does not hold, and Core says no.
+      await p.evaluate('window.staleThumb = true');
+      await press(p, device, '#thumb-source');
+      await until(async () => (await reader()).notice !== '', device + ': the refusal is said in the Reader');
+      assert.equal(await thumbsBy(ids.theirs, facts.actor), 0, device + ': Core holds no thumbs-up');
+      const refused = await reader();
+      assert.deepEqual({ ...refused, notice: undefined }, { open: true, composer: 'writing', chip, thumb: 'false', notice: undefined }, device + ': refused, the Reader and its reply stay open as they were');
+      // Given: Core holds it, and the Reader closes as after Send.
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 1, device + ': Core holds the thumbs-up');
+      await until(async () => await readerOn(p) === null, device + ': the 👍 closes the Reader, as Send does');
+      // Opened again, the reply holds what it held, and the 👍 shows given.
+      await openReader(p, device, ids.theirs, 'A message to answer');
+      await until(async () => (await reader()).thumb === 'true', device + ': opened again, 👍 shows given');
+      assert.equal((await reader()).chip, chip, device + ': and the reply is still a whisper');
+      // On the quiet line, or taking the 👍 back, the Reader stays.
+      if (device === 'phone') {
+        assert.equal((await reader()).composer, 'line', 'phone: opened to be read, the reply is one quiet line');
+        await press(p, device, '#thumb-source');
+        await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, 'phone: the 👍 on the quiet line is taken back');
+        await until(async () => (await reader()).thumb === 'false', 'phone: and shows taken back');
+        assert.equal(await readerOn(p) !== null, true, 'phone: the Reader stays open');
+      } else {
+        assert.equal((await reader()).composer, 'writing', 'laptop: Return leaves the reply open');
+        await press(p, device, '#thumb-source');
+        await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, 'laptop: the 👍 is taken back');
+        await until(async () => (await reader()).thumb === 'false', 'laptop: and shows taken back');
+        assert.deepEqual([await readerOn(p) !== null, (await reader()).composer], [true, 'writing'], 'laptop: taking it back leaves the Reader and its reply open');
+      }
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading a 👍 on an unread message reads that message at once, here and on another page, with the counts and the New line, and the messages around it stay unread', async () => {
+    const topic = 'reading-thumb-read';
+    const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'Message A, the oldest, unread.' }],
+      ['b', { sender: 'aim-core', addressees: [facts.actor], body: 'Message B, unread, to thumb up.' }],
+      ['c', { sender: 'aim-core', addressees: [facts.actor], body: 'Message C, the newest, unread.' }]]);
+    const name = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    // Both pages hold their reports of reading on screen, so only the 👍 reads anything. A page behind another
+    // catches up when it is shown, so each page is brought to the front before it acts or is read.
+    const hold = 'window.holdReads = true';
+    const p = await open('reading-thumb-read', 'laptop', topic, ids.a, hold);
+    const q = await open('reading-thumb-read-other', 'laptop', topic, ids.a, hold);
+    // What Core holds unread for the person in the topic, oldest first.
+    const unread = async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.unread).map(item => name[item.id]).sort();
+    // How a page shows it: each card read or not, the New line (under which message, faded), the tab's total and the topic's row.
+    const looks = pg => pg.evaluate(`(()=>{const ids=${JSON.stringify(ids)},read={};for(const [k,id] of Object.entries(ids))read[k]=document.querySelector('#messages .message-card[data-id="'+id+'"]').hasAttribute('data-read');
+      const l=document.querySelector('#messages .new-line'),prev=l?.previousElementSibling,under=prev?.dataset.id??prev?.querySelector('[data-id]')?.dataset.id??null;
+      const row=document.querySelector('#outline a[data-topic-id=${JSON.stringify(topic)}]'),badge=row?.querySelector('.unread-count');
+      return {read,line:l?{under:Object.entries(ids).find(([,id])=>id===under)?.[0]??under,faded:l.classList.contains('new-line-read')}:null,
+        total:Number(/^\\((\\d+)\\) /.exec(document.title)?.[1]??0),row:row?Number(badge?.textContent??0):null}})()`);
+    assert.deepEqual(await unread(), ['a', 'b', 'c'], 'all three unread to begin with');
+    await p.send('Page.bringToFront');
+    const before = await looks(p);
+    assert.deepEqual({ ...before, total: undefined }, { read: { a: false, b: false, c: false }, line: { under: 'a', faded: false }, total: undefined, row: 3 }, 'the page shows all three unread, the New line under A');
+    const total = before.total;
+    await q.send('Page.bringToFront');
+    await becomes(async () => ({ ...await looks(q), total: undefined }), { ...before, total: undefined }, 'the other page shows the same');
+    await p.send('Page.bringToFront');
+    const thumb = async id => { await light(p, 'laptop', id); await press(p, 'laptop', `${BAR} [data-act=thumb]`); };
+    await thumb(ids.b);
+    await until(async () => await thumbsBy(ids.b, facts.actor) === 1, 'Core holds the thumbs-up on B');
+    assert.deepEqual(await unread(), ['a', 'c'], 'Core reads B alone: A and C stay unread');
+    const one = { read: { a: false, b: true, c: false }, line: { under: 'a', faded: false }, total: total - 1, row: 2 };
+    await becomes(() => looks(p), one, 'B reads as read at once, the counts drop by one, and the New line holds under A, still unread');
+    await q.send('Page.bringToFront');
+    await becomes(() => looks(q), one, 'the other page shows the same, with no reload');
+    await p.send('Page.bringToFront');
+    // A 👍 on A, the message the line is under: the line goes under the oldest message still unread.
+    await thumb(ids.a);
+    await until(async () => (await unread()).join() === 'c', 'Core reads A too: only C is unread');
+    await becomes(() => looks(p), { read: { a: true, b: true, c: false }, line: { under: 'c', faded: false }, total: total - 2, row: 1 }, 'here the New line moves under C, as a Mark read places it');
+    await q.send('Page.bringToFront');
+    await becomes(() => looks(q), { read: { a: true, b: true, c: false }, line: { under: 'a', faded: false }, total: total - 2, row: 1 }, 'elsewhere the line stays where it was, holding C above it');
+    // Taking the 👍 off B, on the other page, leaves it read; a 👍 act that read nothing moves no New line there.
+    await light(q, 'laptop', ids.b);
+    await until(() => q.evaluate(`document.querySelector('${BAR} [data-act=thumb]').getAttribute('aria-pressed') === 'true'`), 'the other page\'s bar shows B thumbed up');
+    await press(q, 'laptop', `${BAR} [data-act=thumb]`);
+    await until(async () => await thumbsBy(ids.b, facts.actor) === 0, 'Core holds the thumbs-up on B taken back');
+    await until(() => q.evaluate(`document.querySelector('${BAR} [data-act=thumb]').getAttribute('aria-pressed') === 'false'`), 'the bar shows it taken back');
+    assert.deepEqual(await unread(), ['c'], 'taken back, B is still read in Core');
+    await p.send('Page.bringToFront');
+    await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.b) + ' > .message-reactions')})`), 'this page hears the 👍 taken back');
+    assert.deepEqual(await looks(q), { read: { a: true, b: true, c: false }, line: { under: 'a', faded: false }, total: total - 2, row: 1 }, 'the other page shows B still read, its line where it was');
+    assert.deepEqual(await looks(p), { read: { a: true, b: true, c: false }, line: { under: 'c', faded: false }, total: total - 2, row: 1 }, 'and so does this one');
+    // A reload keeps it.
+    const origin = await p.evaluate('performance.timeOrigin');
+    await p.send('Page.reload');
+    await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector('#messages .new-line')) &&
+      ${JSON.stringify(Object.values(ids))}.every(id => document.querySelector('#messages .message-card[data-id="' + id + '"]'))`).catch(() => false), 'the page loads again, a new document with all three cards');
+    await becomes(() => looks(p), { read: { a: true, b: true, c: false }, line: { under: 'c', faded: false }, total: total - 2, row: 1 }, 'loaded again, A and B read, C unread, the line under C');
+    assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
+    await p.close(); await q.close();
+  });
+
+  await check('reading ⌘C with nothing selected copies the lit message\'s words as written, as ⇧⌘C does in the Reader; a selection, the writing and no lit message leave ⌘C to the browser', async () => {
+    const topic = 'reading-copy';
+    const long = Array.from({ length: 60 }, (_, i) => `Line ${i} of a long message, cut off on its card.`).join('\n');
+    const ids = await seed(topic, [['short', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A short message\nwith a second line, *as written*.' }],
+      ['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: long }],
+      ['newest', { sender: 'aim-core', addressees: [facts.actor], body: 'The newest message.' }]]);
+    const p = await open('reading-copy', 'laptop', topic, ids.short);
+    const written = async id => (await view('source', { source_ref: { kind: 'message', id } })).body;
+    // The page's own clipboard: what it is handed is kept on the page, and the Mac's pasteboard is never touched.
+    // Each ⌘C heard is recorded with whether the page took it (prevented its default) and then kept from the
+    // browser, so a ⌘C the page leaves alone copies nothing to the Mac either.
+    await p.evaluate(`(()=>{window.copied=[];window.keyed=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{window.copied.push(text)}});
+      addEventListener('keydown',e=>{if(e.metaKey&&!e.altKey&&!e.ctrlKey&&e.key.toLowerCase()==='c'){window.keyed.push(e.defaultPrevented);e.preventDefault()}});return true})()`);
+    const copy = async (modifiers = 4) => {
+      const heard = await p.evaluate('window.keyed.length');
+      await p.key('c', modifiers);
+      await until(() => p.evaluate(`window.keyed.length > ${heard}`), 'the page heard ⌘C');
+      return p.evaluate('window.keyed.at(-1)');
+    };
+    const copied = () => p.evaluate('window.copied.slice()');
+    // Nothing lit: ⌘C is the browser's.
+    await away(p);
+    await p.evaluate('document.activeElement?.blur()');
+    assert.deepEqual(await lit(p), [], 'nothing is lit');
+    assert.equal(await copy(), false, 'with nothing lit the page leaves ⌘C alone');
+    assert.deepEqual(await copied(), [], 'and copies nothing');
+    // The pointer rests on a message: ⌘C copies its words as written.
+    await light(p, 'laptop', ids.short);
+    assert.equal(await copy(), true, 'the page takes ⌘C on the lit message');
+    const short = await written(ids.short);
+    await becomes(copied, [short], 'the lit message\'s words, as written, are on the clipboard');
+    // The keys move the light from under the resting pointer: the message they light is the one ⌘C copies, as Return answers it.
+    await p.key('ArrowUp');
+    await until(async () => (await lit(p)).join() === ids.long, 'the keys light the cut-off message above');
+    assert.equal(await copy(), true, 'the page takes ⌘C on it');
+    const whole = await written(ids.long);
+    await becomes(copied, [short, whole], 'the whole message is on the clipboard, not its excerpt');
+    // The Reader's ⇧⌘C gives the same words.
+    await p.point(words(ids.long));
+    await until(async () => (await readerOn(p))?.startsWith('Line 0'), 'a click opens the lit message in the Reader');
+    assert.equal(await copy(12), true, 'the Reader takes ⇧⌘C');
+    await becomes(copied, [short, whole, whole], 'the Reader copies the same words');
+    await closeReader(p, 'laptop');
+    // Words selected on the page: ⌘C copies them as the browser does, not the lit message.
+    await light(p, 'laptop', ids.short);
+    await p.evaluate(`(()=>{const r=document.createRange();r.selectNodeContents(document.querySelector(${JSON.stringify(words(ids.short))}));getSelection().removeAllRanges();getSelection().addRange(r);return true})()`);
+    assert.equal(await copy(), false, 'with words selected the page leaves ⌘C to the browser');
+    assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
+    await p.evaluate('getSelection().removeAllRanges()');
+    // In the writing ⌘C is the writing's, with a message still lit.
+    await into(p, 'laptop', '#inline-writing-body');
+    await p.send('Input.insertText', { text: 'Words in the composer.' });
+    assert.ok((await lit(p)).length === 1, 'a message is still lit');
+    assert.equal(await copy(), false, 'in the composer the page leaves ⌘C to the writing');
+    assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
+    assert.deepEqual(p.errors, []);
+    await p.close();
   });
 
   await check('reading a thumbs-up an agent gives shows on the card while the page is open, and so does its taking back', async () => {

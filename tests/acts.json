@@ -80,8 +80,8 @@
    "break": [
     [
      "web/app.mjs",
-     "    if (item) run(async () => { try { await reactions.thumb(",
-     "    if (false) run(async () => { try { await reactions.thumb("
+     "    run(async () => {\n      try {\n        const receipt = await thumbMessage(item, on);",
+     "    if (false) run(async () => {\n      try {\n        const receipt = await thumbMessage(item, on);"
     ]
    ],
    "check": {
@@ -4059,6 +4059,273 @@
    "check": {
     "native": "notebook",
     "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 325,
+   "act": "⌘C on a lit message with no words selected copies its words as written",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    this.copy(item);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌘C with nothing selected"
+   }
+  },
+  {
+   "item": 325,
+   "act": "⌘C copies a cut-off message whole, not its excerpt",
+   "break": [
+    [
+     "web/app.mjs",
+     "    const known = item.preview ? cardScroll.known(item.id) : item.body;",
+     "    const known = item.body;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌘C with nothing selected"
+   }
+  },
+  {
+   "item": 325,
+   "act": "With words selected, ⌘C is the browser's copy, not the lit message",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    if (this.doc.getSelection?.()?.isCollapsed === false) return false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌘C with nothing selected"
+   }
+  },
+  {
+   "item": 325,
+   "act": "In writing, ⌘C is the writing's, with a message lit",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "this.host.closest('[inert]') || writing(this.doc.activeElement)) return false;",
+     "this.host.closest('[inert]')) return false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌘C with nothing selected"
+   }
+  },
+  {
+   "item": 325,
+   "act": "With no message lit, ⌘C does nothing of the page's",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "!copyKey(event, this.mac) || !this.lit?.isConnected) return false;",
+     "!copyKey(event, this.mac)) return false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌘C with nothing selected"
+   }
+  },
+  {
+   "item": 325,
+   "act": "The copy key is ⌘C on a Mac and Ctrl-C elsewhere",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "export const copyKey = (event, mac) => commandLetter(event, 'c', mac);",
+     "export const copyKey = (event, mac) => commandLetter(event, 'c', true);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_menu.test.mjs"
+   }
+  },
+  {
+   "item": 325,
+   "act": "The guide lists ⌘C",
+   "break": [
+    [
+     "web/interaction-guide.mjs",
+     "  ['Copy a message', ",
+     "  // ['Copy a message', "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+   }
+  },
+  {
+   "item": 326,
+   "act": "A 👍 given while the reply is open closes the Reader once Core holds it, keeping what the reply holds",
+   "break": [
+    [
+     "web/app.mjs",
+     "        if (on && writing && receipt && registry.isCurrent(presentation)) await registry.close(presentation);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "closes the Reader as Send"
+   }
+  },
+  {
+   "item": 326,
+   "act": "A 👍 Core refuses leaves the Reader and its reply open",
+   "break": [
+    [
+     "web/app.mjs",
+     "        const receipt = await thumbMessage(item, on);\n        if (on && writing && receipt &&",
+     "        if (on && writing) registry.close(presentation);\n        const receipt = await thumbMessage(item, on);\n        if (on && writing && receipt &&"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "closes the Reader as Send"
+   }
+  },
+  {
+   "item": 326,
+   "act": "Taking a 👍 back while the reply is open leaves the Reader open",
+   "break": [
+    [
+     "web/app.mjs",
+     "        if (on && writing && receipt &&",
+     "        if (writing && receipt &&"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "closes the Reader as Send"
+   }
+  },
+  {
+   "item": 326,
+   "act": "A 👍 on the quiet line leaves the Reader open",
+   "break": [
+    [
+     "web/app.mjs",
+     "        if (on && writing && receipt &&",
+     "        if (on && receipt &&"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "👍 in the Reader beside Send"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A thumb's result says whether it read the message: only a thumb on an unread message does",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        return version, pending is not None",
+     "        return version, True"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A 👍 reads its card at once, here and on another page, and a reload keeps it",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " || reactionsOf(item).thumb_revision > 0;",
+     ";"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reads that message at once"
+   }
+  },
+  {
+   "item": 327,
+   "act": "Taking a 👍 back leaves its message read",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " || reactionsOf(item).thumb_revision > 0;",
+     " || reactionsOf(item).thumb_revision % 2 === 1;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reads that message at once"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A reaction repaints how each card reads",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); });",
+     "  if (kind === 'reactions') { keepListAnchor(() => { menu?.paint(); });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reads that message at once"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A 👍 that read its message places the New line afresh, as Mark read does",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh();",
+     "    if (false) { views.placeAfresh();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reads that message at once"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A 👍 that read nothing moves no New line",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh();",
+     "    if (receipt?.result && receipt.result.topic_id === views?.topicId) { views.placeAfresh();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reads that message at once"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A thumbs-up of the reader's own reads the card; anyone else's does not",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " || reactionsOf(item).thumb_revision > 0;",
+     " || reactionsOf(item).thumbs.length > 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
    }
   }
  ]

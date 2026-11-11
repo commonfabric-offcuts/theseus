@@ -3,6 +3,7 @@
 // they have replied to it. Each is a data attribute on the card, so the
 // classes the card's colors own are never touched.
 import { datedTime, shownTime } from './times.mjs';
+import { reactionsOf } from './reactions.mjs';
 
 // Talk between agents: an agent wrote it, by name to agents only, and the
 // reader is not among them, did not write it, and wrote nothing it answers.
@@ -18,12 +19,15 @@ export function agentTalk(item, viewer, viewerKind, kindOf) {
 // Whether the person has read a message, as this visit shows it. A message
 // keeps how it read when the topic opened, so cards do not change under the
 // person's eyes as they scroll; it reads as read at once when they open it in
-// the Reader or reply to it, and as unread while it is marked unread. Their
-// own messages are always read.
+// the Reader, reply to it or thumb it up, and as unread while it is marked
+// unread. A thumbs-up reads it in Core (docs/thumbs.md), here or on another
+// page or device, and taking it back leaves it read: any revision of their
+// own thumb (thumb_revision above 0) says they gave one. Their own messages
+// are always read.
 export function readNow(item, { viewer, marked = false, opened = false }) {
   if (item.author_id === viewer) return true;
   if (marked) return false;
-  return item.unread !== true || opened || Boolean(item.replied);
+  return item.unread !== true || opened || Boolean(item.replied) || reactionsOf(item).thumb_revision > 0;
 }
 
 // The reader's newest reply to each message, kept as replies arrive: Core says

@@ -47,6 +47,16 @@ test('a card reads as read when Core says it is, once opened or replied to this 
   assert.equal(read({ author_id: 'tony', unread: true }, { marked: true }), true, 'the reader\'s own');
 });
 
+test('a thumbs-up of the reader\'s own reads its message, taken back it stays read, and anyone else\'s reads nothing', () => {
+  const read = (reactions, options = {}) => readNow({ author_id: 'aim-core', unread: true, reactions }, { viewer: 'tony', ...options });
+  const reactions = (thumbRevision, thumbs) => ({ version: thumbRevision + thumbs.length, thumbs: thumbs.map(actor_id => ({ actor_id, at_ms: 1 })), answers: [], thumb_revision: thumbRevision, answer_revision: 0 });
+  assert.equal(read(reactions(1, ['tony'])), true, 'thumbed up by the reader');
+  assert.equal(read(reactions(2, [])), true, 'thumbed up and taken back: still read');
+  assert.equal(read(reactions(0, ['dan'])), false, 'someone else\'s thumbs-up reads nothing for the reader');
+  assert.equal(read(undefined), false, 'no reactions at all');
+  assert.equal(read(reactions(1, ['tony']), { marked: true }), false, 'a mark holds over a thumbs-up, as over a reply');
+});
+
 test('the reply arrow follows the reader\'s newest reply, written here or said by Core, and nothing else', () => {
   const messages = new Map([['p', { id: 'p', seq: 1, replied: null }], ['old', { id: 'old', seq: 5 }], ['new', { id: 'new', seq: 9 }]]);
   // Someone else's reply, and the reader's message answering nothing, move nothing.

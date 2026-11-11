@@ -50,7 +50,7 @@ import { DeckPage } from './deck-page.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
-import { MessageMenu, openMessageMenu, sayOn, copyText } from './message-menu.mjs';
+import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { Reactions, learnReactions, paintReaderThumb } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
@@ -693,7 +693,8 @@ function paintViews(kind) {
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
   if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
-  if (kind === 'reactions') { keepListAnchor(() => menu?.paint()); paintReaderThumb$(); return; }
+  // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
+  if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); placeLine(); menu?.paint(); }); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
@@ -1694,15 +1695,43 @@ async function initialize() {
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   const cardScroll = new CardScroll({ read: async id => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass: 'background' }), bootstrap.instance_id) });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
+  // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
+  // (Core settled the person's delivery of it) places the New line afresh, as
+  // Mark read does, wherever the oldest unread message now is; one on a
+  // message already read moves nothing.
+  const thumbMessage = async (item, on) => {
+    const receipt = await reactions.thumb(item, on);
+    if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh(); if (commitReload) run(commitReload); }
+    return receipt;
+  };
+  // ⌘C on a lit message: its words as written, the words the Reader's ⇧⌘C
+  // copies; a cut-off card's whole message, read from its source (lighting it
+  // reads it, so it is usually here already). Nothing is said when it is
+  // copied, as in the Reader; a refusal says how else to copy.
+  const copyMessage = item => {
+    const known = item.preview ? cardScroll.known(item.id) : item.body;
+    const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id).then(body => copyText(body), () => false);
+    copied.then(done => { if (!done) status(COPY_REFUSED); });
+  };
   menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
-    thumb: (item, on) => act(reactions.thumb(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
-    more: openMessageMore,
+    thumb: (item, on) => act(thumbMessage(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
+    more: openMessageMore, copy: copyMessage,
     expand: (card, item) => cardScroll.expand(card, item) });
+  // The Reader's 👍. Given while the reply is open, it is a reply of one thumb:
+  // once Core holds it the Reader closes, as after Send, keeping what the reply
+  // holds. Refused, or given on the quiet line, or taken back, the Reader stays.
   $('thumb-source').onclick = () => {
-    const item = readerItem();
-    if (item) run(async () => { try { await reactions.thumb(item, !item.reactions?.thumbs?.some(thumb => thumb.actor_id === bootstrap.actor)); } catch (error) { reader.notice(error); } finally { paintReaderThumb$(); } });
+    const item = readerItem(), presentation = registry.current, writing = reader.compose.state === 'writing';
+    if (!item) return;
+    const on = !item.reactions?.thumbs?.some(thumb => thumb.actor_id === bootstrap.actor);
+    run(async () => {
+      try {
+        const receipt = await thumbMessage(item, on);
+        if (on && writing && receipt && registry.isCurrent(presentation)) await registry.close(presentation);
+      } catch (error) { reader.notice(error); } finally { paintReaderThumb$(); }
+    });
   };
   pageReads = new PageReads({ recorded: () => { if (commitReload) run(commitReload); }, send: (id, revision) => {
     const { authority_id, authority_epoch } = registry.runtime.current;

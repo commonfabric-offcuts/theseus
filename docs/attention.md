@@ -3,8 +3,9 @@
 Unread counts come from the deliveries Core already keeps, plus the messages
 a person has marked unread to come back to (below). A message is unread for a
 reader while its delivery to them is pending, or while they have it marked.
-Reading through it on screen, replying to it, or acknowledging it settles the
-delivery; only opening the message to read it clears a mark. A person's reply
+Reading through it on screen, replying to it, thumbing it up (docs/thumbs.md),
+or acknowledging it settles the delivery; only opening the message to read it
+clears a mark. A person's reply
 (a post whose `reply_to` names the message, including one written in the
 Reader about it) settles their own delivery of that message, in the same act,
 when it is pending in an active group; it settles nothing else and clears no
@@ -422,7 +423,9 @@ this page. Once neither holds it, it fades out where it is:
 - The reader's own Mark read in this page (pressing Marked unread in the
   Reader) places the line afresh at once, wherever the oldest unread message
   now is; when nothing is left unread, the line fades where it is, whatever
-  this page read on screen. Their own
+  this page read on screen. So does their 👍 in this page on a message it read
+  (the thumb's result says `settled`); a 👍 on a message already read moves
+  nothing. A 👍 given on another page or device is reading there. Their own
   Mark unread is a mark like any other: it moves the line only when the
   message is further back. A mark cleared in another tab, or by opening the
   message to read it, leaves the line where it is, faded once nothing holds

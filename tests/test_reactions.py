@@ -86,6 +86,28 @@ class ThumbCase(ReactionCase):
         self.committed(self.thumb(message))
         self.assertEqual(self.sql(pending, (message,)), [("agent-b", "pending"), ("owner", "acknowledged")])
 
+    def test_a_thumb_reads_that_one_message_at_once_and_taking_it_back_leaves_it_read(self):
+        # Item 327: three messages to owner, all unread. A thumb on the middle one reads it alone: the count drops
+        # by one, the oldest unread is still the first, and the result says it settled. Taking the thumb back, and
+        # thumbing again, read and unread nothing.
+        first, middle, last = [self.post("Message %d" % n, addressees=["owner"], intent="tell") for n in range(3)]
+        oldest = lambda: (self.store.view("owner", "topic_unread", {"topic_id": "t1"})["oldest_unread"] or {}).get("id")
+        unread = lambda: self.store.view("owner", "attention", {})["unread"]
+        pending = lambda: [row[0] for row in self.sql("SELECT message_id FROM deliveries WHERE recipient_id='owner' AND state='pending' ORDER BY seq")]
+        before = unread()
+        self.assertEqual((oldest(), pending()), (first, [first, middle, last]))
+        given = self.committed(self.thumb(middle))
+        self.assertEqual(given["settled"], True, "the thumb read the message")
+        self.assertEqual((unread(), oldest(), pending()), (before - 1, first, [first, last]), "only that message is read")
+        back = self.committed(self.thumb(middle, on=False, revision=1))
+        self.assertEqual(back["settled"], False)
+        self.assertEqual((unread(), pending()), (before - 1, [first, last]), "taking the thumb back leaves it read")
+        again = self.committed(self.thumb(middle, revision=2))
+        self.assertEqual((again["changed"], again["settled"]), (True, False), "a thumb on a message already read reads nothing")
+        self.assertEqual(self.committed(self.thumb(middle, revision=3))["settled"], False, "an unchanged thumb reads nothing")
+        self.assertEqual(self.committed(self.thumb(first))["settled"], True)
+        self.assertEqual((unread(), oldest(), pending()), (before - 2, last, [last]))
+
     def test_a_reaction_tells_every_reader_of_the_message_and_only_them(self):
         message = self.post()
         self.committed(self.thumb(message))

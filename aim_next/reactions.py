@@ -16,7 +16,10 @@ Every change adds to the row's revision and rows are never deleted, so a
 revision is never reused, and the sum of a message's revisions (its reaction
 version) only grows. Both settle the reactor's own pending delivery of the
 message, as reading it does, and change no topic state or order; only a
-thumb that answers an ask, or is taken back from one, changes a wait.
+thumb that answers an ask, or is taken back from one, changes a wait. A
+thumb's result says whether it settled one (`settled`): the message was
+unread for the reactor and is read now. Taking a thumb back settles nothing
+and unsettles nothing: what was read stays read.
 
 An answer is also said where the asker reads it: the same act posts a short
 reply from the person to the agent (`✅ Go ahead` or `🚫 Don't`), so the agent
@@ -102,7 +105,8 @@ class Reactions:
         version = db.execute("SELECT SUM(revision) FROM message_reactions WHERE message_id=?", (message["id"],)).fetchone()[0]
         for reader in self._message_readers(db, message, actor):
             self._change(db, "actor", reader, "reaction", message["id"], version)
-        return version
+        # Whether this act read the message for the reactor: a page places its New line afresh only then.
+        return version, pending is not None
 
     def _message_readers(self, db, message, actor):
         """Everyone who sees the message's reactions, by the reach of reading it (_message_access): its whisper's
@@ -133,10 +137,11 @@ class Reactions:
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
         if thumbed == (current % 2 == 1):
             # Unchanged, it reports what the thumb on the message does: a 👍 that answered an ask holds `yes`, a taken-back one nothing.
-            return dict(result, thumbed=thumbed, thumb_revision=current, answered=answered_yes(row), changed=False), []
+            return dict(result, thumbed=thumbed, thumb_revision=current, answered=answered_yes(row), changed=False, settled=False), []
         value, waits = self._thumb_answer(db, actor, message, thumbed, answered_yes(row))
-        version = self._react(db, actor, message, "thumb", value, current + 1, _now_ms())
-        return dict(result, thumbed=thumbed, thumb_revision=current + 1, reaction_version=version, answered=value == "yes", changed=True), waits + [
+        version, settled = self._react(db, actor, message, "thumb", value, current + 1, _now_ms())
+        return dict(result, thumbed=thumbed, thumb_revision=current + 1, reaction_version=version, answered=value == "yes", changed=True,
+                    settled=settled), waits + [
             {"kind": "reaction", "id": message["id"], "version": version}]
 
     # A thumb that answers an ask (item 239) -----------------------------------
@@ -281,7 +286,7 @@ class Reactions:
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"], "answer": answer}
         if row is not None and row["value"] == answer:
             return dict(result, answer_revision=current, changed=False), []
-        version = self._react(db, actor, message, "answer", answer, current + 1, _now_ms())
+        version, _settled = self._react(db, actor, message, "answer", answer, current + 1, _now_ms())
         # The asker is told as a reply is: a short message from the person to
         # the agent, answering the ask, which also clears the topic's wait.
         body = ANSWERS[answer] + (" (I changed my answer)" if row is not None else "")

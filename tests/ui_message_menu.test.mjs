@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openMessageMenu, sayOn, copyText } from '../web/message-menu.mjs';
+import { copyKey, selectAllKey } from '../web/writing-input.mjs';
 import { Element, miniDocument } from './fixtures/mini_dom.mjs';
 
 // A document whose elements have boxes and styles, listening on the way down
@@ -118,6 +119,19 @@ test('the ⋯ says what was just done until the next press has landed or a key i
   assert.equal(anchor.textContent, 'Link copied', 'a press that has only started keeps the words, so it lands on the button they size');
   doc.fire('click', { target: anchor });
   assert.deepEqual([anchor.textContent, doc.listening()], ['⋯', 0], 'the press landed: ⋯ again');
+});
+
+test('the copy key is ⌘C on a Mac and Ctrl-C elsewhere, with no other modifier, as Select All is ⌘A and Ctrl-A', () => {
+  const key = (more, code = 'KeyC') => ({ key: code === 'KeyC' ? 'c' : 'a', code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...more });
+  assert.equal(copyKey(key({ metaKey: true }), true), true, '⌘C on a Mac');
+  assert.equal(copyKey(key({ ctrlKey: true }), false), true, 'Ctrl-C elsewhere');
+  assert.equal(copyKey(key({ ctrlKey: true }), true), false, 'Ctrl-C on a Mac is not copy');
+  assert.equal(copyKey(key({ metaKey: true }), false), false, 'the Windows key with C elsewhere is not copy');
+  for (const extra of ['shiftKey', 'altKey']) assert.equal(copyKey(key({ metaKey: true, [extra]: true }), true), false, `with ${extra} it is another key (⇧⌘C is the Reader's)`);
+  assert.equal(copyKey(key({ metaKey: true }, 'KeyA'), true), false, '⌘A is not copy');
+  assert.equal(copyKey({ key: 'с', code: 'KeyC', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }, true), true, 'a layout with no Latin letters: the key in C\'s place');
+  assert.equal(copyKey({ key: 'c', code: 'KeyI', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }, true), true, 'a layout that puts C elsewhere: the key it names C');
+  assert.equal(selectAllKey(key({ metaKey: true }, 'KeyA'), true), true, 'Select All is unchanged');
 });
 
 test('copying answers whether the words are on the clipboard', async () => {
