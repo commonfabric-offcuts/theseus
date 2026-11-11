@@ -40,7 +40,6 @@
    Only new the stacks draw nothing (aim.css). */
 
 :root{
-  --stack-max:40rem;                      /* the widest a stack gets */
   /* the folder: one material for tab and body */
   --stack-folder:#e9e5da;
   --stack-folder-deep:#dcd6c8;            /* the short name under the pointer */
@@ -84,7 +83,7 @@
 
 /* The folder's body. The sheets inside read on the folder's own sheet colours; a card keeps its tint. */
 .reply-stack:not(.only-new *){--panel:var(--stack-sheet);--read-card:var(--stack-read-sheet);--read-hover:var(--stack-read-hover);
-  position:relative;isolation:isolate;display:flex;flex-direction:column;max-width:var(--stack-max);
+  position:relative;isolation:isolate;display:flex;flex-direction:column;
   margin:calc(var(--stack-gap) + var(--stack-tab-h)) 0 var(--stack-gap);padding:var(--stack-pad);
   border-radius:0 var(--stack-r) var(--stack-r) var(--stack-r);background:var(--stack-folder);box-shadow:var(--stack-lift)}
 /* A message placed on its own is a folder with no tab: the sheet, and the line saying it was placed. */
