@@ -221,7 +221,7 @@ other question, labelled "Blocking a release (release 44):" or "Blocking a
 piece (item 259):" before its topic's link, and its topic is not listed
 again below it. The link opens the topic, as every row does.
 
-Schema version 35 adds `message_blocks`. Stepping back to 34 is refused once
+Schema version 36 adds `message_blocks`. Stepping back to 35 is refused once
 any ask has named what it blocks.
 
 ## Work observed

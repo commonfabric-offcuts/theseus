@@ -76,7 +76,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(mode==='--reading'?['tests/topic_reading_native.mjs','web/message-menu.mjs','web/reactions.mjs','web/card-reading.mjs','web/card-scroll.mjs','web/interaction-guide.mjs','web/reply-stacks.mjs','web/fold.mjs','web/rail-drawer.mjs','aim_next/reactions.py','aim_next/topic_reading.py']:[]), ...(mode==='--forms'?['tests/form_rules_native.mjs','web/quick-create.mjs','web/outcome-purpose.mjs','web/people.mjs','web/opening-view.mjs','web/creation-view.mjs','aim_next/openings.py','aim_next/store.py']:[]), ...(mode==='--conversation'?['tests/conversation_native.mjs','web/outcome-conversation.mjs','web/message-menu.mjs','web/reactions.mjs','aim_next/reactions.py','web/whisper-choice.mjs','web/outcome-scope.mjs','web/topic-navigation.mjs','aim_next/standing_conversation.py','aim_next/conversation.py']:[]), ...(mode==='--header'?['tests/topic_header_native.mjs','tests/links_native.mjs','tests/png-bands.mjs','web/topic-header.mjs','web/topic-settings.mjs','web/topic-state.mjs','web/people.mjs','web/links.mjs','web/dismiss.mjs','web/fold.mjs','web/message-menu.mjs','web/app-session.mjs']:[]), ...(mode==='--health'?['tests/health_native.mjs','web/health.mjs','web/health-light.mjs','web/topic-navigation.mjs','aim_next/health.py','aim_next/runner.py','aim_next/live.py','aim_next/store.py']:[]), ...(mode==='--targets'?['tests/targets_native.mjs','web/targets.mjs','web/targets-words.mjs','web/charts.mjs','web/outcomes.mjs','web/topic-navigation.mjs','web/app.mjs','aim_next/checks.py','aim_next/outcome_kind.py','aim_next/outcome_rules.py']:[]), ...(mode==='--pipeline'?['tests/pipeline_native.mjs','web/pipeline.mjs','web/pipeline-words.mjs','web/topic-navigation.mjs','web/outcome-scope.mjs','web/app.mjs','aim_next/pipeline.py','aim_next/outcome_rules.py','aim_next/blocking.py']:[]), ...(mode==='--rail'?['tests/outcome_rail_native.mjs','web/outcome-scope.mjs','web/outcomes.mjs','web/outcome-light.mjs','web/opening.mjs','web/creation.mjs','web/topic-state.mjs','web/attention.mjs','aim_next/topic_state.py']:[]), ...(mode==='--wakes'?['tests/wakes_native.mjs','web/wake-lights.mjs','web/people.mjs','aim_next/wake_health.py','aim_next/runner.py']:[]), ...(mode==='--sources'?['tests/topic_sources_native.mjs','web/quick-create.mjs','web/opening.mjs','web/opening-view.mjs','web/topic-navigation.mjs','aim_next/sources.py','aim_next/openings.py']:[]), ...(mode==='--duties'?['tests/topic_duties_native.mjs','web/topic-state.mjs','aim_next/responsibility.py']:[]), ...(mode==='--notebook'?['tests/notebook_pages_native.mjs','web/outcome-references.mjs','web/page-reads.mjs','web/page-changes.mjs','web/page-here.mjs','web/topic-navigation.mjs','web/live.mjs','aim_next/live.py','aim_next/memory.py']:[]), ...(mode==='--list'?['tests/topic_list_native.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py','aim_next/store.py']:[]), ...(mode==='--light'?['tests/outcome_light_native.mjs','web/outcome-light.mjs','web/outcome-light-words.mjs','web/outcomes.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/outcome_light.py','aim_next/outcome_rules.py','aim_next/blocking.py','aim_next/work.py','aim_next/topic_state.py','aim_next/store.py']:[]), ...(mode==='--work'?['tests/topic_work_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','web/people.mjs','aim_next/work.py','aim_next/conversation.py','aim_next/topic_state.py']:[]), ...(mode==='--whispers'?['tests/whisper_native.mjs','web/whisper-choice.mjs','aim_next/whispers.py','aim_next/conversation.py']:[]), ...(mode==='--asks'?['tests/reader_asks_native.mjs','web/whisper-choice.mjs','web/people.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py']:[]), ...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/agent_colors_native.mjs','tests/new_line_native.mjs','web/unanswered.mjs','tests/fold_native.mjs','web/fold.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py','web/author-colors.mjs','web/marks.mjs','web/colors.mjs','web/color-picker.mjs','web/people.mjs','aim_next/colors.py','aim_next/delivery.py','aim_next/conversation.py','web/read-through.mjs']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/lines.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/times.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/image-rows.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', ...(mode === '--inline' ? ['tests/reader_inline_native.mjs', 'tests/reader_images_native.mjs'] : ['tests/reader_freshness_native.mjs']), ...(mode === '--live' ? ['web/live.mjs', 'web/session-renewal.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'web/read-through.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
+for (const filename of [...(mode==='--reading'?['tests/topic_reading_native.mjs','web/message-menu.mjs','web/reactions.mjs','web/card-reading.mjs','web/card-scroll.mjs','web/interaction-guide.mjs','web/reply-stacks.mjs','tests/stack_native.mjs','web/stack-order.mjs','web/stack-feed.mjs','web/stack-look.css','web/things-rail.mjs','aim_next/stacks.py','web/fold.mjs','web/rail-drawer.mjs','aim_next/reactions.py','aim_next/topic_reading.py']:[]), ...(mode==='--forms'?['tests/form_rules_native.mjs','web/quick-create.mjs','web/outcome-purpose.mjs','web/people.mjs','web/opening-view.mjs','web/creation-view.mjs','aim_next/openings.py','aim_next/store.py']:[]), ...(mode==='--conversation'?['tests/conversation_native.mjs','web/outcome-conversation.mjs','web/message-menu.mjs','web/reactions.mjs','aim_next/reactions.py','web/whisper-choice.mjs','web/outcome-scope.mjs','web/topic-navigation.mjs','aim_next/standing_conversation.py','aim_next/conversation.py']:[]), ...(mode==='--header'?['tests/topic_header_native.mjs','tests/links_native.mjs','tests/png-bands.mjs','web/topic-header.mjs','web/topic-settings.mjs','web/topic-state.mjs','web/people.mjs','web/links.mjs','web/dismiss.mjs','web/fold.mjs','web/message-menu.mjs','web/app-session.mjs']:[]), ...(mode==='--health'?['tests/health_native.mjs','web/health.mjs','web/health-light.mjs','web/topic-navigation.mjs','aim_next/health.py','aim_next/runner.py','aim_next/live.py','aim_next/store.py']:[]), ...(mode==='--targets'?['tests/targets_native.mjs','web/targets.mjs','web/targets-words.mjs','web/charts.mjs','web/outcomes.mjs','web/topic-navigation.mjs','web/app.mjs','aim_next/checks.py','aim_next/outcome_kind.py','aim_next/outcome_rules.py']:[]), ...(mode==='--pipeline'?['tests/pipeline_native.mjs','web/pipeline.mjs','web/pipeline-words.mjs','web/topic-navigation.mjs','web/outcome-scope.mjs','web/app.mjs','aim_next/pipeline.py','aim_next/outcome_rules.py','aim_next/blocking.py']:[]), ...(mode==='--rail'?['tests/outcome_rail_native.mjs','web/outcome-scope.mjs','web/outcomes.mjs','web/outcome-light.mjs','web/opening.mjs','web/creation.mjs','web/topic-state.mjs','web/attention.mjs','aim_next/topic_state.py']:[]), ...(mode==='--wakes'?['tests/wakes_native.mjs','web/wake-lights.mjs','web/people.mjs','aim_next/wake_health.py','aim_next/runner.py']:[]), ...(mode==='--sources'?['tests/topic_sources_native.mjs','web/quick-create.mjs','web/opening.mjs','web/opening-view.mjs','web/topic-navigation.mjs','aim_next/sources.py','aim_next/openings.py']:[]), ...(mode==='--duties'?['tests/topic_duties_native.mjs','web/topic-state.mjs','aim_next/responsibility.py']:[]), ...(mode==='--notebook'?['tests/notebook_pages_native.mjs','web/outcome-references.mjs','web/page-reads.mjs','web/page-changes.mjs','web/page-here.mjs','web/topic-navigation.mjs','web/live.mjs','aim_next/live.py','aim_next/memory.py']:[]), ...(mode==='--list'?['tests/topic_list_native.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py','aim_next/store.py']:[]), ...(mode==='--light'?['tests/outcome_light_native.mjs','web/outcome-light.mjs','web/outcome-light-words.mjs','web/outcomes.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/outcome_light.py','aim_next/outcome_rules.py','aim_next/blocking.py','aim_next/work.py','aim_next/topic_state.py','aim_next/store.py']:[]), ...(mode==='--work'?['tests/topic_work_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','web/people.mjs','aim_next/work.py','aim_next/conversation.py','aim_next/topic_state.py']:[]), ...(mode==='--whispers'?['tests/whisper_native.mjs','web/whisper-choice.mjs','aim_next/whispers.py','aim_next/conversation.py']:[]), ...(mode==='--asks'?['tests/reader_asks_native.mjs','web/whisper-choice.mjs','web/people.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py']:[]), ...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/agent_colors_native.mjs','tests/new_line_native.mjs','web/unanswered.mjs','tests/fold_native.mjs','web/fold.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py','web/author-colors.mjs','web/marks.mjs','web/colors.mjs','web/color-picker.mjs','web/people.mjs','aim_next/colors.py','aim_next/delivery.py','aim_next/conversation.py','web/read-through.mjs']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/lines.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/press-hold.mjs', 'web/times.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/image-rows.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', ...(mode === '--inline' ? ['tests/reader_inline_native.mjs', 'tests/reader_images_native.mjs'] : ['tests/reader_freshness_native.mjs']), ...(mode === '--live' ? ['web/live.mjs', 'web/session-renewal.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'web/read-through.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -232,16 +232,23 @@ try {
     };
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
-      // A card a reply stack folds away (docs/topic-reading.md, "Reply stacks")
-      // is reached as a person reaches it: a press on its stack's line opens
-      // the stack first. A card on show is left as it is.
+      // A card a reply stack folds away (docs/reply-stacks.md) is reached as a
+      // person reaches it: a press on its stack's fold line opens the stack
+      // first, and a stack's head shows its full message on a press on its
+      // row. A card on show is left as it is.
       const unfold = async selector => {
-        const line = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),s=e?.closest('.reply-stack');
-          if(!s||e.getClientRects().length)return null;const t=s.querySelector(':scope > .stack-replies > .stack-toggle');t.scrollIntoView({block:'center'});return t.getAttribute('aria-expanded')==='true'?null:'opens'})()`);
-        if (!line) return;
-        const stack = `#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-replies > .stack-toggle`;
-        await point(stack);
-        await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
+        const way = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),s=e?.closest('.reply-stack');
+          if(!s||s.dataset.single==='true')return null;
+          if(!e.getClientRects().length){const t=s.querySelector(':scope > .stack-replies > .stack-fold-line');t.scrollIntoView({block:'center'});return 'fold'}
+          const h=e.classList.contains('stack-head-card')?e:e.querySelector(':scope > .stack-head-card');
+          if(h&&s.dataset.headOpen==='false'){h.scrollIntoView({block:'center'});return 'head'}return null})()`);
+        if (way === 'fold') {
+          await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-replies > .stack-fold-line`);
+          await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
+        } else if (way === 'head') {
+          await point(`${selector} .stack-head .stack-who`);
+          await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).closest('.reply-stack').dataset.headOpen === 'true'`), `${selector} shows its full message`);
+        }
       };
       const connectedPage = { targetId, send, evaluate, close, box, point, key, unfold, calls, held, errors, events, network, responses,
         excusedReleases: releases.excused, failedReleases: releases.failed, unsettledReleases: releases.unsettled,
@@ -277,7 +284,9 @@ try {
           }
           await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
           await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
-          await point(`#messages [data-id="${facts.sources[index].id}"]`);
+          // A stack's first message opens from its words: a press on its head's row shows or hides them.
+          const heads = await evaluate(`Boolean(document.querySelector('#messages .stack-head-card[data-id="${facts.sources[index].id}"]'))`);
+          await point(heads ? `#messages .message-card[data-id="${facts.sources[index].id}"] > .message-preview` : `#messages [data-id="${facts.sources[index].id}"]`);
           await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
           await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
         },
@@ -1071,13 +1080,16 @@ try {
           return await inspect(`fetch(${JSON.stringify(url)}).then(r=>r.ok,()=>false)`);
         } finally { await cdp('Target.closeTarget', { targetId }); pages.delete(targetId); }
       };
-      const arrowReady = p => until(() => p.evaluate('!document.querySelector("#next-message").disabled'), 'neighbor arrow ready');
+      // Source 1 answers Source 0, so the page shows it under Source 0 in that
+      // stack (docs/reply-stacks.md): the Reader's ↓ (#previous-message, the
+      // message below) steps from Source 0 to Source 1, and ↑ (#next-message) back.
+      const arrowReady = p => until(() => p.evaluate('!document.querySelector("#previous-message").disabled'), 'neighbor arrow ready');
       // also: other answers the case holds while the step waits.
       const newHeldStep = async (p, also = () => false) => {
         await arrowReady(p);
         const before = p.held.length, step = payload => payload?.name === 'source' && payload.args.id === facts.sources[1].id;
         p.intercept(payload => also(payload) || step(payload));
-        await p.point('#next-message');
+        await p.point('#previous-message');
         return until(() => p.held.slice(before).find(entry => step(entry.payload)), 'held neighboring source');
       };
       // A held private save keeps the device copy unacknowledged, so cleanup
@@ -1102,7 +1114,7 @@ try {
         const place = await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})");
         p.intercept(null); for (const held of p.held) await p.release(held);
         await settled(p, neighborCall);
-        assert.deepEqual(await p.evaluate("({previous:document.querySelector('#previous-message').disabled,next:document.querySelector('#next-message').disabled})"), { previous: true, next: false }, 'resolved arrows survive the mode switch');
+        assert.deepEqual(await p.evaluate("({previous:document.querySelector('#previous-message').disabled,next:document.querySelector('#next-message').disabled})"), { previous: false, next: true }, 'resolved arrows survive the mode switch: ↓ to Source 1, nothing above');
         await observeURLs(p); await openAttachment(p, 'passive.png');
         await settled(p, await started(p, 'media', facts.sources[0]));
         await until(() => p.evaluate('fixtureURLs.length === 1'), 'verified image Blob created');
@@ -1110,7 +1122,7 @@ try {
         await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth > 0'), 'actual decoded PNG');
         assert.equal(await p.evaluate("document.querySelector('#source-body').firstChild===fixtureSourceNode"), true);
         assert.deepEqual(await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})"), { ...place, focus: '' }, 'media does not redraw source or writing space');
-        await p.point('#next-message');
+        await p.point('#previous-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'exact next source');
         await settled(p, await started(p, 'open', facts.sources[1]));
         assert.equal(xNeighborReads(), 2, 'Next reuses the exact resolved X neighbor pair');
@@ -1163,7 +1175,7 @@ try {
         await observeURLs(p); await openAttachment(p, 'passive.png');
         const media = await started(p, 'media', facts.sources[0]);
         const mediaResponse = await until(() => p.held.find(entry => entry.event.request.url.endsWith('/api/media/read')), 'X media held');
-        await p.point('#source-body'); await p.key('ArrowUp', 4);
+        await p.point('#source-body'); await p.key('ArrowDown', 4);
         const heldY = await until(() => p.held.find(entry => entry.payload?.name === 'source'), 'Y source held');
         const openingY = await started(p, 'open', facts.sources[1]);
         assert.equal((await callState(p, openingY.id)).settled, false);
@@ -1206,7 +1218,7 @@ try {
         p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
         await openAttachment(p, 'passive.png'); const held = await until(() => p.held[0], 'held media bytes');
         const media = await started(p, 'media', facts.sources[0]);
-        await p.point('#next-message'); await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'new source before old media');
+        await p.point('#previous-message'); await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'new source before old media');
         const before = await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})");
         // The stale verified answer reaches the application's consumer; since
         // 3270cbe it is refused before it becomes an object URL, and any URL a
@@ -1266,7 +1278,7 @@ try {
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled navigation stays cancelled after failed close');
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false);
         await p.evaluate('IDBDatabase.prototype.transaction=fixtureTransaction'); p.intercept(null);
-        await replace(p, 'Recovered local persistence'); await p.point('#next-message');
+        await replace(p, 'Recovered local persistence'); await p.point('#previous-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'fresh step after restored persistence'); assert.deepEqual(p.errors, []);
       });
 
@@ -1325,7 +1337,7 @@ try {
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false, 'the Reader takes typing again');
         assert.ok((await p.evaluate('document.querySelector("#save-state").textContent')).includes('Recovery copy unavailable'), 'the warning stays with the writing');
         await p.evaluate('IDBDatabase.prototype.transaction=fixtureTransaction'); p.intercept(null);
-        await p.point('#next-message');
+        await p.point('#previous-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'a fresh step once the device keeps writing');
         assert.ok((await localRows(p)).some(row => row.snapshot.draft.body === body && row.snapshot.context.sourceRef.id === facts.sources[0].id), 'the writing the step left is kept on this device');
         assert.deepEqual(p.errors, []);
@@ -1450,14 +1462,18 @@ try {
       assert.equal(await field(p), '', 'new B is visible immediately after the send act');
       await p.send('Input.insertText', { text: 'Native delayed B' });
       await until(() => p.held[0], 'held real prepare response');
-      await p.point('#source-body'); await p.key('ArrowDown', 4);
-      await until(() => p.evaluate('document.querySelector("#source-body").textContent.startsWith("Source 0 ")'), 'neighbor Y');
+      // Y is Source 0, the message above Source 1 on the page: the head of the
+      // stack Source 1 answers in (docs/reply-stacks.md), whatever replies
+      // earlier cases left under it. ⌘↑ steps there.
+      const onY = 'document.querySelector("#source-body").textContent.startsWith("Source 0 ")';
+      await p.point('#source-body'); await p.key('ArrowUp', 4);
+      await until(() => p.evaluate(onY), 'neighbor Y');
       await p.point('#source-body'); const focused = await p.evaluate('document.activeElement.id');
       const original = p.held[0].payload; await p.release(p.held[0]);
       await until(async () => (await view('operation', { operation_id: original.args.send_operation_id })).status === 'committed', 'one public A');
       assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
       assert.equal(await p.evaluate('document.activeElement.id'), focused);
-      assert.ok((await p.evaluate('document.querySelector("#source-body").textContent')).startsWith('Source 0 '));
+      assert.equal(await p.evaluate(onY), true, 'still on Y');
       await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close Y');
       // A arrives as a card above the sources and moves them down; the source
       // is pressed once it has, so the press cannot land on A as it arrives.

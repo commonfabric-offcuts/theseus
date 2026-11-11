@@ -596,7 +596,10 @@ async function run() {
       const p = await page(shape);
       await open(p, second);
       await type(p, 'Kept across messages.');
-      const older = shape === 'phone' ? '.reader-end .end-step:last-child' : '#previous-message';
+      // Both agent messages answer the fixture's first message (its default
+      // source), so they read in that message's reply stack, oldest first: the
+      // older one is above, ↑ (docs/reply-stacks.md), and ↓ comes back.
+      const older = shape === 'phone' ? '.reader-end .end-step:first-child' : '#next-message';
       if (shape === 'phone') await p.locator('.reader-end').scrollIntoViewIfNeeded();
       await press(p, older);
       await until(p, () => !document.querySelector('#source-body').textContent.startsWith('Second agent'), 'the older message');
@@ -604,7 +607,7 @@ async function run() {
       assert.deepEqual(moved, { notice: 'Your reply to the last one is kept.', field: '', state: 'line' });
       assert.equal(await noticeOver(p), 0, 'the notice sits clear of the message');
       if (shape === 'phone') {
-        // At the message's end the notice leaves ↑ Newer · ↓ Older to be read and pressed.
+        // At the message's end the notice leaves ↑ Previous · ↓ Next to be read and pressed.
         await p.evaluate(() => { const body = document.querySelector('#source-body'); body.scrollTop = body.scrollHeight; });
         const covered = await p.evaluate(() => { const end = document.querySelector('.reader-end').getBoundingClientRect(); return [...document.querySelectorAll('.reader-end .end-step')].map(b => { const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.end-step') === b; }).concat(end.bottom <= document.querySelector('#reader-composer').getBoundingClientRect().top + 1); });
         assert.deepEqual(covered, [true, true, true], 'the end line shows whole above the reply');
@@ -614,7 +617,7 @@ async function run() {
       await type(p, 'A reply here.');
       assert.equal(await noticeWords(p), '', 'writing clears the kept notice');
       await p.locator('#writing-body').fill('');
-      await press(p, '#next-message');
+      await press(p, '#previous-message');
       await until(p, () => document.querySelector('#source-body').textContent.startsWith('Second agent'), 'back on the message');
       assert.equal(await p.evaluate(() => document.querySelector('#writing-body').value), 'Kept across messages.');
       await close(p);
@@ -784,10 +787,11 @@ async function run() {
 
   await check('stacked: every control of the Reader and its composer is reached by keyboard alone, and Escape from each panel returns to its opener', async () => {
     const p = await page('stacked');
-    // A message with one newer and one older, so both arrows are there to reach.
+    // A message with one above and one below, so both arrows are there to
+    // reach: the first agent message, above the second in their reply stack.
     await open(p, second);
-    await press(p, '#previous-message');
-    await until(p, () => document.querySelector('#source-body').textContent.startsWith('First agent') && !document.querySelector('#next-message').disabled, 'the older message');
+    await press(p, '#next-message');
+    await until(p, () => document.querySelector('#source-body').textContent.startsWith('First agent') && !document.querySelector('#next-message').disabled && !document.querySelector('#previous-message').disabled, 'the older message');
     // With writing in the reply, so Send can be reached.
     await p.evaluate(() => document.querySelector('#writing-body').focus());
     await p.keyboard.insertText('By keyboard.');
@@ -1211,11 +1215,12 @@ async function run() {
     await p.keyboard.insertText('warp');
     await p.evaluate(() => document.querySelector('#source-body').focus());
     assert.equal(await p.evaluate(a => document.querySelector(a.panel).hidden, at), false, 'the who panel stays open as focus leaves it');
-    await p.keyboard.press('Meta+ArrowDown');
+    // The older message is above the newer in their reply stack: ⌘↑, and ⌘↓ back.
+    await p.keyboard.press('Meta+ArrowUp');
     await until(p, () => document.querySelector('#source-body').textContent.startsWith('First agent'), 'the older message');
     const older = await read();
     assert.deepEqual([older.named, older.to, older.chip.includes('warp')], [before, '', false], `the older message's reply names no one more, and its To is empty: ${JSON.stringify(older)}`);
-    await p.keyboard.press('Meta+ArrowUp');
+    await p.keyboard.press('Meta+ArrowDown');
     await until(p, () => document.querySelector('#source-body').textContent.startsWith('Second agent'), 'back to the newer message');
     const newer = await read();
     assert.deepEqual([newer.named, newer.to, newer.writing], [before, 'warp', 'Reply to the second.'], `back on the newer message, warp is typed in its To, not named: ${JSON.stringify(newer)}`);

@@ -228,7 +228,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(p.calls.some(c => c.payload?.kind), false, 'retrying the read does not manufacture a draft');
     await p.evaluate('window.scrollTo(0,0)');
     await control({ method: 'read_fault', name: 'source', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'This source could not be opened', retryable: true } }, count: 1 });
-    await p.point('#messages .message-card');
+    // A card whose words show: a press there opens it (on a stack's head shown as one row, a press shows its words instead).
+    await p.evaluate(`[...document.querySelectorAll('#messages .message-card')].find(c=>c.querySelector(':scope > .message-preview')?.getClientRects().length).id='inline-open-fixture-card'`);
+    await p.point('#inline-open-fixture-card > .message-preview');
     await until(() => p.evaluate('!document.querySelector("#app-status").hidden'), 'failed inline-origin open is explained globally');
     assert.match(await p.evaluate('document.querySelector("#app-status").textContent'), /source could not be opened/);
     const notice = await p.box('#app-status'); assert.ok(notice.y >= 0 && notice.y+notice.height<=notice.viewportHeight, 'failed visible-card open has a visible explanation');
@@ -342,7 +344,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     const afterArrival = await writingPosition();
     assert.deepEqual({ ...afterArrival, top: beforeArrival.top, bottom: beforeArrival.bottom }, beforeArrival, 'arrival preserves body, caret and focus');
     assert.ok(afterArrival.top >= 0 && afterArrival.bottom <= afterArrival.height, 'arrival keeps the writing area in view');
-    assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position');
+    assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, stacks: await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.className.split(' ')[0]+':'+(e.dataset.fold??''))`) }));
     observations.push({ name: 'inline arrival anchor', beforeArrival, afterArrival });
     await shot(p, 'inline-before-send'); noSend();
 

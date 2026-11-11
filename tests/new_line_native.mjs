@@ -586,7 +586,8 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const p = await open(topic, 'new-line-reply-' + theme, theme);
       await settle(p, topic, theme + ': the line under the message marked unread');
       const navigations = await p.evaluate('performance.getEntriesByType("navigation").length');
-      // The reply stacks under the message it answers and brings that stack up (docs/topic-reading.md, "Reply stacks"); the line goes with it, keeping its own height.
+      // The reply stacks under the message it answers and brings that stack up (docs/topic-reading.md, "Reply stacks"); the line stays where it was,
+      // under the lowest stack holding anything newer than its message, so nothing newer sits below it (docs/reply-stacks.md, "One New line"), keeping its own height.
       const lineHeight = () => p.evaluate(`document.querySelector('#messages .new-line').getBoundingClientRect().height`);
       const before = await lineHeight();
       assert.deepEqual(await drawn(p), { count: 1, after: ids[2], kind: 'new', faded: false, inert: false }, theme + ': it shows');
@@ -601,9 +602,9 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${reply}"]'))`), theme + ': the reply drawn');
       await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': sending closed the Reader');
       const faded = await fadedOut(p, theme + ': opened and answered, the line fades out');
-      assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[2], true, 'none', 1], theme + ': under its message\'s stack, inert: ' + JSON.stringify(faded));
+      assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[3], true, 'none', 1], theme + ': where it was, under the oldest message newer than its own, inert: ' + JSON.stringify({ faded, ids, reply }));
       assert.ok(Math.abs(faded.height - before) <= 1, theme + `: it keeps its space (${faded.height} of ${before})`);
-      assert.equal(await p.evaluate(`document.querySelector('#messages .new-line').previousElementSibling.contains(document.querySelector('#messages [data-id="${reply}"]'))`), true, theme + ': the reply is in that stack');
+      assert.equal(await p.evaluate(`(()=>{const top=document.querySelector('#messages > .reply-stack');return top.dataset.stack===${JSON.stringify(ids[2])}&&top.contains(document.querySelector('#messages [data-id="${reply}"]'))&&Boolean(top.compareDocumentPosition(document.querySelector('#messages .new-line'))&Node.DOCUMENT_POSITION_FOLLOWING)})()`), true, theme + ': the reply is in its message\'s stack, brought up above the line');
       assert.equal(await unread(topic), null, theme + ': the reply, the person\'s own, holds nothing');
       assert.equal(await p.evaluate('performance.getEntriesByType("navigation").length'), navigations, theme + ': no reload');
       assert.equal(await p.evaluate("document.querySelector('#refresh')"), null, theme + ': and no Refresh to press');

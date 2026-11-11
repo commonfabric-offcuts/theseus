@@ -56,7 +56,10 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, arrangeStacks } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, stackState } from './reply-stacks.mjs';
+import { StackFeed } from './stack-feed.mjs';
+import { PressHold } from './press-hold.mjs';
+import { readingOrder } from './stack-order.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
@@ -93,6 +96,10 @@ let pipelineRow = null, pipelineAddFor = null;
 let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
 let menu = null, reactions = null;
+// What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
+let stackFeed = null;
+// A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
+const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
 const halfShown = new Set(), atMiddle = new Set();
 // Whether what is drawn above the topic page's messages after they paint has
@@ -491,10 +498,22 @@ async function present(presentation) {
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
-    registry.current.neighbors = neighbors;
-    $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
+    registry.current.neighbors = onPage(presentation, neighbors);
+    $('previous-message').disabled = !registry.current.neighbors.previous; $('next-message').disabled = !registry.current.neighbors.next;
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error); });
   sourceAttachments(presentation);
+}
+// The Reader's ↑ and ↓ follow the page as shown (stack-order.mjs,
+// readingOrder): ↑ the message above, ↓ the one below, down a stack to its
+// newer replies and on to the stack below. Where the page shows nothing that
+// way (the end of what it loaded, a message it does not show), Core's
+// neighbour in the topic stands in. next is the one above, previous below.
+function onPage(presentation, core) {
+  const id = presentation?.source?.source_ref?.id, order = readingOrder(stackState($('messages')).stacks);
+  const at = presentation?.source?.source_ref?.kind === 'message' ? order.findIndex(item => item.id === id) : -1;
+  if (at < 0 || !core) return core;
+  const ref = item => item ? { kind: 'message', id: item.id } : null, off = other => other && !order.some(item => item.id === other.id) ? other : null;
+  return { next: ref(order[at - 1]) ?? off(core.next), previous: ref(order[at + 1]) ?? off(core.previous) };
 }
 // A Notebook page shown in the Reader is read once the person can see it, as
 // a message is (noteRead): in a visible, focused page. One shown in the
@@ -671,7 +690,12 @@ function paintMoreMessages() {
 }
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
+  // All but the header and the people, which repaint in place, move the list:
+  // under a press held down they wait for it to end, so the click lands where it began.
+  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
   if (kind === 'reactions') { keepListAnchor(() => menu?.paint()); paintReaderThumb$(); return; }
+  // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
+  if (kind === 'acts') { keepListAnchor(() => { stackMessages(); placeLine(); menu?.paint(); }); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
@@ -701,6 +725,8 @@ function paintViews(kind) {
       // An agent's name on its card opens its color picker instead of the message.
       const open = card.onclick;
       card.onclick = event => {
+        // A stack's head row shows or hides its full message, or renames it (reply-stacks.mjs).
+        if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         const name = event?.target?.closest?.('.author-name');
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
         return open(event);
@@ -731,7 +757,8 @@ function paintViews(kind) {
     }
     learnReply(views.messages, item, bootstrap.actor);
   }
-  if (kind === 'messages') { stackMessages(); paintCardReading(); }
+  // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
+  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
@@ -765,8 +792,14 @@ const agentShown = id => colors?.color(id) ?? agentColor(id);
 // conversation's included (reply-stacks.mjs). A folded stack keeps in view a
 // reply the person has not read and, in the conversation, one whose card asks
 // something of them: an item nothing has settled, or an ask waiting on them.
-function stackMessages() {
-  arrangeStacks($('messages'), views.messages, { keep: item => !cardRead(item) || stillOwed(item) });
+function stackMessages() { feedOf().arrange(); }
+// The page's reply stacks and what the person does to them, made with the first messages.
+function feedOf() {
+  stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
+    authority: () => registry.runtime.current, send: envelope => api.command(envelope),
+    keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : id),
+    hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)) });
+  return stackFeed;
 }
 // The conversation's own word on a message: its item and the asks that wait,
 // as the conversation's newest read says, else as the page's messages say.
@@ -791,10 +824,11 @@ function paintCardReading() {
 }
 // A message the page shows, brought into view: its stack opened first when it
 // folds the message away, and its fold opened. Null when it is not loaded.
-function landOn(id) {
+function landOn(id, { full = false } = {}) {
   const entry = entries($('messages')).find(child => child.dataset.id === id);
   if (!entry) return null;
-  const card = opened(reveal(entry));
+  reveal(entry, { full });
+  const card = opened(entry);
   card.scrollIntoView({ block: 'nearest' });
   return card;
 }
@@ -1031,17 +1065,22 @@ async function toggleMark() {
 }
 // A message's ⋯ menu, from the ⋯ on its bar (message-menu.mjs) or a
 // right-click (docs/links.md, "A message's menu").
+// On a phone it opens as a sheet from the bottom, as a long press does.
 function openMessageMore(item, more) {
-  openMessageMenu({ anchor: more, items: messageMenuItems(item, more), label: 'This message' });
+  openMessageMenu({ anchor: more, items: messageMenuItems(item, more, more), label: 'This message', sheet: true });
 }
-// say: the ⋯ that says "Link copied", or null where none shows.
-function messageMenuItems(item, say) {
-  const items = [{ label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
+// say: the ⋯ that says "Link copied", or null where none shows. anchor: what
+// the menu opened from, where a phone's "Move or join…" sheet opens too.
+// What the message's stack offers comes first, its moves and joins last (stack-feed.mjs).
+function messageMenuItems(item, say, anchor = say) {
+  const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
+  const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: moves, label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
+  const items = [...stack.first, { label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', act: () => run(() => markFromMenu(item.id, !marked)) });
   }
-  return items;
+  return [...items, ...stack.last];
 }
 // A right-click on a message opens the same menu where the pointer is. On a
 // link or a selection the browser's own menu stays, to copy what it offers.
@@ -1054,7 +1093,7 @@ function messageContextMenu(event) {
   const card = cardIn(entry), shown = !card.hidden, anchor = shown ? card : entry.querySelector('.fold-line') ?? entry;
   const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null;
   // "Link copied" shows on the bar's ⋯ while its message is lit, as it is under the pointer.
-  openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null), label: 'This message' });
+  openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null, anchor), label: 'This message', sheet: true });
 }
 // The link names the message's own topic, which the Reader may show on a page of another.
 async function copyLink(topicId, messageId, say) {
@@ -1376,8 +1415,8 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       p.neighbors = null;
       const result = await registry.neighbors(p, { read });
       if (!current() || !registry.isSourceCurrent(p) || !result) return true;
-      registry.current.neighbors = result;
-      $('previous-message').disabled = !result.previous; $('next-message').disabled = !result.next; return true;
+      registry.current.neighbors = onPage(p, result);
+      $('previous-message').disabled = !registry.current.neighbors.previous; $('next-message').disabled = !registry.current.neighbors.next; return true;
     } });
   registry.cleanup.foregroundListeners.add(() => freshness.interrupt());
   // Each new commit asks for a pass; while the stream is down the timer resumes.
@@ -1617,7 +1656,7 @@ async function initialize() {
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
     close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error); return false; }),
     step: async direction => {
-      const presentation = registry.current, neighbors = presentation.neighbors ?? await registry.neighbors(presentation);
+      const presentation = registry.current, neighbors = onPage(presentation, presentation.neighbors ?? await registry.neighbors(presentation));
       if (!registry.isCurrent(presentation)) return;
       const ref = direction < 0 ? neighbors?.previous : neighbors?.next;
       if (ref) await openSource(ref, presentation.opener);
@@ -1657,7 +1696,8 @@ async function initialize() {
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => act(reactions.thumb(item, on)), answer: (item, answer) => act(reactions.answer(item, answer)),
+    // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
+    thumb: (item, on) => act(reactions.thumb(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
     more: openMessageMore,
     expand: (card, item) => cardScroll.expand(card, item) });
   $('thumb-source').onclick = () => {
@@ -1691,6 +1731,8 @@ async function initialize() {
   cardObserver = new IntersectionObserver(cardsSeen(halfShown, entry => entry.isIntersecting && entry.intersectionRatio >= 0.5), { threshold: [0, 0.5] });
   middleObserver = new IntersectionObserver(cardsSeen(atMiddle, entry => entry.isIntersecting), { rootMargin: '-50% 0px -50% 0px', threshold: 0 });
   document.addEventListener('visibilitychange', noteRead);
+  // Back on the page, a stack dealt with folds, where it is not in front of the person.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') stackFeed?.cameBack(inView); });
   window.addEventListener('focus', noteRead);
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
@@ -1775,7 +1817,9 @@ async function initialize() {
   // The rails beside the page read through this run from now on (rails.mjs).
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
-    open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic });
+    open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
+    // The rail's Starred takes a star off (stack-feed.mjs).
+    unstar: star => stackFeed?.unstar(star) });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   if (anchored) {
@@ -2053,6 +2097,10 @@ nameTopicsWith(topicName);
 async function openDestination(target, title, from = null) {
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
+    // A message the page shows is landed on first, its stack opened; the
+    // rail's Starred lands on it and opens nothing more.
+    const card = landOn(target.message, { full: target.land === true });
+    if (card && target.land) { card.focus({ preventScroll: true }); return; }
     // From the Reader's own text, closing gives the focus to what opened the Reader.
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
     return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement));

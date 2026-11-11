@@ -22,7 +22,7 @@ from .reactions import answered_yes
 from .standing_conversation import is_conversation
 
 
-# Version 35 keeps what an ask blocks. A message keeps it as written, so the
+# Version 36 keeps what an ask blocks. A message keeps it as written, so the
 # step back is refused once any ask has named one.
 BLOCKS_SCHEMA = [
     "CREATE TABLE message_blocks (message_id TEXT PRIMARY KEY REFERENCES messages(id), workspace_id TEXT NOT NULL, "

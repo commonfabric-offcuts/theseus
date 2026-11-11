@@ -102,7 +102,8 @@ export class KeyTree {
   say(words) { this.status.textContent = ''; this.status.textContent = words; }
   key(event) {
     const action = keyAction(event);
-    if (!action) return;
+    // ⇧⌘↑ ⇧⌘↓ join reply stacks (stack-feed.mjs) and mean nothing in a tree.
+    if (!action || action.startsWith('join-')) return;
     const rows = this.list(), row = this.rowOf(event.target, rows);
     if (!row) return;
     const at = rows.indexOf(row);

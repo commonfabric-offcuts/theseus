@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { placeIn, arrangeItems, moved, toSave, orderOf, movedWords, scopeOf, OrderBook } from '../web/outline-order.mjs';
-import { keyAction, writing, KEY_WORDS } from '../web/pane-keys.mjs';
+import { keyAction, writing, KEY_WORDS, MESSAGE_KEY_WORDS } from '../web/pane-keys.mjs';
 
 test('what the person placed keeps their order; what they never placed goes where Core lists it, after the one before it', () => {
   assert.deepEqual(placeIn(['a', 'b', 'c', 'd'], []), ['a', 'b', 'c', 'd'], 'nothing placed: Core\'s order');
@@ -159,16 +159,22 @@ test('each key means one thing in the panes: arrows move, ⌘ arrows open, fold 
     ['move-up', 'move-down', 'open', 'fold', 'undo', 'write']);
   // ⌘Return with another modifier, or while a character is composed, means nothing here.
   assert.deepEqual(said([['Enter', { metaKey: true, shiftKey: true }], ['Enter', { metaKey: true, altKey: true }], ['Enter', { metaKey: true, isComposing: true }], ['Enter', { ctrlKey: true }]]), [null, null, null, null]);
-  // ⇧⌘→ and ⇧⌘← open and fold every outcome; ⇧⌘↑ and ⇧⌘↓ are left to the messages' own pieces.
+  // ⇧⌘→ and ⇧⌘← open and fold every outcome; ⇧⌘↑ and ⇧⌘↓ join reply stacks, which only the messages act on.
   const both = { metaKey: true, shiftKey: true };
-  assert.deepEqual(said([['ArrowRight', both], ['ArrowLeft', both], ['ArrowUp', both], ['ArrowDown', both]]), ['open-all', 'fold-all', null, null]);
+  assert.deepEqual(said([['ArrowRight', both], ['ArrowLeft', both], ['ArrowUp', both], ['ArrowDown', both]]), ['open-all', 'fold-all', 'join-up', 'join-down']);
   // Return is the focused row's own; other keys and other modifiers mean nothing here.
   assert.deepEqual(said([['Enter'], ['a'], ['Tab'], ['ArrowUp', { altKey: true }], ['ArrowUp', { ctrlKey: true }], ['ArrowUp', { shiftKey: true }],
-    ['ArrowUp', { metaKey: true, shiftKey: true }], ['z', { metaKey: true, shiftKey: true }], ['Home', command]]), [null, null, null, null, null, null, null, null, null]);
+    ['z', { metaKey: true, shiftKey: true }], ['Home', command]]), [null, null, null, null, null, null, null, null]);
   assert.equal(keyAction(press('ArrowDown', { defaultPrevented: true })), null, 'a key something else took');
   assert.equal(keyAction(press('ArrowDown', { isComposing: true })), null, 'while composing a character');
   assert.deepEqual(KEY_WORDS.map(([keys]) => keys), ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], 'the legend names every key');
   assert.ok(KEY_WORDS.length >= 5 && KEY_WORDS.every(([keys, words]) => keys && /^[a-z]/.test(words) && !/\b[tw]-[0-9a-f]{6}/.test(words)), 'the legend is plain words');
+  // Under "In the messages", the stack keys, each one the key map gives a message.
+  assert.deepEqual(MESSAGE_KEY_WORDS.map(([keys]) => keys), ['↑ ↓', '⌘↑ ⌘↓', '⌘→ ⌘←', '⇧⌘↑ ⇧⌘↓', '⌘Z'], 'the messages\' legend names every stack key');
+  const withCommand = (key, more = {}) => keyAction({ key, metaKey: true, ...more });
+  assert.deepEqual([withCommand('ArrowUp'), withCommand('ArrowDown'), withCommand('ArrowRight'), withCommand('ArrowLeft'), withCommand('ArrowUp', { shiftKey: true }), withCommand('ArrowDown', { shiftKey: true }), withCommand('z')],
+    ['move-up', 'move-down', 'open', 'fold', 'join-up', 'join-down', 'undo'], 'and the key map gives each its act');
+  assert.ok(MESSAGE_KEY_WORDS.every(([, words]) => /^[a-z]/.test(words) && !/\bm-[0-9a-f]{6}/.test(words)), 'in plain words');
 });
 
 test('keys never act in writing: a text field, the Reader, a composer or a pop-up keeps its own ⌘ arrows', () => {

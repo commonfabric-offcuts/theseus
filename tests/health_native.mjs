@@ -165,9 +165,13 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     }
   });
 
-  // Every read of the light fails while window.failLight is set, as when the server sheds background reads.
-  const failing = `(()=>{const fetch=window.fetch.bind(window);window.failLight=true;
-    window.fetch=(input,init)=>window.failLight&&String(init?.body??'').includes('"health_light"')?Promise.reject(new TypeError('Failed to fetch')):fetch(input,init);})()`;
+  // Every read of the light fails while window.failLight is set, as when the server sheds background reads:
+  // one asked while it is set, and one asked before it was set and answered after, which may have been read
+  // in Core at a commit that came after the switch.
+  const failing = `(()=>{const fetch=window.fetch.bind(window);window.failLight=true;const refused=()=>new TypeError('Failed to fetch');
+    window.fetch=(input,init)=>{if(!String(init?.body??'').includes('"health_light"'))return fetch(input,init);
+      if(window.failLight)return Promise.reject(refused());
+      return fetch(input,init).then(async response=>{if(!window.failLight)return response;await response.arrayBuffer().catch(()=>{});throw refused();});};})()`;
   // The live feed's messages lose what is red while window.stripHealth is set, as an older server's carry none.
   const stripping = `(()=>{const Real=window.WebSocket;window.stripHealth=true;
     const Socket=function(url,protocols){const socket=new Real(url,protocols);let handler=null;
@@ -191,7 +195,12 @@ export async function healthChecks({ check, page, until, control, view, facts, s
   });
 
   await check('health on a server whose feed does not say what is red, a link that cannot read it says it could not check, and is quiet only after a read that says nothing is', async () => {
-    const p = await page('health-unread', null, true, { beforeNavigate: async q => {
+    // On the Health page the light's reads are the only background reads after the page loads, so the
+    // server's background lane (one read, two waiting) never refuses one. A topic page reads several
+    // views in the background on every commit, and a wake that gets through is four commits: those
+    // reads can fill the lane, and a refused read leaves the link saying it could not check until the
+    // next commit (docs/health.md), which this check would wait for in vain.
+    const p = await page('health-unread', null, true, { url: facts.origin + '/?health', beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: failing });
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: stripping });
     } });

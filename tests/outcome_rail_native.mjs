@@ -1358,8 +1358,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await p.point('#things-open');
         await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open') && [...document.querySelectorAll('#things .things-sec')].some(d => d.checkVisibility())"), width + ': the right rail opens over the page with a section');
       };
-      // What the keys are on, whether the rail is open, what is lit, and whether the place the keys are on can be seen there.
-      const seen = () => p.evaluate(`(()=>{const at=document.activeElement,card=at?.closest('#messages [data-id]'),b=card?.getBoundingClientRect();
+      // What the keys are on, whether the rail is open, what is lit, and whether the place the keys are on can be seen there:
+      // a stack's head shown as one row has no box of its own, only its row standing above it (stack-look.css), so that row is looked at.
+      const seen = () => p.evaluate(`(()=>{const at=document.activeElement,card=at?.closest('#messages [data-id]'),row=card?.querySelector(':scope > .stack-head'),
+        b=(card&&card.getBoundingClientRect().height===0&&row?row:card)?.getBoundingClientRect();
         const hit=b?document.elementFromPoint(b.left+b.width/2,Math.max(0,Math.min(innerHeight-1,b.top+b.height/2))):null;
         return {open:document.documentElement.hasAttribute('data-things-open'),backdrop:!document.getElementById('things-backdrop').hidden,
           inRail:Boolean(at?.closest('#rail')),visible:card?card.contains(hit):null,lit:document.querySelector('#messages [data-id].lit')?.dataset.id??null,
@@ -1394,8 +1396,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail the arrows move through the outline as a tree: ↑ ↓ Home End, ← to the outcome, ⌘← ⌘→ and ← → fold and open it, and Return opens a topic or a Conversation in place with the keys kept on the row', async () => {
     const p = await open('rail-kbd-tree', '/?topic=t1');
     await settled(p, 'the topic is up');
-    assert.deepEqual(await p.evaluate("(()=>{const k=document.getElementById('outline-keys');return [k.querySelector('summary').textContent,[...k.querySelectorAll('dt')].map(d=>d.textContent)]})()"),
-      ['Keys', ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z']], 'the outline lists its keys');
+    assert.deepEqual(await p.evaluate("(()=>{const k=document.getElementById('outline-keys');return [k.querySelector('summary').textContent,[...k.querySelectorAll('dl')].map(l=>[...l.querySelectorAll('dt')].map(d=>d.textContent)),k.querySelector('.ol-keys-part')?.textContent]})()"),
+      ['Keys', [['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], ['↑ ↓', '⌘↑ ⌘↓', '⌘→ ⌘←', '⇧⌘↑ ⇧⌘↓', '⌘Z']], 'In the messages'],
+      'the outline lists its keys, then the messages\' keys');
     await tabToOutline(p);
     assert.equal(await keyedAt(p), 'topic:t1');
     assert.equal((await keyTree(p)).ring, 'solid', 'the row the keys are on has a ring');

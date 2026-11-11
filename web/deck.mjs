@@ -277,3 +277,21 @@ export function groupAct(deck, picks, kind, { step = 0, text, near } = {}) {
   }
   return acts.length ? { kind: 'many', acts, text, near } : null;
 }
+
+// placeNew(deck, {after, near, depth}, act) gives where a new card not yet made goes when Tab ({kind: 'indent'}),
+// ⇧Tab ({kind: 'outdent'}) or ⌘↑ ⌘↓ ({kind: 'move', step}) moves it, by the rules a made card moves by: {after,
+// near, depth}, the card it then follows (null: first) with that card's index, and its depth; or null when there is
+// nowhere to go. It stands right after the card `after` (null: first), found nearest `near`, at `depth`.
+export function placeNew(deck, { after, near, depth }, act) {
+  const anchor = after === null ? -1 : findCard(deck, after, near);
+  if (after !== null && anchor < 0) return null;
+  // The new card goes in for the move as a card whose text no other card has, so the move finds it again.
+  let text = '\0';
+  while (deck.cards.some(card => cardText(card) === text)) text += '\0';
+  const cards = deck.cards.slice();
+  cards.splice(anchor + 1, 0, { title: text, words: '', depth, written: true });
+  const done = applyAct({ ...deck, cards }, { ...act, text, near: anchor + 1 });
+  if (!done) return null;
+  const before = done.deck.cards[done.at - 1];
+  return { after: before ? cardText(before) : null, near: done.at - 1, depth: done.deck.cards[done.at].depth };
+}

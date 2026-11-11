@@ -609,21 +609,6 @@
   },
   {
    "item": 108,
-   "act": "The box scrolls itself, not the page",
-   "break": [
-    [
-     "web/aim.css",
-     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:contain;",
-     ".message-preview.scroll-in-place{display:block;overflow:visible;overscroll-behavior:contain;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "a cut-off message scrolls in place"
-   }
-  },
-  {
-   "item": 108,
    "act": "Where a finger scrolls, the excerpt is never taller than 60% of the window",
    "break": [
     [
@@ -857,51 +842,6 @@
    ],
    "check": {
     "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 103,
-   "act": "Replies gather into a stack under the message they answer",
-   "break": [
-    [
-     "web/reply-stacks.mjs",
-     "export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) {",
-     "export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) { return;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "replies gather into a stack"
-   }
-  },
-  {
-   "item": 103,
-   "act": "A folded stack's line says how many earlier replies it holds, and a press opens them in place",
-   "break": [
-    [
-     "web/reply-stacks.mjs",
-     "  toggle.onclick = () => { stack.dataset.open = String(stack.dataset.open !== 'true'); fold(stack); };",
-     "  toggle.onclick = () => {};"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "replies gather into a stack"
-   }
-  },
-  {
-   "item": 103,
-   "act": "A reply the person has not read stays in view while its stack is folded",
-   "break": [
-    [
-     "web/reply-stacks.mjs",
-     "for (const entry of answers.slice(1)) if (keep(messages.get(entry.dataset.id))) entry.dataset.kept = 'true';",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "replies gather into a stack"
    }
   },
   {
@@ -1515,21 +1455,6 @@
    ],
    "check": {
     "node": "tests/ui_rails.test.mjs"
-   }
-  },
-  {
-   "item": 276,
-   "act": "⇧⌘→ opens every outcome and ⇧⌘← folds every one, from anywhere in the outline",
-   "break": [
-    [
-     "web/pane-keys.mjs",
-     "{ ArrowRight: 'open-all', ArrowLeft: 'fold-all' }",
-     "{}"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "chips show only"
    }
   },
   {
@@ -2463,6 +2388,1677 @@
    "check": {
     "native": "rail",
     "case": "rail ⌘Return starts a new message in the place the keys are on"
+   }
+  },
+  {
+   "item": 300,
+   "act": "The card being written shows where Tab or ⇧Tab put it, at its new depth",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 300,
+   "act": "Tab or ⇧Tab on a new card not yet made changes where it will go, and it is made there",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (placed) { Object.assign(editing, placed); this.paint(); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 303,
+   "act": "↑ at the very start of a card being written finishes it, saved, and goes on writing the card above, the cursor at its end",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if (plain && up && field.selectionEnd === 0) { if (!this.writeBeside(-1)) return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 303,
+   "act": "↓ at the very end of a card being written finishes it and goes on writing the card below, the cursor at its start",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if (plain && down && field.selectionStart === field.value.length) { if (!this.writeBeside(1)) return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 303,
+   "act": "↑ and ↓ from a card being written go on to the card that shows, past cards folded away",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    while (to >= 0 && to < shown.length && !shown[to]) to += step;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 108,
+   "act": "The box scrolls itself, not the page",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;",
+     ".message-preview.scroll-in-place{display:block;overflow:visible;overscroll-behavior:auto;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a cut-off message scrolls in place"
+   }
+  },
+  {
+   "item": 103,
+   "act": "Replies gather into a stack under the message they answer",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return item.reply_to && has(item.reply_to) ? { id: item.reply_to, joined: null } : null;",
+     "  return null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "replies gather into a stack"
+   }
+  },
+  {
+   "item": 103,
+   "act": "A folded stack's line says how many earlier replies it holds, and a press opens them in place",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    fold.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };",
+     "    fold.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "replies gather into a stack"
+   }
+  },
+  {
+   "item": 103,
+   "act": "A reply the person has not read stays in view while its stack is folded",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return item.seq === newestReply(stack) || kept(item);",
+     "  return item.seq === newestReply(stack);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "replies gather into a stack"
+   }
+  },
+  {
+   "item": 276,
+   "act": "⇧⌘→ opens every outcome and ⇧⌘← folds every one, from anywhere in the outline",
+   "break": [
+    [
+     "web/pane-keys.mjs",
+     "{ ArrowRight: 'open-all', ArrowLeft: 'fold-all', ArrowUp: 'join-up', ArrowDown: 'join-down' }",
+     "{ ArrowUp: 'join-up', ArrowDown: 'join-down' }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "chips show only"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack reads as a chat: its replies under its first message, oldest first",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "      replies.push(...within.get(segment).sort(bySeq));",
+     "      replies.push(...within.get(segment).sort((a, b) => bySeq(b, a)));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack's first message is one compact row until pressed",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:none}",
+     ".reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:revert}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A press on the head's row shows the whole message under it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!open) { state.headOpen.add(stack.id); state.again(); return true; }",
+     "  if (!open) return true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘→ on a head shows its whole message first, then opens its replies a step at a time",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    if (onHead && !headOpen) return { level, headOpen: true };",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A line counts the new replies folded behind it, in red",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "...(row.fresh ? [element(doc, 'span', 'stack-fold-new', ` · ${row.fresh} new`)] : [])",
+     "...[]"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Rename in place: Return saves the short name for everyone, with who typed it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.act('stack.name', item, { name });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Esc cancels a rename and gives the row back as it was",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "cancelled: stack => { this.arrange(); this.focusOn(stack.id); },",
+     "cancelled: stack => this.focusOn(stack.id),"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘Z puts a rename back",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Someone else's rename shows on the page at once",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "        if (item.resource_kind === 'acts' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('acts', item.version);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⋯ Star for me records a star in Core",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.act('message.star', item, { starred: on });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⋯ Star is the reader's own"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A starred reply never folds away",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (actsOf(item).starred || stack.joins.has(item.id)) return true;",
+     "  if (stack.joins.has(item.id)) return true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⋯ Star is the reader's own"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The right rail's Starred lists the reader's stars and a press lands on one",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "  ['starred', 'Starred'], ",
+     "  "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⋯ Star is the reader's own"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A star is the reader's alone: nobody else sees it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "PERSONAL = {\"star\", \"deal\", \"place\"}",
+     "PERSONAL = {\"deal\", \"place\"}"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘↑ and ⌘↓ move a stack in the reader's own order",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A moved stack keeps its place after a reload",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return {\"placed\": value[\"key\"]}",
+     "        return {\"placed\": None}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A place is the reader's own: another reader keeps newest on top",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        owner = actor if personal else \"\"",
+     "        owner = \"\""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘Z puts a move back",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.remember(() => { heads.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); this.focusOn(entry.dataset.id); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Let new replies move it takes a stack's place away",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⇧⌘↑ joins a stack to the one above, for everyone",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A joined stack's first message shows under a join line",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Split back out takes a joined stack out again",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "      join.split.onclick = () => state.on?.split?.(row.item);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A join is refused when it would put a stack inside itself",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if into[\"id\"] == message[\"id\"] or self._join_loop(db, message, into[\"id\"]):",
+     "            if into[\"id\"] == message[\"id\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Every act is fenced on the revision its sender read",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if envelope[\"expected\"][expected_name] != current:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A shared act reaches everyone who reads the message",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        for reader in [actor] if personal else self._message_readers(db, message, actor):",
+     "        for reader in [actor]:"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Stepping the schema back is refused once anyone has acted on a message",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ACT_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM message_acts)\"",
+     "ACT_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The stack keys are inert in writing, even with a message lit (both guards: the shared keys' and the feed's own)",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const at = this.doc.activeElement, entry = at && this.list.contains(at) ? entryOf(this.list, at) : null;\n    if (!entry || !(at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
+     "    const at = this.list.querySelector('[data-id].lit'), entry = at ? entryOf(this.list, at) : null;\n    if (!entry) return;"
+    ],
+    [
+     "web/pane-keys.mjs",
+     "event.altKey || event.ctrlKey || writing(event.target)) return null;",
+     "event.altKey || event.ctrlKey) return null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the stack keys are inert"
+   }
+  },
+  {
+   "item": 283,
+   "act": "On a phone ⋯ keeps the stack's moves behind Move or join…",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    return { first: items, last: phone ? [{ label: 'Move or join…', act: () => more(moves) }] : moves };",
+     "    return { first: items, last: moves };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a phone ⋯ opens the acts as a sheet"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The Reader's ↑ and ↓ follow the page, down a stack and on to the stack below",
+   "break": [
+    [
+     "web/app.mjs",
+     "  return { next: ref(order[at - 1]) ?? off(core.next), previous: ref(order[at + 1]) ?? off(core.previous) };",
+     "  return core;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the Reader's ↑ and ↓"
+   }
+  },
+  {
+   "item": 283,
+   "act": "On a phone the Reader's message ends with ↑ Previous · ↓ Next",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      end.dataset.words = `${STEPPING[where].glyph} ${above ? 'Previous' : 'Next'}`;",
+     "      end.dataset.words = `${STEPPING[where].glyph} ${above ? 'Newer' : 'Older'}`;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the Reader's ↑ and ↓"
+   }
+  },
+  {
+   "item": 186,
+   "act": "The one New line sits under the lowest stack holding anything new, never inside one",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  stacks.forEach((stack, index) => { if (fresh(stack.head) || stack.replies.some(fresh)) at = index; });",
+     "  stacks.forEach((stack, index) => { if (at === null && (fresh(stack.head) || stack.replies.some(fresh))) at = index; });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the one New line"
+   }
+  },
+  {
+   "item": 265,
+   "act": "Each folded run is a quiet line where it sits, so a reply in view never reads as inside the fold",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    flush(); before = false;",
+     "    before = false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 261,
+   "act": "A thumbs-up on a reply deals with its stack, in Core",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  thumbed(item) { if (stackOf(this.list, this.entryFor(item.id))?.head === false) this.deal(item); }",
+     "  thumbed(item) {}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a thumbs-up on a reply deals"
+   }
+  },
+  {
+   "item": 266,
+   "act": "On a phone a reply swiped to the right folds into the earlier replies",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (!start || !touch || touch.clientX - start.x < 80 || Math.abs(touch.clientY - start.y) > 40) return;",
+     "    return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply swiped to the right"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Quick acts on one stack, answered while a later act is unanswered and with the page drawn again between, show the last act and end where Core does",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const shown = shownAct(kind, args, this.viewer, this.clock());",
+     "    const shown = {}; item.acts = { ...item.acts, ...shownAct(kind, args, this.viewer, this.clock()) };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks quick acts"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An acts answer read before a commit the page has heard of puts back nothing, on the page",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "later = item && laterActs(item.acts, acts);",
+     "later = item && acts;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks quick acts"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An acts answer, or a message page, read before a later act puts back nothing",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "answer[revision] < known[revision]",
+     "false"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A refused act is drawn no more: the stack shows what Core holds",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      this.settled(item.id);\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks quick acts"
+   }
+  },
+  {
+   "item": 261,
+   "act": "Your own reply in a stack deals with it, in Core, so coming back it folds to your reply",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  arrived(items) {\n    this.arrange();\n",
+     "  arrived(items) {\n    queueMicrotask(() => this.arrange());\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reader.s own reply in a stack deals"
+   }
+  },
+  {
+   "item": 256,
+   "act": "On a phone a finger dragging a wide table or a block of code scrolls it and folds no reply",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      this.swipe = touch && !scrollsSideways(event.target, list) ? ",
+     "      this.swipe = touch ? "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply swiped to the right"
+   }
+  },
+  {
+   "item": 257,
+   "act": "A link inside a message to a folded reply opens its stack and lands on it",
+   "break": [
+    [
+     "web/app.mjs",
+     "    const card = landOn(target.message, { full: target.land === true });",
+     "    const card = null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a link in a message to a folded reply"
+   }
+  },
+  {
+   "item": 195,
+   "act": "At a cut-off message's top or bottom edge the scroll carries on with the page",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;",
+     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:contain;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a cut-off message scrolls in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A reply arriving shows under the newest reply of a folded stack, which stays in view until the person comes back",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (level === 'folded' && newest && !state.handFolded.has(newest.id)) state.kept.add(newest.id);",
+     "if (false) state.kept.add(newest.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a reply arriving shows under the newest"
+   }
+  },
+  {
+   "item": 256,
+   "act": "A card a join or a move carries into another place keeps its table scrolled sideways",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const [box, left, top] of kept) { box.scrollLeft = left; box.scrollTop = top; }",
+     "  for (const [box] of kept) box.dataset.carried = '';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a card a join or a move carries"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Inside a stack the replies read oldest first, as a chat does",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "      replies.push(...within.get(segment).sort(bySeq));",
+     "      replies.push(...within.get(segment).sort((a, b) => b.seq - a.seq));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack the reader placed keeps its place whatever replies arrive",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "export const keyOf = stack => stack.placed ?? stack.newest;",
+     "export const keyOf = stack => stack.newest;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Each run of folded replies gets its own line where it sits",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    flush(); before = false;",
+     "    before = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A fold line says in red how many of its replies are new",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "const n = run.length, fresh = run.filter(unread).length;",
+     "const n = run.length, fresh = 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 186,
+   "act": "The New line goes under the lowest stack holding anything new",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "stacks.forEach((stack, index) => { if (fresh(stack.head) || stack.replies.some(fresh)) at = index; });",
+     "stacks.forEach((stack, index) => { if (at === null && (fresh(stack.head) || stack.replies.some(fresh))) at = index; });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A star, a stack dealt with and a place are the reader's own, kept apart from every other reader",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        owner = actor if personal else \"\"",
+     "        owner = \"\""
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An act on a message the reader cannot see is refused",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if message is None or not visible(message, actor):",
+     "        if message is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A short name is everyone's and says who typed it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return {\"name\": {\"text\": value[\"name\"], \"by\": row[\"actor_id\"], \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}",
+     "        return {\"name\": {\"text\": value[\"name\"], \"by\": None, \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack with replies ends in its reply line",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "...(single ? [] : [p.foot])]);",
+     "]);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The reply line shows on a folded stack only while the person is in it",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:none}",
+     ".reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:block}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A folded stack's reply line shows while a press last landed in it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    doc.addEventListener('click', event => this.focusIn(event.target), true);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The reply line opens the Reader replying to the stack's newest message",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.reply(newest.id, cardIn(entry));",
+     "    this.reply(stack.id, cardIn(entry));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A press moves the focused stack only once its click has landed, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "doc.addEventListener('focusin', event => { if (!press.down) this.focusIn(event.target); }, true);",
+     "doc.addEventListener('focusin', event => this.focusIn(event.target), true);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A head shown as one row has no bar",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    return Boolean(card?.classList.contains('stack-head-card') &&",
+     "    return false && Boolean(card?.classList.contains('stack-head-card') &&"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a head shown as one row has no bar"
+   }
+  },
+  {
+   "item": 283,
+   "act": "In a stack the bar sits below the head row",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "const floor = Math.max(4, tab?.height ? tab.bottom + 2 : 4);",
+     "const floor = 4;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a head shown as one row has no bar"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A message joined into another stack loses its head row",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "In a stack the bar scrolls away with its card once the tab has gone above the window, as any bar does",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    if (floor > 4) top = Math.max(floor, top);\n",
+     "    top = Math.max(floor, top);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the bar stays in the window while any of its card is"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An act's answer landing under a held press waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.press.after('stacks', () => this.arrange())",
+     "this.arrange()"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks an act's answer landing while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An act's answer held back by a press is drawn the moment the press ends",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.press.after('stacks', () => this.arrange())",
+     "this.press.after('stacks', () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks an act's answer landing while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A commit while a button below the stacks is held down does not swallow the press",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "    if (this.down) this.waiting.set(name, paint); else paint();",
+     "    paint();"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the people are one filled pill each after the last message"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A finger that scrolls ends the press it began, so what arrives after it is drawn without another tap",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "['pointerup', 'pointercancel', 'contextmenu']",
+     "['pointerup', 'contextmenu']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a press ends however it ends"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A context menu opened by a press (⌃ and a press on a Mac) ends it",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "['pointerup', 'pointercancel', 'contextmenu']",
+     "['pointerup', 'pointercancel']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a press ends however it ends"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The window losing the focus ends a press held on the page",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "    doc.defaultView.addEventListener('blur', end);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a press ends however it ends"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Only the primary button or the first finger holds the repaints; a right or middle press, or a second finger, does not",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "if (event.isPrimary && event.button === 0) this.down = true;",
+     "this.down = true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_hold.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The keys leaving a stack's name while it is renamed save it, as Return does",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  input.addEventListener('blur', () => finish(true));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The Reader's correction checks step from a stack's first message down to its reply, as the page shows them",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (at < 0 || !core) return core;\n",
+     "  return core;\n"
+    ]
+   ],
+   "check": {
+    "native": "correction",
+    "case": "correction source controls survive mode and quote"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The Reader's composer checks step up a stack to the older message and back down, as the page shows them",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (at < 0 || !core) return core;\n",
+     "  return core;\n"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "stacked: every control of the Reader and its composer"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A card focused in a reply stack shows the focus: its edge in the focus colour, inside the folder's ring",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}",
+     ".reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:none}"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors reading colors distinguish authors"
+   }
+  },
+  {
+   "item": 283,
+   "act": "↑ onto a stack's head from below brings its tab into view with it, the head shown as one row or whole",
+   "break": [
+    [
+     "web/stack-look.css",
+     "{scroll-margin-top:calc(var(--stack-pad) + var(--stack-tab-h) + 4px)}",
+     "{scroll-margin-top:0}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks ↑ onto a stack's head from a reply at the top of the window"
+   }
+  },
+  {
+   "item": 300,
+   "act": "While a card is written, Tab puts it under the card above and ⇧Tab takes it out, saved at once, keeping what is written and the cursor",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if (event.key === 'Tab' && !command) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 311,
+   "act": "↓ from a card cleared of all its text goes on past the children that go with it, into the card after them",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "step > 0 ? (cleared ? groupEnd(this.deck.cards, at) : at + 1) :",
+     "step > 0 ? at + 1 :"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 311,
+   "act": "⇧Tab on a new card begun among siblings takes it out after all its parent's children, so the siblings after it stay where they were",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "const placed = placeNew(this.deck, editing, act);",
+     "const placed = act.kind === 'outdent' && editing.depth > 0 ? { depth: editing.depth - 1 } : placeNew(this.deck, editing, act);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 311,
+   "act": "Keys an input method composes with stay its own while a card is written: ↑, ↓, Tab and Escape move, save and finish nothing",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     " || event.isComposing || event.keyCode === 229) return;",
+     " || event.keyCode === 229) return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, the keys an input method composes with stay its own"
+   }
+  },
+  {
+   "item": 311,
+   "act": "The key that ends a composition, which Safari sends with isComposing false and keyCode 229, stays the input method's too",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     " || event.isComposing || event.keyCode === 229) return;",
+     " || event.isComposing) return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, the keys an input method composes with stay its own"
+   }
+  },
+  {
+   "item": 315,
+   "act": "→ on a card with none of its children folded away gives the focus to its speech bubble, and ← gives it back",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    else if (!command) this.toBubble();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
+   }
+  },
+  {
+   "item": 315,
+   "act": "⌘→ on a card whose children show still goes down to the first of them",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    else if (children) this.pick(i + 1);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
+   }
+  },
+  {
+   "item": 313,
+   "act": "⌘↑ and ⌘↓ while a card is written move it past the card beside it, saved at once, keeping what is written and the cursor",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it"
+   }
+  },
+  {
+   "item": 313,
+   "act": "⌘↑ and ⌘↓ on a new card not yet made change where it will go, and it is made there",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  const done = applyAct({ ...deck, cards }, { ...act, text, near: anchor + 1 });",
+     "  const done = applyAct({ ...deck, cards }, { kind: act.kind, text, near: anchor + 1 });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it"
+   }
+  },
+  {
+   "item": 314,
+   "act": "⌥↑ and ⌥↓ while a card is written move the line the cursor is on, as in the composer",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (this.editing.input.writingKey(event)) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 314,
+   "act": "A card being written has the composer's other writing keys, ⌃U deleting back to the start of the line",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "  writingKey(event) { return this.terminalKey(event)||this.moveKey(event); }",
+     "  writingKey(event) { return this.moveKey(event); }"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 314,
+   "act": "The composer's writing keys serve a box with no Editor behind it, as the cards page's is",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "    if(this.editorless)return Boolean(!this.admits()||this.field.readOnly||this.surfaceReadOnly());\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card being written keeps the height it showed at, unless what is written needs more",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      field.style.setProperty('--kept', `${Math.max(0, editing.height - around)}px`);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with a title alone is no taller while it is written than while it shows",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    field.rows = 1;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the text of a card being written starts where the card's text started, in its words' face",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-editor{min-height:var(--kept,0px);padding:0;border:0;",
+     ".deck-editor{min-height:var(--kept,0px);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with words keeps them on the lines they showed on while it is written",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-worded>.deck-editor{padding-top:calc(1.35rem + .3rem - .92rem * 1.55)}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with a title alone keeps its line where the title's line stood",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-writing:not(.deck-worded)>.deck-editor{margin:calc((1.35rem - .92rem * 1.55) / 2) 0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with children keeps its chevron where it showed while it is written",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (chevron) { chevron.append(this.foldButton(at)); holder.append(chevron); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the title of a card with children starts after its chevron while it is written, as when it shows",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-parent>.deck-editor{text-indent:1.3rem}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a card with children is as tall as its text, its chevron fitting the title line",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(min-width:761px){.deck-fold{min-height:0}",
+     "@media(min-width:761px){"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the cards stay where they are as the line of keys changes between showing and writing",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    this.keyLines.forEach((line, i) => { line.style.visibility = i === (asking ? 2 : editing ? 1 : 0) ? '' : 'hidden'; });\n",
+     "    this.keys.textContent = asking ? ASKING_KEYS : editing ? WRITING_KEYS : KEYS;\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "the box takes a height of its own only when what is written needs more, never a pixel off its card",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (field.scrollHeight > field.clientHeight) field.style.height = ",
+     "    field.style.height = "
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 312,
+   "act": "a press in a card being written, around its box, leaves the writing as it was",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      holder.addEventListener('mousedown', event => { if (event.target === holder) event.preventDefault(); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the card under a still pointer shows no speech bubble once a key is pressed, until the mouse moves",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(.deck-pointing) .deck-card:hover .deck-ask,",
+     ".deck-card:hover .deck-ask,"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the card under a still pointer loses the pointer's highlight once a key is pressed",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(.deck-pointing) .deck-card:hover{",
+     ".deck-card:hover{"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "a key takes the pointer out of use, so the card under it goes quiet",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the page moving under a still pointer is not the mouse moving",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');\n",
+     "      if (pointer) this.list.classList.add('deck-pointing');\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "a move of the mouse shows the speech bubble of the card under it",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
    }
   },
   {

@@ -1,27 +1,34 @@
-// Replies gathered into stacks (docs/topic-reading.md, "Reply stacks"). A
-// message and every loaded reply to it, and to those replies, read as one
-// stack: the message on top, its replies under it, newest first. The stack
-// sits in the topic where its newest message would, so the topic still reads
-// newest on top, as an inbox does, and a reply brings its stack up with it.
-// Folded, a stack shows its newest reply and any the person has not read, and
-// one line says how many more there are; the line opens them in place.
+// Replies gathered into stacks (docs/reply-stacks.md). A message and every
+// loaded reply to it, and to those replies, read as one stack, with any stack
+// someone joined to it: the message it starts with on top as its head, one
+// compact row, and its replies under it oldest first, as a chat reads. The
+// stacks keep the topic newest on top unless the reader placed one
+// (stack-order.mjs decides all of that; this module draws it).
 //
 // Every message keeps its own entry (a card, or a fold of a message between
 // others, fold.mjs), with its data-id and data-seq, inside the stack, so what
-// finds a message finds it there. A stack carries the data-seq of its newest
-// message, and no data-id. Nothing here reads or writes a record: the replies
-// are what Core says each message answers (reply_to).
+// finds a message finds it there; a reply folded away is its entry hidden in
+// its place. A stack carries the data-seq of its newest message and the id of
+// its head in data-stack. What a stack looks like is web/stack-look.css's
+// alone: this module sets only the class names and data attributes it
+// documents. How far each stack is folded, and which head shows its full
+// message, are this page's own and never recorded.
+import { cardIn, opened } from './fold.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder } from './stack-order.mjs';
+import { firstLine } from './pipeline-words.mjs';
+import { shownTime } from './times.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
-const stacksOf = new WeakMap();
+const states = new WeakMap();
 const parts = new WeakMap();
+const headRows = new WeakMap();
 
-// Every message entry in the list, newest first in each place, stacks opened up.
+// Every message entry in the list, in the page's order: each stack's head,
+// then its replies, folded ones included.
 export const entries = list => [...list.querySelectorAll(ENTRIES)];
 
 // The message entry a target is in, on its own or in a stack: the card, or
-// the fold holding it. Null for anything else in the list, a stack's line
-// included.
+// the fold holding it. Null for anything else in the list, a stack's lines included.
 export function entryOf(list, target) {
   let at = target?.nodeType === 1 ? target : target?.parentElement;
   for (; at && at !== list; at = at.parentElement) {
@@ -41,30 +48,81 @@ export function topOf(list, entry) {
   return at;
 }
 
-// Where the New line goes for message seq: under the list's own child that
-// holds its entry, so the line never cuts a stack in two.
-export function lineSeq(list, seq) {
-  if (!seq) return seq;
-  const entry = entries(list).find(child => Number(child.dataset.seq) === seq);
-  const top = entry && topOf(list, entry);
-  return top ? Number(top.dataset.seq) : seq;
+// What the page keeps for a list's stacks: each stack's level ('head',
+// 'folded', 'open'), the heads showing their full message, replies kept in
+// view once kept, replies folded one by one, the stack being renamed, and the
+// stacks as last drawn.
+export function stackState(list) {
+  if (!states.has(list)) states.set(list, { levels: new Map(), headOpen: new Set(), kept: new Set(), handFolded: new Set(), renaming: null,
+    stacks: [], sections: new Map(), viewer: null, again: () => {} });
+  return states.get(list);
 }
 
-// Opens the stack that folds entry away, so the entry can be shown or take the focus.
-export function reveal(entry) {
-  const stack = entry?.closest?.('.reply-stack');
-  if (stack && entry.hidden) { stack.dataset.open = 'true'; fold(stack); }
+// The stack an entry is in, as last drawn: { stack, section (null for a
+// message on its own), head: whether the entry is its head, index }.
+export function stackOf(list, entry) {
+  const state = stackState(list), id = entry?.dataset?.id;
+  const index = state.stacks.findIndex(stack => stack.id === id || stack.replies.some(item => item.id === id));
+  if (index < 0) return null;
+  const stack = state.stacks[index];
+  return { stack, index, head: stack.id === id, section: state.sections.get(stack.id) ?? null };
+}
+
+// Where the New line goes for message seq: under the lowest stack holding
+// anything new since it (stack-order.mjs, lineUnder), so the line never cuts a
+// stack in two. The seq itself when no loaded stack holds it.
+export function lineSeq(list, seq) {
+  const state = states.get(list);
+  if (!seq || !state) return seq;
+  const at = lineUnder(state.stacks, seq, state.viewer);
+  return at === null ? seq : state.stacks[at].newest;
+}
+
+// Opens the stack that folds entry away, so the entry can be shown or take
+// the focus; full: a head shows its full message too.
+export function reveal(entry, { full = false } = {}) {
+  const section = entry?.closest?.('.reply-stack');
+  const list = section?.parentElement;
+  if (!list || !states.has(list)) return entry;
+  const state = stackState(list), id = section.dataset.stack;
+  let changed = false;
+  if (entry.hidden) { state.levels.set(id, 'open'); state.handFolded.delete(entry.dataset.id); changed = true; }
+  if (full && entry.dataset.id === id && !state.headOpen.has(id)) { state.headOpen.add(id); changed = true; }
+  if (changed) state.again();
   return entry;
 }
 
-// The message a stack is gathered under: the oldest loaded message up the
-// chain of replies. A message whose parent is not loaded (or not visible to
-// this reader) heads its own stack.
-function rootOf(item, messages, has) {
-  const seen = new Set();
-  let at = item;
-  while (at.reply_to && messages.has(at.reply_to) && has(at.reply_to) && !seen.has(at.id)) { seen.add(at.id); at = messages.get(at.reply_to); }
-  return at;
+// A click on a stack's head row: a press on its name or ✎ renames it, on
+// "Hide the full message" hides it; anywhere else on the row shows the full
+// message, or hides it again. Answers whether the click was the row's; a
+// click on the full message's words is not, and opens it as any card's does.
+export function headClick(list, entry, event) {
+  const found = stackOf(list, entry), state = stackState(list);
+  if (!found?.head || !found.section || !found.stack.replies.length) return false;
+  const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
+  if (act === 'rename') { state.on?.rename?.(stack); return true; }
+  const starred = Boolean(stack.head.acts?.starred), open = starred || state.headOpen.has(stack.id);
+  if (act === 'hide' || (open && event?.target?.closest?.('.stack-head'))) {
+    if (!starred) { state.headOpen.delete(stack.id); state.again(); }
+    return true;
+  }
+  if (!open) { state.headOpen.add(stack.id); state.again(); return true; }
+  return false;
+}
+
+// Lets go of the replies kept in view in the stacks where pick(section)
+// holds, so they fold as they now would (a stack dealt with, read elsewhere),
+// and of the full message a head was showing.
+export function unkeep(list, pick) {
+  const state = stackState(list);
+  let changed = false;
+  for (const stack of state.stacks) {
+    const section = state.sections.get(stack.id);
+    if (!section || !pick(section)) continue;
+    for (const item of stack.replies) changed = state.kept.delete(item.id) || changed;
+    changed = state.headOpen.delete(stack.id) || changed;
+  }
+  if (changed) state.again();
 }
 
 // Puts each node of desired, in order, among parent's children that count,
@@ -74,72 +132,213 @@ function reconcile(parent, desired, counts = () => true) {
   let ref = next(parent.firstElementChild);
   for (const node of desired) {
     if (node === ref) { ref = next(ref.nextElementSibling); continue; }
-    parent.insertBefore(node, ref);
+    carry(node, () => parent.insertBefore(node, ref));
   }
 }
 
-function makeStack(doc) {
-  const stack = doc.createElement('div'), replies = doc.createElement('div'), toggle = doc.createElement('button');
-  stack.className = 'reply-stack'; replies.className = 'stack-replies';
-  toggle.type = 'button'; toggle.className = 'stack-toggle';
-  toggle.onclick = () => { stack.dataset.open = String(stack.dataset.open !== 'true'); fold(stack); };
-  stack.append(replies);
-  parts.set(stack, { replies, toggle, rest: [] });
-  return stack;
+// Moves a node, keeping where everything in it was scrolled: a browser puts a
+// box it takes out of the page back at its start, so a table scrolled
+// sideways, or a long message scrolled in its card, would jump back when a
+// join, a move or a new reply carries its card into another place.
+function carry(node, move) {
+  const kept = [];
+  if (node.isConnected) {
+    for (const box of [node, ...node.querySelectorAll('*')]) if (box.scrollLeft || box.scrollTop) kept.push([box, box.scrollLeft, box.scrollTop]);
+  }
+  move();
+  for (const [box, left, top] of kept) { box.scrollLeft = left; box.scrollTop = top; }
 }
 
-const count = n => `${n} earlier ${n === 1 ? 'reply' : 'replies'}`;
-// Shows or folds a stack's earlier replies, those kept in view excepted.
-function fold(stack) {
-  const { toggle, rest } = parts.get(stack), open = stack.dataset.open === 'true';
-  let folded = 0;
-  for (const entry of rest) { const show = open || entry.dataset.kept === 'true'; entry.hidden = !show; if (entry.dataset.kept !== 'true') folded++; }
-  toggle.hidden = folded === 0;
-  toggle.textContent = open ? `Fold ${count(folded)}` : count(folded);
-  toggle.setAttribute('aria-expanded', String(open));
+const element = (doc, tag, className, text) => {
+  const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
+};
+
+function makeStack(doc, id) {
+  const section = element(doc, 'div', 'reply-stack'), replies = element(doc, 'div', 'stack-replies');
+  section.dataset.stack = id; section.setAttribute('role', 'group');
+  parts.set(section, { replies, lines: new Map(), placed: null, rename: null, foot: makeFoot(doc) });
+  return section;
 }
 
-// Gathers the list's entries into stacks, on every topic page alike.
-// messages: the loaded messages by id. keep(item): a reply that stays in view
-// while its stack is folded; once kept it stays kept, so a reply the person is
-// reading is never folded away under them.
-export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) {
+// The stack's foot: its reply line, which opens the Reader replying to the
+// stack's newest message, and the key that presses it while it holds the keys.
+function makeFoot(doc) {
+  const foot = element(doc, 'div', 'stack-foot'), reply = element(doc, 'button', 'stack-reply'), key = element(doc, 'kbd', 'stack-key', 'Return');
+  reply.type = 'button';
+  key.setAttribute('aria-hidden', 'true');
+  reply.append(element(doc, 'span', 'stack-reply-words', 'Reply in this stack…'), key);
+  foot.append(reply);
+  return Object.assign(foot, { reply });
+}
+
+// A line of the stack's (a fold line, a join line), kept across repaints by
+// key, so one holding the focus keeps it.
+function line(section, key, make) {
+  const { lines } = parts.get(section);
+  if (!lines.has(key)) lines.set(key, make());
+  return lines.get(key);
+}
+
+const replies = n => (n === 1 ? 'reply' : 'replies');
+// Replies at or before the newest message of the stack the reader dealt with
+// fold away when they come back, unread or not (docs/reply-stacks.md).
+const dealt = (stack, item) => [stack.head, ...stack.replies].some(other => other.acts?.dealt && item.seq <= other.seq);
+
+// The head's row, set into its card: its short name (renamed in place), who
+// started the stack, how many replied and who, and what is new.
+function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
+  let row = headRows.get(card);
+  if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
+  if (card.firstElementChild !== row) card.prepend(row);
+  card.classList.add('stack-head-card');
+  const head = headOf(stack, { firstLine, unread });
+  const act = (name, className, text, title) => {
+    const span = element(doc, 'span', `stack-act ${className}`, text); span.dataset.stackAct = name;
+    if (title) span.title = title; return span;
+  };
+  const name = act('rename', 'stack-name', head.name, head.typed ? `Named by ${nameOf(head.typed.by)} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees');
+  const pen = act('rename', 'stack-pen', '✎', 'Rename'); pen.setAttribute('aria-hidden', 'true');
+  const meta = element(doc, 'span', 'stack-meta', `${head.count} ${replies(head.count)}`);
+  if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
+  if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));
+  row.replaceChildren(name, pen, element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)),
+    ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
+    ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
+    meta, ...(open && !starred ? [act('hide', 'stack-hide', 'Hide the full message')] : []));
+  row.dataset.renaming = String(state.renaming === stack.id);
+  return head;
+}
+
+// A message that no longer heads a stack is a card again.
+function unhead(entry) {
+  const card = cardIn(entry);
+  card.classList.remove('stack-head-card');
+  headRows.get(card)?.remove();
+}
+
+function renameField(section, stack, head, { state, doc }) {
+  const p = parts.get(section);
+  if (state.renaming !== stack.id) { p.rename?.remove(); p.rename = null; return null; }
+  if (p.rename) return p.rename;
+  const field = element(doc, 'div', 'stack-rename'), input = element(doc, 'input', 'stack-rename-input'), hint = element(doc, 'span', 'stack-rename-hint', 'Return saves · Esc cancels');
+  input.type = 'text'; input.value = head.name; input.maxLength = 200;
+  input.setAttribute('aria-label', 'Short name for this stack, for everyone here; empty gives back its first line');
+  let done = false;
+  const finish = save => { if (done) return; done = true; state.renaming = null; p.rename = null; field.remove(); save ? state.on?.renamed?.(stack, input.value) : state.on?.cancelled?.(stack); };
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); finish(true); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  field.append(input, hint);
+  p.rename = field; p.input = input;
+  return field;
+}
+
+// The rename field of the stack headed by id, while it is open.
+export function renameInput(list, id) {
+  const section = stackState(list).sections.get(id);
+  return section ? parts.get(section).input ?? null : null;
+}
+
+function paintStack(section, stack, byId, context) {
+  const { state, keep, unread, nameOf, doc } = context;
+  const p = parts.get(section), head = byId.get(stack.id), single = !stack.replies.length;
+  const level = single ? 'open' : state.levels.get(stack.id) ?? 'folded';
+  const starred = Boolean(stack.head.acts?.starred), open = !single && (starred || state.headOpen.has(stack.id));
+  const kept = item => {
+    if (state.kept.has(item.id)) return true;
+    if (!keep(item) || dealt(stack, item)) return false;
+    state.kept.add(item.id); return true;
+  };
+  head.hidden = false;
+  if (!single) opened(head);
+  const shown = single ? { name: firstLine(stack.head.body) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
+  const desired = [];
+  const rows = single ? [] : rowsOf(stack, { level, kept, handFolded: state.handFolded, unread });
+  // The newest reply a folded stack shows stays in view once drawn, as a kept
+  // one does: a newer reply arriving shows under it, rather than folding it
+  // away under the person's eyes. Coming back to the page lets go (unkeep).
+  const newest = stack.replies.reduce((most, item) => (most && most.seq > item.seq ? most : item), null);
+  if (level === 'folded' && newest && !state.handFolded.has(newest.id)) state.kept.add(newest.id);
+  for (const row of rows) {
+    if (row.kind === 'reply') { const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry); continue; }
+    if (row.kind === 'join') {
+      const join = line(section, `join:${row.item.id}`, () => {
+        const node = element(doc, 'div', 'stack-join-line'), words = element(doc, 'span', 'stack-join-words'), split = element(doc, 'button', 'stack-split', 'Split back out');
+        split.type = 'button'; node.append(words, split); node.dataset.join = row.item.id; Object.assign(node, { words, split });
+        return node;
+      });
+      join.words.textContent = `Joined from its own stack by ${nameOf(row.join.by)}${Number.isSafeInteger(row.join.at_ms) ? `, ${shownTime(row.join.at_ms)}` : ''}`;
+      join.split.onclick = () => state.on?.split?.(row.item);
+      desired.push(join); continue;
+    }
+    const key = row.kind === 'fold-all' ? 'fold-all' : `fold:${row.items[0].id}`;
+    const fold = line(section, key, () => { const node = element(doc, 'button', 'stack-fold-line'); node.type = 'button'; return node; });
+    fold.replaceChildren(element(doc, 'span', 'stack-fold-words', row.words), ...(row.fresh ? [element(doc, 'span', 'stack-fold-new', ` · ${row.fresh} new`)] : []));
+    fold.dataset.fresh = String(Boolean(row.fresh)); fold.dataset.all = String(row.kind === 'fold-all');
+    fold.setAttribute('aria-expanded', String(level === 'open'));
+    fold.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };
+    desired.push(fold);
+    for (const item of row.items ?? []) { const entry = byId.get(item.id); entry.hidden = true; desired.push(entry); }
+  }
+  const used = new Set(desired);
+  for (const [key, node] of p.lines) if (!used.has(node)) { node.remove(); p.lines.delete(key); }
+  reconcile(p.replies, desired);
+  if (stack.placed !== null && !p.placed) {
+    p.placed = element(doc, 'p', 'stack-placed-line');
+    const words = element(doc, 'span', 'stack-placed-words', 'Placed here by you'), free = element(doc, 'button', 'stack-unplace', 'Let new replies move it');
+    free.type = 'button'; p.placed.append(words, free); p.free = free;
+  }
+  if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
+  const rename = single ? null : renameField(section, stack, shown, context);
+  if (!single) {
+    p.foot.reply.setAttribute('aria-label', `Reply in this stack: ${shown.name}`);
+    p.foot.reply.onclick = () => state.on?.reply?.(stack);
+  }
+  reconcile(section, [head, ...(rename ? [rename] : []), p.replies, ...(stack.placed !== null ? [p.placed] : []), ...(single ? [] : [p.foot])]);
+  if (stack.placed === null) p.placed?.remove();
+  if (single) p.foot.remove();
+  Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
+    single: String(single), renaming: String(state.renaming === stack.id) });
+  section.setAttribute('aria-label', single ? 'Placed message' : `Reply stack: ${shown.name}`);
+}
+
+// Gathers the list's entries into stacks and draws them, on every topic page
+// alike. messages: the loaded messages by id. keep(item): a reply the usual
+// fold keeps in view; once kept it stays kept, so a reply the person is
+// reading is never folded away under them. unread(item): counted as new on a
+// fold line and the head. viewer: who reads. nameOf(actor): a person's name
+// as the page shows it. on: what the stack's own controls do (stack-feed.mjs),
+// reply(stack) among them: its reply line.
+export function arrangeStacks(list, messages, options = {}) {
+  const { keep = () => false, unread = () => false, viewer = null, nameOf = id => id, on = null, doc = list.ownerDocument } = options;
+  const state = stackState(list);
+  Object.assign(state, { viewer, again: () => arrangeStacks(list, messages, options) });
+  if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
-  const groups = new Map();
-  for (const id of byId.keys()) {
-    const item = messages.get(id);
-    if (!item) continue;
-    const root = rootOf(item, messages, other => byId.has(other));
-    if (!groups.has(root.id)) groups.set(root.id, []);
-    groups.get(root.id).push(item);
+  const stacks = ordered(gather([...byId.keys()].map(id => messages.get(id)).filter(Boolean)));
+  state.stacks = stacks;
+  const top = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
+  for (const stack of stacks) {
+    const head = byId.get(stack.id);
+    if (!stack.replies.length && stack.placed === null) { head.hidden = false; top.push(head); continue; }
+    live.add(stack.id);
+    if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
+    const section = state.sections.get(stack.id);
+    paintStack(section, stack, byId, context);
+    top.push(section);
   }
-  if (!stacksOf.has(list)) stacksOf.set(list, new Map());
-  const known = stacksOf.get(list), top = [];
-  for (const [rootId, members] of groups) {
-    members.sort((a, b) => b.seq - a.seq);
-    if (members.length === 1) { top.push({ node: byId.get(rootId), seq: members[0].seq }); continue; }
-    const stack = known.get(rootId) ?? makeStack(doc);
-    known.set(rootId, stack);
-    const { replies, toggle } = parts.get(stack), head = byId.get(rootId);
-    const answers = members.filter(item => item.id !== rootId).map(item => byId.get(item.id));
-    for (const entry of answers.slice(1)) if (keep(messages.get(entry.dataset.id))) entry.dataset.kept = 'true';
-    answers[0].hidden = false;
-    reconcile(stack, [head, replies]);
-    reconcile(replies, [answers[0], toggle, ...answers.slice(1)]);
-    head.hidden = false;
-    parts.get(stack).rest = answers.slice(1);
-    stack.dataset.seq = String(members[0].seq);
-    fold(stack);
-    top.push({ node: stack, seq: members[0].seq });
-  }
-  top.sort((a, b) => b.seq - a.seq);
-  reconcile(list, top.map(entry => entry.node), node => !node.dataset.line);
-  for (const [rootId, stack] of known) {
-    if (groups.get(rootId)?.length > 1) continue;
-    stack.remove(); known.delete(rootId);
-  }
-  // A message on its own is never left folded away by a stack it has left.
-  for (const entry of byId.values()) if (entry.parentElement === list) { entry.hidden = false; delete entry.dataset.kept; }
+  // Entries the page has that Core's messages do not name stay where they are.
+  reconcile(list, top, node => !node.dataset.line && (!node.dataset.id || messages.has(node.dataset.id)));
+  for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
+  for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
+  // Only a stack's head carries its row: a message that headed one before a
+  // join, or before its replies went, is a card again.
+  const heads = new Set(stacks.filter(stack => stack.replies.length).map(stack => stack.id));
+  for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);
+  // A star shows on its card wherever it is (stack-look.css).
+  for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
 }

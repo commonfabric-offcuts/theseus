@@ -57,27 +57,38 @@ on the arrow or its words opens the reply; a tap anywhere else puts the words
 away. A reply written while the page is open moves the arrow at once
 (`learnReply`).
 
-## Reply stacks (103)
+## Reply stacks (103, 283)
 
 A message and every loaded reply to it, and to those replies, read as one
-stack (`web/reply-stacks.mjs`): the message on top, its replies under it,
-newest first. The stack sits where its newest message would, so the topic
-still reads newest on top and a reply brings its stack up with it. Folded, a
-stack shows its newest reply and every reply the person had not read, and one
-line says how many more there are ("2 earlier replies"); a click or tap opens
-them in place, and again folds them. A message whose parent is not loaded heads its own stack until the
-parent loads. The conversation page stacks its replies by the same rule, and
-there a folded stack also keeps in view an item nothing has settled and an ask
-waiting on the reader, so a card's New tag and "Asks you" are never folded
-away (docs/conversation.md). A link on the page to a message a stack folds
-away (a tag's, the reply arrow's, or a message's address) opens the stack
-first and lands on the message.
+stack. The full contract is in docs/reply-stacks.md: what Core records, the
+order and folds, and the one file that sets the look. In short:
 
-The New line goes under the stack holding its message. What the page reports
-as read (`topic.read_through`) is only what was on screen: a range runs over
-messages in the topic's order and ends at a loaded message that was not seen
-(`seenRanges`), so a folded reply, or a message between a stack and its new
-place, is never reported read.
+- A stack reads as a chat. Its first message is on top as one compact row,
+  with who began it, its short name, and who replied. The replies run under
+  it oldest first.
+- The topic's stacks sit newest activity on top, unless the reader moved
+  one (⌘↑ ⌘↓). That order is theirs alone.
+- Folded, a stack shows its newest reply, every reply the person had not
+  read, and any they starred. Each run folded away is one line where it
+  sits ("3 earlier replies"), with how many in it are new in red. A click or
+  tap opens them in place, and again folds them.
+- A message whose parent is not loaded heads its own stack until the parent
+  loads.
+- The conversation page stacks its replies by the same rule. There a folded
+  stack also keeps in view an item nothing has settled and an ask waiting
+  on the reader, so a card's New tag and "Asks you" are never folded away
+  (docs/conversation.md).
+- A link to a message a stack folds away opens the stack first and lands on
+  the message. That holds for a tag's link, the reply arrow's, a message's
+  address and a link written inside a message, which then opens the Reader
+  as before. A row of the right rail's Starred lands without opening it.
+
+The one New line goes under the lowest stack holding anything new, never
+inside one. What the page reports as read (`topic.read_through`) is only
+what was on screen. A range runs over messages in the topic's order and
+ends at a loaded message that was not seen (`seenRanges`). So a folded
+reply, or a message between a stack and its new place, is never reported
+read.
 
 ## Formatted words (11)
 

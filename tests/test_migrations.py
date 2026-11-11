@@ -80,11 +80,16 @@ SCHEMA_BEFORE_REACTIONS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql"
 # the step changes only these two and the fixture's file name.
 BEFORE_ORDER, ORDER_VERSION = REACTION_VERSION, str(int(REACTION_VERSION) + 1)
 SCHEMA_BEFORE_ORDER = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_ORDER)).read_text().splitlines()
-# The step that keeps what an ask blocks (item 259) follows the order's, so the
-# layout before it is version 34's, read from a fresh instance of release 43's
-# code (da955b0). Named here once, so a renumbering of the step changes only
+# The step of what people record about messages in reply stacks follows the
+# order's, so the layout before it is version 34's, read from a fresh instance
+# of the order's code (e2d0b79).
+BEFORE_STACKS, STACKS_VERSION = ORDER_VERSION, str(int(ORDER_VERSION) + 1)
+SCHEMA_BEFORE_STACKS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_STACKS)).read_text().splitlines()
+# The step that keeps what an ask blocks (item 259) follows the stacks', so the
+# layout before it is version 35's, read from a fresh instance of release 45's
+# code (876b8c0). Named here once, so a renumbering of the step changes only
 # these two and the fixture's file name.
-BEFORE_BLOCKS, BLOCKS_VERSION = ORDER_VERSION, str(int(ORDER_VERSION) + 1)
+BEFORE_BLOCKS, BLOCKS_VERSION = STACKS_VERSION, str(int(STACKS_VERSION) + 1)
 SCHEMA_BEFORE_BLOCKS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_BLOCKS)).read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
@@ -108,6 +113,11 @@ def step_back_by_hand(path, version):
         # The blocks' version keeps what an ask blocks.
         db.execute("DROP TABLE message_blocks")
         if version == BEFORE_BLOCKS:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
+        # The stacks' version keeps each star, short name, join, place and dealt-with mark.
+        db.execute("DROP TABLE message_acts")
+        if version == BEFORE_STACKS:
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
         # The order's version keeps each person's own order of their outcomes and topics.
@@ -1844,6 +1854,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH),
                      (BEFORE_REACTIONS, SCHEMA_BEFORE_REACTIONS),
                      (BEFORE_ORDER, SCHEMA_BEFORE_ORDER),
+                     (BEFORE_STACKS, SCHEMA_BEFORE_STACKS),
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS))
 
 
@@ -3079,9 +3090,9 @@ class OrderStepCase(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
-    def test_the_step_follows_the_reactions_and_the_blocks_step_follows_it(self):
+    def test_the_step_follows_the_reactions_and_the_stacks_step_follows_it(self):
         self.assertIn((BEFORE_ORDER, ORDER_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertIn((ORDER_VERSION, BLOCKS_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertIn((ORDER_VERSION, STACKS_VERSION), [step[:2] for step in migrations.STEPS])
 
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_an_order_is_kept(self):
         stored = everything(self.path)
@@ -3122,8 +3133,62 @@ class OrderStepCase(MigrationCase):
         self.assertTrue(self.step_back()["migrated"])
 
 
+class StacksStepCase(MigrationCase):
+    """An instance at the order's version: the stacks' step adds what people record about
+    messages as they read in reply stacks, and steps back only while nothing is recorded."""
+
+    VERSION, FIXTURE = BEFORE_STACKS, SCHEMA_BEFORE_STACKS
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_STACKS)
+
+    def star(self):
+        message = self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
+        receipt = self.command("message.star", {"starred": True}, {"message_id": message}, {"star_revision": 0})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return message
+
+    def test_the_step_follows_the_order_and_the_blocks_step_follows_it(self):
+        self.assertIn((BEFORE_STACKS, STACKS_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertIn((STACKS_VERSION, BLOCKS_VERSION), [step[:2] for step in migrations.STEPS])
+
+    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_a_star_is_kept(self):
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_STACKS,
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        upgraded = everything(self.path)
+        self.assertEqual({table: kept for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
+        self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new table starts empty")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        message = self.star()
+        self.assertEqual(self.sql("SELECT message_id,kind,owner,revision FROM message_acts"), [(message, "star", "owner", 1)])
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_recorded(self):
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_STACKS))
+        self.assertEqual(everything(self.path), stored)
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_anything_is_recorded_and_changes_nothing(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.star()
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DELETE FROM message_acts")
+        self.assertTrue(self.step_back()["migrated"])
+
+
 class BlocksStepCase(MigrationCase):
-    """An instance at the order's version: the blocks' step keeps what an ask blocks, and steps
+    """An instance at the stacks' version: the blocks' step keeps what an ask blocks, and steps
     back only while no ask has named a piece or release it holds."""
 
     VERSION, FIXTURE = BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS
@@ -3241,6 +3306,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(ReactionStepCase, _name, None)
     if _name.startswith("test_") and _name not in OrderStepCase.__dict__:
         setattr(OrderStepCase, _name, None)
+    if _name.startswith("test_") and _name not in StacksStepCase.__dict__:
+        setattr(StacksStepCase, _name, None)
     if _name.startswith("test_") and _name not in BlocksStepCase.__dict__:
         setattr(BlocksStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:

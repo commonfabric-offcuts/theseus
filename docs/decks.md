@@ -44,12 +44,16 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
 | finish editing | Escape or ⌘Return | Done |
+| while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
+| while editing, put the card under the one above it, or take it out of its parent | Tab, ⇧Tab | |
+| while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
+| while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
 | a new card right above this one | ⌥Return | |
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | select several cards, to act on them as one | ⇧↑ ⇧↓, ⌘-click or ⇧-click | |
-| ask an agent about the card, or open its reply stack | ⌥→ then Return, or a click on its speech bubble | its speech bubble |
+| ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
 
 A move and a merge go between cards with the same parent, never out of it: a
 move takes the card past the one beside it with all its children, and a merge
@@ -59,7 +63,40 @@ makes the card the last child of the card above it with the same parent, and
 ⇧Tab puts it after its parent's children, beside its parent; with nowhere to
 go, Tab and ⇧Tab move the focus as they do elsewhere. A new card goes beside
 the picked one, after its children, or with ⌥Return right above it, at its
-depth. Clearing all of a card's text removes the
+depth.
+
+While a card is being written, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it by the same
+rules, and the move is saved at once; what is written, and the cursor, stay where they
+were, and the writing is saved when the card is finished. A new card not yet
+made only changes where it will go, by the same rules, and nothing is saved
+until it is finished. The box keeps these keys even with nowhere to go, as
+an outliner does, so a Tab never takes the focus out of a card half written;
+Escape or ⌘Return leaves it. ↑ at the very start of what is written finishes
+the card and opens the card that shows above it for writing, the cursor at
+its end; ↓ at the very end does the same with the card below, the cursor at
+its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at
+the first or last card they do nothing more. A new card with nothing written
+is dropped on the way, as Escape drops it, and a card cleared of all its text
+is removed with its children, as below, so ↓ from it goes on to the card after
+them. The keys an input method takes while it composes stay its own. The
+box shares the composer's writing keys (`web/writing-input.mjs`): ⌥↑ and ⌥↓
+move the line the cursor is on, or the lines selected, past the line beside
+them, as in the composer (interaction.md), and on a Mac ⌃A and ⌃E go to the
+start and end of the line, and ⌃K, ⌃U and ⌃W delete to its end, back to its
+start and the word before the cursor.
+
+On a laptop a card being written stays where it showed: its box takes the
+card's own place and height, its words stay on the lines they showed on, a
+card with children keeps its chevron where it stood, and the cards around it
+do not move. The box grows only when what is written needs more room. The
+title takes the words' face while it is written, so it moves by the
+difference between the two faces' lines, and a title that wrapped beside the
+speech bubble may take a line fewer. Words that show as a list, a quote or
+paragraphs are written as their markdown, a blank line a whole line, so such
+a card can grow while it is written. The line of keys above the cards keeps
+the height of its longest form, so it moves nothing when it changes.
+
+Clearing all of a card's text removes the
 card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the
 person's own acts on this page, newest first, each as a new revision; it
 never reverts someone else's change.
@@ -81,10 +118,12 @@ card, asking about one and folding. The rules are `groupAct` in
 
 Folding is the reader's own view and never touches the page: the folded
 cards are kept in this browser by their titles, so a fold lasts through a
-reload and comes undone when its card's title changes. ← and → work as in any
+reload and comes undone when its card's title changes. ← and → work as in a
 tree: on a card with no children showing, ← goes up to its parent, and on a
-card whose children show, → goes down to the first of them. ⌘← and ⌘→ do the
-same, and the browser never takes them for Back and Forward on the cards.
+card with none folded away, → gives the focus to its speech bubble. ⌘← and ⌘→
+fold and show the same way, ⌘→ going down to the first child of a card whose
+children show, and the browser never takes them for Back and Forward on the
+cards.
 ⇧⌘← folds every card's children away and ⇧⌘→ shows them all again. ↑ and ↓ pass over
 folded cards, a phone's swipe holds only the cards that show, and the count
 says how many are folded away. An act that puts a card under a folded card,
@@ -113,8 +152,11 @@ why.
 ## Asking about a card
 
 Each card has a speech bubble at its right edge. On a laptop it shows on the
-picked card and under the pointer; ⌥→ gives it the focus and ← gives the focus
-back to the card. On a phone it shows on every card. On a card with no reply
+picked card, and under the pointer while the mouse is in use: macOS hides the
+pointer while a person types, so once a key is pressed the card under it
+shows neither its bubble nor the pointer's highlight until the mouse moves.
+→ gives the bubble the focus, from a card with no children folded away, as ⌥→
+does from any card, and ← gives the focus back to the card. On a phone it shows on every card. On a card with no reply
 stack, the bubble asks an agent about it: a box in the card's place takes the
 ask, and Ask or ⌘Return sends it as a new message (`message.post`, an ask) in
 the page's topic, or for an outcome's page in its conversation. The message

@@ -36,7 +36,7 @@ export function feedAnswer(event) {
 //   feed:   'live', 'down', or null when the server offers none.
 export function standing({ best, known, floor, failed, feed }) {
   if (feedLost(feed)) return 'unread';
-  // A failed read matters unless the feed has since said what is red at the latest commit.
+  // A failed read matters unless the feed is live and an answer, from the feed or a read, is at the latest commit.
   if (failed && (feed !== 'live' || !best || best.seq < known)) return 'unread';
   if (!best || best.seq < floor) return 'checking';
   return best.red.length ? 'lit' : 'quiet';

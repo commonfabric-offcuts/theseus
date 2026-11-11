@@ -1,5 +1,6 @@
 // The right rail of a topic or an outcome's Conversation (pipeline item 131;
-// docs/rails.md): the outcome's things in folding sections. Pipeline (what is
+// docs/rails.md): the outcome's things in folding sections. Starred (the
+// reader's own stars, this place's first, then Elsewhere; docs/reply-stacks.md), Pipeline (what is
 // live, what is in Now and at which stage, what is Next), Waiting for… (what
 // the reader asked for and where it stands), Notebook pages, Previews, Pull
 // requests, Images, and Skills and tools. On a Conversation it shows the
@@ -30,7 +31,7 @@ import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
 
 export const SECTIONS = [
-  ['pipeline', 'Pipeline'], ['waiting', 'Waiting for…'], ['notebook', 'Notebook'], ['previews', 'Previews'],
+  ['starred', 'Starred'], ['pipeline', 'Pipeline'], ['waiting', 'Waiting for…'], ['notebook', 'Notebook'], ['previews', 'Previews'],
   ['prs', 'Pull requests'], ['images', 'Images'], ['tools', 'Skills and tools'],
 ];
 // How far back the rail looks for links and images in a whole outcome: its
@@ -309,19 +310,20 @@ export class ThingsRail {
     // A topic the page can no longer read (its updates refused) is not read here either.
     const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
     const pipeline = settle(this.readPipeline(view, workspace));
+    const stars = settle(view('stars', { limit: 50 }));
     const notebook = byTopic && !readable(topicId) ? settle(Promise.resolve(null)) : settle(view('memory_items', { owner_scope: byTopic ? { kind: 'topic', id: topicId } : { kind: 'workspace', id: workspace }, limit: 20 }));
     const places = (byTopic ? [this.topicPlace(handles)] : await this.outcomePlaces(view, workspace)).filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, byTopic ? 24 : 12)));
-    const [pipe, notes, ...found] = await Promise.all([pipeline, notebook, ...reads]);
+    const [pipe, notes, starred, ...found] = await Promise.all([pipeline, notebook, stars, ...reads]);
     if (serial !== this.serial || handles !== this.handles) return true;
-    const failed = [pipe, notes, ...found].filter(read => read.error && !denied(read.error));
+    const failed = [pipe, notes, starred, ...found].filter(read => read.error && !denied(read.error));
     const messages = found.flatMap(read => read.value ? read.value.messages.map(message => ({ ...message, place: read.value.place })) : []);
     const images = new Map();
     for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
     const conversation = found.find(read => read.value?.place.conversation)?.value.messages ?? [];
     this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value?.items ?? (notes.error ? undefined : []),
-      messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation });
+      messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation, stars: starred.value?.items ?? (starred.error ? undefined : []) });
     this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
     this.message.hidden = this.retry.hidden = !failed.length;
     if (failed.length) this.message.textContent = 'Some of this could not be read just now; what shows is what was read last.';
@@ -370,6 +372,7 @@ export class ThingsRail {
     const items = found.pipeline ? this.pipelineRows(found.pipeline, found.byTopic ? found.topicId : null) : null;
     const { previews, prs } = thingsIn(found.messages);
     const shown = {
+      starred: found.stars === undefined ? undefined : this.starredSection(found.stars, found, reader),
       pipeline: found.pipeline === undefined ? undefined : this.pipelineSection(items, found, nowMs),
       waiting: items || found.conversation.length ? this.waitingSection(waitingFor({ reader, now: items?.now ?? [], next: items?.next ?? [], conversation: found.byTopic ? [] : found.conversation, topic: found.byTopic ? found.topicId : null }), nowMs) : null,
       notebook: found.notebook === undefined ? undefined : this.notebookSection(found.notebook, found),
@@ -446,6 +449,26 @@ export class ThingsRail {
       if (row.item) return element(doc, 'li', {}, element(doc, 'a', { className: 'row', href: pipelineHref(workspace, row.item.number) }, row.what, sub));
       return element(doc, 'li', {}, this.placeLink({ kind: 'topic', id: row.message.topic_id, message: row.message.id }, row.what, sub));
     })) };
+  }
+  // The reader's stars: this topic's (on a Conversation, this outcome's) first,
+  // then the rest under Elsewhere. A press lands on the message, its stack
+  // opened, where the page shows it; elsewhere it opens its topic on it.
+  // Unstar beside each takes the star off, wherever its message is.
+  starredSection(stars, found, reader) {
+    if (!stars.length) return null;
+    const doc = this.doc, here = star => (found.byTopic ? star.topic_id === found.topicId : star.workspace_id === this.handles.workspaceId);
+    const mine = stars.filter(here), elsewhere = stars.filter(star => !here(star));
+    const row = star => {
+      const sub = element(doc, 'span', { className: 'sub', textContent: `${star.author_id === reader ? 'you' : star.author_id}${here(star) && found.byTopic ? '' : ` in ${star.conversation ? 'Conversation' : star.topic_title}`}` });
+      const off = element(doc, 'button', { type: 'button', className: 'things-unstar', textContent: 'Unstar', title: 'Take the star off' });
+      off.setAttribute('aria-label', `Unstar "${firstWords(star.excerpt, 40)}"`);
+      off.onclick = () => this.handles.unstar?.(star);
+      return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id, land: true }, firstWords(star.excerpt, 70), sub), off);
+    };
+    return { sum: String(stars.length), key: JSON.stringify(['star', stars.map(star => [star.message_id, star.star_revision, here(star)])]), node: () => element(doc, 'div', {},
+      ...(mine.length ? [element(doc, 'ul', { className: 'things-list' }, ...mine.map(row))] : []),
+      ...(elsewhere.length ? [element(doc, 'div', { className: 'pipe-label', textContent: 'Elsewhere' }), element(doc, 'ul', { className: 'things-list' }, ...elsewhere.map(row))] : []),
+      element(doc, 'p', { className: 'things-quiet', textContent: 'Only you see your stars.' })) };
   }
   notebookSection(items, found) {
     if (!items.length) return null;

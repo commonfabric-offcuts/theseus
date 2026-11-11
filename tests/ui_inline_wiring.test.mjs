@@ -133,7 +133,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
-    get defaultView() { return { ResizeObserver: class { observe() {} }, ...context.window }; } };
+    get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} }, ...context.window }; } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
@@ -4128,12 +4128,12 @@ test('on the conversation page replies stack under the message they answer, as i
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
   assert.deepEqual(list.children.map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
   const [head, replies] = stack.children;
-  assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m5', 'stack-toggle', 'm4', 'm3', 'm2']],
-    'the message on top, its replies under it, newest first, folded behind one line');
+  assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['stack-fold-line', 'm2', 'm3', 'm4', 'm5']],
+    'the message on top, its replies under it oldest first, as a chat reads, the folded one behind its line where it sits');
   // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.
   assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, false, false, true],
     'the New item and the ask waiting on the reader stay in view; the plain answer folds');
-  assert.equal(replies.children[1].textContent, '1 earlier reply');
+  assert.equal(replies.children[0].children[0].textContent, '1 earlier reply');
   // The conversation's marks are painted on every message entry, stacked or not, with its item.
   assert.deepEqual([...painted.tags.keys()].sort(), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 'each card gets its tags, stacked ones included');
   assert.deepEqual(['m1', 'm3', 'm6', 'm2'].map(id => entryIn(f, id).dataset.item), ['settled', 'new', 'new', 'none'], 'each entry says its item for Only new');
@@ -4148,7 +4148,7 @@ test('on the conversation page a link to a message folded in a stack opens its s
   assert.equal(entryIn(f, 'm2').hidden, true, 'the reply the item\'s Answered tag names is folded away');
   // "agent-a's reply" on m1's Answered tag.
   painted.tags.get('m1').open('message', 'm2'); await settle();
-  assert.equal(stackOf('m2').dataset.open, 'true', 'its stack opens');
+  assert.equal(stackOf('m2').dataset.fold, 'open', 'its stack opens');
   assert.deepEqual([entryIn(f, 'm2').hidden, scrolled, opens.at(-1)], [false, ['m2'], ['m2', 'm2']],
     'the reply shows, is brought into view, and opens in the Reader from its own card');
   // The ask in m1's "Waiting on you" tag, kept in view: it is brought into view and opened the same way.
@@ -4159,7 +4159,7 @@ test('on the conversation page a link to a message folded in a stack opens its s
   assert.equal(opens.at(-1)[0], 'elsewhere');
   // A message's link (docs/links.md) to a folded reply in the conversation.
   const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2' });
-  assert.deepEqual([linked.stackOf('m2').dataset.open, entryIn(linked.f, 'm2').hidden, linked.opens.at(-1)], ['true', false, ['m2', 'm2']],
+  assert.deepEqual([linked.stackOf('m2').dataset.fold, entryIn(linked.f, 'm2').hidden, linked.opens.at(-1)], ['open', false, ['m2', 'm2']],
     'the address opens the stack and the Reader on the message, from its card');
 });
 
