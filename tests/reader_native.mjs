@@ -424,7 +424,7 @@ try {
     const arrows = await evaluate(`[...document.querySelectorAll('#reader-stepping button')].map(b=>({id:b.id,text:b.textContent,label:b.getAttribute('aria-label'),title:b.title,x:b.getBoundingClientRect().x}))`);
     observations.push({ label: 'arrows', arrows });
     assert.deepEqual(arrows.map(arrow => [arrow.id, arrow.text, arrow.label, arrow.title]),
-      [['next-message', '↑', 'Newer message (above)', 'Newer message (above)'], ['previous-message', '↓', 'Older message (below)', 'Older message (below)']], 'up is the newer message, and comes first');
+      [['next-message', '↑', 'Previous message (above)', 'Previous message (above)'], ['previous-message', '↓', 'Next message (below)', 'Next message (below)']], 'up is the message above, and comes first');
     assert.ok(arrows[0].x < arrows[1].x, 'up sits before down');
     await point('#next-message'); await point('#previous-message');
     await point('#source-body'); await key('ArrowUp', 4); await key('ArrowDown', 4); await key('ArrowLeft', 4); await key('ArrowRight', 4);

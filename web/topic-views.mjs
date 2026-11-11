@@ -171,6 +171,35 @@ export class TopicViews {
     if (this.learnUnread(answer, afresh)) this.paint('line');
     return true;
   }
+  // What people recorded about the loaded messages (docs/reply-stacks.md),
+  // read again newest first down to the oldest message loaded: each loaded
+  // message the answer names takes its acts as Core holds them. version: the
+  // newest act the change named, which the answer must have reached.
+  async readActs(version, read, current) {
+    if (!this.messages.size) return true;
+    let oldest = Infinity;
+    for (const item of this.messages.values()) oldest = Math.min(oldest, item.seq);
+    const found = new Map();
+    let cursor = null, reached = null;
+    do {
+      const answer = checkedView(await read('message_acts', { topic_id: this.topicId, limit: 100, ...(cursor === null ? {} : { cursor }) }), this.instanceId);
+      if (!current()) return false;
+      if (answer.topic_id !== this.topicId || !Array.isArray(answer.items) || !integer(answer.version) || !(answer.next_cursor === null || integer(answer.next_cursor)) ||
+          answer.items.some(item => typeof item?.message_id !== 'string' || !integer(item.seq) || !item.acts || typeof item.acts !== 'object')) throw invalid('The acts page is malformed.');
+      if (cursor !== null && answer.next_cursor !== null && answer.next_cursor >= cursor) throw invalid('The acts paging made no progress.');
+      reached ??= answer.version;
+      for (const item of answer.items) found.set(item.message_id, item.acts);
+      cursor = answer.items.length && answer.items.at(-1).seq < oldest ? null : answer.next_cursor;
+    } while (cursor !== null);
+    if (reached < version) throw behind();
+    let changed = false;
+    for (const [id, acts] of found) {
+      const item = this.messages.get(id);
+      if (item && JSON.stringify(item.acts) !== JSON.stringify(acts)) { item.acts = acts; changed = true; }
+    }
+    if (changed) this.paint('acts');
+    return true;
+  }
   runOf(id) { return this.runs.get(id); }
   validMemory(item) {
     if (!item || typeof item.id !== 'string' || !integer(item.seq) || item.seq < 1 || !integer(item.revision) || item.revision < 1 ||
@@ -261,6 +290,7 @@ export class TopicViews {
       if (learnReactions(this.messages, answer)) this.paint('reactions');
       return true;
     }
+    if (key === 'acts') return this.readActs(version, read, current);
     if (key === 'notebook') {
       if (this.memoryCursor !== null) { this.unloadedChanged = true; return true; }
       const cursor = this.memoryTail;

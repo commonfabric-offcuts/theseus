@@ -604,7 +604,7 @@ async function run() {
       assert.deepEqual(moved, { notice: 'Your reply to the last one is kept.', field: '', state: 'line' });
       assert.equal(await noticeOver(p), 0, 'the notice sits clear of the message');
       if (shape === 'phone') {
-        // At the message's end the notice leaves ↑ Newer · ↓ Older to be read and pressed.
+        // At the message's end the notice leaves ↑ Previous · ↓ Next to be read and pressed.
         await p.evaluate(() => { const body = document.querySelector('#source-body'); body.scrollTop = body.scrollHeight; });
         const covered = await p.evaluate(() => { const end = document.querySelector('.reader-end').getBoundingClientRect(); return [...document.querySelectorAll('.reader-end .end-step')].map(b => { const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.end-step') === b; }).concat(end.bottom <= document.querySelector('#reader-composer').getBoundingClientRect().top + 1); });
         assert.deepEqual(covered, [true, true, true], 'the end line shows whole above the reply');

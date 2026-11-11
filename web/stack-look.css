@@ -1,0 +1,81 @@
+/* How reply stacks look (docs/reply-stacks.md, "The look"): the Frame look,
+   one hairline round the whole stack with its head set into the top edge.
+   Every visual choice about stacks is in this file alone; another look drops
+   in by replacing it. It reads only the semantic colour tokens of aim.css
+   (--paper --panel --ink --muted --line --accent --soft --alert --focus), so light
+   and dark both follow, and only these names, which reply-stacks.mjs sets:
+
+   .reply-stack              a stack; data-stack (its head's id), data-seq,
+                             data-fold = head | folded | open,
+                             data-head-open, data-placed, data-single,
+                             data-renaming = true | false
+     > [data-id]             its head's entry (a card, or a fold's card), the
+                             card marked .stack-head-card and holding
+       .stack-head           the head row: .stack-name (.stack-act), .stack-pen,
+                             .stack-who, .stack-new, .stack-star, .stack-meta
+                             (.stack-repliers, .stack-fresh), .stack-hide
+     > .stack-rename         the rename field: .stack-rename-input, .stack-rename-hint
+     > .stack-replies        the replies, oldest first, each an entry; between them
+       .stack-fold-line      a run folded away (data-fresh, data-all; .stack-fold-words, .stack-fold-new)
+       .stack-join-line      above a joined stack's first message (.stack-join-words, .stack-split)
+     > .stack-placed-line    the reader placed it (.stack-placed-words, .stack-unplace)
+   [data-starred=true]       on any message card the reader starred
+
+   A card keeps its own look inside a stack: an agent's tint and the
+   reader's own cards read as anywhere else. No coloured edge marks a stack. */
+
+.reply-stack{position:relative;margin:0 0 .75rem;padding:.3rem .3rem .4rem;border:1px solid var(--line);border-radius:.9rem;background:color-mix(in srgb,var(--panel) 55%,transparent)}
+.reply-stack[data-single=true]{padding:.3rem}
+:is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
+/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */
+.only-new .stack-head{display:none}
+
+/* The head: one compact row until its full message is shown under it. */
+.stack-head{display:flex;align-items:baseline;gap:.45rem;min-width:0;white-space:nowrap;overflow:hidden;font-size:.9rem;font-weight:400}
+.reply-stack[data-head-open=false]>.stack-head-card,.reply-stack[data-head-open=false]>.message-fold>.stack-head-card{padding-top:.55rem;padding-bottom:.55rem}
+.reply-stack[data-head-open=false]:not(.only-new *)>.stack-head-card>:not(.stack-head),
+.reply-stack[data-head-open=false]:not(.only-new *)>.message-fold>.stack-head-card>:not(.stack-head){display:none}
+.reply-stack[data-head-open=true] .stack-head{margin-bottom:.45rem}
+/* The lit message's bar (👍 Reply ⋯) sits over the card's top end corner: the row keeps clear of it, always where a
+   pointer lights a card (so nothing shifts under the pointer), and once lit where a finger does. */
+@media(hover:hover){.stack-head{padding-right:9.5rem}}
+@media(hover:none){:is(.stack-head-card.lit,.lit>.stack-head-card)>.stack-head{padding-right:9.5rem}}
+.reply-stack[data-single=false]>.message-fold>.fold-line{display:none}
+.stack-who{font-weight:650;font-size:.8rem;flex:none}
+.stack-name{flex:0 1 auto;min-width:3rem;overflow:hidden;text-overflow:ellipsis;font-weight:650;color:var(--ink);cursor:text;border-radius:.25rem}
+.stack-pen{flex:none;color:var(--muted);font-size:.8rem;cursor:pointer;opacity:.6}
+@media(hover:hover){.stack-name:hover{background:var(--soft)}.stack-head:hover .stack-pen{opacity:1}}
+.stack-new{flex:none;color:var(--alert);font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.stack-star{flex:none;color:var(--accent);font-size:.75rem}
+.stack-meta{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:.8rem}
+.stack-fresh{color:var(--alert);font-weight:650}
+.stack-hide{flex:none;color:var(--accent);font-size:.8rem;text-decoration:underline;cursor:pointer}
+.reply-stack[data-renaming=true] .stack-head :is(.stack-name,.stack-pen){display:none}
+.stack-rename{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem}
+.stack-rename-input{flex:1;min-width:0;min-height:2.5rem;padding:.3rem .6rem;border:1px solid var(--focus);border-radius:.5rem;background:var(--panel);font-weight:650}
+.stack-rename-hint{flex:none;color:var(--muted);font-size:.75rem}
+
+/* The replies, under the head, a little in. */
+.stack-replies{display:flex;flex-direction:column;gap:.4rem;margin:.4rem 0 0 1.25rem}
+.stack-replies:empty{display:none}
+.stack-fold-line{align-self:flex-start;min-height:2.5rem;padding:.2rem .7rem;border-color:transparent;background:transparent;color:var(--muted);font-size:.82rem;-webkit-tap-highlight-color:transparent}
+.stack-fold-new{color:var(--alert);font-weight:650}
+@media(hover:hover){.stack-fold-line:hover{background:var(--soft);color:var(--ink)}}
+.stack-join-line,.stack-placed-line{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .6rem;margin:0;color:var(--muted);font-size:.8rem}
+.stack-placed-line{margin:.35rem .25rem 0}
+:is(.stack-split,.stack-unplace){min-height:2.25rem;padding:.1rem .55rem;border-color:transparent;background:transparent;color:var(--accent);font-size:.8rem;text-decoration:underline}
+@media(hover:hover){:is(.stack-split,.stack-unplace):hover{background:var(--soft)}}
+
+/* A star the reader put on a message, wherever it shows. */
+[data-starred=true]>.message-author::after{content:'★ Starred';margin-left:.5rem;color:var(--accent);font-size:.75rem;font-weight:500}
+.stack-head-card[data-starred=true]>.message-author::after{content:none}
+
+@media(max-width:760px){
+  .reply-stack{padding:.2rem .2rem .3rem}
+  /* On a phone the head's count, who replied and what is new sit on a second short line. */
+  .stack-head{flex-wrap:wrap;row-gap:.1rem}
+  .stack-meta{flex:1 0 100%}
+  .stack-replies{margin-left:.5rem}
+  .stack-rename-hint{display:none}
+}
+@media(pointer:coarse){.stack-fold-line,:is(.stack-split,.stack-unplace){min-height:2.75rem}}

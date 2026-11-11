@@ -34,7 +34,7 @@ import { readFailure } from './freshness.mjs';
 import { waitsOnReader } from './outcome-conversation.mjs';
 import { reloader } from './live.mjs';
 import { KeyTree } from './key-tree.mjs';
-import { KEY_WORDS, keyAction } from './pane-keys.mjs';
+import { KEY_WORDS, MESSAGE_KEY_WORDS, keyAction } from './pane-keys.mjs';
 import { book, scopeOf, arrangeItems, moved, movedWords, orderOf } from './outline-order.mjs';
 import { panes } from './panes.mjs';
 
@@ -163,7 +163,8 @@ export class OutlineRail {
     key.setAttribute('aria-hidden', 'true');
     // The keys, in plain words, under the outline (pane-keys.mjs).
     const keys = element(doc, 'details', { className: 'ol-keys muted', id: 'outline-keys' }, element(doc, 'summary', { textContent: 'Keys' }),
-      element(doc, 'dl', {}, ...KEY_WORDS.flatMap(([keys, words]) => [element(doc, 'dt', { textContent: keys }), element(doc, 'dd', { textContent: words })])));
+      ...[KEY_WORDS, MESSAGE_KEY_WORDS].flatMap((rows, at) => [...(at ? [element(doc, 'p', { className: 'ol-keys-part', textContent: 'In the messages' })] : []),
+        element(doc, 'dl', {}, ...rows.flatMap(([keys, words]) => [element(doc, 'dt', { textContent: keys }), element(doc, 'dd', { textContent: words })]))]));
     this.host.replaceChildren(sums, heading, this.list, this.empty, this.message, this.retry, this.more, key, keys);
     this.host.hidden = true;
   }

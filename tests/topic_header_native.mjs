@@ -844,13 +844,17 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.ok(Object.values(sides).every(s => s === 0), 'no ring around an unfocused pill button: ' + JSON.stringify(sides));
     }
     // From the control just before the people, Tab stops on each pill button in turn.
-    await p.evaluate(`(()=>{const people=document.querySelector('#topic-people'),all=[...document.querySelectorAll('button,input,a[href],[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled&&e.getClientRects().length&&people.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_PRECEDING);all.at(-1).focus({preventScroll:true})})()`);
+    const from = await p.evaluate(`(()=>{const people=document.querySelector('#topic-people'),all=[...document.querySelectorAll('button,input,a[href],[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled&&!e.closest('[inert]')&&e.getClientRects().length&&people.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_PRECEDING);all.at(-1).focus({preventScroll:true});const a=document.activeElement;return a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30)})()`);
+    let stop = null;
     const expected = await p.evaluate(`${buttons}.map(e=>e.getAttribute('aria-label')||e.title)`);
     const seen = [];
+    // A lit card's bar buttons follow it in the Tab order (docs/interaction.md): up to three stops before the people.
+    let past = 0;
     for (;;) {
       await p.key('Tab');
-      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
-      if (!at.pill) break;
+      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar')),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
+      if (!at.pill && at.bar && !seen.length && past++ < 3) continue;
+      if (!at.pill) { stop = await p.evaluate(`(a=>a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30))(document.activeElement)`); break; }
       seen.push(at.name);
       assert.deepEqual([at.visible, at.style], [true, 'solid'], `${at.name}: the browser draws its keyboard ring`);
       await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'settled');
@@ -858,7 +862,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       if (seen.length === 1) await shot(p, 'header-ring-first-pill-button');
       for (const [side, share] of Object.entries(sides)) assert.ok(share >= 0.5, `${at.name}: the ring shows along its ${side} side (${share.toFixed(2)} of it): ${JSON.stringify(sides)}`);
     }
-    assert.deepEqual(seen, expected, 'Tab stops on every button in the pills, in order');
+    assert.deepEqual(seen, expected, `Tab stops on every button in the pills, in order (from ${from}, stopped on ${stop})`);
     assert.ok(seen.some(name => name.startsWith('Change ')) && seen.some(name => name.startsWith('Remove ')), 'an agent\'s colour button and a remove button among them');
     assert.deepEqual(p.errors, []);
   });

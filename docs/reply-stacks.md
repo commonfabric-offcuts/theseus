@@ -1,0 +1,229 @@
+# Reply stacks
+
+A topic page reads as stacks: a message, every loaded reply to it, and the
+replies to those, gathered into one stack. A stack reads as a chat does, its
+first message on top and its replies under it oldest first. The topic's
+stacks sit newest activity on top, unless the reader has put one somewhere
+else. This page holds the contract: what Core records, how the page orders
+and folds what it shows, and the one layer that decides how a stack looks.
+docs/topic-reading.md says how a card reads inside a stack, and
+docs/interaction.md has the keys.
+
+The code:
+
+- `aim_next/stacks.py`: Core's records, commands and views.
+- `web/stack-order.mjs`: the pure decisions about what goes where (no page).
+- `web/reply-stacks.mjs`: draws those decisions into the page, keeping each
+  card's node.
+- `web/stack-feed.mjs`: what the person does to a stack. It shows the act at
+  once, sends it to Core in order, and holds ⌘Z, the keys, the ⋯ items and
+  the swipe.
+- `web/stack-look.css`: how a stack looks, and nothing else does.
+
+## What Core records
+
+A message never changes. Each act about a message is a new row in
+`message_acts`, recording who acted, when, and what the act now stands at.
+Nothing is overwritten, so every rename and every join can be read back.
+Schema version 35 adds the table. Stepping back to 34 is refused once any
+row exists, because dropping rows would restart their revisions.
+
+| Act | Command | Value | Whose |
+| --- | --- | --- | --- |
+| star | `message.star` | `{"starred": true}` | the reader's own |
+| deal | `message.deal` | `{"dealt": true}` | the reader's own |
+| place | `stack.place` | `{"key": 1.5}` or `{"key": null}` | the reader's own |
+| name | `stack.name` | `{"name": "Cabin week"}` (empty gives back the first line) | the topic's |
+| join | `stack.join` | `{"into": "m-…"}` or `{"into": null}` (split back out) | the topic's |
+
+Each act names one message, `target: {"message_id": "m-…"}`, and is fenced on
+the revision its sender read: `expected: {"star_revision": 3}` (and likewise
+`deal_revision`, `place_revision`, `name_revision` and `join_revision`). An
+act's revision counts its rows for that message, kind and owner. A late
+request is refused with `REVISION_CONFLICT`, and the refusal carries the
+current revision. Sending a value the act already stands at records nothing
+and answers `changed: false`. An answer carries the value, the new revision,
+`changed` and, when it recorded a row, `acts_version`.
+
+These rules refuse an act:
+
+- `FORBIDDEN` for a message the sender cannot read: a whisper they are not
+  in, or a topic they are not on.
+- `INVALID_ARGUMENT` for a value of the wrong shape. This covers a name that
+  runs over 200 characters (its spaces and line breaks are first folded to
+  single spaces), and a place that is not a finite number within ±10¹⁵.
+- `INVALID_ARGUMENT` for a join into another topic, into the stack itself, or
+  into a stack inside it (a loop, followed through joins and replies).
+- `OUTCOME_REACHED` for a name or a join once the topic's outcome is reached;
+  a star, a deal or a place is still the reader's to make.
+
+Who hears of an act depends on whose it is. A personal act reaches only its
+reader. A shared act reaches everyone who reads the message, so a whisper's
+acts reach its two people only. Either way it arrives as an actor-scoped
+change, `acts`, keyed by the topic, at the act's row id. Nothing moves in a
+topic's or outcome's scope, so no count, light, activity time or "new"
+changes.
+
+Reads:
+
+- Each `topic_messages` item carries `acts`: `starred`, `dealt`, `placed`,
+  `name` (`{text, by, at_ms}` or null) and `joined` (`{into, by, at_ms}` or
+  null), each with its revision.
+- `message_acts {topic_id, cursor?, limit?}` pages the topic's messages that
+  have any act, newest first, with `version`, the newest act the reader hears
+  of. The page reads it when an `acts` change arrives.
+- `stars {cursor?, limit?}` lists the reader's starred messages in every
+  place they read, newest star first. The right rail's Starred is drawn from
+  it.
+
+## Display order
+
+All of this is decided in `web/stack-order.mjs`, from the messages loaded and
+their acts.
+
+- **Gathering.** A message's parent is the message it was joined into, when
+  that one is loaded. Otherwise it is the message it answers, when loaded.
+  Otherwise it heads its own stack. A loop, which joins made by different
+  people can form, is cut at its newest message.
+- **Inside a stack.** The replies run oldest first, by sequence. A joined
+  stack's messages follow, as one run, in the order the joins were made, its
+  first message preceded by a line: "Joined from its own stack by …, time"
+  with Split back out.
+- **The stacks.** Each stack sorts by its key, newest first. The key is the
+  reader's place if they set one, or else the newest message's sequence. A
+  new stack therefore lands on top, and a new reply lifts its stack unless
+  the reader placed it. ⌘↑ and ⌘↓ set a place halfway past the neighbour.
+  When no number fits between two places, the two stacks trade keys. A
+  placed stack says "Placed here by you", and "Let new replies move it"
+  takes the place away.
+- **Folding.** A stack is at one of three levels: head, folded or open.
+  - Folded, it shows its newest reply and the replies kept in view.
+  - At head, it shows only the replies kept by a star.
+  - Open, it shows every reply.
+
+  A starred message and a joined stack's first message always show. Kept in
+  view means unread when the page drew it (or, on a Conversation, still owed
+  to the reader), and the newest reply a folded stack showed: a newer reply
+  arriving shows under it rather than folding it away. What is kept stays
+  in view while the person is in front of it, so nothing moves under their
+  eyes; coming back to the page lets go of what is off screen. A reply is
+  dealt with when the reader has replied in its stack, or thumbed up a
+  reply, at or after it. Such a reply is not newly kept, so coming back to
+  the page folds it. Coming back also hides a full message a head was
+  showing, where it is off screen.
+- **Fold lines.** Each run of replies folded away is one line where the run
+  sits: "3 earlier replies", "1 more reply", or "6 replies" when all are
+  folded. The line ends in red with how many in the run are new ("· 2 new").
+  Opening the stack gives one line on top, "Fold N earlier replies".
+- **The head.** The first message is one compact row: its short name, ✎,
+  who began the stack, "New" when the message itself is new, ★ if starred,
+  how many replied and who, and how many replies are new. On a phone the
+  count, who replied and what is new sit on a second short line. The short name is the
+  one someone typed, or else the first line of the first message. Pressing
+  the row shows the whole message under it, and "Hide the full message"
+  hides it again. A starred head always shows whole.
+- **One New line.** It goes under the lowest stack that holds the line's
+  message or anything newer that is not the reader's own (`lineUnder`). It is
+  never inside a stack, and nothing new sits below it. While the line's
+  message is not loaded, the line waits at the bottom (docs/topic-reading.md).
+- **Reading order.** The Reader's ↑ and ↓ follow the page from top to
+  bottom (`readingOrder`). They go down a stack through its replies to its
+  newest, then on to the stack below.
+- **Fold steps.** ⌘→ on a head first shows its whole message, then opens the
+  replies a step at a time. ⌘← goes back the same way. Each step can be
+  undone with ⌘Z.
+
+Each viewer has their own order and folds, because they come from that
+viewer's places and the page's own state. Names and joins are the topic's,
+the same for everyone. A star is the reader's alone, and only they see it,
+on the card and in the rail.
+
+## Doing it
+
+On a message (its card focused, never in writing), these keys work:
+
+| Keys | Act |
+| --- | --- |
+| ⌘↑ ⌘↓ | move its stack up or down, for you alone |
+| ⌘→ ⌘← | open or fold its stack a step |
+| ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
+| ⌘Z | undo the last of these |
+
+The keys come from the shared key map (`web/pane-keys.mjs`), so the
+outline and the messages read one set of keys.
+
+The ⋯ menu offers:
+
+- Star for me (or Unstar)
+- Rename (on a head)
+- Show or Hide the full message
+- Fold into earlier replies
+- Split back out (on a joined stack's first message)
+- every move above, each naming its keys
+
+The right rail's Starred lists the reader's stars, this place's first and
+then Elsewhere. A press lands on the message, opening its stack if it is
+folded, and Unstar beside each takes the star off.
+
+On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
+"Move or join…", which opens a second sheet. A reply swiped to the right
+folds into the earlier replies. A right-click (a long press on Android)
+opens the same menu.
+
+A card that a join, a move or a new reply carries to another place keeps
+where it was scrolled: a table scrolled sideways, or a long message scrolled
+in its card, stays as it was, and the page keeps its place.
+
+Every act shows at once, then goes to Core with the revision the page holds.
+Acts are sent one at a time, in order. A refusal reads the acts back and
+draws what Core holds. A screen reader hears each act said ("Moved up",
+"Joined to the stack above").
+
+## The look
+
+`web/stack-look.css` is the only place where stacks get their look. It reads
+the semantic colour tokens of `web/aim.css` and only the names that
+`web/reply-stacks.mjs` sets:
+
+- `.reply-stack`: a stack. It carries these attributes:
+  - `data-stack`: its head's id
+  - `data-seq`
+  - `data-fold`: head, folded or open
+  - `data-head-open`, `data-placed`, `data-single`, `data-renaming`
+- Inside the stack:
+  - the head's entry, with its card marked `.stack-head-card` and holding
+    `.stack-head`. The row's parts are `.stack-name`, `.stack-pen`,
+    `.stack-who`, `.stack-new`, `.stack-star`, `.stack-meta` (with
+    `.stack-repliers` and `.stack-fresh`) and `.stack-hide`.
+  - `.stack-rename`, holding `.stack-rename-input` and `.stack-rename-hint`.
+  - `.stack-replies`, with each reply's entry, `.stack-fold-line`
+    (`data-fresh`, `data-all`, `.stack-fold-words` and `.stack-fold-new`)
+    and `.stack-join-line` (`.stack-join-words` and `.stack-split`).
+  - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
+- `[data-starred=true]` on any card the reader starred.
+
+Another look replaces that one file. Nothing in the drawing code chooses a
+colour, a border or a spacing. The look now is the Frame: one hairline round
+the whole stack, the head set into its top edge, and the replies a little in.
+No coloured edge marks a stack, and under Only new the stacks draw nothing.
+
+## Checks
+
+| What | Where |
+| --- | --- |
+| Core's acts | `tests/test_stacks.py` |
+| the migration | `tests/test_migrations.py` (`StacksStepCase`) |
+| the display order | `tests/ui_stack_order.test.mjs` |
+| on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
+| a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
+| the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
+
+`tests/acts.json` names the break each act must catch.
+
+Not yet:
+
+- On iPhone a long press opens no menu, because Safari sends no context menu
+  for it; ⋯ is the way there.
+- A head shown as one row has no room for its reply arrow. The reply sits
+  in the stack under it.
+- Archive, Make it a heading, Edit and Lift out come with the next piece.

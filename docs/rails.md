@@ -71,12 +71,16 @@ outcomes and what waits there, and tapping it opens the drawer.
 
 ## The right rail
 
-The right rail has folding sections: Pipeline, Waiting for…, Notebook pages,
-Previews, Pull requests, Images, and Skills and tools. On a Conversation they
+The right rail has folding sections: Starred, Pipeline, Waiting for…,
+Notebook pages, Previews, Pull requests, Images, and Skills and tools. On a Conversation they
 hold the outcome's things. On a topic they hold the topic's, and the chip
 "All of this outcome" switches to the outcome's. A section with nothing in it
 says so in one quiet line.
 
+- **Starred** is the reader's own stars, shown to no one else: this topic's
+  (on a Conversation, this outcome's) first, then the rest under Elsewhere.
+  A press lands on the message, opening its stack; Unstar beside each takes
+  the star off (docs/reply-stacks.md).
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
   from the `pipeline` view.
 - **Waiting for…** is the Now and Next items the reader raised, at their

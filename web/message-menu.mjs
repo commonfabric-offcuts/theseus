@@ -239,7 +239,8 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 
 // anchor: a ⋯ button, or the card a right-click landed on; at: where the
 // pointer was for a right-click, else the menu sits under the anchor. items:
-// [{ label, act }] in order; act may answer a promise.
+// [{ label, act, keys }] in order; act may answer a promise; keys, the keys
+// that do the same, shown at the item's end.
 // sheet: on a phone (a narrow window) the menu opens as a sheet from the
 // bottom of the window, its items full width, rather than under its button.
 export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, doc = globalThis.document, win = globalThis }) {
@@ -251,6 +252,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const buttons = items.map(item => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
     button.setAttribute('role', 'menuitem');
+    if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
     button.onclick = event => { event.stopPropagation(); menu.close(true); item.act(); };
     return button;
   });

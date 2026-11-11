@@ -504,10 +504,10 @@ export async function conversationChecks({ check, page, until, control, view, fa
       await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
       await q.send('Emulation.setDeviceMetricsOverride', DESK);
     } });
-    // The stack that holds the answer: its head, each reply (newest first) and whether it shows, its line, and what follows it.
+    // The stack that holds the answer: its head, each reply (oldest first, as a chat reads) and whether it shows, its fold lines shown, and what follows it.
     const stack = q => quiet(q, `(s=>s&&{head:s.querySelector(':scope > [data-id]')?.dataset.id??null,
       replies:[...s.querySelectorAll(':scope > .stack-replies > [data-id]')].map(e=>[e.dataset.id,e.getClientRects().length>0]),
-      line:(t=>t&&t.getClientRects().length?t.textContent:null)(s.querySelector(':scope > .stack-replies > .stack-toggle')),
+      lines:[...s.querySelectorAll(':scope > .stack-replies > .stack-fold-line')].filter(t=>t.getClientRects().length).map(t=>t.textContent),
       after:s.nextElementSibling?.dataset?.line??null})(document.querySelector(${JSON.stringify(card(answered))})?.closest('.reply-stack'))`);
     // The page draws its messages, then the conversation's read brings the tags and the asks that wait: the state each check reads is the one it settles in.
     const settles = async (probe, expected, label) => {
@@ -516,8 +516,8 @@ export async function conversationChecks({ check, page, until, control, view, fa
       assert.deepEqual(last, expected, label);
     };
     const p = await open('conversation-stacks', '/?conversation=w1', desk('light'));
-    await settles(() => stack(p), { head: item, replies: [[late, true], [noted, false], [ask, true], [followUp, true], [answered, false]], line: '2 earlier replies', after: 'new' },
-      'the replies gather into the stack of the message they answer, folded to the newest, with the New item and the ask waiting on you kept in view, and the New line under the stack');
+    await settles(() => stack(p), { head: item, replies: [[answered, false], [followUp, true], [ask, true], [noted, false], [late, true]], lines: ['1 earlier reply', '1 more reply'], after: 'new' },
+      'the replies gather into the stack of the message they answer, oldest first, folded to the newest with the New item and the ask waiting on you kept in view where they sit, and the New line under the stack');
     const seen = [await tags(p, item), await tags(p, followUp), await tags(p, ask)];
     assert.deepEqual([seen[0].mine, seen[1].tags, seen[1].shown, seen[2].asks, seen[2].shown], [['Waiting on you'], ['New'], true, 'Asks you', true],
       'the stacked New item shows its tag, the stacked ask its "Asks you", and its item waits on you');
@@ -528,34 +528,38 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(async () => (await tags(p, another))?.tags[0] === 'New', 'a new item lands, and the page paints every card\'s tags');
     assert.equal(await p.evaluate('window.tagLink.isConnected'), true, 'the stacked item\'s tag link is the one that was there');
     // The Answered tag's link to the reply the stack folds away opens the stack and lands on it, in the Reader.
+    // The item heads its stack as one row: a press on the row shows it whole, its tags too.
     await p.evaluate(`document.querySelector(${JSON.stringify(card(item))}).scrollIntoView({block:'center'})`);
+    await p.point(`${card(item)} > .stack-head .stack-who`);
+    await until(() => quiet(p, `document.querySelector(${JSON.stringify(card(item) + ' .item-tags')})?.getClientRects().length > 0`), 'a press on the head shows the item whole');
     await p.point(`${card(item)} .item-tags .item-tag-group:first-child .item-link`);
     await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Yes, since Monday.')`), 'the Reader shows the reply');
     // In view as scrolling brings it, to the pixel it rounds to.
     const landed = await p.evaluate(`(c=>{const b=c.getBoundingClientRect();return {shown:c.getClientRects().length>0,inView:b.top>=-1&&b.bottom<=innerHeight+1,
-      open:c.closest('.reply-stack').querySelector('.stack-toggle').getAttribute('aria-expanded'),top:b.top,bottom:b.bottom,height:innerHeight,scroll:scrollY}})(document.querySelector(${JSON.stringify(card(answered))}))`);
-    assert.deepEqual([landed.shown, landed.inView, landed.open], [true, true, 'true'], 'its stack opened and the reply is in view ' + JSON.stringify(landed));
+      open:c.closest('.reply-stack').dataset.fold,top:b.top,bottom:b.bottom,height:innerHeight,scroll:scrollY}})(document.querySelector(${JSON.stringify(card(answered))}))`);
+    assert.deepEqual([landed.shown, landed.inView, landed.open], [true, true, 'open'], 'its stack opened and the reply is in view ' + JSON.stringify(landed));
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
     // The keys light what the focus is on: the pointer rests where no message is, so it lights none.
     const focusOn = async id => {
       await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: DESK.height - 4 });
       await p.evaluate(`(document.activeElement?.blur(),document.querySelector(${JSON.stringify(card(id))}).focus(),true)`);
     };
-    // ↓ moves the light through the stack, a folded reply opened included, and Return replies to the lit one.
+    // ↓ moves the light down the stack, oldest reply first, a folded reply opened included, and Return replies to the lit one.
     await focusOn(item);
     const litId = () => quiet(p, `document.querySelector('#messages .lit[data-id]')?.dataset.id??null`);
     await until(async () => await litId() === item, 'the focused card lights');
-    for (const id of [late, noted, ask]) { await p.key('ArrowDown'); await until(async () => await litId() === id, `↓ lights ${id}`); }
+    for (const id of [answered, followUp, ask]) { await p.key('ArrowDown'); await until(async () => await litId() === id, `↓ lights ${id}`); }
     await p.key('Enter');
     await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('which room?') && document.activeElement?.id==='writing-body'`),
       'Return opens the lit stacked ask in the Reader, ready to reply');
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
-    // The bar's ⋯ on a stacked reply opens its menu.
+    // The bar's ⋯ on a stacked reply opens its menu: the message's acts, then its stack's, each naming its keys.
     await focusOn(ask);
     await until(async () => await litId() === ask && await quiet(p, `!document.querySelector('.message-bar').hidden`), 'the stacked ask is lit, with its bar');
     await p.point('.message-bar [data-act=more]');
     assert.deepEqual(await until(() => quiet(p, `(l=>l&&[...l.querySelectorAll('button')].map(b=>b.textContent))(document.querySelector('.message-menu-list'))`), 'the menu opens'),
-      ['Copy Link', 'Mark unread']);
+      ['Star for me', 'Fold into earlier replies', 'Copy Link', 'Mark unread', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack⌘←', 'Open its stack⌘→',
+        'Join the stack above⇧⌘↑', 'Join the stack below⇧⌘↓']);
     await p.key('Escape'); await until(() => quiet(p, `!document.querySelector('.message-menu-list')`), 'Escape closes it');
     // A stack whose top message is the New item and no reply under it is New: the person adds to their own question, and the coordinator answers only that.
     const screen = await post('conversation-stack-screen', 'Can we add a second screen?');
@@ -564,7 +568,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     // Its stack: the head, each reply and whether it shows, and the stack's line.
     const topStack = () => quiet(p, `(s=>s&&{head:s.querySelector(':scope > [data-id]')?.dataset.id??null,
       replies:[...s.querySelectorAll(':scope > .stack-replies > [data-id]')].map(e=>[e.dataset.id,e.getClientRects().length>0]),
-      line:(t=>t&&t.getClientRects().length?t.textContent:null)(s.querySelector(':scope > .stack-replies > .stack-toggle'))})(document.querySelector(${JSON.stringify(card(sideRoom))})?.closest('.reply-stack'))`);
+      lines:[...s.querySelectorAll(':scope > .stack-replies > .stack-fold-line')].filter(t=>t.getClientRects().length).map(t=>t.textContent)})(document.querySelector(${JSON.stringify(card(sideRoom))})?.closest('.reply-stack'))`);
     await settles(async () => [(await tags(p, screen))?.tags, (await tags(p, sideRoom))?.tags, (await topStack())?.head], [['New'], ['Answered'], screen],
       'the New question heads its stack, and the reply under it is answered');
     // A stack holding more than one New card: the person adds to their own question before anyone answers (a New message on top
@@ -585,23 +589,23 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await pressOnlyNew();
     await until(async () => (await chip(p)).pressed === 'true', 'Only new is pressed');
     const filtered = await stack(p);
-    assert.deepEqual([(await tags(p, item)).shown, filtered.replies, filtered.line],
-      [false, [[late, false], [noted, false], [ask, false], [followUp, true], [answered, false]], null], 'only the stacked New item shows');
+    assert.deepEqual([(await tags(p, item)).shown, filtered.replies, filtered.lines],
+      [false, [[answered, false], [followUp, true], [ask, false], [noted, false], [late, false]], []], 'only the stacked New item shows');
     const onTop = await topStack();
-    assert.deepEqual([(await tags(p, screen)).shown, onTop.replies, onTop.line], [true, [[sideAnswer, false], [sideRoom, false]], null],
+    assert.deepEqual([(await tags(p, screen)).shown, onTop.replies, onTop.lines], [true, [[sideRoom, false], [sideAnswer, false]], []],
       'the New item on top of its stack shows, and the settled replies under it do not');
     const indent = id => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect().left-document.querySelector('#messages').getBoundingClientRect().left)`);
     assert.deepEqual([await indent(followUp), await indent(screen)], [0, 0], 'in line with the other new cards');
     // Two New cards of one stack, one after the other, sit apart as two cards standing alone do: a New message on top and its New reply, and two New replies.
-    assert.deepEqual((await onlyNewLayout(p, '1280 light')).slice(0, 6), [menus, flowers, quietRoom, cloakroom, badges, lanyards],
-      'the items alone, then the two New replies, then the New message and its New reply');
+    assert.deepEqual((await onlyNewLayout(p, '1280 light')).slice(0, 6), [menus, flowers, cloakroom, quietRoom, badges, lanyards],
+      'the items alone, then the two New replies oldest first, then the New message and its New reply');
     await shot(p, 'conversation-stack-only-new');
     await pressOnlyNew();
     await until(async () => (await tags(p, item))?.shown, 'everything shows again');
     // Answered while the page is open, the stacked item's tag turns in place, and the answer joins its stack.
     const caterer = await answer('conversation-stack-caterer', 'The caterer is booked.', { reply_to: followUp });
     await until(async () => (await tags(p, followUp))?.tags[0] === 'Answered', 'the stacked item turns Answered without a reload');
-    assert.deepEqual((await until(async () => { const s = await stack(p); return s?.replies[0][0] === caterer && s; }, 'the answer joins the stack')).replies[0],
+    assert.deepEqual((await until(async () => { const s = await stack(p); return s?.replies.at(-1)[0] === caterer && s; }, 'the answer joins the stack')).replies.at(-1),
       [caterer, true], 'the answer is the stack\'s newest reply, in view');
     assert.deepEqual(p.errors, []); await p.close();
     const dark = await open('conversation-stacks-dark', '/?conversation=w1', desk('dark'));

@@ -56,6 +56,11 @@
 .ol-keys{margin:.8rem 0 0;font-size:.78rem}
 .ol-keys>summary{cursor:pointer;width:fit-content;min-height:2.25rem;padding:.4rem 0}
 .ol-keys dl{display:grid;grid-template-columns:auto 1fr;gap:.2rem .6rem;margin:.2rem 0 0}
+.ol-keys-part{margin:.6rem 0 0;font-weight:600}
+/* The rail's Starred: Unstar beside each row, quiet until pointed at. */
+.things-starred{display:flex;align-items:flex-start;gap:.25rem}.things-starred>a{flex:1;min-width:0}
+.things-unstar{flex:none;min-height:2.25rem;padding:0 .45rem;border-color:transparent;background:transparent;color:var(--muted);font-size:.75rem}
+@media(hover:hover){.things-unstar:hover{background:var(--soft);color:var(--ink)}}
 .ol-keys dt{font-weight:650;color:var(--ink);white-space:nowrap}
 .ol-keys dd{margin:0}
 .outline:has(.ol-topics:not([hidden]) .topic-work) .ol-key{display:block}

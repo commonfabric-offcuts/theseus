@@ -613,8 +613,8 @@
    "break": [
     [
      "web/aim.css",
-     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:contain;",
-     ".message-preview.scroll-in-place{display:block;overflow:visible;overscroll-behavior:contain;"
+     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;",
+     ".message-preview.scroll-in-place{display:block;overflow:visible;overscroll-behavior:auto;"
     ]
    ],
    "check": {
@@ -864,9 +864,9 @@
    "act": "Replies gather into a stack under the message they answer",
    "break": [
     [
-     "web/reply-stacks.mjs",
-     "export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) {",
-     "export function arrangeStacks(list, messages, { keep = () => false, doc = list.ownerDocument } = {}) { return;"
+     "web/stack-order.mjs",
+     "  return item.reply_to && has(item.reply_to) ? { id: item.reply_to, joined: null } : null;",
+     "  return null;"
     ]
    ],
    "check": {
@@ -880,8 +880,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  toggle.onclick = () => { stack.dataset.open = String(stack.dataset.open !== 'true'); fold(stack); };",
-     "  toggle.onclick = () => {};"
+     "    fold.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };",
+     "    fold.onclick = () => {};"
     ]
    ],
    "check": {
@@ -894,9 +894,9 @@
    "act": "A reply the person has not read stays in view while its stack is folded",
    "break": [
     [
-     "web/reply-stacks.mjs",
-     "for (const entry of answers.slice(1)) if (keep(messages.get(entry.dataset.id))) entry.dataset.kept = 'true';",
-     ""
+     "web/stack-order.mjs",
+     "  return item.seq === newestReply(stack) || kept(item);",
+     "  return item.seq === newestReply(stack);"
     ]
    ],
    "check": {
@@ -1523,8 +1523,8 @@
    "break": [
     [
      "web/pane-keys.mjs",
-     "{ ArrowRight: 'open-all', ArrowLeft: 'fold-all' }",
-     "{}"
+     "{ ArrowRight: 'open-all', ArrowLeft: 'fold-all', ArrowUp: 'join-up', ArrowDown: 'join-down' }",
+     "{ ArrowUp: 'join-up', ArrowDown: 'join-down' }"
     ]
    ],
    "check": {
@@ -2006,6 +2006,674 @@
    "check": {
     "native": "rail",
     "case": "rail New outcome in the outline, on a topic and on a Conversation"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack reads as a chat: its replies under its first message, oldest first",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "      replies.push(...within.get(segment).sort(bySeq));",
+     "      replies.push(...within.get(segment).sort((a, b) => bySeq(b, a)));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack's first message is one compact row until pressed",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-head-open=false]:not(.only-new *)>.message-fold>.stack-head-card>:not(.stack-head){display:none}",
+     ".reply-stack[data-head-open=false]:not(.only-new *)>.message-fold>.stack-head-card>:not(.stack-head){display:revert}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A press on the head's row shows the whole message under it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!open) { state.headOpen.add(stack.id); state.again(); return true; }",
+     "  if (!open) return true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘→ on a head shows its whole message first, then opens its replies a step at a time",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    if (onHead && !headOpen) return { level, headOpen: true };",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A line counts the new replies folded behind it, in red",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "...(row.fresh ? [element(doc, 'span', 'stack-fold-new', ` · ${row.fresh} new`)] : [])",
+     "...[]"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Rename in place: Return saves the short name for everyone, with who typed it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.act('stack.name', item, { name });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Esc cancels a rename and gives the row back as it was",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "cancelled: stack => { this.arrange(); this.focusOn(stack.id); },",
+     "cancelled: stack => this.focusOn(stack.id),"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘Z puts a rename back",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Someone else's rename shows on the page at once",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "        if (item.resource_kind === 'acts' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('acts', item.version);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⋯ Star for me records a star in Core",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.act('message.star', item, { starred: on });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⋯ Star is the reader's own"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A starred reply never folds away",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (actsOf(item).starred || stack.joins.has(item.id)) return true;",
+     "  if (stack.joins.has(item.id)) return true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⋯ Star is the reader's own"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The right rail's Starred lists the reader's stars and a press lands on one",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "  ['starred', 'Starred'], ",
+     "  "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⋯ Star is the reader's own"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A star is the reader's alone: nobody else sees it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "PERSONAL = {\"star\", \"deal\", \"place\"}",
+     "PERSONAL = {\"deal\", \"place\"}"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘↑ and ⌘↓ move a stack in the reader's own order",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A moved stack keeps its place after a reload",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return {\"placed\": value[\"key\"]}",
+     "        return {\"placed\": None}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A place is the reader's own: another reader keeps newest on top",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        owner = actor if personal else \"\"",
+     "        owner = \"\""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⌘Z puts a move back",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.remember(() => { heads.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); this.focusOn(entry.dataset.id); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Let new replies move it takes a stack's place away",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "⇧⌘↑ joins a stack to the one above, for everyone",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A joined stack's first message shows under a join line",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Split back out takes a joined stack out again",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "      join.split.onclick = () => state.on?.split?.(row.item);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A join is refused when it would put a stack inside itself",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if into[\"id\"] == message[\"id\"] or self._join_loop(db, message, into[\"id\"]):",
+     "            if into[\"id\"] == message[\"id\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Every act is fenced on the revision its sender read",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if envelope[\"expected\"][expected_name] != current:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A shared act reaches everyone who reads the message",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        for reader in [actor] if personal else self._message_readers(db, message, actor):",
+     "        for reader in [actor]:"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks rename in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Stepping the schema back is refused once anyone has acted on a message",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ACT_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM message_acts)\"",
+     "ACT_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The stack keys are inert in writing, even with a message lit (both guards: the shared keys' and the feed's own)",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const at = this.doc.activeElement, entry = at && this.list.contains(at) ? entryOf(this.list, at) : null;\n    if (!entry || !(at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
+     "    const at = this.list.querySelector('[data-id].lit'), entry = at ? entryOf(this.list, at) : null;\n    if (!entry) return;"
+    ],
+    [
+     "web/pane-keys.mjs",
+     "event.altKey || event.ctrlKey || writing(event.target)) return null;",
+     "event.altKey || event.ctrlKey) return null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the stack keys are inert"
+   }
+  },
+  {
+   "item": 283,
+   "act": "On a phone ⋯ keeps the stack's moves behind Move or join…",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    return { first: items, last: phone ? [{ label: 'Move or join…', act: () => more(moves) }] : moves };",
+     "    return { first: items, last: moves };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a phone ⋯ opens the acts as a sheet"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The Reader's ↑ and ↓ follow the page, down a stack and on to the stack below",
+   "break": [
+    [
+     "web/app.mjs",
+     "  return { next: ref(order[at - 1]) ?? off(core.next), previous: ref(order[at + 1]) ?? off(core.previous) };",
+     "  return core;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the Reader's ↑ and ↓"
+   }
+  },
+  {
+   "item": 283,
+   "act": "On a phone the Reader's message ends with ↑ Previous · ↓ Next",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      end.dataset.words = `${STEPPING[where].glyph} ${above ? 'Previous' : 'Next'}`;",
+     "      end.dataset.words = `${STEPPING[where].glyph} ${above ? 'Newer' : 'Older'}`;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the Reader's ↑ and ↓"
+   }
+  },
+  {
+   "item": 186,
+   "act": "The one New line sits under the lowest stack holding anything new, never inside one",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  stacks.forEach((stack, index) => { if (fresh(stack.head) || stack.replies.some(fresh)) at = index; });",
+     "  stacks.forEach((stack, index) => { if (at === null && (fresh(stack.head) || stack.replies.some(fresh))) at = index; });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the one New line"
+   }
+  },
+  {
+   "item": 265,
+   "act": "Each folded run is a quiet line where it sits, so a reply in view never reads as inside the fold",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    flush(); before = false;",
+     "    before = false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks read as a chat"
+   }
+  },
+  {
+   "item": 261,
+   "act": "A thumbs-up on a reply deals with its stack, in Core",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  thumbed(item) { if (stackOf(this.list, this.entryFor(item.id))?.head === false) this.deal(item); }",
+     "  thumbed(item) {}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a thumbs-up on a reply deals"
+   }
+  },
+  {
+   "item": 266,
+   "act": "On a phone a reply swiped to the right folds into the earlier replies",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (!start || !touch || touch.clientX - start.x < 80 || Math.abs(touch.clientY - start.y) > 40) return;",
+     "    return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply swiped to the right"
+   }
+  },
+  {
+   "item": 257,
+   "act": "A link inside a message to a folded reply opens its stack and lands on it",
+   "break": [
+    [
+     "web/app.mjs",
+     "    const card = landOn(target.message, { full: target.land === true });",
+     "    const card = null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a link in a message to a folded reply"
+   }
+  },
+  {
+   "item": 195,
+   "act": "At a cut-off message's top or bottom edge the scroll carries on with the page",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;",
+     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:contain;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a cut-off message scrolls in place"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A reply arriving shows under the newest reply of a folded stack, which stays in view until the person comes back",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (level === 'folded' && newest && !state.handFolded.has(newest.id)) state.kept.add(newest.id);",
+     "if (false) state.kept.add(newest.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a reply arriving shows under the newest"
+   }
+  },
+  {
+   "item": 256,
+   "act": "A card a join or a move carries into another place keeps its table scrolled sideways",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const [box, left, top] of kept) { box.scrollLeft = left; box.scrollTop = top; }",
+     "  for (const [box] of kept) box.dataset.carried = '';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a card a join or a move carries"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Inside a stack the replies read oldest first, as a chat does",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "      replies.push(...within.get(segment).sort(bySeq));",
+     "      replies.push(...within.get(segment).sort((a, b) => b.seq - a.seq));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack the reader placed keeps its place whatever replies arrive",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "export const keyOf = stack => stack.placed ?? stack.newest;",
+     "export const keyOf = stack => stack.newest;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "Each run of folded replies gets its own line where it sits",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    flush(); before = false;",
+     "    before = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A fold line says in red how many of its replies are new",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "const n = run.length, fresh = run.filter(unread).length;",
+     "const n = run.length, fresh = 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 186,
+   "act": "The New line goes under the lowest stack holding anything new",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "stacks.forEach((stack, index) => { if (fresh(stack.head) || stack.replies.some(fresh)) at = index; });",
+     "stacks.forEach((stack, index) => { if (at === null && (fresh(stack.head) || stack.replies.some(fresh))) at = index; });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A star, a stack dealt with and a place are the reader's own, kept apart from every other reader",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        owner = actor if personal else \"\"",
+     "        owner = \"\""
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An act on a message the reader cannot see is refused",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if message is None or not visible(message, actor):",
+     "        if message is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A short name is everyone's and says who typed it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return {\"name\": {\"text\": value[\"name\"], \"by\": row[\"actor_id\"], \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}",
+     "        return {\"name\": {\"text\": value[\"name\"], \"by\": None, \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
    }
   }
  ]
