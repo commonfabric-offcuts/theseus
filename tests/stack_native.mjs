@@ -572,6 +572,43 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  await check('reading stacks repeated arrows keep keyboard selection while the page scrolls under a stationary pointer', async () => {
+    const topic = 'stack-stationary-pointer';
+    const body = name => name + '\n' + Array.from({ length: 16 }, (_, n) => `Line ${n + 1} of a reply that makes the page scroll.`).join('\n');
+    const ids = await seed(topic, [['old', { sender: other, join: true, addressees: [facts.actor], body: 'Older stack' }],
+      ['oldOne', { sender: other, reply_to: 'old', addressees: [facts.actor], body: body('Old reply one') }],
+      ['oldTwo', { sender: other, reply_to: 'old', addressees: [facts.actor], body: body('Old reply two') }],
+      ['new', { sender: other, addressees: [facts.actor], body: 'Newer stack' }],
+      ['newOne', { sender: other, reply_to: 'new', addressees: [facts.actor], body: body('New reply one') }],
+      ['newTwo', { sender: other, reply_to: 'new', addressees: [facts.actor], body: body('New reply two') }]]);
+    const p = await open(topic, 'laptop', topic, ids.old);
+    try {
+      await light(p, 'laptop', ids.oldTwo);
+      const x = await p.evaluate(`document.querySelector('#messages').getBoundingClientRect().left + 100`);
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: 750 });
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.oldTwo))}).focus({preventScroll:true})`);
+      const order = [ids.new, ids.newOne, ids.newTwo, ids.old, ids.oldOne, ids.oldTwo];
+      for (let index = order.length - 2; index >= 0; --index) {
+        const expected = order[index];
+        await p.key('ArrowUp');
+        await twoFrames(p);
+        assert.equal(await focusedOn(p), expected, 'Up moves one message upward: step ' + index);
+        assert.ok((await lit(p)).includes(expected), 'scrolling under a stationary pointer does not steal the keyboard light');
+      }
+      // The page's existing key navigation can continue into its header;
+      // another Up must not select a lower message again.
+      await p.key('ArrowUp'); await twoFrames(p);
+      assert.ok((await lit(p)).includes(order[0]), 'passing the first message does not cycle back into a lower stack');
+      // The pointer can take over again as soon as it actually moves.
+      const target = await p.evaluate(`(()=>{const e=document.elementFromPoint(${x},750);return e?.closest('[data-id]')?.dataset.id})()`);
+      assert.ok(target && target !== order[0], 'a different message is under the resting pointer');
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + 1, y: 750 });
+      await until(async () => (await lit(p)).includes(target), 'real mouse movement resumes hover selection');
+      await shot(p, 'stack-stationary-pointer');
+      assert.deepEqual(p.errors, []);
+    } finally { await p.close(); }
+  });
+
   await check('reading stacks the bar stays in the window while any of its card is, and scrolls away with it, in a stack or on its own', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-bar-away-' + device;

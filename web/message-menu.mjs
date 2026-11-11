@@ -33,7 +33,10 @@ export class MessageMenu {
     Object.assign(this, { host, item, viewer, kind, reply, thumb, answer, more, expand, doc });
     this.lit = null; this.touch = false; this.before = null;
     this.bar = this.buildBar();
-    host.addEventListener('pointerover', event => {
+    // Scrolling or a repaint can put another card under a stationary pointer
+    // and fire pointerover. Only actual pointer movement takes the light from
+    // the keyboard; otherwise repeated arrows can bounce between stacks.
+    host.addEventListener('pointermove', event => {
       // While the bar's ⋯ menu is open the light stays on its message.
       if (event.pointerType === 'touch' || this.menuOpen()) return;
       const entry = this.entryOf(event.target);
