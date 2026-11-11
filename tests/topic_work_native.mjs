@@ -75,8 +75,9 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     assert.deepEqual([said.result.state, said.result.state_by], ['review', agent]);
     const shown = await until(async () => { const words = await line(p); return words.includes('Ready to read') && words; }, 'the page shows where it stands');
     assert.match(shown, /^Ready for review \| Ready to read \| Set by fixture-planning-agent, /);
-    // The top of the topic says it too: the state word, then the note.
-    await until(() => p.evaluate(`document.querySelector('#topic-description').textContent === 'Ready for review Ready to read'`), 'the subtitle shows the state and the note');
+    // The top of the topic says it too: the state word, ✅ Done for the
+    // reader, who may say where it stands, then the note.
+    await until(() => p.evaluate(`document.querySelector('#topic-description').textContent === 'Ready for review ✅ Done Ready to read'`), 'the subtitle shows the state, ✅ Done and the note');
     assert.equal((await chips(p)).some(words => words.includes(agent)), false, 'still not listed among the participants');
     assert.equal((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), false, 'nor in Core');
     const before = await control({ method: 'deliveries_to', actors: [agent, participant] });

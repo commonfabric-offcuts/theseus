@@ -195,7 +195,8 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(sent.map(u => u.expected.topic_fields), [{ note: '' }, { state: 'waiting', waiting_on: [facts.actor] }], 'each fenced on what it changes');
     const held = (await view('topic', { topic_id: 't1' })).topic;
     assert.deepEqual([held.state, held.state_note], ['review', 'Pick a name!']);
-    await until(() => p.evaluate("document.querySelector('#topic-description').textContent === 'Ready for review Pick a name!'"), 'the subtitle follows at once');
+    // The reader may say where it stands, so ✅ Done shows beside the state.
+    await until(() => p.evaluate("document.querySelector('#topic-description').textContent === 'Ready for review ✅ Done Pick a name!'"), 'the subtitle follows at once');
     assert.equal(await p.evaluate("document.querySelector('#topic-state .notice').textContent"), 'Saved', 'no refusal');
     assert.equal(await p.evaluate("document.activeElement === document.querySelector('#topic-state [data-state=review]')"), true, 'focus stays on the chip tapped after the commits and the fresh read');
     assert.deepEqual(p.errors, []);
