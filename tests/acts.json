@@ -3613,17 +3613,17 @@
   },
   {
    "item": 283,
-   "act": "A card focused in a reply stack shows the focus: its edge in the focus colour, inside the folder's ring",
+   "act": "The selected message owns the strong highlight without also highlighting its stack",
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}",
-     ".reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:none}"
+     ".reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}",
+     ".reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:none}"
     ]
    ],
    "check": {
-    "native": "colors",
-    "case": "colors reading colors distinguish authors"
+    "native": "reading",
+    "case": "one strong highlight"
    }
   },
   {

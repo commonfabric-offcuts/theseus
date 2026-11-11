@@ -509,6 +509,8 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 @media(max-width:760px){.pl-details{margin-left:0}.pl-line-hint{display:none}}
 /* The light and the message bar on the topic page (message-menu.mjs), thumbs-up and go-ahead answers (reactions.mjs), a cut-off card read in place (card-scroll.mjs), and the guide to the pointer and keys (interaction-guide.mjs). */
 .message-card.lit{box-shadow:0 0 0 2px color-mix(in srgb,var(--focus) 60%,transparent)}
+#messages .message-card:not(.lit):focus-visible,#messages .message-fold:not(.lit)>.fold-line:focus-visible{outline:none}
+#messages .message-card:not(.lit):hover{border-color:var(--line)}
 .message-fold.lit>.fold-line{background:var(--soft);color:var(--ink)}
 .message-bar{position:fixed;z-index:20;display:flex;gap:.1rem;padding:.15rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 4px 14px color-mix(in srgb,var(--ink) 14%,transparent)}
 .message-bar[hidden]{display:none}

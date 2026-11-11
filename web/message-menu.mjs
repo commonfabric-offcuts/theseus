@@ -82,6 +82,7 @@ export class MessageMenu {
     host.addEventListener('focusin', event => {
       const entry = this.entryOf(event.target);
       if (entry && entry !== this.lit) this.light(entry);
+      else if (!entry && event.target.closest?.('.stack-toggle, .stack-rename, .stack-reply')) this.light(null);
     });
     doc.addEventListener('keydown', event => this.key(event));
     doc.defaultView.addEventListener('scroll', () => this.place(), { passive: true });

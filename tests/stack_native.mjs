@@ -143,6 +143,36 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  await check('reading stacks give only the current message or stack one strong highlight', async () => {
+    for(const device of Object.keys(DEVICES)) for(const theme of ['light','dark']) {
+      const topic='stack-one-highlight-'+device+'-'+theme;
+      const ids=await seed(topic,[['root',{sender:other,join:true,addressees:[facts.actor],body:'One selected thing at a time.',read:true}],
+        ['one',{sender:other,reply_to:'root',addressees:[facts.actor],body:'An unread reply with its own quiet cue.'}],
+        ['two',{sender:facts.actor,reply_to:'root',addressees:[other],body:'My latest reply has a quiet border too.'}]]);
+      const p=await open(topic,device,topic,ids.root);
+      await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
+      const strong=()=>p.evaluate(`(()=>{const probe=document.createElement('i');probe.style.color='var(--focus)';document.body.append(probe);const color=getComputedStyle(probe).color;probe.remove();
+        return [...document.querySelectorAll('#messages .reply-stack,#messages .message-card,#messages .fold-line,#messages .stack-toggle,#messages .stack-reply')].filter(e=>{const b=e.getBoundingClientRect();if(!b.width||!b.height)return false;const s=getComputedStyle(e);return s.boxShadow.includes(color)||(s.outlineStyle!=='none'&&parseFloat(s.outlineWidth)>0&&s.outlineColor===color)||s.borderColor===color}).map(e=>e.classList.contains('reply-stack')?'stack:'+e.dataset.stack:e.dataset.id||e.parentElement.dataset.id||e.className)})()`);
+      if(device==='laptop') await keyTo(p,ids.one); else await light(p,device,ids.one);
+      await becomes(strong,[ids.one],device+' '+theme+': selected unread message alone has the ring');
+      await light(p,device,ids.two);
+      await becomes(strong,[ids.two],device+' '+theme+': pointer/tap moves the only ring, leaving earlier focus quiet');
+      await shot(p,'one-highlight-message-'+device+'-'+theme);
+      await light(p,device,ids.root);
+      await becomes(strong,['stack:'+ids.root],device+' '+theme+': compact header selects just the stack');
+      if(device==='laptop') {
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).focus({preventScroll:true})`);
+        await p.key('Tab');
+        assert.equal(await p.evaluate(`document.activeElement.matches('.stack-toggle')`),true,'chevron has keyboard focus');
+        await becomes(strong,['stack:'+ids.root],'control focus has one stack ring, with no leftover message ring');
+      }
+      await shot(p,'one-highlight-header-'+device+'-'+theme);
+      await light(p,device,ids.two);
+      await becomes(strong,[ids.two],'returning to a message takes the stack ring away');
+      assert.deepEqual(p.errors,[]); await p.close();
+    }
+  });
+
   await check('reading stacks rename in place: Return saves it for everyone with who typed it, Esc cancels, ⌘Z puts it back, an empty name gives back the first line, and another\'s rename shows at once', async () => {
     const topic = 'stack-rename';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Can we lock the cabin for the week of July 12 before Friday when the owner decides?' }],

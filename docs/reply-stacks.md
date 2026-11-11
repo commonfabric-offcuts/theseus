@@ -107,6 +107,8 @@ their acts.
   Replies that were unread when drawn stay in view while being read, so
   reading them does not make them vanish. Explicitly changing state, or
   coming back to the page with a stack off screen, lets go of that snapshot.
+  A newer reply replaces the previous latest if that previous reply was
+  already read; read asks and stars do not add exceptions to latest plus unread.
   Coming back also returns off-screen fully open stacks to the partial view.
 - **Expand and collapse.** One chevron beside the title cycles ↑ → ↓ → ↑.
   It is a button reachable by Tab and operable by Return or
@@ -248,9 +250,11 @@ and what is new on the second; the tab and the body are one cut, joined by a
 curved corner. A compact chevron sits beside the name. The replies are the
 sheets inside, each card in its own colours; folded replies draw no extra bar.
 Shown whole, the head's card is the first
-sheet; while the stack is renamed, the field takes the tab's place. The focused
-stack has the focus ring round the whole folder, tab and all, and the message
-the keys are on inside it has its own edge in the focus colour. A placed message
+sheet; while the stack is renamed, the field takes the tab's place. Only one
+current target has the strong ring: a message, or the whole folder when its
+compact header or a stack control is selected. The enclosing stack does not
+also light up for a selected message. Stale keyboard focus, unread state and
+hover on an unselected message do not get another strong border. A placed message
 on its own is a folder with no tab. The foot is the folder's front edge: a
 crease, then the reply line, a rounded field on the paper's colour. The line
 names Return while it holds the keys, except on a touch screen or a narrow

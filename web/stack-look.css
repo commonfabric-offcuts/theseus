@@ -89,17 +89,24 @@
 .reply-stack[data-single=true]:not(.only-new *){margin-top:var(--stack-gap);border-radius:var(--stack-r)}
 :is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
 .reply-stack:not(.only-new *) .message-card{border-radius:var(--stack-r-sheet)}
-.reply-stack:not(.only-new *) .message-card:not(.own-message){box-shadow:0 0 0 1px var(--stack-sheet-edge)}
-.reply-stack:not(.only-new *) .message-card:not(.own-message):not(:hover){border-color:transparent}
-/* The message the keys are on: its own hairline edge takes the focus colour. The folder's ring is the only ring. */
-.reply-stack:not(.only-new *) .message-card.lit,
-.reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}
-.reply-stack:not(.only-new *) .message-fold>.fold-line:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}
+.reply-stack:not(.only-new *) .message-card{outline:none;border-color:transparent;box-shadow:0 0 0 1px var(--stack-sheet-edge)}
+/* Only the current message gets a strong ring. Keyboard focus left behind
+   when the pointer moves is not a second selection. */
+.reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}
+.reply-stack:not(.only-new *) .message-fold>.fold-line{outline:none;box-shadow:none}
+.reply-stack:not(.only-new *) .message-fold.lit>.fold-line{box-shadow:0 0 0 2px var(--stack-ring)}
 /* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */
 .only-new :is(.stack-head,.stack-toggle){display:none}
 
-/* The focused stack (the keys, or the rename field, in it): a paper gap, then the focus colour, round the whole folder, tab and all. */
-.reply-stack:not(.only-new *):focus-within{box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring),var(--stack-lift)}
+/* The stack owns the ring only on its compact header or its own controls.
+   Selecting a message, in any stack, takes that ring away. */
+.reply-stack[data-head-open=false]:not(.only-new *):has(.stack-head-card.lit),
+#messages:not(:has(.lit)) .reply-stack:not(.only-new *):focus-within{
+  box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring),var(--stack-lift);
+  --stack-tab-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring);
+  --stack-tab-fillet:radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - 4.5px),
+    var(--stack-ring) calc(var(--stack-r-tab) - 4px),var(--stack-ring) calc(var(--stack-r-tab) - 2.5px),
+    var(--stack-ring-gap) calc(var(--stack-r-tab) - 2px),var(--stack-ring-gap) calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab))}
 
 /* The head's card: no box of its own while it shows only its row; shown whole, it is the first sheet. */
 .reply-stack:not(.only-new *) .stack-head-card{position:static}
@@ -135,19 +142,14 @@
 .stack-toggle[data-state=head]::before{transform:rotate(-135deg)}
 .stack-toggle[data-state=open]::before{transform:rotate(45deg)}
 .reply-stack:not(.only-new *)>.stack-toggle:hover{background:var(--stack-folder-deep)}
-.stack-toggle:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}
+.stack-toggle:focus-visible{outline:none}
 /* Where the tab meets the body, a concave fillet: tab and body are one cut. The ring follows it. The focus ring's tab
    part is a layer under the tab that runs past the seam and drops its own bottom edge, so its sides run on into the
    body's. Both hang off the tab's box: the head row's own ::after breaks its first line, so they sit on its name. */
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::after{content:"";position:absolute;left:100%;bottom:0;width:var(--stack-r-tab);height:var(--stack-r-tab);pointer-events:none;
-  background:radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab))}
+  background:var(--stack-tab-fillet,radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab)))}
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{content:"";position:absolute;inset:0 0 -6px;border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;pointer-events:none;
-  clip-path:polygon(-8px -8px,calc(100% + 8px) -8px,calc(100% + 8px) calc(100% - 6px),0 calc(100% - 6px),0 100%,-8px 100%)}
-.reply-stack:not(.only-new *):focus-within :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring)}
-.reply-stack:not(.only-new *):focus-within :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::after{background:radial-gradient(circle at 100% 0,
-  transparent calc(var(--stack-r-tab) - 4.5px),var(--stack-ring) calc(var(--stack-r-tab) - 4px),
-  var(--stack-ring) calc(var(--stack-r-tab) - 2.5px),var(--stack-ring-gap) calc(var(--stack-r-tab) - 2px),
-  var(--stack-ring-gap) calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab))}
+  clip-path:polygon(-8px -8px,calc(100% + 8px) -8px,calc(100% + 8px) calc(100% - 6px),0 calc(100% - 6px),0 100%,-8px 100%);box-shadow:var(--stack-tab-shadow,none)}
 /* The head row's two lines: the name and its pen, a break, then the rest, which never wraps to a third: the count and
    who replied give way first. */
 .reply-stack:not(.only-new *) .stack-head::after{content:"";order:1;flex-basis:100%;height:0}
@@ -180,7 +182,7 @@
 .reply-stack:not(.only-new *) .stack-rename{cursor:default}
 .stack-rename-input{flex:1 1 auto;width:100%;min-width:0;height:var(--stack-name-lh);margin:0 -.15rem;padding:0 .45rem;
   border:1px solid var(--stack-input-edge);border-radius:.35rem;background:var(--stack-sheet);color:inherit;font-size:.95rem;font-weight:650;outline:none}
-.stack-rename-input:focus-visible{outline:none;border-color:var(--stack-ring)}
+.stack-rename-input:focus-visible{outline:none}
 .stack-rename-hint{flex:none;color:var(--stack-meta-ink)}
 
 /* The replies: sheets in the folder, oldest first. */
@@ -206,7 +208,7 @@
 .stack-reply{display:flex;align-items:center;gap:.5rem;width:100%;min-height:var(--stack-reply-h);margin:0;padding:0 .45rem 0 1rem;
   border:1px solid var(--stack-reply-edge);border-radius:var(--stack-r-reply);background:var(--stack-reply-bg);color:var(--stack-meta-ink);
   font-size:.95rem;font-weight:400;text-align:left;cursor:text;-webkit-tap-highlight-color:transparent}
-.stack-reply:focus-visible{outline:none;border-color:var(--stack-ring)}
+.stack-reply:focus-visible{outline:none}
 .stack-reply-words{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stack-key{flex-shrink:0;min-width:1.4rem;padding:0 .3rem;border:1px solid var(--stack-reply-edge);border-radius:.3rem;
   font:inherit;font-size:.72rem;line-height:1.25rem;text-align:center;color:var(--stack-meta-ink)}
