@@ -53,7 +53,7 @@ def load(path):
     for red in reds:
         if not isinstance(red, dict) or set(red) != set(FIELDS):
             raise Refused("each known red is a JSON object with exactly %s: %r" % (", ".join(FIELDS), red))
-        if red["step"] not in NATIVE:
+        if not isinstance(red["step"], str) or red["step"] not in NATIVE:
             raise Refused("a known red names %r; only a browser step (native-…) can have known reds" % (red["step"],))
         if not isinstance(red["case"], str) or not red["case"]:
             raise Refused("a known red of %s names no case" % red["step"])
@@ -168,7 +168,10 @@ def live_cases(red, live_commit):
         raise Refused("%s ran on %s, not the live commit %s" % (said, summary.get("commit"), live_commit))
     if summary.get("tree_unchanged") is not True:
         raise Refused("%s: the checkout changed while it ran" % said)
-    found = [step for step in summary.get("steps") or [] if isinstance(step, dict) and step.get("name") == red["step"]]
+    steps = summary.get("steps")
+    if not isinstance(steps, list):
+        raise Refused("%s lists no steps" % said)
+    found = [step for step in steps if isinstance(step, dict) and step.get("name") == red["step"]]
     if len(found) != 1:
         raise Refused("%s did not run %s once" % (said, red["step"]))
     return ended_cases(path.parent, found[0], "the live")

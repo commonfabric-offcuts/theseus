@@ -1066,9 +1066,13 @@ RED_CASE = "a reply keeps its colour"
 
 
 def native_run(out, name, failed=(RED_CASE,), passed=("the rail keeps its colours",), exit=1, closed=True, fixture=0,
-               ended=True, cases=None):
+               ended=True, cases=None, printed=None, last=None, results=None, log=True):
     """One native step's evidence as tools/release_check.py leaves it in out (its results file and log), and the step's
-    entry in that summary, its counts read from that evidence by the release check's own reader."""
+    entry in that summary, its counts read from that evidence by the release check's own reader.
+
+    printed: fields the reader harness's last printed JSON has in place of its results file's; last: the log's last
+    lines as written; results: the results file's text as written, which the release check's reader is not given;
+    log: False leaves no log."""
     step = known_reds.NATIVE[name]
     evidence = out / "native" / step.name
     evidence.mkdir(parents=True)
@@ -1076,13 +1080,17 @@ def native_run(out, name, failed=(RED_CASE,), passed=("the rail keeps its colour
                                              + [{"name": case, "passed": False, "error": "expected 1, got 2"} for case in failed])
     if step.results == "results.json":
         report = {"closed": closed, "results": cases}
-        last = json.dumps(report, indent=2) + "\n" + ("" if ended else "TypeError: cannot read properties of undefined\n")
+        # It prints a JSON object as it goes as well; only the last one is its results.
+        tail = ("{\n  \"opened\": true\n}\n" + json.dumps(dict(report, **(printed or {})), indent=2) + "\n"
+                + ("" if ended else "TypeError: cannot read properties of undefined\n"))
     else:
         report = {"results": cases, "fixtureExitCode": fixture, "browserClosed": closed}
-        last = (known_reds.END_LINE if ended else "AssertionError [ERR_ASSERTION]: the fixture is ready") + "\n"
-    (evidence / step.results).write_text(json.dumps(report))
-    (out / (name + ".log")).write_text("node %s\n%s" % (step.harness, last))
-    counts, judged = release_check.native_counts(step, evidence)
+        tail = (known_reds.END_LINE if ended else "AssertionError [ERR_ASSERTION]: the fixture is ready") + "\n"
+    (evidence / step.results).write_text(json.dumps(report) if results is None else results)
+    if log:
+        (out / (name + ".log")).write_text("node %s\n%s" % (step.harness, tail if last is None else last))
+    counts, judged = (release_check.native_counts(step, evidence) if results is None
+                      else ({"error": "results the release check cannot read"}, False))
     return {"name": name, "exit": exit, "passed": exit == 0 and judged, "counts": counts, "log": str(out / (name + ".log"))}
 
 
@@ -1214,6 +1222,65 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
                 self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}), **written)))
                 self.refused_known(FakeHost(self.config), words)
 
+    def test_a_live_summary_that_cannot_be_read_is_refused(self):
+        def copied_away(path):
+            # docs/tools.md: the evidence a summary names stays beside it; a copy elsewhere has none.
+            away = Path(self.tmp.name) / "copied" / "summary.json"
+            away.parent.mkdir()
+            away.write_text(path.read_text())
+            return away
+
+        def rewritten(text):
+            def change(path):
+                path.write_text(text(path))
+                return path
+            return change
+        for change, words in ((lambda path: path.with_name("sumary.json"), "cannot be read"),
+                              (rewritten(lambda path: "{not json"), "cannot be read"),
+                              (rewritten(lambda path: "[]"), "is not a release-check summary"),
+                              (rewritten(lambda path: json.dumps(dict(json.loads(path.read_text()), steps=5))), "lists no steps"),
+                              (copied_away, "the live %s has no readable evidence" % RED_STEP)):
+            with self.subTest(words):
+                self.again()
+                self.candidate_fails((RED_STEP, {}))
+                self.listing((RED_STEP, RED_CASE, change(self.live_summary("live-check", (RED_STEP, {})))))
+                self.refused_known(FakeHost(self.config), words)
+
+    def test_a_live_summary_that_did_not_run_the_listed_step_once_is_refused(self):
+        for runs, steps in (((("native-journal", dict(failed=("a journal case",))),), lambda steps: steps),
+                            # The same evidence listed twice, as a summary that ran the step twice would name it.
+                            (((RED_STEP, {}),), lambda steps: steps * 2),
+                            # An entry that is not an object is no step.
+                            (((RED_STEP, {}),), lambda steps: [5])):
+            with self.subTest(runs=[name for name, _ in runs], steps=steps([1])):
+                self.again()
+                self.candidate_fails((RED_STEP, {}))
+                path = self.live_summary("live-check", *runs)
+                written = json.loads(path.read_text())
+                path.write_text(json.dumps(dict(written, steps=steps(written["steps"]))))
+                self.listing((RED_STEP, RED_CASE, path))
+                self.refused_known(FakeHost(self.config), "the live summary %s did not run %s once" % (path, RED_STEP))
+
+    def test_a_summary_that_skipped_the_browser_steps_is_still_refused_for_a_unit_red(self):
+        self.red_on_both()
+        written = summary(failed=("python-units",))
+        written["steps"] = [step for step in written["steps"] if step["name"] not in release_check.SKIPPABLE]
+        written["skipped"] = {"steps": list(release_check.SKIPPABLE), "live": HEAD, "changed": ["docs/tools.md"],
+                              "why": release_check.skipped_words(HEAD)}
+        self.summary.write_text(json.dumps(written))
+        host = FakeHost(self.config, changed=["docs/tools.md"])
+        words = "python-units failed; only a browser step's failed cases can be known reds"
+        self.assertIn("known reds: %s" % words, self.refused(host, known_reds=self.known))
+        self.assertEqual(self.evidence_of("00-release-check")["known_reds"]["refused"], words)
+        # The skip is judged on what the live checkout's git says changed since the live commit; nothing else is read.
+        self.assertEqual([call for call in host.calls if call[:3] != ["git", "-C", str(self.config.live)]], [])
+        self.assertEqual((self.records(), self.kills), (["00-release-check"], []))
+
+    def test_a_summary_that_did_not_pass_though_no_step_failed_is_refused(self):
+        self.red_on_both()
+        self.summary.write_text(json.dumps(dict(summary(), passed=False)))
+        self.refused_known(FakeHost(self.config), "the release check did not pass, and no step of it failed")
+
     def test_known_reds_read_beside_a_commit_that_is_not_live_are_refused(self):
         self.candidate_fails((RED_STEP, {}))
         other = "a" * 40
@@ -1237,15 +1304,21 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
         self.refused_known(FakeHost(self.config), "a known red names 'python-units'; only a browser step")
 
     def test_a_step_the_candidate_did_not_run_or_lists_twice_is_refused(self):
-        for change, words in ((lambda steps: [step for step in steps if step["name"] != "native-journal"],
-                               "the release check did not run native-journal"),
-                              (lambda steps: steps + [step for step in steps if step["name"] == RED_STEP],
+        def without_journal(written):
+            return [step for step in written["steps"] if step["name"] != "native-journal"]
+        for change, words in ((dict(steps=without_journal), "the release check did not run native-journal"),
+                              # A step entry that is not an object is passed over, as the release check's judge does.
+                              (dict(steps=lambda written: without_journal(written) + [5]), "the release check did not run native-journal"),
+                              (dict(steps=without_journal, required=lambda written: []), "the release check did not run native-journal"),
+                              (dict(required=lambda written: written["required"] + ["native-later"]),
+                               "the release check did not run native-later"),
+                              (dict(steps=lambda written: written["steps"] + [step for step in written["steps"] if step["name"] == RED_STEP]),
                                "the release check lists %s more than once" % RED_STEP)):
-            with self.subTest(words):
+            with self.subTest(words=words, change=sorted(change)):
                 self.again()
                 self.candidate_fails((RED_STEP, {}))
                 written = json.loads(self.summary.read_text())
-                written["steps"] = change(written["steps"])
+                written.update({key: made(written) for key, made in change.items()})
                 self.summary.write_text(json.dumps(written))
                 self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}))))
                 self.refused_known(FakeHost(self.config), words)
@@ -1260,7 +1333,22 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
                 ("killed", dict(exit=-9), "exited -9, not 1"),
                 ("a case named twice", dict(cases=[{"name": RED_CASE, "passed": True}, {"name": RED_CASE, "passed": False}]),
                  "the failed case %r is not named once" % RED_CASE),
-                ("no cases", dict(cases=[]), "lists no cases"))
+                ("no cases", dict(cases=[]), "lists no cases"),
+                ("a failed case with no name", dict(cases=[{"name": RED_CASE, "passed": False}, {"passed": False}]),
+                 "the failed case None is not named once"),
+                ("a failed case named ''", dict(cases=[{"name": RED_CASE, "passed": False}, {"name": "", "passed": False}]),
+                 "the failed case '' is not named once"),
+                ("a failed case named by a number", dict(cases=[{"name": RED_CASE, "passed": False}, {"name": 5, "passed": False}]),
+                 "the failed case 5 is not named once"),
+                ("its last assertion inside another line", dict(last="console: %s\n" % known_reds.END_LINE),
+                 "the harness did not reach its end"),
+                ("no log", dict(log=False), "has no readable evidence"),
+                ("results that are not JSON", dict(results="{not json"), "has no readable evidence"),
+                ("results that are not an object", dict(results="[]"), "lists no cases"),
+                ("cases that are not a list", dict(results=json.dumps({"results": 5, "fixtureExitCode": 0, "browserClosed": True})),
+                 "lists no cases"),
+                ("a case that is not an object", dict(results=json.dumps({"results": [RED_CASE], "fixtureExitCode": 0,
+                                                                          "browserClosed": True})), "lists no cases"))
 
     def test_a_candidate_step_whose_harness_did_not_end_as_it_should_is_refused(self):
         for case, run, words in self.harness_cases():
@@ -1283,6 +1371,10 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
     def test_a_reader_or_composer_step_that_cannot_show_its_run_ended_is_refused(self):
         for name, run, words in ((READER_STEP, dict(ended=False), "the harness did not reach its end"),
                                  (READER_STEP, dict(closed=False), "the browser did not close"),
+                                 (READER_STEP, dict(printed=dict(closed=False)), "the harness did not reach its end"),
+                                 (READER_STEP, dict(printed=dict(results=[])), "the harness did not reach its end"),
+                                 (READER_STEP, dict(last="TypeError: cannot read properties of undefined\n"),
+                                  "the harness did not reach its end"),
                                  (COMPOSE_STEP, {}, "records no fixture exit")):
             with self.subTest(name=name, run=run):
                 self.again()
@@ -1316,19 +1408,48 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
         self.red_on_both()
         good = json.loads(self.known.read_text())
         red = good["reds"][0]
+        without_why = {key: value for key, value in red.items() if key != "why"}
         for written, words in (("not json", "no readable known reds file"),
+                               (None, "no readable known reds file"),
+                               ([good], "exactly live_commit, reds"),
                                (dict(good, extra=1), "exactly live_commit, reds"),
+                               ({"reds": good["reds"]}, "exactly live_commit, reds"),
                                (dict(good, live_commit="b" * 12), "full 40-character commit"),
+                               (dict(good, live_commit=None), "full 40-character commit"),
                                (dict(good, reds=[]), "at least one known red"),
+                               (dict(good, reds="native-colors"), "at least one known red"),
+                               (dict(good, reds=[RED_STEP]), "each known red is a JSON object with exactly step, case, live_summary, why"),
+                               (dict(good, reds=[5]), "each known red is a JSON object with exactly step, case, live_summary, why"),
+                               (dict(good, reds=[without_why]), "each known red is a JSON object with exactly step, case, live_summary, why"),
+                               (dict(good, reds=[dict(red, seen="today")]), "each known red is a JSON object with exactly"),
+                               (dict(good, reds=[dict(red, step=[RED_STEP])]), "only a browser step (native-…) can have known reds"),
                                (dict(good, reds=[dict(red, live_summary="live-check/summary.json")]), "is an absolute path"),
+                               (dict(good, reds=[dict(red, live_summary=5)]), "is an absolute path"),
                                (dict(good, reds=[dict(red, why="one\ntwo")]), "one line of at most"),
+                               (dict(good, reds=[dict(red, why="one\rtwo")]), "one line of at most"),
+                               (dict(good, reds=[dict(red, why=" ")]), "one line of at most"),
+                               (dict(good, reds=[dict(red, why=5)]), "one line of at most"),
+                               (dict(good, reds=[dict(red, why="w" * (known_reds.WHY_LENGTH + 1))]), "one line of at most"),
                                (dict(good, reds=[dict(red, case="")]), "names no case"),
+                               (dict(good, reds=[dict(red, case=5)]), "names no case"),
                                (dict(good, reds=[red, red]), "is listed twice")):
-            with self.subTest(words):
+            with self.subTest(words=words, written=written):
                 self.again()
                 self.red_on_both()
-                self.known.write_text(written if isinstance(written, str) else json.dumps(written))
+                if written is None:
+                    self.known.unlink()
+                else:
+                    self.known.write_text(written if isinstance(written, str) else json.dumps(written))
                 self.refused_known(FakeHost(self.config), words)
+
+    def test_a_why_of_the_longest_length_is_taken(self):
+        self.red_on_both()
+        written = json.loads(self.known.read_text())
+        written["reds"][0]["why"] = "w" * known_reds.WHY_LENGTH
+        self.known.write_text(json.dumps(written))
+        self.planned(FakeHost(self.config), known_reds=self.known)
+        self.assertEqual([red["why"] for red in self.evidence_of("00-release-check")["known_reds"]["accepted"]],
+                         ["w" * known_reds.WHY_LENGTH])
 
     def test_a_relative_known_reds_path_is_refused(self):
         self.red_on_both()
