@@ -2831,7 +2831,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "doc.addEventListener('focusin', event => { if (!this.pressing) this.focusIn(event.target); }, true);",
+     "doc.addEventListener('focusin', event => { if (!press.down) this.focusIn(event.target); }, true);",
      "doc.addEventListener('focusin', event => this.focusIn(event.target), true);"
     ]
    ],
@@ -2883,6 +2883,51 @@
    "check": {
     "native": "reading",
     "case": "stacks ⇧⌘↑ joins a stack"
+   }
+  },
+  {
+   "item": 283,
+   "act": "In a stack the bar scrolls away with its card once the tab has gone above the window, as any bar does",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    if (floor > 4) top = Math.max(floor, top);\n",
+     "    top = Math.max(floor, top);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the bar stays in the window while any of its card is"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A commit while a button below the stacks is held down does not swallow the press",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "    if (this.down) this.waiting.set(name, paint); else paint();",
+     "    paint();"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the people are one filled pill each after the last message"
    }
   }
  ]

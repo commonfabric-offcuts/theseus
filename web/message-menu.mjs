@@ -160,9 +160,11 @@ export class MessageMenu {
   // Over the lit card's top end corner, inside the window while any of the
   // card is, and scrolled away with it. Where that would cover the reply arrow
   // beside the card's time, it sits above the arrow's line, or else below it.
-  // In a reply stack it stays below the tab's bottom edge, so it never crosses
-  // where the tab meets the stack; where that leaves no room above the reply
-  // arrow, it sits under the card rather than over its words and answers.
+  // In a reply stack it stays below the tab's bottom edge while the tab is in
+  // the window, so it never crosses where the tab meets the stack; once the tab
+  // has gone above the window it scrolls away with the card as any bar does.
+  // Where the tab leaves no room above the reply arrow, it sits under the card
+  // rather than over its words and answers.
   place() {
     if (this.bar.hidden || !this.lit?.isConnected) { if (this.lit && !this.lit.isConnected) this.light(null); return; }
     const box = this.lit.getBoundingClientRect(), width = this.bar.offsetWidth, height = this.bar.offsetHeight;
@@ -170,7 +172,8 @@ export class MessageMenu {
     const left = Math.max(8, Math.min(box.right - width - 12, view - width - 8));
     const tab = this.lit.closest('.reply-stack')?.querySelector(':scope > [data-id] .stack-head, :scope > .stack-rename')?.getBoundingClientRect();
     const floor = Math.max(4, tab?.height ? tab.bottom + 2 : 4);
-    let top = Math.max(floor, Math.min(Math.max(4, box.top - height / 2), box.bottom - height));
+    let top = Math.min(Math.max(4, box.top - height / 2), box.bottom - height);
+    if (floor > 4) top = Math.max(floor, top);
     const mark = cardIn(this.lit).querySelector(':scope > .message-author .replied-mark')?.getBoundingClientRect();
     if (mark?.width && mark.right > left && mark.left < left + width && mark.bottom > top && mark.top < top + height) {
       top = mark.top - height - 2 >= floor ? mark.top - height - 2 : floor > 4 ? box.bottom + 2 : mark.bottom + 2;

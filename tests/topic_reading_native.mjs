@@ -28,8 +28,13 @@ const BAR = '.message-bar';
 // Before the page's own code: each command the page sends, by kind, as it sends it (the page binds fetch when it
 // starts, and sends a press's command within the press's own click), and each click as the window first hears it.
 // After a press's click is heard, what it sent is known, so "sends nothing" needs no wait.
+// window.watchFor = {read, words}: a check waits for the page to read the view named read and get an answer
+// holding words; window.watched turns true when it has.
 const HEARD = `(()=>{window.sent=[];window.taps=0;const f=window.fetch;window.fetch=function(input,init){
-  try{const b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}return f.apply(this,arguments)};
+  let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}
+  const answer=f.apply(this,arguments),watch=window.watchFor;
+  if(watch&&b&&b.name===watch.read)answer.then(r=>r.clone().text()).then(t=>{if(t.includes(watch.words))window.watched=true},()=>{});
+  return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
 
 // grant(names): Chrome's own grant of permissions (clipboard-read, ...) to the page's

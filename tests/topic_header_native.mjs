@@ -923,9 +923,16 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     // down does not swallow the press.
     const remove = `#topic-people [aria-label="Remove ${agent}"]`;
     await p.evaluate(`document.querySelector(${JSON.stringify(remove)}).scrollIntoView({block:'center'})`);
-    const out = await p.box(remove), x = out.x + out.width / 2, y = out.y + out.height / 2;
-    assert.equal(await p.evaluate(`document.elementFromPoint(${x}, ${y}) === document.querySelector(${JSON.stringify(remove)})`), true, 'the remove button is what is pressed');
+    // The pointer goes to the button as a person's does, and the press is aimed
+    // where the button then shows: a pointer that rested over a folded reply
+    // stack and leaves it hides that stack's reply line (docs/reply-stacks.md),
+    // which moves what is below it.
+    const centre = async () => { const out = await p.box(remove); return [out.x + out.width / 2, out.y + out.height / 2]; };
+    const [x0, y0] = await centre();
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
+    const [x, y] = await centre();
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    assert.equal(await p.evaluate(`document.elementFromPoint(${x}, ${y}) === document.querySelector(${JSON.stringify(remove)})`), true, 'the remove button is what is pressed');
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     // The page reloads after every commit: it reads the wake lights, which set
     // the wakes notice's hidden attribute, and in the same turn paints the

@@ -129,16 +129,21 @@ their acts.
   one at head) while the stack has the focus: the keys went into it, a press
   or tap last landed in it, or the pointer is over it. A press moves the
   focus only once its click has landed, so a reply line going away never
-  moves what is being pressed. A press on it, a tap, or Return while it holds
+  moves what is being pressed. Nor does anything that arrives while a press
+  is held: a new message or reply, a stack drawn again, a reaction line or the
+  New line waits until the pointer or finger lets go, then shows at once
+  (`web/press-hold.mjs`). The header and the people repaint in place. A press on it, a tap, or Return while it holds
   the keys opens the Reader replying to the stack's newest message, as Reply
   on that message's bar does, opening the stack first when that message was
   folded away. A placed message on its own has no reply line; its bar's
   Reply does the same.
 - **The bar.** A head showing only its row has no message bar; Return
   still replies to it, and the bar comes back once its whole message shows.
-  In a stack the bar stays below the head row's bottom edge; where that
-  leaves no room above a card's reply arrow, the bar sits under the card
-  rather than over its words and answers.
+  In a stack the bar stays below the head row's bottom edge while that row
+  is in the window; where that leaves no room above a card's reply arrow, the
+  bar sits under the card rather than over its words and answers. Once the
+  row has gone above the window, the bar scrolls away with its card, as any
+  message's bar does.
 - **One New line.** It goes under the lowest stack that holds the line's
   message or anything newer that is not the reader's own (`lineUnder`). It is
   never inside a stack, and nothing new sits below it. While the line's

@@ -53,11 +53,12 @@ export class StackFeed {
   // nameOf: as arrangeStacks takes them. send(envelope): Core's command.
   // reread(): reads the acts again from Core, after a refusal. starsChanged():
   // the reader's stars moved (the right rail's Starred). status(error): says a failure.
-  // hold(paint): repaints keeping the page where the person is. reply(id,
-  // card): the Reader on a message with the cursor in the reply, as its bar's Reply.
+  // hold(paint): repaints keeping the page where the person is. press: the
+  // press held down on the page (press-hold.mjs). reply(id, card): the Reader
+  // on a message with the cursor in the reply, as its bar's Reply.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, reread = () => {}, starsChanged = () => {}, status = () => {},
-    hold = paint => paint(), reply = () => {}, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, reply, clock, doc });
+    hold = paint => paint(), press, reply = () => {}, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, press, reply, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
@@ -78,11 +79,9 @@ export class StackFeed {
     // once; a press moves it only once its click has landed, so nothing moves
     // under a pointer that is still pressing and the click lands where it
     // began. The message bar and its menu belong to the lit message.
-    this.focused = null; this.pressing = false;
-    doc.addEventListener('pointerdown', () => { this.pressing = true; }, true);
-    for (const name of ['pointerup', 'pointercancel']) doc.addEventListener(name, () => { this.pressing = false; }, true);
-    doc.addEventListener('focusin', event => { if (!this.pressing) this.focusIn(event.target); }, true);
-    doc.addEventListener('focusout', event => { if (!this.pressing && !event.relatedTarget) this.focusIn(null); }, true);
+    this.focused = null;
+    doc.addEventListener('focusin', event => { if (!press.down) this.focusIn(event.target); }, true);
+    doc.addEventListener('focusout', event => { if (!press.down && !event.relatedTarget) this.focusIn(null); }, true);
     doc.addEventListener('click', event => this.focusIn(event.target), true);
   }
   focusIn(target) {
@@ -151,9 +150,10 @@ export class StackFeed {
     return sent;
   }
   // Draws the stacks again when a message's acts as shown are no longer what
-  // they were last drawn with.
+  // they were last drawn with; an answer landing under a press held down waits
+  // for it to end, so nothing moves under the pointer.
   settled(id) {
-    if (this.messages().has(id) && this.drawn.get(id) !== JSON.stringify(this.actsOf(id))) this.arrange();
+    if (this.messages().has(id) && this.drawn.get(id) !== JSON.stringify(this.actsOf(id))) this.press.after('stacks', () => this.arrange());
   }
   async send(kind, item, args) {
     const field = FIELD[kind], { authority_id, authority_epoch } = this.authority();

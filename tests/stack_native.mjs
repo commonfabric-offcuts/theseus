@@ -524,6 +524,68 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  await check('reading stacks the bar stays in the window while any of its card is, and scrolls away with it, in a stack or on its own', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-bar-away-' + device;
+      const ids = await seed(topic, [['alone', { sender: other, join: true, addressees: [facts.actor], body: 'A message on its own, with no replies.', read: true }],
+        ['root', { sender: other, addressees: [facts.actor], body: 'Who has the spare key?', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'It hangs by the door.', read: true }]]);
+      const p = await open(topic, device, topic, ids.root);
+      // Room to scroll a card well above the window, whatever the window's height.
+      await p.evaluate(`document.body.style.paddingBottom = '2000px'`);
+      const barAt = () => p.evaluate(`(()=>{const b=document.querySelector('.message-bar');if(!b||b.hidden)return null;const r=b.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,window:innerHeight}})()`);
+      // Scrolls so the card's bottom edge sits at y in the window.
+      const bottomAt = (id, y) => p.evaluate(`scrollBy(0, document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect().bottom - (${y}))`);
+      for (const [name, id] of [['a reply in a stack', ids.one], ['a card on its own', ids.alone]]) {
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack'))`), id === ids.one, `${device}: ${name} is ${id === ids.one ? '' : 'not '}in a stack`);
+        await light(p, device, id);
+        if (device === 'laptop') await away(p);
+        const { height } = await barAt();
+        // A little of the card's bottom still in the window: its bar is there too.
+        await bottomAt(id, height + 10);
+        let seen;
+        await until(async () => { seen = await barAt(); return seen && seen.top >= 0 && seen.bottom <= height + 10 + 1; }, `${device}: ${name}'s bar stays in the window while its bottom does`)
+          .catch(error => assert.fail(`${error.message}: ${JSON.stringify(seen)}`));
+        // The card's bottom 150px above the window: its bar has gone with it, over nothing else on the page.
+        await bottomAt(id, -150);
+        await until(async () => { seen = await barAt(); return seen && seen.bottom <= 0; }, `${device}: ${name}'s bar scrolls away with it`)
+          .catch(error => assert.fail(`${error.message}: ${JSON.stringify(seen)}`));
+        assert.deepEqual((await lit(p)).includes(id), true, `${device}: ${name} stays lit, its bar out of the window with it`);
+      }
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading stacks a reply arriving while a press is held is drawn once it ends, so nothing moves under the pointer and the press lands where it began', async () => {
+    // A pointer's press: a finger held as long can turn into a long press, which ends the hold by its menu.
+    const topic = 'stack-held-press';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Who is bringing the ladder?', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'I can bring it.', read: true }],
+      ['later', { sender: other, addressees: [facts.actor], body: 'The van is parked out front.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.later);
+    await centre(p, words(ids.later));
+    const at = await p.box(words(ids.later)), x = at.x + at.width / 2, y = at.y + at.height / 2;
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    // The pointer resting on the message moved nothing (no stack's reply line came or went): it is still under it.
+    assert.equal((await p.box(words(ids.later))).y, at.y, 'laptop: the message pressed is where it was aimed at');
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    const body = 'A new reply while the press is held.';
+    await p.evaluate(`(window.watched = false, window.watchFor = ${JSON.stringify({ read: 'topic_messages', words: body })})`);
+    const arrived = (await control({ method: 'agent_message', operation_id: `${topic}-held`, topic_id: topic, source: 'topic', sender: other, reply_to: ids.root, addressees: [facts.actor], body })).result.message_id;
+    await until(() => p.evaluate('window.watched'), 'laptop: the page read the topic\'s new messages, the new reply among them, while the press is held');
+    // Two frames on, a reply drawn at once would be on the page.
+    await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    const held = await p.evaluate(`({top:document.querySelector(${JSON.stringify(words(ids.later))}).getBoundingClientRect().top,
+      under:document.querySelector(${JSON.stringify(card(ids.later))}).contains(document.elementFromPoint(${x},${y})),drawn:Boolean(document.querySelector(${JSON.stringify(card(arrived))}))})`);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    assert.deepEqual(held, { top: at.y, under: true, drawn: false }, 'laptop: while the press is held, the new reply waits and the message pressed stays under the pointer');
+    await until(async () => (await readerOn(p))?.startsWith('The van is parked out front.'), 'laptop: the click lands on the message pressed and opens it');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(arrived))})?.closest('.reply-stack')?.dataset.stack === ${JSON.stringify(ids.root)}`), 'laptop: once the press ends the new reply is drawn into its stack');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks the one New line sits under the lowest stack holding anything new, never inside one', async () => {
     const topic = 'stack-new-line';
     const ids = await seed(topic, [['old', { sender: other, join: true, addressees: [facts.actor], body: 'An old stack, read.' }],

@@ -58,6 +58,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, stackState } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
+import { PressHold } from './press-hold.mjs';
 import { readingOrder } from './stack-order.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
@@ -97,6 +98,8 @@ let pageHere = null, pageHereOutcome = null;
 let menu = null, reactions = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
 let stackFeed = null;
+// A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
+const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
 const halfShown = new Set(), atMiddle = new Set();
 // Whether what is drawn above the topic page's messages after they paint has
@@ -687,6 +690,9 @@ function paintMoreMessages() {
 }
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
+  // All but the header and the people, which repaint in place, move the list:
+  // under a press held down they wait for it to end, so the click lands where it began.
+  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
   if (kind === 'reactions') { keepListAnchor(() => menu?.paint()); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); placeLine(); menu?.paint(); }); return; }
@@ -792,7 +798,7 @@ function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current, send: envelope => api.command(envelope),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : id),
-    hold: paint => keepListAnchor(paint), status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)) });
+    hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)) });
   return stackFeed;
 }
 // The conversation's own word on a message: its item and the asks that wait,
