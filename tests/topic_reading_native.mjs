@@ -92,6 +92,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
+  // Where a wheel or a finger's drag starts on a target: on the part of it the window shows, at most 120px
+  // below that part's top, on the target itself and not something over it. Taken just before each
+  // gesture, as the page stands then: a fling runs on past the distance it was given, by more some runs
+  // than others, so a point worked out from where the target was can fall outside the window.
+  const within = async (p, selector) => {
+    const at = await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect(),top=Math.max(b.top,0),bottom=Math.min(b.bottom,innerHeight),
+      x=b.left+b.width/2,y=top+Math.min((bottom-top)/2,120);return {x,y,shown:bottom-top,hit:e.contains(document.elementFromPoint(x,y))}})()`);
+    assert.ok(at.shown >= 40 && at.hit, `${selector} shows in the window where a gesture starts on it: ${JSON.stringify(at)}`);
+    return [at.x, at.y];
+  };
   // A click on a laptop, a tap on a phone.
   const press = (p, device, selector) => (device === 'phone' ? tap(p, selector) : p.point(selector));
   const lit = p => p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id)`);
@@ -295,8 +305,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const p = await open('reading-long-' + device, device, topic, ids.long);
       const preview = card(ids.long) + ' > .message-preview';
       const state = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(preview)}),s=getComputedStyle(e),b=e.getBoundingClientRect();
-        return {inPlace:e.classList.contains('scroll-in-place'),top:e.scrollTop,more:e.scrollHeight-e.clientHeight,overflow:s.overflowY,height:b.height,window:innerHeight,pageY:scrollY,
-          middle:[b.x+b.width/2,b.y+Math.min(b.height/2,120)]}})()`);
+        return {inPlace:e.classList.contains('scroll-in-place'),top:e.scrollTop,more:e.scrollHeight-e.clientHeight,overflow:s.overflowY,height:b.height,window:innerHeight,pageY:scrollY}})()`);
       await centre(p, card(ids.long));
       const before = await state();
       assert.equal(before.inPlace, false, device + ': cut off, until it lights');
@@ -306,24 +315,25 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.equal(box.overflow, 'auto', device + ': the box scrolls');
       assert.ok(Math.abs(box.height - before.height) <= 1, `${device}: the box keeps the excerpt's height (${before.height} → ${box.height})`);
       if (device === 'phone') assert.ok(box.height <= box.window * 0.6 + 1, `phone: the box is no taller than 60% of the window (${box.height} of ${box.window})`);
-      const [x, y] = box.middle;
+      const wheel = async deltaY => { const [x, y] = await within(p, preview); await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY }); };
+      const drag = async (yDistance, speed) => { const [x, y] = await within(p, preview); await p.send('Input.synthesizeScrollGesture', { x, y, yDistance, gestureSourceType: 'touch', speed }); };
       if (device === 'laptop') {
-        await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 240 });
+        await wheel(240);
         await until(async () => (await state()).top > 0, 'laptop: the wheel scrolls the box');
         assert.equal((await state()).pageY, box.pageY, 'laptop: and not the page');
         // At its bottom edge the same wheel carries on with the page, and the box's fade says nothing more is below.
         const more = () => p.evaluate(`document.querySelector(${JSON.stringify(preview)}).dataset.more`);
         await until(async () => await more() === 'both', 'laptop: part way down, more is hidden both ways (the box hears its own scroll)');
-        await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: box.more + 400 });
+        await wheel(box.more + 400);
         await until(async () => await more() === 'above', 'laptop: at the bottom of the box only what is above is hidden');
         const atEdge = await state();
-        await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 240 });
+        await wheel(240);
         await until(async () => (await state()).pageY > atEdge.pageY, 'laptop: at the box\'s edge the wheel scrolls the page on');
       } else if ('pw' in p) {
         // Safari's engine in this harness has a tap but no finger drag: the box is held to scroll (overflow auto, above) and to leave room beside it.
         observations.push({ name: 'reading finger drag', engine: 'webkit', held: 'overflow-y auto and at most 60% of the window; no drag in this harness' });
       } else {
-        await p.send('Input.synthesizeScrollGesture', { x, y, yDistance: -240, gestureSourceType: 'touch', speed: 1200 });
+        await drag(-240, 1200);
         await until(async () => (await state()).top > 0, 'phone: a finger drag inside scrolls the box');
         assert.equal((await state()).pageY, box.pageY, 'phone: and not the page');
         // Beside the card, above it or below it, where the page shows.
@@ -332,13 +342,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.send('Input.synthesizeScrollGesture', { x: at.x + at.width / 2, y: outsideY, yDistance: -240, gestureSourceType: 'touch', speed: 1200 });
         await until(async () => (await state()).pageY !== box.pageY, 'phone: a drag outside it scrolls the page');
         // Dragged inside to its bottom edge, the next drag inside carries on with the page.
-        const inside = async () => { const b = await p.box(preview); return [b.x + b.width / 2, b.y + Math.min(b.height / 2, 120)]; };
-        let [ix, iy] = await inside();
-        await p.send('Input.synthesizeScrollGesture', { x: ix, y: iy, yDistance: -(box.more + 400), gestureSourceType: 'touch', speed: 2400 });
+        await drag(-(box.more + 400), 2400);
         await until(async () => (await state()).top >= (await state()).more - 1, 'phone: a long drag inside takes the box to its bottom edge');
         const atEnd = await state();
-        [ix, iy] = await inside();
-        await p.send('Input.synthesizeScrollGesture', { x: ix, y: iy, yDistance: -200, gestureSourceType: 'touch', speed: 1200 });
+        await drag(-200, 1200);
         await until(async () => (await state()).pageY > atEnd.pageY, 'phone: at the box\'s edge a drag inside scrolls the page on');
       }
       await shot(p, 'reading-long-' + device);

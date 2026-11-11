@@ -549,7 +549,7 @@ try {
       { name: 'no-yellow-for-a-note', file: 'web/aim.css', index: 10,
         from: '#toggle-note[data-has-note]{background:var(--note);', to: '#toggle-note[data-has-note]{', expected: /a soft yellow in light/ },
       { name: 'arrows-for-a-page-oldest-on-top', file: 'web/reader.mjs', index: 11,
-        from: 'const NEWEST_ON_TOP = true;', to: 'const NEWEST_ON_TOP = false;', expected: /up is the newer message, and comes first/ },
+        from: 'const NEWEST_ON_TOP = true;', to: 'const NEWEST_ON_TOP = false;', expected: /up is the message above, and comes first/ },
       // The who chip let take the head row whole, so "Saved to Theseus" is squeezed to a word or two.
       { name: 'who-chip-takes-the-status-room', file: 'web/aim.css', index: 12,
         from: '.compose-head>.note-chip{flex:0 1 auto;min-width:min(35%,9rem);max-width:calc(100% - 8rem)}', to: '.compose-head>.note-chip{flex:0 1 auto;min-width:min(35%,9rem);max-width:100%}',

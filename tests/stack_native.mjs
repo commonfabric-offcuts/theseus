@@ -57,6 +57,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: ⋯ opens the menu`);
     return p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
   };
+  // A press held down where its click opens nothing: on the topic's name, at the top of the page. Gives
+  // back the press's release.
+  const holdOnTitle = async p => {
+    await p.evaluate('scrollTo(0,0)');
+    const b = await p.box('#topic-title'), x = b.x + Math.min(12, b.width / 2), y = b.y + b.height / 2;
+    assert.equal(await p.evaluate(`document.getElementById('topic-title').contains(document.elementFromPoint(${x},${y}))`), true, 'the topic\'s name shows where it is pressed');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    return () => p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  };
+  // Two frames on: a repaint the page made at once is on the page.
+  const twoFrames = p => p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
   const choose = async (p, device, label) => {
     const at = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].findIndex(b=>b.firstChild.textContent===${JSON.stringify(label)})`);
     assert.ok(at >= 0, `${label} is in the menu`);
@@ -589,9 +601,62 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(held, { top: at.y, under: true, drawn: false }, 'laptop: while the press is held, the new reply waits and the message pressed stays under the pointer');
     await until(async () => (await readerOn(p))?.startsWith('The van is parked out front.'), 'laptop: the click lands on the message pressed and opens it');
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(arrived))})?.closest('.reply-stack')?.dataset.stack === ${JSON.stringify(ids.root)}`), 'laptop: once the press ends the new reply is drawn into its stack');
+    // The click above opens the Reader, which draws the page again whatever the release did. Held where
+    // its click opens nothing, the reply that waited is drawn by the release alone: read at once after
+    // it, with no wait, it is in its stack.
+    await closeReader(p, 'laptop');
+    const release = await holdOnTitle(p);
+    const second = 'A second reply while a press is held.';
+    await p.evaluate(`(window.watched = false, window.watchFor = ${JSON.stringify({ read: 'topic_messages', words: second })})`);
+    const later = (await control({ method: 'agent_message', operation_id: `${topic}-held-2`, topic_id: topic, source: 'topic', sender: other, reply_to: ids.root, addressees: [facts.actor], body: second })).result.message_id;
+    await until(() => p.evaluate('window.watched'), 'laptop: the page read the second reply while the press on the topic\'s name is held');
+    await twoFrames(p);
+    const stackOf = () => p.evaluate(`document.querySelector(${JSON.stringify(card(later))})?.closest('.reply-stack')?.dataset.stack ?? null`);
+    assert.equal(await stackOf(), null, 'laptop: while the press is held, the second reply waits');
+    await release();
+    assert.equal(await stackOf(), ids.root, 'laptop: the moment the press ends, the reply that waited is drawn into its stack');
+    assert.equal(await readerOn(p), null, 'laptop: and the press on the topic\'s name opened nothing');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  // An act's answer that changes the stacks waits under a held press as a
+  // reply does, and is drawn the moment the press ends (stack-feed.mjs,
+  // settled). A star Core refuses: the card shows it at once, and the
+  // refusal takes it away. The page also reads the acts again on its next
+  // pass; any such read is held until after the release, so only the
+  // release can draw the refusal.
+  if (engine === 'chrome') await check('reading stacks an act\'s answer landing while a press is held is drawn the moment it ends, and not before', async () => {
+    const topic = 'stack-held-act';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const starred = () => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.starred`);
+    const starsSent = payload => payload?.kind === 'message.star', reads = payload => payload?.name === 'message_acts';
+    await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+    p.intercept(payload => starsSent(payload) || reads(payload));
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Star for me');
+    await until(async () => await starred() === 'true', 'laptop: the star shows at once');
+    const refused = await until(() => p.held.find(entry => starsSent(entry.payload)), 'laptop: the star is on its way');
+    p.held.splice(p.held.indexOf(refused), 1);
+    const release = await holdOnTitle(p);
+    await p.send('Fetch.fulfillRequest', { requestId: refused.event.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+      body: Buffer.from(JSON.stringify({ instance_id: facts.instance_id, status: 'rejected', error: { code: 'FORBIDDEN', message: 'Refused for this check.' } })).toString('base64') });
+    // The page says the refusal once the stacks were told of it.
+    await until(() => p.evaluate(`document.getElementById('app-status').textContent.includes('Refused for this check.')`), 'laptop: the refusal is heard while the press is held');
+    await twoFrames(p);
+    assert.equal(await starred(), 'true', 'laptop: while the press is held, the refusal waits and the card still shows the star');
+    await release();
+    assert.equal(await starred(), 'false', 'laptop: the moment the press ends, the refusal is drawn: no star');
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    assert.equal(await readerOn(p), null, 'laptop: and the press on the topic\'s name opened nothing');
+    assert.notEqual((await actsOf(topic, ids.b))?.starred, true, 'Core holds no star');
+    await until(async () => await starred() === 'false', 'laptop: the acts read again agree: no star');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+  else observations.push({ name: 'stacks an act\'s answer under a held press', engine, held: 'holds Core\'s answers with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
 
   // A press that ends with no pointerup ends all the same, or every repaint
   // after it would wait for the next tap (press-hold.mjs). Chrome's own input

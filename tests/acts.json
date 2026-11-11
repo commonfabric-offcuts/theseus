@@ -2917,6 +2917,51 @@
   },
   {
    "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An act's answer landing under a held press waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.press.after('stacks', () => this.arrange())",
+     "this.arrange()"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks an act's answer landing while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An act's answer held back by a press is drawn the moment the press ends",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.press.after('stacks', () => this.arrange())",
+     "this.press.after('stacks', () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks an act's answer landing while a press is held"
+   }
+  },
+  {
+   "item": 283,
    "act": "A commit while a button below the stacks is held down does not swallow the press",
    "break": [
     [
