@@ -889,10 +889,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.equal(await copy(), false, 'with words selected the page leaves ⌘C to the browser');
     assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
     await p.evaluate('getSelection().removeAllRanges()');
-    // In the writing ⌘C is the writing's, with a message still lit.
+    // In the writing ⌘C is the writing's, with a message lit. The press that puts the cursor there takes the
+    // feed's light (docs/interaction.md); the pointer resting on a message again lights it, the cursor staying put.
     await into(p, 'laptop', '#inline-writing-body');
     await p.send('Input.insertText', { text: 'Words in the composer.' });
-    assert.ok((await lit(p)).length === 1, 'a message is still lit');
+    await light(p, 'laptop', ids.short);
+    assert.equal(await p.evaluate('document.activeElement?.id'), 'inline-writing-body', 'the cursor is still in the composer');
+    assert.deepEqual(await lit(p), [ids.short], 'a message is lit');
     assert.equal(await copy(), false, 'in the composer the page leaves ⌘C to the writing');
     assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
     assert.deepEqual(p.errors, []);
