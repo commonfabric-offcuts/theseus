@@ -28,6 +28,7 @@ export function feedStop(doc) {
   if (!list || !shown(list)) return null;
   const all = entries(list).filter(shown);
   let entry = all.find(each => each.classList.contains('lit'));
+  entry ??= all.find(each => each.dataset.id === list.dataset.lastMessage);
   if (!entry) {
     const above = list.querySelector(':scope > [data-line="new"]:not(.new-line-read)')?.previousElementSibling;
     entry = above ? all.find(each => each === above || above.contains(each)) : null;

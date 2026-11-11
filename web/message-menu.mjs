@@ -37,7 +37,7 @@ export class MessageMenu {
     // and fire pointerover. Only actual pointer movement takes the light from
     // the keyboard; otherwise repeated arrows can bounce between stacks.
     let pointer = null;
-    host.addEventListener('pointermove', event => {
+    doc.addEventListener('pointermove', event => {
       if (event.pointerType === 'touch') return;
       // WebKit also emits pointermove after a scroll with unchanged screen
       // coordinates. That event must not take selection from the keyboard.
@@ -47,6 +47,7 @@ export class MessageMenu {
       if (still || this.menuOpen()) return;
       const entry = this.entryOf(event.target);
       if (entry && entry !== this.lit) this.light(entry);
+      else if (!entry && !this.ownsControls(event.target)) this.light(null);
     });
     // What was lit when the press began: the press itself focuses the card,
     // which lights it, before its click arrives.
@@ -79,11 +80,21 @@ export class MessageMenu {
       const at = event.target?.nodeType === 1 ? event.target : event.target?.parentElement;
       if (!this.entryOf(at) && !this.bar.contains(at) && !at?.closest?.('dialog, .message-menu-list')) this.light(null);
     });
-    host.addEventListener('focusin', event => {
+    doc.addEventListener('focusin', event => {
       const entry = this.entryOf(event.target);
       if (entry && entry !== this.lit) this.light(entry);
-      else if (!entry && event.target.closest?.('.stack-toggle, .stack-rename, .stack-reply')) this.light(null);
+      // Safari may focus the page itself when a clicked stack unfolds. That
+      // is not a move to another control and must keep the selected message.
+      else if (!entry && !pageItself(event.target, doc) && !this.ownsControls(event.target)) this.light(null);
     });
+    // Pointer selection need not move DOM focus. When the person uses keys
+    // again, the focused pane owns the light before its key handler runs.
+    doc.addEventListener('keydown', event => {
+      if (event.isComposing || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab', 'Enter', ' '].includes(event.key)) return;
+      const at = doc.activeElement, entry = this.entryOf(at);
+      if (entry && !this.lit) this.light(entry);
+      else if (!entry && !pageItself(at, doc) && !this.ownsControls(at)) this.light(null);
+    }, true);
     doc.addEventListener('keydown', event => this.key(event));
     doc.defaultView.addEventListener('scroll', () => this.place(), { passive: true });
     doc.defaultView.addEventListener('resize', () => this.place());
@@ -128,6 +139,7 @@ export class MessageMenu {
   // The list entry a target is in: a card, or a fold holding its card, on its
   // own or in a reply stack (reply-stacks.mjs).
   entryOf(target) { return entryOf(this.host, target); }
+  ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list')); }
   // The entries on show, in the page's order; a stack's folded replies are not.
   entries() {
     return entries(this.host).filter(entry => entry.getClientRects().length);
@@ -145,6 +157,7 @@ export class MessageMenu {
     }
     this.lit = entry;
     if (!entry) { this.bar.hidden = true; return; }
+    this.host.dataset.lastMessage = entry.dataset.id;
     entry.classList.add('lit'); cardIn(entry).classList.add('lit');
     this.paintBar();
     const item = this.item(entry.dataset.id);
@@ -238,7 +251,7 @@ export class MessageMenu {
     const entries = this.entries();
     if (!entries.length) return;
     event.preventDefault();
-    const index = entries.indexOf(this.lit);
+    const index = entries.indexOf(this.lit ?? entries.find(entry => entry.dataset.id === this.host.dataset.lastMessage));
     const inView = entries.find(entry => entry.getBoundingClientRect().bottom > 0);
     const next = index < 0 ? inView ?? entries[0] : entries[Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
     this.light(next);

@@ -143,6 +143,51 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  await check('reading stacks keep their dossier through color changes, returning to the tab and arriving replies', async () => {
+    for (const audience of ['person', 'agents']) {
+      const topic = 'stack-color-refresh-' + audience, to = audience === 'person' ? facts.actor : 'aim-ux';
+      const ids = await seed(topic, [...(audience === 'agents' ? [['join', { sender: to, join: true, body: 'Here to reply.', read: true }]] : []),
+        ['root', { sender: other, join: true, addressees: [to], body: 'A dossier that stays a dossier.', read: true }],
+        ['reply', { sender: other, reply_to: 'root', addressees: [to], body: 'A reply inside the folder.', read: true }]]);
+      const p = await open(topic, 'laptop', topic, ids.root);
+      const selector = card(ids.root), stack = `.reply-stack[data-stack="${ids.root}"]`;
+      await p.evaluate(`(()=>{window.stackDamage=[];const c=document.querySelector(${JSON.stringify(selector)});
+        new MutationObserver(()=>{if(c.isConnected&&c.closest('.reply-stack')&&!c.classList.contains('stack-head-card'))window.stackDamage.push(c.className)})
+          .observe(c,{attributes:true,attributeFilter:['class']})})()`);
+      await press(p, 'laptop', stack + ' > .stack-toggle');
+      await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the original shows');
+      await p.point(selector + ' .author-name');
+      await until(() => p.evaluate("Boolean(document.querySelector('.color-picker'))"), 'the color picker opens');
+      await p.point('.color-picker [aria-label="rose"]');
+      await until(() => p.evaluate(`!document.querySelector('.color-picker')&&document.querySelector(${JSON.stringify(selector)}).classList.contains('agent-rose')`), 'the chosen color is on the card');
+      assert.deepEqual(await p.evaluate('window.stackDamage'), [], 'a color choice never erases the dossier');
+      // Back to the middle state, then leave and return to the actual tab.
+      await press(p, 'laptop', stack + ' > .stack-toggle');
+      await press(p, 'laptop', stack + ' > .stack-toggle');
+      // The headless WebKit harness's bringToFront does not dispatch window
+      // focus. Chrome proves that native trigger; both engines prove the
+      // same color painter through an actual picker choice above.
+      if (engine === 'chrome') {
+        const elsewhere = await open(topic + '-elsewhere', 'laptop', topic, ids.root);
+        await p.evaluate("(()=>{window.watchFor={read:'colors',words:'palette'};window.watched=false})()");
+        await p.send('Page.bringToFront');
+        await until(() => p.evaluate('window.watched'), 'returning to the tab read the colors again');
+        assert.deepEqual(await p.evaluate('window.stackDamage'), [], 'a focus refresh never erases the dossier');
+        await elsewhere.close();
+      }
+      for (let n = 0; n < 3; n++) {
+        const id = (await control({ method: 'agent_message', operation_id: topic + '-live-' + n, topic_id: topic, source: 'topic',
+          sender: other, addressees: [to], reply_to: ids.root, body: 'Arriving reply ' + n })).result.message_id;
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}))`), 'the arriving reply is drawn');
+        const state = await look(p, ids, 'root');
+        assert.equal(state.fold, 'folded'); assert.equal(state.full, false, 'arrival does not reveal the original');
+        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector + ' .stack-head')})).position`), 'absolute', 'the dossier tab keeps its position');
+      }
+      assert.deepEqual(await p.evaluate('window.stackDamage'), [], 'the class survives the complete refresh sequence');
+      await shot(p, topic); assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('reading stacks give only the current message or stack one strong highlight', async () => {
     for(const device of Object.keys(DEVICES)) for(const theme of ['light','dark']) {
       const topic='stack-one-highlight-'+device+'-'+theme;
@@ -169,6 +214,33 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await shot(p,'one-highlight-header-'+device+'-'+theme);
       await light(p,device,ids.two);
       await becomes(strong,[ids.two],'returning to a message takes the stack ring away');
+      if (device === 'laptop') {
+        await keyTo(p, ids.root);
+        await p.key('ArrowLeft');
+        assert.equal(await p.evaluate("Boolean(document.activeElement.closest('#outline'))"), true, 'Left moves into the outline');
+        await becomes(strong, [], 'the outline leaves no strong feed ring');
+        await light(p, device, ids.root);
+        await becomes(strong, ['stack:' + ids.root], 'hover takes the only ring while rail DOM focus stays put');
+        assert.equal(await p.evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'none', 'the old rail focus is quiet');
+        await p.key('ArrowDown');
+        await becomes(strong, [], 'using the rail keys again clears the pointer selection');
+        assert.notEqual(await p.evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'none', 'the current rail row owns the ring');
+        await p.key('ArrowRight');
+        assert.equal(await focusedOn(p), ids.root, 'the feed remembers its place without a persistent highlight');
+        await becomes(strong, ['stack:' + ids.root], 'returning to the feed restores its selection');
+        await away(p);
+        await becomes(strong, [], 'moving the pointer off the feed leaves no stale stack ring');
+        await p.key('ArrowDown');
+        await becomes(strong, [ids.one], 'keys in the feed resume from its focused message');
+        await p.key('ArrowRight');
+        assert.equal(await p.evaluate("Boolean(document.activeElement.closest('#things'))"), true, 'Right moves into the other rail');
+        await becomes(strong, [], 'the right rail also owns the highlight alone');
+        await light(p, device, ids.root);
+        await becomes(strong, ['stack:' + ids.root], 'pointer selection takes over from the right rail too');
+        assert.equal(await p.evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'none', 'the right rail has no stale focus ring');
+        await p.key('ArrowDown');
+        await becomes(strong, [], 'right rail keys take the light back');
+      }
       assert.deepEqual(p.errors,[]); await p.close();
     }
   });
@@ -643,7 +715,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // another Up must not select a lower message again.
       await p.key('ArrowUp'); await twoFrames(p);
       await new Promise(resolve => setTimeout(resolve, 400));
-      assert.ok((await lit(p)).includes(order[0]), 'passing the first message does not cycle back into a lower stack');
+      assert.equal(await p.evaluate("Boolean(document.activeElement.closest('.topic-header'))"), true, 'Up past the first message reaches the header');
+      assert.deepEqual(await lit(p), [], 'the header owns the focus, with no stale feed selection');
       // The pointer can take over again as soon as it actually moves.
       const target = await p.evaluate(`(()=>{const e=document.elementFromPoint(${x},750);return e?.closest('[data-id]')?.dataset.id})()`);
       assert.ok(target && target !== order[0], 'a different message is under the resting pointer');
@@ -669,7 +742,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       for (const [name, id] of [['a reply in a stack', ids.one], ['a card on its own', ids.alone]]) {
         assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack'))`), id === ids.one, `${device}: ${name} is ${id === ids.one ? '' : 'not '}in a stack`);
         await light(p, device, id);
-        if (device === 'laptop') await away(p);
+        // Leave the pointer still: scrolling must preserve the selected card.
         const { height } = await barAt();
         // A little of the card's bottom still in the window: its bar is there too.
         await bottomAt(id, height + 10);
@@ -923,7 +996,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     // A lit message (the keys were on it a moment ago), then the cursor goes into the writing.
     await keyTo(p, ids.a);
     await p.point('#inline-writing-body');
-    assert.deepEqual(await lit(p), [ids.a], 'A stays lit while the person writes');
+    assert.deepEqual(await lit(p), [], 'writing takes the light off A');
+    assert.equal(await p.evaluate("document.querySelector('#messages').dataset.lastMessage"), ids.a, 'the feed remembers A without highlighting it');
     await until(() => p.evaluate(`document.activeElement?.id === 'inline-writing-body'`), 'the cursor is in the topic\'s writing');
     await p.send('Input.insertText', { text: 'Writing a reply' });
     for (const [key, modifiers] of [['ArrowUp', 4], ['ArrowDown', 4], ['ArrowUp', 12], ['ArrowLeft', 4], ['z', 4]]) await p.key(key, modifiers);
