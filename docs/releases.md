@@ -54,6 +54,21 @@ The view adds `deployed_ms` (the same time in epoch milliseconds) and
  "native": {"pass": 208, "total": 208, "steps": {"journal": {"pass": 10, "total": 10}, "...": {}}}}
 ```
 
+A release the deploy took with known reds (docs/tools.md, "Known reds": browser
+cases the live release fails too) also lists them; their cases stay counted as
+failed in `native`:
+
+```json
+{"known_reds": [{"step": "native-colors", "case": "the exact case name", "live_commit": "...",
+                 "live_summary": "/abs/live-check/summary.json", "why": "one line"}]}
+```
+
+`known_reds` is left out when there are none, so a record without it reads as
+before, and a reader that does not know it ignores it, as it does `skipped`.
+It sits inside `measurements`, which the store keeps as one JSON object of at
+most 16384 bytes, so the record's own fields and the admin verb are unchanged;
+a record too large for that is refused before anything stops.
+
 A record never changes: the store refuses to update or delete one. Writing the
 same record again returns the one already there (`"recorded": false`), so a
 retried deploy step or a backfill run twice adds nothing. A different record

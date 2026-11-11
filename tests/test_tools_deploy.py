@@ -18,7 +18,7 @@ from unittest import mock
 
 from aim_next import admin, cli, outcome_rules, pipeline_state, supervisor as runner_supervisor
 from aim_next.contract import Refusal
-from tools import deploy, release_check
+from tools import deploy, known_reds, release_check
 import test_agent_cli
 from test_pipeline_steering import PipelineCase
 
@@ -764,7 +764,7 @@ class Restarting(DeployCase):
             proc.wait()
         super().tearDown()
 
-    def run_deploy(self, host, sha=SHA):
+    def run_deploy(self, host, sha=SHA, known_reds=None):
         real_start, real_urlopen, opened = deploy.start, deploy.urllib.request.urlopen, []
 
         def start(*args):
@@ -784,7 +784,7 @@ class Restarting(DeployCase):
                 mock.patch.object(deploy, "start", start), \
                 mock.patch.object(deploy.urllib.request, "urlopen", urlopen), \
                 redirect_stdout(io.StringIO()):
-            deploy.deploy(self.config, sha, self.evidence, self.summary, False)
+            deploy.deploy(self.config, sha, self.evidence, self.summary, False, known_reds=known_reds)
         return opened
 
     def completed(self, host, sha=SHA):
@@ -1058,6 +1058,342 @@ class DeployRefuses(DeployCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
             deploy.main(["--config", str(self.config_path), SHA, str(self.evidence)])
         self.assertEqual(caught.exception.code, 2)
+
+# Item 178: a step of tests/reader_persistence_native.mjs, whose native.json records its fixture's exit, one of
+# tests/reader_native.mjs (results.json, its page served in-process) and the composer's, which records no fixture exit.
+RED_STEP, READER_STEP, COMPOSE_STEP = "native-colors", "native-reader-keyboard", "native-compose"
+RED_CASE = "a reply keeps its colour"
+
+
+def native_run(out, name, failed=(RED_CASE,), passed=("the rail keeps its colours",), exit=1, closed=True, fixture=0,
+               ended=True, cases=None):
+    """One native step's evidence as tools/release_check.py leaves it in out (its results file and log), and the step's
+    entry in that summary, its counts read from that evidence by the release check's own reader."""
+    step = known_reds.NATIVE[name]
+    evidence = out / "native" / step.name
+    evidence.mkdir(parents=True)
+    cases = cases if cases is not None else ([{"name": case, "passed": True} for case in passed]
+                                             + [{"name": case, "passed": False, "error": "expected 1, got 2"} for case in failed])
+    if step.results == "results.json":
+        report = {"closed": closed, "results": cases}
+        last = json.dumps(report, indent=2) + "\n" + ("" if ended else "TypeError: cannot read properties of undefined\n")
+    else:
+        report = {"results": cases, "fixtureExitCode": fixture, "browserClosed": closed}
+        last = (known_reds.END_LINE if ended else "AssertionError [ERR_ASSERTION]: the fixture is ready") + "\n"
+    (evidence / step.results).write_text(json.dumps(report))
+    (out / (name + ".log")).write_text("node %s\n%s" % (step.harness, last))
+    counts, judged = release_check.native_counts(step, evidence)
+    return {"name": name, "exit": exit, "passed": exit == 0 and judged, "counts": counts, "log": str(out / (name + ".log"))}
+
+
+class KnownRedsFiles:
+    """A candidate summary with its evidence, live summaries with theirs, and the --known-reds file naming them."""
+
+    def known_setup(self):
+        base = Path(self.tmp.name)
+        self.candidate = base / "candidate"
+        self.candidate.mkdir()
+        self.summary = self.candidate / "summary.json"
+        self.known = base / "known-reds.json"
+
+    def candidate_fails(self, *runs, **written):
+        """The candidate's summary: every required step passed but runs, each (name, native_run kwargs) or a unit name."""
+        result = summary(failed=tuple(run if isinstance(run, str) else run[0] for run in runs))
+        made = {run[0]: native_run(self.candidate, run[0], **run[1]) for run in runs if not isinstance(run, str)}
+        result["steps"] = [made.get(step["name"], step) for step in result["steps"]]
+        result.update(written)
+        self.summary.write_text(json.dumps(result))
+
+    def live_summary(self, folder, *runs, commit=HEAD, **written):
+        """A release-check --only summary of the live commit in its own folder, with each run's evidence."""
+        out = Path(self.tmp.name) / folder
+        out.mkdir()
+        steps = [native_run(out, name, **args) for name, args in runs]
+        result = dict({"tool": release_check.TOOL, "commit": commit, "tree_unchanged": True, "passed": False,
+                       "required": list(release_check.REQUIRED), "only": [name for name, _ in runs], "steps": steps}, **written)
+        (out / "summary.json").write_text(json.dumps(result))
+        return out / "summary.json"
+
+    def listing(self, *reds, live_commit=HEAD):
+        """The --known-reds file: each red (step, case, live summary path)."""
+        self.known.write_text(json.dumps({"live_commit": live_commit, "reds": [
+            {"step": step, "case": case, "live_summary": str(path), "why": "fails on the live release too"} for step, case, path in reds]}))
+
+    def red_on_both(self, candidate=None, live=None, listed=(RED_CASE,)):
+        """The candidate fails RED_STEP's cases, the live summary fails its own, and the file lists `listed`."""
+        self.candidate_fails((RED_STEP, candidate or {}))
+        path = self.live_summary("live-check", (RED_STEP, live or {}))
+        self.listing(*[(RED_STEP, case, path) for case in listed])
+        return path
+
+
+class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
+    """Item 178: --known-reds takes a release check whose only failures are browser cases the live commit fails too."""
+
+    def setUp(self):
+        super().setUp()
+        self.known_setup()
+
+    def again(self):
+        """A fresh instance, evidence and files for the next subtest."""
+        self.tearDown()
+        self.setUp()
+
+    def evidence_of(self, name):
+        return json.loads((self.evidence / (name + ".json")).read_text())
+
+    def refused_known(self, host, words, dry=False):
+        """Refused at the release-check step, naming words, with nothing but the live HEAD read and nothing stopped."""
+        refusal = self.refused(host, dry=dry, known_reds=self.known)
+        self.assertIn("known reds: ", refusal)
+        self.assertIn(words, refusal)
+        self.assertEqual(self.records(), ["00-release-check"])
+        self.assertEqual([call for call in host.calls if "rev-parse" not in call], [], "nothing but the live HEAD is read")
+        self.assertEqual(self.kills, [])
+        written = self.evidence_of("00-release-check")
+        self.assertFalse(written["passed"])
+        self.assertIn(words, written["known_reds"]["refused"])
+        return refusal
+
+    def test_failed_browser_cases_the_live_commit_fails_too_are_taken_as_known_reds_and_recorded(self):
+        live = self.red_on_both(candidate=dict(failed=(RED_CASE, "a whisper keeps its colour")),
+                                live=dict(failed=("a whisper keeps its colour", RED_CASE, "an older red")))
+        other = self.live_summary("live-journal", ("native-journal", dict(failed=("a journal case",))))
+        self.listing((RED_STEP, RED_CASE, live), (RED_STEP, "a whisper keeps its colour", live),
+                     ("native-journal", "a journal case", other))
+        host = FakeHost(self.config)
+        self.planned(host, known_reds=self.known)
+        written = self.evidence_of("00-release-check")
+        self.assertFalse(written["passed"], "known reds are never described as passes")
+        self.assertEqual(written["reasons"], ["%s failed (exit 1)" % RED_STEP])
+        taken = written["known_reds"]
+        self.assertEqual([(red["step"], red["case"], red["live_summary"], red["live_commit"]) for red in taken["accepted"]],
+                         [(RED_STEP, RED_CASE, str(live), HEAD), (RED_STEP, "a whisper keeps its colour", str(live), HEAD)])
+        self.assertEqual(taken["not_needed"], [{"step": "native-journal", "case": "a journal case"}])
+        record = self.evidence_of("02-release")["record"]
+        self.assertEqual(record["measurements"]["known_reds"], [
+            {"step": RED_STEP, "case": case, "live_summary": str(live), "live_commit": HEAD, "why": "fails on the live release too"}
+            for case in (RED_CASE, "a whisper keeps its colour")])
+        self.assertEqual(record["measurements"]["native"]["steps"]["colors"], {"pass": 1, "total": 3}, "still counted as failed")
+        self.assertEqual(self.kills, [])
+
+    def test_a_reader_step_is_taken_when_its_harness_printed_its_results_last(self):
+        self.candidate_fails((READER_STEP, {}))
+        self.listing((READER_STEP, RED_CASE, self.live_summary("live-check", (READER_STEP, {}))))
+        self.planned(FakeHost(self.config), known_reds=self.known)
+        self.assertEqual([red["case"] for red in self.evidence_of("02-release")["record"]["measurements"]["known_reds"]], [RED_CASE])
+
+    def test_a_failed_case_the_known_reds_do_not_list_is_refused(self):
+        self.red_on_both(candidate=dict(failed=(RED_CASE, "a whisper keeps its colour")),
+                         live=dict(failed=(RED_CASE, "a whisper keeps its colour")))
+        self.refused_known(FakeHost(self.config), "%s failed 'a whisper keeps its colour', which the known reds do not list" % RED_STEP)
+
+    def test_a_case_named_loosely_is_not_the_case_that_failed(self):
+        for listed, failed in (("a reply keeps its", RED_CASE), (RED_CASE.upper(), RED_CASE), (RED_CASE + " ", RED_CASE),
+                               ("a reply .*", RED_CASE), (RED_CASE, RED_CASE + " [webkit]")):
+            with self.subTest(listed=listed, failed=failed):
+                self.again()
+                self.red_on_both(candidate=dict(failed=(failed,)), live=dict(failed=(failed,)), listed=(listed,))
+                self.refused_known(FakeHost(self.config), "%s failed %r, which the known reds do not list" % (RED_STEP, failed))
+
+    def test_a_listed_case_the_live_summary_does_not_show_failing_is_refused(self):
+        for live in (dict(failed=("a whisper keeps its colour",)), dict(failed=(RED_CASE + " [webkit]",))):
+            with self.subTest(live=live):
+                self.again()
+                path = self.red_on_both(live=live)
+                self.refused_known(FakeHost(self.config), "%s %r is not among the cases that failed in %s on the live commit"
+                                   % (RED_STEP, RED_CASE, path))
+
+    def test_a_live_summary_of_another_commit_or_a_changed_checkout_is_refused(self):
+        for written, words in ((dict(commit="d" * 40), "ran on %s, not the live commit %s" % ("d" * 40, HEAD)),
+                               (dict(tree_unchanged=False), "the checkout changed while it ran"),
+                               (dict(tool="something else"), "is not a release-check summary")):
+            with self.subTest(words):
+                self.again()
+                self.candidate_fails((RED_STEP, {}))
+                self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}), **written)))
+                self.refused_known(FakeHost(self.config), words)
+
+    def test_known_reds_read_beside_a_commit_that_is_not_live_are_refused(self):
+        self.candidate_fails((RED_STEP, {}))
+        other = "a" * 40
+        self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}), commit=other)), live_commit=other)
+        host = FakeHost(self.config)
+        self.refused_known(host, "the known reds were read beside %s, but %s is live" % (other, HEAD))
+        self.assertEqual(host.ran("rev-parse")[0][:3], ["git", "-C", str(self.config.live)], "the HEAD of the live checkout")
+
+    def test_a_unit_step_red_is_never_a_known_red(self):
+        for unit in ("python-units", "node-units", release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY):
+            with self.subTest(unit):
+                self.again()
+                self.candidate_fails(unit, (RED_STEP, {}))
+                self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}))))
+                self.refused_known(FakeHost(self.config), "%s failed; only a browser step's failed cases can be known reds" % unit)
+
+    def test_a_unit_step_cannot_be_listed(self):
+        self.candidate_fails((RED_STEP, {}))
+        self.known.write_text(json.dumps({"live_commit": HEAD, "reds": [
+            {"step": "python-units", "case": "test_x", "live_summary": str(self.summary), "why": "flaky"}]}))
+        self.refused_known(FakeHost(self.config), "a known red names 'python-units'; only a browser step")
+
+    def test_a_step_the_candidate_did_not_run_or_lists_twice_is_refused(self):
+        for change, words in ((lambda steps: [step for step in steps if step["name"] != "native-journal"],
+                               "the release check did not run native-journal"),
+                              (lambda steps: steps + [step for step in steps if step["name"] == RED_STEP],
+                               "the release check lists %s more than once" % RED_STEP)):
+            with self.subTest(words):
+                self.again()
+                self.candidate_fails((RED_STEP, {}))
+                written = json.loads(self.summary.read_text())
+                written["steps"] = change(written["steps"])
+                self.summary.write_text(json.dumps(written))
+                self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}))))
+                self.refused_known(FakeHost(self.config), words)
+
+    def harness_cases(self):
+        return (("the browser stayed open", dict(closed=False), "the browser did not close"),
+                ("the fixture exited 1", dict(fixture=1), "its fixture exited 1, not 0"),
+                ("no fixture exit", dict(fixture=None), "its fixture exited None, not 0"),
+                ("no failed case with a failing exit", dict(failed=()), "failed, but its results name no failed case"),
+                ("the harness never reached its end", dict(ended=False), "the harness did not reach its end"),
+                ("a crash", dict(exit=134), "exited 134, not 1"),
+                ("killed", dict(exit=-9), "exited -9, not 1"),
+                ("a case named twice", dict(cases=[{"name": RED_CASE, "passed": True}, {"name": RED_CASE, "passed": False}]),
+                 "the failed case %r is not named once" % RED_CASE),
+                ("no cases", dict(cases=[]), "lists no cases"))
+
+    def test_a_candidate_step_whose_harness_did_not_end_as_it_should_is_refused(self):
+        for case, run, words in self.harness_cases():
+            with self.subTest(case):
+                self.again()
+                self.candidate_fails((RED_STEP, run))
+                self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}))))
+                self.refused_known(FakeHost(self.config), "the candidate's %s" % RED_STEP)
+                self.assertIn(words, self.evidence_of("00-release-check")["known_reds"]["refused"])
+
+    def test_a_live_step_whose_harness_did_not_end_as_it_should_is_refused(self):
+        for case, run, words in self.harness_cases():
+            with self.subTest(case):
+                self.again()
+                self.candidate_fails((RED_STEP, {}))
+                self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, run))))
+                self.refused_known(FakeHost(self.config), "the live %s" % RED_STEP)
+                self.assertIn(words, self.evidence_of("00-release-check")["known_reds"]["refused"])
+
+    def test_a_reader_or_composer_step_that_cannot_show_its_run_ended_is_refused(self):
+        for name, run, words in ((READER_STEP, dict(ended=False), "the harness did not reach its end"),
+                                 (READER_STEP, dict(closed=False), "the browser did not close"),
+                                 (COMPOSE_STEP, {}, "records no fixture exit")):
+            with self.subTest(name=name, run=run):
+                self.again()
+                self.candidate_fails((name, run))
+                self.listing((name, RED_CASE, self.live_summary("live-check", (name, {}))))
+                self.refused_known(FakeHost(self.config), words)
+
+    def test_counts_the_candidate_summary_does_not_share_with_its_evidence_are_refused(self):
+        self.candidate_fails((RED_STEP, {}))
+        written = json.loads(self.summary.read_text())
+        [step] = [step for step in written["steps"] if step["name"] == RED_STEP]
+        step["counts"] = dict(step["counts"], failed=[], fail=0)
+        self.summary.write_text(json.dumps(written))
+        self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}))))
+        self.refused_known(FakeHost(self.config), "the summary's counts are not those of its evidence")
+
+    def test_an_only_candidate_or_one_of_another_commit_is_refused_as_before(self):
+        for written, words in ((dict(only=[RED_STEP]), "the release check ran only %s, so it does not describe %s" % (RED_STEP, SHA)),
+                               (dict(commit="d" * 40), "the release check ran on %s, not %s" % ("d" * 40, SHA))):
+            with self.subTest(words):
+                self.again()
+                self.red_on_both()
+                self.summary.write_text(json.dumps(dict(json.loads(self.summary.read_text()), **written)))
+                host = FakeHost(self.config)
+                refusal = self.refused(host, known_reds=self.known)
+                self.assertIn("the release check has not passed for %s: " % SHA, refusal)
+                self.assertIn(words, refusal)
+                self.assertEqual((host.calls, self.records(), self.kills), ([], ["00-release-check"], []))
+
+    def test_a_malformed_known_reds_file_is_refused(self):
+        self.red_on_both()
+        good = json.loads(self.known.read_text())
+        red = good["reds"][0]
+        for written, words in (("not json", "no readable known reds file"),
+                               (dict(good, extra=1), "exactly live_commit, reds"),
+                               (dict(good, live_commit="b" * 12), "full 40-character commit"),
+                               (dict(good, reds=[]), "at least one known red"),
+                               (dict(good, reds=[dict(red, live_summary="live-check/summary.json")]), "is an absolute path"),
+                               (dict(good, reds=[dict(red, why="one\ntwo")]), "one line of at most"),
+                               (dict(good, reds=[dict(red, case="")]), "names no case"),
+                               (dict(good, reds=[red, red]), "is listed twice")):
+            with self.subTest(words):
+                self.again()
+                self.red_on_both()
+                self.known.write_text(written if isinstance(written, str) else json.dumps(written))
+                self.refused_known(FakeHost(self.config), words)
+
+    def test_a_relative_known_reds_path_is_refused(self):
+        self.red_on_both()
+        refusal = self.refused(FakeHost(self.config), known_reds=Path("known-reds.json"))
+        self.assertIn("known reds: --known-reds is an absolute path", refusal)
+
+    def test_a_live_head_that_moves_after_the_known_reds_were_read_stops_the_deploy_before_anything_stops(self):
+        self.red_on_both()
+        heads = [HEAD, "e" * 40]
+
+        class Moving(FakeHost):
+            def __call__(self, argv, **kw):
+                if argv[0] == "git" and "rev-parse" in argv:
+                    self.calls.append(argv)
+                    return subprocess.CompletedProcess(argv, 0, heads.pop(0) + "\n", "")
+                return FakeHost.__call__(self, argv, **kw)
+        host = Moving(self.config)
+        refusal = self.refused(host, known_reds=self.known)
+        self.assertIn("the live checkout is at %s now, not %s, which the known reds were read beside" % ("e" * 40, HEAD), refusal)
+        self.assertEqual((self.kills, self.records()), ([], ["00-plan", "00-release-check", "01-live", "02-checkout"]))
+
+    def test_without_the_flag_a_red_summary_is_refused_exactly_as_before(self):
+        self.red_on_both()
+        host = FakeHost(self.config)
+        refusal = self.refused(host)
+        self.assertEqual(refusal, "the release check has not passed for %s: %s failed (exit 1)" % (SHA, RED_STEP))
+        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout"])
+        self.assertNotIn("known_reds", self.evidence_of("00-release-check"))
+        self.assertEqual(host.ran("rev-parse"), [["git", "-C", str(self.config.live), "rev-parse", "HEAD"]])
+
+    def test_a_passed_summary_with_the_flag_deploys_as_before_and_needs_none_of_them(self):
+        self.red_on_both()
+        self.summary.write_text(json.dumps(summary()))
+        host = FakeHost(self.config)
+        self.planned(host, known_reds=self.known)
+        written = self.evidence_of("00-release-check")
+        self.assertEqual((written["passed"], written["reasons"]), (True, []))
+        self.assertEqual(written["known_reds"]["not_needed"], [{"step": RED_STEP, "case": RED_CASE}])
+        self.assertEqual(written["known_reds"]["accepted"], [])
+        self.assertNotIn("known_reds", self.evidence_of("02-release")["record"]["measurements"])
+
+    def test_main_takes_the_known_reds_file(self):
+        self.red_on_both()
+        with mock.patch.object(deploy, "deploy") as called, redirect_stdout(io.StringIO()):
+            self.assertEqual(deploy.main(["--config", str(self.config_path), "--release-check", str(self.summary),
+                                          "--known-reds", str(self.known), SHA, str(self.evidence), "--dry-run"]), 0)
+        self.assertEqual(called.call_args[0][-1], self.known)
+
+
+class KnownRedsRecorded(KnownRedsFiles, Restarting):
+    def setUp(self):
+        super().setUp()
+        self.known_setup()
+
+    def test_a_release_with_known_reds_is_recorded_in_the_instance_with_them(self):
+        live = self.red_on_both()
+        host = FakeHost(self.config)
+        try:
+            self.run_deploy(host, known_reds=self.known)
+        except deploy.Refused as refusal:
+            self.fail("the deploy refused: %s" % refusal)
+        [written] = host.written
+        self.assertEqual(written["measurements"]["known_reds"], [
+            {"step": RED_STEP, "case": RED_CASE, "live_summary": str(live), "live_commit": HEAD, "why": "fails on the live release too"}])
+        self.assertEqual(self.kills, [(222, 15), (111, 15)])
 
 
 class FixTopicTitles(unittest.TestCase):

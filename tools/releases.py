@@ -58,8 +58,9 @@ def shipped(log_text):
     return items, commits
 
 
-def measurements(summary):
-    """The release check's counts for one release record (docs/releases.md)."""
+def measurements(summary, known_reds=()):
+    """The release check's counts for one release record (docs/releases.md), and the known reds the deploy accepted
+    (item 178: failed cases the live commit fails too, still counted as failed)."""
     steps = {step.get("name"): step.get("counts") or {} for step in summary.get("steps") or [] if isinstance(step, dict)}
     native = {name[len("native-"):]: {"pass": counts.get("pass", 0), "total": counts.get("tests", 0)}
               for name, counts in steps.items() if name.startswith("native-")}
@@ -70,4 +71,6 @@ def measurements(summary):
             "native": {"pass": sum(step["pass"] for step in native.values()),
                        "total": sum(step["total"] for step in native.values()), "steps": native},
             # Item 166: a release whose check skipped the browser modes and the replay says so beside their empty counts.
-            **({"skipped": {key: summary["skipped"].get(key) for key in ("live", "why")}} if isinstance(summary.get("skipped"), dict) else {})}
+            **({"skipped": {key: summary["skipped"].get(key) for key in ("live", "why")}} if isinstance(summary.get("skipped"), dict) else {}),
+            **({"known_reds": [{key: red[key] for key in ("step", "case", "live_summary", "live_commit", "why")} for red in known_reds]}
+               if known_reds else {})}
