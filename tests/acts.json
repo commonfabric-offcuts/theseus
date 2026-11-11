@@ -2884,6 +2884,81 @@
     "native": "notebook",
     "case": "notebook a card keeps its height and its text stays where it stood between showing and being written"
    }
+  },
+  {
+   "item": 315,
+   "act": "the card under a still pointer shows no speech bubble once a key is pressed, until the mouse moves",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(.deck-pointing) .deck-card:hover .deck-ask,",
+     ".deck-card:hover .deck-ask,"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the card under a still pointer loses the pointer's highlight once a key is pressed",
+   "break": [
+    [
+     "web/aim.css",
+     ":where(.deck-pointing) .deck-card:hover{",
+     ".deck-card:hover{"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "a key takes the pointer out of use, so the card under it goes quiet",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "the page moving under a still pointer is not the mouse moving",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');\n",
+     "      if (pointer) this.list.classList.add('deck-pointing');\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
+  },
+  {
+   "item": 315,
+   "act": "a move of the mouse shows the speech bubble of the card under it",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves"
+   }
   }
  ]
 }

@@ -79,6 +79,17 @@ export class DeckPage {
     host.replaceChildren(this.status, this.opening, this.bar, this.keys, this.list,
       label('deck-editor-label', 'Writing: the first line is the heading, the rest its words'), label('deck-ask-label', 'Ask an agent about this'));
     doc.addEventListener('keydown', event => this.key(event));
+    // A card under the pointer shows its speech bubble, and the pointer's highlights, only while the pointer is in
+    // use: macOS hides the pointer while a person types, and the cards the keys scroll under it would light up one
+    // by one. A move of the mouse itself, not of the page under it, puts the pointer in use, and any key but a
+    // modifier takes it out of use.
+    let pointer = null;
+    doc.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'mouse') return;
+      if (pointer && (pointer.x !== event.screenX || pointer.y !== event.screenY)) this.list.classList.add('deck-pointing');
+      pointer = { x: event.screenX, y: event.screenY };
+    });
+    doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); });
     this.list.addEventListener('scroll', () => this.scrolled(), { passive: true });
   }
   node(tag, className, text) {

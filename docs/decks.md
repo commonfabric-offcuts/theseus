@@ -152,9 +152,11 @@ why.
 ## Asking about a card
 
 Each card has a speech bubble at its right edge. On a laptop it shows on the
-picked card and under the pointer; → gives it the focus, from a card with no
-children folded away, as ⌥→ does from any card, and ← gives the focus back to
-the card. On a phone it shows on every card. On a card with no reply
+picked card, and under the pointer while the mouse is in use: macOS hides the
+pointer while a person types, so once a key is pressed the card under it
+shows neither its bubble nor the pointer's highlight until the mouse moves.
+→ gives the bubble the focus, from a card with no children folded away, as ⌥→
+does from any card, and ← gives the focus back to the card. On a phone it shows on every card. On a card with no reply
 stack, the bubble asks an agent about it: a box in the card's place takes the
 ask, and Ask or ⌘Return sends it as a new message (`message.post`, an ask) in
 the page's topic, or for an outcome's page in its conversation. The message

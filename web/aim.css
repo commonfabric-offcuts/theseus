@@ -888,7 +888,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-page{max-width:46rem;display:grid;gap:.6rem}.deck-status{min-height:1.5rem;flex-wrap:wrap;margin:0}.deck-status .deck-again{min-height:2rem;font-size:.78rem;padding:.1rem .6rem}
 .deck-opening{color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
 .deck-cards{list-style:none;margin:0;padding:0;display:grid;gap:.45rem}
-.deck-card{min-width:0;padding:.75rem .95rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);overflow-wrap:anywhere}.deck-card:hover{border-color:color-mix(in srgb,var(--line),var(--ink) 20%)}
+.deck-card{min-width:0;padding:.75rem .95rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);overflow-wrap:anywhere}:where(.deck-pointing) .deck-card:hover{border-color:color-mix(in srgb,var(--line),var(--ink) 20%)}
 .deck-card[aria-current=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:color-mix(in srgb,var(--soft) 45%,var(--panel))}
 .deck-card.deck-selected{background:color-mix(in srgb,var(--accent) 12%,var(--panel))}.deck-card.deck-selected:not([aria-current=true]){border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}.deck-card:focus{outline:none}.deck-card:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 .deck-title{margin:0;font-size:1rem;font-weight:700;line-height:1.35}.deck-words{margin-top:.3rem;font-size:.92rem;line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}.deck-words:empty{display:none}
@@ -898,11 +898,11 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-read-only .deck-bar button,.deck-read-only .deck-keys{display:none}
 .deck-card{position:relative;margin-left:calc(var(--depth,0) * 1.6rem)}.deck-card[hidden]{display:none}.deck-card>.deck-title{padding-right:4.2rem}
 .deck-under{display:none}.deck-under::before{content:'↳ '}
-.deck-fold{display:inline-flex;align-items:center;justify-content:center;width:1.4rem;height:1.4rem;margin:-.2rem .2rem -.2rem -.3rem;padding:0;border:0;border-radius:.35rem;background:none;color:var(--muted);vertical-align:middle;cursor:pointer}.deck-fold svg{width:1.05rem;height:1.05rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.deck-fold[aria-expanded=true] svg{transform:rotate(90deg)}.deck-fold:hover{color:var(--ink);background:var(--soft)}.deck-fold:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.deck-bubbles{position:absolute;top:.45rem;right:.5rem;display:flex;gap:.3rem}
+.deck-fold{display:inline-flex;align-items:center;justify-content:center;width:1.4rem;height:1.4rem;margin:-.2rem .2rem -.2rem -.3rem;padding:0;border:0;border-radius:.35rem;background:none;color:var(--muted);vertical-align:middle;cursor:pointer}.deck-fold svg{width:1.05rem;height:1.05rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.deck-fold[aria-expanded=true] svg{transform:rotate(90deg)}:where(.deck-pointing) .deck-fold:hover{color:var(--ink);background:var(--soft)}.deck-fold:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.deck-bubbles{position:absolute;top:.45rem;right:.5rem;display:flex;gap:.3rem}
 .deck-bubble{display:inline-flex;align-items:center;gap:.3rem;min-width:44px;min-height:32px;justify-content:center;padding:0 .5rem;border:1px solid transparent;border-radius:999px;background:none;color:var(--muted);font:inherit;font-size:.8rem;text-decoration:none;cursor:pointer}
 .deck-bubble svg{flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
-.deck-bubble:hover{border-color:var(--line);color:var(--ink)}.deck-bubble:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-.deck-ask{opacity:0}.deck-card:hover .deck-ask,.deck-card[aria-current=true] .deck-ask,.deck-ask:focus{opacity:1}.deck-editing .deck-ask{display:none}
+:where(.deck-pointing) .deck-bubble:hover{border-color:var(--line);color:var(--ink)}.deck-bubble:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.deck-ask{opacity:0}:where(.deck-pointing) .deck-card:hover .deck-ask,.deck-card[aria-current=true] .deck-ask,.deck-ask:focus{opacity:1}.deck-editing .deck-ask{display:none}
 .deck-unread,.deck-unread:hover{color:var(--accent);font-weight:600}.deck-unread svg{fill:currentColor}.deck-unread::after{content:'';width:.5rem;height:.5rem;border-radius:50%;background:var(--accent)}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}

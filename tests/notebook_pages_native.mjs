@@ -506,4 +506,34 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('notebook on the cards page, a card under a still pointer shows no speech bubble while the keys are in use, until the mouse moves', async () => {
+    // A page in t1, where the fixture's agent takes part, so each card has a bubble to ask it about the card.
+    const item = (await control({ method: 'seed', memory_items: 1 })).item_ids[0];
+    const revised = await control({ method: 'memory_revise', operation_id: 'notebook-cards-pointer-revise', item_id: item, title: 'Cards', expected_revision: 1,
+      body: '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n\n## Later\n' });
+    assert.equal(revised.status, 'committed', JSON.stringify(revised));
+    const p = await page('notebook-cards-pointer', null, true, { url: `${facts.origin}/?cards=${item}` });
+    await until(() => p.evaluate("document.querySelectorAll('#deck-page .deck-ask').length === 4"), 'each card has a bubble to ask about it');
+    // The cards whose bubbles show, and those with a border of their own: the picked card's, or the pointer's highlight.
+    const lit = () => p.evaluate(`(()=>{const rows=[...document.querySelectorAll('#deck-page .deck-card')],plain=getComputedStyle(rows.at(-1)).borderColor,title=r=>r.querySelector('.deck-title').textContent;
+      return {bubbles:rows.filter(r=>getComputedStyle(r.querySelector('.deck-ask')).opacity==='1').map(title),borders:rows.filter(r=>getComputedStyle(r).borderColor!==plain).map(title)}})()`);
+    const showing = (want, words) => until(async () => JSON.stringify(await lit()) === JSON.stringify(want), words)
+      .catch(async error => { assert.deepEqual(await lit(), want, words); throw error; });
+    const risks = await p.evaluate("(()=>{const r=[...document.querySelectorAll('#deck-page .deck-card')].find(r=>r.querySelector('.deck-title').textContent==='Risks').getBoundingClientRect();return {x:r.left+r.width/3,y:r.top+r.height/2}})()");
+    const move = dx => p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: risks.x + dx, y: risks.y });
+    const only = cards => ({ bubbles: cards, borders: cards });
+    await showing(only(['Plan']), 'at first the picked card alone shows its bubble');
+    await move(0); await move(6);
+    await showing(only(['Plan', 'Risks']), 'the card under a moving pointer shows its bubble and the pointer\'s highlight');
+    // macOS hides the pointer while a person types, so the card it rests on shows nothing until the mouse moves.
+    await p.key('ArrowDown');
+    await showing(only(['Notes']), 'once a key is pressed the card under the still pointer shows neither, and the picked card its own');
+    await move(6);
+    await showing(only(['Notes']), 'a move to where the pointer already is, as the page sends when it scrolls under it, shows neither');
+    await move(12);
+    await showing(only(['Notes', 'Risks']), 'a move of the mouse shows them again');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }
