@@ -2464,6 +2464,96 @@
     "native": "rail",
     "case": "rail ⌘Return starts a new message in the place the keys are on"
    }
+  },
+  {
+   "item": 300,
+   "act": "While a card is written, Tab puts it under the card above and ⇧Tab takes it out, saved at once, keeping what is written and the cursor",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if (event.key === 'Tab' && !command) this.nestWriting(event.shiftKey ? 'outdent' : 'indent');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 300,
+   "act": "The card being written shows where Tab or ⇧Tab put it, at its new depth",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 300,
+   "act": "Tab or ⇧Tab on a new card not yet made changes where it will go, and it is made there",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (placed) { Object.assign(editing, placed); this.paint(); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 303,
+   "act": "↑ at the very start of a card being written finishes it, saved, and goes on writing the card above, the cursor at its end",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if (plain && up && field.selectionEnd === 0) { if (!this.writeBeside(-1)) return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 303,
+   "act": "↓ at the very end of a card being written finishes it and goes on writing the card below, the cursor at its start",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if (plain && down && field.selectionStart === field.value.length) { if (!this.writeBeside(1)) return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 303,
+   "act": "↑ and ↓ from a card being written go on to the card that shows, past cards folded away",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    while (to >= 0 && to < shown.length && !shown[to]) to += step;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
   }
  ]
 }

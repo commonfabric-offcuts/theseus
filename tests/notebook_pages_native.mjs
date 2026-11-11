@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 // rail "☰ Topics" opens over the topic, nothing leaves the screen and the changed words stay readable; on the outcome's own page the pages
 // follow the topics and open in place; and a page's link opens the page, as
 // it stands or at a revision, in the Reader or in place, from the address bar
-// or from a message's words, and the Reader's ⋯ copies it.
+// or from a message's words, and the Reader's ⋯ copies it. On the cards page,
+// a card being written moves with Tab and ⇧Tab, and goes on into the card
+// beside with ↑ and ↓, each act read back from the page as saved.
 export async function notebookChecks({ check, page, until, control, view, facts, shot }) {
   const id = 'notebook-release-plan', row = `#outcome-references-list .reference[data-id="${id}"]`;
   const light = p => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(row + ' .unread-count')});return b?{text:b.textContent,className:b.className,said:document.querySelector(${JSON.stringify(row + ' .sr-only')})?.textContent}:null})()`);
@@ -221,6 +223,104 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await p.point(anchor);
     await shows(p, 'Linked plan', 'Ship on Monday.\nDan reviews the notes.\n');
     assert.equal(await p.evaluate('location.search'), '?topic=t1', 'opened here, without leaving the topic');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // The cards page (docs/decks.md) on an outcome page made from `body`, and what Core holds of the page.
+  const cards = async (id, body) => {
+    const answer = await control({ method: 'outcome_reference', operation_id: `${id}-create`, item_id: id, title: 'Cards', body });
+    assert.equal(answer.status, 'committed', JSON.stringify(answer));
+    const p = await page(id, null, true, { url: `${facts.origin}/?cards=${id}` });
+    await until(() => p.evaluate("document.querySelectorAll('#deck-page .deck-card').length > 0"), 'the cards show');
+    return p;
+  };
+  const saved = (id, body, words) => until(async () => (await view('memory_current', { item_id: id })).body === body, words)
+    .catch(async error => { assert.equal((await view('memory_current', { item_id: id })).body, body, words); throw error; });
+  // The card being written: its words, the cursor, its depth, the title of the card that shows above it, and whether it has the focus.
+  const box = p => p.evaluate(`(()=>{const f=document.querySelector('#deck-page .deck-writing textarea');if(!f)return null;
+    let above=f.closest('li').previousElementSibling;while(above?.hidden)above=above.previousElementSibling;
+    return {words:f.value,at:[f.selectionStart,f.selectionEnd],depth:f.closest('li').style.getPropertyValue('--depth'),above:above?.querySelector('.deck-title')?.textContent??null,focused:document.activeElement===f}})()`);
+  const writing = (p, want, words) => until(async () => JSON.stringify(await box(p)) === JSON.stringify(want), words)
+    .catch(async error => { assert.deepEqual(await box(p), want, words); throw error; });
+  const cursor = (p, at) => p.evaluate(`(()=>{document.querySelector('#deck-page .deck-writing textarea').setSelectionRange(${at},${at});return true})()`);
+
+  await check('notebook while a card is written, Tab puts it under the card above and shift-Tab takes it out, keeping the writing and the cursor', async () => {
+    const id = 'notebook-cards-tab', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    // Risks, picked with ↓ and opened with ⌘Return, gets a few words more, and the cursor goes inside its title.
+    await p.key('ArrowDown'); await p.key('ArrowDown'); await p.key('Enter', 4);
+    await writing(p, { words: 'Risks\nNone yet.', at: [15, 15], depth: '0', above: 'Notes', focused: true }, 'Risks opens for writing');
+    await p.send('Input.insertText', { text: ' Maybe two.' });
+    await cursor(p, 3);
+    await p.key('Tab');
+    await writing(p, { words: 'Risks\nNone yet. Maybe two.', at: [3, 3], depth: '1', above: 'Notes', focused: true }, 'Tab puts it under Notes, still written');
+    await saved(id, body.replace('## Risks', '### Risks'), 'the move is saved at once, the words when the card is finished');
+    await p.key('Tab', 8);
+    await writing(p, { words: 'Risks\nNone yet. Maybe two.', at: [3, 3], depth: '0', above: 'Notes', focused: true }, 'shift-Tab takes it out again');
+    await saved(id, body, 'shift-Tab is saved too');
+    await p.key('Tab');
+    await writing(p, { words: 'Risks\nNone yet. Maybe two.', at: [3, 3], depth: '1', above: 'Notes', focused: true }, 'under Notes again');
+    await p.key('Escape');
+    const under = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n### Risks\n\nNone yet. Maybe two.\n';
+    await saved(id, under, 'finishing saves what was written where the card went');
+    // On the first card there is nowhere to go: the card stays, and so does the focus.
+    await p.key('ArrowUp'); await p.key('ArrowUp'); await p.key('Enter', 4);
+    await writing(p, { words: 'Plan\nShip it.', at: [13, 13], depth: '0', above: null, focused: true }, 'Plan opens for writing');
+    await p.key('Tab');
+    assert.deepEqual(await box(p), { words: 'Plan\nShip it.', at: [13, 13], depth: '0', above: null, focused: true }, 'Tab on the first card moves nothing and keeps the box');
+    await p.key('Escape');
+    // A new card, not yet made, only changes where it will go: under Notes, after Risks.
+    await p.key('ArrowDown'); await p.key('Enter');
+    await writing(p, { words: '', at: [0, 0], depth: '0', above: 'Risks', focused: true }, 'a new card opens after Notes and its children');
+    await p.send('Input.insertText', { text: 'Later' });
+    await p.key('Tab');
+    await writing(p, { words: 'Later', at: [5, 5], depth: '1', above: 'Risks', focused: true }, 'Tab puts the new card under Notes');
+    await p.key('Escape');
+    await saved(id, `${under}\n### Later\n`, 'the new card is made where Tab put it');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook while a card is written, ↑ at its very start and ↓ at its very end go on writing the card that shows beside it', async () => {
+    const id = 'notebook-cards-arrows', p = await cards(id, '## Plan\n\nShip it.\n\n### Steps\n\nOne, two.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n');
+    // Plan's child folded away with ←, Notes picked with ↓ (which passes over it) and opened with ⌘Return.
+    await p.key('ArrowLeft'); await p.key('ArrowDown'); await p.key('Enter', 4);
+    await writing(p, { words: 'Notes\nDan reviews.', at: [18, 18], depth: '0', above: 'Plan', focused: true }, 'Notes opens for writing');
+    await p.send('Input.insertText', { text: ' Warp signs off.' });
+    // ↑ short of the very start keeps writing Notes.
+    await cursor(p, 2); await p.key('ArrowUp');
+    assert.equal((await box(p))?.words, 'Notes\nDan reviews. Warp signs off.', '↑ inside the first line stays in the card');
+    // At the very start it finishes Notes, saved, and goes on writing Plan, the card that shows above, at its end.
+    await cursor(p, 0); await p.key('ArrowUp');
+    await writing(p, { words: 'Plan\nShip it.', at: [13, 13], depth: '0', above: null, focused: true }, '↑ goes on into Plan, at its end');
+    const notes = '## Plan\n\nShip it.\n\n### Steps\n\nOne, two.\n\n## Notes\n\nDan reviews. Warp signs off.\n\n## Risks\n\nNone yet.\n';
+    await saved(id, notes, 'Notes is saved as written');
+    // On the first card ↑ goes nowhere.
+    await cursor(p, 0); await p.key('ArrowUp');
+    assert.deepEqual(await box(p), { words: 'Plan\nShip it.', at: [0, 0], depth: '0', above: null, focused: true }, '↑ at the first card stays');
+    // ↓ at the very end goes on into Notes, past the folded Steps, at its start.
+    await cursor(p, 13); await p.key('ArrowDown');
+    await writing(p, { words: 'Notes\nDan reviews. Warp signs off.', at: [0, 0], depth: '0', above: 'Plan', focused: true }, '↓ goes on into Notes, at its start');
+    // ↓ short of the very end keeps writing Notes; at the very end it goes on into Risks.
+    await cursor(p, 5); await p.key('ArrowDown');
+    assert.equal((await box(p))?.words, 'Notes\nDan reviews. Warp signs off.', '↓ at the end of the first line stays in the card');
+    await cursor(p, 34); await p.key('ArrowDown');
+    await writing(p, { words: 'Risks\nNone yet.', at: [0, 0], depth: '0', above: 'Notes', focused: true }, '↓ goes on into Risks');
+    // On the last card ↓ goes nowhere.
+    await cursor(p, 15); await p.key('ArrowDown');
+    assert.deepEqual(await box(p), { words: 'Risks\nNone yet.', at: [15, 15], depth: '0', above: 'Notes', focused: true }, '↓ at the last card stays');
+    // A new card with nothing written is dropped on the way up; one with words is made first.
+    await p.key('Escape'); await p.key('Enter');
+    await writing(p, { words: '', at: [0, 0], depth: '0', above: 'Risks', focused: true }, 'a new card opens after Risks');
+    await p.key('ArrowUp');
+    await writing(p, { words: 'Risks\nNone yet.', at: [15, 15], depth: '0', above: 'Notes', focused: true }, 'the empty new card is dropped and Risks opens at its end');
+    await p.key('Escape'); await p.key('Enter');
+    await writing(p, { words: '', at: [0, 0], depth: '0', above: 'Risks', focused: true }, 'another new card opens');
+    await p.send('Input.insertText', { text: 'Later' });
+    await cursor(p, 0); await p.key('ArrowUp');
+    await writing(p, { words: 'Risks\nNone yet.', at: [15, 15], depth: '0', above: 'Notes', focused: true }, 'Risks opens at its end');
+    await saved(id, `${notes}\n## Later\n`, 'the new card is made as written');
+    await p.key('Escape');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

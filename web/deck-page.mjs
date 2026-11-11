@@ -1,4 +1,4 @@
-import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard, writtenAt } from './deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
@@ -7,6 +7,7 @@ import { timeNode } from './times.mjs';
 const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · ⌥→ its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
+const WRITING_KEYS = '⌘Return or Escape done · Tab under the card above, ⇧Tab out · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
@@ -307,8 +308,19 @@ export class DeckPage {
   key(event) {
     if (this.host.hidden || event.defaultPrevented || event.isComposing) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
+    // A card's box keeps every key but these: Escape and ⌘Return finish the card, Tab and ⇧Tab move it, and ↑ at
+    // the box's very start or ↓ at its very end goes on into the card beside. Tab stays the box's where there is
+    // nowhere to go, as in an outliner, and so does ⌥Tab, Safari's Tab for every item, so no Tab takes the focus
+    // out of a card half written.
     if (this.editing) {
-      if (event.target === this.editing.field && (event.key === 'Escape' || (event.key === 'Enter' && command))) { event.preventDefault(); this.finish(); }
+      const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
+      if (event.target !== field) return;
+      if (event.key === 'Escape' || (event.key === 'Enter' && command)) this.finish();
+      else if (event.key === 'Tab' && !command) this.nestWriting(event.shiftKey ? 'outdent' : 'indent');
+      else if (plain && up && field.selectionEnd === 0) { if (!this.writeBeside(-1)) return; }
+      else if (plain && down && field.selectionStart === field.value.length) { if (!this.writeBeside(1)) return; }
+      else return;
+      event.preventDefault();
       return;
     }
     // In the ask box, Escape goes back to the cards, and so does an arrow from a box with nothing written,
@@ -510,6 +522,28 @@ export class DeckPage {
     const at = Math.min(editing.at ?? field.value.length, field.value.length);
     field.setSelectionRange(at, at);
   }
+  // Tab or ⇧Tab while a card is written: the card goes under the card above or out of its parent by the rules of a
+  // picked card, and is saved there, while the writing and the cursor stay as they were; the writing is saved when
+  // the card is finished. A new card not yet made only changes where it will go.
+  nestWriting(kind) {
+    const editing = this.editing;
+    if (!editing.fresh) { this.act({ kind, text: editing.text, near: editing.near }); return; }
+    const placed = placeNew(this.deck, editing, kind);
+    if (placed) { Object.assign(editing, placed); this.paint(); }
+  }
+  // ↑ at the very start of the card being written, or ↓ at its very end: the card is finished, and the card that
+  // shows above or below it opens for writing, the cursor at that card's end or its start. False when none shows.
+  writeBeside(step) {
+    const editing = this.editing, { shown } = this.layout();
+    // A card being written stands in its card's place; a new one, between the card it follows and the next.
+    const at = editing.fresh ? (editing.after === null ? -1 : findCard(this.deck, editing.after, editing.near)) : findCard(this.deck, editing.text, editing.near);
+    if (at < 0 && !(editing.fresh && editing.after === null)) return false;
+    let to = step > 0 ? at + 1 : editing.fresh ? at : at - 1;
+    while (to >= 0 && to < shown.length && !shown[to]) to += step;
+    if (to < 0 || to >= shown.length) return false;
+    this.editAt(cardText(this.deck.cards[to]), to, step < 0 ? null : 0);
+    return true;
+  }
   // Escape, ⌘Return or Done: what was written becomes the card; a new card with nothing written is not made.
   finish() {
     const editing = this.editing;
@@ -689,9 +723,11 @@ export class DeckPage {
     });
     if (editing) {
       const holder = this.node('li', 'deck-card deck-writing');
+      const at = editing.fresh ? (editing.after === null ? 0 : findCard(this.deck, editing.after, editing.near) + 1) : findCard(this.deck, editing.text, editing.near);
+      // The box stands in its card's place at its card's depth, wherever an act or a read of the page has put it.
+      if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });
       holder.style.setProperty('--depth', String(editing.depth ?? 0));
       holder.append(editing.field);
-      const at = editing.fresh ? (editing.after === null ? 0 : findCard(this.deck, editing.after, editing.near) + 1) : findCard(this.deck, editing.text, editing.near);
       if (editing.fresh) rows.splice(at > 0 ? at : editing.after === null ? 0 : rows.length, 0, holder);
       else if (at >= 0) rows.splice(at, 1, holder);
       else rows.splice(Math.min(editing.near, rows.length), 0, holder);
@@ -705,7 +741,7 @@ export class DeckPage {
     const asked = asking && [asking.field.selectionStart, asking.field.selectionEnd];
     this.list.replaceChildren(...rows);
     this.list.classList.toggle('deck-editing', Boolean(editing || asking));
-    this.keys.textContent = asking ? ASKING_KEYS : KEYS;
+    this.keys.textContent = asking ? ASKING_KEYS : editing ? WRITING_KEYS : KEYS;
     this.editButton.textContent = editing ? 'Done' : 'Edit';
     this.mark();
     if (editing) {

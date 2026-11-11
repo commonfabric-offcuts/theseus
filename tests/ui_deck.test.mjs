@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, stackLine, textCard, writtenAt } from '../web/deck.mjs';
+import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from '../web/deck.mjs';
 
 const PAGE = '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n## Gamma\n';
 const titles = deck => deck.cards.map(card => card.title).join(',');
@@ -122,6 +122,23 @@ test('Tab puts a card under the one above it and shift-Tab takes it out after it
   // A card's own words, and its children's, stay exactly as they were; a heading goes no deeper than six #s.
   assert.equal(after('## A\n  odd  spacing\n## B\n### B1\nkept\n', { kind: 'indent', text: 'B', near: 1 }), '## A\n  odd  spacing\n### B\n#### B1\nkept\n');
   assert.equal(after('## A\n## B\n###### B1\n', { kind: 'indent', text: 'B', near: 1 }), null);
+});
+
+test('Tab and shift-Tab take a new card not yet made where they would take a made card standing there, and nowhere else', () => {
+  const deck = parseDeck(GROUPS);
+  // After Q, at its depth: Tab puts it under Q, and shift-Tab has nowhere to go.
+  assert.deepEqual(placeNew(deck, { after: Q, near: 3, depth: 0 }, 'indent'), { after: Q, near: 3, depth: 1 });
+  assert.equal(placeNew(deck, { after: Q, near: 3, depth: 0 }, 'outdent'), null);
+  // Among P's children, after P1: Tab puts it under P1, and shift-Tab takes it out after P's children, never over P2.
+  assert.deepEqual(placeNew(deck, { after: P1, near: 1, depth: 1 }, 'indent'), { after: P1, near: 1, depth: 2 });
+  const out = placeNew(deck, { after: P1, near: 1, depth: 1 }, 'outdent');
+  assert.deepEqual(out, { after: P2, near: 2, depth: 0 });
+  assert.equal(after(GROUPS, { kind: 'add', text: 'N', ...out }), '## P\n\np words\n\n### P1\n\none\n\n### P2\n\ntwo\n\n## N\n\n## Q\n\nq words\n');
+  // First, in an empty deck, past six #s, or after a card that is gone: nowhere to go.
+  assert.equal(placeNew(deck, { after: null, near: -1, depth: 0 }, 'indent'), null);
+  assert.equal(placeNew(parseDeck(''), { after: null, near: -1, depth: 0 }, 'indent'), null);
+  assert.equal(placeNew(parseDeck('## A\n### B\n#### C\n##### D\n###### E\n'), { after: 'E', near: 4, depth: 4 }, 'indent'), null);
+  assert.equal(placeNew(deck, { after: 'gone', near: 1, depth: 0 }, 'indent'), null);
 });
 
 test('a merge takes the lower card\'s children, a removed card takes its own, and each undo gives them back', () => {

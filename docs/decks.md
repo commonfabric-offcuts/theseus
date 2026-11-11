@@ -44,6 +44,8 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
 | finish editing | Escape or ⌘Return | Done |
+| while editing, put the card under the one above it, or take it out of its parent | Tab, ⇧Tab | |
+| while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
 | a new card right above this one | ⌥Return | |
 | remove the card and its children | ⌘⌫ | |
@@ -59,7 +61,22 @@ makes the card the last child of the card above it with the same parent, and
 ⇧Tab puts it after its parent's children, beside its parent; with nowhere to
 go, Tab and ⇧Tab move the focus as they do elsewhere. A new card goes beside
 the picked one, after its children, or with ⌥Return right above it, at its
-depth. Clearing all of a card's text removes the
+depth.
+
+While a card is being written, Tab and ⇧Tab move it by the same rules, and
+the move is saved at once; what is written, and the cursor, stay where they
+were, and the writing is saved when the card is finished. A new card not yet
+made only changes where it will go, by the same rules, and nothing is saved
+until it is finished. The box keeps Tab and ⇧Tab even with nowhere to go, as
+an outliner does, so a Tab never takes the focus out of a card half written;
+Escape or ⌘Return leaves it. ↑ at the very start of what is written finishes
+the card and opens the card that shows above it for writing, the cursor at
+its end; ↓ at the very end does the same with the card below, the cursor at
+its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at
+the first or last card they do nothing more. A new card with nothing written
+is dropped on the way, as Escape drops it.
+
+Clearing all of a card's text removes the
 card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the
 person's own acts on this page, newest first, each as a new revision; it
 never reverts someone else's change.
