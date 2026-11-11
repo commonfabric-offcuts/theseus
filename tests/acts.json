@@ -2497,17 +2497,17 @@
   },
   {
    "item": 103,
-   "act": "A stack's header chevron expands and collapses its replies in place",
+   "act": "A stack's header chevron cycles through exactly three states",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  p.toggle.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };",
+     "  p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };",
      "  p.toggle.onclick = () => {};"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "replies gather into a stack"
+    "case": "exactly three states"
    }
   },
   {
@@ -2516,7 +2516,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return item.seq === newestReply(stack) || kept(item);",
+     "  return kept(item) || item.seq === newestReply(stack);",
      "  return item.seq === newestReply(stack);"
     ]
    ],
@@ -2552,7 +2552,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks read as a chat"
+    "case": "exactly three states"
    }
   },
   {
@@ -2567,37 +2567,37 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks read as a chat"
+    "case": "exactly three states"
    }
   },
   {
    "item": 283,
-   "act": "A press on the head's row shows the whole message under it",
+   "act": "A press on the head's row opens the original and all replies together",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (!open) { state.headOpen.add(stack.id); state.again(); return true; }",
+     "  if (!open) { setLevel(state, stack, 'open'); state.again(); return true; }",
      "  if (!open) return true;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "stacks read as a chat"
+    "case": "exactly three states"
    }
   },
   {
    "item": 283,
-   "act": "⌘→ on a head shows its whole message first, then opens its replies a step at a time",
+   "act": "Keyboard opening steps through the same three stack states",
    "break": [
     [
      "web/stack-order.mjs",
-     "    if (onHead && !headOpen) return { level, headOpen: true };",
-     ""
+     "  const next = at + (way === 'open' ? 1 : -1);",
+     "  const next = -1;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "stacks read as a chat"
+    "case": "exactly three states"
    }
   },
   {
@@ -2612,7 +2612,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks read as a chat"
+    "case": "exactly three states"
    }
   },
   {
@@ -2692,17 +2692,17 @@
   },
   {
    "item": 283,
-   "act": "A starred reply never folds away",
+   "act": "Closed and partial stacks do not force older read stars into view",
    "break": [
     [
      "web/stack-order.mjs",
-     "  if (actsOf(item).starred || stack.joins.has(item.id)) return true;",
-     "  if (stack.joins.has(item.id)) return true;"
+     "  if (level === 'open') return true;",
+     "  if (actsOf(item).starred || level === 'open') return true;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⋯ Star is the reader's own"
+    "case": "exactly three states"
    }
   },
   {
@@ -3003,7 +3003,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks read as a chat"
+    "case": "exactly three states"
    }
   },
   {
@@ -3157,17 +3157,17 @@
   },
   {
    "item": 283,
-   "act": "A reply arriving shows under the newest reply of a folded stack, which stays in view until the person comes back",
+   "act": "The partial state shows the current latest reply without retaining older read latest replies",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "if (level === 'folded' && newest && !state.handFolded.has(newest.id)) state.kept.add(newest.id);",
-     "if (false) state.kept.add(newest.id);"
+     "    if (!unread(item)) return false;",
+     "    if (false) return false;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a reply arriving shows under the newest"
+    "case": "reading stacks a reply arriving replaces the read latest"
    }
   },
   {

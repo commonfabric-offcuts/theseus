@@ -254,10 +254,12 @@ try {
           const h=e.classList.contains('stack-head-card')?e:e.querySelector(':scope > .stack-head-card');
           if(h&&s.dataset.headOpen==='false'){h.scrollIntoView({block:'center'});return 'head'}return null})()`);
       if (way === 'fold') {
-        await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-toggle`);
+        for (let step = 0; step < 2 && !await evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`); step++) {
+          await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-toggle`);
+        }
         await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
       } else if (way === 'head') {
-        await point(`${selector} .stack-head`);
+        await point(`${selector} .stack-head .stack-who`);
         await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).closest('.reply-stack').dataset.headOpen === 'true'`), `${selector} shows its full message`);
       }
     };

@@ -75,71 +75,71 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, `.message-menu-list button:nth-of-type(${at + 1})`);
   };
 
-  await check('reading stacks read as a chat with one header chevron, no repeated fold bars, and the reply count in the header', async () => {
+  await check('reading stacks use exactly three states: header, latest plus unread, and all messages', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-chat-' + device;
       const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Can we lock the cabin for July 12?\nThe owner wants an answer by Friday.' }],
-        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one.' }],
-        ['two', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'Reply two, starred.' }],
-        ['three', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply three.' }],
-        ['four', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply four.', read: true }],
-        ['five', { sender: other, reply_to: 'two', addressees: [facts.actor], body: 'Reply five, to reply two, unread.' }],
-        ['six', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply six, the newest, unread.' }]]);
+        ['one', { sender: other, reply_to: 'root', body: 'Older read reply.', read: true }],
+        ['two', { sender: 'aim-ux', join: true, reply_to: 'root', body: 'Older read starred reply.', read: true }],
+        ['three', { sender: other, reply_to: 'root', body: 'Another read reply.', read: true }],
+        ['four', { sender: other, reply_to: 'root', body: 'Read reply four.', read: true }],
+        ['five', { sender: other, reply_to: 'two', addressees: [facts.actor], body: 'Unread reply five.' }],
+        ['six', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Latest reply, also unread.' }]]);
       await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.two, operation_id: topic + '-star', args: { starred: true } });
-      const p = await open('stack-chat-' + device, device, topic, ids.root);
-      // Read through four; five and six are unread and in view. Two, starred, stays in view in its place in time; each run either side folds behind a line of its own.
-      await becomes(() => look(p, ids, 'root'), { fold: 'folded', headOpen: 'false', placed: 'false', head: 'root', name: 'Can we lock the cabin for July 12?',
-        meta: `6 replies · ${other}, aim-ux · 2 new`, isNew: false, full: false, rows: ['two', 'five', 'six'] },
-        device + ': the head is one row; the replies oldest first, the starred one and the unread ones in view where they sit, a line for each folded run');
-      await shot(p, 'stack-chat-' + device);
-      // ⌘← (on a laptop) folds to the head alone: the line then counts the unread in red.
-      if (device === 'laptop') {
-        await keyTo(p, ids.root);
-        await p.key('ArrowLeft', 4);
-        await becomes(async () => (await look(p, ids, 'root')).rows, ['two'], 'laptop: ⌘← on the head folds to the head and the starred reply; the line counts 2 new');
-        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#messages .stack-fresh')).color`), await alertColour(p), 'laptop: the count is in the alert red');
-        await p.key('ArrowRight', 4);
-        await until(async () => (await look(p, ids, 'root')).full, 'laptop: ⌘→ on the head first shows its full message');
-        await p.key('ArrowRight', 4);
-        await becomes(async () => (await look(p, ids, 'root')).rows, ['two', 'five', 'six'], 'laptop: ⌘→ again opens the replies a step');
-        await p.key('ArrowLeft', 4); await p.key('ArrowLeft', 4);
-        await until(async () => !(await look(p, ids, 'root')).full && (await look(p, ids, 'root')).fold === 'head', 'laptop: ⌘← ⌘← fold it back to the head and hide its full message');
-        await p.key('z', 4);
-        await until(async () => (await look(p, ids, 'root')).fold === 'folded', 'laptop: ⌘Z undoes the last fold');
-      }
-      // A press on the head's row shows the full message under it, and Hide the full message hides it; nothing opens.
-      // On a phone a first tap lights the head, as on any card, and the second is the press.
-      await centre(p, card(ids.root));
-      if (device === 'phone') {
-        await tap(p, `${card(ids.root)} .stack-who`);
-        await until(async () => (await lit(p)).includes(ids.root), 'phone: a first tap lights the head');
-        assert.equal((await look(p, ids, 'root')).full, false, 'phone: and shows nothing more');
-      }
-      await press(p, device, `${card(ids.root)} .stack-who`);
-      await until(async () => (await look(p, ids, 'root')).full, device + ': a press on the head shows the full message');
-      assert.equal(await readerOn(p), null, device + ': and opens no Reader');
-      // Another press on the tab hides it again; "Hide the full message" is its words for a screen reader.
-      await press(p, device, `${card(ids.root)} .stack-who`);
-      await until(async () => !(await look(p, ids, 'root')).full, device + ': another press on the head row hides it');
-      // A press on a fold line opens every reply; again folds them.
-      const line = `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`;
-      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(line)}).getAttribute('aria-expanded')`), 'false', device + ': the chevron starts collapsed');
-      assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-fold-line').length`), 0, device + ': no repeated fold bars');
-      assert.equal(await p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(line)}).getBoundingClientRect(),n=document.querySelector(${JSON.stringify(card(ids.root) + ' .stack-name')}).getBoundingClientRect();return t.right<=n.left+1&&t.top<n.bottom&&t.bottom>n.top})()`), true, device + ': the chevron sits beside the title');
-      await centre(p, line);
-      await press(p, device, line);
-      await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'two', 'three', 'four', 'five', 'six'], device + ': a fold line opens every reply, oldest first');
-      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(line)}).getAttribute('aria-expanded')`), 'true', device + ': the chevron now says expanded');
-      if (device === 'laptop') {
+      const p = await open(topic, device, topic, ids.root);
+      const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+      const assertState = async (level, rows, full) => {
+        await becomes(async () => { const v=await look(p,ids,'root');return {level:v.fold,rows:v.rows,full:v.full}; }, {level,rows,full}, device + ': ' + level);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`),level);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded')`),String(level!=='head'));
+      };
+      await assertState('folded', ['five','six'], false);
+      assert.match((await look(p,ids,'root')).meta,/^6 replies .*2 new$/,'counts remain in the header');
+      assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#messages .stack-fresh')).color`),await alertColour(p),'new count remains red');
+      assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-fold-line').length`),0,'no repeated fold bars');
+      assert.equal(await p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(toggle)}).getBoundingClientRect(),n=document.querySelector(${JSON.stringify(card(ids.root)+' .stack-name')}).getBoundingClientRect();return t.right<=n.left+1&&t.top<n.bottom&&t.bottom>n.top})()`),true,'chevron beside the title');
+      await shot(p,'stack-chat-'+device);
+      await centre(p,toggle); await press(p,device,toggle);
+      await assertState('open',['one','two','three','four','five','six'],true);
+      await shot(p,'stack-open-'+device);
+      // The same native button closes, then opens only latest plus unread.
+      if(device==='laptop') {
         await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).focus({preventScroll:true})`);
-        await p.key('Tab');
-        assert.equal(await p.evaluate(`document.activeElement.matches('.stack-toggle')`), true, 'Tab reaches the chevron');
+        // The original's links and reactions can precede the sibling button.
+        for(let step=0;step<12&&!await p.evaluate(`document.activeElement.matches('.stack-toggle')`);step++) await p.key('Tab');
+        assert.equal(await p.evaluate(`document.activeElement.matches('.stack-toggle')`),true,'Tab reaches chevron');
         await p.key('Enter');
-      } else await press(p, device, line);
-      await until(async () => (await look(p, ids, 'root')).fold === 'folded', device + ': the same control collapses again, with the keyboard or a tap');
-      assert.equal(await readerOn(p), null, device + ': the line opens no message');
-      assert.deepEqual(p.errors, []);
-      await p.close();
+      } else await press(p,device,toggle);
+      await assertState('head',[],false);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify('#messages .reply-stack[data-stack="'+ids.root+'"] .stack-foot')}).getClientRects().length`),0,'closed has no reply strip');
+      await shot(p,'stack-closed-'+device);
+      await press(p,device,toggle);
+      await until(async()=> (await look(p,ids,'root')).fold==='folded',device+': third state cycles back to partial');
+      const partial=await look(p,ids,'root');
+      assert.equal(partial.full,false,'partial never shows original');
+      assert.ok(partial.rows.includes('six'),'latest remains, even after it is read');
+      assert.equal(partial.rows.filter(x=>x==='six').length,1,'latest unread is never duplicated');
+      assert.ok(!partial.rows.includes('two'),'a read star does not add a fourth kind of partial content');
+      await light(p,device,ids.root);
+      await press(p,device,`${card(ids.root)} .stack-who`);
+      await assertState('open',['one','two','three','four','five','six'],true);
+      await press(p,device,`${card(ids.root)} .stack-who`);
+      await until(async()=> (await look(p,ids,'root')).fold==='folded','header returns to partial');
+      assert.equal((await look(p,ids,'root')).full,false,'header never leaves an original-only state');
+      if(device==='laptop') {
+        await keyTo(p,ids.root); await p.key('ArrowLeft',4);
+        await assertState('head',[],false);
+        await p.key('ArrowRight',4);
+        await until(async()=> (await look(p,ids,'root')).fold==='folded','first keyboard step is partial');
+        assert.equal((await look(p,ids,'root')).full,false);
+        await p.key('ArrowRight',4);
+        await assertState('open',['one','two','three','four','five','six'],true);
+        await p.key('ArrowLeft',4);
+        await until(async()=> (await look(p,ids,'root')).fold==='folded','one step back hides original and older read replies together');
+        assert.equal((await look(p,ids,'root')).full,false);
+      }
+      assert.equal(await readerOn(p),null,'stack controls do not open a modal');
+      assert.deepEqual(p.errors,[]); await p.close();
     }
   });
 
@@ -211,10 +211,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal((await actsOf(topic, ids.one, other))?.starred ?? false, false, 'another reader sees no star');
     assert.deepEqual(await starsOf(other), [], 'and lists none');
     assert.ok((await starsOf(facts.actor)).includes(ids.one), 'the reader\'s stars list it');
-    // Folded to its head (⌘←, ⌘←), the starred reply still shows.
+    // An explicit closed state hides messages, including stars.
     await keyTo(p, ids.root);
     await p.key('ArrowLeft', 4); await p.key('ArrowLeft', 4);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['one'], 'folded to the head, the starred reply stays in view in its place');
+    await becomes(async () => (await look(p, ids, 'root')).rows, [], 'closed hides the starred reply too');
     assert.match(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(card(ids.one) + ' > .message-author')}),'::after').content`), /★/, 'the starred reply shows its star after its author');
     // The rail's Starred: this topic's star, and a press lands on it.
     // Stars elsewhere (another check's) sit under Elsewhere, after this topic's.
@@ -231,8 +231,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await choose(p, 'laptop', 'Unstar');
     await until(async () => (await actsOf(topic, ids.one))?.starred === false, 'Unstar takes it back, in Core');
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(row)})`), 'and the rail lists it no more');
-    // Unstarred, it folds with the stack's head again; opened, starred again, the rail's own Unstar takes it off too.
-    await press(p, 'laptop', `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`);
+    // Landing on a hidden star opens the stack; it remains open for Unstar.
     await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the stack opened again');
     await menuOf(p, 'laptop', ids.one);
     await choose(p, 'laptop', 'Star for me');
@@ -392,13 +391,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(p, ids.old);
     await p.key('ArrowUp', 12);
     await becomes(() => stacks(p, ids), ['top'], '⇧⌘↑ joins the older stack into the one above');
+    assert.match(await said(p), /Joined to the stack above/, 'a screen reader hears the join');
+    await keyTo(p,ids.top); await p.key('ArrowRight',4);
     await becomes(async () => (await look(p, ids, 'top')).rows, ['topReply', 'join: Joined from its own stack by You', 'old', 'oldReply'],
       'its messages come after the replies, its first message in view with a join line, and its reply, in view before, still in view');
     // The joined stack's first message heads nothing now: its head row goes, and it reads as a card.
     const headed = id => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return {row:Boolean(c.querySelector(':scope > .stack-head')),head:c.classList.contains('stack-head-card')}})()`);
     assert.deepEqual(await headed(ids.old), { row: false, head: false }, 'the joined stack\'s first message keeps no head row');
     assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-replies .stack-head').length`), 0, 'no head row inside a stack\'s replies');
-    assert.match(await said(p), /Joined to the stack above/, 'a screen reader hears the join');
     await until(async () => (await actsOf(topic, ids.old, other))?.joined?.into === ids.top, 'Core holds the join for everyone');
     assert.equal((await actsOf(topic, ids.old, other)).joined.by, facts.actor, 'with who joined it');
     await p.point(`#messages .stack-join-line .stack-split`);
@@ -679,7 +679,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => !await shows(), 'laptop: the fold line folds the lit reply away');
     await twoFrames(p);
     assert.deepEqual({ lit: await lit(p), bar: await bar(p) }, { lit: [], bar: null }, 'laptop: the folded reply keeps no light, and no bar is left on the page');
-    // Pressed again where it is, nothing covers the line, and it opens.
+    // The next press shows latest plus unread; the following opens all.
+    await press(p, 'laptop', line);
+    await until(async () => (await look(p,ids,'root')).fold==='folded','chevron reaches partial');
     await press(p, 'laptop', line);
     await until(shows, 'laptop: the fold line, pressed again, opens the earlier replies');
     assert.deepEqual(p.errors, []);
@@ -964,7 +966,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
-  await check('reading stacks a reply arriving shows under the newest, which stays in view until coming back', async () => {
+  await check('reading stacks a reply arriving replaces the read latest in the partial view', async () => {
     const topic = 'stack-arrive';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],
       ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, read.', read: true }],
@@ -973,7 +975,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(async () => (await look(p, ids, 'root')).rows, ['two'], 'the newest reply shows, the earlier one folded');
     ids.three = (await control({ method: 'agent_message', operation_id: 'stack-arrive-three', topic_id: topic, source: 'topic', sender: other,
       reply_to: ids.root, addressees: [facts.actor], body: 'Reply three, read.', read: true })).result.message_id;
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['two', 'three'], 'the new reply shows under two, which does not fold under the person\'s eyes');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['three'], 'the new latest replaces the older read latest');
     await p.close();
     p = await open('stack-arrive-back', 'laptop', topic, ids.root);
     await becomes(async () => (await look(p, ids, 'root')).rows, ['three'], 'coming back, two folds with the earlier reply');

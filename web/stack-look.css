@@ -132,7 +132,8 @@
   display:grid;place-items:center;width:var(--stack-toggle-size);height:var(--stack-toggle-size);min-height:0;padding:0;
   border:0;border-radius:.35rem;background:transparent;color:var(--stack-folder-ink)}
 .stack-toggle::before{content:"";width:.45rem;height:.45rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg)}
-.stack-toggle[aria-expanded=true]::before{transform:rotate(45deg)}
+.stack-toggle[data-state=head]::before{transform:rotate(-135deg)}
+.stack-toggle[data-state=open]::before{transform:rotate(45deg)}
 .reply-stack:not(.only-new *)>.stack-toggle:hover{background:var(--stack-folder-deep)}
 .stack-toggle:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}
 /* Where the tab meets the body, a concave fillet: tab and body are one cut. The ring follows it. The focus ring's tab
@@ -199,7 +200,8 @@
 .stack-foot{position:relative;margin-top:var(--stack-pad);padding-top:calc(var(--stack-pad) + 2px)}
 .stack-foot::before{content:"";position:absolute;top:0;left:.25rem;right:.25rem;height:1px;background:var(--stack-crease);box-shadow:0 1px 0 var(--stack-crease-light)}
 .reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:none}
-@media(hover:hover){.reply-stack:not([data-fold=open]):not(.only-new *):hover>.stack-foot{display:block}}
+@media(hover:hover){.reply-stack[data-fold=folded]:not(.only-new *):hover>.stack-foot{display:block}}
+.reply-stack[data-fold=head]>.stack-foot{display:none}
 .only-new .stack-foot{display:none}
 .stack-reply{display:flex;align-items:center;gap:.5rem;width:100%;min-height:var(--stack-reply-h);margin:0;padding:0 .45rem 0 1rem;
   border:1px solid var(--stack-reply-edge);border-radius:var(--stack-r-reply);background:var(--stack-reply-bg);color:var(--stack-meta-ink);

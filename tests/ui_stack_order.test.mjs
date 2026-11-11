@@ -73,8 +73,8 @@ test('a join appends the joined stack after the replies, in the order joined, wi
   assert.equal(stacksOf(items).length, 1, 'one stack');
   assert.deepEqual(ids(stack.replies), ['m2', 'm7', 'm3', 'm4', 'm5', 'm6'], 'own replies, then m3 (joined first), then m5');
   assert.deepEqual([...stack.joins.keys()], ['m3', 'm5']);
-  assert.deepEqual(words(rowsOf(stack, { level: 'head' })), ['2 earlier replies', 'join m3', 'm3', '1 more reply', 'join m5', 'm5', '1 more reply'],
-    'folded to its head, a joined stack\'s first message still shows with its join line');
+  assert.deepEqual(words(rowsOf(stack, { level: 'head' })), ['6 replies'], 'closed hides joined messages too');
+  assert.ok(words(rowsOf(stack, { level: 'open' })).includes('join m3'), 'open still shows join context');
   // A join into a joined stack follows that stack.
   const nested = stacksOf([message(1), message(2, { acts: { joined: { into: 'm1', at_ms: 30 } } }),
     message(3, { acts: { joined: { into: 'm2', at_ms: 10 } } }), message(4, { acts: { joined: { into: 'm1', at_ms: 20 } } })]);
@@ -101,9 +101,9 @@ test('a fold shows the newest reply and every kept one in its place, with a line
   assert.deepEqual(words(rowsOf(stack, { kept })), ['3 earlier replies', 'm5', '2 more replies', 'm8']);
   assert.deepEqual(words(rowsOf(stack, { level: 'open', kept })), ['Fold 5 earlier replies', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
   assert.deepEqual(words(rowsOf(stack, { level: 'head', kept })), ['7 replies'], 'every reply folded: one line counts them all');
-  // A starred reply never folds; a reply folded by hand does even when kept.
+  // Stars do not override an explicit closed state. Manual reply folds remain local.
   const starred = stacksOf(items.map(item => item.seq === 3 ? { ...item, acts: { starred: true } } : item))[0];
-  assert.deepEqual(words(rowsOf(starred, { level: 'head' })), ['1 earlier reply', 'm3', '5 more replies']);
+  assert.deepEqual(words(rowsOf(starred, { level: 'head' })), ['7 replies']);
   assert.deepEqual(words(rowsOf(stack, { kept, handFolded: new Set(['m5']) })), ['6 earlier replies', 'm8']);
   assert.deepEqual([5, 6, 8].map(seq => shown(stack, items[seq - 1], { kept })), [true, false, true], 'kept, folded, the newest');
   // Open with nothing the fold would take: no Fold line.
@@ -145,15 +145,15 @@ test('the Reader steps down the page as shown: down a stack to newer replies, th
   assert.deepEqual(ids(readingOrder(stacksOf(items))), ['m1', 'm3', 'm4', 'm2']);
 });
 
-test('⌘→ shows the full first message, then opens the replies a step at a time; ⌘← hides it, then folds to the usual fold, then the head alone', () => {
-  let state = { level: 'folded', headOpen: false };
+test('keyboard folding has exactly three states, with no separate original-message state', () => {
+  let state = { level: 'head' };
   const steps = [];
   for (let next = foldStep(state, 'open', { onHead: true }); next; next = foldStep(state, 'open', { onHead: true })) { state = next; steps.push({ ...state }); }
-  assert.deepEqual(steps, [{ level: 'folded', headOpen: true }, { level: 'open', headOpen: true }]);
+  assert.deepEqual(steps, [{ level: 'folded' }, { level: 'open' }]);
   const back = [];
   for (let next = foldStep(state, 'fold', { onHead: true }); next; next = foldStep(state, 'fold', { onHead: true })) { state = next; back.push({ ...state }); }
-  assert.deepEqual(back, [{ level: 'open', headOpen: false }, { level: 'folded', headOpen: false }, { level: 'head', headOpen: false }]);
-  assert.deepEqual(foldStep({ level: 'head', headOpen: false }, 'open'), { level: 'folded', headOpen: false }, 'on a reply: the replies only');
+  assert.deepEqual(back, [{ level: 'folded' }, { level: 'head' }]);
+  assert.deepEqual(foldStep({ level: 'head' }, 'open'), { level: 'folded' }, 'on a reply: the same states');
   assert.equal(foldStep({ level: 'folded', headOpen: false }, 'open', { replies: false }), null, 'a message with no replies has nothing to open');
 });
 

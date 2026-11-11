@@ -680,7 +680,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
             expanded:t?.getAttribute('aria-expanded')??null,fold:s.dataset.fold,aboveOther:Boolean(s.compareDocumentPosition(own)&Node.DOCUMENT_POSITION_FOLLOWING),otherAlone:own.parentElement===list}})()`);
         return seen && { ...seen, head: name[seen.head], replies: seen.replies.map(([id, shown]) => [name[id], shown]) };
       };
-      await becomes(stack, { top: true, head: 'root', replies: [['one', false], ['two', false], ['three', true], ['four', true]], expanded: 'false', fold: 'folded',
+      await becomes(stack, { top: true, head: 'root', replies: [['one', false], ['two', false], ['three', true], ['four', true]], expanded: 'true', fold: 'folded',
         aboveOther: true, otherAlone: true }, device + ': the replies under the message, oldest first as a chat reads; the unread ones and the newest in view, the rest folded behind one line; the stack above the message on its own, as its newest reply is newer');
       await shot(p, 'reading-stack-' + device);
       const line = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
@@ -690,8 +690,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [true, true, true, true], device + ': every reply shows');
       assert.equal((await stack()).expanded, 'true', device + ': and the line folds them again');
       await press(p, device, line);
-      await until(async () => (await stack())?.fold === 'folded', device + ': a second press folds them');
-      assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [false, false, true, true], device + ': as they were');
+      await until(async () => (await stack())?.fold === 'head', device + ': a second press closes the stack');
+      assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [false, false, false, false], device + ': closed shows no replies');
       assert.equal(await readerOn(p), null, device + ': the line opens no message');
       assert.deepEqual(p.errors, []);
       await p.close();

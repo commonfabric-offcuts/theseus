@@ -96,34 +96,32 @@ their acts.
   When no number fits between two places, the two stacks trade keys. A
   placed stack says "Placed here by you", and "Let new replies move it"
   takes the place away.
-- **Folding.** A stack is at one of three levels: head, folded or open.
-  - Folded, it shows its newest reply and the replies kept in view.
-  - At head, it shows only the replies kept by a star.
-  - Open, it shows every reply.
+- **Folding.** A stack has exactly three states, shared by its chevron,
+  keyboard commands, header and menu:
+  - Head (↑): the header only, with no message body or reply line.
+  - Folded (→): the latest reply plus unread replies, each shown once.
+    The original message is not shown here. Stars and joins do not force
+    additional read messages into this view.
+  - Open (↓): the original message and every reply.
 
-  A starred message and a joined stack's first message always show. Kept in
-  view means unread when the page drew it (or, on a Conversation, still owed
-  to the reader), and the newest reply a folded stack showed: a newer reply
-  arriving shows under it rather than folding it away. What is kept stays
-  in view while the person is in front of it, so nothing moves under their
-  eyes; coming back to the page lets go of what is off screen. A reply is
-  dealt with when the reader has replied in its stack, or thumbed up a
-  reply, at or after it. Such a reply is not newly kept, so coming back to
-  the page folds it. Coming back also hides a full message a head was
-  showing, where it is off screen.
-- **Expand and collapse.** One chevron beside the stack's title opens all
-  its replies or folds them again. It points right when collapsed and down
-  when expanded. It is a button reachable by Tab and operable by Return or
+  Replies that were unread when drawn stay in view while being read, so
+  reading them does not make them vanish. Explicitly changing state, or
+  coming back to the page with a stack off screen, lets go of that snapshot.
+  Coming back also returns off-screen fully open stacks to the partial view.
+- **Expand and collapse.** One chevron beside the title cycles ↑ → ↓ → ↑.
+  It is a button reachable by Tab and operable by Return or
   Space, with `aria-expanded` and a label naming the stack. The header already
   gives the reply and new counts; no repeated count or fold bar sits between
-  the messages. Starred and otherwise kept replies still remain visible.
+  the messages. Its accessible label describes the current state and next
+  action; `aria-expanded` is false only in the header-only state.
 - **The head.** The first message is one compact row: its short name, ✎,
   who began the stack, "New" when the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. On a phone the
   count, who replied and what is new sit on a second short line. The short name is the
   one someone typed, or else the first line of the first message. Pressing
-  the row shows the whole message under it, and "Hide the full message"
-  hides it again. A starred head always shows whole. A message that stops
+  the row opens the entire stack; pressing it again returns to latest plus
+  unread. The original message has no independent open/closed state.
+  A message that stops
   heading a stack, joined into another or left with no replies, loses the
   row at once and reads as a card.
 - **The reply line.** A stack with replies ends in a reply line, "Reply in
@@ -157,8 +155,9 @@ their acts.
 - **Reading order.** The Reader's ↑ and ↓ follow the page from top to
   bottom (`readingOrder`). They go down a stack through its replies to its
   newest, then on to the stack below.
-- **Fold steps.** ⌘→ on a head first shows its whole message, then opens the
-  replies a step at a time. ⌘← goes back the same way. Each step can be
+- **Fold steps.** ⌘→ steps from header only to latest plus unread to all
+  messages. ⌘← goes back the same way, whether the keys are on the header
+  or a reply. Each step can be
   undone with ⌘Z.
 
 Each viewer has their own order and folds, because they come from that

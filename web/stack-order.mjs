@@ -109,19 +109,17 @@ export function ordered(stacks) {
   return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || b.newest - a.newest);
 }
 
-// The levels a stack folds to, least shown first: its head alone (with what
-// always stays), the usual fold, every reply.
+// The only three stack states: header alone, latest plus unread replies,
+// original message plus every reply. The original has no independent state.
 export const LEVELS = ['head', 'folded', 'open'];
 
-// Whether a reply shows, at the stack's level. stays: what always shows (a
-// starred message, a joined stack's first message, which carries its join).
-// kept(item): a reply the usual fold keeps in view (unread, or asking
-// something of the reader); handFolded: replies the reader folded one by one.
+// Whether a reply shows at the stack's level. kept(item) holds replies that
+// were unread when this partial view drew them; handFolded holds replies the
+// reader explicitly hid, until the next state choice.
 export function shown(stack, item, { level = 'folded', kept = () => false, handFolded = new Set() } = {}) {
-  if (actsOf(item).starred || stack.joins.has(item.id)) return true;
   if (level === 'open') return true;
   if (level === 'head' || handFolded.has(item.id)) return false;
-  return item.seq === newestReply(stack) || kept(item);
+  return kept(item) || item.seq === newestReply(stack);
 }
 const newestReply = stack => stack.replies.reduce((most, item) => Math.max(most, item.seq), 0);
 
@@ -209,16 +207,10 @@ export function readingOrder(stacks) {
   return stacks.flatMap(stack => [stack.head, ...stack.replies]);
 }
 
-// The next fold of a stack for ⌘→ (way 'open') or ⌘← ('fold'), from where it
-// stands ({ level, headOpen }); onHead: the keys are on its head, where ⌘→
-// shows the full message before opening the replies and ⌘← hides it before
-// folding them. Null when there is no further step that way.
-export function foldStep({ level, headOpen }, way, { onHead = false, replies: has = true } = {}) {
+// The next of the same three states for ⌘→ or ⌘←, independent of which
+// message has focus. Null when there is no further step that way.
+export function foldStep({ level }, way, { replies: has = true } = {}) {
   const at = LEVELS.indexOf(level);
-  if (way === 'open') {
-    if (onHead && !headOpen) return { level, headOpen: true };
-    return has && at < LEVELS.length - 1 ? { level: LEVELS[at + 1], headOpen } : null;
-  }
-  if (onHead && headOpen) return { level, headOpen: false };
-  return has && at > 0 ? { level: LEVELS[at - 1], headOpen } : null;
+  const next = at + (way === 'open' ? 1 : -1);
+  return has && at >= 0 && next >= 0 && next < LEVELS.length ? { level: LEVELS[next] } : null;
 }

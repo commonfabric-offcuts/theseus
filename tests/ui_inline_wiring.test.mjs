@@ -4131,9 +4131,9 @@ test('on the conversation page replies stack under the message they answer, as i
   assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
     'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');
   // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, false, false, true],
-    'the New item and the ask waiting on the reader stay in view; the plain answer folds');
-  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true],
+    'read asks and unsettled items do not override latest plus unread');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
   assert.equal(toggle.className, 'stack-toggle');
   // The conversation's marks are painted on every message entry, stacked or not, with its item.
   assert.deepEqual([...painted.tags.keys()].sort(), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 'each card gets its tags, stacked ones included');
@@ -4173,7 +4173,7 @@ test('on the conversation page More messages brings a stack\'s first message: th
   f.paintViews('messages'); await settle();
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'the older message heads the one stack');
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, false, false, true], 'the ask on the reader and the New item stay in view');
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true], 'read asks and New items do not add extra messages');
   assert.deepEqual([painted.tags.get('m1')?.item.item, entryIn(f, 'm1').dataset.item], [ANSWERED, 'settled'], 'the loaded message gets its tags from its item');
 });
 
@@ -4189,5 +4189,5 @@ test('on the conversation page a reply folded in its stack is never reported rea
   for (const handler of f.events.filter(e => e[0] === 'window-handler' && e[1] === 'focus')) handler[2]();
   await settle(); await settle();
   assert.equal(entryIn(f, 'm2').hidden, true, 'm2 is folded in its stack');
-  assert.deepEqual(ranges(), [[3, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
+  assert.deepEqual(ranges(), [[5, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
 });
