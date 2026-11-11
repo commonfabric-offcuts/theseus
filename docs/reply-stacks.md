@@ -208,9 +208,18 @@ the semantic colour tokens of `web/aim.css` and only the names that
 - `[data-starred=true]` on any card the reader starred.
 
 Another look replaces that one file. Nothing in the drawing code chooses a
-colour, a border or a spacing. The look now is the Frame: one hairline round
-the whole stack, the head set into its top edge, and the replies a little in.
-No coloured edge marks a stack, and under Only new the stacks draw nothing.
+colour, a border or a spacing. The look now is the Dossier: a stack is one
+folder pressed into the page. Its head row is the folder's tab, two lines high,
+with the short name on the first and who started it, how many replied, who
+and what is new on the second; the tab and the body are one cut, joined by a
+curved corner. The replies are the sheets inside, each card in its own colours,
+and a run folded away is the edge of the sheets filed under its line, one edge
+for one reply and two for more. Shown whole, the head's card is the first
+sheet; while the stack is renamed, the field takes the tab's place. The focused
+stack has the focus ring round the whole folder, tab and all, and the message
+the keys are on inside it has its own edge in the focus colour. A placed message
+on its own is a folder with no tab. No coloured edge marks a stack, and under
+Only new the stacks draw nothing.
 
 ## Checks
 
