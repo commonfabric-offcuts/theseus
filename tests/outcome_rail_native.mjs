@@ -1727,4 +1727,34 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(await railRings(c), [], 'and nothing in the rails wears a ring');
     assert.deepEqual(c.errors, []); await c.close();
   });
+
+  await check('rail a press on a row whose move the page refuses leaves no ring: the page says why it stayed, and the focus lands on its heading, so the next key rings nothing in the rails', async () => {
+    await control({ method: 'navigation_topics', topics: [{ id: 'rail-refused-a', title: 'Refusing topic A' }, { id: 'rail-refused-b', title: 'Refusing topic B' }] });
+    const asked = await control({ method: 'agent_message', operation_id: 'rail-refused-ask', topic_id: 'rail-refused-a', join: true, source: 'topic', addressees: [facts.actor], body: 'A question answered while the page is offline.' });
+    const words = `#messages .message-card[data-id="${asked.result.message_id}"] > .message-preview`, row = '#outline a[data-topic-id="rail-refused-b"]';
+    const p = await open('rail-refused', '/?topic=rail-refused-a');
+    await settled(p, 'the topic is up');
+    const start = await placeOf(p);
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.getClientRects().length>0`), 'the outline is ready');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words)})?.getClientRects().length>0`), 'its message is shown');
+    await press(p, words);
+    await until(() => readerOpen(p), 'the message opens in the Reader');
+    // Offline, the reply cannot be confirmed saved, so the page refuses to leave it.
+    const network = offline => p.send('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    await p.point('#writing-body');
+    await network(true);
+    await p.send('Input.insertText', { text: 'Written while the page refuses to move' });
+    await p.key('Escape');
+    await until(async () => !await readerOpen(p), 'Escape puts the Reader away, its writing kept');
+    await press(p, row);
+    await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('not confirmed saved')"), 'the page refuses the move and says why');
+    // The line is shown after the focus has landed, so the focus is read once.
+    assert.equal(await keyedAt(p), 'topic-title', 'the focus lands on the topic\'s heading, not the row pressed');
+    await p.key('Escape');
+    assert.deepEqual(await railRings(p), [], 'after a key, nothing in the rails wears a ring');
+    assert.equal(await keyedAt(p), 'topic-title');
+    assert.deepEqual([(await placeOf(p)).origin, (await placeOf(p)).search], [start.origin, '?topic=rail-refused-a'], 'the page stayed, in place, with no load');
+    await network(false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
 }

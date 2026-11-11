@@ -2144,6 +2144,21 @@
    }
   },
   {
+   "item": 288,
+   "act": "A press on a rail row whose move the page refuses lands the focus on the page's heading, so the next key rings nothing in the rails",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if(serial!==topicNavigation.serial)return;\n    shell.stayed();\n",
+     "    if(serial!==topicNavigation.serial)return;\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on a row whose move the page refuses leaves no ring"
+   }
+  },
+  {
    "item": 289,
    "act": "→ on an open outcome in the outline moves the keys into the messages; on a folded one it opens it",
    "break": [
