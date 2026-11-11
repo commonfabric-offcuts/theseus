@@ -16,7 +16,9 @@ import test_broker_routes as routes_setup
 INSTRUCTION = ('Read current durable work through the bound Theseus CLI profile. '
                'Use paged delivery reads; do not filter by this historical wake generation. '
                'Reply and acknowledge separately. Stop on a binding mismatch; never rebind.')
-VERSION = '0.163.0-alpha.10.2'
+VERSION = '0.167.0-alpha.3.2'
+# The version reviewed before this one (pipeline item 328): an app still on it is now refused by name.
+PREVIOUS = '0.163.0-alpha.10.2'
 CLIENT = 'theseus_wake_broker'
 
 # Executed only in isolated fixtures. It records requests actually received over
@@ -72,7 +74,7 @@ for line in sys.stdin:
                 record('exit',code=0,ppid=os.getppid())
                 sys.exit(0)
         result = dict(userAgent=SCENARIO.get('user_agent',
-            request['params']['clientInfo']['name']+'/'+SCENARIO.get('version','0.163.0-alpha.10.2')+' fixture'),
+            request['params']['clientInfo']['name']+'/'+SCENARIO.get('version',__VERSION__)+' fixture'),
             codexHome=SCENARIO.get('root',os.environ.get('CODEX_HOME')))
     elif method == 'thread/queue/list':
         if SCENARIO.get('partial'):
@@ -180,8 +182,11 @@ class CodexBrokerCase(unittest.TestCase):
         self.fixture_count = count
         trace = self.root / ('rpc-%s.jsonl' % count)
         executable = self.root / ('codex-fixture-%s' % count)
-        code = SERVER.replace('__SCENARIO__',repr(scenario or {})).replace('__TRACE__',repr(str(trace)))
-        executable.write_text('#!/usr/bin/python3\n'+code)
+        code = (SERVER.replace('__SCENARIO__',repr(scenario or {})).replace('__TRACE__',repr(str(trace)))
+                .replace('__VERSION__',repr(VERSION)))
+        # spawn_fails: an executable the trust policy accepts but the kernel cannot start.
+        interpreter = '/nonexistent/aim-next-fixture-python' if (scenario or {}).get('spawn_fails') else '/usr/bin/python3'
+        executable.write_text('#!'+interpreter+'\n'+code)
         executable.chmod(0o700)
         value=dict(self.config_value,codex_executable=str(executable))
         value.update(config_changes or {})
@@ -437,7 +442,7 @@ class CodexBrokerCase(unittest.TestCase):
                 try:
                     result,rows=self.dispatch()
                     self.assertEqual(result.outcome,'error')
-                    self.assertEqual(result.reason,'broker_exit')
+                    self.assertEqual(result.reason,'broker_config')
                     self.assertNotEqual(result.exit_code,0)
                     self.assertEqual(rows,[],'root refusal must precede any API spawn')
                 finally:
@@ -473,6 +478,39 @@ class CodexBrokerCase(unittest.TestCase):
                 result,rows=self.dispatch(scenario)
                 self.assertEqual(result.outcome,'error')
                 self.assertFalse([r for r in self.requests(rows) if r['method'].startswith('thread/')])
+
+    def test_the_reviewed_version_is_accepted_and_the_one_before_refused_by_name(self):
+        result,rows=self.dispatch()
+        self.assertAccepted(result,rows)
+        self.assertTrue(next(r for r in self.requests(rows) if r['method']=='initialize'))
+        result,rows=self.dispatch(dict(version=PREVIOUS))
+        self.assertEqual((result.outcome,result.exit_code,result.reason),
+                         ('error',1,'codex_version:%s:%s' % (PREVIOUS,VERSION)))
+        self.assertFalse([r for r in self.requests(rows) if r['method'].startswith('thread/')])
+
+    def test_each_refusal_names_its_reason_and_still_refuses(self):
+        # Found version first, the reviewed one second; malformed agents name no version.
+        cases=[(dict(version=VERSION+'x'),'codex_version:%sx:%s' % (VERSION,VERSION)),
+               (dict(version='0.1.0'),'codex_version:0.1.0:%s' % VERSION),
+               (dict(user_agent=CLIENT+'/'+VERSION),'codex_protocol'),
+               (dict(user_agent='other/'+VERSION+' fixture'),'codex_protocol'),
+               (dict(user_agent=CLIENT+'/'+VERSION+'\tfixture'),'codex_protocol'),
+               (dict(user_agent=CLIENT+'/'+VERSION+' '),'codex_protocol'),
+               (dict(user_agent=CLIENT+'/'+'x'*41+' fixture'),'codex_protocol'),
+               (dict(user_agent=CLIENT+'/0.1:0 fixture'),'codex_protocol'),
+               (dict(root=str(self.root)),'codex_home'),(dict(root=str(self.root/'missing')),'codex_home'),
+               (dict(root=None),'codex_protocol'),(dict(root='relative'),'codex_protocol'),
+               (dict(list_error=True),'codex_protocol'),(dict(server_request=True),'codex_protocol'),
+               (dict(partial=True),'codex_no_answer'),(dict(spawn_fails=True),'codex_spawn'),
+               (dict(exit_code=9),'codex_exit')]
+        for scenario,reason in cases:
+            with self.subTest(scenario=scenario):
+                result,rows=self.dispatch(scenario)
+                self.assertEqual((result.outcome,result.exit_code,result.reason),('error',1,reason))
+                if 'exit_code' not in scenario:
+                    self.assertFalse(self.requests(rows,'thread/queue/add'))
+                if 'spawn_fails' in scenario:
+                    self.assertEqual(rows,[],'nothing started, so nothing answered')
 
     def test_malformed_pages_and_repeated_cursor_never_authorize_add(self):
         for pages in ([dict(data='bad')],[dict(data=[],nextCursor=7)],
@@ -533,7 +571,8 @@ class CodexBrokerCase(unittest.TestCase):
             with self.subTest(key=key):
                 result,rows=self.dispatch({key:True})
                 self.assertEqual(result.outcome,'error')
-                self.assertEqual(result.reason,'broker_exit','outer adapter deadline must not supply this refusal')
+                self.assertEqual(result.reason,dict(partial='codex_no_answer',flood='codex_protocol')[key],
+                                 'the broker names its own refusal; the outer adapter deadline must not supply it')
                 self.assertFalse(self.requests(rows,'thread/queue/add'))
                 start=next(r['at_ns'] for r in rows if r['kind']=='start')
                 exited=next(r['at_ns'] for r in rows if r['kind']=='exit')
@@ -542,7 +581,7 @@ class CodexBrokerCase(unittest.TestCase):
     def test_late_valid_list_does_not_erase_the_reserved_add_budget(self):
         result,rows=self.dispatch(dict(delays={'initialize':1.4,'thread/queue/list':1.4}))
         self.assertEqual(result.outcome,'error')
-        self.assertEqual(result.reason,'broker_exit')
+        self.assertEqual(result.reason,'codex_no_answer')
         self.assertEqual(len(self.requests(rows,'thread/queue/list')),1)
         self.assertFalse(self.requests(rows,'thread/queue/add'))
         start=next(r['at_ns'] for r in rows if r['kind']=='start')

@@ -46,6 +46,22 @@ test('an agent not answering is said from Health\'s own facts, never what the sc
   assert.match(healthProblems(failed, { now: NOW })[0], /^hosted-a can't be woken: no wake since .+ has got through \(3 times\)\. Why: its Codex turn failed \(server overloaded\)\.$/);
 });
 
+test('only a wake helper that could not start Codex or got no answer asks whether the ChatGPT app is open', () => {
+  // Core says which (failing.ask_app_open); an answer from a Core that predates it asks, as before.
+  const question = /look there first: is the ChatGPT app open\?/;
+  const words = 'the Codex app is now version 0.167.0-alpha.3.2, but Theseus has been reviewed only with version 0.163.0-alpha.10.2: a new Codex version needs a review before wakes resume';
+  const updated = answer({ red: ['failing:codex-a'], agents: [agent('codex-a', { failing: failing('codex_version:0.167.0-alpha.3.2:0.163.0-alpha.10.2', words, { ask_app_open: false }) })] });
+  const [problem] = healthProblems(updated, { now: NOW });
+  assert.match(problem, /Why: the Codex app is now version 0\.167\.0-alpha\.3\.2, but Theseus has been reviewed only with version 0\.163\.0-alpha\.10\.2: a new Codex version needs a review before wakes resume\.$/);
+  assert.doesNotMatch(problem, question);
+  const spawn = answer({ red: ['failing:codex-a'], agents: [agent('codex-a', { failing: failing('codex_spawn', 'the Codex app-server could not be started', { ask_app_open: true }) })] });
+  assert.match(healthProblems(spawn, { now: NOW })[0], question);
+  const older = answer({ red: ['failing:codex-a'], agents: [agent('codex-a', { failing: failing('broker_exit', 'the helper failed') })] });
+  assert.match(healthProblems(older, { now: NOW })[0], question);
+  const mixed = answer({ agents: [agent('a', { failing: failing('codex_spawn', 'x', { ask_app_open: true }) }), agent('b', { failing: failing('codex_spawn', 'x', { ask_app_open: false }) })] });
+  assert.doesNotMatch(healthProblems(mixed, { now: NOW })[0], question, 'a group asks only when every agent in it does');
+});
+
 test('agents whose failures began together for one reason are said together; another reason is said apart', () => {
   const deadline = failing('deadline', 'the Codex app did not answer in time');
   const same = answer({ agents: [agent('a', { failing: deadline }), agent('b', { failing: { ...deadline, since_ms: deadline.since_ms + MIN } })] });

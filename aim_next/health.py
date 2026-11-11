@@ -78,7 +78,9 @@ LIGHT_KEY = "health_light"
 # after the stop, a runner sent TERM) or a runner that stopped renewing is told
 # once it has lasted this long since wakes last went out.
 HANDOVER_MS = 120000
-REASON = re.compile(r"[A-Za-z0-9_-]{1,64}")
+# A wake's reason: a fixed code, or one with the versions it names
+# ("codex_version:0.167.0-alpha.3.2:0.163.0-alpha.10.2"), never local text.
+REASON = re.compile(r"[A-Za-z0-9_.:+-]{1,128}")
 
 HEALTH_SCHEMA = [
     # Per recipient: when a wake last got through, the attempts since that did
@@ -207,7 +209,23 @@ WHY = {
     "incompatible": "the Codex app-server is not one Theseus can use",
     "output_closed": "the Codex process that hosts its turns stopped sending output, so it was ended",
     "unowned": "the agent runner lost its role while it started Codex",
+    # Why the wake helper (codex_broker.py) or the Codex host refused, as it reported it.
+    "broker_config": "the helper that puts a wake in the Codex app's queue refused its own configuration or input",
+    "codex_spawn": "the Codex app-server could not be started",
+    "codex_no_answer": "the Codex app-server did not answer in time",
+    "codex_protocol": "the Codex app-server answered in a way Theseus does not accept",
+    "codex_home": "the Codex app-server answered for another Codex home than the one the agent is bound to",
+    "codex_exit": "the Codex app-server did not exit cleanly after taking the wake",
+    "codex_version": "the Codex app is a version Theseus has not been reviewed with: a new Codex version needs a review before wakes resume",
 }
+# A Codex version refusal names the version found and the one reviewed (codex_broker.handshake_refusal).
+VERSION_WHY = ("the Codex app is now version %s, but Theseus has been reviewed only with version %s: "
+               "a new Codex version needs a review before wakes resume")
+# The reasons for which "is the ChatGPT app open?" is where to look first: the helper could
+# not start Codex or got no answer from it, or nobody recorded why (None, or only the
+# helper's exit, as every failure before the helper named its reasons). Any other reason
+# names its own cause, and the question would point away from it.
+APP_OPEN_REASONS = frozenset((None, "broker_exit", "deadline", "codex_spawn", "codex_no_answer"))
 UNRECORDED_WHY = "Theseus did not record why: these failures began before it did"
 # Why a hosted wake did not get through, from how its turn ended; Codex's own
 # code for it (codexErrorInfo, "serverOverloaded"), when it gave one, follows
@@ -305,9 +323,17 @@ def why_words(reason, outcome=None):
         return "the agent was busy" if outcome == "busy" else UNRECORDED_WHY
     if reason in WHY:
         return WHY[reason]
+    if reason.startswith("codex_version:"):
+        found, _, reviewed = reason[len("codex_version:"):].partition(":")
+        return VERSION_WHY % (found, reviewed) if found and reviewed and ":" not in reviewed else WHY["codex_version"]
     if reason.startswith("thread_"):
         return "its Codex thread is %s" % _spaced(reason[len("thread_"):])
     return "the agent runner said %s" % reason
+
+
+def ask_app_open(reason, outcome=None):
+    """Whether a wake through the Codex app's queue that failed for reason should ask whether the ChatGPT app is open."""
+    return outcome not in TURN_WHY and reason in APP_OPEN_REASONS
 
 
 def _spaced(code):
@@ -402,7 +428,7 @@ def notice_lines(went_red, went_green, still_red):
         line = "%s can't be woken: %s did not get through. Why: %s." % (_names(names), tried, why_words(reason, outcome))
         if before:
             line += " %s %s already red for the same reason, so the cause is something they share." % (_names(before), "is" if len(before) == 1 else "are")
-        if all(fact["route"] == "codex_queue" for fact in facts):
+        if all(fact["route"] == "codex_queue" and fact["ask_app_open"] for fact in facts):
             line += " %s through the Codex app's queue, so look there first: is the ChatGPT app open?" % (
                 "Their wakes go" if many else "Its wakes go")
         lines.append(line)
@@ -587,7 +613,8 @@ class Health:
         agent = row["recipient_id"]
         return {"kind": "failing", "posted": True, "actor_id": agent, "count": row["failed_wakes"],
                 "since_ms": row["failing_since_ms"], "outcome": row["failed_outcome"], "reason": row["failed_reason"],
-                "why": why_words(row["failed_reason"], row["failed_outcome"]), "route": routes.get(agent)}
+                "why": why_words(row["failed_reason"], row["failed_outcome"]), "route": routes.get(agent),
+                "ask_app_open": ask_app_open(row["failed_reason"], row["failed_outcome"])}
 
     def _parked_fact(self, db, row):
         waiting, oldest = self._on_record_waiting(db, row["recipient_id"])
@@ -801,7 +828,7 @@ class Health:
                 item.update(next_due_ms=row["next_due_ms"] if waiting else None, reached_ms=row["reached_ms"])
                 failing, parked = reds.get("failing:" + row["id"]), reds.get("parked:" + row["id"])
                 if failing is not None:
-                    item["failing"] = {key: failing[key] for key in ("count", "since_ms", "outcome", "reason", "why")}
+                    item["failing"] = {key: failing[key] for key in ("count", "since_ms", "outcome", "reason", "why", "ask_app_open")}
                 if parked is not None:
                     item["not_answering"] = {"count": parked["count"], "since_ms": parked["since_ms"]}
                 if row["claim_until_ms"] is not None and row["claim_until_ms"] > now:
@@ -848,7 +875,8 @@ def report_lines(answer, at):
                 else "no wake%s has got through (%s)" % (since, _count(failing["count"], "wake", "wakes"))), failing["why"])
             if agent.get("waiting"):
                 line += " %s." % _count(agent["waiting"], "message waits for it", "messages wait for it")
-            if agent.get("route") == "codex_queue":
+            # An answer from a Core that predates ask_app_open asks, as it did then.
+            if agent.get("route") == "codex_queue" and failing.get("ask_app_open", True):
                 line += " Its wakes go through the Codex app's queue, so look there first: is the ChatGPT app open?"
             problems.append(line)
         elif parked:

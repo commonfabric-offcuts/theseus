@@ -52,7 +52,8 @@ if mode == "guard":
                      for fd in sys.argv[3:]]
 with open(report, "w") as target:
     json.dump(record, target)
-os.write(1, b"R")  # fixture-only readiness; the actual adapter discards stdout
+if not mode.startswith("refuse"):
+    os.write(1, b"R")  # fixture-only readiness; the adapter reads only a broker's one refusal line
 if mode in ("exit-before-registration", "closed-stdin"):
     if mode == "closed-stdin":
         os.close(0)
@@ -77,7 +78,14 @@ else:
     if mode == "output":
         os.write(1, b"x" * 1048576)
         os.write(2, b"x" * 1048576)
-    sys.exit({"busy": 75, "error": 3, "queued": 10}.get(mode, 0))
+    # A broker's refusal is one JSON line naming its reason; fields it does not know are ignored.
+    refusals = {"refuse-named": b'{"refused":"codex_spawn","detail":"a later field"}\n',
+                "refuse-version": b'{"refused":"codex_version:0.167.0-alpha.3.2:0.163.0-alpha.10.2"}\n',
+                "refuse-garbled": b'{"refused":"spawn failed!"}\n', "refuse-two": b'{"refused":"codex_spawn"}\n{"refused":"codex_home"}\n',
+                "refuse-unended": b'{"refused":"codex_spawn"}', "refuse-accepted": b'{"refused":"codex_spawn"}\n'}
+    if mode in refusals:
+        os.write(1, refusals[mode])
+    sys.exit({"busy": 75, "error": 3, "queued": 10, "refuse-accepted": 0}.get(mode, 1 if mode.startswith("refuse") else 0))
 '''
 
 
@@ -379,6 +387,19 @@ class WakeInvocationTests(unittest.TestCase):
                 report = json.loads(self.report.read_text())
                 self.assertEqual(report["argv"][-2:], ["literal;$(touch never)", "one argument"])
                 self.assert_reaped(report["pid"])
+
+    def test_a_brokers_refusal_line_names_why_and_anything_else_is_its_exit_as_before(self):
+        # An older broker says nothing; a line that is not exactly one refusal is not a reason.
+        for mode, outcome, code, reason in [("refuse-named", "error", 1, "codex_spawn"),
+                                            ("refuse-version", "error", 1, "codex_version:0.167.0-alpha.3.2:0.163.0-alpha.10.2"),
+                                            ("refuse-garbled", "error", 1, "broker_exit"), ("refuse-two", "error", 1, "broker_exit"),
+                                            ("refuse-unended", "error", 1, "broker_exit"), ("refuse-quiet", "error", 1, "broker_exit"),
+                                            ("error", "error", 3, "broker_exit"), ("refuse-accepted", "accepted", 0, "accepted")]:
+            with self.subTest(mode=mode):
+                self.configure(mode)
+                result = self.invoke()
+                self.assertEqual((result.outcome, result.exit_code, result.reason), (outcome, code, reason))
+                self.assert_reaped(json.loads(self.report.read_text())["pid"])
 
     def test_distinct_attempts_preserve_the_same_captured_work_identity(self):
         self.configure("normal")

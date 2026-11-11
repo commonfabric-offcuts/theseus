@@ -70,9 +70,11 @@ the root captured from the pin as `CODEX_HOME`.
 
 Initialization enables the experimental API. Before queue operations, the
 first ASCII-space-delimited `userAgent` token must be exactly
-`theseus_wake_broker/0.163.0-alpha.10.2`, followed by a nonempty tail. The effective
+`theseus_wake_broker/0.167.0-alpha.3.2`, followed by a nonempty tail. The effective
 `codexHome` must resolve to the compared root. This is a compatibility guard,
-not evidence that a malicious executable is authentic.
+not evidence that a malicious executable is authentic. The version is one
+constant, `VERSION` in `aim_next/codex_broker.py`; the Codex host applies the
+same guard (`handshake_refusal`) with its own client name.
 
 Only initialize, initialized, queue/list and queue/add are sent. Incoming server
 requests cannot obtain approval. Duplicate JSON fields, unexpected response IDs,
@@ -103,6 +105,100 @@ queued hint exits 10 (queued: nothing new reached the agent), each only after
 closing stdin and confirming this API child exited zero within the budget. Otherwise the generic invocation owner confirms owned-group
 cleanup before settling the attempt. The broker sends no signals to discovered
 processes and never uses the legacy pending exit code.
+
+## Why a wake was refused
+
+A refusal names its reason. Before exiting 1, the broker writes one line to its
+standard output, `{"refused": CODE}`, and nothing else; it never names a
+request, profile, body or credential. The invocation owner reads that output
+as it comes (so a broker never blocks on a full pipe), and when it is exactly
+one such line of at most 1024 bytes, `CODE` becomes the settled wake's reason
+(`finish_wake(..., reason=CODE)`), which Health keeps and says in words
+(docs/health.md). Fields it does not know are ignored. Any other output, or
+none (an older broker), is the anonymous `broker_exit`, as before; an older
+owner that discards output sees exit 1, as before.
+
+| code | when |
+| --- | --- |
+| `codex_version:<found>:<reviewed>` | the app-server is this client at another version: the version it reported and `VERSION` |
+| `codex_home` | its `codexHome` resolves to another directory than the pinned root, or does not resolve |
+| `codex_protocol` | an RPC error, a server request, a malformed `userAgent` (no tail, another client, a version that is not a plain version), a missing or relative `codexHome`, an unexpected response ID, too many inbound bytes, or a page, item or receipt the broker refuses |
+| `codex_spawn` | the selected executable could not be started |
+| `codex_no_answer` | the app-server's output ended, it stopped reading, or the budget ran out before its answer (including too little time left to add) |
+| `codex_exit` | the add was validated, but the app-server did not exit zero within the budget |
+| `broker_config` | the broker's own arguments, stdin hint or config were refused before Codex started |
+
+A version mismatch is the expected refusal after the app updates: the gate
+stays shut until the new version is reviewed, and Health says which version
+the app is now and which one was reviewed, rather than asking whether the app
+is open.
+
+## Reviewed version
+
+`0.167.0-alpha.3.2` (the ChatGPT app's bundled Codex,
+`/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`,
+dated 6 Nov 2026), reviewed 11 Nov 2026 for item 328, replacing
+`0.163.0-alpha.10.2`. The review compared every method and shape the broker
+and the Codex host send and parse with the schema the binary generates
+(`codex app-server generate-json-schema --experimental` and `generate-ts
+--experimental`), then probed the live binary on this Mac.
+
+- Methods: `initialize`, `account/read`, `thread/queue/list`, `thread/queue/add`,
+  `thread/resume`, `thread/turns/list`, `thread/start`, `thread/compact/start`,
+  `turn/start`, `turn/steer` and `turn/interrupt` are client requests;
+  `initialized` the one client notification. Every server request the host
+  answers or names (`item/commandExecution/requestApproval`,
+  `item/fileChange/requestApproval`, `item/permissions/requestApproval`,
+  `item/tool/requestUserInput`, `mcpServer/elicitation/request`,
+  `item/tool/call`, `currentTime/read`, `account/chatgptAuthTokens/refresh`,
+  `attestation/generate`, `applyPatchApproval`, `execCommandApproval`) and
+  every notification it reads or opts out of exists under that name.
+- `initialize`: `clientInfo {name, title?, version}` and `capabilities
+  {experimentalApi, optOutNotificationMethods}` are accepted fields (none is
+  required beyond `name` and `version`). The result is `{userAgent, codexHome,
+  platformFamily, platformOs}`, all required; the broker reads only the first
+  two. Live: `userAgent` was `theseus_wake_broker/0.167.0-alpha.3.2 (Mac OS
+  26.7.1; arm64) unknown (theseus_wake_broker; 1)`, `codexHome` the pinned
+  root, so the first-token rule holds unchanged.
+- `thread/queue/list`: params `{threadId, cursor?, limit?}`; result `{data:
+  QueuedSubmission[], nextCursor: string|null}` (`nextCursor` may be absent in
+  the schema; the broker accepts absent or null). `QueuedSubmission` is `{id,
+  input: UserInput[], clientUserMessageId}`, all required; a text input is
+  `{type: "text", text, text_elements}`. Live: an empty queue answered `{data:
+  [], nextCursor: null}`.
+- `thread/queue/add`: params `{threadId, input, clientUserMessageId}`, all
+  required; result `{queuedSubmission: QueuedSubmission}`. Live, one add on
+  the auditor's thread: the receipt carried a 36-character `id`, the exact
+  client ID, and the input echoed exactly (`text_elements: []` included); the
+  broker's receipt check accepted it, and a following list returned the same
+  entry with the same `id`, which the broker's page check accepted.
+- The host's shapes: `account/read {refreshToken?}` answers `{account|null,
+  requiresOpenaiAuth, workspaceRouting|null}`; `thread/resume` and
+  `thread/start` accept every setting the host sends (`cwd`, `approvalPolicy:
+  "never"`, `approvalsReviewer: "user"`, `sandbox: "workspace-write"`,
+  `config`, `developerInstructions`, `model`, and `excludeTurns`, or
+  `ephemeral` and `serviceName`), and answer `thread {id, status}`, `cwd`,
+  `approvalPolicy` and a `sandbox` whose `workspaceWrite` form still carries
+  `writableRoots`, `networkAccess`, `excludeSlashTmp` and `excludeTmpdirEnvVar`;
+  `thread/turns/list {threadId, limit, sortDirection: "desc"}` answers `{data:
+  Turn[]}` with `Turn {id, status: completed|interrupted|failed|inProgress,
+  error {codexErrorInfo}|null}`; `turn/start` (with `clientUserMessageId`,
+  `additionalContext` of `{value, kind: "untrusted"}`, `approvalPolicy`,
+  `sandboxPolicy`) answers `{turn}`; `turn/steer` (with the required
+  `expectedTurnId`) answers `{turnId}`; `ThreadStatus` is still one of
+  `notLoaded`, `idle`, `systemError`, `active`; the server-request answers the
+  host sends match their response types (an elicitation's `_meta` is
+  optional); `item/completed` still carries `userMessage {clientId}` and
+  `commandExecution {command}` with `turnId`; `thread/tokenUsage/updated`
+  still carries `tokenUsage.last` with the four token fields the host reads.
+- Additions the code ignores: `platformFamily`/`platformOs`,
+  `TokenUsageBreakdown.cacheWriteInputTokens`, `ThreadStatus.active.activeFlags`,
+  `ItemCompletedNotification.completedAtMs`, `ThreadTurnsListResponse.backwardsCursor`,
+  and new optional request fields. No shape the code sends or parses differs,
+  so no parsing changed. Only `initialize`, `initialized`, `thread/queue/list`
+  and one `thread/queue/add` were sent live; the host's methods were checked
+  against the generated schema only, and the probes in docs/codex-hosting.md
+  ("Choices that wait on a probe") are unchanged.
 
 ## Proof and operational limits
 

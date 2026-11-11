@@ -25,7 +25,7 @@ from unittest import mock
 
 from aim_next import Store, initialize
 from aim_next import broker_routes, codex_host
-from aim_next.health import FAILING_AFTER, WHY
+from aim_next.health import FAILING_AFTER, WHY, why_words
 from aim_next.profile import write_profile
 
 
@@ -562,9 +562,18 @@ class RefusedChildCase(HostCase):
         self.assertNotIn("turn/start", [entry["in"].get("method") for entry in self.wire() if "in" in entry])
         self.stopped_cleanly(runner)
 
-    def test_another_codex_version_is_refused(self):
+    def test_another_codex_version_is_refused_naming_the_version_found_and_the_one_reviewed(self):
         (self.home / "fake-script.json").write_text(json.dumps({"version": "0.170.0"}))
-        self.check("incompatible")
+        reason = "codex_version:0.170.0:0.167.0-alpha.3.2"
+        self.check(reason)
+        # Health keeps why, so it can say the app updated rather than ask whether it is open.
+        self.assertEqual(self.sql("SELECT failed_reason FROM wake_facts"), [(reason,)])
+        self.assertIn("0.170.0", why_words(reason))
+        self.assertIn("0.167.0-alpha.3.2", why_words(reason))
+
+    def test_a_malformed_user_agent_is_refused_as_a_protocol_refusal(self):
+        (self.home / "fake-script.json").write_text(json.dumps({"version": "0.167.0-alpha.3.2\tfake"}))
+        self.check("codex_protocol")
 
     def test_a_home_that_is_not_signed_in_is_refused(self):
         (self.home / "fake-script.json").write_text(json.dumps({"signed_in": False}))

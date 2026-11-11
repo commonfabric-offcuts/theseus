@@ -91,7 +91,8 @@ export function healthProblems(answer, { now, feed, behind = false } = {}) {
     }
     if (many) words += ' Their failures began together, so the cause is something they share, not any one agent.';
     const routes = new Set(group.map(agent => agent.route));
-    if (routes.size === 1 && routes.has('codex_queue')) {
+    // Core says when the app is where to look (failing.ask_app_open); an answer from before it said so asks.
+    if (routes.size === 1 && routes.has('codex_queue') && group.every(agent => agent.failing.ask_app_open !== false)) {
       words += ` ${many ? 'Their wakes all go' : 'Its wakes go'} through the Codex app's queue, so look there first: is the ChatGPT app open?`;
     }
     problems.push(words);
