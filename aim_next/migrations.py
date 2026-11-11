@@ -36,6 +36,7 @@ from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
 from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
+from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -139,6 +140,11 @@ STEPS = (
     # each outcome's topics, for themselves. Stepping back is refused once
     # anyone has placed one.
     ("33", "34", ORDER_SCHEMA, ORDER_DOWN, ORDER_OCCUPIED),
+    # Version 35 keeps what people record about messages as they read them in
+    # reply stacks: their own stars, stacks dealt with and stack order, and
+    # each stack's short name and joins, which are everyone's. Stepping back is
+    # refused once anyone has recorded one.
+    ("34", "35", ACT_SCHEMA, ACT_DOWN, ACT_OCCUPIED),
 )
 
 

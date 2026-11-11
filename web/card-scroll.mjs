@@ -5,12 +5,21 @@
 // taps it, the whole message is read from its source and the card's words
 // become a box of the same height that scrolls under the wheel, the trackpad
 // or a finger, so the rest reads without opening the Reader and nothing around
-// the card moves. Where a finger scrolls, the excerpt is never taller than
-// most of the window (aim.css), so the page still scrolls beside the card.
-// Opening it still shows it whole.
+// the card moves. At the box's top or bottom edge the same scroll carries on
+// with the page, both ways (the browser's own scroll chaining: the box never
+// holds it, aim.css), and the box's edge fades while more is hidden that way
+// (data-more: 'above', 'below', 'both' or 'none'). Where a finger scrolls, the
+// excerpt is never taller than most of the window, so the page still scrolls
+// beside the card. Opening it still shows it whole.
 import { formatWords } from './message-format.mjs';
 
 export const SCROLL_CUE = 'Scroll here for the rest · Open to read it whole';
+
+// Which ways a scrolling box has more hidden.
+export function edges(box) {
+  const above = box.scrollTop > 0, below = box.scrollTop + box.clientHeight < box.scrollHeight - 1;
+  box.dataset.more = above && below ? 'both' : above ? 'above' : below ? 'below' : 'none';
+}
 
 export class CardScroll {
   constructor({ read }) { this.read = read; this.loading = new WeakSet(); }
@@ -28,6 +37,8 @@ export class CardScroll {
       preview.style.maxHeight = `${Math.ceil(height)}px`;
       formatWords(preview, source.body);
       preview.classList.add('scroll-in-place');
+      edges(preview);
+      preview.addEventListener('scroll', () => edges(preview), { passive: true });
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (cue) cue.textContent = SCROLL_CUE;
       card.dataset.whole = 'shown';

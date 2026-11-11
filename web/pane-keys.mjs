@@ -26,14 +26,14 @@ export function pageItself(at, doc) {
 // 'first', 'last', 'left', 'right' (plain), 'open' and 'fold' (⌘→ ⌘←),
 // 'open-all' and 'fold-all' (⇧⌘→ ⇧⌘←), 'move-up' and 'move-down' (⌘↑ ⌘↓),
 // 'undo' (⌘Z), 'write' (⌘Return: a new message in the place the keys are on;
-// in writing it stays Send). Return is left to what is focused, which opens it. ⌘ is the
-// Command key, on a Mac and on an iPad's keyboard alike; Control and Option
-// with an arrow mean nothing here, and neither do ⇧⌘↑ ⇧⌘↓, which the
-// messages keep for their own pieces.
+// in writing it stays Send), and 'join-up' and 'join-down' (⇧⌘↑ ⇧⌘↓), which
+// only the messages' reply stacks act on (stack-feed.mjs). Return is left to
+// what is focused, which opens it. ⌘ is the Command key, on a Mac and on an
+// iPad's keyboard alike; Control and Option with an arrow mean nothing here.
 export function keyAction(event) {
   if (!event || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || writing(event.target)) return null;
   const command = Boolean(event.metaKey);
-  if (event.shiftKey) return command ? { ArrowRight: 'open-all', ArrowLeft: 'fold-all' }[event.key] ?? null : null;
+  if (event.shiftKey) return command ? { ArrowRight: 'open-all', ArrowLeft: 'fold-all', ArrowUp: 'join-up', ArrowDown: 'join-down' }[event.key] ?? null : null;
   if (command) return { ArrowUp: 'move-up', ArrowDown: 'move-down', ArrowRight: 'open', ArrowLeft: 'fold', z: 'undo', Z: 'undo', Enter: 'write' }[event.key] ?? null;
   return { ArrowUp: 'up', ArrowDown: 'down', ArrowRight: 'right', ArrowLeft: 'left', Home: 'first', End: 'last' }[event.key] ?? null;
 }
@@ -48,4 +48,12 @@ export const KEY_WORDS = [
   ['⌘Return', 'starts a new message in the topic the keys are on, or in the outcome\'s Conversation'],
   ['⌘↑ ⌘↓', 'move an outcome, or a topic within its outcome, up or down; your order is kept wherever you sign in'],
   ['⌘Z', 'puts the last move back'],
+];
+// The same keys on a message, as the outline's legend lists them under "In the messages" (docs/reply-stacks.md).
+export const MESSAGE_KEY_WORDS = [
+  ['↑ ↓', 'move the light from message to message, down a stack to its newer replies and on to the stack below'],
+  ['⌘↑ ⌘↓', 'move the message\'s stack up or down; your order is yours, kept wherever you sign in'],
+  ['⌘→ ⌘←', 'open a stack a step at a time, or fold it; on its first message, show or hide the whole message first'],
+  ['⇧⌘↑ ⇧⌘↓', 'join the stack to the one above or below, for everyone here; Split back out in ⋯ takes it out again'],
+  ['⌘Z', 'puts back your last move, fold, rename or join'],
 ];

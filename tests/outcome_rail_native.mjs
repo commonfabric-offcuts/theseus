@@ -1394,8 +1394,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail the arrows move through the outline as a tree: ↑ ↓ Home End, ← to the outcome, ⌘← ⌘→ and ← → fold and open it, and Return opens a topic or a Conversation in place with the keys kept on the row', async () => {
     const p = await open('rail-kbd-tree', '/?topic=t1');
     await settled(p, 'the topic is up');
-    assert.deepEqual(await p.evaluate("(()=>{const k=document.getElementById('outline-keys');return [k.querySelector('summary').textContent,[...k.querySelectorAll('dt')].map(d=>d.textContent)]})()"),
-      ['Keys', ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z']], 'the outline lists its keys');
+    assert.deepEqual(await p.evaluate("(()=>{const k=document.getElementById('outline-keys');return [k.querySelector('summary').textContent,[...k.querySelectorAll('dl')].map(l=>[...l.querySelectorAll('dt')].map(d=>d.textContent)),k.querySelector('.ol-keys-part')?.textContent]})()"),
+      ['Keys', [['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], ['↑ ↓', '⌘↑ ⌘↓', '⌘→ ⌘←', '⇧⌘↑ ⇧⌘↓', '⌘Z']], 'In the messages'],
+      'the outline lists its keys, then the messages\' keys');
     await tabToOutline(p);
     assert.equal(await keyedAt(p), 'topic:t1');
     assert.equal((await keyTree(p)).ring, 'solid', 'the row the keys are on has a ring');

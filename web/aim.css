@@ -518,7 +518,10 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .reaction-count:hover,.reaction-choice:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
 .reaction-count.mine,.reaction-choice.mine{border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor;font-weight:650}
 .reaction-said{opacity:.8}
-.message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:.25rem}
+.message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;scrollbar-gutter:stable;padding-right:.25rem}
+.message-preview.scroll-in-place[data-more=below]{mask-image:linear-gradient(to bottom,#000 calc(100% - 2rem),transparent)}
+.message-preview.scroll-in-place[data-more=above]{mask-image:linear-gradient(to top,#000 calc(100% - 2rem),transparent)}
+.message-preview.scroll-in-place[data-more=both]{mask-image:linear-gradient(to bottom,transparent,#000 2rem,#000 calc(100% - 2rem),transparent)}
 #thumb-source{flex-shrink:0;min-width:2.75rem}
 #thumb-source[aria-pressed=true]{background:var(--soft);font-weight:700}
 .guide-open{min-height:1.6rem;padding:0 .55rem;border-radius:.45rem;color:var(--muted);font-size:.8rem}
@@ -558,15 +561,9 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .replied-mark[data-shown] .replied-words::after{content:" \203A"}
 /* Beside the time on the author line, clear of the message bar over the card's top corner; a finger's 44px target overhangs the line rather than growing it. */
 @media(pointer:coarse){.replied-mark{width:2.75rem;height:2.75rem;margin:-.9rem -.4rem -.9rem 0}}
-.reply-stack{margin-bottom:.75rem}
-.stack-replies{display:flex;flex-direction:column;gap:.4rem;margin:.4rem 0 0 1.5rem}
-/* A stacked card leaves its spacing to its stack while the stack draws; under Only new it draws nothing (above). */
-:is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
-.stack-toggle{align-self:flex-start;min-height:2.5rem;padding:.2rem .7rem;border-color:transparent;background:transparent;color:var(--muted);font-size:.82rem}
-@media(hover:hover){.stack-toggle:hover{background:var(--soft);color:var(--ink)}}@media(hover:none){.stack-toggle:hover{background:transparent}}
-/* A tap shows its own state; no browser flash over a quiet line, the arrow or a stack's line. */
-.fold-line,.replied-mark,.stack-toggle{-webkit-tap-highlight-color:transparent}
-@media(max-width:760px){.stack-replies{margin-left:.75rem}}
+/* Reply stacks look as web/stack-look.css says, all of it. */
+/* A tap shows its own state; no browser flash over a quiet line or the arrow. */
+.fold-line,.replied-mark{-webkit-tap-highlight-color:transparent}
 .message-preview.formatted{display:block;white-space:normal}
 .md-block{display:block}
 .message-preview .md-block+.md-block{margin-top:.45rem}
@@ -607,6 +604,8 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .message-menu.said{font-size:.78rem;font-weight:650;color:var(--accent)}
 .message-menu-list{z-index:20;display:flex;flex-direction:column;width:max-content;max-width:calc(100vw - 16px);padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
 .message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
+/* The keys that do what an item does, at its end. */
+.message-menu-list button:has(.menu-keys){display:flex;align-items:center}.menu-keys{margin-left:auto;padding-left:1.5rem;color:var(--muted);font-size:.8rem}
 .message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
 .message-bar [data-act=more][aria-expanded=true]{background:var(--soft)}
 /* Where a finger presses, each item of a message's menu is 44px tall, as the bar's buttons are. */
@@ -824,7 +823,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .reader-header>button,#reader-stepping>button{min-width:2.5rem;min-height:2.5rem;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.05rem;color:var(--ink)}
 .reader-header>button:hover,#reader-stepping>button:hover{background:var(--soft)}
 #reader-stepping>button:disabled{opacity:.3}
-/* ↑ Newer · ↓ Older at the end of the message, on a phone only. */
+/* ↑ Previous · ↓ Next at the end of the message, on a phone only. */
 .reader-end{display:none}
 /* The ⋯ as a sheet from the bottom, on a phone. */
 .message-menu-list.menu-sheet{position:fixed;left:0;right:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));width:auto;max-width:none;padding:.5rem .5rem calc(.5rem + env(safe-area-inset-bottom));border-radius:1rem 1rem 0 0;border-width:1px 0 0;box-shadow:0 -10px 40px rgb(0 0 0 / .25)}

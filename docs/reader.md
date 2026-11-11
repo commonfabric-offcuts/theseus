@@ -18,9 +18,11 @@ selection (only while words are selected or a passage is lit), Mark unread,
 Start a topic from this, and Add to pipeline, and Wide or Stacked layout
 where the window can choose. Pressing the ⋯ or + can move the focus and let
 the selection go, so what Quote selection quotes there is what was chosen
-as it was pressed, by a pointer, a finger or the keys. ↑ and ↓, the newer and older messages, are in the header. On a phone
-the ⋯ is a sheet from the bottom, and the message ends with a quiet
-"↑ Newer · ↓ Older".
+as it was pressed, by a pointer, a finger or the keys. ↑ and ↓ in the
+header step to the message above and the message below as the topic page
+shows them: inside a reply stack, ↓ goes down to its newer replies and then
+on to the stack below (docs/reply-stacks.md). On a phone the ⋯ is a sheet
+from the bottom, and the message ends with a quiet "↑ Previous · ↓ Next".
 
 ## Writing
 

@@ -83,6 +83,10 @@ export class MessageMenu {
     // changes too ("Link copied" on its ⋯), and it keeps to its corner.
     this.sizes = new doc.defaultView.ResizeObserver(() => this.place());
     this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.bar);
+    // A reply stack's head that comes to show only its row loses its bar, and
+    // gets it back once its full message shows again (tabOnly).
+    new doc.defaultView.MutationObserver(() => { if (this.lit) this.paintBar(); })
+      .observe(host, { subtree: true, attributes: true, attributeFilter: ['data-head-open'] });
   }
   buildBar() {
     const doc = this.doc, bar = doc.createElement('div');
@@ -137,7 +141,7 @@ export class MessageMenu {
   }
   paintBar() {
     const item = this.lit && this.item(this.lit.dataset.id);
-    if (!item) { this.bar.hidden = true; return; }
+    if (!item || this.tabOnly()) { this.bar.hidden = true; return; }
     const { thumb, yes, no } = this.buttons;
     thumb.hidden = !mayThumb(item, this.viewer);
     thumb.setAttribute('aria-pressed', String(thumbed(item, this.viewer)));
@@ -147,18 +151,33 @@ export class MessageMenu {
     this.bar.hidden = false;
     this.place();
   }
+  // Whether the lit message is a reply stack's head showing only its row, the
+  // stack's tab (reply-stacks.mjs): it has no bar until its full message shows.
+  // Under Only new a stack draws nothing, and its head reads whole.
+  tabOnly() {
+    const card = this.lit && cardIn(this.lit);
+    return Boolean(card?.classList.contains('stack-head-card') && card.closest('.reply-stack')?.dataset.headOpen === 'false' && !card.closest('.only-new'));
+  }
   // Over the lit card's top end corner, inside the window while any of the
   // card is, and scrolled away with it. Where that would cover the reply arrow
   // beside the card's time, it sits above the arrow's line, or else below it.
+  // In a reply stack it stays below the tab's bottom edge while the tab is in
+  // the window, so it never crosses where the tab meets the stack; once the tab
+  // has gone above the window it scrolls away with the card as any bar does.
+  // Where the tab leaves no room above the reply arrow, it sits under the card
+  // rather than over its words and answers.
   place() {
     if (this.bar.hidden || !this.lit?.isConnected) { if (this.lit && !this.lit.isConnected) this.light(null); return; }
     const box = this.lit.getBoundingClientRect(), width = this.bar.offsetWidth, height = this.bar.offsetHeight;
     const view = this.doc.documentElement.clientWidth;
     const left = Math.max(8, Math.min(box.right - width - 12, view - width - 8));
+    const tab = this.lit.closest('.reply-stack')?.querySelector(':scope > [data-id] .stack-head, :scope > .stack-rename')?.getBoundingClientRect();
+    const floor = Math.max(4, tab?.height ? tab.bottom + 2 : 4);
     let top = Math.min(Math.max(4, box.top - height / 2), box.bottom - height);
+    if (floor > 4) top = Math.max(floor, top);
     const mark = cardIn(this.lit).querySelector(':scope > .message-author .replied-mark')?.getBoundingClientRect();
     if (mark?.width && mark.right > left && mark.left < left + width && mark.bottom > top && mark.top < top + height) {
-      top = mark.top - height - 2 >= 4 ? mark.top - height - 2 : mark.bottom + 2;
+      top = mark.top - height - 2 >= floor ? mark.top - height - 2 : floor > 4 ? box.bottom + 2 : mark.bottom + 2;
     }
     this.bar.style.left = `${left}px`;
     this.bar.style.top = `${top}px`;
@@ -240,7 +259,8 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 
 // anchor: a ⋯ button, or the card a right-click landed on; at: where the
 // pointer was for a right-click, else the menu sits under the anchor. items:
-// [{ label, act }] in order; act may answer a promise.
+// [{ label, act, keys }] in order; act may answer a promise; keys, the keys
+// that do the same, shown at the item's end.
 // sheet: on a phone (a narrow window) the menu opens as a sheet from the
 // bottom of the window, its items full width, rather than under its button.
 export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, doc = globalThis.document, win = globalThis }) {
@@ -252,6 +272,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const buttons = items.map(item => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
     button.setAttribute('role', 'menuitem');
+    if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
     button.onclick = event => { event.stopPropagation(); menu.close(true); item.act(); };
     return button;
   });

@@ -83,8 +83,9 @@ const control = data => new Promise((resolve, reject) => {
 const results = [], observations = [], hashes = {};
 for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs',
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
-  'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
-  'web/message-menu.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs']) {
+  'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
+  'web/message-menu.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
+  'tests/stack_native.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
@@ -247,11 +248,18 @@ try {
     // As in the Chrome harness: a card a reply stack folds away (docs/topic-reading.md, "Reply stacks")
     // is reached as a person reaches it, by a press on its stack's line first; a card on show is left as it is.
     const unfold = async selector => {
-      const line = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),s=e?.closest('.reply-stack');
-        if(!s||e.getClientRects().length)return null;const t=s.querySelector(':scope > .stack-replies > .stack-toggle');t.scrollIntoView({block:'center'});return t.getAttribute('aria-expanded')==='true'?null:'opens'})()`);
-      if (!line) return;
-      await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-replies > .stack-toggle`);
-      await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
+      const way = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),s=e?.closest('.reply-stack');
+          if(!s||s.dataset.single==='true')return null;
+          if(!e.getClientRects().length){const t=s.querySelector(':scope > .stack-replies > .stack-fold-line');t.scrollIntoView({block:'center'});return 'fold'}
+          const h=e.classList.contains('stack-head-card')?e:e.querySelector(':scope > .stack-head-card');
+          if(h&&s.dataset.headOpen==='false'){h.scrollIntoView({block:'center'});return 'head'}return null})()`);
+      if (way === 'fold') {
+        await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-replies > .stack-fold-line`);
+        await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
+      } else if (way === 'head') {
+        await point(`${selector} .stack-head`);
+        await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).closest('.reply-stack').dataset.headOpen === 'true'`), `${selector} shows its full message`);
+      }
     };
     const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held: [], network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
       open: async index => {

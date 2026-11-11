@@ -38,11 +38,11 @@ const visible = el => el.getClientRects().length && !el.disabled && !el.hidden;
 // version adopted, its access checked. Your place holds through it.
 const sameSource = (a, b) => Boolean(a && b && a.kind === b.kind && a.id === b.id);
 
-// The topic page shows its newest message on top, so the message above the
-// one open is the next (newer) one and the one below is the previous
-// (older). The up and down buttons, their words and the ⌘↑/⌘↓ keys all read
-// this one rule: a page that put its newest message at the bottom flips
-// them together here.
+// The Reader steps as the eye goes down the topic page (docs/reply-stacks.md):
+// ↑ is the message above the one open, Previous, and ↓ the one below, Next,
+// down a stack to its newer replies and on to the stack below. The page says
+// which those are (its next and previous, in the page's own order); the up and
+// down buttons, their words and the ⌘↑/⌘↓ keys all read this one rule.
 const NEWEST_ON_TOP = true;
 const neighborAt = where => (where === 'above') === NEWEST_ON_TOP ? 'next' : 'previous';
 const STEPPING = { above: { glyph: '↑', key: 'ArrowUp' }, below: { glyph: '↓', key: 'ArrowDown' } };
@@ -100,16 +100,16 @@ export class Reader {
     // changes: the reply growing with the quote, the keyboard coming up.
     new ResizeObserver(() => { if (this.dialog.open) this.alignKept(); }).observe(this.sourceBody);
     for (const forget of ['wheel', 'touchmove', 'keydown']) this.sourceBody.addEventListener(forget, () => { this.kept = null; }, { passive: true });
-    // ↑ Newer · ↓ Older at the end of the message, where a thumb reaches on a
+    // ↑ Previous · ↓ Next at the end of the message, where a thumb reaches on a
     // phone (placeEnd); they are the header's arrows, by another way. Their words are
     // drawn by aim.css, so the message's text stays the message's alone.
     this.endLine = node('p', undefined, 'reader-end');
     this.endLine.setAttribute('aria-label', 'Other messages');
     for (const where of ['above', 'below']) {
-      const header = this.$(`${neighborAt(where)}-message`), newer = neighborAt(where) === 'next';
+      const header = this.$(`${neighborAt(where)}-message`), above = where === 'above';
       const end = node('button', undefined, 'end-step'); end.type = 'button';
-      end.dataset.words = `${STEPPING[where].glyph} ${newer ? 'Newer' : 'Older'}`;
-      end.setAttribute('aria-label', newer ? 'Newer message' : 'Older message');
+      end.dataset.words = `${STEPPING[where].glyph} ${above ? 'Previous' : 'Next'}`;
+      end.setAttribute('aria-label', above ? 'Previous message' : 'Next message');
       end.onclick = () => header.click();
       new MutationObserver(() => { end.disabled = header.disabled; }).observe(header, { attributes: true, attributeFilter: ['disabled'] });
       this.endLine.append(end);
@@ -166,7 +166,7 @@ export class Reader {
     };
     for (const where of ['above', 'below']) {
       const neighbor = neighborAt(where), button = this.$(`${neighbor}-message`);
-      const words = `${neighbor === 'next' ? 'Newer' : 'Older'} message (${where})`;
+      const words = `${where === 'above' ? 'Previous' : 'Next'} message (${where})`;
       button.textContent = STEPPING[where].glyph; button.setAttribute('aria-label', words); button.title = words;
       button.onclick = () => this.stepTo(where);
       this.$('reader-stepping').append(button);

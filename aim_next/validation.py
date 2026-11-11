@@ -49,6 +49,8 @@ COMMANDS = {
     "outcome.kind_set": "_command_outcome_kind_set",
     "outcome.reach": "_command_outcome_reach",
     "outline.order_set": "_command_outline_order_set",
+    "message.star": "_command_message_star", "message.deal": "_command_message_deal",
+    "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -82,7 +84,9 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "problem.cover": {"problem_revision"},
             "outcome.kind_set": {"workspace_revision"},
             "outcome.reach": {"workspace_revision"},
-            "outline.order_set": {"order_revision"}}
+            "outline.order_set": {"order_revision"},
+            "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "stack.place": {"place_revision"},
+            "stack.name": {"name_revision"}, "stack.join": {"join_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
@@ -93,7 +97,9 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
                      "message.mark": "mark_revision", "color.set": "color_revision",
                      "message.thumb": "thumb_revision", "message.answer": "answer_revision",
                      "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision",
-                     "outline.order_set": "order_revision"}
+                     "outline.order_set": "order_revision",
+                     "message.star": "star_revision", "message.deal": "deal_revision", "stack.place": "place_revision",
+                     "stack.name": "name_revision", "stack.join": "join_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
@@ -125,6 +131,7 @@ VIEWS = {
     "outcome_checks": {"workspace_id"},
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
+    "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"cursor", "limit"},
 }
 
 

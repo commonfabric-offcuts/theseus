@@ -129,7 +129,7 @@ function drawn(t, body) {
   globalThis.document = { createElement: tag => new Element(tag), createTextNode: data => ({ text: data }) };
   t.after(() => { globalThis.document = previous; });
   const sourceBody = new Element('div');
-  // A laptop's width: the message ends with no "↑ Newer · ↓ Older" line.
+  // A laptop's width: the message ends with no "↑ Previous · ↓ Next" line.
   Object.assign(Object.create(Reader.prototype), { sourceBody, narrow: { matches: false } }).drawSource(body);
   return sourceBody.children.map(span => ({ start: Number(span.dataset.start), end: Number(span.dataset.end), text: span.text,
     links: span.children.filter(child => child.tag === 'a').map(a => a.textContent) }));

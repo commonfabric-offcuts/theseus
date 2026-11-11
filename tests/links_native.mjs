@@ -143,10 +143,14 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
 
   // docs/links.md, "A message's link", "A message's menu" and "Topics named in a message".
   const items = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
+  // A message's menu also offers its stack's acts (docs/reply-stacks.md),
+  // which stack_native.mjs checks; here the menu is checked without them.
+  const STACK_ITEMS = /^(Star for me|Unstar|Rename|(Show|Hide) the full message|Fold into earlier replies|Split back out|Move or join…|Move its stack (up|down)|Join the stack (above|below))/;
+  const own = labels => labels.filter(label => !STACK_ITEMS.test(label));
   // A menu that lists something else fails naming what it listed.
   const menuOpen = async (p, want) => {
     let seen;
-    try { await until(async () => JSON.stringify(seen = await items(p)) === JSON.stringify(want), 'the menu lists ' + want.join(', ')); }
+    try { await until(async () => JSON.stringify(seen = own(await items(p))) === JSON.stringify(want), 'the menu lists ' + want.join(', ')); }
     catch (error) { assert.deepEqual(seen, want, `${error.message} (lit: ${await p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id+' '+e.className).join(', ')`)})`); }
   };
   const choose = async (p, label) => {
@@ -192,9 +196,10 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await p.point(menuMore);
     await menuOpen(p, ['Copy Link', 'Mark unread']);
     const list = await p.box('.message-menu-list');
-    assert.ok(list.width < 220, 'the menu is as wide as its words: ' + list.width);
+    // Its longest words are a stack's move with its keys ("Join the stack above ⇧⌘↑").
+    assert.ok(list.width < 260, 'the menu is as wide as its words: ' + list.width);
     assert.ok(Math.abs(list.x + list.width - (more.x + more.width)) < 2 && list.y >= more.y + more.height, 'under the ⋯, their right edges lined up');
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Copy Link', 'the first item has the focus');
+    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Star for me', 'the first item has the focus');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).getAttribute('aria-expanded')`), 'true');
     await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
     await frame(p); await shot(p, 'links-menu-light');
@@ -241,7 +246,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual([Math.round(list.x), Math.round(list.y)], [x, y], 'at the pointer');
     assert.deepEqual(await p.evaluate('window.contexts'), [true], 'the page took that right-click');
     await p.key('ArrowDown');
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Mark unread', 'Down moves to the next item');
+    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Copy Link', 'Down moves from Star for me to the next item');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'Escape closes it');
     // The words are formatted (docs/topic-reading.md), so their first text is inside a paragraph.
@@ -288,9 +293,9 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.equal(await focused(), 'bar:more', 'Tab from the card reaches its ⋯');
     await p.key('Enter');
     await menuOpen(p, ['Copy Link', 'Mark unread']);
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Copy Link');
+    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Star for me');
     await p.key('ArrowUp');
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Mark unread', 'Up from the first wraps to the last');
+    assert.equal(await p.evaluate(`document.activeElement?.textContent`), (await items(p)).at(-1), 'Up from the first wraps to the last');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.activeElement === document.querySelector(${JSON.stringify(menuMore)})`), 'closed, the focus back on the ⋯');
     assert.equal(await open(p, 'reader'), false);
@@ -690,7 +695,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
       };
       await openFormatted();
       assert.deepEqual(await shape('#source-body')(p), onCard, device + ': the Reader draws the words, blocks, marks and links its card draws, and they look as they do there');
-      // A phone's Reader ends the message with ↑ Newer · ↓ Older, after every block; a laptop's has none.
+      // A phone's Reader ends the message with ↑ Previous · ↓ Next, after every block; a laptop's has none.
       assert.deepEqual(await p.evaluate(`(b=>[b.lastElementChild.classList.contains('reader-end'),b.querySelectorAll('.reader-end').length])(document.querySelector('#source-body'))`),
         device === 'phone' ? [true, 1] : [false, 0], device + ': the end line');
       await shot(p, 'links-formatted-reader-' + device);

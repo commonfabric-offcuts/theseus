@@ -12,10 +12,11 @@
 // one an agent gives (item 25); ✅ and 🚫 on a go-ahead ask (124); ↑ ↓,
 // Return, Reply on the bar and a phone's two taps (114); a cut-off card that
 // scrolls in place (108); the guide (106); read cards and quiet agent talk
-// (31); the reply arrow (102); reply stacks (103); the time beside "Saved to
+// (31); the reply arrow (102); reply stacks (103, and 283 in stack_native.mjs); the time beside "Saved to
 // Theseus" (61); ⌥↑ and ⌥↓ (78); and #img, Paste image and a pasted image
 // (121), in the topic's composer and in the Reader.
 import assert from 'node:assert/strict';
+import { stackChecks } from './stack_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 const entry = id => `#messages [data-id="${id}"]`;
@@ -27,8 +28,13 @@ const BAR = '.message-bar';
 // Before the page's own code: each command the page sends, by kind, as it sends it (the page binds fetch when it
 // starts, and sends a press's command within the press's own click), and each click as the window first hears it.
 // After a press's click is heard, what it sent is known, so "sends nothing" needs no wait.
+// window.watchFor = {read, words}: a check waits for the page to read the view named read and get an answer
+// holding words; window.watched turns true when it has.
 const HEARD = `(()=>{window.sent=[];window.taps=0;const f=window.fetch;window.fetch=function(input,init){
-  try{const b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}return f.apply(this,arguments)};
+  let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}
+  const answer=f.apply(this,arguments),watch=window.watchFor;
+  if(watch&&b&&b.name===watch.read)answer.then(r=>r.clone().text()).then(t=>{if(t.includes(watch.words))window.watched=true},()=>{});
+  return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
 
 // grant(names): Chrome's own grant of permissions (clipboard-read, ...) to the page's
@@ -86,6 +92,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
+  // Where a wheel or a finger's drag starts on a target: on the part of it the window shows, at most 120px
+  // below that part's top, on the target itself and not something over it. Taken just before each
+  // gesture, as the page stands then: a fling runs on past the distance it was given, by more some runs
+  // than others, so a point worked out from where the target was can fall outside the window.
+  const within = async (p, selector) => {
+    const at = await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect(),top=Math.max(b.top,0),bottom=Math.min(b.bottom,innerHeight),
+      x=b.left+b.width/2,y=top+Math.min((bottom-top)/2,120);return {x,y,shown:bottom-top,hit:e.contains(document.elementFromPoint(x,y))}})()`);
+    assert.ok(at.shown >= 40 && at.hit, `${selector} shows in the window where a gesture starts on it: ${JSON.stringify(at)}`);
+    return [at.x, at.y];
+  };
   // A click on a laptop, a tap on a phone.
   const press = (p, device, selector) => (device === 'phone' ? tap(p, selector) : p.point(selector));
   const lit = p => p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id)`);
@@ -95,11 +111,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await press(p, device, '#reader-close');
     await until(async () => await readerOn(p) === null, 'the Reader closed');
   };
-  // Lights a card as the person does: the pointer rests on it, or a finger taps it.
+  // Lights a card as the person does: the pointer rests on it, or a finger taps it; on its words,
+  // or, for a stack's head shown as one row, on that row, which lights with no bar (docs/reply-stacks.md).
   const light = async (p, device, id) => {
     await centre(p, card(id));
-    if (device === 'phone') await tap(p, words(id)); else await p.point(words(id), 'move');
-    await until(async () => (await lit(p)).includes(id) && await bar(p) !== null, `${device}: ${id} lights, with its bar`);
+    const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
+    if (device === 'phone') await tap(p, row ? card(id) + ' > .stack-head' : words(id)); else await p.point(row ? card(id) + ' > .stack-head' : words(id), 'move');
+    await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === row, `${device}: ${id} lights, ${row ? 'with no bar on a head shown as one row' : 'with its bar'}`);
   };
   // The pointer leaves the messages for a spot where no message, bar or control is.
   const away = async p => {
@@ -196,10 +214,22 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await until(async () => (await replies()).length === 1, device + ': the agent is told by a reply');
       assert.deepEqual(await replies(), [['✅ Go ahead', ['aim-core']]], device + ': ✅ Go ahead, to the agent that asked');
       const mine = () => p.evaluate(`document.querySelector(${JSON.stringify(choices + ' .mine')})?.dataset.react ?? null`);
+      // The page shows each reply Core holds; a card moved under a resting pointer takes the light,
+      // so the pointer comes to rest on the ask again (a finger's tap lights only when the ask is not lit: a second tap is a press).
+      const relight = async () => {
+        const said = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.reply_to === ids.ask && item.author_id === facts.actor).map(item => item.id);
+        await until(() => p.evaluate(`${JSON.stringify(said)}.every(id => document.querySelector('#messages [data-id="' + id + '"]'))`), device + ': the page shows each reply');
+        if (device !== 'phone' || !(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
+      };
       await until(async () => await mine() === 'yes', device + ': the card shows ✅ as the answer');
       assert.equal(await readerOn(p), null, device + ': answering opens nothing');
-      // The reply stacks under the ask, and the ask may move with its stack: light it again where it now is.
-      if (!(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
+      // The reply stacks under the ask, and the ask may move with its stack: once the page shows the reply, light it again where it now is.
+      await relight();
+      // Heading its stack now, the ask shows as one row, with no bar: a press on it shows the whole card, its answers and its bar too.
+      if (!await p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`)) {
+        await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on the head shows the ask whole');
+      }
       await until(async () => (await bar(p))?.yes === 'true' && (await bar(p))?.no === 'false', device + ': the bar shows ✅ as the answer');
       await shot(p, 'reading-ask-' + device);
       await press(p, device, second);
@@ -207,7 +237,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await until(async () => (await replies()).length === 2, device + ': the agent is told again');
       assert.deepEqual((await replies()).map(([body]) => body).sort(), ['✅ Go ahead', "🚫 Don't (I changed my answer)"], device + ': the change is said');
       await until(async () => await mine() === 'no', device + ': the card shows 🚫');
-      if (!(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
+      await relight();
       await until(async () => (await bar(p))?.no === 'true' && (await bar(p))?.yes === 'false', device + ': the bar shows 🚫');
       assert.equal(await readerOn(p), null, device + ': still nothing opened');
       assert.deepEqual(p.errors, []);
@@ -275,8 +305,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const p = await open('reading-long-' + device, device, topic, ids.long);
       const preview = card(ids.long) + ' > .message-preview';
       const state = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(preview)}),s=getComputedStyle(e),b=e.getBoundingClientRect();
-        return {inPlace:e.classList.contains('scroll-in-place'),top:e.scrollTop,more:e.scrollHeight-e.clientHeight,overflow:s.overflowY,height:b.height,window:innerHeight,pageY:scrollY,
-          middle:[b.x+b.width/2,b.y+Math.min(b.height/2,120)]}})()`);
+        return {inPlace:e.classList.contains('scroll-in-place'),top:e.scrollTop,more:e.scrollHeight-e.clientHeight,overflow:s.overflowY,height:b.height,window:innerHeight,pageY:scrollY}})()`);
       await centre(p, card(ids.long));
       const before = await state();
       assert.equal(before.inPlace, false, device + ': cut off, until it lights');
@@ -286,16 +315,25 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.equal(box.overflow, 'auto', device + ': the box scrolls');
       assert.ok(Math.abs(box.height - before.height) <= 1, `${device}: the box keeps the excerpt's height (${before.height} → ${box.height})`);
       if (device === 'phone') assert.ok(box.height <= box.window * 0.6 + 1, `phone: the box is no taller than 60% of the window (${box.height} of ${box.window})`);
-      const [x, y] = box.middle;
+      const wheel = async deltaY => { const [x, y] = await within(p, preview); await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY }); };
+      const drag = async (yDistance, speed) => { const [x, y] = await within(p, preview); await p.send('Input.synthesizeScrollGesture', { x, y, yDistance, gestureSourceType: 'touch', speed }); };
       if (device === 'laptop') {
-        await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 240 });
+        await wheel(240);
         await until(async () => (await state()).top > 0, 'laptop: the wheel scrolls the box');
         assert.equal((await state()).pageY, box.pageY, 'laptop: and not the page');
+        // At its bottom edge the same wheel carries on with the page, and the box's fade says nothing more is below.
+        const more = () => p.evaluate(`document.querySelector(${JSON.stringify(preview)}).dataset.more`);
+        await until(async () => await more() === 'both', 'laptop: part way down, more is hidden both ways (the box hears its own scroll)');
+        await wheel(box.more + 400);
+        await until(async () => await more() === 'above', 'laptop: at the bottom of the box only what is above is hidden');
+        const atEdge = await state();
+        await wheel(240);
+        await until(async () => (await state()).pageY > atEdge.pageY, 'laptop: at the box\'s edge the wheel scrolls the page on');
       } else if ('pw' in p) {
         // Safari's engine in this harness has a tap but no finger drag: the box is held to scroll (overflow auto, above) and to leave room beside it.
         observations.push({ name: 'reading finger drag', engine: 'webkit', held: 'overflow-y auto and at most 60% of the window; no drag in this harness' });
       } else {
-        await p.send('Input.synthesizeScrollGesture', { x, y, yDistance: -240, gestureSourceType: 'touch', speed: 1200 });
+        await drag(-240, 1200);
         await until(async () => (await state()).top > 0, 'phone: a finger drag inside scrolls the box');
         assert.equal((await state()).pageY, box.pageY, 'phone: and not the page');
         // Beside the card, above it or below it, where the page shows.
@@ -303,6 +341,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         assert.ok(outsideY < at.y || outsideY > at.y + at.height, 'phone: a point outside the card');
         await p.send('Input.synthesizeScrollGesture', { x: at.x + at.width / 2, y: outsideY, yDistance: -240, gestureSourceType: 'touch', speed: 1200 });
         await until(async () => (await state()).pageY !== box.pageY, 'phone: a drag outside it scrolls the page');
+        // Dragged inside to its bottom edge, the next drag inside carries on with the page.
+        await drag(-(box.more + 400), 2400);
+        await until(async () => (await state()).top >= (await state()).more - 1, 'phone: a long drag inside takes the box to its bottom edge');
+        const atEnd = await state();
+        await drag(-200, 1200);
+        await until(async () => (await state()).pageY > atEnd.pageY, 'phone: at the box\'s edge a drag inside scrolls the page on');
       }
       await shot(p, 'reading-long-' + device);
       assert.deepEqual(p.errors, []);
@@ -324,7 +368,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.evaluate('document.activeElement?.blur()');
         await p.key('?');
         await until(async () => (await guide())?.open === true, 'laptop: ? opens the guide');
-        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 13 }, 'laptop: the guide, every rule');
+        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 14 }, 'laptop: the guide, every rule');
         await shot(p, 'reading-guide-laptop');
         await p.key('Escape');
         await until(async () => (await guide())?.open === false, 'laptop: Escape closes it');
@@ -408,10 +452,20 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   await check('reading the reply arrow says "You replied at" and opens the reply; on a phone a first tap says it and a second opens it', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-replied-' + device;
-      const ids = await seed(topic, [['answered', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A message you will reply to.' }],
+      // The message replied to is itself a reply, so it shows whole inside its stack (a head shows as one row).
+      const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The stack\'s first message.' }],
+        ['answered', { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor], body: 'A message you will reply to.' }],
         ['mine', { sender: 'person', reply_to: 'answered', addressees: ['aim-core'], body: 'My reply to it.' }],
         ['other', { sender: 'aim-core', addressees: [facts.actor], body: 'A message you have not replied to.' }]]);
-      const p = await open('reading-replied-' + device, device, topic, ids.answered);
+      const p = await open('reading-replied-' + device, device, topic, ids.root);
+      // Replied to, it reads as read and folds behind the stack's line, under the newest reply (the person's own): the line opens it.
+      const unfold = async (q, head, id) => {
+        const line = `#messages .reply-stack[data-stack="${head}"] .stack-fold-line`;
+        await centre(q, line);
+        await press(q, device, line);
+        await until(() => q.evaluate(`document.querySelector(${JSON.stringify(card(id))}).getClientRects().length > 0`), `${device}: the stack's line opens the reply`);
+      };
+      await unfold(p, ids.root, ids.answered);
       const arrow = card(ids.answered) + ' .replied-mark';
       const said = () => p.evaluate(`(()=>{const a=document.querySelector(${JSON.stringify(arrow)}),w=a.querySelector('.replied-words');return {words:w.textContent,shown:Number(getComputedStyle(w).opacity),reply:a.dataset.reply}})()`);
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.other))}).querySelector('.replied-mark')`), null, device + ': no arrow on a message not replied to');
@@ -443,9 +497,11 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(p.errors, []);
       await p.close();
       // Lit, a card's bar sits clear of its reply arrow, even where a long name puts the arrow under the bar's corner.
-      const far = await seed(topic + '-long', [['long', { sender: 'fixture-notebook-agent', join: true, addressees: [facts.actor], body: 'A long name puts the arrow far along its line.' }],
+      const far = await seed(topic + '-long', [['first', { sender: 'fixture-notebook-agent', join: true, addressees: [facts.actor], body: 'The stack\'s first message.' }],
+        ['long', { sender: 'fixture-notebook-agent', reply_to: 'first', addressees: [facts.actor], body: 'A long name puts the arrow far along its line.' }],
         ['also', { sender: 'person', reply_to: 'long', addressees: ['fixture-notebook-agent'], body: 'My reply to the long name.' }]]);
-      const q = await open('reading-replied-long-' + device, device, topic + '-long', far.long);
+      const q = await open('reading-replied-long-' + device, device, topic + '-long', far.first);
+      await unfold(q, far.first, far.long);
       await light(q, device, far.long);
       const covers = await q.evaluate(`(()=>{const b=document.querySelector('${BAR}').getBoundingClientRect(),m=document.querySelector(${JSON.stringify(card(far.long) + ' .replied-mark')}).getBoundingClientRect();
         return b.right>m.left&&b.left<m.right&&b.bottom>m.top&&b.top<m.bottom})()`);
@@ -602,7 +658,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
-  await check('reading replies gather into a stack under the message they answer, folded to the newest and any unread, and its line opens the rest', async () => {
+  await check('reading replies gather into a stack under the message they answer, oldest first, folded to the newest and any unread, and its line opens the rest', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-stack-' + device;
       // Read through "other"; three and four come after, unread. Three answers two, so it is in the stack too.
@@ -616,24 +672,23 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const p = await open('reading-stack-' + device, device, topic, ids.root);
       const stack = async () => {
         const seen = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),head=list.querySelector(${JSON.stringify(card(ids.root))}),s=head?.closest('.reply-stack');
-          if(!s)return null;const t=s.querySelector(':scope > .stack-replies > .stack-toggle'),own=list.querySelector(${JSON.stringify(entry(ids.other))});
+          if(!s)return null;const t=s.querySelector(':scope > .stack-replies > .stack-fold-line'),own=list.querySelector(${JSON.stringify(entry(ids.other))});
           return {top:s.parentElement===list,head:s.firstElementChild.dataset.id,replies:[...s.querySelectorAll(':scope > .stack-replies > [data-id]')].map(e=>[e.dataset.id,e.getClientRects().length>0]),
-            line:t.hidden?null:t.textContent,open:t.getAttribute('aria-expanded'),aboveOther:Boolean(s.compareDocumentPosition(own)&Node.DOCUMENT_POSITION_FOLLOWING),otherAlone:own.parentElement===list}})()`);
+            line:t?t.textContent:null,fold:s.dataset.fold,aboveOther:Boolean(s.compareDocumentPosition(own)&Node.DOCUMENT_POSITION_FOLLOWING),otherAlone:own.parentElement===list}})()`);
         return seen && { ...seen, head: name[seen.head], replies: seen.replies.map(([id, shown]) => [name[id], shown]) };
       };
-      const folded = await stack();
-      assert.deepEqual(folded, { top: true, head: 'root', replies: [['four', true], ['three', true], ['two', false], ['one', false]], line: '2 earlier replies', open: 'false',
-        aboveOther: true, otherAlone: true }, device + ': the replies under the message, newest first; the newest and the unread one in view, the rest folded behind one line; the stack above the message on its own, as its newest reply is newer');
+      await becomes(stack, { top: true, head: 'root', replies: [['one', false], ['two', false], ['three', true], ['four', true]], line: '2 earlier replies', fold: 'folded',
+        aboveOther: true, otherAlone: true }, device + ': the replies under the message, oldest first as a chat reads; the unread ones and the newest in view, the rest folded behind one line; the stack above the message on its own, as its newest reply is newer');
       await shot(p, 'reading-stack-' + device);
-      const line = `#messages .reply-stack:has(${card(ids.root).replace(/^#messages\s+/, '')}) > .stack-replies > .stack-toggle`;
+      const line = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-replies > .stack-fold-line`;
       await centre(p, line);
       await press(p, device, line);
-      await until(async () => (await stack())?.open === 'true', device + ': a press on the line opens the stack');
+      await until(async () => (await stack())?.fold === 'open', device + ': a press on the line opens the stack');
       assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [true, true, true, true], device + ': every reply shows');
       assert.equal((await stack()).line, 'Fold 2 earlier replies', device + ': and the line folds them again');
       await press(p, device, line);
-      await until(async () => (await stack())?.open === 'false', device + ': a second press folds them');
-      assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [true, true, false, false], device + ': as they were');
+      await until(async () => (await stack())?.fold === 'folded', device + ': a second press folds them');
+      assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [false, false, true, true], device + ': as they were');
       assert.equal(await readerOn(p), null, device + ': the line opens no message');
       assert.deepEqual(p.errors, []);
       await p.close();
@@ -808,4 +863,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await stackChecks({ check, until, view, control, shot, facts, observations, engine },
+    { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
 }

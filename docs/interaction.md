@@ -136,10 +136,15 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   on a fresh page. A press on a row whose move goes nowhere (the place
   already being read, or a move the guard refuses) lands the same way, on
   the page's heading; Return on such a row keeps the keys on it.
+- **The messages.** On a message (its card holding the keys), ⌘↑ and ⌘↓
+  move its reply stack up or down in the reader's own order, ⌘→ and ⌘←
+  open and fold it a step (a head first shows its whole message), ⇧⌘↑ and
+  ⇧⌘↓ join it to the stack above or below for everyone, and ⌘Z puts the
+  last of these back (docs/reply-stacks.md). The keys stay on the message
+  that moved, and a screen reader hears what happened.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
-  line's start and end, ⌘↑ and ⌘↓ the writing's. The messages leave their ⌘
-  arrows, and ⇧⌘↑ ⇧⌘↓, free for their own pieces. A pane not on screen (the
+  line's start and end, ⌘↑ and ⌘↓ the writing's, and no stack moves. A pane not on screen (the
   outline behind "☰ Outcomes" on a phone, the right rail behind "Pipeline &
   pages" below 1181px) is passed over: the keys never open a drawer or a
   sheet. While one is open over the dimmed page, the keys never act on what
@@ -182,7 +187,11 @@ page painted. Its checks, by rule:
   `read` says of both: `tests/test_agent_verbs_reactions.py`.
 - How cards read (docs/topic-reading.md): "reading read cards sit back on the
   read fill …", "reading the reply arrow says "You replied at" …" and
-  "reading replies gather into a stack …".
+  "reading replies gather into a stack …"; every act on a reply stack (the
+  head's row, rename, Star and the rail's Starred, ⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓ and Split
+  back out, ⌘→ ⌘← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
+  and swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
+  (docs/reply-stacks.md).
 - ?: "reading ? and the rail's "? Pointer, keys and taps" open the guide …".
 - Images: "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and

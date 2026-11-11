@@ -149,7 +149,7 @@ test('the page: + holds Add image, the note and Quote, the message keeps no row 
     assert.match(under, new RegExp(`<button id="${id}" class="menu-source"[^>]*hidden>`), `${id} is the ⋯'s, never a box under the message`);
   assert.match(reader, /<button id="quote-selection"[^>]*class="quote-pill" title="Shift-click extends the lit passage · Return inserts it as a quote" hidden>/);
   assert.match(reader, /<button id="reader-parent"[^>]*aria-label="Back to the topic"[^>]*>←<\/button>/, 'the back button is its arrow, named for a screen reader');
-  assert.match(reader, /<div id="reader-stepping"><button id="next-message"[^>]*aria-label="Newer message \(above\)"[^>]*>↑<\/button><button id="previous-message"[^>]*aria-label="Older message \(below\)"[^>]*>↓<\/button><\/div>/,
+  assert.match(reader, /<div id="reader-stepping"><button id="next-message"[^>]*aria-label="Previous message \(above\)"[^>]*>↑<\/button><button id="previous-message"[^>]*aria-label="Next message \(below\)"[^>]*>↓<\/button><\/div>/,
     'up (newer) comes first, then down (older)');
   assert.ok(reader.indexOf('id="reader-stepping"') < reader.indexOf('id="reader-menu"') && reader.indexOf('id="reader-menu"') < reader.indexOf('id="reader-close"'), 'the header holds ↑ ↓, then ⋯, then ✕');
 });

@@ -919,13 +919,17 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.ok(Object.values(sides).every(s => s === 0), 'no ring around an unfocused pill button: ' + JSON.stringify(sides));
     }
     // From the control just before the people, Tab stops on each pill button in turn.
-    await p.evaluate(`(()=>{const people=document.querySelector('#topic-people'),all=[...document.querySelectorAll('button,input,a[href],[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled&&e.getClientRects().length&&people.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_PRECEDING);all.at(-1).focus({preventScroll:true})})()`);
+    const from = await p.evaluate(`(()=>{const people=document.querySelector('#topic-people'),all=[...document.querySelectorAll('button,input,a[href],[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled&&!e.closest('[inert]')&&e.getClientRects().length&&people.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_PRECEDING);all.at(-1).focus({preventScroll:true});const a=document.activeElement;return a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30)})()`);
+    let stop = null;
     const expected = await p.evaluate(`${buttons}.map(e=>e.getAttribute('aria-label')||e.title)`);
     const seen = [];
+    // A lit card's bar buttons follow it in the Tab order (docs/interaction.md): up to three stops before the people.
+    let past = 0;
     for (;;) {
       await p.key('Tab');
-      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
-      if (!at.pill) break;
+      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar')),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
+      if (!at.pill && at.bar && !seen.length && past++ < 3) continue;
+      if (!at.pill) { stop = await p.evaluate(`(a=>a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30))(document.activeElement)`); break; }
       seen.push(at.name);
       assert.deepEqual([at.visible, at.style], [true, 'solid'], `${at.name}: the browser draws its keyboard ring`);
       await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'settled');
@@ -933,7 +937,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       if (seen.length === 1) await shot(p, 'header-ring-first-pill-button');
       for (const [side, share] of Object.entries(sides)) assert.ok(share >= 0.5, `${at.name}: the ring shows along its ${side} side (${share.toFixed(2)} of it): ${JSON.stringify(sides)}`);
     }
-    assert.deepEqual(seen, expected, 'Tab stops on every button in the pills, in order');
+    assert.deepEqual(seen, expected, `Tab stops on every button in the pills, in order (from ${from}, stopped on ${stop})`);
     assert.ok(seen.some(name => name.startsWith('Change ')) && seen.some(name => name.startsWith('Remove ')), 'an agent\'s colour button and a remove button among them');
     assert.deepEqual(p.errors, []);
   });
@@ -994,9 +998,16 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     // down does not swallow the press.
     const remove = `#topic-people [aria-label="Remove ${agent}"]`;
     await p.evaluate(`document.querySelector(${JSON.stringify(remove)}).scrollIntoView({block:'center'})`);
-    const out = await p.box(remove), x = out.x + out.width / 2, y = out.y + out.height / 2;
-    assert.equal(await p.evaluate(`document.elementFromPoint(${x}, ${y}) === document.querySelector(${JSON.stringify(remove)})`), true, 'the remove button is what is pressed');
+    // The pointer goes to the button as a person's does, and the press is aimed
+    // where the button then shows: a pointer that rested over a folded reply
+    // stack and leaves it hides that stack's reply line (docs/reply-stacks.md),
+    // which moves what is below it.
+    const centre = async () => { const out = await p.box(remove); return [out.x + out.width / 2, out.y + out.height / 2]; };
+    const [x0, y0] = await centre();
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
+    const [x, y] = await centre();
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    assert.equal(await p.evaluate(`document.elementFromPoint(${x}, ${y}) === document.querySelector(${JSON.stringify(remove)})`), true, 'the remove button is what is pressed');
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     // The page reloads after every commit: it reads the wake lights, which set
     // the wakes notice's hidden attribute, and in the same turn paints the
