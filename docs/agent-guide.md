@@ -60,6 +60,24 @@ A post that names someone without saying which is refused
 can find out yourself is not a question. Add `--reply-to MESSAGE` when you
 answer a particular message.
 
+When a piece you are building, or the release being put together, truly
+cannot go on until the answer comes, say which with `--blocks`:
+
+```sh
+aim-next post TOPIC --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
+aim-next post TOPIC --asks owner --blocks release:44 "May release 44 ship before the review ends?"
+```
+
+The ask then shows first in their Waiting on you as "Blocking a piece" (or
+"Blocking a release"), on the outcome's light, and as "Held: waiting on …"
+on that piece's row in the pipeline, until they answer it the way any ask is
+answered. Use it only when the work really stops; a question you can work
+around is a plain `--asks`. Put the request in the first line: the pipeline
+shows that line. It names a piece in Now (`piece:p-…`, from `aim-next
+pipeline OUTCOME`) or the release being put together (`release:N`) of the topic's
+outcome; anything else is refused (`BLOCKS_UNKNOWN`), and so is `--blocks`
+without `--asks` (`BLOCKS_NEEDS_ASK`). Either way nothing is sent.
+
 ## Replying to a whisper with a whisper
 
 A whisper is private between one person and you. Its delivery line starts

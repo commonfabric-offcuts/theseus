@@ -491,3 +491,14 @@ test('the light sets no timer: the page reads it again on each commit, and spoke
   const source = readFileSync(new URL('../web/outcome-light.mjs', import.meta.url), 'utf8') + readFileSync(new URL('../web/outcome-light-words.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /setTimeout|setInterval|requestAnimationFrame/);
 });
+
+test('a question that holds a release or a piece says so on the light, ahead of the count (item 259)', () => {
+  const release = light('waiting', { kind: 'asks', count: 2, blocking: 'release' });
+  assert.equal(words(lightName(release)), 'Blocking a release: waiting on you');
+  assert.deepEqual(pieces(release), ['Blocking a release:', 'waiting on you']);
+  assert.equal(words(lightName(light('waiting', { kind: 'asks', count: 1, blocking: 'piece' }))), 'Blocking a piece: waiting on you');
+  assert.match(words(leadWords({ kind: 'asks', count: 1, blocking: 'release' })), /^A question is waiting for your answer, and work can't go on until you answer it \(blocking a release\):$/);
+  // A blocking kind it does not know is said as plain Waiting on you, as is a question that blocks nothing.
+  assert.equal(words(lightName(light('waiting', { kind: 'asks', count: 1, blocking: 'other' }))), 'Waiting on you · 1 question');
+  assert.deepEqual(pieces(light('waiting', { kind: 'asks', count: 1 })), ['Waiting on you ·', '1 question']);
+});

@@ -179,7 +179,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] [--attach FILE]... TEXT|- "
+         "| inbox | post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
@@ -272,6 +272,8 @@ def _parser():
     post.add_argument("--part", action="store_true")
     # An Ask that offers its people ✅ (go ahead) and 🚫 (don't) (docs/thumbs.md).
     post.add_argument("--go-ahead", action="store_true")
+    # --blocks piece:p-… | release:N: the one piece or release an ask holds until it is answered (item 259).
+    post.add_argument("--blocks")
     # --operation ID: the write's own operation id, so sending it again returns the same message (a deploy's retry).
     post.add_argument("--operation")
     post.add_argument("--attach", action="append", default=[])
@@ -392,6 +394,8 @@ def _light_words(light):
     kind = short.get("kind")
     if kind == "asks":
         count = short.get("count", 0)
+        if short.get("blocking") in ("release", "piece"):
+            return "blocking a %s: waiting on you · %d question%s" % (short["blocking"], count, "" if count == 1 else "s")
         return "waiting on you · %d question%s" % (count, "" if count == 1 else "s")
     if kind == "seen":
         return "worked on at " + at(short.get("ms")) if at(short.get("ms")) else "being worked on"
@@ -934,6 +938,8 @@ class Agent(PipelineVerbs, TargetVerbs):
             heading += " replying to " + item["reply_to"]
         self.out.plain("")
         self.out.plain(heading)
+        if item.get("blocks"):
+            self.out.plain("  (holds %s %s until it is answered)" % (item["blocks"]["kind"], item["blocks"]["ref"]))
         reactions = item.get("reactions") or {}
         if item.get("go_ahead"):
             said = ", ".join("%s %s" % (answer["actor_id"], "✅ go ahead" if answer["answer"] == "yes" else "🚫 don't")
@@ -1243,8 +1249,14 @@ class Agent(PipelineVerbs, TargetVerbs):
         if options.subject:
             # --subject item:92,item:31: what the post is about, written with it.
             args["subjects"] = [dict(zip(("kind", "ref"), part.strip().split(":", 1))) for part in options.subject.split(",") if part.strip()]
+        if options.blocks is not None:
+            # --blocks release:44, or piece:p-…: Core checks it names this outcome's piece or release, and that the post asks.
+            kind, _, ref = options.blocks.partition(":")
+            args["blocks"] = {"kind": kind.strip(), "ref": ref.strip()}
         result = self.command("message.post", {"topic_id": options.topic}, args, operation=operation)
-        self.out.plain("posted %s in %s (%s deliveries queued)" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"]))
+        held = result.get("blocks")
+        self.out.plain("posted %s in %s (%s deliveries queued)%s" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"],
+                                                                     "; it holds %s %s until it is answered" % (held["kind"], held["ref"]) if held else ""))
 
     def do_whisper(self):
         """A whisper: to one agent, or an agent's answer to the person who whispered to it (--reply-to)."""

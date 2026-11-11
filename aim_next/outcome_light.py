@@ -123,8 +123,10 @@ class OutcomeLight:
     def _outcome_stands(self, db, actor, workspace):
         """The whole of where the outcome stands for this reader: light, lead, facts and also."""
         now = _now_ms()
-        # The questions are read first and alone, so a failure elsewhere never hides them.
+        # The questions are read first and alone, so a failure elsewhere never hides them; with them the
+        # asks among them that hold a piece or a release (item 259), by the rule that clears every ask.
         asks = self._light_asks(db, actor, workspace["id"])
+        blocking = self._blocking_on(db, actor, workspace["id"])
         try:
             pipeline = self._pipeline_facts(db, actor, workspace["id"])
             done_facts = self._done_facts(db, workspace["id"])
@@ -132,10 +134,10 @@ class OutcomeLight:
         except sqlite3.OperationalError as error:
             if "locked" in str(error).lower() or "busy" in str(error).lower():
                 raise
-            return outcome_rules.unreadable(asks)
+            return outcome_rules.unreadable(asks, blocking)
         except sqlite3.DatabaseError:
-            return outcome_rules.unreadable(asks)
-        return outcome_rules.stands(asks, pipeline, talk, waits, done_facts, has_topics, last, self._created(db, workspace))
+            return outcome_rules.unreadable(asks, blocking)
+        return outcome_rules.stands(asks, pipeline, talk, waits, done_facts, has_topics, last, self._created(db, workspace), blocking)
 
     def _view_outcome_light(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))

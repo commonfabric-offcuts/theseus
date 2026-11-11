@@ -71,6 +71,35 @@ class LightRulesCase(unittest.TestCase):
         self.assertEqual(built["facts"], [{"kind": "item_work", "item": 69, "title": "Notebook pages", "by": "fable", "how": "turn",
                                            "ms": NOW - 5 * MINUTE}])
 
+    def test_a_question_that_holds_work_leads_the_facts_and_says_what_it_holds(self):
+        # Item 259: the asks come newest first; the one that holds work goes first, so the card's "the first" is it.
+        newer = dict(ASK, topic_id="t-header", title="Header colour", ms=NOW - 2 * MINUTE)
+        holds = [{"topic_id": "t-notes", "blocks": {"kind": "piece", "piece_id": "p-1", "items": [69]}}]
+        answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, holds)
+        self.assertEqual(light(answer), ("waiting", {"kind": "asks", "count": 2, "blocking": "piece"}))
+        self.assertEqual(answer["lead"], {"kind": "asks", "count": 2, "blocking": "piece"})
+        self.assertEqual(answer["facts"], [dict(ASK, kind="ask", blocking=holds[0]["blocks"]), dict(newer, kind="ask")])
+        # A release held anywhere names the light, and its topic leads, though a piece's ask came first.
+        release = {"topic_id": "t-header", "blocks": {"kind": "release", "release": 44}}
+        answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, [release] + holds)
+        self.assertEqual(light(answer)[1]["blocking"], "release")
+        self.assertEqual([fact["topic_id"] for fact in answer["facts"]], ["t-header", "t-notes"])
+        # The facts follow the blocking asks' order, not the asks': here the release is held by the older question.
+        on_notes = {"topic_id": "t-notes", "blocks": {"kind": "release", "release": 44}}
+        on_header = {"topic_id": "t-header", "blocks": {"kind": "piece", "piece_id": "p-1", "items": [69]}}
+        answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, [on_notes, on_header])
+        self.assertEqual(answer["lead"]["blocking"], "release")
+        self.assertEqual([(fact["topic_id"], fact["blocking"]) for fact in answer["facts"]],
+                         [("t-notes", on_notes["blocks"]), ("t-header", on_header["blocks"])])
+        # Its neighbour: nothing held, newest first and no blocking anywhere.
+        plain = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED)
+        self.assertEqual((light(plain)[1], plain["lead"]), ({"kind": "asks", "count": 2}, {"kind": "asks", "count": 2}))
+        self.assertEqual(plain["facts"], [dict(newer, kind="ask"), dict(ASK, kind="ask")])
+        # A read that failed after the questions still says what they hold.
+        failed = unreadable([newer, ASK], holds)
+        self.assertEqual((failed["light"]["short"], failed["light"]["unreadable"]), ({"kind": "asks", "count": 2, "blocking": "piece"}, True))
+        self.assertEqual(failed["facts"][0]["topic_id"], "t-notes")
+
     def test_d4_talk_outside_now_is_quiet_with_since_the_last_work_in_now(self):
         now = [item(4, "Phone sign-in survives a restart", "t-4"), item(5, "Five", "t-5"), item(6, "Six", "t-6")]
         talk = [topic("t-friction", "Friction log", worked(NOW - 10 * MINUTE, "aim-ux"))]
@@ -184,6 +213,12 @@ class CliWordsCase(unittest.TestCase):
             at = calendar.timegm((2026, 11, 5, 8, 0, 0)) * 1000
             self.assertEqual(_light_words({"light": "waiting", "short": {"kind": "asks", "count": 1}}), "waiting on you · 1 question")
             self.assertEqual(_light_words({"light": "waiting", "short": {"kind": "asks", "count": 2}}), "waiting on you · 2 questions")
+            # Item 259: a question that holds a release or a piece says so first; an unknown kind reads as before.
+            self.assertEqual(_light_words({"light": "waiting", "short": {"kind": "asks", "count": 1, "blocking": "piece"}}),
+                             "blocking a piece: waiting on you · 1 question")
+            self.assertEqual(_light_words({"light": "waiting", "short": {"kind": "asks", "count": 3, "blocking": "release"}}),
+                             "blocking a release: waiting on you · 3 questions")
+            self.assertEqual(_light_words({"light": "waiting", "short": {"kind": "asks", "count": 2, "blocking": "item"}}), "waiting on you · 2 questions")
             self.assertEqual(_light_words({"light": "built", "short": {"kind": "seen", "ms": at}}), "worked on at 2026-11-05 08:00")
             self.assertEqual(_light_words({"light": "done", "short": {"kind": "checks_pass"}}), "done · all checks pass")
             self.assertEqual(_light_words({"light": "quiet", "short": {"kind": "no_topics"}}), "no topics yet")

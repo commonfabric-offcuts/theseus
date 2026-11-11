@@ -122,6 +122,9 @@ class PipelineVerbs:
             if "ms" in typical:
                 words += " · past items took %s here (median of %d%s)" % (_duration(typical["ms"]), typical["of"], "; few" if typical["loose"] else "")
             self.out.plain("     " + words)
+        for held in (item.get("piece") or {}).get("held") or []:
+            # An ask that holds the piece this item is in, until it is answered (item 259).
+            self.out.plain("     held: waiting on %s — %s (%s)" % (", ".join(held["waiting_on"]), held["line"], held["message_id"]))
         sources = item.get("sources") or {}
         shown = []
         for source in sources.get("shown", [])[:6]:

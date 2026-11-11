@@ -63,6 +63,13 @@ export function listWords(words) {
   return list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
 }
 
+// An ask that holds a piece or a release until it is answered (item 259):
+// "Held: waiting on you — Please restart fseventsd", the reader named "you".
+export function heldWords(held, reader) {
+  const waiting = (Array.isArray(held?.waiting_on) ? held.waiting_on : []).map(id => id === reader ? 'you' : id);
+  return { lead: `Held: waiting on ${listWords(waiting.length ? waiting : ['an answer'])}`, line: held?.line || 'their answer' };
+}
+
 // "1 h 39 min", "25 min", "23 h".
 export function duration(ms) {
   const minutes = Math.max(0, Math.round(ms / 60000)), hours = Math.floor(minutes / 60), rest = minutes % 60;

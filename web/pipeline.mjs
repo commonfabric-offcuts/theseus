@@ -10,7 +10,7 @@ import { shell } from './in-place-navigation.mjs';
 import { clock, datedTime, shownTime } from './times.mjs';
 import { workNote } from './topic-state.mjs';
 import {
-  BUSY_WORDS, EMPTY_WORDS, SIZE_WORDS, checkPipeline, duration, eventRuns, factBoxes, gatheringWords, glyphWords, historyLine, listWords, missedWords,
+  BUSY_WORDS, EMPTY_WORDS, SIZE_WORDS, checkPipeline, duration, eventRuns, factBoxes, gatheringWords, glyphWords, heldWords, historyLine, listWords, missedWords,
   pieceTopicWords, placedWords, raisedWords, sentenceName, sourceRuns, stageLine, typicalCell, typicalWords, waitingWords, waitsWords,
 } from './pipeline-words.mjs';
 
@@ -279,6 +279,12 @@ export class PipelinePage {
     const box = el('div', { class: 'pl-stagebox' });
     const stage = piece.stage;
     if (!stage) return box;
+    // An ask that holds this piece or release, until it is answered (item 259): who it waits on and its first line, linking to it.
+    for (const held of Array.isArray(piece.held) ? piece.held : []) {
+      const words = heldWords(held, this.reader);
+      box.append(el('p', { class: 'pl-held', 'data-message': held.message_id }, el('strong', { text: words.lead }), ' — ',
+        el('a', { href: messageHref(held.topic_id, held.message_id), text: words.line })));
+    }
     const chips = [
       ...piece.stages_so_far.map(entry => ['done', `${entry.name} · ${duration(entry.left_ms - entry.entered_ms)}`, `${datedTime(entry.entered_ms)} to ${datedTime(entry.left_ms)}`]),
       ['now', stage.name, `Now, since ${datedTime(stage.entered_ms)}`],

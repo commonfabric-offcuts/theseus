@@ -298,4 +298,56 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('light a question that holds a piece is first in Waiting on you and says Blocking on the light, until it is answered; a plain question is unchanged', async () => {
+    // Item 259. An agent's ask that names the piece it holds, in an outcome of the person's with a pipeline.
+    await pitch();
+    const outcome = 'light-block', topic = 'light-block-topic';
+    await ensure(outcome, 'Blocked outcome', { id: topic, title: 'Restart the watcher' });
+    let serial = 0;
+    const pipeline = (kind, target, args) => control({ method: 'pipeline', operation_id: `light-block-${kind}-${++serial}`, kind, target, args, workspace_id: outcome });
+    await pipeline('pipeline.configure', { workspace_id: outcome }, { enabled: true });
+    await pipeline('pipeline.stages_set', { workspace_id: outcome }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    const { result: { number } } = await pipeline('pipeline.item_add', { workspace_id: outcome }, { title: 'Watch the files', section: 'now', size: 'small', sources: [{ note: 'the check' }] });
+    const { result: { piece_id: piece } } = await pipeline('pipeline.piece_start', { workspace_id: outcome }, { numbers: [number], topic_id: topic, stage_id: 'build' });
+    const p = await page('light-block-home', null, true, { url: facts.origin + '/' });
+    const list = () => p.evaluate(`[...document.querySelectorAll('#waiting-on-you li')].map(li=>li.textContent)`);
+    await until(async () => (await standing(p, 'light-pitch'))?.light === 'waiting', 'the outcomes are listed with their lights');
+    const plainRow = (await list()).find(row => row.startsWith('Speaker notes, in Pitch deck'));
+    assert.ok(plainRow, 'the plain question is listed: ' + JSON.stringify(await list()));
+    const asked = await control({ method: 'agent_message', operation_id: 'light-block-ask', topic_id: topic, whole_topic: true, body: 'Please restart fseventsd.\nIt stopped at 9.',
+      post_args: { addressees: [facts.actor], intent: 'ask', blocks: { kind: 'piece', ref: piece } } });
+    assert.equal(asked.status, 'committed', JSON.stringify(asked));
+    await until(async () => (await list())[0]?.startsWith('Blocking a piece'), 'the blocking question comes first, live');
+    const rows = await list();
+    assert.match(rows[0], new RegExp(`^Blocking a piece \\(item ${number}\\): Restart the watcher, in Blocked outcome — fixture-notebook-agent asked at \\d{1,2}:\\d{2}\\s[AP]M$`));
+    assert.equal(rows.filter(row => row.includes('Restart the watcher')).length, 1, 'its topic is listed once');
+    assert.ok(rows.includes(plainRow), 'the plain question is listed as it was');
+    await until(async () => (await standing(p, outcome))?.text === 'Blocking a piece: waiting on you', 'the outcome row says Blocking');
+    const row = await standing(p, outcome);
+    assert.equal(row.light, 'waiting', 'the lit light, as Waiting on you');
+    assert.notEqual(row.lamp.fill, 'rgba(0, 0, 0, 0)', 'filled');
+    assert.equal((await standing(p, 'light-pitch')).text, 'Waiting on you · 1 question', 'an outcome whose question blocks nothing reads as before');
+    // Opening it takes the person to the question's topic.
+    await shot(p, 'light-block-home');
+    await p.point('#waiting-on-you li.blocking a');
+    await until(() => p.evaluate(`new URL(location.href).searchParams.get('topic')===${JSON.stringify(topic)}`), 'the row opens its topic');
+    await p.close();
+    // Where it stands, on the outcome's page, says the same.
+    const o = await page('light-block-outcome', null, true, { url: facts.origin + '/?workspace=' + outcome });
+    const card = () => o.evaluate(`(()=>{const s=document.querySelector('#outcome-standing');return s&&!s.hidden?s.textContent:''})()`);
+    await until(async () => (await card()).includes('Blocking a piece: waiting on you'), 'the card says Blocking');
+    // The person answers in the topic: every surface returns to normal, live.
+    await control({ method: 'agent_message', operation_id: 'light-block-answer', sender: 'person', topic_id: topic, whole_topic: true, body: 'Restarted.' });
+    await until(async () => !(await card()).includes('Blocking'), 'the card no longer says Blocking');
+    assert.doesNotMatch(await card(), /Waiting on you/, 'nor waits on the person');
+    const h = await page('light-block-home-after', null, true, { url: facts.origin + '/' });
+    await until(async () => (await standing(h, 'light-pitch'))?.light === 'waiting', 'the outcomes are listed with their lights');
+    await until(async () => !(await standing(h, outcome))?.text.startsWith('Blocking'), 'the row no longer says Blocking');
+    const after = await h.evaluate(`[...document.querySelectorAll('#waiting-on-you li')].map(li=>li.textContent)`);
+    assert.equal(after.filter(row => /Blocking|Restart the watcher/.test(row)).length, 0, 'nor does Waiting on you list it: ' + JSON.stringify(after));
+    assert.ok(after.includes(plainRow), 'the plain question still waits');
+    assert.deepEqual([...p.errors, ...o.errors, ...h.errors], []);
+    await o.close(); await h.close();
+  });
 }

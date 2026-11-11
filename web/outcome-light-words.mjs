@@ -22,6 +22,10 @@ const did = (how, ms, about = false) => [how === 'turn' ? 'worked on it' : about
 // After a comma: "yesterday at 3:15 PM", or today "at 6:45 AM" with no comma.
 const whenAfter = ms => !known(ms) ? [] : [' ', { ms, form: 'commaSince' }];
 
+// Waiting on you, when one of the questions holds a piece or a release (item 259):
+// "Blocking a release", "Blocking a piece", or null.
+const blockingName = short => short?.blocking === 'release' ? 'Blocking a release' : short?.blocking === 'piece' ? 'Blocking a piece' : null;
+
 // The light's kind as the page names it on its lamp: the four, or unknown.
 export const lampKind = light => light?.light ?? 'unknown';
 
@@ -31,7 +35,7 @@ export function shortPieces(light) {
   const short = light?.short;
   if (!light?.light) return [['Couldn’t check'], ['where it stands']];
   switch (short?.kind) {
-    case 'asks': return [['Waiting on you ·'], [plural(short.count, 'question', 'questions')]];
+    case 'asks': return blockingName(short) ? [[`${blockingName(short)}:`], ['waiting on you']] : [['Waiting on you ·'], [plural(short.count, 'question', 'questions')]];
     case 'seen': return known(short.ms) ? [['Worked on'], time(short.ms, 'at')] : [['Being worked on'], []];
     case 'checks_pass': return [['Done'], []];
     case 'reached': return [['Done ·'], ['reached ', ...time(short.ms, 'dayAt')]];
@@ -47,6 +51,7 @@ export function shortPieces(light) {
 export function lightName(light) {
   if (!light?.light) return ['Couldn’t check where it stands'];
   const short = light.short ?? {};
+  if (light.light === 'waiting' && blockingName(short)) return [`${blockingName(short)}: waiting on you`];
   if (light.light === 'waiting') return short.kind === 'asks' ? [`Waiting on you · ${plural(short.count, 'question', 'questions')}`] : ['Waiting on you'];
   if (light.light === 'built') return known(short.ms) ? ['Worked on ', ...time(short.ms, 'at')] : ['Being worked on'];
   if (light.light === 'done') return short.kind === 'reached' ? ['Done · reached ', ...time(short.ms, 'dayAt')] : ['Done'];
@@ -80,7 +85,10 @@ export function lastLine(answer) {
 export function leadWords(lead, facts = [], outcome = '') {
   const more = facts.some(fact => fact?.kind === 'more_items'), lastNow = facts.some(fact => fact?.kind === 'last_now_work');
   switch (lead?.kind) {
-    case 'asks': return [lead.count === 1 ? 'A question is waiting for your answer:' : `${lead.count} questions are waiting for your answer:`];
+    case 'asks':
+      if (blockingName(lead)) return [lead.count === 1 ? `A question is waiting for your answer, and work can't go on until you answer it (${blockingName(lead).toLowerCase()}):`
+        : `${lead.count} questions are waiting for your answer. Work can't go on until you answer the first (${blockingName(lead).toLowerCase()}):`];
+      return [lead.count === 1 ? 'A question is waiting for your answer:' : `${lead.count} questions are waiting for your answer:`];
     case 'now_work':
       if (lead.of === 1) return ['Its one item in Now was worked on in the last hour:'];
       if (more) return [`${lead.seen} of the ${lead.of} items in Now were worked on in the last hour. The latest:`];

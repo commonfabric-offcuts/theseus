@@ -147,7 +147,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
-| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] [--attach FILE]... TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin, and each `--attach` sends a file with it (see [Attachments](#attachments)). With `--operation ID` it is sent under that operation id, so sending the same post again answers with the message already recorded, and different words under the same id are refused (`OPERATION_PAYLOAD_MISMATCH`), nothing sent. `--operation` takes no `--attach`, whose files upload afresh each run, so a repeat would never be the same post: the pair is refused (`INVALID_ARGUMENT`) before anything is uploaded. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
+| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P\|release:N] [--operation ID] [--attach FILE]... TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin, and each `--attach` sends a file with it (see [Attachments](#attachments)). With `--operation ID` it is sent under that operation id, so sending the same post again answers with the message already recorded, and different words under the same id are refused (`OPERATION_PAYLOAD_MISMATCH`), nothing sent. `--operation` takes no `--attach`, whose files upload afresh each run, so a repeat would never be the same post: the pair is refused (`INVALID_ARGUMENT`) before anything is uploaded. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
 | `whisper TOPIC --to NAME [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post` with `whisper: true` to NAME alone (see [whispers.md](whispers.md)). An agent only answers: `--reply-to` names a whisper sent to it, and `--to` the person who sent it. Prints `whispered m-… to NAME in t-…`. `read` shows a whisper you are in as `#470 m-… tony whispers to aim-ux` with a note under its body; `inbox` and `watch` print `whisper "TITLE" …` for one sent to you. Nobody else ever sees it. |
 | `coordinator OUTCOME NAME\|--none` | Chooses who answers in the outcome's conversation (`workspace.coordinator_set`, the owner only); see [conversation.md](conversation.md). |
 | `conversation OUTCOME [--new]` | Prints `conversation t-… in "TITLE": fable answers; 1 new`, then its newest messages as `read` prints them, with what became of each item under it (`[new]`, `[answered]`, `[topic]`, `[pipeline]`, `[waiting]`). `--new` lists only items not yet settled. `topics` prints the conversation's line first; `post --part` and `start --from … --part` take only part of an item, so it stays New; an answerer's reply that asks the item's author back answers it unless it carries `--part`. |
@@ -248,6 +248,21 @@ conversation's ask, stops waiting on them, and `read` shows it as
 say you read a message and understood it, `thumb MESSAGE` (`--off` takes it
 back) instead of posting "got it"; it settles your delivery of that message,
 and never answers an ask to you. See [thumbs.md](thumbs.md).
+
+An ask that holds work until it is answered names it: `post TOPIC --asks owner
+--blocks piece:p-… "Please restart fseventsd."` for a piece in Now, or
+`--blocks release:44` for the release being put together, both of the topic's
+outcome. Core sends it as `message.post`'s `args.blocks`, `{"kind": "piece",
+"ref": "p-…"}` or `{"kind": "release", "ref": 44}`, and keeps it with the
+message; `post` then says "it holds piece p-… until it is answered", and
+`read` shows "(holds piece p-… until it is answered)" under it. A piece not
+in Now there, or another release, is refused with `BLOCKS_UNKNOWN`; a
+`--blocks` without `--asks` with `BLOCKS_NEEDS_ASK`; either way nothing is
+sent. Until each person asked answers it, the way any ask is answered, it is
+listed first in their Waiting on you, the outcome's light says "blocking a
+piece: waiting on you", and `pipeline` shows "held: waiting on owner — Please
+restart fseventsd. (m-…)" under the piece (see
+[attention.md](attention.md#an-ask-that-holds-work)).
 
 Writing saved with `draft.save` carries `intent` the same way, and the
 prepared send (`submission.prepare`, then `message.send`) holds the same rule:
@@ -439,6 +454,9 @@ are absolute local times.
   and `finish PIECE` move it along.
 - `post --subject item:92,item:93` names the items a message is about; an ask
   about an item puts it in the asked person's "Waiting on you".
+- `post --asks A --blocks piece:P` (or `release:N`) names the piece or release
+  an ask holds until it is answered (see [Asking and telling](#asking-and-telling));
+  `pipeline` shows it under that piece as "held: waiting on A — first line".
 
 The import from the hand-written page is an operator act:
 `bin/aim-next-admin pipeline-import --profile P --seed S --as ACTOR`.
