@@ -191,14 +191,31 @@ each attempt settles, so the page reads one row per agent however long a
 failure runs. The runner
 settles each claim with its own fixed code (`finish_wake(..., reason=)`:
 `broker_exit`, `deadline`, `route_unavailable`, `child_exited`, `start_failed`
-and the others in `wake_adapter.py` and `codex_host.py`; never local text), and
+and the others in `wake_adapter.py` and `codex_host.py`, and the wake helper's
+or Codex host's own refusal, such as `codex_spawn` or
+`codex_version:0.167.0-alpha.3.2:0.163.0-alpha.10.2`, the version Codex
+reported and the one reviewed (docs/codex-broker.md); letters, digits and
+`_ . : + -`, at most 128; never local text), and
 a turn that did not complete keeps Codex's code (`codexErrorInfo`, as
 `serverOverloaded`), said in words after how the turn ended ("its Codex turn
 failed (server overloaded)", `TURN_WHY`). `WHY` in `health.py` says each
 runner code in words ("the helper that puts a wake in the Codex app's queue
 failed (it exited with an error)"); the view sends those words as
 `failing.why`, and the page, the command line and the notices all say them.
-Failures from before Core kept the code say so.
+Failures from before Core kept the code say so. A version refusal says both
+versions: "the Codex app is now version 0.167.0-alpha.3.2, but Theseus has
+been reviewed only with version 0.163.0-alpha.10.2: a new Codex version needs
+a review before wakes resume".
+
+For an agent woken through the Codex app's queue, the page, the command line
+and the notices add "look there first: is the ChatGPT app open?" only when
+that is where the cause may be (`failing.ask_app_open`, `APP_OPEN_REASONS`):
+the helper could not start Codex (`codex_spawn`) or got no answer from it
+(`codex_no_answer`, `deadline`), or no reason was recorded (none, or the
+anonymous `broker_exit` every failure had before the helper named its
+reasons), so an older record reads as it did. Every other reason names its own
+cause, and the question would point away from it. A page reading an answer
+with no `ask_app_open` asks, as it did.
 
 ## Telling the team
 
@@ -300,7 +317,7 @@ returns:
 | --- | --- |
 | `red` | the keys of what is red, as `health_light` gives them |
 | `runner` | the `wakes` view's runner light (`live`, `state`, `reason`, `since_ms`), plus `why` (an ended runner's verb, "was killed", or a pause's cause, "an operator paused it"), `started_ms` (when the current or last run took the role), `resumed_because` (`cleanup_confirmed` when the supervisor resumed a cleanup pause), and `prior`: `{state, reason, ended_ms, why}`, how the run before it ended (`stopped`, `exited`, `paused` or `unrenewed`), from `runner_prior`. A pause records `ended_ms`, so `since_ms` says since when it has been paused |
-| `agents` | every enabled agent (at most 100): `route` (`codex_queue`, `codex_hosted`, `other`, from its route pin, this binding's first; `null` with none), `waiting` and `waiting_since_ms` (pending deliveries in live groups and the oldest one's send time; another agent's whispers are not counted for the reader), and for a scheduled agent `next_due_ms`, `reached_ms` (when a wake last got through), `failing: {count, since_ms, outcome, reason, why}` while `failing:<agent>` is red, `not_answering: {count, since_ms}` while `parked:<agent>` is, and `waking` while a claim is out |
+| `agents` | every enabled agent (at most 100): `route` (`codex_queue`, `codex_hosted`, `other`, from its route pin, this binding's first; `null` with none), `waiting` and `waiting_since_ms` (pending deliveries in live groups and the oldest one's send time; another agent's whispers are not counted for the reader), and for a scheduled agent `next_due_ms`, `reached_ms` (when a wake last got through), `failing: {count, since_ms, outcome, reason, why, ask_app_open}` while `failing:<agent>` is red, `not_answering: {count, since_ms}` while `parked:<agent>` is, and `waking` while a claim is out |
 | `failing_after` | the number of attempts in a row that did not get through before an agent is said to be failing (3) |
 | `release` | the latest release record: `release`, `commit`, `deployed_ms`, `items`, `source`, and `check` (the release check's `finished_ms`, `commit`, `python`, `node` and `native` counts), or `null` |
 | `machine` | `{load: [1, 5, 15 minute averages], cpus}`, read by `os.getloadavg()` and `os.cpu_count()` when the view is read; never on a timer. Either that could not be read is `null`, never left out, and the page and the command line say it could not be read |
@@ -331,8 +348,9 @@ The top says what is wrong, most urgent first: a lost live connection, a
 runner that is not sending wakes (and how many agents have work waiting),
 agents whose wakes are failing and why (grouped when their failures began
 within two minutes of each other for the same reason, since then the cause is
-something they share; when they all go through the Codex app's queue the page
-says to look there first), parked agents, and a Mac whose 1-minute load is
+something they share; when they all go through the Codex app's queue and
+each failed for a reason that may lie there, the page says to look there
+first), parked agents, and a Mac whose 1-minute load is
 above its core count (never when either could not be read). With nothing
 wrong it says so in one line.
 

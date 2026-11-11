@@ -1349,7 +1349,8 @@ class Pipeline:
                 "raised_by": row["raised_by"], "raised_note": row["raised_note"], "section": row["section"],
                 "candidate_group": row["candidate_group"],
                 "glyph": outcome_rules.glyph(row["section"], shipped, open_asks, in_stage),
-                "piece": {"id": piece["id"], "kind": piece["kind"]} if piece else None,
+                # held: the asks that hold its piece until they are answered (item 259), for a listing of items.
+                "piece": {"id": piece["id"], "kind": piece["kind"], "held": piece.get("held", [])} if piece else None,
                 "stage": piece["stage"] if piece else None,
                 "needs": needs, "asks": open_asks,
                 "sources": self._sources_view(db, actor, workspace["id"], number, 10 ** 6 if full else outcome_rules.SOURCES_SHOWN),
@@ -1392,6 +1393,9 @@ class Pipeline:
                 titles[number] = title
         cache = {}
         pieces = [self._piece_view(db, actor, workspace, row, stages, work, cache, titles) for row in open_rows]
+        for piece in pieces:
+            # The asks that hold it until they are answered (item 259, blocking.py): a release by its number, a piece by its id.
+            piece["held"] = self._held(db, workspace["id"], piece["kind"], piece["release_number"] if piece["kind"] == "release" else piece["id"])
         by_item = {}
         for piece in pieces:
             for number in piece["items"]:

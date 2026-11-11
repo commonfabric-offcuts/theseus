@@ -624,28 +624,54 @@ export class TopicStatePanel {
   }
 }
 
+// "release 44", "item 259", "items 259 and 260": what a blocking ask holds, in plain words (item 259).
+export function blockedWords(blocks) {
+  if (blocks?.kind === 'release') return Number.isSafeInteger(blocks.release) ? `release ${blocks.release}` : 'a release';
+  const items = Array.isArray(blocks?.items) ? blocks.items.filter(Number.isSafeInteger) : [];
+  if (!items.length) return 'a piece';
+  return `item${items.length > 1 ? 's' : ''} ${items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`}`;
+}
+
 // The topics that wait on the reader, newest first: said to, or asked and not
 // yet answered. Painted on the Outcomes home only; each row says which outcome
 // it is in: "Speaker notes, in Pitch deck — fable asked at 6:20 AM" (item 86).
+// An ask that holds a piece or a release comes first, above every other
+// question, labelled with what it holds: "Blocking a release (release 44):
+// Deploy, in Theseus — fable asked at 6:20 AM" (item 259); its topic is not
+// listed again below it.
 export function paintWaiting(host, answer, open) {
-  const items = Array.isArray(answer?.latest_waiting) ? answer.latest_waiting : [];
+  const blocking = (Array.isArray(answer?.blocking) ? answer.blocking : [])
+    .filter(item => typeof item?.topic_id === 'string' && ['release', 'piece'].includes(item.blocks?.kind));
+  const held = new Set(blocking.map(item => item.topic_id));
+  const items = (Array.isArray(answer?.latest_waiting) ? answer.latest_waiting : []).filter(item => !held.has(item.id));
   const count = Number.isSafeInteger(answer?.waiting_on_me) ? answer.waiting_on_me : 0;
-  if (!count) { host.hidden = true; host.replaceChildren(); return; }
+  if (!count && !blocking.length) { host.hidden = true; host.replaceChildren(); return; }
   const spoken = (ms, form = 'at') => Number.isSafeInteger(ms) ? [spokenNode(ms, form, document)] : [];
-  const list = element('ul', { className: 'waiting-list' }, ...items.map(item => {
-    const link = element('a', { href: '?topic=' + encodeURIComponent(item.id), textContent: item.title + (item.title_truncated ? '…' : '') });
+  const topicLink = (id, title, truncated) => {
+    const link = element('a', { href: '?topic=' + encodeURIComponent(id), textContent: title + (truncated ? '…' : '') });
     link.onclick = event => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); open(item.id, item.title);
+      event.preventDefault(); open(id, title);
     };
-    const outcome = item.workspace && typeof item.workspace.title === 'string'
-      ? [`, in ${item.workspace.title}${item.workspace.title_truncated ? '…' : ''}`] : [];
-    const ask = item.ask && typeof item.ask.by === 'string' ? [`${item.ask.by} asked`, ...(Number.isSafeInteger(item.ask.since_ms) ? [' ', ...spoken(item.ask.since_ms)] : [])] : [];
+    return link;
+  };
+  const outcomeOf = item => item.workspace && typeof item.workspace.title === 'string'
+    ? [`, in ${item.workspace.title}${item.workspace.title_truncated ? '…' : ''}`] : [];
+  const asked = ask => ask && typeof ask.by === 'string' ? [`${ask.by} asked`, ...(Number.isSafeInteger(ask.since_ms) ? [' ', ...spoken(ask.since_ms)] : [])] : [];
+  const blockingRows = blocking.map(item => {
+    const label = element('strong', { className: 'blocking-label', textContent: item.blocks.kind === 'release' ? 'Blocking a release' : 'Blocking a piece' });
+    const detail = asked(item);
+    return element('li', { className: 'blocking' }, label, ` (${blockedWords(item.blocks)}): `, topicLink(item.topic_id, item.title ?? '', item.title_truncated),
+      ...outcomeOf(item), ...(detail.length ? [element('span', { className: 'muted' }, ' — ', ...detail)] : []));
+  });
+  const list = element('ul', { className: 'waiting-list' }, ...blockingRows, ...items.map(item => {
+    const ask = asked(item.ask);
     // A topic whose state also says it waits keeps those words, as they were, before the ask.
     const said = item.said === false ? [] : joined([item.note ? [item.note] : [], item.state_by ? [item.state_by, ...at(', ', item.state_ms)] : []], ' — ');
     const detail = joined([said, ask], ' · ');
-    return element('li', {}, link, ...outcome, ...(detail.length ? [element('span', { className: 'muted' }, ' — ', ...detail)] : []));
+    return element('li', {}, topicLink(item.id, item.title, item.title_truncated), ...outcomeOf(item), ...(detail.length ? [element('span', { className: 'muted' }, ' — ', ...detail)] : []));
   }));
-  host.replaceChildren(element('h2', { textContent: count > items.length ? `Waiting on you (${count}, newest ${items.length} shown)` : `Waiting on you (${count})` }), list);
+  const shown = held.size + items.length, total = Math.max(count, shown);
+  host.replaceChildren(element('h2', { textContent: total > shown ? `Waiting on you (${total}, newest ${shown} shown)` : `Waiting on you (${total})` }), list);
   host.hidden = false;
 }

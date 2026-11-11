@@ -179,6 +179,52 @@ Schema version 14 adds `messages.intent` and, on `topic_waiting`, `said`
 (1 for every row from before) and `ask_message_id`. Stepping back to 13 is
 refused while any message asks or tells or any row holds an ask.
 
+## An ask that holds work
+
+An agent's ask can name the one pipeline piece, or the one release, of its
+topic's outcome that cannot go on until it is answered: `message.post`'s
+`args.blocks`, `{"kind": "piece", "ref": "p-…"}` or `{"kind": "release",
+"ref": N}` (`post --asks A --blocks piece:p-…`). Core records it in the act
+that sends the message, in `message_blocks` (one row per message, kept as
+written), and refuses the whole post, sending nothing, when the message does
+not ask (`BLOCKS_NEEDS_ASK`) or the reference is not a piece in Now of that
+outcome's pipeline or the release being put together there
+(`BLOCKS_UNKNOWN`). `topic_messages` items carry `blocks: {kind, ref}`;
+messages without it carry no field and read as before.
+
+Nothing more is stored about whether it still holds anything. It holds for
+as long as it waits on someone by the rule above: the topic waits on them
+from an ask (its `topic_waiting` row), and this ask is not answered, by their
+writing in the topic after it or their 👍 on it (in a conversation, its
+`conversation_waits` row). So a reply or a 👍 that clears the ask clears
+every place below in the same act, and taking the 👍 back puts them back.
+Archiving the topic answers nothing, but an archived topic counts nowhere
+(above), so while it is archived its asks hold nothing in any of the three
+places, and unarchiving it puts them back.
+
+- `attention` adds `blocking`: the reader's blocking asks that still wait on
+  them, in unarchived topics, in the one order every list of blocking asks
+  keeps (a release's first, then a piece's, newest first within each),
+  at most 5, each `{message_id, topic_id, title, workspace, by, since_ms,
+  line, blocks}`, `blocks` being `{kind: "release", release: N}` or `{kind:
+  "piece", piece_id, items}` and `line` the ask's first line.
+- The outcome light's `short` and `lead` keep kind `asks` and add `blocking`
+  (`"release"` or `"piece"`, what the first of `blocking` holds), and its
+  facts list the blocking topics' asks first, in that same order, so the
+  card's first question is the one the lead names
+  ([outcome-light.md](outcome-light.md)).
+- Each open piece in `pipeline` carries `held`: `[{message_id, topic_id, by,
+  since_ms, waiting_on, line}]`, newest first (the same order), `waiting_on` being whoever has
+  not answered yet ([pipeline.md](pipeline.md)).
+
+On the Outcomes home, "Waiting on you" lists each blocking ask above every
+other question, labelled "Blocking a release (release 44):" or "Blocking a
+piece (item 259):" before its topic's link, and its topic is not listed
+again below it. The link opens the topic, as every row does.
+
+Schema version 36 adds `message_blocks`. Stepping back to 35 is refused once
+any ask has named what it blocks.
+
 ## Work observed
 
 One server rule says whether anyone is seen working on a topic

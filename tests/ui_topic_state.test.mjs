@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicStatePanel, managesTopic, organises, paintState, paintWaiting, paintWork, stateLabel, workNote } from '../web/topic-state.mjs';
+import { TopicStatePanel, blockedWords, managesTopic, organises, paintState, paintWaiting, paintWork, stateLabel, workNote } from '../web/topic-state.mjs';
 import { clock } from '../web/times.mjs';
 
 // The page reads every time on Friday 6 November 2026 at noon, so a time on
@@ -1622,4 +1622,51 @@ test('rv C6: a read that left before a rename was answered keeps the new title a
   controls(r.host).rename.onclick(); type(title, 'Newer'); key(title, 'Enter'); await drain(r.panel);
   assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
   assert.equal(r.core.held('title'), 'Newer', JSON.stringify(r.sends()));
+});
+
+test('an ask that holds a release or a piece is listed first, labelled with what it holds, and its topic is not listed twice (item 259)', t => {
+  dom(t);
+  const host = new Element('section'), opened = [], asked = new Date(2026, 10, 6, 6, 20).getTime();
+  const outcome = { id: 'w1', title: 'Building Theseus', title_truncated: false };
+  paintWaiting(host, { waiting_on_me: 3, latest_waiting: [
+    { id: 't1', title: 'Speaker notes', title_truncated: false, note: '', state_by: null, state_ms: null, said: false, ask: { message_id: 'm1', by: 'fable', since_ms: asked }, workspace: outcome },
+    { id: 't2', title: 'Deploy', title_truncated: false, note: '', state_by: null, state_ms: null, said: false, ask: { message_id: 'm0', by: 'fable', since_ms: asked }, workspace: outcome },
+    { id: 't3', title: 'Header', title_truncated: false, note: '', state_by: null, state_ms: null, said: false, ask: { message_id: 'm3', by: 'warp', since_ms: asked }, workspace: outcome }],
+    blocking: [
+      { message_id: 'm2', topic_id: 't2', title: 'Deploy', title_truncated: false, workspace: outcome, by: 'fable', since_ms: asked, line: 'Restart fseventsd', blocks: { kind: 'release', release: 44 } },
+      { message_id: 'm4', topic_id: 't3', title: 'Header', title_truncated: false, workspace: outcome, by: 'warp', since_ms: asked, line: 'Pick one', blocks: { kind: 'piece', piece_id: 'p-1', items: [259, 260] } }] },
+    (id, title) => opened.push([id, title]));
+  assert.equal(host.children[0].textContent, 'Waiting on you (3)');
+  assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text), [
+    'Blocking a release (release 44): Deploy, in Building Theseus — fable asked at 6:20 AM',
+    'Blocking a piece (items 259 and 260): Header, in Building Theseus — warp asked at 6:20 AM',
+    'Speaker notes, in Building Theseus — fable asked at 6:20 AM']);
+  // Opening it takes the person to the question's topic, as any row does.
+  const link = host.find(node => node.tag === 'a');
+  assert.equal(link.href, '?topic=t2');
+  link.onclick({ button: 0, preventDefault: () => {} });
+  assert.deepEqual(opened, [['t2', 'Deploy']]);
+  assert.equal(blockedWords({ kind: 'piece', items: [259] }), 'item 259');
+  // With none blocking, the list is as it was.
+  paintWaiting(host, { waiting_on_me: 1, latest_waiting: [
+    { id: 't1', title: 'Speaker notes', title_truncated: false, note: '', state_by: null, state_ms: null, said: false, ask: { message_id: 'm1', by: 'fable', since_ms: asked }, workspace: outcome }] }, () => {});
+  assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text), ['Speaker notes, in Building Theseus — fable asked at 6:20 AM']);
+  assert.equal(host.all().some(node => node.classes?.has?.('blocking-label') || node.className === 'blocking-label'), false);
+});
+
+test('Waiting on you lists the blocking asks in the order Core gives them, though the release is the older (item 259)', t => {
+  // Core's one order (a release's first, newest first within each) disagrees here with newest first and with oldest first.
+  dom(t);
+  const host = new Element('section'), outcome = { id: 'w1', title: 'Building Theseus', title_truncated: false };
+  const at = minute => new Date(2026, 10, 6, 6, minute).getTime();
+  const ask = (message, topic, minute, blocks) => ({ message_id: message, topic_id: topic, title: topic, title_truncated: false, workspace: outcome, by: 'fable',
+    since_ms: at(minute), line: 'Please', blocks });
+  paintWaiting(host, { waiting_on_me: 3, latest_waiting: [], blocking: [
+    ask('m1', 'Deploy', 10, { kind: 'release', release: 44 }),
+    ask('m3', 'Squash', 40, { kind: 'piece', piece_id: 'p-1', items: [259] }),
+    ask('m2', 'Rebase', 20, { kind: 'piece', piece_id: 'p-1', items: [259] })] }, () => {});
+  assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text), [
+    'Blocking a release (release 44): Deploy, in Building Theseus — fable asked at 6:10 AM',
+    'Blocking a piece (item 259): Squash, in Building Theseus — fable asked at 6:40 AM',
+    'Blocking a piece (item 259): Rebase, in Building Theseus — fable asked at 6:20 AM']);
 });

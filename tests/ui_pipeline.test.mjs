@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { dom } from './fixtures/ui_dom.mjs';
 import { AttemptError, isBusy, unconfirmed } from '../web/api.mjs';
 import {
-  checkPipeline, duration, eventRuns, eventWords, factBoxes, firstLine, historyLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
+  checkPipeline, duration, eventRuns, eventWords, factBoxes, firstLine, heldWords, historyLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
 } from '../web/pipeline-words.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from '../web/pipeline.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
@@ -1069,3 +1069,21 @@ for (const fails of ['busyReads', 'failReads']) {
     assert.doesNotMatch(text(), unplain);
   });
 }
+
+test('a piece or release an ask holds says Held, who it waits on and the ask\'s first line (item 259)', () => {
+  assert.deepEqual(heldWords({ waiting_on: ['tony'], line: 'Please restart fseventsd' }, 'fable'),
+    { lead: 'Held: waiting on tony', line: 'Please restart fseventsd' });
+  assert.deepEqual(heldWords({ waiting_on: ['tony', 'warp'], line: 'Both look' }, 'tony'), { lead: 'Held: waiting on you and warp', line: 'Both look' });
+  assert.deepEqual(heldWords({ waiting_on: [], line: '' }, 'tony'), { lead: 'Held: waiting on an answer', line: 'their answer' });
+});
+
+test('a piece\'s Held lines keep the order Core gives them, newest first, not the order they were asked (item 259)', () => {
+  globalThis.document = Object.assign(dom(), { addEventListener() {} });
+  const page = new PipelinePage({ host: { addEventListener() {} }, header: {}, reader: 'tony', instanceId: 'i1', workspace: 'w1', read: async () => null, send: async () => null });
+  const now = Date.UTC(2026, 10, 6, 12), walk = node => [node, ...(node.children ?? []).flatMap(walk)];
+  const held = (message, minutes, line) => ({ message_id: message, topic_id: 't1', by: 'fable', since_ms: now - minutes * 60000, waiting_on: ['tony'], line });
+  const piece = { id: 'p-1', version: 1, size: 'small', stage: { name: 'Build', entered_ms: now - 3600000 }, stages_so_far: [], ahead: [],
+    held: [held('m2', 5, 'May I squash it?'), held('m1', 30, 'May I rebase it?')] };
+  const box = page.stageBox(piece, { owner: 'tony', unit_many: 'items' }, now, false);
+  assert.deepEqual(walk(box).filter(node => node.className === 'pl-held').map(node => node['data-message']), ['m2', 'm1']);
+});

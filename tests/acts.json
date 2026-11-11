@@ -4327,6 +4327,248 @@
    "check": {
     "node": "tests/ui_card_reading.test.mjs"
    }
+  },
+  {
+   "item": 283,
+   "act": "A lit reply its stack folds away loses its light, so no bar is left lying over the stack's fold line",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    if (this.lit && !this.lit.getClientRects().length) { this.light(null); return; }\n",
+     "    if (this.lit && !this.lit.isConnected) { this.light(null); return; }\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a lit reply its stack folds away takes its light and its bar with it"
+   }
+  },
+  {
+   "item": 259,
+   "act": "An agent's ask records the piece or release it holds, with the message, in the same act",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "result = dict(result, blocks=self._record_blocks(db, result[\"message_id\"], blocks))",
+     "result = dict(result, blocks=blocks)"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "A blocks on a message that asks no one is refused, and nothing is sent",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "if message[\"intent\"] != \"ask\":",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "A blocks naming a piece of another outcome is refused, and nothing is sent",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "AND workspace_id=? AND kind='piece'\", (ref, workspace_id)",
+     "AND kind='piece'\", (ref,)"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "A blocking ask stops holding when the person asked writes in its topic",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "                    or self._answered_since(db, topic, member, message))",
+     "                    )"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "A blocking ask stops holding when the person asked gives it a thumbs-up, and holds again when it is taken back",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "return not (answered_yes(self._reaction_row(db, member, message[\"id\"], \"thumb\"))",
+     "return not (False"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Core lists the blocking asks that wait on the reader for Waiting on you",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "\"blocking\": self._blocking_on(db, actor)[:5],",
+     "\"blocking\": [],"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "The outcome light's Waiting on you names what a blocking ask holds",
+   "break": [
+    [
+     "aim_next/outcome_rules.py",
+     "short[\"blocking\"] = blocking[0][\"blocks\"][\"kind\"]",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Core gives a pipeline piece the asks that hold it, with who they wait on and their first line",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "piece[\"held\"] = self._held(db, workspace[\"id\"], piece[\"kind\"], piece[\"release_number\"] if piece[\"kind\"] == \"release\" else piece[\"id\"])",
+     "piece[\"held\"] = []"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Waiting on you lists a blocking ask first, labelled Blocking a piece with its items",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "...blockingRows, ...items.map(item => {",
+     "...items.map(item => {"
+    ]
+   ],
+   "check": {
+    "native": "light",
+    "case": "light a question that holds a piece is first in Waiting on you and says Blocking on the light"
+   }
+  },
+  {
+   "item": 259,
+   "act": "The outcome light says Blocking a piece: waiting on you ahead of the question count",
+   "break": [
+    [
+     "web/outcome-light-words.mjs",
+     "const blockingName = short => short?.blocking === 'release' ? 'Blocking a release' : short?.blocking === 'piece' ? 'Blocking a piece' : null;",
+     "const blockingName = short => null;"
+    ]
+   ],
+   "check": {
+    "native": "light",
+    "case": "light a question that holds a piece is first in Waiting on you and says Blocking on the light"
+   }
+  },
+  {
+   "item": 259,
+   "act": "The held piece's row in the pipeline says Held: waiting on you, with the ask's first line linking to it",
+   "break": [
+    [
+     "web/pipeline.mjs",
+     "for (const held of Array.isArray(piece.held) ? piece.held : []) {",
+     "for (const held of []) {"
+    ]
+   ],
+   "check": {
+    "native": "pipeline",
+    "case": "pipeline an ask that holds a piece shows Held on its row"
+   }
+  },
+  {
+   "item": 259,
+   "act": "The Held line names the reader as you and every other person asked by name",
+   "break": [
+    [
+     "web/pipeline-words.mjs",
+     "map(id => id === reader ? 'you' : id)",
+     "map(id => id)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_pipeline.test.mjs"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Waiting on you says what a blocking ask holds in plain words: release 44, item 259, items 259 and 260",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "return `item${items.length > 1 ? 's' : ''} ${items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`}`;",
+     "return 'a piece';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_state.test.mjs"
+   }
+  },
+  {
+   "item": 259,
+   "act": "The light's card lists the blocking questions in Waiting on you's order, so its first is the one whose kind the lead names",
+   "break": [
+    [
+     "aim_next/outcome_rules.py",
+     "[dict(by_topic[topic], blocking=blocks) for topic, blocks in held.items() if topic in by_topic]",
+     "[dict(fact, blocking=held[fact[\"topic_id\"]]) for fact in facts if fact[\"topic_id\"] in held]"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Blocking asks are listed a release's first, then a piece's, though the release's ask is the older",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "return (kind != \"release\", -(row[\"sent_ms\"] or 0), row[\"id\"])",
+     "return (-(row[\"sent_ms\"] or 0), row[\"id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 259,
+   "act": "Blocking asks of one kind are listed newest first, in Waiting on you, on the light's card and on a piece's Held lines",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "return (kind != \"release\", -(row[\"sent_ms\"] or 0), row[\"id\"])",
+     "return (kind != \"release\", (row[\"sent_ms\"] or 0), row[\"id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
   }
  ]
 }

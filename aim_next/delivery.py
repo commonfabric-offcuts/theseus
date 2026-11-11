@@ -334,6 +334,8 @@ class Delivery:
                 "addressed": sum(entry[1] for entry in counts.values()),
                 "latest_addressed": items,
                 "waiting_on_me": waiting, "latest_waiting": waiting_topics,
+                # The asks that hold a piece or a release, listed first (item 259, blocking.py).
+                "blocking": self._blocking_on(db, actor)[:5],
                 "waiting_outcomes": self._waiting_outcomes(db, actor, here_id)}
 
     def _addressed_group(self, db, actor):

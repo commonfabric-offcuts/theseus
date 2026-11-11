@@ -471,6 +471,9 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 .pl-confirm{margin:.35rem 0 0 1.9rem;font-size:.82rem}
 .pl-confirm button{min-height:2rem;padding:0 .55rem;font-size:.8rem;margin-left:.3rem}
 .pl-gate-you{display:block;margin-top:.2rem;font-weight:600}
+/* An ask that holds a piece or a release (item 259): one line above its stages, its words linking to the ask. */
+.pl-held{margin:.1rem 0 .45rem;font-size:.88rem;overflow-wrap:anywhere}
+.pl-held a{color:var(--ink)}
 .pl-current button{margin-top:.35rem;min-height:2.2rem;padding:0 .7rem;font-size:.82rem}
 .pl-planned{margin:.6rem 0 .4rem}
 .pl-notes{margin:.3rem 0 0;padding-left:1.1rem;font-size:.82rem;color:var(--muted)}

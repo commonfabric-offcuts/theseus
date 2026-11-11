@@ -76,7 +76,7 @@ import uuid
 
 
 HOME = os.environ["CODEX_HOME"]
-VERSION = "0.163.0-alpha.10.2"
+VERSION = "0.167.0-alpha.3.2"
 DELIVERY = re.compile(r"^\d+\. topic (\S+), from \S+, message (\S+) \(seq (\d+)\), delivery (\S+)$")
 
 

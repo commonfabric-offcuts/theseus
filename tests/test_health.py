@@ -92,7 +92,8 @@ class FailingWakesCase(HealthCase):
         self.assertEqual(self.light(), ["failing:agent-a"])
         self.assertEqual(self.health()["red"], ["failing:agent-a"], "the page and its link read one rule")
         self.assertEqual(self.agent()["failing"], {"count": 3, "since_ms": first, "outcome": "unavailable",
-                                                   "reason": "route_unavailable", "why": WHY["route_unavailable"]})
+                                                   "reason": "route_unavailable", "why": WHY["route_unavailable"],
+                                                   "ask_app_open": False})
         self.miss(outcome="error", reason="broker_exit")
         self.assertEqual(self.agent()["failing"]["why"], WHY["broker_exit"], "the latest failure says why")
         self.assertEqual(self.agent()["failing"]["count"], 4)
@@ -105,7 +106,7 @@ class FailingWakesCase(HealthCase):
 
     def test_a_reason_that_is_not_a_short_fixed_code_is_refused(self):
         claim = self.claim_now()
-        for reason in ("route unavailable", "x" * 65, 7):
+        for reason in ("route unavailable", "x" * 129, "codex_version:0.1/0:0.2", 7):
             with self.subTest(reason=reason):
                 with self.assertRaises(Exception) as raised:
                     self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], "error", reason=reason)
@@ -195,6 +196,73 @@ class NoticeCase(HealthCase):
         self.send_next("Any act settles what is red")
         self.assertEqual(self.light(), ["failing:agent-c"])
         self.assertEqual(self.notices(), [])
+
+
+@own_cases
+class CodexRefusalCase(HealthCase):
+    """Why a Codex wake was refused, in words that point at the cause (pipeline item 328): an app that
+    updated past the reviewed version names both versions and does not ask whether the app is open;
+    only a helper that could not start Codex or got no answer, or a failure with no reason recorded, asks."""
+
+    FOUND, REVIEWED = "0.167.0-alpha.3.2", "0.163.0-alpha.10.2"
+    VERSION_WORDS = ("the Codex app is now version 0.167.0-alpha.3.2, but Theseus has been reviewed only with version "
+                     "0.163.0-alpha.10.2: a new Codex version needs a review before wakes resume")
+    APP_QUESTION = "Its wakes go through the Codex app's queue, so look there first: is the ChatGPT app open?"
+
+    def queue_agent_failing(self, reason):
+        """agent-b, woken through the Codex app's queue, with its last three wakes failed for reason."""
+        if not getattr(self, "queue_pinned", False):
+            self.pin_route(self.hosting, "codex-queue-stdio", OTHER_THREAD, actor="agent-b")
+            self.queue_pinned = True
+        with sqlite3.connect(str(self.path)) as db:
+            # Scheduled, as an agent once sent work is, so its line says why too.
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('agent-b',1) ON CONFLICT DO NOTHING")
+            db.execute("INSERT INTO wake_facts(recipient_id,failed_wakes,failing_since_ms,failed_outcome,failed_reason) "
+                       "VALUES ('agent-b',3,1000,'error',?)", (reason,))
+        self.send_next("Any act settles what is red")
+        notice = self.notices()[-1][1]
+        line = next(line for line in report_lines(self.health(), str) if line.startswith("  - agent-b can't be woken"))
+        return notice, line, self.agent("agent-b")["failing"]
+
+    def test_core_keeps_a_version_refusal_with_both_versions(self):
+        self.failing(outcome="error", reason="codex_version:%s:%s" % (self.FOUND, self.REVIEWED))
+        failing = self.agent()["failing"]
+        self.assertEqual((failing["reason"], failing["why"]), ("codex_version:%s:%s" % (self.FOUND, self.REVIEWED), self.VERSION_WORDS))
+
+    def test_a_version_mismatch_names_both_versions_and_does_not_ask_whether_the_app_is_open(self):
+        notice, line, failing = self.queue_agent_failing("codex_version:%s:%s" % (self.FOUND, self.REVIEWED))
+        self.assertEqual(notice, "Health: agent-b can't be woken: its last 3 wakes did not get through. Why: %s." % self.VERSION_WORDS + NOTICE_TAIL)
+        self.assertIn("Why: %s." % self.VERSION_WORDS, line)
+        self.assertNotIn("ChatGPT", line)
+        self.assertIs(failing["ask_app_open"], False)
+
+    def test_a_helper_that_could_not_start_codex_or_got_no_answer_still_asks_whether_the_app_is_open(self):
+        for reason in ("codex_spawn", "codex_no_answer"):
+            with self.subTest(reason=reason):
+                notice, line, failing = self.queue_agent_failing(reason)
+                self.assertEqual(notice, "Health: agent-b can't be woken: its last 3 wakes did not get through. Why: %s. %s"
+                                 % (WHY[reason], self.APP_QUESTION) + NOTICE_TAIL)
+                self.assertTrue(line.endswith(" " + self.APP_QUESTION), line)
+                self.assertIs(failing["ask_app_open"], True)
+                with sqlite3.connect(str(self.path)) as db:
+                    db.execute("DELETE FROM wake_facts WHERE recipient_id='agent-b'")
+                self.send_next("agent-b is clear again")
+
+    def test_an_older_failure_with_no_reason_or_only_the_helpers_exit_reads_as_before(self):
+        for reason, why in ((None, "Theseus did not record why: these failures began before it did"), ("broker_exit", WHY["broker_exit"])):
+            with self.subTest(reason=reason):
+                notice, line, failing = self.queue_agent_failing(reason)
+                self.assertEqual(notice, "Health: agent-b can't be woken: its last 3 wakes did not get through. Why: %s. %s"
+                                 % (why, self.APP_QUESTION) + NOTICE_TAIL)
+                self.assertTrue(line.endswith(" " + self.APP_QUESTION), line)
+                with sqlite3.connect(str(self.path)) as db:
+                    db.execute("DELETE FROM wake_facts WHERE recipient_id='agent-b'")
+                self.send_next("agent-b is clear again")
+
+    def test_another_reason_says_its_cause_and_does_not_ask_about_the_app(self):
+        notice, line, failing = self.queue_agent_failing("codex_home")
+        self.assertEqual(notice, "Health: agent-b can't be woken: its last 3 wakes did not get through. Why: %s." % WHY["codex_home"] + NOTICE_TAIL)
+        self.assertNotIn("ChatGPT", line)
 
 
 @own_cases

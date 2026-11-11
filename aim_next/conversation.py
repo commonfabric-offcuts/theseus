@@ -94,7 +94,7 @@ IMAGE_WINDOW = 200
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead"}
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead", "blocks"}
 
 
 def _preview(value, size=1024):
@@ -228,8 +228,8 @@ class Conversation:
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"topic_id"} or "body" not in args or set(args) - POST_FIELDS:
             raise Refusal("INVALID_ARGUMENT", "A post names one topic and carries its body, and optionally attachments, addressees, intent, reply_to, quotes and whisper")
-        subjects = args.get("subjects")
-        snapshot = self._writing({key: value for key, value in args.items() if key not in ("subjects", "go_ahead")})
+        subjects, blocks = args.get("subjects"), args.get("blocks")
+        snapshot = self._writing({key: value for key, value in args.items() if key not in ("subjects", "go_ahead", "blocks")})
         # An Ask that asks for a go-ahead offers its people ✅ and 🚫 (reactions.py); only a post says so.
         snapshot["go_ahead"] = go_ahead_flag(args)
         if snapshot.get("reply_to") is not None:
@@ -239,6 +239,9 @@ class Conversation:
             # A post's subjects are written with it, so an ask and its subject never come apart (pipeline.py).
             workspace_id = db.execute("SELECT workspace_id FROM topics WHERE id=?", (target["topic_id"],)).fetchone()[0]
             self._record_subjects(db, workspace_id, result["message_id"], subjects)
+        if blocks is not None:
+            # What an ask holds is written with it, so the ask and the piece or release it holds never come apart (blocking.py).
+            result = dict(result, blocks=self._record_blocks(db, result["message_id"], blocks))
         return result, affected
 
     def _command_topic_read_through(self, db, actor, envelope):
@@ -545,6 +548,7 @@ class Conversation:
             items.reverse()
         self._item_fields(db, actor, topic, items)
         self._reaction_fields(db, actor, items)
+        self._block_fields(db, items)
         reading_fields(db, actor, unread_groups(db, actor, topic["id"], self._addressed_group(db, actor)), items)
         # What the reader and the topic recorded about each message in its stack (stacks.py).
         act_fields(db, actor, items)

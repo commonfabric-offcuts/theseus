@@ -24,7 +24,7 @@ import subprocess
 import time
 
 from . import broker_routes, hosted_notice
-from .codex_broker import VERSION
+from .codex_broker import handshake_refusal
 from .profile import load_profile
 from .route_pins import HOSTED_KIND
 from .runner import CLIENT_PREFIX
@@ -389,17 +389,12 @@ def initialize_params():
             "capabilities": {"experimentalApi": EXPERIMENTAL_API, "optOutNotificationMethods": list(OPT_OUT)}}
 
 
-def check_initialized(result, home):
-    """The same compatibility guard as the broker: this exact Codex version on the pinned home."""
-    if type(result) is not dict or not isinstance(result.get("userAgent"), str):
-        return False
-    token, separator, tail = result["userAgent"].partition(" ")
-    effective = result.get("codexHome")
-    try:
-        same_home = isinstance(effective, str) and Path(effective).is_absolute() and str(Path(effective).resolve(strict=True)) == home
-    except (OSError, RuntimeError):
-        same_home = False
-    return token == CLIENT + "/" + VERSION and separator == " " and bool(tail) and same_home
+def initialized_refusal(result, error, home):
+    """Why a child's initialize answer is refused, or None: the broker's guard (codex_broker.handshake_refusal),
+    this exact reviewed Codex version on the pinned home. The code it gives (another version, with the version
+    found and the one reviewed; another home; a shape it does not accept) is the reason the claims on that home
+    settle with, so Health says it; an error answer is "incompatible"."""
+    return "incompatible" if error is not None else handshake_refusal(result, CLIENT, home)
 
 
 def signed_in(result):
@@ -744,8 +739,9 @@ class Host:
     def _initialized(self, child, result, error):
         if error is GONE:
             return None
-        if error is not None or not check_initialized(result, child.home):
-            return self._fail_child(child, "incompatible")
+        refusal = initialized_refusal(result, error, child.home)
+        if refusal is not None:
+            return self._fail_child(child, refusal)
         child.notify("initialized", {})
         self.core("hosted_child_ready", child.child_id, result["userAgent"][:1024])
         child.request("account/read", {"refreshToken": False}, lambda value, problem: self._account(child, value, problem))
@@ -1264,7 +1260,7 @@ def provision(*, runner_profile, runner_id, actor_profile, codex_executable, cod
         thread_id = None
         try:
             result, error = sync.call("initialize", initialize_params())
-            if error is not None or not check_initialized(result, home):
+            if initialized_refusal(result, error, home) is not None:
                 raise ProvisionError("incompatible")
             child.notify("initialized", {})
             result, error = sync.call("account/read", {"refreshToken": False})

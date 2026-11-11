@@ -605,6 +605,35 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // A reply lit under the pointer and then folded away in its stack has no
+  // box for its bar to sit over: the light goes, and no bar is left lying
+  // over the stack's fold line, where the pointer goes next to open it again.
+  await check('reading stacks a lit reply its stack folds away takes its light and its bar with it, and its fold line can be pressed again', async () => {
+    const topic = 'stack-bar-folded';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Which room is the meeting in?', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Room four, upstairs.', read: true }],
+      ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Room four is booked, so room six.', read: true }],
+      ['three', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Room six it is.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    const line = `#messages .reply-stack[data-stack="${ids.root}"] .stack-fold-line`;
+    const shows = async () => (await look(p, ids, 'root')).rows.includes('one');
+    await centre(p, line);
+    await press(p, 'laptop', line);
+    await until(shows, 'laptop: the fold line opens the earlier replies');
+    await light(p, 'laptop', ids.one);
+    // The pointer goes up to the fold line just above, which lights nothing, and folds the lit reply away.
+    assert.deepEqual(await lit(p), [ids.one], 'laptop: the reply is lit');
+    await press(p, 'laptop', line);
+    await until(async () => !await shows(), 'laptop: the fold line folds the lit reply away');
+    await twoFrames(p);
+    assert.deepEqual({ lit: await lit(p), bar: await bar(p) }, { lit: [], bar: null }, 'laptop: the folded reply keeps no light, and no bar is left on the page');
+    // Pressed again where it is, nothing covers the line, and it opens.
+    await press(p, 'laptop', line);
+    await until(shows, 'laptop: the fold line, pressed again, opens the earlier replies');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks a reply arriving while a press is held is drawn once it ends, so nothing moves under the pointer and the press lands where it began', async () => {
     // A pointer's press: a finger held as long can turn into a long press, which ends the hold by its menu.
     const topic = 'stack-held-press';
