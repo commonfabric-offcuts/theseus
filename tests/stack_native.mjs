@@ -543,6 +543,35 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // The head's row stands above the folder's top edge, over the head's own box, which has no height at
+  // all while the head shows only its row (stack-look.css). The keys reaching the head from below
+  // bring that row into view, not just the edge, whether the head shows as one row or whole.
+  await check('reading stacks ↑ onto a stack\'s head from a reply at the top of the window brings the head\'s row into view, shown as one row or whole', async () => {
+    const topic = 'stack-head-up';
+    const ids = await seed(topic, [['before', { sender: other, join: true, addressees: [facts.actor], body: 'A message on its own, above the stack.', read: true }],
+      ['root', { sender: other, addressees: [facts.actor], body: 'Which ferry do we take on Sunday?', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The 9:40, it has room for the car.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await p.evaluate(`document.body.style.paddingBottom = '2000px'`);
+    for (const shown of ['one row', 'whole']) {
+      if (shown === 'whole') {
+        await press(p, 'laptop', `${card(ids.root)} .stack-who`);
+        await until(async () => (await look(p, ids, 'root')).full, 'laptop: a press on the head shows it whole');
+      }
+      await keyTo(p, ids.one);
+      // The reply at the very top of the window: its head's row is above it, out of view.
+      await p.evaluate(`scrollBy(0, document.querySelector(${JSON.stringify(card(ids.one))}).getBoundingClientRect().top)`);
+      await p.key('ArrowUp');
+      await until(async () => await focusedOn(p) === ids.root, `laptop, head ${shown}: ↑ puts the keys on the head`);
+      await twoFrames(p);
+      const row = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(card(ids.root))}).querySelector(':scope > .stack-head'),b=r.getBoundingClientRect();
+        const hit=document.elementFromPoint(b.left+Math.min(12,b.width/2),b.top+b.height/2);return {top:b.top,bottom:b.bottom,window:innerHeight,shown:b.top>=0&&b.bottom<=innerHeight&&r.contains(hit)}})()`);
+      assert.equal(row.shown, true, `laptop, head ${shown}: the head's row is in the window, uncovered: ${JSON.stringify(row)}`);
+    }
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks the bar stays in the window while any of its card is, and scrolls away with it, in a stack or on its own', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-bar-away-' + device;

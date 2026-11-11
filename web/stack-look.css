@@ -104,6 +104,9 @@
 
 /* The head's card: no box of its own while it shows only its row; shown whole, it is the first sheet. */
 .reply-stack:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card){position:static}
+/* The tab stands above the head's own box (none at all while it shows only its row), so the head brought into
+   view (the keys, a link) brings the tab with it, and the focus ring round it. */
+.reply-stack[data-single=false]:not(.only-new *)>:is([data-id],.message-fold>.stack-head-card){scroll-margin-top:calc(var(--stack-pad) + var(--stack-tab-h) + 4px)}
 .reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card){
   min-height:0;height:0;padding:0;border:0;background:none;box-shadow:none;outline:none;overflow:visible}
 .reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:none}

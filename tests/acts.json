@@ -3640,6 +3640,21 @@
     "native": "colors",
     "case": "colors reading colors distinguish authors"
    }
+  },
+  {
+   "item": 283,
+   "act": "↑ onto a stack's head from below brings its tab into view with it, the head shown as one row or whole",
+   "break": [
+    [
+     "web/stack-look.css",
+     "{scroll-margin-top:calc(var(--stack-pad) + var(--stack-tab-h) + 4px)}",
+     "{scroll-margin-top:0}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks ↑ onto a stack's head from a reply at the top of the window"
+   }
   }
  ]
 }

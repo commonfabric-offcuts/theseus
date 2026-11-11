@@ -1358,8 +1358,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await p.point('#things-open');
         await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open') && [...document.querySelectorAll('#things .things-sec')].some(d => d.checkVisibility())"), width + ': the right rail opens over the page with a section');
       };
-      // What the keys are on, whether the rail is open, what is lit, and whether the place the keys are on can be seen there.
-      const seen = () => p.evaluate(`(()=>{const at=document.activeElement,card=at?.closest('#messages [data-id]'),b=card?.getBoundingClientRect();
+      // What the keys are on, whether the rail is open, what is lit, and whether the place the keys are on can be seen there:
+      // a stack's head shown as one row has no box of its own, only its row standing above it (stack-look.css), so that row is looked at.
+      const seen = () => p.evaluate(`(()=>{const at=document.activeElement,card=at?.closest('#messages [data-id]'),row=card?.querySelector(':scope > .stack-head'),
+        b=(card&&card.getBoundingClientRect().height===0&&row?row:card)?.getBoundingClientRect();
         const hit=b?document.elementFromPoint(b.left+b.width/2,Math.max(0,Math.min(innerHeight-1,b.top+b.height/2))):null;
         return {open:document.documentElement.hasAttribute('data-things-open'),backdrop:!document.getElementById('things-backdrop').hidden,
           inRail:Boolean(at?.closest('#rail')),visible:card?card.contains(hit):null,lit:document.querySelector('#messages [data-id].lit')?.dataset.id??null,
