@@ -36,9 +36,15 @@ export class MessageMenu {
     // Scrolling or a repaint can put another card under a stationary pointer
     // and fire pointerover. Only actual pointer movement takes the light from
     // the keyboard; otherwise repeated arrows can bounce between stacks.
+    let pointer = null;
     host.addEventListener('pointermove', event => {
+      if (event.pointerType === 'touch') return;
+      // WebKit also emits pointermove after a scroll with unchanged screen
+      // coordinates. That event must not take selection from the keyboard.
+      const still = pointer && pointer.x === event.screenX && pointer.y === event.screenY;
+      pointer = { x: event.screenX, y: event.screenY };
       // While the bar's ⋯ menu is open the light stays on its message.
-      if (event.pointerType === 'touch' || this.menuOpen()) return;
+      if (still || this.menuOpen()) return;
       const entry = this.entryOf(event.target);
       if (entry && entry !== this.lit) this.light(entry);
     });

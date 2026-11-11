@@ -603,12 +603,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const expected = order[index];
         await p.key('ArrowUp');
         await twoFrames(p);
+        // WebKit can report a same-position pointermove after scrolling
+        // settles, about 100ms later. Hold the selection at a person's pace.
+        await new Promise(resolve => setTimeout(resolve, 400));
         assert.equal(await focusedOn(p), expected, 'Up moves one message upward: step ' + index);
         assert.ok((await lit(p)).includes(expected), 'scrolling under a stationary pointer does not steal the keyboard light');
       }
       // The page's existing key navigation can continue into its header;
       // another Up must not select a lower message again.
       await p.key('ArrowUp'); await twoFrames(p);
+      await new Promise(resolve => setTimeout(resolve, 400));
       assert.ok((await lit(p)).includes(order[0]), 'passing the first message does not cycle back into a lower stack');
       // The pointer can take over again as soon as it actually moves.
       const target = await p.evaluate(`(()=>{const e=document.elementFromPoint(${x},750);return e?.closest('[data-id]')?.dataset.id})()`);
