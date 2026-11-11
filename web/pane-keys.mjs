@@ -25,7 +25,8 @@ export function pageItself(at, doc) {
 // What a key press means, or null when it means nothing here: 'up', 'down',
 // 'first', 'last', 'left', 'right' (plain), 'open' and 'fold' (⌘→ ⌘←),
 // 'open-all' and 'fold-all' (⇧⌘→ ⇧⌘←), 'move-up' and 'move-down' (⌘↑ ⌘↓),
-// 'undo' (⌘Z). Return is left to what is focused, which opens it. ⌘ is the
+// 'undo' (⌘Z), 'write' (⌘Return: a new message in the place the keys are on;
+// in writing it stays Send). Return is left to what is focused, which opens it. ⌘ is the
 // Command key, on a Mac and on an iPad's keyboard alike; Control and Option
 // with an arrow mean nothing here, and neither do ⇧⌘↑ ⇧⌘↓, which the
 // messages keep for their own pieces.
@@ -33,7 +34,7 @@ export function keyAction(event) {
   if (!event || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || writing(event.target)) return null;
   const command = Boolean(event.metaKey);
   if (event.shiftKey) return command ? { ArrowRight: 'open-all', ArrowLeft: 'fold-all' }[event.key] ?? null : null;
-  if (command) return { ArrowUp: 'move-up', ArrowDown: 'move-down', ArrowRight: 'open', ArrowLeft: 'fold', z: 'undo', Z: 'undo' }[event.key] ?? null;
+  if (command) return { ArrowUp: 'move-up', ArrowDown: 'move-down', ArrowRight: 'open', ArrowLeft: 'fold', z: 'undo', Z: 'undo', Enter: 'write' }[event.key] ?? null;
   return { ArrowUp: 'up', ArrowDown: 'down', ArrowRight: 'right', ArrowLeft: 'left', Home: 'first', End: 'last' }[event.key] ?? null;
 }
 
@@ -44,6 +45,7 @@ export const KEY_WORDS = [
   ['⌘→ ⌘←', 'open and fold an outcome'],
   ['⇧⌘→ ⇧⌘←', 'open every outcome, or fold every one'],
   ['→ ←', 'open or fold, then move between the outline, the messages and the right rail'],
+  ['⌘Return', 'starts a new message in the topic the keys are on, or in the outcome\'s Conversation'],
   ['⌘↑ ⌘↓', 'move an outcome, or a topic within its outcome, up or down; your order is kept wherever you sign in'],
   ['⌘Z', 'puts the last move back'],
 ];

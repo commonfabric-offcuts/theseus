@@ -90,32 +90,52 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   Return opens the row in place: a topic, or an outcome's Conversation with
   its topics, folding every other outcome. ⌘→ opens the focused outcome (or
   a focused topic's outcome) and ⌘← folds it, with the keys on its row; →
-  opens a folded outcome or goes to its first row, and ← goes to the row it
-  is under or folds an open one. ⇧⌘→ opens every outcome and ⇧⌘← folds every
+  opens a folded outcome, and on an open one goes on into the messages, as
+  on a topic (↓ reaches its topics); on Done (N) or Archived (N) → opens the
+  group or goes to its first row; ← goes to the row it is under or folds an
+  open one. ⇧⌘→ opens every outcome and ⇧⌘← folds every
   one, from anywhere in the outline; the next place reached tidies back to
   one open. ⌘↑ and ⌘↓ move an outcome, or a topic within its outcome, one
   place, the reader's own order kept wherever they sign in
   (docs/outline-order.md); ⌘Z right after puts the last move back. "Keys"
   under the outline lists them.
-- **Between the panes.** → on a topic (or on an open outcome after its
-  tree's step, on a row that opens nothing) moves into the messages, onto the
-  message last lit there, else the oldest one not read (just above the New
+- **Between the panes.** → on a topic, on an open outcome, or on a row that
+  opens nothing moves into the messages, onto the message last lit there, else the oldest one not read (just above the New
   line), else the first in view; ↑ and ↓ then move the light, and Return
   opens the Reader. → from the messages goes to the right rail and ← back to
   the outline, on the row of the place being read. In the right rail ↑ and ↓
-  move between its sections and their rows, ⌘→ and ⌘← open and fold a
-  section, Return opens a row, and ← goes back to the messages. Each pane
+  move between its sections and their rows, and → and ← open and fold as in
+  the outline: → opens a folded section or goes to its first row, ← folds an
+  open one and goes from a row to its section, and ← on a folded section
+  goes back to the messages. ⌘→ and ⌘← open and fold a section too, and
+  Return opens a row. Each pane
   keeps its place, so going there and back never loses it; after a move in
   place the outline keeps its place and the messages' is the new page's.
   Escape in the Reader gives the focus back to the message, so the arrows
   work again.
+- **The buttons at the top of the feed.** ↑ on the message at the top of
+  the feed moves the keys onto the header's buttons (Topic settings, New
+  message, and the others drawn there, such as "Pipeline & pages" below
+  1181px), with the keys' ring on the one they are on. ← and → move along
+  them; ← past the first goes to the outline and → past the last to the
+  right rail, as from the messages. ↓ goes back to the message the keys
+  left, and Return or Space presses the button. Coming up again finds the
+  button the keys were last on. The pointer is unchanged.
+- **⌘Return** starts a new message in the place the keys are on, in the box
+  the ✎ opens, with the cursor in it: on a topic's row in the outline, that
+  topic (opened in place first when it is not the one being read); on an
+  outcome's row, its Conversation; anywhere else on a topic or a
+  Conversation, the right rail included, the page's own place. In writing
+  it stays Send, and it never opens a second box.
 - **Where a move leaves the focus.** Return on a row keeps the keys on that
   row, drawn again for the page reached. A press or a tap on a row in the
   outline or the right rail, a link in a message, and back and forward land
   as a load does: the focus is on the page reached, on its heading, which
   wears no ring, so the next key (one that scrolls, say) rings nothing in the
   rails. From there ↑ and ↓ light the messages and ← goes to the outline, as
-  on a fresh page.
+  on a fresh page. A press on a row whose move goes nowhere (the place
+  already being read, or a move the guard refuses) lands the same way, on
+  the page's heading; Return on such a row keeps the keys on it.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
   line's start and end, ⌘↑ and ⌘↓ the writing's. The messages leave their ⌘
@@ -123,8 +143,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   outline behind "☰ Outcomes" on a phone, the right rail behind "Pipeline &
   pages" below 1181px) is passed over: the keys never open a drawer or a
   sheet. While one is open over the dimmed page, the keys never act on what
-  it covers: ← in the right rail's panel or sheet closes it and goes to the
-  messages, and nothing under it takes the keys. Touch is unchanged; on an
+  it covers: ← on a folded section of the right rail's panel or sheet closes
+  it and goes to the messages, and nothing under it takes the keys. Touch is unchanged; on an
   iPad with a keyboard the same keys work.
 
 ## Everywhere
@@ -185,5 +205,10 @@ outline as a tree …", "rail ⇧⌘← and ⇧⌘→ fold and open every outcom
 → and ← move between the outline, the messages and the right rail, …"; where
 a move leaves the focus: "rail a press on an outline row puts the focus on
 the page reached, …" and "rail a press on a right-rail row that moves in place
-puts the focus on the page reached, …". What
+puts the focus on the page reached, …", and "rail a press on the row of the
+page being read leaves no ring: …"; the steps the arrows take: "rail → on an
+open outcome goes into the messages, …" and "rail in the right rail → and ←
+open and fold a section without ⌘: …"; the header's buttons: "rail ↑ from
+the top message reaches the buttons at the top of the feed, …"; ⌘Return:
+"rail ⌘Return starts a new message in the place the keys are on: …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.

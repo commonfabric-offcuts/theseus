@@ -53,7 +53,9 @@ Each outcome ends with + New topic.
   order. There is no "Not in an outcome" group.
 - **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
   its rows, Return opens one, → and ← take the tree's steps and then move to
-  the messages. A "Keys" line under the outline lists them in plain words.
+  the messages (→ on an open outcome goes straight there, as on a topic), and
+  ⌘Return starts a new message in the row's topic or the outcome's
+  Conversation. A "Keys" line under the outline lists them in plain words.
 - **The outcome being read** always has its row. Before the outline's list has
   reached it, a provisional row with the page's title for it stands in its
   place. Its topic list is the page's own (`TopicRail`). Once that list has
@@ -102,8 +104,11 @@ kept of it goes as the page hides the topic's messages. It shows beside the page
 right between 761px and 1180px, and as a sheet from the bottom on a phone.
 Below 1181px it opens from "Pipeline & pages" in the header, and Escape or a
 tap on the dimmed page closes it. While it is open the page and the outline
-under it take no keys, focus or presses, as under the outline's drawer; ← in
-it closes it and the keys go to the messages.
+under it take no keys, focus or presses, as under the outline's drawer. Its
+arrows open and fold as the outline's do, without ⌘: → opens a folded
+section or goes to its first row, ← folds an open one or goes from a row to
+its section, and ← on a folded section goes back to the messages, closing
+the rail first where it is open over the page.
 
 ## Moving in place
 
@@ -138,7 +143,11 @@ lets go of the focus, and once the run is up it is on the page's heading
 itself, such as the Reader on a message's link. Otherwise the row pressed
 would keep the focus, and the next key, even one that scrolls, would ring
 it. The shell tells the two apart by the last thing the person did, a press
-or a key, and by whether the focus was in a rail.
+or a key, and by whether the focus was in a rail. A press on a row whose
+move goes nowhere, the place already being read or a move the guard refuses,
+lands on the heading too (`shell.stayed`). ⌘Return on another place's row
+moves to it as Return does, and once its run is up opens its New message box
+(`shell.write`).
 
 ### What a move ends, and what it leaves
 

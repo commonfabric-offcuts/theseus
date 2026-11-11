@@ -158,6 +158,9 @@ export class Shell {
     // way lands: 'keys' leaves the focus in the rail it began in, 'page' puts it
     // on the page reached, as a load does (land).
     this.by = null; this.landing = null;
+    // ⌘Return on another place (write): the place asked, and whether the move
+    // under way is to it, so its New message box opens once its run is up.
+    this.writeTo = null; this.writing = false;
     // While the rails have a read waiting or out, the page says so (data-rails-reading), for whoever waits for them to be quiet.
     this.inTurn = oneAtATime(busy => this.doc?.documentElement?.toggleAttribute('data-rails-reading', busy));
   }
@@ -218,7 +221,7 @@ export class Shell {
   // asked while it started goes as it would with no feed page up.
   failed(page) {
     if (page !== this.page || this.handles) return;
-    this.feed = false; this.landing = null;
+    this.feed = false; this.landing = null; this.writing = false;
     const owed = this.owed; this.owed = null;
     if (owed?.pop) this.win.location.reload();
     else if (owed) { this.win.location.assign(routeHref(owed.go ?? owed.open)); owed.resolve?.(false); }
@@ -240,6 +243,8 @@ export class Shell {
     for (const listener of this.listeners) listener.ready?.(mine);
     if (this.landing === 'page') this.land();
     this.landing = null;
+    if (this.writing) this.compose();
+    this.writing = false;
     const waiting = this.up; this.up = null; waiting?.resolve();
     // What was asked meanwhile, once the run has finished starting.
     const owed = this.owed; this.owed = null;
@@ -275,6 +280,30 @@ export class Shell {
     if (!heading.hasAttribute('tabindex')) heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
   }
+  // A press on a row whose move went nowhere (the place already being read,
+  // or a move the guard refused) lands as a move does, so the row keeps no
+  // focus for the next key to ring. Return on it keeps the keys there.
+  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }
+  // ⌘Return (panes.mjs): a new message in the place named, or in the page's
+  // own, in the box New message opens, with the cursor in it. Another place
+  // is opened first, through the page's guard, and its box opens once its
+  // run is up. Answers whether it was asked.
+  write(target = null, title = 'that topic') {
+    if (!this.handles || this.moving) return false;
+    if (!target || routeKey(target) === this.at) return this.compose();
+    this.writeTo = routeKey(target);
+    this.open(target, title).finally(() => { this.writeTo = null; });
+    return true;
+  }
+  // The page's New message, as its button opens it; the drawer over the page
+  // put away first. Answers whether its box is open.
+  compose() {
+    const doc = this.doc, button = doc?.getElementById('new-message');
+    if (!button) return false;
+    this.drawer?.close();
+    button.click();
+    return Boolean(doc.getElementById('new-message-sheet')?.open);
+  }
   // The page has read its topic again (a message, a state): what the rails show of it may have moved on.
   topicChanged() { if (this.handles) for (const listener of this.listeners) listener.topicChanged?.(); }
   // listener: { begin(feed, route), ready(handles), topicChanged() }; each hears every run.
@@ -301,6 +330,7 @@ export class Shell {
     // rings nothing there, and the phone's drawer, closing, hands it to no button.
     const at = this.doc?.activeElement ?? null;
     this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';
+    this.writing = !popped && this.writeTo === routeKey(target);
     if (this.landing === 'page' && inRails(at)) at.blur();
     this.move();
     return true;

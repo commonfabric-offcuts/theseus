@@ -151,12 +151,14 @@ test('a request sent again after a lost answer is the same request', async () =>
 const target = (selector = null) => ({ closest: wanted => (selector && wanted.split(',').map(part => part.trim()).includes(selector) ? {} : null) });
 const press = (key, more = {}) => ({ key, target: target(), ...more });
 
-test('each key means one thing in the panes: arrows move, ⌘ arrows open, fold and reorder, ⌘Z puts back', () => {
+test('each key means one thing in the panes: arrows move, ⌘ arrows open, fold and reorder, ⌘Z puts back, ⌘Return writes', () => {
   const said = keys => keys.map(([key, more]) => keyAction(press(key, more)));
   assert.deepEqual(said([['ArrowUp'], ['ArrowDown'], ['ArrowRight'], ['ArrowLeft'], ['Home'], ['End']]), ['up', 'down', 'right', 'left', 'first', 'last']);
   const command = { metaKey: true };
-  assert.deepEqual(said([['ArrowUp', command], ['ArrowDown', command], ['ArrowRight', command], ['ArrowLeft', command], ['z', command]]),
-    ['move-up', 'move-down', 'open', 'fold', 'undo']);
+  assert.deepEqual(said([['ArrowUp', command], ['ArrowDown', command], ['ArrowRight', command], ['ArrowLeft', command], ['z', command], ['Enter', command]]),
+    ['move-up', 'move-down', 'open', 'fold', 'undo', 'write']);
+  // ⌘Return with another modifier, or while a character is composed, means nothing here.
+  assert.deepEqual(said([['Enter', { metaKey: true, shiftKey: true }], ['Enter', { metaKey: true, altKey: true }], ['Enter', { metaKey: true, isComposing: true }], ['Enter', { ctrlKey: true }]]), [null, null, null, null]);
   // ⇧⌘→ and ⇧⌘← open and fold every outcome; ⇧⌘↑ and ⇧⌘↓ are left to the messages' own pieces.
   const both = { metaKey: true, shiftKey: true };
   assert.deepEqual(said([['ArrowRight', both], ['ArrowLeft', both], ['ArrowUp', both], ['ArrowDown', both]]), ['open-all', 'fold-all', null, null]);
@@ -165,14 +167,14 @@ test('each key means one thing in the panes: arrows move, ⌘ arrows open, fold 
     ['ArrowUp', { metaKey: true, shiftKey: true }], ['z', { metaKey: true, shiftKey: true }], ['Home', command]]), [null, null, null, null, null, null, null, null, null]);
   assert.equal(keyAction(press('ArrowDown', { defaultPrevented: true })), null, 'a key something else took');
   assert.equal(keyAction(press('ArrowDown', { isComposing: true })), null, 'while composing a character');
-  assert.deepEqual(KEY_WORDS.map(([keys]) => keys), ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘↑ ⌘↓', '⌘Z'], 'the legend names every key');
+  assert.deepEqual(KEY_WORDS.map(([keys]) => keys), ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], 'the legend names every key');
   assert.ok(KEY_WORDS.length >= 5 && KEY_WORDS.every(([keys, words]) => keys && /^[a-z]/.test(words) && !/\b[tw]-[0-9a-f]{6}/.test(words)), 'the legend is plain words');
 });
 
 test('keys never act in writing: a text field, the Reader, a composer or a pop-up keeps its own ⌘ arrows', () => {
   for (const selector of ['input', 'textarea', 'select', '[contenteditable="true"]', '[contenteditable=""]', 'dialog', '.composer', '[role="dialog"]', '[role="menu"]']) {
     assert.equal(writing(target(selector)), true, selector);
-    for (const [key, more] of [['ArrowLeft', { metaKey: true }], ['ArrowRight', { metaKey: true }], ['ArrowUp', { metaKey: true }], ['ArrowDown', { metaKey: true }], ['ArrowDown', {}], ['z', { metaKey: true }],
+    for (const [key, more] of [['ArrowLeft', { metaKey: true }], ['ArrowRight', { metaKey: true }], ['ArrowUp', { metaKey: true }], ['ArrowDown', { metaKey: true }], ['ArrowDown', {}], ['z', { metaKey: true }], ['Enter', { metaKey: true }],
       ['ArrowLeft', { metaKey: true, shiftKey: true }], ['ArrowRight', { metaKey: true, shiftKey: true }]]) {
       assert.equal(keyAction({ key, target: target(selector), ...more }), null, `${selector}: ${key}`);
     }

@@ -2127,6 +2127,170 @@
     "native": "rail",
     "case": "rail a press on a right-rail row that moves in place puts the focus on the page reached"
    }
+  },
+  {
+   "item": 288,
+   "act": "A press on the row of the page being read lands the focus on the page's heading, so the next key rings nothing in the rails",
+   "break": [
+    [
+     "web/app.mjs",
+     "  try { const moved = await pending; if (!moved) shell.stayed(); return moved; }",
+     "  try { return await pending; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on the row of the page being read leaves no ring"
+   }
+  },
+  {
+   "item": 289,
+   "act": "→ on an open outcome in the outline moves the keys into the messages; on a folded one it opens it",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if ((row.level === 1 && row.expanded) || !this.tree.stepIn(row, rows, open))",
+     "if (!this.tree.stepIn(row, rows, open))"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on an open outcome goes into the messages"
+   }
+  },
+  {
+   "item": 290,
+   "act": "↑ on the message at the top of the feed moves the keys onto the header's buttons, with a ring",
+   "break": [
+    [
+     "web/panes.mjs",
+     "    else if (action === 'up' && buttons.length && atTop(doc)) moved = reach(buttons.includes(panes.button) ? panes.button : buttons[0]);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
+   }
+  },
+  {
+   "item": 290,
+   "act": "← and → move along the header's buttons, and past either end on to the outline or the right rail",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
+   }
+  },
+  {
+   "item": 290,
+   "act": "↓ from the header's buttons goes back to the message the keys left",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'down') return panes.feed(doc);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
+   }
+  },
+  {
+   "item": 291,
+   "act": "In the right rail ← folds an open section, goes from a row to its section, and from a folded section back to the messages, without ⌘",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (action === 'left') { if (!this.tree.stepOut(row, rows, each => { each.el.parentElement.open = false; })) panes.step('things', 'left', this.doc); return; }",
+     "if (action === 'left') { panes.step('things', 'left', this.doc); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail in the right rail → and ← open and fold a section without ⌘"
+   }
+  },
+  {
+   "item": 292,
+   "act": "⌘Return means a new message in the panes, and nothing in writing",
+   "break": [
+    [
+     "web/pane-keys.mjs",
+     "z: 'undo', Z: 'undo', Enter: 'write' }",
+     "z: 'undo', Z: 'undo' }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outline_order.test.mjs"
+   }
+  },
+  {
+   "item": 292,
+   "act": "⌘Return on the page, outside writing, opens its New message box with the cursor in it",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'write') moved = Boolean(panes.write?.(null));",
+     "  if (action === 'write') moved = false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
+   }
+  },
+  {
+   "item": 292,
+   "act": "⌘Return on a topic's row in the outline opens that topic's New message box, the topic opened in place first",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "    if (action === 'write') this.write(row);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
+   }
+  },
+  {
+   "item": 292,
+   "act": "⌘Return on another place opens its New message box once its run is up",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    this.writing = !popped && this.writeTo === routeKey(target);",
+     "    this.writing = false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
+   }
+  },
+  {
+   "item": 292,
+   "act": "⌘Return in the right rail opens the page's New message box",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "    if (action === 'write') { this.leave(); panes.write?.(null); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
+   }
   }
  ]
 }
