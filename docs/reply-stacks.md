@@ -126,22 +126,14 @@ their acts.
   A message that stops
   heading a stack, joined into another or left with no replies, loses the
   row at once and reads as a card.
-- **The reply line.** A stack with replies ends in a reply line, "Reply in
-  this stack…". It shows while the stack is open, and on a folded stack (or
-  one at head) while the stack has the focus: the keys went into it, a press
-  or tap last landed in it, or the pointer is over it. A press moves the
-  focus only once its click has landed, so a reply line going away never
-  moves what is being pressed. Nor does anything that arrives while a press
-  is held: a new message or reply, a stack drawn again, a reaction line or the
-  New line waits until the press ends, then shows at once
-  (`web/press-hold.mjs`). A press ends when the pointer or finger lets go,
-  and also where no letting go comes: a finger that scrolls the page, a
-  context menu the press opens, or the window losing the focus. The header
-  and the people repaint in place. A press on it, a tap, or Return while it holds
-  the keys opens the Reader replying to the stack's newest message, as Reply
-  on that message's bar does, opening the stack first when that message was
-  folded away. A placed message on its own has no reply line; its bar's
-  Reply does the same.
+- **Replying.** Use Reply on the message's bar, or Return on the selected
+  message, to open the Reader with its reply composer. Stacks have no
+  input-looking reply strip: that control opened the modal rather than
+  accepting writing in place, so Tony asked to remove it.
+- **Stable presses.** Anything that arrives while a press is held—a new
+  message, a stack repaint, reactions or the New line—waits until the press
+  ends, then shows at once (`web/press-hold.mjs`). The header and people
+  repaint in place.
 - **The bar.** A head showing only its row has no message bar; Return
   still replies to it, and the bar comes back once its whole message shows.
   In a stack the bar stays below the head row's bottom edge while that row
@@ -224,8 +216,6 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `data-seq`
   - `data-fold`: head, folded or open
   - `data-head-open`, `data-placed`, `data-single`, `data-renaming`
-  - `data-focused`: true on the stack the keys are in, or a press last
-    landed in, set by `web/stack-feed.mjs`
 - Inside the stack:
   - the head's entry, with its card marked `.stack-head-card` and holding
     `.stack-head`. The row's parts are `.stack-name`, `.stack-pen`,
@@ -237,9 +227,6 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `.stack-replies`, with each reply's entry and `.stack-join-line`
     (`.stack-join-words` and `.stack-split`).
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
-  - last, on a stack with replies, `.stack-foot`, holding `.stack-reply`,
-    the reply line (a button, with `.stack-reply-words` and `.stack-key`,
-    the key that presses it).
 - `[data-starred=true]` on any card the reader starred.
 
 Another look replaces that one file. Nothing in the drawing code chooses a
@@ -255,11 +242,9 @@ current target has the strong ring: a message, or the whole folder when its
 compact header or a stack control is selected. The enclosing stack does not
 also light up for a selected message. Stale keyboard focus, unread state and
 hover on an unselected message do not get another strong border. A placed message
-on its own is a folder with no tab. The foot is the folder's front edge: a
-crease, then the reply line, a rounded field on the paper's colour. The line
-names Return while it holds the keys, except on a touch screen or a narrow
-column, and is thumb-high there. No coloured edge marks a stack, and under
-Only new the stacks draw nothing.
+on its own is a folder with no tab. The folder ends after its messages and
+any placement control, with no reply strip or empty footer. Under Only new
+the stacks draw nothing.
 
 ## Checks
 

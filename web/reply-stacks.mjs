@@ -165,19 +165,8 @@ function makeStack(doc, id) {
   const toggle = element(doc, 'button', 'stack-toggle'); toggle.type = 'button';
   replies.id = `stack-replies-${id}`; toggle.setAttribute('aria-controls', replies.id);
   section.dataset.stack = id; section.setAttribute('role', 'group');
-  parts.set(section, { replies, toggle, lines: new Map(), placed: null, rename: null, foot: makeFoot(doc) });
+  parts.set(section, { replies, toggle, lines: new Map(), placed: null, rename: null });
   return section;
-}
-
-// The stack's foot: its reply line, which opens the Reader replying to the
-// stack's newest message, and the key that presses it while it holds the keys.
-function makeFoot(doc) {
-  const foot = element(doc, 'div', 'stack-foot'), reply = element(doc, 'button', 'stack-reply'), key = element(doc, 'kbd', 'stack-key', 'Return');
-  reply.type = 'button';
-  key.setAttribute('aria-hidden', 'true');
-  reply.append(element(doc, 'span', 'stack-reply-words', 'Reply in this stack…'), key);
-  foot.append(reply);
-  return Object.assign(foot, { reply });
 }
 
 // A line of the stack's (a fold line, a join line), kept across repaints by
@@ -291,14 +280,9 @@ function paintStack(section, stack, byId, context) {
   }
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
   const rename = single ? null : renameField(section, stack, shown, context);
-  if (!single) {
-    p.foot.reply.setAttribute('aria-label', `Reply in this stack: ${shown.name}`);
-    p.foot.reply.onclick = () => state.on?.reply?.(stack);
-  }
-  reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : []), ...(single ? [] : [p.foot])]);
+  reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
   if (single || rename) p.toggle.remove();
   if (stack.placed === null) p.placed?.remove();
-  if (single) p.foot.remove();
   Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
     single: String(single), renaming: String(state.renaming === stack.id) });
   section.setAttribute('aria-label', single ? 'Placed message' : `Reply stack: ${shown.name}`);
@@ -309,8 +293,7 @@ function paintStack(section, stack, byId, context) {
 // fold keeps in view; once kept it stays kept, so a reply the person is
 // reading is never folded away under them. unread(item): counted as new on a
 // fold line and the head. viewer: who reads. nameOf(actor): a person's name
-// as the page shows it. on: what the stack's own controls do (stack-feed.mjs),
-// reply(stack) among them: its reply line.
+// as the page shows it. on: what the stack's own controls do (stack-feed.mjs).
 export function arrangeStacks(list, messages, options = {}) {
   const { keep = () => false, unread = () => false, viewer = null, nameOf = id => id, on = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
