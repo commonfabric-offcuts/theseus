@@ -757,6 +757,52 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close(); await q.close();
   });
 
+  await check('reading a 👍 on a message marked unread clears the mark and reads it at once, here and on another page, and a reload keeps it', async () => {
+    // Item 327: unread is a pending delivery or a mark. The person reads B, marks it unread, closes the Reader and
+    // later gives it a 👍 from the bar without opening it: the 👍 reads it, mark and all. A stays unread throughout.
+    const topic = 'reading-thumb-marked';
+    const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'Message A, the oldest, unread.' }],
+      ['b', { sender: 'aim-core', addressees: [facts.actor], body: 'Message B, read, then marked unread.' }]]);
+    const hold = 'window.holdReads = true';
+    const p = await open('reading-thumb-marked', 'laptop', topic, ids.a, hold);
+    const q = await open('reading-thumb-marked-other', 'laptop', topic, ids.a, hold);
+    const marked = async () => (await view('marks', { topic_id: topic })).items.map(item => item.message_id);
+    // How a page shows it: each card read or not and its Unread pill, the topic's marks line, and the topic's row.
+    const looks = pg => pg.evaluate(`(()=>{const ids=${JSON.stringify(ids)},cards={};for(const [k,id] of Object.entries(ids)){const c=document.querySelector('#messages .message-card[data-id="'+id+'"]');
+      cards[k]={read:c.hasAttribute('data-read'),pill:Boolean(c.querySelector('.unread-mark'))}}
+      const row=document.querySelector('#outline a[data-topic-id=${JSON.stringify(topic)}]'),badge=row?.querySelector('.unread-count');
+      return {cards,marks:!document.querySelector('#topic-marks').hidden,row:row?Number(badge?.textContent??0):null}})()`);
+    await p.send('Page.bringToFront');
+    await openReader(p, 'laptop', ids.b, 'Message B');
+    await until(() => p.evaluate("!document.querySelector('#mark-unread').hidden && document.querySelector('#mark-unread').getAttribute('aria-pressed') === 'false'"), 'the Reader offers Mark unread on B');
+    await p.point('#mark-unread');
+    await until(async () => (await marked()).join() === ids.b, 'Core holds B marked unread');
+    await closeReader(p, 'laptop');
+    const marking = { cards: { a: { read: false, pill: false }, b: { read: false, pill: true } }, marks: true, row: 2 };
+    await becomes(() => looks(p), marking, 'B reads as unread, with its Unread pill and the marks line; A is unread too');
+    await q.send('Page.bringToFront');
+    await becomes(() => looks(q), marking, 'the other page shows the same');
+    await p.send('Page.bringToFront');
+    // The pointer comes to B from A, as it would come back to the message later.
+    await light(p, 'laptop', ids.a);
+    await light(p, 'laptop', ids.b);
+    await press(p, 'laptop', `${BAR} [data-act=thumb]`);
+    await until(async () => await thumbsBy(ids.b, facts.actor) === 1, 'Core holds the thumbs-up on B');
+    await until(async () => (await marked()).length === 0, 'the 👍 cleared B\'s mark in Core');
+    const read = { cards: { a: { read: false, pill: false }, b: { read: true, pill: false } }, marks: false, row: 1 };
+    await becomes(() => looks(p), read, 'B reads as read at once, its pill and the marks line gone, and only A counts');
+    await q.send('Page.bringToFront');
+    await becomes(() => looks(q), read, 'the other page shows the same, with no reload');
+    await p.send('Page.bringToFront');
+    const origin = await p.evaluate('performance.timeOrigin');
+    await p.send('Page.reload');
+    await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' &&
+      ${JSON.stringify(Object.values(ids))}.every(id => document.querySelector('#messages .message-card[data-id="' + id + '"]'))`).catch(() => false), 'the page loads again, a new document with both cards');
+    await becomes(() => looks(p), read, 'loaded again, B is read and unmarked, A unread');
+    assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
+    await p.close(); await q.close();
+  });
+
   await check('reading ⌘C with nothing selected copies the lit message\'s words as written, as ⇧⌘C does in the Reader; a selection, the writing and no lit message leave ⌘C to the browser', async () => {
     const topic = 'reading-copy';
     const long = Array.from({ length: 60 }, (_, i) => `Line ${i} of a long message, cut off on its card.`).join('\n');

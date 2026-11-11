@@ -14,12 +14,15 @@ A reaction belongs to one actor, one message and one kind:
 
 Every change adds to the row's revision and rows are never deleted, so a
 revision is never reused, and the sum of a message's revisions (its reaction
-version) only grows. Both settle the reactor's own pending delivery of the
-message, as reading it does, and change no topic state or order; only a
-thumb that answers an ask, or is taken back from one, changes a wait. A
-thumb's result says whether it settled one (`settled`): the message was
-unread for the reactor and is read now. Taking a thumb back settles nothing
-and unsettles nothing: what was read stays read.
+version) only grows. A thumb given and an answer read the message for the
+reactor, as opening it does: they settle the reactor's own pending delivery
+of it and clear their mark on it (marks.py), in the same act; neither changes
+topic state or order, and only a thumb that answers an ask, or is taken back
+from one, changes a wait. A thumb's result says whether it read the message
+(`settled`: it was unread for the reactor, by a pending delivery or a mark,
+and is read now), and a result whose act cleared a mark carries the mark's
+new revision (`mark_revision`). Taking a thumb back settles nothing, clears
+nothing and unsettles nothing: what was read stays read, and a mark stays.
 
 An answer is also said where the asker reads it: the same act posts a short
 reply from the person to the agent (`✅ Go ahead` or `🚫 Don't`), so the agent
@@ -92,7 +95,12 @@ class Reactions:
         return db.execute("SELECT id,topic_id,seq,author_id,private_to,addressees,go_ahead,intent,sent_ms FROM messages WHERE id=?",
                           (message_id,)).fetchone()
 
-    def _react(self, db, actor, message, kind, value, revision, now):
+    def _react(self, db, actor, message, kind, value, revision, now, reads):
+        """Records the reaction and tells its readers: (reaction version, read, cleared mark revision or None).
+
+        reads: the act reads the message for the reactor (a thumb given, an answer). Unread is a pending delivery or a
+        mark (docs/attention.md), so reading clears the reactor's mark as well as settling their delivery, here, for
+        every reaction alike; a thumb taken back clears no mark."""
         db.execute("INSERT INTO message_reactions(actor_id,message_id,kind,topic_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?) "
                    "ON CONFLICT(actor_id,message_id,kind) DO UPDATE SET value=excluded.value,at_ms=excluded.at_ms,revision=excluded.revision",
                    (actor, message["id"], kind, message["topic_id"], value, now, revision))
@@ -102,11 +110,29 @@ class Reactions:
                              (message["id"], actor)).fetchone()
         if pending is not None:
             self._acknowledge(db, actor, pending)
+        cleared = self._clear_mark(db, actor, message) if reads else None
         version = db.execute("SELECT SUM(revision) FROM message_reactions WHERE message_id=?", (message["id"],)).fetchone()[0]
         for reader in self._message_readers(db, message, actor):
             self._change(db, "actor", reader, "reaction", message["id"], version)
         # Whether this act read the message for the reactor: a page places its New line afresh only then.
-        return version, pending is not None
+        return version, pending is not None or cleared is not None, cleared
+
+    def _clear_mark(self, db, actor, message):
+        """Clears actor's mark on message, as message.mark clearing it does (the next revision, a `mark` change), and
+        returns its new revision; None when it is not marked."""
+        current = self._mark_revision(db, actor, message["id"])
+        if current % 2 == 0:
+            return None
+        db.execute("UPDATE message_marks SET revision=? WHERE actor_id=? AND message_id=?", (current + 1, actor, message["id"]))
+        self._change(db, "actor", actor, "mark", message["id"], current + 1)
+        return current + 1
+
+    @staticmethod
+    def _read_by(result, affected, message, cleared):
+        """A reaction's result and affected, with the mark it cleared when it cleared one."""
+        if cleared is None:
+            return result, affected
+        return dict(result, mark_revision=cleared), affected + [{"kind": "mark", "id": message["id"], "version": cleared}]
 
     def _message_readers(self, db, message, actor):
         """Everyone who sees the message's reactions, by the reach of reading it (_message_access): its whisper's
@@ -139,10 +165,11 @@ class Reactions:
             # Unchanged, it reports what the thumb on the message does: a 👍 that answered an ask holds `yes`, a taken-back one nothing.
             return dict(result, thumbed=thumbed, thumb_revision=current, answered=answered_yes(row), changed=False, settled=False), []
         value, waits = self._thumb_answer(db, actor, message, thumbed, answered_yes(row))
-        version, settled = self._react(db, actor, message, "thumb", value, current + 1, _now_ms())
-        return dict(result, thumbed=thumbed, thumb_revision=current + 1, reaction_version=version, answered=value == "yes", changed=True,
-                    settled=settled), waits + [
-            {"kind": "reaction", "id": message["id"], "version": version}]
+        # A thumb given reads the message; one taken back reads and clears nothing.
+        version, settled, cleared = self._react(db, actor, message, "thumb", value, current + 1, _now_ms(), thumbed)
+        return self._read_by(dict(result, thumbed=thumbed, thumb_revision=current + 1, reaction_version=version, answered=value == "yes",
+                                  changed=True, settled=settled), waits + [
+            {"kind": "reaction", "id": message["id"], "version": version}], message, cleared)
 
     # A thumb that answers an ask (item 239) -----------------------------------
 
@@ -286,15 +313,15 @@ class Reactions:
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"], "answer": answer}
         if row is not None and row["value"] == answer:
             return dict(result, answer_revision=current, changed=False), []
-        version, _settled = self._react(db, actor, message, "answer", answer, current + 1, _now_ms())
+        version, _settled, cleared = self._react(db, actor, message, "answer", answer, current + 1, _now_ms(), True)
         # The asker is told as a reply is: a short message from the person to
         # the agent, answering the ask, which also clears the topic's wait.
         body = ANSWERS[answer] + (" (I changed my answer)" if row is not None else "")
         said, affected = self._publish(db, actor, envelope["operation_id"], message["topic_id"], {
             "body": body, "attachments": [], "quotes": [], "addressees": [message["author_id"]],
             "reply_to": message["id"], "intent": "tell"})
-        return dict(result, answer_revision=current + 1, reaction_version=version, reply_id=said["message_id"], changed=True), affected + [
-            {"kind": "reaction", "id": message["id"], "version": version}]
+        return self._read_by(dict(result, answer_revision=current + 1, reaction_version=version, reply_id=said["message_id"], changed=True), affected + [
+            {"kind": "reaction", "id": message["id"], "version": version}], message, cleared)
 
     def _reactions_of(self, db, actor, ids):
         """{message_id: reactions} for the messages in ids that have any; the caller has checked each is visible."""

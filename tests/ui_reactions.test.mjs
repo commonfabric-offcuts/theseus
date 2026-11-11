@@ -4,7 +4,7 @@
 // Chrome and WebKit.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reactionsOf, paintReactions, mayThumb, mayAnswer, learnReactions } from '../web/reactions.mjs';
+import { Reactions, reactionsOf, paintReactions, mayThumb, mayAnswer, learnReactions } from '../web/reactions.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
 const reactions = more => ({ version: 3, thumbs: [], answers: [], thumb_revision: 1, answer_revision: 0, ...more });
@@ -92,4 +92,34 @@ test('the page keeps the newest reactions Core answered for a loaded message, an
   assert.deepEqual([messages.get('m').reactions.version, messages.get('m').go_ahead], [6, true]);
   learnReactions(messages, { message_id: 'm', reactions: reactions({ version: 7 }), go_ahead: false });
   assert.equal('go_ahead' in messages.get('m'), false, 'no longer asks');
+});
+
+test('a 👍 or an answer that cleared the person\'s mark tells the page before it paints, and nothing else does (item 327)', async () => {
+  // Core's receipt for one act on message m: committed with the result given, or refused.
+  const page = receipt => {
+    const heard = [];
+    const api = { command: async envelope => ({ ...receipt, operation_id: envelope.operation_id }),
+      view: async (name, args) => ({ instance_id: 'i', message_id: args.message_id, go_ahead: false, reactions: reactions({ version: 4 }) }) };
+    const r = new Reactions({ api, instanceId: 'i', authority: () => ({ authority_id: 'a', authority_epoch: 1 }),
+      cleared: result => heard.push(['cleared', result.message_id, result.mark_revision, result.topic_id, result.seq]),
+      learned: () => heard.push(['learned']), recorded: () => heard.push(['recorded']) });
+    return { r, heard };
+  };
+  const item = { id: 'm', author_id: 'aim-core', reactions: reactions({ thumb_revision: 0 }) };
+  const done = result => ({ status: 'committed', recorded: true, result: { message_id: 'm', topic_id: 't', seq: 7, ...result } });
+  let { r, heard } = page(done({ thumbed: true, settled: true, mark_revision: 4 }));
+  await r.thumb(item, true);
+  assert.deepEqual(heard, [['cleared', 'm', 4, 't', 7], ['learned'], ['recorded']], 'the cleared mark is known before the card is painted');
+  ({ r, heard } = page(done({ answer: 'yes', mark_revision: 2 })));
+  await r.answer({ ...item, go_ahead: true }, 'yes');
+  assert.deepEqual(heard[0], ['cleared', 'm', 2, 't', 7], 'an answer that cleared a mark says so too');
+  ({ r, heard } = page(done({ thumbed: true, settled: true })));
+  await r.thumb(item, true);
+  assert.deepEqual(heard, [['learned'], ['recorded']], 'a 👍 that cleared no mark clears none here');
+  ({ r, heard } = page(done({ message_id: 'other', mark_revision: 4 })));
+  await r.thumb(item, true);
+  assert.deepEqual(heard, [['learned'], ['recorded']], 'a result for another message clears nothing');
+  ({ r, heard } = page({ status: 'rejected', recorded: true, error: { code: 'REVISION_CONFLICT' }, result: { message_id: 'm', mark_revision: 4 } }));
+  await assert.rejects(r.thumb(item, true));
+  assert.deepEqual(heard, [['learned']], 'a refused act clears nothing');
 });

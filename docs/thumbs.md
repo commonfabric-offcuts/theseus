@@ -27,20 +27,27 @@ someone else's message. Only a person a go-ahead ask names can answer it
 (`NOT_ASKED`), and only a message that asks for one can be answered
 (`NOT_A_GO_AHEAD`).
 
-Both settle the actor's own pending delivery of the message, as reading it
-does, and change no topic state or order; a thumbs-up changes a wait only
-when it answers an ask (below). A thumb's result says whether it did
-(`settled`: the message was unread for the actor and is read now; false for a
-thumb taken back, one that changed nothing, and one on a message already
-read). Only that message is read: messages before and after it that are
-unread stay so. Taking a thumb back settles nothing and unsettles nothing, so
-the message stays read, and a mark (docs/attention.md) is left as it is, as a
-reply leaves it.
+A thumbs-up given and an answer read the message for the actor, as opening it
+does, wherever they are pressed (the card's bar or 👍 count as well as the
+Reader): in the same act they settle the actor's own pending delivery of it
+and clear the actor's mark on it (docs/attention.md: unread is a pending
+delivery or a mark), with the next mark revision and a `mark` change, as
+`message.mark` clearing it would. They change no topic state or order; a
+thumbs-up changes a wait only when it answers an ask (below). A thumb's
+result says whether it read the message (`settled`: it was unread for the
+actor, by a pending delivery or a mark, and is read now; false for a thumb
+taken back, one that changed nothing, and one on a message already read).
+A result that cleared a mark carries its new revision (`mark_revision`), and
+`affected` names the mark. Only that message is read: messages before and
+after it that are unread stay so. Taking a thumb back settles nothing, clears
+nothing and unsettles nothing, so the message stays read, and a mark made
+since stays.
 
 In the topic page a thumbs-up reads its card at once (`readNow`,
-`web/card-reading.mjs`: any revision of the reader's own thumb), and the
-counts follow the commit as any read does. A thumb whose result says
-`settled` places the New line afresh, as Mark read does; one that read
+`web/card-reading.mjs`: any revision of the reader's own thumb), a card
+marked unread included, since the page learns the cleared mark from the
+result before it paints, and the counts follow the commit as any read does.
+A thumb whose result says `settled` places the New line afresh, as Mark read does; one that read
 nothing moves it nowhere. Every other page and device the person has open
 hears the `reaction` change, reads the message's reactions and shows the card
 read, and reads its counts and New line again after the commit. Given from

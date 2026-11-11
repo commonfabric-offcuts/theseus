@@ -22,8 +22,9 @@ export function agentTalk(item, viewer, viewerKind, kindOf) {
 // the Reader, reply to it or thumb it up, and as unread while it is marked
 // unread. A thumbs-up reads it in Core (docs/thumbs.md), here or on another
 // page or device, and taking it back leaves it read: any revision of their
-// own thumb (thumb_revision above 0) says they gave one. Their own messages
-// are always read.
+// own thumb (thumb_revision above 0) says they gave one. A 👍 given also
+// clears their mark in Core, and the page learns it (Reactions' cleared), so
+// a marked card reads at once. Their own messages are always read.
 export function readNow(item, { viewer, marked = false, opened = false }) {
   if (item.author_id === viewer) return true;
   if (marked) return false;

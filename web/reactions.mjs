@@ -94,10 +94,13 @@ export function learnReactions(messages, answer) {
 
 // Sends the person's own thumbs-up and answers, one at a time per message,
 // and reads a message's reactions again after each answer from Core, so the
-// page shows what Core holds, whoever else reacted meanwhile.
+// page shows what Core holds, whoever else reacted meanwhile. A 👍 given or an
+// answer reads its message in Core, clearing the person's mark on it too
+// (docs/thumbs.md); a result that cleared one carries the mark's new revision,
+// handed to cleared(result) before the card is painted, so it reads at once.
 export class Reactions {
-  constructor({ api, instanceId, authority, learned = () => {}, recorded = () => {} }) {
-    Object.assign(this, { api, instanceId, authority, learned, recorded });
+  constructor({ api, instanceId, authority, learned = () => {}, recorded = () => {}, cleared = () => {} }) {
+    Object.assign(this, { api, instanceId, authority, learned, recorded, cleared });
     this.busy = new Set();
   }
   async read(id) {
@@ -117,6 +120,8 @@ export class Reactions {
         receipt = await this.api.command({ v: 1, instance_id: this.instanceId, operation_id: crypto.randomUUID(), kind,
           target: { message_id: item.id }, expected: { ...expected, authority: { authority_id, authority_epoch } }, args });
       } catch (error) { throw Error('Connection interrupted; whether that was saved is unknown. Press again: Core keeps one of each.', { cause: error }); }
+      const result = receipt?.status === 'committed' ? receipt.result : null;
+      if (result?.message_id === item.id && Number.isSafeInteger(result.mark_revision)) this.cleared(result);
       // Whatever the answer, the message's reactions as Core holds them now.
       try { this.learned(await this.read(item.id)); } catch { /* the next commit reads them again */ }
       if (receipt?.status === 'committed') { this.recorded(receipt); return receipt; }

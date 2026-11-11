@@ -10,7 +10,9 @@ sequence are copied from the message, which never changes, so counting and
 listing need no join to the messages.
 
 A mark is the person's own reminder: it changes no delivery, schedule or wake.
-It counts as unread (Delivery._unread) and is cleared only by message.mark.
+It counts as unread (Delivery._unread) and is cleared by message.mark, and by
+the person's own 👍 given or go-ahead answer on the message, which read it
+without an open (reactions.py, docs/thumbs.md).
 A message the person wrote is never unread for them, so a mark on one is kept
 but counts nowhere: not in the counts, the marks view, the Reader's mark, or
 the New line.

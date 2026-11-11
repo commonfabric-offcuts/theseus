@@ -28,8 +28,8 @@ tint). The person's own black cards do not change. A card keeps how it read
 when the topic opened, so cards do not change under the person's eyes while
 they scroll; it reads as read at once when they open it in the Reader, reply
 to it or thumb it up (here or on another page or device: a 👍 reads its
-message in Core, docs/thumbs.md, and taking it back leaves it read), and as
-unread while it is marked unread (`readNow`, `web/card-reading.mjs`). The read fill keeps a quarter of an agent's tint in
+message in Core, docs/thumbs.md, clearing a mark on it, and taking it back
+leaves it read), and as unread while it is marked unread (`readNow`, `web/card-reading.mjs`). The read fill keeps a quarter of an agent's tint in
 light and less than a third in dark, so read and unread differ at a glance on a
 phone's screen as well as a laptop's.
 

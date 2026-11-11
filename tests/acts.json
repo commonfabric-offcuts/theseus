@@ -4231,8 +4231,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "        return version, pending is not None",
-     "        return version, True"
+     "        return version, pending is not None or cleared is not None, cleared",
+     "        return version, True, cleared"
     ]
    ],
    "check": {
@@ -4312,6 +4312,77 @@
    "check": {
     "native": "reading",
     "case": "reads that message at once"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A 👍 given or an answer clears the person's mark on its message, in Core",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        cleared = self._clear_mark(db, actor, message) if reads else None",
+     "        cleared = None"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A 👍 taken back clears no mark",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        cleared = self._clear_mark(db, actor, message) if reads else None",
+     "        cleared = self._clear_mark(db, actor, message)"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A 👍 that cleared a mark says it read the message",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        return version, pending is not None or cleared is not None, cleared",
+     "        return version, pending is not None, cleared"
+    ]
+   ],
+   "check": {
+    "python": "test_reactions.py"
+   }
+  },
+  {
+   "item": 327,
+   "act": "A 👍 on a card marked unread reads it at once, here and on another page, and a reload keeps it",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        cleared = self._clear_mark(db, actor, message) if reads else None",
+     "        cleared = None"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "marked unread clears the mark"
+   }
+  },
+  {
+   "item": 327,
+   "act": "The page learns the mark a 👍 or an answer cleared before it paints the card",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "      if (result?.message_id === item.id && Number.isSafeInteger(result.mark_revision)) this.cleared(result);",
+     "      if (false) this.cleared(result);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reactions.test.mjs"
    }
   },
   {

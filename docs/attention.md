@@ -4,8 +4,10 @@ Unread counts come from the deliveries Core already keeps, plus the messages
 a person has marked unread to come back to (below). A message is unread for a
 reader while its delivery to them is pending, or while they have it marked.
 Reading through it on screen, replying to it, thumbing it up (docs/thumbs.md),
-or acknowledging it settles the delivery; only opening the message to read it
-clears a mark. A person's reply
+or acknowledging it settles the delivery. Opening the message to read it
+clears a mark, and so does the person's 👍 given on it, or their ✅ or 🚫 on
+a go-ahead ask, which read it in one act wherever they are pressed, on the
+card or its bar as well as in the Reader (docs/thumbs.md). A person's reply
 (a post whose `reply_to` names the message, including one written in the
 Reader about it) settles their own delivery of that message, in the same act,
 when it is pending in an active group; it settles nothing else and clears no
@@ -351,7 +353,9 @@ rows through their index and probes each for an eligible delivery, so its
 cost follows the person's marks, not history.
 
 Reading through a topic and `delivery.ack` settle deliveries only; they never
-clear a mark.
+clear a mark. A 👍 given, and an answer to a go-ahead, settle the delivery and
+clear the mark together (docs/thumbs.md), with the same next revision and
+`mark` change as `message.mark` clearing it.
 
 ### Reading marks
 
@@ -384,7 +388,10 @@ clear a mark.
   the message it shows. A refusal adopts the revision Core names and says so.
   Each request is kept per message, state and revision, and sent again as it
   was until Core records an answer.
-- Only reading clears: a card's click or keypress, or Read it. That act
+- Only reading clears: a card's click or keypress, or Read it, and the
+  person's 👍 or go-ahead answer, which Core clears in the same act; the
+  page learns that revision from the act's result (`mark_revision`) before it
+  paints the card. A card's click, keypress or Read it
   captures the revision the page knew for the message, and the open sends a
   clear fenced on it only when the open succeeded with the source whole and
   the message still marked, it is still the one shown, and the page is in
@@ -404,7 +411,8 @@ is either newer than that message or that message itself.
 Read is exactly what the counts above hold. A message is unread while its
 delivery to the reader is pending in an active group or while they have it
 marked unread; reading it on screen, opening it in the Reader, replying to it
-or Mark read settles its delivery, and only opening it clears a mark. The
+or Mark read settles its delivery, and opening it, or a 👍 or go-ahead
+answer given on it, clears a mark. The
 server's answer, the unread counts and the Unread pills never disagree, and
 they follow reading live.
 
@@ -470,7 +478,8 @@ this page. Once neither holds it, it fades out where it is:
   Reader) places the line afresh at once, wherever the oldest unread message
   now is; when nothing is left unread, the line fades where it is, whatever
   this page read on screen. So does their 👍 in this page on a message it read
-  (the thumb's result says `settled`); a 👍 on a message already read moves
+  (the thumb's result says `settled`: it settled a delivery or cleared a
+  mark); a 👍 on a message already read moves
   nothing. A 👍 given on another page or device is reading there. Their own
   Mark unread is a mark like any other: it moves the line only when the
   message is further back. A mark cleared in another tab, or by opening the

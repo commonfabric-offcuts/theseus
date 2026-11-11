@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-"""Marked unread: a person's own durable reminder, counted once, cleared only by message.mark."""
+"""Marked unread: a person's own durable reminder, counted once, cleared by message.mark (and by their own 👍 or
+go-ahead answer, which read the message: tests/test_reactions.py)."""
 
 import concurrent.futures
 import sqlite3

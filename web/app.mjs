@@ -1692,13 +1692,15 @@ async function initialize() {
       if (source?.source_ref?.id === answer.message_id) Object.assign(source, { reactions: answer.reactions, go_ahead: answer.go_ahead });
       if (learnReactions(views.messages, answer)) paintViews('reactions'); else paintReaderThumb$();
     },
+    // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
+    cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   const cardScroll = new CardScroll({ read: async id => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass: 'background' }), bootstrap.instance_id) });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
-  // (Core settled the person's delivery of it) places the New line afresh, as
-  // Mark read does, wherever the oldest unread message now is; one on a
-  // message already read moves nothing.
+  // (Core settled the person's delivery of it, or cleared their mark on it)
+  // places the New line afresh, as Mark read does, wherever the oldest unread
+  // message now is; one on a message already read moves nothing.
   const thumbMessage = async (item, on) => {
     const receipt = await reactions.thumb(item, on);
     if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh(); if (commitReload) run(commitReload); }

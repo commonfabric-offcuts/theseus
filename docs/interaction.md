@@ -46,9 +46,10 @@ the pointer's way, the keys' and the phone's.
   Escape, ✕ or a press outside puts it back at the page's end with the writing
   kept. (docs/reader.md)
 - **👍** means read and understood, never "do it"; pressing it again takes it
-  back. It marks that message read at once, and only that one: its card, the
-  counts and the New line follow, here and on every page and device the person
-  has open, and taking it back leaves it read (docs/thumbs.md). The count on a
+  back. It marks that message read at once, even one marked unread, and only
+  that one: its card, the counts and the New line follow, here and on every
+  page and device the person has open, and taking it back leaves it read
+  (docs/thumbs.md). ✅ and 🚫 read their message the same way. The count on a
   message names who: on hover, or where nothing hovers (a
   phone), on the lit message, whose count then reads the names. A press on the
   count thumbs up; a tap on it on a phone lights the message and names who, and
@@ -200,7 +201,9 @@ page painted. Its checks, by rule:
   open when Core refuses it: "reading 👍 given while the reply is open closes
   the Reader …"; a 👍 reading its message, with the counts and the New line,
   on a second page and after a reload: "reading a 👍 on an unread message reads
-  that message at once …", and in Core `tests/test_reactions.py`; an agent's
+  that message at once …"; a 👍 on a card marked unread, clearing its mark:
+  "reading a 👍 on a message marked unread clears the mark …", and in Core
+  `tests/test_reactions.py`; an agent's
   `thumb`: `tests/test_agent_verbs_reactions.py`. ✅ and
   🚫: "reading ✅ and 🚫 on a go-ahead ask …"; an agent's `--go-ahead` and what
   `read` says of both: `tests/test_agent_verbs_reactions.py`.

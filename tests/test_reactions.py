@@ -108,6 +108,50 @@ class ThumbCase(ReactionCase):
         self.assertEqual(self.committed(self.thumb(first))["settled"], True)
         self.assertEqual((unread(), oldest(), pending()), (before - 2, last, [last]))
 
+    def mark(self, message, marked=True, actor="owner"):
+        revision = (self.sql("SELECT revision FROM message_marks WHERE actor_id=? AND message_id=?", (actor, message)) or [(0,)])[0][0]
+        return self.committed(self.command("message.mark", {"marked": marked}, target={"message_id": message},
+                                           expected={"mark_revision": revision}, actor=actor))
+
+    def test_a_thumb_given_on_a_message_marked_unread_clears_the_mark_so_it_reads_at_once(self):
+        # Item 327: unread is a pending delivery OR a mark (docs/attention.md). The person reads a message, marks it
+        # unread, then gives it a 👍 from the feed without opening it: the 👍 reads it, mark and all, in one act.
+        read_then_marked, pending_and_marked, other = [self.post("Message %d" % n, addressees=["owner"], intent="tell") for n in range(3)]
+        unread = lambda: self.store.view("owner", "attention", {})["unread"]
+        marks = lambda: [item["message_id"] for item in self.store.view("owner", "marks", {"topic_id": "t1"})["items"]]
+        self.committed(self.command("topic.read_through", {"seq": self.sql("SELECT seq FROM messages WHERE id=?", (read_then_marked,))[0][0]},
+                                    target={"topic_id": "t1"}))
+        self.mark(read_then_marked)
+        self.mark(pending_and_marked)
+        self.mark(other)
+        before = unread()
+        changes = lambda: self.sql("SELECT resource_id,version FROM changes WHERE scope_id='owner' AND resource_kind='mark' ORDER BY seq")
+        told = len(changes())
+        given = self.thumb(read_then_marked)
+        self.committed(given)
+        self.assertEqual((given["result"]["settled"], given["result"].get("mark_revision")), (True, 2), "the 👍 read it: its mark is cleared")
+        self.assertIn({"kind": "mark", "id": read_then_marked, "version": 2}, given["affected"])
+        self.assertEqual(changes()[told:], [(read_then_marked, 2)], "the person's pages hear the mark change")
+        self.assertEqual((unread(), marks()), (before - 1, [pending_and_marked, other]), "only that message is read; the other marks stay")
+        # A pending delivery and a mark on the same message: one 👍 settles both, and the message counts no more.
+        both = self.committed(self.thumb(pending_and_marked))
+        self.assertEqual((both["settled"], both.get("mark_revision")), (True, 2))
+        self.assertEqual((unread(), marks()), (before - 2, [other]))
+        # Taking a 👍 back reads nothing and clears nothing: marked again, then the 👍 taken back, the mark stays.
+        self.mark(read_then_marked)
+        back = self.committed(self.thumb(read_then_marked, on=False, revision=1))
+        self.assertEqual(back["settled"], False)
+        self.assertNotIn("mark_revision", back)
+        self.assertEqual(marks(), [read_then_marked, other], "a 👍 taken back leaves the mark")
+        # A 👍 on a message neither pending nor marked clears nothing and writes no mark change.
+        told = len(changes())
+        plain = self.committed(self.thumb(self.post("Read already", addressees=["owner"], intent="tell")))
+        self.assertEqual(changes()[told:], [], "nothing was marked, so no mark changes")
+        self.assertNotIn("mark_revision", plain)
+        # Someone else's 👍 leaves the person's mark.
+        self.committed(self.thumb(other, actor="agent-b"))
+        self.assertEqual(marks(), [read_then_marked, other], "another's 👍 clears none of the person's marks")
+
     def test_a_reaction_tells_every_reader_of_the_message_and_only_them(self):
         message = self.post()
         self.committed(self.thumb(message))
@@ -156,6 +200,26 @@ class AnswerCase(ReactionCase):
         self.assertEqual((changed["answer"], changed["answer_revision"]), ("no", 2))
         self.assertEqual(self.replies(ask)[-1][1], "🚫 Don't (I changed my answer)")
         self.assertEqual([(entry["actor_id"], entry["answer"]) for entry in self.reactions(ask)["answers"]], [("owner", "no")])
+
+    def test_an_answer_on_a_go_ahead_marked_unread_clears_the_mark_as_a_thumb_does(self):
+        # Item 327's class: ✅ or 🚫 is given from the feed without opening the ask, so it reads it, mark and all.
+        message = self.ask()
+        revision = self.committed(self.command("message.mark", {"marked": True}, target={"message_id": message},
+                                               expected={"mark_revision": 0}))["mark_revision"]
+        marks = lambda: [item["message_id"] for item in self.store.view("owner", "marks", {"topic_id": "t1"})["items"]]
+        self.assertEqual(marks(), [message])
+        given = self.answer(message)
+        self.committed(given)
+        self.assertEqual(given["result"].get("mark_revision"), revision + 1)
+        self.assertIn({"kind": "mark", "id": message, "version": revision + 1}, given["affected"])
+        self.assertEqual(marks(), [], "the answer read the ask")
+        unread = self.sql("SELECT count(*) FROM deliveries WHERE message_id=? AND recipient_id='owner' AND state='pending'", (message,))
+        self.assertEqual(unread, [(0,)])
+        # Changing the answer once the ask is read again by a mark clears that mark too; with none, nothing.
+        self.committed(self.command("message.mark", {"marked": True}, target={"message_id": message}, expected={"mark_revision": revision + 1}))
+        changed = self.committed(self.answer(message, "no", revision=1))
+        self.assertEqual((changed.get("mark_revision"), marks()), (revision + 3, []))
+        self.assertNotIn("mark_revision", self.committed(self.answer(message, "yes", revision=2)))
 
     def test_an_answer_sent_twice_by_one_operation_says_it_once(self):
         ask = self.ask()
