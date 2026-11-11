@@ -156,8 +156,19 @@ const element = (doc, tag, className, text) => {
 function makeStack(doc, id) {
   const section = element(doc, 'div', 'reply-stack'), replies = element(doc, 'div', 'stack-replies');
   section.dataset.stack = id; section.setAttribute('role', 'group');
-  parts.set(section, { replies, lines: new Map(), placed: null, rename: null });
+  parts.set(section, { replies, lines: new Map(), placed: null, rename: null, foot: makeFoot(doc) });
   return section;
+}
+
+// The stack's foot: its reply line, which opens the Reader replying to the
+// stack's newest message, and the key that presses it while it holds the keys.
+function makeFoot(doc) {
+  const foot = element(doc, 'div', 'stack-foot'), reply = element(doc, 'button', 'stack-reply'), key = element(doc, 'kbd', 'stack-key', 'Return');
+  reply.type = 'button';
+  key.setAttribute('aria-hidden', 'true');
+  reply.append(element(doc, 'span', 'stack-reply-words', 'Reply in this stack…'), key);
+  foot.append(reply);
+  return Object.assign(foot, { reply });
 }
 
 // A line of the stack's (a fold line, a join line), kept across repaints by
@@ -241,7 +252,7 @@ function paintStack(section, stack, byId, context) {
     state.kept.add(item.id); return true;
   };
   head.hidden = false;
-  if (single) unhead(head); else opened(head);
+  if (!single) opened(head);
   const shown = single ? { name: firstLine(stack.head.body) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
   const desired = [];
   const rows = single ? [] : rowsOf(stack, { level, kept, handFolded: state.handFolded, unread });
@@ -281,8 +292,13 @@ function paintStack(section, stack, byId, context) {
   }
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
   const rename = single ? null : renameField(section, stack, shown, context);
-  reconcile(section, [head, ...(rename ? [rename] : []), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
+  if (!single) {
+    p.foot.reply.setAttribute('aria-label', `Reply in this stack: ${shown.name}`);
+    p.foot.reply.onclick = () => state.on?.reply?.(stack);
+  }
+  reconcile(section, [head, ...(rename ? [rename] : []), p.replies, ...(stack.placed !== null ? [p.placed] : []), ...(single ? [] : [p.foot])]);
   if (stack.placed === null) p.placed?.remove();
+  if (single) p.foot.remove();
   Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
     single: String(single), renaming: String(state.renaming === stack.id) });
   section.setAttribute('aria-label', single ? 'Placed message' : `Reply stack: ${shown.name}`);
@@ -293,7 +309,8 @@ function paintStack(section, stack, byId, context) {
 // fold keeps in view; once kept it stays kept, so a reply the person is
 // reading is never folded away under them. unread(item): counted as new on a
 // fold line and the head. viewer: who reads. nameOf(actor): a person's name
-// as the page shows it. on: what the stack's own controls do (stack-feed.mjs).
+// as the page shows it. on: what the stack's own controls do (stack-feed.mjs),
+// reply(stack) among them: its reply line.
 export function arrangeStacks(list, messages, options = {}) {
   const { keep = () => false, unread = () => false, viewer = null, nameOf = id => id, on = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
@@ -306,7 +323,7 @@ export function arrangeStacks(list, messages, options = {}) {
   const top = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
   for (const stack of stacks) {
     const head = byId.get(stack.id);
-    if (!stack.replies.length && stack.placed === null) { unhead(head); head.hidden = false; top.push(head); continue; }
+    if (!stack.replies.length && stack.placed === null) { head.hidden = false; top.push(head); continue; }
     live.add(stack.id);
     if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
     const section = state.sections.get(stack.id);
@@ -317,6 +334,10 @@ export function arrangeStacks(list, messages, options = {}) {
   reconcile(list, top, node => !node.dataset.line && (!node.dataset.id || messages.has(node.dataset.id)));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
+  // Only a stack's head carries its row: a message that headed one before a
+  // join, or before its replies went, is a card again.
+  const heads = new Set(stacks.filter(stack => stack.replies.length).map(stack => stack.id));
+  for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });

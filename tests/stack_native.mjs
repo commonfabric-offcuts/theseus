@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
-  const { seed, open, becomes, centre, tap, press, lit, readerOn, closeReader, light, openReader, entry, card, words, DEVICES } = helpers;
+  const { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES } = helpers;
   const other = 'aim-core';
   // A stack, as the page shows it: its head's row and whether its full message
   // shows, its fold, and what sits under it top to bottom, by the names seeded.
@@ -106,8 +106,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await press(p, device, `${card(ids.root)} .stack-who`);
       await until(async () => (await look(p, ids, 'root')).full, device + ': a press on the head shows the full message');
       assert.equal(await readerOn(p), null, device + ': and opens no Reader');
-      await press(p, device, `${card(ids.root)} .stack-hide`);
-      await until(async () => !(await look(p, ids, 'root')).full, device + ': Hide the full message hides it');
+      // Another press on the tab hides it again; "Hide the full message" is its words for a screen reader.
+      await press(p, device, `${card(ids.root)} .stack-who`);
+      await until(async () => !(await look(p, ids, 'root')).full, device + ': another press on the head row hides it');
       // A press on a fold line opens every reply; again folds them.
       const line = `#messages .reply-stack[data-stack="${ids.root}"] .stack-fold-line`;
       await centre(p, line);
@@ -184,7 +185,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(p, ids.root);
     await p.key('ArrowLeft', 4); await p.key('ArrowLeft', 4);
     await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'fold: 2 more replies'], 'folded to the head, the starred reply stays in view in its place');
-    assert.equal(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(card(ids.one) + ' > .message-author')}),'::after').content`), '"★ Starred"');
+    assert.match(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(card(ids.one) + ' > .message-author')}),'::after').content`), /★/, 'the starred reply shows its star after its author');
     // The rail's Starred: this topic's star, and a press lands on it.
     // Stars elsewhere (another check's) sit under Elsewhere, after this topic's.
     const row = `#things .things-sec[data-key=starred] .things-body > div > ul:first-child a.row`;
@@ -363,11 +364,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(() => stacks(p, ids), ['top'], '⇧⌘↑ joins the older stack into the one above');
     await becomes(async () => (await look(p, ids, 'top')).rows, ['topReply', 'join: Joined from its own stack by You', 'old', 'oldReply'],
       'its messages come after the replies, its first message in view with a join line, and its reply, in view before, still in view');
+    // The joined stack's first message heads nothing now: its head row goes, and it reads as a card.
+    const headed = id => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return {row:Boolean(c.querySelector(':scope > .stack-head')),head:c.classList.contains('stack-head-card')}})()`);
+    assert.deepEqual(await headed(ids.old), { row: false, head: false }, 'the joined stack\'s first message keeps no head row');
+    assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-replies .stack-head').length`), 0, 'no head row inside a stack\'s replies');
     assert.match(await said(p), /Joined to the stack above/, 'a screen reader hears the join');
     await until(async () => (await actsOf(topic, ids.old, other))?.joined?.into === ids.top, 'Core holds the join for everyone');
     assert.equal((await actsOf(topic, ids.old, other)).joined.by, facts.actor, 'with who joined it');
     await p.point(`#messages .stack-join-line .stack-split`);
     await becomes(() => stacks(p, ids), ['top', 'old'], 'Split back out takes it out again');
+    assert.deepEqual(await headed(ids.old), { row: true, head: true }, 'split back out, it heads its stack again, with its row');
     await until(async () => (await actsOf(topic, ids.old, other))?.joined === null, 'for everyone');
     await keyTo(p, ids.old);
     await p.key('ArrowUp', 12);
@@ -377,6 +383,145 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await shot(p, 'stack-join');
     assert.deepEqual(p.errors, []);
     await p.close();
+  });
+
+  await check('reading stacks the reply line sits at the foot of an open stack, and of a folded one only while the keys or the pointer are in it; a press, a tap or Return on it opens the Reader replying to the stack\'s newest message', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-reply-line-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Where do we keep the boat keys?', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'In the drawer.', read: true }],
+        ['two', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'Or the hook.', read: true }],
+        ['three', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The hook, by the door, the newest reply.', read: true }],
+        ['near', { sender: other, addressees: [facts.actor], body: 'Another stack.', read: true }],
+        ['nearReply', { sender: other, reply_to: 'near', addressees: [facts.actor], body: 'Its reply.', read: true }]]);
+      const p = await open(topic, device, topic, ids.root);
+      const stack = `#messages .reply-stack[data-stack="${ids.root}"]`, foot = `${stack} > .stack-foot`, line = `${foot} > .stack-reply`;
+      const footing = () => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(stack)}),f=s?.querySelector(':scope > .stack-foot');
+        return {fold:s?.dataset.fold,shown:Boolean(f?.getClientRects().length),last:s?.lastElementChild===f,words:f?.querySelector('.stack-reply-words')?.textContent??null}})()`);
+      const replying = async message => {
+        await until(async () => (await readerOn(p))?.startsWith('The hook, by the door'), `${device}: ${message}: the Reader opens on the stack's newest message`);
+        await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), `${device}: ${message}: with the cursor in the reply`);
+        await closeReader(p, device);
+      };
+      // What the device has: a pointer that rests (Chrome at laptop size), or touch alone (a phone, and every WebKit context).
+      const { hovers, fine } = await p.evaluate(`({hovers:matchMedia('(hover:hover)').matches,fine:matchMedia('(pointer:fine)').matches&&innerWidth>760})`);
+      // Folded, with neither the keys, a tap's light nor the pointer in it: no reply line.
+      if (device === 'laptop') await away(p);
+      await p.evaluate('document.activeElement?.blur()');
+      await becomes(footing, { fold: 'folded', shown: false, last: true, words: 'Reply in this stack…' }, `${device}: a folded stack the person is not in shows no reply line, though it is there, last`);
+      // The pointer resting on its newest reply, or a finger's tap on it, shows it at the foot.
+      await light(p, device, ids.three);
+      await becomes(async () => (await footing()).shown, true, `${device}: the pointer or a tap in a folded stack shows its reply line`);
+      // With a pointer, it goes once the pointer leaves, the keys not in it. On a touch screen the tap landed in it,
+      // and it stays (Safari's engine gives a tapped card no focus, so this holds without the keys too).
+      if (hovers) { await p.evaluate('document.activeElement?.blur()'); await away(p); }
+      await becomes(async () => (await footing()).shown, !hovers, `${device}: ${hovers ? 'the pointer gone, the keys not in it, hides it' : 'the tap that landed in it keeps it'}`);
+      if (!hovers) {
+        // A tap on it, which lets the light go, leaves it under the finger, and opens the Reader replying.
+        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(line + ' .stack-key')})).display`), 'none', `${device}: touch alone names no key`);
+        await tap(p, line);
+        await replying('a tap on the reply line');
+        await p.evaluate('document.activeElement?.blur()');
+      }
+      // The light in another stack, with the pointer gone, hides it. A tap that then lets the light go (on the fold
+      // line below) moves nothing under the finger: the other stack keeps its reply line until the light is elsewhere.
+      await light(p, device, ids.nearReply);
+      if (hovers) await away(p);
+      await p.evaluate('document.activeElement?.blur()');
+      await becomes(async () => (await footing()).shown, false, `${device}: the light in another stack hides it`);
+      if (device === 'laptop') {
+        // The keys in it show it; Tab reaches it after the stack's last message and its bar, and Return on it replies.
+        // Safari's engine leaves buttons out of Tab's order, as Safari does by default: there the keys are put on it.
+        await keyTo(p, ids.three);
+        if (hovers) await away(p);
+        await becomes(async () => (await footing()).shown, true, 'laptop: the keys in a folded stack show its reply line');
+        if (engine === 'chrome') {
+          for (let step = 0; step < 12 && !await p.evaluate(`document.activeElement?.matches('.stack-reply')`); step++) await p.key('Tab');
+          assert.equal(await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(line)})`), true, 'laptop: Tab from the stack\'s last message reaches its reply line');
+          assert.equal(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(line + ' .stack-key')})).display !== 'none'`), fine, `laptop: holding the keys, it ${fine ? 'names Return' : 'names no key on a touch screen'}`);
+          await p.key('Enter');
+          await replying('Return on the reply line');
+          await p.evaluate('document.activeElement?.blur()');
+        } else {
+          // Safari's engine leaves buttons out of Tab's order and, in this harness, keeps the keys off a button put
+          // there by focus(): what it gives is recorded, and the press is a tap below.
+          await p.evaluate(`document.querySelector(${JSON.stringify(line)}).focus()`);
+          const on = await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(line)})`);
+          observations.push({ name: 'reading stacks the reply line takes the keys from focus()', engine, held: on ? 'as in Chrome' : 'the keys stay off it' });
+          await p.evaluate('document.activeElement?.blur()');
+        }
+      }
+      if (hovers) {
+        // The keys in the stack above show its reply line; a press on a message below takes the keys, and the line
+        // stays until the click has landed, so the message pressed does not move under the pointer and opens.
+        await keyTo(p, ids.nearReply);
+        await away(p);
+        const nearFoot = `#messages .reply-stack[data-stack="${ids.near}"] > .stack-foot`;
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(nearFoot)}).getClientRects().length > 0`), 'laptop: the keys in the stack above show its reply line');
+        await centre(p, words(ids.three));
+        const at = await p.box(words(ids.three)), x = at.x + at.width / 2, y = at.y + at.height / 2;
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+        const held = await p.evaluate(`({top:document.querySelector(${JSON.stringify(words(ids.three))}).getBoundingClientRect().top,line:document.querySelector(${JSON.stringify(nearFoot)}).getClientRects().length>0})`);
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+        assert.deepEqual(held, { top: at.y, line: true }, 'laptop: while the press is held, the stack above keeps its reply line and the message pressed stays put');
+        await until(async () => (await readerOn(p))?.startsWith('The hook, by the door'), 'laptop: the click lands and opens the message');
+        await closeReader(p, 'laptop');
+        await p.evaluate('document.activeElement?.blur()');
+        // A click that lands in a folded stack (on its head row, which shows the full message) keeps its reply line
+        // once the pointer has gone; another click on the row hides the message again.
+        await centre(p, `${card(ids.root)} .stack-who`);
+        await p.point(`${card(ids.root)} .stack-who`);
+        await until(async () => (await look(p, ids, 'root')).full, 'laptop: a click on the head row shows the full message');
+        await away(p);
+        await becomes(async () => (await footing()).shown, true, 'laptop: a click that landed in a folded stack keeps its reply line, the pointer gone');
+        await p.point(`${card(ids.root)} .stack-who`);
+        await until(async () => !(await look(p, ids, 'root')).full, 'laptop: another click on the head row hides it');
+        await p.evaluate('document.activeElement?.blur()');
+        // The pointer over a folded stack, on no message, shows it, and a click on it replies.
+        await light(p, 'laptop', ids.nearReply); await away(p);
+        await becomes(async () => (await footing()).shown, false, 'laptop: the light and the keys elsewhere');
+        await centre(p, `${stack} .stack-fold-line`);
+        await p.point(`${stack} .stack-fold-line`, 'move');
+        await becomes(async () => (await footing()).shown, true, 'laptop: the pointer over a folded stack shows its reply line');
+        await p.point(line);
+        await replying('a click on the reply line');
+      }
+      // Open, it always shows its reply line, with the person elsewhere.
+      await centre(p, `${stack} .stack-fold-line`);
+      await press(p, device, `${stack} .stack-fold-line`);
+      await becomes(async () => (await footing()).fold, 'open', `${device}: the fold line opens the stack`);
+      await light(p, device, ids.nearReply);
+      if (device === 'laptop') await away(p);
+      await p.evaluate('document.activeElement?.blur()');
+      await becomes(async () => (await footing()).shown, true, `${device}: an open stack shows its reply line with the person elsewhere`);
+      await shot(p, 'stack-reply-line-' + device);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading stacks a head shown as one row has no bar; shown whole, its bar sits below the head row, never across where the tab meets the stack', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-bar-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Is the gate code still 4471?\nAsking before Saturday.', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'It is.', read: true }]]);
+      const p = await open(topic, device, topic, ids.root);
+      // light() waits for the head to light with no bar.
+      await light(p, device, ids.root);
+      await press(p, device, `${card(ids.root)} .stack-who`);
+      await until(async () => (await look(p, ids, 'root')).full, `${device}: a press on the head shows its full message`);
+      await until(async () => await bar(p) !== null, `${device}: shown whole, the head has its bar`);
+      const place = await p.evaluate(`(()=>{const b=document.querySelector('.message-bar').getBoundingClientRect(),c=document.querySelector(${JSON.stringify(card(ids.root))}),
+        row=c.querySelector(':scope > .stack-head').getBoundingClientRect(),box=c.getBoundingClientRect();return {belowRow:b.top>=row.bottom,onCard:b.bottom<=box.bottom}})()`);
+      assert.deepEqual(place, { belowRow: true, onCard: true }, `${device}: the bar sits below the head row, on the head's card`);
+      // Hidden again by another press on its row, the head loses its bar while it stays lit.
+      await press(p, device, `${card(ids.root)} .stack-who`);
+      await until(async () => !(await look(p, ids, 'root')).full, `${device}: another press on the head row hides it`);
+      await until(async () => (await lit(p)).includes(ids.root) && await bar(p) === null, `${device}: a head shown as one row again has no bar, and stays lit`);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
   });
 
   await check('reading stacks the one New line sits under the lowest stack holding anything new, never inside one', async () => {

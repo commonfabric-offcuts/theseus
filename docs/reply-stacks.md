@@ -121,7 +121,24 @@ their acts.
   count, who replied and what is new sit on a second short line. The short name is the
   one someone typed, or else the first line of the first message. Pressing
   the row shows the whole message under it, and "Hide the full message"
-  hides it again. A starred head always shows whole.
+  hides it again. A starred head always shows whole. A message that stops
+  heading a stack, joined into another or left with no replies, loses the
+  row at once and reads as a card.
+- **The reply line.** A stack with replies ends in a reply line, "Reply in
+  this stack…". It shows while the stack is open, and on a folded stack (or
+  one at head) while the stack has the focus: the keys went into it, a press
+  or tap last landed in it, or the pointer is over it. A press moves the
+  focus only once its click has landed, so a reply line going away never
+  moves what is being pressed. A press on it, a tap, or Return while it holds
+  the keys opens the Reader replying to the stack's newest message, as Reply
+  on that message's bar does, opening the stack first when that message was
+  folded away. A placed message on its own has no reply line; its bar's
+  Reply does the same.
+- **The bar.** A head showing only its row has no message bar; Return
+  still replies to it, and the bar comes back once its whole message shows.
+  In a stack the bar stays below the head row's bottom edge; where that
+  leaves no room above a card's reply arrow, the bar sits under the card
+  rather than over its words and answers.
 - **One New line.** It goes under the lowest stack that holds the line's
   message or anything newer that is not the reader's own (`lineUnder`). It is
   never inside a stack, and nothing new sits below it. While the line's
@@ -195,6 +212,8 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `data-seq`
   - `data-fold`: head, folded or open
   - `data-head-open`, `data-placed`, `data-single`, `data-renaming`
+  - `data-focused`: true on the stack the keys are in, or a press last
+    landed in, set by `web/stack-feed.mjs`
 - Inside the stack:
   - the head's entry, with its card marked `.stack-head-card` and holding
     `.stack-head`. The row's parts are `.stack-name`, `.stack-pen`,
@@ -205,6 +224,9 @@ the semantic colour tokens of `web/aim.css` and only the names that
     (`data-fresh`, `data-all`, `.stack-fold-words` and `.stack-fold-new`)
     and `.stack-join-line` (`.stack-join-words` and `.stack-split`).
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
+  - last, on a stack with replies, `.stack-foot`, holding `.stack-reply`,
+    the reply line (a button, with `.stack-reply-words` and `.stack-key`,
+    the key that presses it).
 - `[data-starred=true]` on any card the reader starred.
 
 Another look replaces that one file. Nothing in the drawing code chooses a
@@ -218,7 +240,10 @@ for one reply and two for more. Shown whole, the head's card is the first
 sheet; while the stack is renamed, the field takes the tab's place. The focused
 stack has the focus ring round the whole folder, tab and all, and the message
 the keys are on inside it has its own edge in the focus colour. A placed message
-on its own is a folder with no tab. No coloured edge marks a stack, and under
+on its own is a folder with no tab. The foot is the folder's front edge: a
+crease, then the reply line, a rounded field on the paper's colour. The line
+names Return while it holds the keys, except on a touch screen or a narrow
+column, and is thumb-high there. No coloured edge marks a stack, and under
 Only new the stacks draw nothing.
 
 ## Checks

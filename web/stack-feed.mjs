@@ -53,10 +53,11 @@ export class StackFeed {
   // nameOf: as arrangeStacks takes them. send(envelope): Core's command.
   // reread(): reads the acts again from Core, after a refusal. starsChanged():
   // the reader's stars moved (the right rail's Starred). status(error): says a failure.
-  // hold(paint): repaints keeping the page where the person is.
+  // hold(paint): repaints keeping the page where the person is. reply(id,
+  // card): the Reader on a message with the cursor in the reply, as its bar's Reply.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, reread = () => {}, starsChanged = () => {}, status = () => {},
-    hold = paint => paint(), clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, clock, doc });
+    hold = paint => paint(), reply = () => {}, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, reply, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
@@ -72,6 +73,25 @@ export class StackFeed {
       this.swipe = touch && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
     }, { passive: true });
     list.addEventListener('touchend', event => this.swiped(event), { passive: true });
+    // The stack the keys are in, or a press last landed in, is data-focused,
+    // and shows its reply line folded (stack-look.css). The keys move it at
+    // once; a press moves it only once its click has landed, so nothing moves
+    // under a pointer that is still pressing and the click lands where it
+    // began. The message bar and its menu belong to the lit message.
+    this.focused = null; this.pressing = false;
+    doc.addEventListener('pointerdown', () => { this.pressing = true; }, true);
+    for (const name of ['pointerup', 'pointercancel']) doc.addEventListener(name, () => { this.pressing = false; }, true);
+    doc.addEventListener('focusin', event => { if (!this.pressing) this.focusIn(event.target); }, true);
+    doc.addEventListener('focusout', event => { if (!this.pressing && !event.relatedTarget) this.focusIn(null); }, true);
+    doc.addEventListener('click', event => this.focusIn(event.target), true);
+  }
+  focusIn(target) {
+    if (target?.closest?.('.message-bar, .message-menu-list')) return;
+    const stack = target?.nodeType === 1 && this.list.contains(target) ? target.closest('.reply-stack') : null;
+    if (stack === this.focused) return;
+    if (this.focused) delete this.focused.dataset.focused;
+    if (stack) stack.dataset.focused = 'true';
+    this.focused = stack;
   }
   get state() { return stackState(this.list); }
   // A message's acts as the page shows them: what Core holds, with each act
@@ -95,9 +115,18 @@ export class StackFeed {
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
-      split: item => this.split(item), unplace: stack => this.unplace(stack),
+      split: item => this.split(item), unplace: stack => this.unplace(stack), reply: stack => this.replyIn(stack),
       folded: (stack, was) => this.remember(() => { this.state.levels.set(stack.id, was); this.arrange(); }),
     } }));
+  }
+  // A stack's reply line: the Reader replying to its newest message, shown
+  // first if it was folded away, so the Reader gives the keys back to it.
+  replyIn(stack) {
+    const newest = [stack.head, ...stack.replies].reduce((most, item) => (item.seq > most.seq ? item : most));
+    const entry = entries(this.list).find(each => each.dataset.id === newest.id);
+    if (!entry) return;
+    reveal(entry);
+    this.reply(newest.id, cardIn(entry));
   }
   // Says what just happened, for a screen reader.
   say(words) { this.said.textContent = ''; this.said.textContent = words; }

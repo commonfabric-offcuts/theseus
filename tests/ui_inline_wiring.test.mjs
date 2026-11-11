@@ -133,7 +133,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
-    get defaultView() { return { ResizeObserver: class { observe() {} }, ...context.window }; } };
+    get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} }, ...context.window }; } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {

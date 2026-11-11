@@ -97,12 +97,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await until(async () => await readerOn(p) === null, 'the Reader closed');
   };
   // Lights a card as the person does: the pointer rests on it, or a finger taps it; on its words,
-  // or, for a stack's head shown as one row, on that row.
+  // or, for a stack's head shown as one row, on that row, which lights with no bar (docs/reply-stacks.md).
   const light = async (p, device, id) => {
     await centre(p, card(id));
-    const at = await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`) ? words(id) : card(id) + ' > .stack-head';
-    if (device === 'phone') await tap(p, at); else await p.point(at, 'move');
-    await until(async () => (await lit(p)).includes(id) && await bar(p) !== null, `${device}: ${id} lights, with its bar`);
+    const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
+    if (device === 'phone') await tap(p, row ? card(id) + ' > .stack-head' : words(id)); else await p.point(row ? card(id) + ' > .stack-head' : words(id), 'move');
+    await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === row, `${device}: ${id} lights, ${row ? 'with no bar on a head shown as one row' : 'with its bar'}`);
   };
   // The pointer leaves the messages for a spot where no message, bar or control is.
   const away = async p => {
@@ -210,12 +210,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.equal(await readerOn(p), null, device + ': answering opens nothing');
       // The reply stacks under the ask, and the ask may move with its stack: once the page shows the reply, light it again where it now is.
       await relight();
-      await until(async () => (await bar(p))?.yes === 'true' && (await bar(p))?.no === 'false', device + ': the bar shows ✅ as the answer');
-      // Heading its stack now, the ask shows as one row: a press on it shows the whole card, its answers too.
+      // Heading its stack now, the ask shows as one row, with no bar: a press on it shows the whole card, its answers and its bar too.
       if (!await p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`)) {
         await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on the head shows the ask whole');
       }
+      await until(async () => (await bar(p))?.yes === 'true' && (await bar(p))?.no === 'false', device + ': the bar shows ✅ as the answer');
       await shot(p, 'reading-ask-' + device);
       await press(p, device, second);
       await until(async () => (await answer()).join() === 'no', device + ': Core holds 🚫, the answer changed');
@@ -853,5 +853,5 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   });
 
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
-    { seed, open, becomes, centre, tap, press, lit, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
+    { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
 }

@@ -2029,8 +2029,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack[data-head-open=false]:not(.only-new *)>.message-fold>.stack-head-card>:not(.stack-head){display:none}",
-     ".reply-stack[data-head-open=false]:not(.only-new *)>.message-fold>.stack-head-card>:not(.stack-head){display:revert}"
+     ".reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:none}",
+     ".reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:revert}"
     ]
    ],
    "check": {
@@ -2763,6 +2763,126 @@
    ],
    "check": {
     "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A stack with replies ends in its reply line",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "...(single ? [] : [p.foot])]);",
+     "]);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The reply line shows on a folded stack only while the person is in it",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:none}",
+     ".reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:block}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A folded stack's reply line shows while a press last landed in it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    doc.addEventListener('click', event => this.focusIn(event.target), true);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "The reply line opens the Reader replying to the stack's newest message",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.reply(newest.id, cardIn(entry));",
+     "    this.reply(stack.id, cardIn(entry));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A press moves the focused stack only once its click has landed, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "doc.addEventListener('focusin', event => { if (!this.pressing) this.focusIn(event.target); }, true);",
+     "doc.addEventListener('focusin', event => this.focusIn(event.target), true);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reply line sits at the foot"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A head shown as one row has no bar",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    return Boolean(card?.classList.contains('stack-head-card') &&",
+     "    return false && Boolean(card?.classList.contains('stack-head-card') &&"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a head shown as one row has no bar"
+   }
+  },
+  {
+   "item": 283,
+   "act": "In a stack the bar sits below the head row",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "const floor = Math.max(4, tab?.height ? tab.bottom + 2 : 4);",
+     "const floor = 4;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a head shown as one row has no bar"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A message joined into another stack loses its head row",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks ⇧⌘↑ joins a stack"
    }
   }
  ]
