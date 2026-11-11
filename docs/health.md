@@ -49,8 +49,9 @@ shows is one pure function of what it has (`standing` in
   stands.
 - Until its first answer it says "Health · checking". After a read that
   fails, or answers without a list of what is red, it says "Health ·
-  couldn't check", unless the feed has since said what is red at the latest
-  commit.
+  couldn't check", unless the feed is live and the link already holds an
+  answer at the latest commit it knows of, from the feed or from a read,
+  whether that answer came before or after the read that failed.
 
 On a server that offers no live feed, the link, like the page, is read when
 the page opens and when it comes back into view.
