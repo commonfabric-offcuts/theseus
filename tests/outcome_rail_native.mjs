@@ -1386,4 +1386,77 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => await keyedAt(p) === name, 'the keys stay on the outcome');
     assert.deepEqual(p.errors, []); await p.close();
   });
+
+  await check('rail a press on an outline row puts the focus on the page reached, on its heading with no ring, so the next key rings nothing in the rails; Return on a row keeps the keys on it, and back lands as a press does', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-ring-o', title: 'Ring outcome', topic: { id: 'rail-ring-t', title: 'Ring topic' } });
+    const p = await open('rail-ring', '/?topic=t1');
+    await settled(p, 'the topic is up');
+    await until(async () => (await outline(p)).outcomes['rail-ring-o'], 'the outline lists the other outcome');
+    const start = await placeOf(p);
+    // What the person would see ringed: anything in either rail that matches
+    // :focus-visible, and the heading's own outline while it holds the focus.
+    const rings = () => p.evaluate(`(()=>{const h=document.getElementById('topic-title');
+      return {rails:[...document.querySelectorAll('#rail :focus-visible, #things :focus-visible')].map(e=>e.dataset.topicId??e.className??e.tagName),heading:getComputedStyle(h).outlineStyle}})()`);
+    // A press on another outcome's row: its Conversation, in place, the focus on its heading.
+    await p.evaluate(`document.querySelector('.ol-outcome[data-workspace-id="rail-ring-o"] .ol-name').scrollIntoView({block:'center'})`);
+    await p.point('.ol-outcome[data-workspace-id="rail-ring-o"] .ol-name');
+    assert.equal((await arrived(p, '?conversation=rail-ring-o', null, 'the Conversation opens')).origin, start.origin, 'in place, with no load');
+    assert.equal(await keyedAt(p), 'topic-title', 'the focus is on the Conversation\'s heading, as on the page reached');
+    assert.deepEqual(await rings(), { rails: [], heading: 'none' }, 'nothing wears a ring');
+    // A key that moves nothing (Escape) then rings nothing: the focus stays on the heading, which wears none.
+    await p.key('Escape');
+    assert.equal(await keyedAt(p), 'topic-title', 'Escape leaves the focus on the heading');
+    assert.deepEqual(await rings(), { rails: [], heading: 'none' }, 'after a key, still no ring in the rails or on the heading');
+    // ← from the heading takes the keys into the outline, on the place being read, with its ring.
+    await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'name:rail-ring-o', '← from the heading goes to the outline, on the Conversation\'s row');
+    assert.equal((await keyTree(p)).ring, 'solid', 'which wears the keys\' ring');
+    // A press on a topic: the topic, the focus on its heading; ↓ then lights a message as on a fresh load, nothing in the rails.
+    await until(async () => (await outline(p)).outcomes['rail-ring-o'].topics.some(row => row.id === 'rail-ring-t'), 'its topic shows under it');
+    await p.evaluate(`document.querySelector('#outline a[data-topic-id="rail-ring-t"]').scrollIntoView({block:'center'})`);
+    await p.point('#outline a[data-topic-id="rail-ring-t"]');
+    assert.equal((await arrived(p, '?topic=rail-ring-t', 'Ring topic', 'the topic opens')).origin, start.origin, 'in place');
+    assert.equal(await keyedAt(p), 'topic-title', 'the focus is on the topic\'s heading');
+    await settled(p, 'the topic\'s list is in the outline');
+    await p.key('ArrowDown');
+    assert.deepEqual((await rings()).rails, [], '↓ rings nothing in the rails');
+    assert.match(await keyedAt(p), /^message:/, '↓ lights a message, as on a fresh page, and moves nothing in the rails');
+    // The keys: ← into the outline on the topic, ↑ to its outcome; Return opens it in place, the keys kept on its row.
+    await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'topic:rail-ring-t', '← goes to the outline, on the topic being read');
+    await p.key('ArrowUp');
+    assert.equal(await keyedAt(p), 'name:rail-ring-o');
+    await p.key('Enter');
+    await arrived(p, '?conversation=rail-ring-o', null, 'Return on the outcome opens its Conversation');
+    await until(async () => await keyedAt(p) === 'name:rail-ring-o', 'the keys stay on the outcome\'s row');
+    // Return on the topic: the keys kept on its row, drawn again for the page reached.
+    await settled(p, 'the Conversation is up');
+    await p.key('ArrowDown');
+    assert.equal(await keyedAt(p), 'topic:rail-ring-t');
+    await p.key('Enter');
+    await arrived(p, '?topic=rail-ring-t', 'Ring topic', 'Return on the topic opens it');
+    await settled(p, 'the topic is up again');
+    await until(async () => await keyedAt(p) === 'topic:rail-ring-t', 'the keys stay on the topic\'s row');
+    assert.equal((await keyTree(p)).ring, 'solid', 'with its ring');
+    assert.equal((await placeOf(p)).origin, start.origin, 'every move in place');
+    // Back lands as a load does: the focus leaves the rail for the heading of the page reached.
+    await p.evaluate('history.back()');
+    await arrived(p, '?conversation=rail-ring-o', null, 'back to the Conversation');
+    assert.equal(await keyedAt(p), 'topic-title', 'back puts the focus on the heading, not the row the keys were on');
+    assert.deepEqual(await rings(), { rails: [], heading: 'none' }, 'and nothing wears a ring');
+    assert.deepEqual(p.errors, []); await p.close();
+    // At 390 a tap on a row in the drawer lands the same way: the drawer closes, and the focus is on the heading, not "☰ Outcomes".
+    const phone = await open('rail-ring-phone', '/?topic=t1', 'phone');
+    // The right rail reads nothing at 390 until it is opened, so the page is up once its own list is in the outline.
+    await until(() => phone.evaluate("document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outline #topic-navigation'))").catch(() => false), 'the topic is up at 390');
+    await until(async () => (await outline(phone)).outcomes['rail-ring-o'], 'the drawer lists the other outcome');
+    await tap(phone, '#rail-open');
+    await until(async () => (await drawer(phone)).open, '"☰ Outcomes" opens the drawer');
+    await phone.evaluate(`document.querySelector('.ol-outcome[data-workspace-id="rail-ring-o"] .ol-name').scrollIntoView({block:'center'})`);
+    await tap(phone, '.ol-outcome[data-workspace-id="rail-ring-o"] .ol-name');
+    await arrived(phone, '?conversation=rail-ring-o', null, 'the tapped outcome\'s Conversation opens');
+    assert.equal((await drawer(phone)).open, false, 'the drawer is closed');
+    assert.equal(await keyedAt(phone), 'topic-title', 'the focus is on the Conversation\'s heading');
+    assert.deepEqual(phone.errors, []); await phone.close();
+  });
 }

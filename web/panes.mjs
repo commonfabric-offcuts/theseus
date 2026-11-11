@@ -8,7 +8,7 @@
 // it, so they never land on what it covers.
 import { cardIn } from './fold.mjs';
 import { entries } from './reply-stacks.mjs';
-import { keyAction, writing } from './pane-keys.mjs';
+import { keyAction, writing, pageItself } from './pane-keys.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 // On screen: shown, inside the window, and not behind an open drawer.
@@ -59,10 +59,10 @@ export const panes = {
   },
 };
 
-// Whether the keys are in the feed: on a message, on the page itself, or on nothing.
+// Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs).
 export function inFeed(doc) {
-  const at = doc.activeElement, main = doc.getElementById('main');
-  if (!at || at === doc.body || at === main) return true;
+  const at = doc.activeElement;
+  if (pageItself(at, doc)) return true;
   return Boolean(doc.getElementById('messages')?.contains(at));
 }
 
