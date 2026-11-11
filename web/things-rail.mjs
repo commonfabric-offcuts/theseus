@@ -128,8 +128,9 @@ export class ThingsRail {
     this.reload = reloader(() => this.load());
     this.build();
     // The keys move through the sections and their rows as one tree
-    // (key-tree.mjs): ↑ ↓ between them, ⌘→ ⌘← open and fold a section,
-    // Return opens a row, ← goes back to the messages (panes.mjs).
+    // (key-tree.mjs): ↑ ↓ between them, → ← and ⌘→ ⌘← open and fold a
+    // section, Return opens a row, ← from a folded section goes back to the
+    // messages (panes.mjs).
     this.tree = new KeyTree({ root: this.holder, doc, label: 'The outcome\'s things', rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
     listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
@@ -184,8 +185,13 @@ export class ThingsRail {
   }
   act(action, row, rows) {
     const section = row.level === 1 ? row.el.parentElement : row.el.closest('details');
-    if (action === 'left') { panes.step('things', 'left', this.doc); return; }
+    // → and ← open and fold as in the outline: → opens a folded section or
+    // goes to its first row; ← folds an open one, goes from a row to its
+    // section, and from a folded section back to the messages.
+    if (action === 'left') { if (!this.tree.stepOut(row, rows, each => { each.el.parentElement.open = false; })) panes.step('things', 'left', this.doc); return; }
     if (action === 'right') { this.tree.stepIn(row, rows, each => { each.el.parentElement.open = true; }); return; }
+    // ⌘Return: a new message in the page's place, the panel over the page put away first.
+    if (action === 'write') { this.leave(); panes.write?.(null); return; }
     if (action === 'open') { section.open = true; return; }
     if (action === 'fold') { section.open = false; this.tree.go(this.tree.list().find(each => each.el === section.querySelector(':scope > summary'))); }
   }

@@ -5,9 +5,11 @@
 // not on screen (the outline behind "☰ Outcomes" on a phone, the right rail
 // behind "Pipeline & pages" below 1181px) is passed over: the keys never open
 // a drawer or a sheet. A pane open over the page is closed as the keys leave
-// it, so they never land on what it covers.
+// it, so they never land on what it covers. Above the messages are the
+// buttons at the top of the feed (headerKey), and ⌘Return anywhere outside
+// writing starts a new message (write).
 import { cardIn } from './fold.mjs';
-import { entries } from './reply-stacks.mjs';
+import { entries, entryOf } from './reply-stacks.mjs';
 import { keyAction, writing, pageItself } from './pane-keys.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
@@ -36,9 +38,28 @@ export function feedStop(doc) {
   return card.hidden ? entry.querySelector('.fold-line') : card;
 }
 
+// The buttons at the top of the feed, in their order, those shown: the topic's
+// or the Conversation's header, with Topic settings, New message and the rest
+// drawn there.
+export function headerButtons(doc) {
+  const header = doc.querySelector('#main > .topic-header');
+  return header ? [...header.querySelectorAll('button, a[href]')].filter(el => !el.disabled && shown(el) && !el.closest('[inert]')) : [];
+}
+// Whether the keys are on the first message of the feed, the one at its top.
+function atTop(doc) {
+  const list = doc.getElementById('messages'), at = doc.activeElement;
+  if (!list?.contains(at)) return false;
+  const first = entries(list).find(shown);
+  return Boolean(first) && entryOf(list, at) === first && (at === cardIn(first) || at === first.querySelector('.fold-line'));
+}
+const reach = el => { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); return true; };
+
 export const panes = {
-  // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page.
-  outline: null, things: null,
+  // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page;
+  // write(target, title), a new message in the place named, or in the page's own (in-place-navigation.mjs).
+  outline: null, things: null, write: null,
+  // The header's button the keys were last on, so coming back up finds it.
+  button: null,
   feed(doc) {
     const stop = feedStop(doc) ?? doc.getElementById('main');
     if (!stop || stop.closest('[inert]')) return false;
@@ -66,12 +87,34 @@ export function inFeed(doc) {
   return Boolean(doc.getElementById('messages')?.contains(at));
 }
 
-// → and ← in the feed: to the right rail, back to the outline. Nothing in
-// writing or while a pop-up is open; the feed's ⌘ arrows stay its own.
+// The keys on the header's buttons: ← and → along them, and past either end
+// on to the outline or the right rail as from the messages; ↓ back to the
+// message the keys left. Return and Space are the button's own. Answers
+// whether the keys moved.
+function headerKey(action, buttons, at, doc) {
+  if (action === 'down') return panes.feed(doc);
+  if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);
+  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);
+  return false;
+}
+
+// The feed's keys: → and ← to the right rail and back to the outline, ↑ from
+// the message at its top onto the header's buttons, and on those headerKey;
+// ⌘Return, from anywhere outside writing, a new message in this page's place.
+// Nothing in writing or while a pop-up is open; the feed's ⌘ arrows stay its own.
 export function feedKey(event, doc) {
   const action = keyAction(event);
-  if (!['left', 'right'].includes(action) || doc.querySelector('dialog[open]') || !inFeed(doc) || writing(doc.activeElement)) return false;
-  if (!panes.step('feed', action, doc)) return false;
+  if (!action || doc.querySelector('dialog[open]') || writing(doc.activeElement)) return false;
+  let moved = false;
+  if (action === 'write') moved = Boolean(panes.write?.(null));
+  else {
+    const buttons = headerButtons(doc), at = buttons.indexOf(doc.activeElement);
+    if (at >= 0) { panes.button = buttons[at]; moved = headerKey(action, buttons, at, doc); }
+    else if (!inFeed(doc)) return false;
+    else if (action === 'left' || action === 'right') moved = panes.step('feed', action, doc);
+    else if (action === 'up' && buttons.length && atTop(doc)) moved = reach(buttons.includes(panes.button) ? panes.button : buttons[0]);
+  }
+  if (!moved) return false;
   event.preventDefault();
   return true;
 }

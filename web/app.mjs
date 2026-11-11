@@ -2072,9 +2072,12 @@ async function openDestination(target, title, from = null) {
   if (!topicNavigation) { location.assign(routeHref(target)); return; }
   const notice=$('topic-navigation-status');showLine(notice,'');
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
-  try { return await pending; }
+  // A press on a rail row whose move went nowhere (the place being read, or a
+  // move the guard refused) leaves the row no focus to ring (in-place-navigation.mjs).
+  try { const moved = await pending; if (!moved) shell.stayed(); return moved; }
   catch(error) {
     if(serial!==topicNavigation.serial)return;
+    shell.stayed();
     showLine(notice,error);
     // Said where the person is looking: the Reader or the New message sheet,
     // open over the page, covers the rail's notice, so it says why it stayed too.

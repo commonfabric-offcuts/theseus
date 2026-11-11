@@ -21,7 +21,9 @@
 //
 // The keys move through it as one tree (key-tree.mjs, pane-keys.mjs): ↑ ↓
 // between the rows, Return opens one, ⌘→ ⌘← open and fold an outcome, → and
-// ← take the tree's steps and then move to the messages (panes.mjs).
+// ← take the tree's steps and then move to the messages (panes.mjs); → on an
+// open outcome goes straight to the messages. ⌘Return starts a new message
+// in the row's topic, or in the outcome's Conversation.
 //
 // Which outcome is being read, which topic is open and whose list sits under
 // it come from the run of the page that is up, and from nothing before it.
@@ -372,13 +374,23 @@ export class OutlineRail {
   act(action, row, rows) {
     const open = each => (each.level === 1 ? this.setOpen(each.outcome, true) : each.el.parentElement.open = true);
     const fold = each => (each.level === 1 ? this.setOpen(each.outcome, false) : each.el.parentElement.open = false);
-    if (action === 'right') { if (!this.tree.stepIn(row, rows, open)) panes.step('outline', 'right', this.doc); return; }
+    // → on an open outcome goes on into the messages, as → on a topic does; ↓ reaches its topics.
+    if (action === 'right') { if ((row.level === 1 && row.expanded) || !this.tree.stepIn(row, rows, open)) panes.step('outline', 'right', this.doc); return; }
     if (action === 'left') { this.tree.stepOut(row, rows, fold); return; }
     if (action === 'open') { this.setOpen(row.outcome, true); return; }
     if (action === 'fold') { this.setOpen(row.outcome, false); this.tree.go(this.tree.list().find(each => each.el === row.outcome.name)); return; }
     if (action === 'open-all' || action === 'fold-all') { this.setAll(action === 'open-all', row); return; }
     if (action === 'move-up' || action === 'move-down') { this.reorder(row, action === 'move-up' ? -1 : 1); return; }
     if (action === 'undo') this.undo();
+    if (action === 'write') this.write(row);
+  }
+  // ⌘Return: a new message in the topic the keys are on, or in the
+  // Conversation of the outcome they are on; on any other row, in the page's own place.
+  write(row) {
+    if (row.el.dataset.topicId) { panes.write?.({ kind: 'topic', id: row.el.dataset.topicId }, rowTitle(row.el) || 'the topic'); return; }
+    if (row.level !== 1) { panes.write?.(null); return; }
+    const target = this.nameTarget(row.outcome);
+    if (target.kind === 'conversation') panes.write?.(target, row.outcome.item.title);
   }
   // ⌘↑ ⌘↓: an outcome among the outcomes shown, a topic within the list that
   // holds it in its outcome. The row keeps the focus; a screen reader hears

@@ -26,6 +26,9 @@ shell.extend((doc, win) => {
     listen(doc, 'visibilitychange', () => rail.shown());
     panes.things = rail;
   }
-  // → and ← in the messages move to the rails beside them (panes.mjs); the shell keeps this across moves.
+  // ⌘Return: a new message in the place the keys are on, or in the page's own (panes.mjs).
+  panes.write = (target, title) => shell.write(target, title);
+  // → and ← in the messages move to the rails beside them, ↑ from the top
+  // message to the header's buttons (panes.mjs); the shell keeps this across moves.
   listen(doc, 'keydown', event => { if (doc.documentElement.hasAttribute('data-rails')) feedKey(event, doc); });
 });
