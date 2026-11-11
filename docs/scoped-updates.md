@@ -153,10 +153,17 @@ check for the same commit runs beside them rather than after them.
   (`web/live.mjs` `reopen`), and until the new one answers the stream is
   down, so the line says what happened. An attempt still out when something
   answered, one Theseus answered, or one made while the stream is already
-  down leaves the stream alone, so nothing reopens it in a loop. So does one
-  the page stopped itself, since Theseus was not left to answer it: a
-  foreground read stopping the background read in flight, or an image
-  removed while it uploads. A read the page gives up waiting for (a Reader
+  down leaves the stream alone, so nothing reopens it in a loop. One doubt
+  opens the stream once: until Theseus answers a request (a refusal of its
+  own too), the stream opened again names a new commit, or its socket ends, a
+  later attempt with no answer leaves it as it is, since the new socket's
+  first number says only that it is connected. An answered request settles
+  the doubt, so a later drop that leaves the socket half-open is doubted
+  afresh, on a quiet instance with no commits too. An attempt
+  the page stopped itself leaves the stream alone too, since Theseus was not
+  left to answer it: a foreground read stopping the background read in
+  flight, or an image removed while it uploads, and so does one the browser
+  cancels as a load the page asked for begins (`web/api.mjs` `depart`). A read the page gives up waiting for (a Reader
   open's deadline, a background read that runs out) did get no answer, and
   counts. Each attempt is judged from when it began, never from when the
   wait around it was set: when a deadline passes, what it gives up on is the

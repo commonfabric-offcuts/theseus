@@ -178,6 +178,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
+    // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
+    // so in its events, and the module every fixture shares goes on answering.
+    depart: () => events.push(['depart']), stay: () => events.push(['stay']),
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
@@ -838,8 +841,14 @@ test('a connection line shows only while the page is not connected and nothing h
   assert.deepEqual([said('reader-notice'), live.reopens], [timedOut, 1], 'a read begun while the feed was up and quiet ran out: the page doubts the feed');
   await feed(true);
   assert.equal(said('reader-notice'), '', 'the feed opened again answered');
+  // One doubt opens the feed once: on the socket opened again, which has named
+  // no new commit, a request with no answer leaves it as it is, so a feed is
+  // never opened again in a loop.
   await f.run(() => nothing.view('topic', {})); await drain();
-  assert.deepEqual([said('app-status'), live.reopens], [lost, 2], 'a request that got no answer while the feed was up and quiet');
+  assert.deepEqual([said('app-status'), live.reopens], ['', 1], 'the feed opened again is not opened again before it names a commit');
+  live.emit({ kind: 'commit', seq: 1 }); await drain();
+  await f.run(() => nothing.view('topic', {})); await drain();
+  assert.deepEqual([said('app-status'), live.reopens], [lost, 2], 'a request that got no answer while the feed was up and quiet, after a new commit');
   await feed(true); await feed(false);
   assert.deepEqual([said('app-status'), said('reader-notice')], ['', ''], 'answered since: nothing comes back when the feed goes down later');
   // Down: each failure says so, and goes at the first answer, which is no reconnection.
@@ -1067,7 +1076,9 @@ const seeded = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul
 // commit, a session handed out again). Nothing else: the feed having read live
 // after the failure is no answer. The feed is down from the moment the page
 // doubts it (an attempt that got no answer with nothing answered since it
-// began) or renews its session, until a socket answers. The app's own code
+// began) or renews its session, until a socket answers. One doubt opens the
+// feed once: until the feed names a new commit or its socket ends, a later
+// attempt with no answer leaves it as it is. The app's own code
 // (run, the status line, reconnect, its live wiring) with the real Api,
 // Deadline, Live and SessionRenewal; the expected line is worked out from the
 // steps alone.
@@ -1100,7 +1111,7 @@ test('property: after every step of any interleaving of requests, the live feed 
     await f.initialize(); await drain();
     const live = held.live, said = () => f.get('app-status').hidden ? '' : f.get('app-status').textContent;
     // The model: each fact stamped with its step.
-    const model = { answered: 0, live: false, text: said(), at: null, token: 'fixture-session' };
+    const model = { answered: 0, live: false, text: said(), at: null, token: 'fixture-session', doubted: false };
     const expected = () => model.at === null ? model.text : (!model.live && model.at > model.answered ? model.text : '');
     const pending = [], history = [];
     let seq = 0;
@@ -1122,28 +1133,32 @@ test('property: after every step of any interleaving of requests, the live feed 
         entry.gate.resolve();
         if (entry.bounded) await new Promise(resolve => setTimeout(resolve, 2));
         await entry.done; await drain();
-        if (entry.ending === 'success' || entry.ending === 'refusal') model.answered = step;
-        else if (model.live && model.answered <= entry.began) { model.live = false; doubted++; }
+        // An answered request settles a doubt as it stamps the answer.
+        if (entry.ending === 'success' || entry.ending === 'refusal') Object.assign(model, { answered: step, doubted: false });
+        else if (model.live && model.answered <= entry.began && !model.doubted) { Object.assign(model, { live: false, doubted: true }); doubted++; }
         if (entry.ending !== 'success') Object.assign(model, { text: words[entry.ending], at: entry.ending === 'refusal' ? null : step });
         did = `end: ${entry.ending}`;
       } else if (kind === 'up') {
         if (!live.current) live.start();
+        // Its first number is a new commit only the first time the feed comes up.
+        if (live.seq !== seq) model.doubted = false;
         live.current.socket.onmessage({ data: JSON.stringify({ seq }) });
         Object.assign(model, { live: true, answered: step });
       } else if (kind === 'message') {
         live.current.socket.onmessage({ data: JSON.stringify({ seq: ++seq }) });
-        model.answered = step;
+        Object.assign(model, { answered: step, doubted: false });
       } else if (kind === 'down') {
         live.current.socket.onclose();
-        model.live = false;
+        Object.assign(model, { live: false, doubted: false });
       } else {
         const answers = random() < 0.6, token = answers ? 'session-' + seed + '-' + (random() < 0.5 ? step : 0) : null;
         held.page = answers ? async () => new Response('<meta name="aim-next-session" content="' + token + '">', { status: 200 }) : async () => { throw new TypeError('Failed to fetch'); };
         f.updateStatus({ kind: 'reconnect' });
         await drain(); await drain();
         if (answers) model.answered = step;
-        // A newer session: the feed opens again under it.
-        if (answers && token !== model.token) { Object.assign(model, { token, live: false }); renewed++; }
+        // A newer session: the feed opens again under it. Theseus answered
+        // the new session's bootstrap request, which settles a doubt.
+        if (answers && token !== model.token) { Object.assign(model, { token, live: false, doubted: false }); renewed++; }
         did = answers ? 'renewal answered' : 'renewal not answered';
       }
       await drain();

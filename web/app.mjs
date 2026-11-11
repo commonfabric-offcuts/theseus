@@ -1694,7 +1694,7 @@ async function initialize() {
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
   topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
-    navigateTarget: target => { marks.leave(); if (!shell.go(target)) location.assign(routeHref(target)); } });
+    navigateTarget: target => { marks.leave(); if (!shell.go(target)) shell.leave(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics.
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic),
@@ -1758,7 +1758,8 @@ async function initialize() {
   });
   wakeOnPress($('messages'));
   $('more-messages').onclick = () => run(() => listPage('messages', true)); $('more-memory').onclick = () => run(() => listPage('memory', true));
-  window.addEventListener('beforeunload', event => { marks.leave(); if (registry.hasUnprotectedWriting) { event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('beforeunload', () => marks.leave());
+  shell.guard(() => registry.hasUnprotectedWriting);
   window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   // What is drawn above the messages after they paint, in their column: the
@@ -2068,7 +2069,7 @@ async function openDestination(target, title, from = null) {
     }
   }
   // A page whose start failed has no navigation; leave it for the destination.
-  if (!topicNavigation) { location.assign(routeHref(target)); return; }
+  if (!topicNavigation) { shell.leave(routeHref(target)); return; }
   const notice=$('topic-navigation-status');showLine(notice,'');
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
   try { return await pending; }
@@ -2122,7 +2123,7 @@ async function initializeOutcomePage(route) {
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;
-  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   sentHost=$('sent-to-you');
   if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:markSent,read:readSent,attachment:sentAttachment});
   if(route.kind==='root') {
@@ -2243,7 +2244,7 @@ async function initializePipelinePage(route) {
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('pipeline-page').hidden=false;
-  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new PipelinePage({host:$('pipeline-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
     reader:bootstrap.actor,instanceId:bootstrap.instance_id,workspace:route.id,item:route.kind==='item'?Number(route.item):null,read:pipelineView,send:pipelineSend});
   enableNewTopic(route.id);
@@ -2312,7 +2313,7 @@ async function initializeMeasurementsPage(route) {
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('measurements-page').hidden=false;
-  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new MeasurementsPage({host:$('measurements-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},workspace:route.id,read:pipelineView});
   enableNewTopic(route.id);
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
@@ -2380,10 +2381,10 @@ async function initializeOpeningPage(route) {
   const store=await openOpeningStore({instanceId:bootstrap.instance_id,actor:bootstrap.actor});
   // Core owns the opening; a committed publication opens its topic.
   const draft=new OpeningDraft({api,bootstrap,store,workspace:route.workspace,opening:route.opening,topic:route.topic,source:route.from??null,
-    published:receipt=>location.assign(routeHref({kind:'topic',id:receipt.result.topic.id}))});
-  topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>draft.leave(target,title),navigateTarget:target=>location.assign(routeHref(target))});
+    published:receipt=>shell.leave(routeHref({kind:'topic',id:receipt.result.topic.id}))});
+  topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>draft.leave(target,title),navigateTarget:target=>shell.leave(routeHref(target))});
   const view=new OpeningView({host:$('outcome-page'),draft,workspace:answer.workspace,open:openDestination});
-  window.addEventListener('beforeunload',event=>{if(draft.unprotected){event.preventDefault();event.returnValue='';}});
+  shell.guard(()=>draft.unprotected);
   window.addEventListener('pagehide',()=>{draft.cancelSave();store.close();});
   await view.run(()=>draft.load());
   if(draft.editable)view.title.focus();
@@ -2435,7 +2436,7 @@ async function initializeCreationPage(route) {
     if(!await outcomeCreation.waiting)return;
     status('');
   }
-  topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>outcomeCreation.leave(target,title),navigateTarget:target=>location.assign(routeHref(target))});
+  topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>outcomeCreation.leave(target,title),navigateTarget:target=>shell.leave(routeHref(target))});
   const confirmed=async row=>{
     const answer=checkedView(await api.view('workspace',{workspace_id:row.workspace},{readClass:'foreground'}),bootstrap.instance_id);
     if(answer.workspace?.id!==row.workspace||answer.workspace.owner_id!==bootstrap.actor)throw Error('The created outcome detail could not be confirmed. Keep its original receipt.');
@@ -2443,10 +2444,10 @@ async function initializeCreationPage(route) {
   };
   const form=new CreateOutcomeView({host:$('outcome-page'),creation:outcomeCreation,open:openDestination,confirmed});
   if(outcomeCreation.row.phase==='confirmed')await form.run(()=>confirmed(outcomeCreation.row));
-  window.addEventListener('beforeunload',event=>{if(outcomeCreation.writable&&(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError)){event.preventDefault();event.returnValue='';}});
+  shell.guard(()=>outcomeCreation.writable&&Boolean(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError));
   await reload();document.body.dataset.ready='true';
 }
-window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
+window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(); });
 // Every shown time follows the viewer's day: at midnight today's "4:40 AM"
 // becomes "Yesterday 4:40 AM", with a topic's list held where the reader was.
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
@@ -2459,7 +2460,7 @@ window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconne
 document.addEventListener('keydown', event => { if (asksForGuide(event)) { event.preventDefault(); guide.open(); } });
 function begin(starting = start) {
   return Promise.resolve().then(starting).then(() => true, error => {
-    const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();
+    const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => shell.leave();
     status([error, again]);
     shell.failed(thisRun);
     return false;

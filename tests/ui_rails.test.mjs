@@ -138,8 +138,11 @@ test('the rails read one at a time, each after the one before has settled, and s
 // A shell with its page up, without a document: what go and popstate decide.
 function shellAt(href, { guard = () => true } = {}) {
   const h = history();
-  const win = { location: { href: 'http://aim.test/' + href, reload() { win.reloads += 1; }, assign(to) { win.assigned.push(to); } }, history: h, reloads: 0, assigned: [] };
-  const shell = new Shell({ doc: null, win, load: async () => {} });
+  // order: each load in turn, the page departing (api.mjs depart) before it,
+  // and the page staying (stay). The window hears what the shell heeds.
+  const win = Object.assign(new EventTarget(), { location: { href: 'http://aim.test/' + href, reload() { win.reloads += 1; win.order.push('reload'); }, assign(to) { win.assigned.push(to); win.order.push(to); } }, history: h, reloads: 0, assigned: [], order: [] });
+  const shell = new Shell({ doc: null, win, load: async () => {}, reads: { depart: () => win.order.push('depart'), stay: () => win.order.push('stay') } });
+  shell.heed();
   shell.installed = true; shell.places = new Places(h); shell.feed = true;
   const moves = [], opened = [];
   // Each run is a page of its own; its guard says whether the person may go.
@@ -233,6 +236,82 @@ test('a back, a forward, a place chosen or a link pressed while a run is on its 
   assert.deepEqual([await pending, broken.win.assigned], [false, ['?topic=t5']], 'the place chosen loads');
   broken.goTo('?topic=t1'); await broken.shell.popstate({ state: { aimPlace: 0 } });
   assert.equal(broken.win.reloads, 1, 'and a back loads');
+});
+
+// The page asks Theseus nothing more from the moment it decides to load
+// another (api.mjs depart), before it asks the browser for the load: nothing
+// starts in the moment before the browser begins it. A move in place loads
+// nothing, so the page departs from nothing.
+test('every load the shell decides departs first; a move in place does not depart', async () => {
+  const { shell, win, moves } = shellAt('?topic=t1');
+  assert.equal(shell.go({ kind: 'topic', id: 't2' }), true);
+  assert.deepEqual([moves.length, win.order], [1, []], 'moved in place: no load, no departure');
+  shell.leave('?workspace=w1');
+  assert.deepEqual(win.order, ['depart', '?workspace=w1'], 'departs, then loads');
+
+  const away = shellAt('?topic=t1');
+  away.shell.feed = false; away.shell.handles = null; away.shell.page = null;
+  await away.shell.open({ kind: 'workspace', id: 'w2' }, 'Two');
+  assert.deepEqual(away.win.order, ['depart', '?workspace=w2'], 'a place chosen with no feed page up');
+
+  const foreign = shellAt('?topic=t1');
+  await foreign.shell.popstate({ state: null });
+  assert.deepEqual(foreign.win.order, ['depart', 'reload'], 'an entry the page did not make');
+
+  const broken = shellAt('?topic=t1');
+  broken.moving(); broken.started();
+  const pending = broken.shell.open({ kind: 'topic', id: 't5' }, 'Five');
+  broken.shell.failed(broken.shell.page);
+  await pending;
+  assert.deepEqual(broken.win.order, ['depart', '?topic=t5'], 'what waited on a run that could not start');
+});
+
+// A load the page asked for can still be stopped: the browser asks the person
+// first while a guard holds, and the person may stay; or the person stops
+// the load, or goes back. The page must then read on. While a guard holds, it
+// does not depart at all; once departed, it stays on a back or forward it
+// hears, or on a key or a press of the person's.
+test('a page whose guard holds loads without departing; a departed page stays on a back, a key or a press, and on nothing else', async () => {
+  const guarded = shellAt('?topic=t1');
+  let holds = true;
+  guarded.shell.begin({ open() {} });
+  guarded.shell.guard(() => holds);
+  guarded.shell.leave('?workspace=w1');
+  assert.deepEqual(guarded.win.order, ['?workspace=w1'], 'writing not yet safe: the browser asks the person, and the page reads on if they stay');
+  const asked = new Event('beforeunload', { cancelable: true });
+  guarded.win.dispatchEvent(asked);
+  assert.equal(asked.defaultPrevented, true, 'the guard has the browser ask');
+  holds = false;
+  guarded.shell.leave('?workspace=w2');
+  assert.deepEqual(guarded.win.order, ['?workspace=w1', 'depart', '?workspace=w2'], 'once the writing is safe, the load departs');
+  const free = new Event('beforeunload', { cancelable: true });
+  guarded.win.dispatchEvent(free);
+  assert.equal(free.defaultPrevented, false, 'and the browser does not ask');
+  guarded.shell.begin({ open() {} });
+  holds = true;
+  guarded.shell.leave(null);
+  assert.equal(guarded.win.order.at(-2), 'depart', 'a new run starts with no guard of the run before');
+
+  const pressed = shellAt('?topic=t1');
+  pressed.shell.leave('?workspace=w1');
+  pressed.win.dispatchEvent(new Event('beforeunload')); pressed.win.dispatchEvent(new Event('focus'));
+  pressed.win.dispatchEvent(Object.assign(new Event('keydown'), { repeat: true }));
+  assert.deepEqual(pressed.win.order, ['depart', '?workspace=w1'], 'the load beginning, focus, or a key held down from before is not the page staying');
+  pressed.win.dispatchEvent(new Event('keydown'));
+  assert.deepEqual(pressed.win.order, ['depart', '?workspace=w1', 'stay'], 'a key: the load was stopped, the page stays');
+  pressed.win.dispatchEvent(new Event('pointerdown'));
+  assert.deepEqual(pressed.win.order, ['depart', '?workspace=w1', 'stay'], 'and stays once');
+  pressed.shell.leave('?workspace=w2'); pressed.win.dispatchEvent(new Event('pointerdown'));
+  assert.deepEqual(pressed.win.order.slice(3), ['depart', '?workspace=w2', 'stay'], 'a press stays too');
+
+  const back = shellAt('?topic=t1');
+  back.shell.leave('?workspace=w1');
+  await back.shell.popstate({ state: { aimPlace: 0 } });
+  assert.deepEqual(back.win.order, ['depart', '?workspace=w1', 'stay'], 'a back this page hears: the page stays');
+  const quiet = shellAt('?topic=t1');
+  await quiet.shell.popstate({ state: { aimPlace: 0 } });
+  quiet.win.dispatchEvent(new Event('keydown'));
+  assert.deepEqual(quiet.win.order, [], 'a page that did not depart has nothing to stay from');
 });
 
 test('a read a run asked for that reaches its turn after a newer run is up is never sent; the outline\'s own reads go through whichever run is up', async () => {

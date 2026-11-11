@@ -1109,10 +1109,45 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Every read and live feed each document of the page starts, and every load
+  // it asks for, in order, kept across loads (sessionStorage). The Navigation
+  // API's navigate event is the moment the page asks: in Chrome and Safari's
+  // engine alike it fires inside location.assign itself.
+  const recordRequests = key => `(() => {
+    const key = ${JSON.stringify(key)}, page = String(Math.random()).slice(2);
+    const note = entry => { const kept = JSON.parse(sessionStorage.getItem(key) ?? '[]'); kept.push({ page, ...entry }); sessionStorage.setItem(key, JSON.stringify(kept)); };
+    navigation.addEventListener('navigate', event => note({ navigate: new URL(event.destination.url).search }));
+    const send = window.fetch;
+    window.fetch = function (input, init) {
+      let name = null; try { const body = JSON.parse(init?.body ?? 'null'); name = body?.name ?? body?.kind ?? null; } catch { /* not JSON */ }
+      note({ request: new URL(String(input?.url ?? input), location.href).pathname, name });
+      return send.apply(this, arguments);
+    };
+    const Socket = window.WebSocket;
+    window.WebSocket = class extends Socket { constructor(...args) { note({ socket: true }); super(...args); } };
+  })()`;
+  const recorded = async (p, key) => JSON.parse(await p.evaluate(`sessionStorage.getItem(${JSON.stringify(key)}) ?? '[]'`));
+
+  // The page asks for the new outcome's page right after its own write
+  // commits, and the live feed names that commit a moment later. From the
+  // moment it asks, it starts no read and opens no feed (api.mjs depart):
+  // Safari's engine begins the load a moment after it is asked for, cancels
+  // what the page started meanwhile, and could lose the load itself, leaving
+  // the page up at its old address for good. A page that stays still reads
+  // what a commit changed.
   await check('rail New outcome in the outline, on a topic and on a Conversation, creates the outcome and opens its page', async () => {
-    for (const [search, title] of [['?topic=t1', 'Started beside a topic'], ['?conversation=w1', 'Started beside a Conversation']]) {
-      const p = await page('rail-new-outcome', null, true, { url: facts.origin + '/' + search, beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
+    for (const [search, title, n] of [['?topic=t1', 'Started beside a topic', 1], ['?conversation=w1', 'Started beside a Conversation', 2]]) {
+      const key = 'rail-new-outcome-' + n;
+      const p = await page('rail-new-outcome', null, true, { url: facts.origin + '/' + search, beforeNavigate: async q => {
+        await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop);
+        await q.send('Page.addScriptToEvaluateOnNewDocument', { source: recordRequests(key) });
+      } });
       await settled(p, search + ': the page is up');
+      // A commit made elsewhere: the page, which stays, reads again.
+      const before = (await recorded(p, key)).length;
+      await control({ method: 'light_outcome', outcome: 'rail-new-outcome-elsewhere-' + n, title: 'Made elsewhere ' + n });
+      await until(async () => (await recorded(p, key)).slice(before).some(entry => entry.request === '/api/view'), search + ': a commit made elsewhere is read on the page that stays');
+      await settled(p, search + ': the page has read the commit made elsewhere');
       await press(p, '#outline-new-outcome');
       await until(() => p.evaluate("document.activeElement?.id==='outline-new-outcome-title'"), search + ': its title line shows, focused');
       await p.send('Input.insertText', { text: title }); await p.key('Enter');
@@ -1120,6 +1155,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const id = new URLSearchParams(opened.search).get('workspace');
       assert.ok(id, search + ': the address names the outcome: ' + opened.search);
       assert.equal((await view('workspace', { workspace_id: id })).workspace?.title, title, search + ': Core holds the outcome by the title typed');
+      const record = await recorded(p, key), asked = record.findIndex(entry => entry.navigate === opened.search);
+      assert.ok(asked >= 0 && record.slice(0, asked).some(entry => entry.page === record[asked].page && entry.name === 'workspace.create'),
+        search + ': the page asked for the outcome\'s page after creating it: ' + JSON.stringify(record));
+      assert.deepEqual(record.slice(asked + 1).filter(entry => entry.page === record[asked].page), [],
+        search + ': once it asks for the outcome\'s page, the page it leaves starts no read and opens no live feed');
+      assert.ok(record.slice(asked + 1).some(entry => entry.page !== record[asked].page && entry.request === '/api/bootstrap'), search + ': the outcome\'s page reads afresh');
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
