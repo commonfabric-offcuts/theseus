@@ -96,6 +96,78 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     observations.push({name:'exact departure publication',receipt,source});
   };
 
+  // A load the page decides (in-place-navigation.mjs leave) can still be
+  // stopped after the page asks for it, and the page then reads and sends as
+  // before. Each case goes forward to a same-document entry the page did not
+  // make (a fragment), which the shell loads. The entry is made with no
+  // popstate (pushState), so the page hears nothing until Forward: had the
+  // page heard the fragment as it was made, it would have loaded then, and
+  // what the case did on it before (revealing t2) would be gone.
+  const foreignEntry=async p=>{
+    const origin=await p.evaluate('performance.timeOrigin');
+    await p.evaluate("history.pushState(null,'','#not-the-pages-own')");
+    await p.evaluate("history.back()");
+    await until(()=>p.evaluate("location.hash===''"),'back on the page\'s own entry');
+    assert.equal(await p.evaluate('performance.timeOrigin'),origin,'making the entry and going back to the page\'s own loaded nothing');
+  };
+  // The page's topic list shows all Theseus holds now: the live feed has
+  // named the current commit (health_light's commit_seq), a read of the topics
+  // the page began after that has finished, the list is drawn (its More is no
+  // longer busy), and the topic the page has open stands where the page, having
+  // read it again, now puts it (first). Rows that either read moves would
+  // otherwise move under the next press.
+  const seqOf=frame=>{try{return JSON.parse(frame.params.response.payloadData).seq;}catch{return null;}};
+  const listedNow=async(p,first,what)=>{
+    const {commit_seq:now}=await view('health_light',{});
+    await until(async()=>{
+      const network=p.network,named=network.findIndex(e=>e.method==='Network.webSocketFrameReceived'&&seqOf(e)>=now);
+      if(named<0)return false;
+      const after=network.slice(named),reads=after.filter(e=>e.method==='Network.requestWillBeSent'&&/"name":"workspace_topics"/.test(e.params.request.postData??'')).map(e=>e.params.requestId);
+      return reads.some(id=>after.some(e=>e.method==='Network.loadingFinished'&&e.params.requestId===id))&&await p.evaluate(`!document.querySelector('#more-topics').hasAttribute('aria-disabled')
+        && [...document.querySelectorAll('#topics a')].find(a=>!a.closest('[inert]'))?.dataset.topicId===${JSON.stringify(first)}`);
+    },what);
+  };
+  // A reply on its way holds the load: the browser asks the person, who
+  // stays (the harness answers Stay), and the reply goes out.
+  await check('navigation a load the page decides while a reply is on its way, which the person stays from, sends the reply and goes on',async()=>{
+    await setup();const p=await page('departure-stay',null,true),body='A reply on its way while Forward is pressed';
+    await reveal(p,'t2');await foreignEntry(p);
+    p.intercept(payload=>payload?.kind==='submission.prepare');
+    await write(p,body);await p.key('Enter',4);
+    const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'the reply\'s prepare is held');
+    const origin=await p.evaluate('performance.timeOrigin');
+    await p.evaluate("history.forward()");
+    await until(()=>p.events.some(e=>e.method==='Page.javascriptDialogOpening'&&e.params.type==='beforeunload'),'the browser asks the person, who stays');
+    assert.equal(await p.evaluate('performance.timeOrigin'),origin,'the person stayed on the same page');
+    p.intercept(null);await p.release(preparing);
+    const sent=await until(()=>p.calls.find(c=>c.payload?.kind==='message.send'),'after the person stayed, the reply is sent');
+    await until(async()=>(await view('operation',{operation_id:sent.payload.operation_id})).status==='committed','the reply is recorded');
+    // The reply is t1's latest activity, so the list puts t1 first; t2,
+    // revealed on this page, is still shown, and choosing it presses no More.
+    await listedNow(p,'t1','the topic list shows the reply\'s commit, with t1 first');
+    await choose(p,'t2');
+    await until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')==='t2'`);}catch{return false;}},'the page goes on to t2');
+    await p.close();
+  });
+  // Nothing holds the load, so the page reads nothing more from the moment
+  // it asks; the person stops the load before its page arrives. A press on
+  // the page is the page staying: the reply the person then writes is sent.
+  await check('navigation a load the page decides, which the person stops before it arrives, leaves the page sending once the person is back on it',async()=>{
+    await setup();const p=await page('departure-stopped',null,true),body='A reply after the load was stopped';
+    await foreignEntry(p);
+    await p.send('Fetch.enable',{patterns:[{urlPattern:facts.origin+'/api/*',requestStage:'Response'},{urlPattern:facts.origin+'/?*',requestStage:'Request'}]});
+    p.intercept((payload,event)=>event.resourceType==='Document');
+    const origin=await p.evaluate('performance.timeOrigin');
+    await p.evaluate("history.forward()");
+    await until(()=>p.held.find(h=>h.event.resourceType==='Document'),'the page\'s load is on its way');
+    await p.send('Page.stopLoading');
+    p.intercept(null);
+    assert.equal(await p.evaluate('performance.timeOrigin'),origin,'the load was stopped: the page is still up');
+    await write(p,body);await p.key('Enter',4);
+    const sent=await until(()=>p.calls.find(c=>c.payload?.kind==='message.send'),'the reply written once the person is back on the page is sent');
+    await until(async()=>(await view('operation',{operation_id:sent.payload.operation_id})).status==='committed','the reply is recorded');
+    await p.close();
+  });
   await check('navigation correction active prepare publication reload and settled confirmation',async()=>{
     await setup();const p=await page('departure-active',null,true,{beforeNavigate:observeDeparture}),body='One exact message before switching';
     await reveal(p,'t2');

@@ -190,6 +190,28 @@ and then a forward), there is nothing more to do. If the run cannot start, what
 waited loads as it would with no feed page up. While a run starts, it renames
 its own address only if a back or forward has not moved it on (`shell.rename`).
 
+Every load the page decides goes through `shell.leave`: a page that is not a
+feed, a place chosen with no feed page up, an entry from before this page, a
+new topic or outcome opened after its write commits. From the moment it asks
+for the load, the page starts no read (`web/api.mjs` `depart`): a read asked
+for then waits, unsent, and one the browser cancels as the load begins tells
+no one and doubts nothing. The page it loads reads afresh. Safari's engine
+begins a load a moment after the page asks for it and cancels what the page
+started in that moment; the commit of the page's own write lands just then,
+and the reads it started could lose the load itself, leaving the old page up
+at its old address. A native check records every read and feed the page
+starts and asserts that none begins once it has asked for the new outcome's
+page, while a page that stays still reads a commit made elsewhere.
+
+A load the page asked for can still be stopped, and then the page must read
+and send as before. While one of the run's guards on leaving holds
+(`shell.guard`: writing not yet safe, a reply on its way), the browser asks
+the person before the page goes and the person may stay, so the page does
+not hold its reads at all. Otherwise it holds them until it goes or is seen
+to stay (`stay`): a back or forward it hears, or a fresh key or press of the
+person's (who stopped the load). What waited is sent then. Two native
+checks stay from such a load and stop one, and send a reply afterwards.
+
 Each run owns what the rails draw for it. As a run begins, the rails forget
 the place before: the outline knows no outcome as the one being read until
 the run is up, and the right rail empties its sections and names only the

@@ -41,10 +41,14 @@ function liveIs(up) {
 let followed = null;
 export function follow(live) {
   if (followed === live) return;
-  followed = live;
+  followed = live; doubted = false;
   liveIs(live?.state === 'live');
   live?.listen(event => {
     if (followed !== live) return;
+    // A new commit, or the socket's end before or after its first number,
+    // settles a doubt (unansweredAttempt), as an answered request does; the
+    // down that opening it again says first does not.
+    if (event.kind === 'commit' || event.kind === 'refused' || event.state === 'down') doubted = false;
     if (event.kind === 'state') liveIs(event.state === 'live');
     else if (event.kind === 'commit') answered();
   });
@@ -57,9 +61,44 @@ export function follow(live) {
 // answers, it is not. One still out when something answered leaves it alone.
 // Each attempt is judged once, from when it began: when it fails with no
 // answer (attempted), or when the page gives up waiting on it (Deadline).
+// One doubt opens the feed once: until Theseus answers a request, or the
+// feed opened again names a new commit, or its socket ends, a later attempt
+// with no answer opens nothing more. The new socket's first number says only
+// that it is connected, and reads that fail again on it are no reason to
+// replace it at once, so a feed is never opened again in a loop. A request
+// Theseus answers settles the doubt, so a later drop that leaves the socket
+// half-open is doubted afresh, on a quiet instance too.
+let doubted = false;
 function unansweredAttempt(began) {
-  if (contact.live && contact.answered <= began) followed.reopen();
+  if (away || doubted || !contact.live || contact.answered > began) return;
+  followed.reopen();
+  doubted = true;
 }
+// The page has asked the browser to load another page (in-place-navigation.mjs
+// leave), and asks Theseus nothing more until it is gone or is seen to stay.
+// Safari's engine runs a load a moment after the page asks for it and cancels
+// the reads the page started in that moment as the load begins, which can
+// lose the load itself: the page that asked stays up at its old address for
+// good. The commit of the page's own write is announced in just that moment,
+// and the page's lists start their reads for it. So from depart an attempt
+// waits, unsent, and one still out that ends meanwhile (the browser cancels
+// it as the load begins) waits too, untold. When the page goes, they go with
+// it. A load can still be stopped after it is asked for (the person stops it,
+// or goes back), and then the page stays (stay): what waited is sent then, and
+// one cancelled meanwhile fails as it did, judged as one the page stopped
+// itself, since Theseus was not left to answer it. The live feed goes on, and
+// a commit it names meanwhile is read once the page stays.
+let away = null;
+export function depart() {
+  if (away) return;
+  let release;
+  away = { back: new Promise(resolve => { release = resolve; }), release };
+}
+export function stay() {
+  const was = away; away = null;
+  was?.release();
+}
+const stayed = async () => { while (away) await away.back; };
 // The attempts out now under each signal, each with when it began: what a
 // Deadline gives up on when it passes.
 const out = new WeakMap();
@@ -162,15 +201,18 @@ const answerOf = response => response.json().catch(() => null);
 // was aborted was judged already, or is not to be: a Deadline that gave up on
 // it judged it from when it began, and one the page stopped itself (a
 // foreground read stopping a background one, an image removed) was not left
-// to Theseus to answer.
+// to Theseus to answer. While the page is leaving (depart), one waits before
+// it begins, and one that fails waits for the page to stay and is not judged.
 async function attempted(api, attempt, signal) {
+  if (away) await stayed();
   const began = clock, entry = { began };
   if (signal) { if (!out.has(signal)) out.set(signal, new Set()); out.get(signal).add(entry); }
-  try { const result = await attempt(); answered(); return result; }
+  try { const result = await attempt(); doubted = false; answered(); return result; }
   catch (error) {
+    if (away) { out.get(signal)?.delete(entry); await stayed(); if (error instanceof AttemptError) error.began = began; throw error; }
     if (error instanceof AttemptError) {
       error.began = began;
-      if (!unreached(error)) answered();
+      if (!unreached(error)) { doubted = false; answered(); }
       else if (!signal?.aborted) unansweredAttempt(began);
       if (sessionRefused(error)) api.refused(error);
     }

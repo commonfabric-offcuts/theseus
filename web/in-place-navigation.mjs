@@ -16,6 +16,7 @@
 // stops the move, as it stopped a load.
 import { parseRoute, routeHref, routeKey } from './topic-navigation.mjs';
 import { railDrawer } from './rail-drawer.mjs';
+import { depart, stay } from './api.mjs';
 
 // The pages a move in place leaves and reaches: an outcome's Conversation and
 // its topics. Every other page (the outcome's own page, its pipeline, its
@@ -147,8 +148,13 @@ export class Superseded extends Error {
 }
 
 export class Shell {
-  constructor({ doc = globalThis.document, win = globalThis.window, load = place => import(`./app.mjs?place=${place}`) } = {}) {
-    Object.assign(this, { doc, win, load });
+  // reads: { depart, stay }, the page asking Theseus nothing more while it
+  // loads another, and again once it stays (api.mjs).
+  constructor({ doc = globalThis.document, win = globalThis.window, load = place => import(`./app.mjs?place=${place}`), reads = { depart, stay } } = {}) {
+    Object.assign(this, { doc, win, load, reads });
+    // The run's guards on leaving (guard), and whether the page holds its
+    // reads for a load it asked for (leave) until it goes or stays.
+    this.guards = []; this.leaving = false;
     this.page = null; this.scope = null; this.moving = false; this.runs = 1; this.installed = false; this.popping = null;
     this.handles = null; this.listeners = new Set(); this.at = null; this.feed = false; this.makers = [];
     // What was asked while no run was up to take it (a back, a forward, a
@@ -198,6 +204,7 @@ export class Shell {
     listen(this.win, 'popstate', event => this.popstate(event));
     listen(doc, 'pointerdown', () => { this.by = 'pointer'; }, true);
     listen(doc, 'keydown', event => { if (!MODIFIERS.has(event.key)) this.by = 'keys'; }, true);
+    this.heed();
     this.drawer = railDrawer(doc, this.win, listen);
     for (const make of this.makers) make(doc, this.win);
   }
@@ -207,7 +214,7 @@ export class Shell {
   begin(page) {
     this.install();
     this.scope = new Scope();
-    this.page = page; this.handles = null;
+    this.page = page; this.handles = null; this.guards = [];
     const route = this.begun = this.route();
     this.placeOfRun = this.places?.index ?? 0;
     this.at = route ? routeKey(route) : null;
@@ -223,8 +230,8 @@ export class Shell {
     if (page !== this.page || this.handles) return;
     this.feed = false; this.landing = null; this.writing = false;
     const owed = this.owed; this.owed = null;
-    if (owed?.pop) this.win.location.reload();
-    else if (owed) { this.win.location.assign(routeHref(owed.go ?? owed.open)); owed.resolve?.(false); }
+    if (owed?.pop) this.leave();
+    else if (owed) { this.leave(routeHref(owed.go ?? owed.open)); owed.resolve?.(false); }
   }
   // The run's page is up. handles: what the shell keeps (the outline, the
   // right rail) reads and opens through, for as long as this run is the page.
@@ -340,9 +347,39 @@ export class Shell {
   // run is on its way, it waits for that run; with no feed page, it loads.
   open(target, title) {
     if (this.page && this.handles && !this.moving) return Promise.resolve(this.page.open(target, title));
-    if (!this.between) { this.win.location.assign(routeHref(target)); return Promise.resolve(false); }
+    if (!this.between) { this.leave(routeHref(target)); return Promise.resolve(false); }
     return new Promise(resolve => this.owe({ open: target, title, resolve }));
   }
+  // The run's guard on leaving: while holds() is true (writing not yet
+  // safe), the browser asks the person before the page goes (beforeunload).
+  guard(holds) {
+    this.guards.push(holds);
+    this.win.addEventListener('beforeunload', event => { if (holds()) { event.preventDefault(); event.returnValue = ''; } });
+  }
+  // The page loads another, href, or itself again with none: every load the
+  // page decides goes this way. From the moment it asks, it starts no read
+  // (api.mjs depart), so nothing is started in the moment before the browser
+  // begins the load; the page it loads reads afresh. While a guard holds, the
+  // browser will ask the person, who may stay: then the page reads on as
+  // before, so it does not hold its reads. A load stopped after it was asked
+  // for leaves the page up, and the page reads again as soon as it is seen to
+  // stay (heed).
+  leave(href = null) {
+    if (!this.guards.some(holds => holds())) { this.reads.depart(); this.leaving = true; }
+    if (href === null) this.win.location.reload(); else this.win.location.assign(href);
+  }
+  // What says the page stays after asking for a load: a key or a press of the
+  // person's on it (the person stopped the load, or chose to stay when asked),
+  // or a back or forward it hears (popstate). A key held down from before is
+  // none. The page asks for a load when a write is answered, not on a press,
+  // so a fresh press in the moment before the browser begins the load would be
+  // a coincidence; and Safari on iOS never says the load began (beforeunload).
+  heed() {
+    const pressed = event => { if (!event.repeat) this.cameBack(); };
+    listen(this.win, 'pointerdown', pressed, true); listen(this.win, 'keydown', pressed, true);
+  }
+  // The page asked for a load and is still here: the person stayed, so it reads again.
+  cameBack() { if (!this.leaving) return; this.leaving = false; this.reads.stay(); }
   // The newest ask while no run is up stands for every one before it.
   owe(ask) { this.owed?.resolve?.(false); this.owed = ask; }
   // The run is up: what was asked meanwhile is done now, through its guard.
@@ -352,7 +389,7 @@ export class Shell {
     // A back or forward: the address may have moved on from the run's place.
     const to = this.route();
     if (!to || routeKey(to) === this.at) return;
-    if (!isFeed(to)) { this.win.location.reload(); return; }
+    if (!isFeed(to)) { this.leave(); return; }
     await this.arrive(to, { from: this.placeOfRun, to: this.places.index });
   }
   // Back and forward: an entry this page made is reached in place, through
@@ -360,9 +397,10 @@ export class Shell {
   // entry loads, as it did before. One that comes while a run is on its way
   // waits for that run, so a quick second back is a move like the first.
   async popstate(event) {
+    this.cameBack();
     const said = this.places.popped(event.state), to = this.route();
     if (said.ignore) return;
-    if (said.load || !isFeed(to) || !this.installed || !this.feed) { this.win.location.reload(); return; }
+    if (said.load || !isFeed(to) || !this.installed || !this.feed) { this.leave(); return; }
     if (this.between) { this.owe({ pop: true }); return; }
     if (to && this.at === routeKey(to)) return;
     await this.arrive(to, said);
@@ -396,7 +434,7 @@ export class Shell {
     restore(body, this.pristine);
     this.drawer.close();
     this.win.scrollTo(0, 0);
-    this.load(++this.runs).then(() => { this.moving = false; }, () => this.win.location.reload());
+    this.load(++this.runs).then(() => { this.moving = false; }, () => this.leave());
   }
 }
 

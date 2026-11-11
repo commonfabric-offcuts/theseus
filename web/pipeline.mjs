@@ -6,6 +6,7 @@
 // keeps the reader's open groups, open menu and focus.
 import { agentColor } from './author-colors.mjs';
 import { isBusy, unconfirmed } from './api.mjs';
+import { shell } from './in-place-navigation.mjs';
 import { clock, datedTime, shownTime } from './times.mjs';
 import { workNote } from './topic-state.mjs';
 import {
@@ -429,7 +430,7 @@ export class PipelinePage {
       for (const name of SECTION_ORDER) if (name !== item.section) menu.append(button(`Move to ${words[name] ?? name}`, null, () => this.act(key, () => this.move(item, { section: name }))));
       menu.append(el('hr'));
     }
-    menu.append(button('Open its record', null, () => location.assign(pipelineHref(this.workspace, item.number))));
+    menu.append(button('Open its record', null, () => shell.leave(pipelineHref(this.workspace, item.number))));
     if (underway && piece?.you_set_aside) menu.append(button(`Set aside to ${words.later ?? 'Later'}…`, null, () => {
       this.asiding = item.number; this.paint(); this.host.querySelector(`[data-key="item:${item.number}"] [data-role="aside-note"]`)?.focus();
     }));

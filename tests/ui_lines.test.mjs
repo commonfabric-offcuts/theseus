@@ -296,7 +296,9 @@ test('an attempt that got no answer, with nothing answered since it began, makes
   const feed = new Live({ token: 'session', socket: () => { const socket = { closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; },
     timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
   follow(feed); feed.start();
-  const up = () => { if (!feed.current) feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) }); };
+  let seq = 0;
+  // Each time the feed comes up it names a new commit, so each doubt below is a new one: one doubt opens the feed once (api.mjs).
+  const up = () => { if (!feed.current) feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: ++seq }) }); };
   const line = element();
   for (const [name, attempt] of [...ways, ['a wait the page bounds', () => ranOutRead().failure()]]) {
     for (const [what, answer] of [['nothing', nothing], ['the proxy', proxyDown], ['a refused session', () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance.' })]]) {
@@ -317,7 +319,7 @@ test('an attempt that got no answer, with nothing answered since it began, makes
   assert.equal(sockets.length, before, 'Theseus answered: the feed is left alone');
   // Still out when the feed named a commit: something answered since it began.
   const out = gated(nothing), failing = failureOf(out.api.view('x', {}));
-  feed.current.socket.onmessage({ data: JSON.stringify({ seq: 2 }) });
+  feed.current.socket.onmessage({ data: JSON.stringify({ seq: ++seq }) });
   out.gate.open();
   showLine(line, await failing);
   assert.deepEqual([sockets.length, feed.state, said(line)], [before, 'live', ''], 'answered while it was out: the feed is left alone, and the page is connected');
@@ -359,7 +361,9 @@ test('a request the page stopped itself leaves the live feed alone; one it gave 
   const feed = new Live({ token: 'session', socket: () => { const socket = { closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; },
     timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
   follow(feed); feed.start();
-  const up = () => feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) });
+  let seq = 0;
+  // Each time the feed comes up it names a new commit, so each doubt below is a new one: one doubt opens the feed once (api.mjs).
+  const up = () => feed.current.socket.onmessage({ data: JSON.stringify({ seq: ++seq }) });
   const turns = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
   // A browser's fetch to a server that answers every request, when let to, and ends when its request is aborted.
   const answering = [];
@@ -425,7 +429,9 @@ test('a wait the page gives up on doubts the feed for each attempt still out und
   const feed = new Live({ token: 'session', socket: () => { const socket = { closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; },
     timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
   follow(feed); feed.start();
-  const up = () => { if (!feed.current) feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) }); };
+  let seq = 0;
+  // Each time the feed comes up it names a new commit, so each doubt below is a new one: one doubt opens the feed once (api.mjs).
+  const up = () => { if (!feed.current) feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: ++seq }) }); };
   const line = element();
   // A request that carries a signal and gets no answer, its signal never aborted.
   up();
