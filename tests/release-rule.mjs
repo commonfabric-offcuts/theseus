@@ -8,11 +8,17 @@
 // nothing more for it), before any response reached the page. Every other
 // refused release is a failure. A refusal that nothing has explained yet waits
 // in `unsettled` for the page's next report on it.
+//
+// Chrome can pause a request's response while the main-frame document is being
+// replaced, after it has stopped naming that request to the Network domain:
+// the pause carries no networkId. Such a request is known only by its pause,
+// so the rule notes the main-frame document current when the main frame's
+// request paused, and excuses its refusal once that document is replaced.
 export class ReleaseRule {
   constructor({ failed = () => {} } = {}) {
     Object.assign(this, { onFailed: failed, excused: [], failed: [], unsettled: new Map() });
     this.cancelled = new Set(); this.delivered = new Set(); this.loaders = new Map(); this.replaced = new Set();
-    this.documentLoader = null;
+    this.documentLoader = null; this.mainFrame = null; this.pausedUnder = new Map();
   }
 
   // Why the page gave this request up, or null while it has not.
@@ -22,8 +28,15 @@ export class ReleaseRule {
     return this.replaced.has(this.loaders.get(id)) ? 'document replaced' : null;
   }
 
-  settle(id, failure, reason = this.abandoned(id)) {
-    this.unsettled.delete(id);
+  // Why the page gave up the request a refused release was for, or null while it has not.
+  // One with no networkId is known by its pause alone: the document it paused under.
+  why(failure) {
+    if (failure.networkId) return this.abandoned(failure.networkId);
+    return this.replaced.has(this.pausedUnder.get(failure.requestId)) ? 'document replaced' : null;
+  }
+
+  settle(key, failure, reason = this.why(failure)) {
+    this.unsettled.delete(key);
     if (reason) this.excused.push({ ...failure, reason });
     else { this.failed.push(failure); this.onFailed(failure); }
   }
@@ -31,24 +44,29 @@ export class ReleaseRule {
   // Every CDP event of the page's session.
   observe({ method, params }) {
     if (method === 'Network.requestWillBeSent' && params.loaderId) this.loaders.set(params.requestId, params.loaderId);
+    // A navigation's own request belongs to the document it brings, not the one it replaces.
+    if (method === 'Fetch.requestPaused' && params.frameId === this.mainFrame && params.resourceType !== 'Document') {
+      this.pausedUnder.set(params.requestId, this.documentLoader);
+    }
     if (method === 'Page.frameNavigated' && !params.frame.parentId) {
       if (this.documentLoader !== null && this.documentLoader !== params.frame.loaderId) this.replaced.add(this.documentLoader);
-      this.documentLoader = params.frame.loaderId;
-      for (const [id, failure] of this.unsettled) if (this.abandoned(id)) this.settle(id, failure);
+      this.documentLoader = params.frame.loaderId; this.mainFrame = params.frame.id;
+      for (const [key, failure] of this.unsettled) if (this.why(failure)) this.settle(key, failure);
     }
     if (['Network.responseReceived', 'Network.loadingFinished', 'Network.loadingFailed'].includes(method)) {
       const id = params.requestId;
       if (method === 'Network.loadingFailed' && params.canceled === true) this.cancelled.add(id); else this.delivered.add(id);
       const failure = this.unsettled.get(id);
-      if (failure) this.settle(id, failure);
+      if (failure?.networkId === id) this.settle(id, failure);
     }
   }
 
   // A release of a paused request failed with `message`.
+  // `failure` names the pause's requestId and, when Chrome gave one, its networkId.
   refused(failure, message) {
-    const id = failure.networkId;
-    if (!id || !/Invalid InterceptionId/.test(message ?? '')) { this.failed.push(failure); this.onFailed(failure); }
-    else if (this.delivered.has(id) || this.abandoned(id)) this.settle(id, failure);
-    else this.unsettled.set(id, failure);
+    const key = failure.networkId || (this.pausedUnder.has(failure.requestId) ? failure.requestId : null);
+    if (!key || !/Invalid InterceptionId/.test(message ?? '')) { this.failed.push(failure); this.onFailed(failure); }
+    else if ((failure.networkId && this.delivered.has(key)) || this.why(failure)) this.settle(key, failure);
+    else this.unsettled.set(key, failure);
   }
 }

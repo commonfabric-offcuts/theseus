@@ -33,11 +33,12 @@ const BAR = '.message-bar';
 // window.holdReads: the page's reports of what it read on screen (topic.read_through) are held unanswered, as a
 // lost connection holds them, so Core keeps those messages unread and a check sees what one act read.
 // window.staleThumb: the next thumbs-up goes fenced on a revision Core does not hold, so Core refuses it.
-const HEARD = `(()=>{window.sent=[];window.taps=0;const f=window.fetch;window.fetch=function(input,init){
+// window.fetchesOut: how many of the page's requests are out and not yet answered (held reports aside).
+const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;const f=window.fetch;window.fetch=function(input,init){
   let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}
   if(b&&b.kind==='topic.read_through'&&window.holdReads)return new Promise(()=>{});
   if(b&&b.kind==='message.thumb'&&window.staleThumb){window.staleThumb=false;b.expected.thumb_revision+=99;init={...init,body:JSON.stringify(b)}}
-  const answer=f.call(this,input,init),watch=window.watchFor;
+  const answer=f.call(this,input,init),watch=window.watchFor,back=()=>{window.fetchesOut--};window.fetchesOut++;answer.then(back,back);
   if(watch&&b&&b.name===watch.read)answer.then(r=>r.clone().text()).then(t=>{if(t.includes(watch.words))window.watched=true},()=>{});
   return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
@@ -69,6 +70,14 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     } });
     await until(() => p.evaluate(`document.body.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(first))}))`), name + ': the topic is drawn');
     return p;
+  };
+  // Brings a page to the front and lets it catch up before a reload: a page behind another reads what it missed
+  // when it is shown, and a reload over those reads replaces the document under answers still on their way.
+  // Once it is visible the page has started its catch-up, which it does as it hears so, and it has caught up
+  // when none of its requests is out.
+  const front = async pg => {
+    await pg.send('Page.bringToFront');
+    await until(() => pg.evaluate("document.visibilityState === 'visible' && window.fetchesOut === 0"), 'the page is shown and its catch-up reads are answered');
   };
   // Waits for read() to give want; on a timeout the failure shows what it gave instead.
   const becomes = async (read, want, message) => {
@@ -771,7 +780,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await until(async () => await thumbsBy(ids.b, facts.actor) === 0, 'Core holds the thumbs-up on B taken back');
     await until(() => q.evaluate(`document.querySelector('${BAR} [data-act=thumb]').getAttribute('aria-pressed') === 'false'`), 'the bar shows it taken back');
     assert.deepEqual(await unread(), ['c'], 'taken back, B is still read in Core');
-    await p.send('Page.bringToFront');
+    await front(p);
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.b) + ' > .message-reactions')})`), 'this page hears the 👍 taken back');
     assert.deepEqual(await looks(q), { read: { a: true, b: true, c: false }, line: { under: 'a', faded: false }, total: total - 2, row: 1 }, 'the other page shows B still read, its line where it was');
     assert.deepEqual(await looks(p), { read: { a: true, b: true, c: false }, line: { under: 'c', faded: false }, total: total - 2, row: 1 }, 'and so does this one');
@@ -821,7 +830,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await becomes(() => looks(p), read, 'B reads as read at once, its pill and the marks line gone, and only A counts');
     await q.send('Page.bringToFront');
     await becomes(() => looks(q), read, 'the other page shows the same, with no reload');
-    await p.send('Page.bringToFront');
+    await front(p);
     const origin = await p.evaluate('performance.timeOrigin');
     await p.send('Page.reload');
     await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' &&

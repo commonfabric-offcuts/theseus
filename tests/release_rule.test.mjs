@@ -7,7 +7,10 @@ import { ReleaseRule } from './release-rule.mjs';
 // every outcome of the rule.
 const REFUSED = 'Invalid InterceptionId';
 const sent = (requestId, loaderId) => ({ method: 'Network.requestWillBeSent', params: { requestId, loaderId } });
-const navigated = (loaderId, parentId) => ({ method: 'Page.frameNavigated', params: { frame: { loaderId, ...(parentId ? { parentId } : {}) } } });
+const navigated = (loaderId, parentId) => ({ method: 'Page.frameNavigated', params: { frame: { id: parentId ? 'sub' : 'main', loaderId, ...(parentId ? { parentId } : {}) } } });
+// A response paused with no networkId, as Chrome pauses one while the main-frame document is being replaced.
+const paused = (requestId, { frameId = 'main', resourceType = 'XHR' } = {}) => ({ method: 'Fetch.requestPaused', params: { requestId, frameId, resourceType, responseStatusCode: 503 } });
+const unnamed = requestId => ({ message: REFUSED, requestId, networkId: undefined });
 const response = requestId => ({ method: 'Network.responseReceived', params: { requestId } });
 const finished = requestId => ({ method: 'Network.loadingFinished', params: { requestId } });
 const failed = (requestId, canceled) => ({ method: 'Network.loadingFailed', params: { requestId, canceled } });
@@ -83,4 +86,41 @@ test('any other refused release is a failure at once', () => {
   f.r.refused({ message: REFUSED }, REFUSED);
   assert.equal(f.r.failed.length, 2); assert.equal(f.errors.length, 2);
   assert.deepEqual([f.r.excused, f.r.unsettled.size], [[], 0]);
+});
+
+test('a refusal for a pause with no networkId is excused once the main-frame document it paused under is replaced, before or after the refusal', () => {
+  // Chrome's order: the reload starts, the old document's response pauses with no networkId, the new document commits, the release is refused.
+  const after = rule(paused('job-1'), navigated('L2'));
+  after.r.refused(unnamed('job-1'), REFUSED);
+  assert.deepEqual([after.r.excused.map(f => [f.requestId, f.reason]), after.r.failed.length, after.r.unsettled.size], [[['job-1', 'document replaced']], 0, 0]);
+  const before = rule(paused('job-1'));
+  before.r.refused(unnamed('job-1'), REFUSED);
+  assert.deepEqual([before.r.excused, before.r.failed.length, before.r.unsettled.has('job-1')], [[], 0, true], 'not yet explained');
+  before.r.observe(navigated('L1'));
+  assert.equal(before.r.unsettled.has('job-1'), true, 'the same document navigating again does not replace it');
+  before.r.observe(response('job-1')); before.r.observe(finished('job-1'));
+  assert.equal(before.r.unsettled.has('job-1'), true, 'a network report under the same id is no report on a pause Chrome named no request for');
+  before.r.observe(navigated('L2'));
+  assert.deepEqual([before.r.excused.map(f => f.reason), before.r.failed.length, before.r.unsettled.size, before.errors], [['document replaced'], 0, 0, []]);
+});
+
+test('a refusal for a pause with no networkId is not excused when it paused under the document now shown, in a subframe, for a navigation, or unseen', () => {
+  const f = rule(navigated('L2'), paused('now'), paused('other'), paused('frame', { frameId: 'sub' }), paused('navigation', { resourceType: 'Document' }));
+  f.r.refused(unnamed('now'), REFUSED);
+  assert.deepEqual([f.r.excused, f.r.unsettled.has('now')], [[], true], 'paused under L2, which is still shown');
+  for (const id of ['frame', 'navigation', 'unseen']) f.r.refused(unnamed(id), REFUSED);
+  assert.deepEqual(f.errors.map(e => e.requestId), ['frame', 'navigation', 'unseen'], 'failures at once');
+  f.r.refused(unnamed('other'), 'Some other protocol error');
+  assert.deepEqual(f.errors.map(e => e.requestId), ['frame', 'navigation', 'unseen', 'other'], 'any other refusal of a noted pause fails at once');
+  f.r.observe(navigated('L3'));
+  assert.deepEqual(f.r.excused.map(e => [e.requestId, e.reason]), [['now', 'document replaced']], 'only the refusal waiting on L2 settles when L2 is replaced');
+});
+
+test('a pause before any main-frame document is known excuses nothing', () => {
+  const r = new ReleaseRule(), errors = [];
+  r.onFailed = f => errors.push(f);
+  r.observe(paused('early'));
+  r.observe(navigated('L1')); r.observe(navigated('L2'));
+  r.refused(unnamed('early'), REFUSED);
+  assert.deepEqual([r.excused, errors.map(e => e.requestId)], [[], ['early']]);
 });
