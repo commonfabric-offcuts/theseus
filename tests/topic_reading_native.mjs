@@ -199,10 +199,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await until(async () => (await replies()).length === 1, device + ': the agent is told by a reply');
       assert.deepEqual(await replies(), [['✅ Go ahead', ['aim-core']]], device + ': ✅ Go ahead, to the agent that asked');
       const mine = () => p.evaluate(`document.querySelector(${JSON.stringify(choices + ' .mine')})?.dataset.react ?? null`);
+      // The page shows each reply Core holds; a card moved under a resting pointer takes the light,
+      // so the pointer comes to rest on the ask again (a finger's tap lights only when the ask is not lit: a second tap is a press).
+      const relight = async () => {
+        const said = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.reply_to === ids.ask && item.author_id === facts.actor).map(item => item.id);
+        await until(() => p.evaluate(`${JSON.stringify(said)}.every(id => document.querySelector('#messages [data-id="' + id + '"]'))`), device + ': the page shows each reply');
+        if (device !== 'phone' || !(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
+      };
       await until(async () => await mine() === 'yes', device + ': the card shows ✅ as the answer');
       assert.equal(await readerOn(p), null, device + ': answering opens nothing');
-      // The reply stacks under the ask, and the ask may move with its stack: light it again where it now is.
-      if (!(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
+      // The reply stacks under the ask, and the ask may move with its stack: once the page shows the reply, light it again where it now is.
+      await relight();
       await until(async () => (await bar(p))?.yes === 'true' && (await bar(p))?.no === 'false', device + ': the bar shows ✅ as the answer');
       // Heading its stack now, the ask shows as one row: a press on it shows the whole card, its answers too.
       if (!await p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`)) {
@@ -215,7 +222,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await until(async () => (await replies()).length === 2, device + ': the agent is told again');
       assert.deepEqual((await replies()).map(([body]) => body).sort(), ['✅ Go ahead', "🚫 Don't (I changed my answer)"], device + ': the change is said');
       await until(async () => await mine() === 'no', device + ': the card shows 🚫');
-      if (!(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
+      await relight();
       await until(async () => (await bar(p))?.no === 'true' && (await bar(p))?.yes === 'false', device + ': the bar shows 🚫');
       assert.equal(await readerOn(p), null, device + ': still nothing opened');
       assert.deepEqual(p.errors, []);

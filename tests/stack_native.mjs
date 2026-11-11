@@ -252,6 +252,104 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  // Core's answers held at the network (the Chrome harness's interception), and let go one at a time.
+  if (engine === 'chrome') await check('reading stacks quick acts and late answers: the page always draws the last act and ends where Core does, an answer read before an act puts nothing back, and a quick star then unstar shows unstarred', async () => {
+    const topic = 'stack-quick';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.' }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.' }],
+      ['c1', { sender: other, reply_to: 'c', addressees: [facts.actor], body: 'A reply to C.', read: true }]]);
+    let p = await open('stack-quick', 'laptop', topic, ids.a);
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'newest activity on top');
+    const heldOf = test => p.held.filter(entry => test(entry.payload));
+    const reads = payload => payload?.name === 'message_acts', places = payload => payload?.kind === 'stack.place', starsSent = payload => payload?.kind === 'message.star';
+    // A star the reader gave A elsewhere, so every acts answer names A, with its place as it then stood.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.a, operation_id: topic + '-star-a', args: { starred: true } });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).dataset.starred === 'true'`), 'the star given elsewhere shows');
+    // An acts read answered before the move below, and let go after Core confirmed it.
+    p.intercept(payload => reads(payload));
+    await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.c, operation_id: topic + '-name', args: { name: 'Named by them' } });
+    const early = await until(() => heldOf(reads)[0], 'an acts read is answered and held');
+    await keyTo(p, ids.a);
+    await p.key('ArrowUp', 4);
+    await becomes(() => stacks(p, ids), ['c', 'a', 'b'], '⌘↑ moves A above B');
+    await until(async () => (await actsOf(topic, ids.a))?.place_revision === 1, 'Core holds the place');
+    p.held.splice(p.held.indexOf(early), 1);
+    await p.release(early);
+    await until(async () => (await look(p, ids, 'c')).name === 'Named by them', 'the early answer is read: it names C');
+    assert.deepEqual(await stacks(p, ids), ['c', 'a', 'b'], 'the early answer puts back none of the move it was read before');
+    await p.key('ArrowDown', 4);
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], '⌘↓ after it moves A back below B');
+    await until(async () => (await actsOf(topic, ids.a))?.place_revision === 2, 'Core takes the move sent after the early answer, fenced on the revision it confirmed');
+    assert.deepEqual(p.errors, []);
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    // ⌘↑ ⌘↓ ⌘Z at once, Core's answers held and let go one at a time, with the page drawn again between them.
+    // Each act reaches Core as it is sent; only its answer is held, and the next is sent once it lands.
+    p.intercept(payload => places(payload));
+    await p.key('ArrowUp', 4); await p.key('ArrowDown', 4); await p.key('z', 4);
+    await becomes(() => stacks(p, ids), ['c', 'a', 'b'], '⌘↑ ⌘↓ ⌘Z: A above B, as ⌘Z left it');
+    for (const step of [1, 2]) {
+      const answer = await until(() => heldOf(places)[0], `act ${step} reached Core`);
+      const said = await p.response(answer.event);
+      assert.equal(said?.status, 'committed', `Core takes act ${step}`);
+      p.held.splice(p.held.indexOf(answer), 1);
+      await p.release(answer);
+      await until(() => heldOf(places)[0], `act ${step + 1} is sent once act ${step}'s answer lands`);
+      await becomes(async () => (await actsOf(topic, ids.a))?.place_revision, 3 + step, `Core holds act ${step + 1}`);
+    }
+    // A reply arriving draws the page again while the last act is unanswered.
+    const reply = (await control({ method: 'agent_message', operation_id: topic + '-reply', topic_id: topic, source: 'topic', sender: other, reply_to: ids.c, addressees: [facts.actor], body: 'Another reply to C.', read: true })).result.message_id;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(reply))}))`), 'the reply arrives');
+    assert.deepEqual(await stacks(p, ids), ['c', 'a', 'b'], 'drawn again before the last answer, the page still shows the last act');
+    const last = heldOf(places)[0];
+    p.held.splice(p.held.indexOf(last), 1);
+    p.intercept(null);
+    await p.release(last);
+    assert.equal((await actsOf(topic, ids.a))?.place_revision, 5, 'Core holds the last act');
+    assert.deepEqual(await stacks(p, ids), ['c', 'a', 'b'], 'and the page still draws it');
+    // A quick star then unstar, the first answer let go while the second is unanswered.
+    p.intercept(payload => starsSent(payload));
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Star for me');
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Unstar');
+    const starred = () => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.starred`);
+    await until(async () => await starred() === 'false', 'star then unstar: no star shows');
+    const first = await until(() => heldOf(starsSent)[0], 'the star reached Core');
+    p.held.splice(p.held.indexOf(first), 1);
+    await p.release(first);
+    const second = await until(() => heldOf(starsSent)[0], 'the unstar is sent after it');
+    await control({ method: 'agent_message', operation_id: topic + '-reply-2', topic_id: topic, source: 'topic', sender: other, reply_to: ids.c, addressees: [facts.actor], body: 'A third reply to C.', read: true });
+    await until(async () => (await look(p, ids, 'c')).meta?.startsWith('3 replies'), 'another reply draws the page again');
+    assert.equal(await starred(), 'false', 'with the star confirmed and the unstar not, the card still shows no star');
+    p.held.splice(p.held.indexOf(second), 1);
+    p.intercept(null);
+    await p.release(second);
+    await until(async () => (await actsOf(topic, ids.b))?.star_revision === 2 && (await actsOf(topic, ids.b)).starred === false, 'Core holds the unstar');
+    assert.equal(await starred(), 'false');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // A fresh page draws what Core holds: the same as the page did.
+    p = await open('stack-quick-again', 'laptop', topic, ids.a);
+    await becomes(() => stacks(p, ids), ['c', 'a', 'b'], 'after a reload the order is the one the page last drew');
+    const starredNow = () => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.starred`);
+    assert.equal(await starredNow(), 'false');
+    // A star refused before it reaches Core is drawn no more: the card shows what Core holds.
+    await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+    p.intercept(payload => starsSent(payload));
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Star for me');
+    await until(async () => await starredNow() === 'true', 'the star shows at once');
+    const refused = await until(() => p.held.find(entry => starsSent(entry.payload)), 'the star is on its way');
+    p.held.splice(p.held.indexOf(refused), 1);
+    p.intercept(null);
+    await p.send('Fetch.fulfillRequest', { requestId: refused.event.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+      body: Buffer.from(JSON.stringify({ instance_id: facts.instance_id, status: 'rejected', error: { code: 'FORBIDDEN', message: 'Refused for this check.' } })).toString('base64') });
+    await until(async () => await starredNow() === 'false', 'refused, the card shows no star');
+    assert.equal((await actsOf(topic, ids.b))?.starred, false, 'and Core holds none');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+  else observations.push({ name: 'stacks quick acts', engine, held: 'holds Core\'s answers with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
+
   await check('reading stacks ⇧⌘↑ joins a stack to the one above for everyone, its first message in view with a join line, and Split back out takes it out again', async () => {
     const topic = 'stack-join';
     const ids = await seed(topic, [['old', { sender: other, join: true, addressees: [facts.actor], body: 'The older stack.' }],
@@ -380,6 +478,30 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  await check('reading stacks the reader\'s own reply in a stack deals with it: coming back, it folds to that reply', async () => {
+    const topic = 'stack-replied';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, unread.' }],
+      ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two, unread.' }]]);
+    let p = await open('stack-replied', 'laptop', topic, ids.root);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'two'], 'both unread replies in view');
+    ids.mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor,
+      reply_to: ids.two, addressees: [other], body: 'My answer to reply two.' })).result.message_id;
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'two', 'mine'], 'the reply shows in its stack, nothing folding under the person\'s eyes');
+    await until(async () => (await actsOf(topic, ids.mine))?.dealt === true, 'the reply deals with the stack up to it, in Core');
+    // Another message of the reader's own, not in a stack, deals with nothing.
+    const alone = (await control({ method: 'agent_message', operation_id: topic + '-alone', topic_id: topic, source: 'topic', sender: facts.actor, addressees: [other], body: 'A new message of mine.' })).result.message_id;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(alone))}))`), 'the message on its own shows');
+    assert.deepEqual(await p.evaluate(`window.sent.filter(kind => kind === 'message.deal').length`), 1, 'a message of the reader\'s own starting no stack sends no deal');
+    assert.equal((await actsOf(topic, alone))?.dealt ?? false, false, 'and Core holds none');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    p = await open('stack-replied-back', 'laptop', topic, ids.root);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 2 earlier replies', 'mine'], 'coming back, the stack folds to the reader\'s reply');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks a reply arriving shows under the newest, which stays in view until coming back', async () => {
     const topic = 'stack-arrive';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],
@@ -451,21 +573,40 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
-  if (engine === 'chrome') await check('reading stacks a reply swiped to the right on a phone folds into the earlier replies', async () => {
+  if (engine === 'chrome') await check('reading stacks a reply swiped to the right on a phone folds into the earlier replies, and a drag that scrolls a wide table or code folds nothing', async () => {
     const topic = 'stack-swipe';
+    const table = ['| ' + Array.from({ length: 14 }, (_, i) => `Column ${i} heading`).join(' | ') + ' |', '|' + ' --- |'.repeat(14),
+      '| ' + Array.from({ length: 14 }, (_, i) => `cell ${i} with words`).join(' | ') + ' |'].join('\n');
+    // The message stays under the 1,024 bytes a card shows, so its card holds the whole of it.
+    const code = '```\n' + Array.from({ length: 6 }, (_, i) => `step_${i}_with_a_long_name()`).join('; ') + '\n```';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],
       ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, unread.' }],
+      ['wide', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A wide table, unread:\n\n' + table + '\n\n' + code }],
       ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two, unread.' }]]);
     const p = await open('stack-swipe', 'phone', topic, ids.root);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'two'], 'phone: both unread replies in view');
-    await centre(p, card(ids.one));
-    const b = await p.box(card(ids.one));
-    const y = b.y + b.height / 2;
-    await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + 20, y }] });
-    await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: b.x + 90, y }] });
-    await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: b.x + 160, y }] });
-    await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply · 1 new', 'two'], 'phone: swiped right, reply one folds into the earlier replies');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'wide', 'two'], 'phone: every unread reply in view');
+    // A finger's drag, timed as a hand moves: it comes to rest before it lifts, so nothing flings on after it.
+    const drag = async (selector, from, to) => {
+      await centre(p, selector);
+      const b = await p.box(selector), y = b.y + b.height / 2, t0 = Date.now() / 1000;
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + from, y }], timestamp: t0 });
+      for (const part of [1, 2, 3, 4]) await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: b.x + from + (to - from) * part / 4, y }], timestamp: t0 + 0.05 * part });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: b.x + to, y }], timestamp: t0 + 0.6 });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t0 + 0.65 });
+    };
+    // A finger dragging a wide table or a block of code back to its start scrolls it, and folds nothing.
+    for (const [what, inner] of [['table', '.md-table-wrap'], ['code', '.md-pre']]) {
+      const at = `${card(ids.wide)} ${inner}`;
+      const left = () => p.evaluate(`document.querySelector(${JSON.stringify(at)}).scrollLeft`);
+      await until(() => p.evaluate(`(e=>e.scrollWidth-e.clientWidth>200)(document.querySelector(${JSON.stringify(at)}))`), `phone: the ${what} is wider than its card`);
+      await p.evaluate(`document.querySelector(${JSON.stringify(at)}).scrollLeft=200`);
+      await until(async () => await left() === 200, `phone: the ${what} scrolled sideways`);
+      await drag(at, 20, 160);
+      await until(async () => await left() < 200, `phone: the drag scrolls the ${what} back`);
+      assert.deepEqual((await look(p, ids, 'root')).rows, ['one', 'wide', 'two'], `phone: a drag on the ${what} folds nothing`);
+    }
+    await drag(card(ids.one), 20, 160);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['fold: 1 earlier reply · 1 new', 'wide', 'two'], 'phone: swiped right, reply one folds into the earlier replies');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

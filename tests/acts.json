@@ -2505,6 +2505,95 @@
    }
   },
   {
+   "item": 283,
+   "act": "Quick acts on one stack, answered while a later act is unanswered and with the page drawn again between, show the last act and end where Core does",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const shown = shownAct(kind, args, this.viewer, this.clock());",
+     "    const shown = {}; item.acts = { ...item.acts, ...shownAct(kind, args, this.viewer, this.clock()) };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks quick acts"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An acts answer read before a commit the page has heard of puts back nothing, on the page",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "later = item && laterActs(item.acts, acts);",
+     "later = item && acts;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks quick acts"
+   }
+  },
+  {
+   "item": 283,
+   "act": "An acts answer, or a message page, read before a later act puts back nothing",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "answer[revision] < known[revision]",
+     "false"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A refused act is drawn no more: the stack shows what Core holds",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      this.settled(item.id);\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks quick acts"
+   }
+  },
+  {
+   "item": 261,
+   "act": "Your own reply in a stack deals with it, in Core, so coming back it folds to your reply",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  arrived(items) {\n    this.arrange();\n",
+     "  arrived(items) {\n    queueMicrotask(() => this.arrange());\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks the reader.s own reply in a stack deals"
+   }
+  },
+  {
+   "item": 256,
+   "act": "On a phone a finger dragging a wide table or a block of code scrolls it and folds no reply",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      this.swipe = touch && !scrollsSideways(event.target, list) ? ",
+     "      this.swipe = touch ? "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply swiped to the right"
+   }
+  },
+  {
    "item": 257,
    "act": "A link inside a message to a folded reply opens its stack and lands on it",
    "break": [

@@ -751,7 +751,8 @@ function paintViews(kind) {
     }
     learnReply(views.messages, item, bootstrap.actor);
   }
-  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); stackMessages(); paintCardReading(); }
+  // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
+  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {

@@ -1,6 +1,7 @@
 import { checkedView, RevisionTargets } from './freshness.mjs';
 import { oldestUnreadOf } from './unanswered.mjs';
 import { learnReactions, reactionsOf } from './reactions.mjs';
+import { laterActs } from './stack-order.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
@@ -85,7 +86,12 @@ export class TopicViews {
     joined.delete(undefined);
     const run = joined.size ? joined.values().next().value : ++this.runCount;
     for (const [id, other] of this.runs) if (joined.has(other)) this.runs.set(id, run);
-    for (const item of answer.items) { this.messages.set(item.id, item); this.runs.set(item.id, run); }
+    // A message read again keeps any act the page heard of after this page was read.
+    for (const item of answer.items) {
+      const known = this.messages.get(item.id);
+      if (known?.acts) item.acts = laterActs(known.acts, item.acts);
+      this.messages.set(item.id, item); this.runs.set(item.id, run);
+    }
     // A message of the reader's own arriving is a reply, from this page or
     // another: an act, as below. The repaint of the messages places the line.
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
@@ -192,10 +198,13 @@ export class TopicViews {
       cursor = answer.items.length && answer.items.at(-1).seq < oldest ? null : answer.next_cursor;
     } while (cursor !== null);
     if (reached < version) throw behind();
+    // Each act takes the later of what the page holds and the answer, by its
+    // revision: an answer read before a commit the page has since heard of
+    // puts back nothing (stack-order.mjs, laterActs).
     let changed = false;
     for (const [id, acts] of found) {
-      const item = this.messages.get(id);
-      if (item && JSON.stringify(item.acts) !== JSON.stringify(acts)) { item.acts = acts; changed = true; }
+      const item = this.messages.get(id), later = item && laterActs(item.acts, acts);
+      if (item && JSON.stringify(item.acts) !== JSON.stringify(later)) { item.acts = later; changed = true; }
     }
     if (changed) this.paint('acts');
     return true;

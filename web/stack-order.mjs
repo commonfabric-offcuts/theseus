@@ -16,6 +16,24 @@
 // carries them): absent on a page from a Core before them, read as none.
 const actsOf = item => item?.acts ?? {};
 
+// Each act and the revision Core counts it by.
+const REVISIONS = { starred: 'star_revision', dealt: 'deal_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
+
+// What Core holds of a message's acts, from what the page knew and an answer
+// it read or was given since: each act as the later of the two by its
+// revision, so an answer read before a commit never puts back what that
+// commit changed, whenever it lands. Fields the page does not know are the
+// answer's.
+export function laterActs(known, answer) {
+  if (!answer) return known ?? {};
+  const acts = { ...(known ?? {}), ...answer };
+  for (const [field, revision] of Object.entries(REVISIONS)) {
+    if (!known || !(revision in known)) continue;
+    if (!(revision in answer) || answer[revision] < known[revision]) { acts[field] = known[field]; acts[revision] = known[revision]; }
+  }
+  return acts;
+}
+
 // The message each one hangs under on the page: the message it was joined to,
 // else the one it answers, when that is loaded; null for a stack's head.
 function parentOf(item, has) {

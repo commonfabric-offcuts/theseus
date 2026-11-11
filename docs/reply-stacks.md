@@ -167,7 +167,8 @@ folded, and Unstar beside each takes the star off.
 
 On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
 "Move or join…", which opens a second sheet. A reply swiped to the right
-folds into the earlier replies. A right-click (a long press on Android)
+folds into the earlier replies; a drag that starts on something scrolling
+sideways, such as a wide table or a block of code, scrolls it instead. A right-click (a long press on Android)
 opens the same menu.
 
 A card that a join, a move or a new reply carries to another place keeps
@@ -175,8 +176,12 @@ where it was scrolled: a table scrolled sideways, or a long message scrolled
 in its card, stays as it was, and the page keeps its place.
 
 Every act shows at once, then goes to Core with the revision the page holds.
-Acts are sent one at a time, in order. A refusal reads the acts back and
-draws what Core holds. A screen reader hears each act said ("Moved up",
+Acts are sent one at a time, in order. Until Core answers an act, the page
+draws it over what Core holds, so a quick run of presses always shows the
+last one. Each act the page holds is the later by its revision of what it
+knew and what it reads, so an answer read before a commit puts back nothing,
+whenever it lands. When an answer changes what a stack shows, the page draws
+it again. A refusal reads the acts back and draws what Core holds. A screen reader hears each act said ("Moved up",
 "Joined to the stack above").
 
 ## The look

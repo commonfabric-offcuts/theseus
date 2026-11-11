@@ -8,15 +8,27 @@
 // record about a message, a Core command fenced on the revision the page last
 // read (aim_next/stacks.py); the page shows the act at once and sends the acts
 // one after another, so a quick run of presses each sends the revision the
-// one before it made. How far a stack is folded is the page's own.
+// one before it made. What Core holds stays the message's acts (topic-views.mjs);
+// an act not yet answered is drawn over them until its answer lands, and the
+// stacks are drawn again whenever an answer changes what they show. How far a
+// stack is folded is the page's own.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, reveal, renameInput, unkeep } from './reply-stacks.mjs';
-import { moveOf, joinOf, foldStep, shown } from './stack-order.mjs';
+import { moveOf, joinOf, foldStep, shown, laterActs } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
 
 const FIELD = { 'message.star': 'star', 'message.deal': 'deal', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 const FEED_ACTIONS = ['move-up', 'move-down', 'open', 'fold', 'join-up', 'join-down', 'undo'];
+
+// Whether a touch began on something between it and the list that scrolls
+// sideways (a wide table, a block of code): a sideways drag there scrolls it.
+function scrollsSideways(target, list) {
+  for (let at = target; at && at !== list; at = at.parentElement) {
+    if (at.scrollWidth > at.clientWidth && /^(auto|scroll)$/.test(at.ownerDocument.defaultView.getComputedStyle(at).overflowX)) return true;
+  }
+  return false;
+}
 
 // The acts a commit's result says, as the message's acts read.
 function learned(kind, result, viewer, now) {
@@ -46,17 +58,42 @@ export class StackFeed {
     hold = paint => paint(), clock = () => Date.now(), doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
+    // The acts shown and not yet answered, by message, in the order made; and
+    // the acts each message was last drawn with.
+    this.pending = new Map(); this.drawn = new Map();
     this.said = doc.createElement('div');
     this.said.className = 'sr-only'; this.said.setAttribute('aria-live', 'polite'); this.said.id = 'stack-said';
     doc.body.append(this.said);
     doc.addEventListener('keydown', event => this.key(event));
-    // A reply swiped to the right on a phone folds into the earlier replies.
-    list.addEventListener('touchstart', event => { const touch = event.touches?.[0]; this.swipe = touch ? { x: touch.clientX, y: touch.clientY, target: event.target } : null; }, { passive: true });
+    // A reply swiped to the right on a phone folds into the earlier replies;
+    // a drag on something that scrolls sideways scrolls it instead.
+    list.addEventListener('touchstart', event => {
+      const touch = event.touches?.[0];
+      this.swipe = touch && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
+    }, { passive: true });
     list.addEventListener('touchend', event => this.swiped(event), { passive: true });
   }
   get state() { return stackState(this.list); }
+  // A message's acts as the page shows them: what Core holds, with each act
+  // not yet answered over it. known: the message when the page has not loaded it.
+  actsOf(id, known = null) {
+    let acts = (this.messages().get(id) ?? known)?.acts ?? {};
+    for (const shown of this.pending.get(id) ?? []) acts = { ...acts, ...shown };
+    return acts;
+  }
+  // The loaded messages as the stacks draw them, each with its acts as shown.
+  shownMessages() {
+    const messages = this.messages();
+    return { has: id => messages.has(id), get: id => {
+      const item = messages.get(id);
+      if (!item) return item;
+      const acts = this.actsOf(id);
+      this.drawn.set(id, JSON.stringify(acts));
+      return this.pending.has(id) ? { ...item, acts } : item;
+    } };
+  }
   arrange() {
-    this.hold(() => arrangeStacks(this.list, this.messages(), { keep: this.keep, unread: this.unread, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
+    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       split: item => this.split(item), unplace: stack => this.unplace(stack),
       folded: (stack, was) => this.remember(() => { this.state.levels.set(stack.id, was); this.arrange(); }),
@@ -71,12 +108,23 @@ export class StackFeed {
     last(); this.say('Put back');
   }
   // Shows an act on the message at once and sends it after the acts before it.
+  // Answered or refused, it is no longer drawn over what Core holds.
   act(kind, item, args) {
-    item.acts = { ...item.acts, ...shownAct(kind, args, this.viewer, this.clock()) };
-    const sent = this.chain.then(() => this.send(kind, item, args));
+    const shown = shownAct(kind, args, this.viewer, this.clock());
+    this.pending.set(item.id, [...this.pending.get(item.id) ?? [], shown]);
+    const sent = this.chain.then(() => this.send(kind, item, args)).finally(() => {
+      const left = (this.pending.get(item.id) ?? []).filter(each => each !== shown);
+      if (left.length) this.pending.set(item.id, left); else this.pending.delete(item.id);
+      this.settled(item.id);
+    });
     this.chain = sent.catch(() => {});
     sent.catch(error => { this.status(error); this.reread(); });
     return sent;
+  }
+  // Draws the stacks again when a message's acts as shown are no longer what
+  // they were last drawn with.
+  settled(id) {
+    if (this.messages().has(id) && this.drawn.get(id) !== JSON.stringify(this.actsOf(id))) this.arrange();
   }
   async send(kind, item, args) {
     const field = FIELD[kind], { authority_id, authority_epoch } = this.authority();
@@ -90,7 +138,8 @@ export class StackFeed {
       if (receipt?.error?.code === 'REVISION_CONFLICT') throw Error('That changed on another tab or device; the page now shows what was saved. Nothing was changed.');
       throw Error(receipt?.error?.message ?? 'That was not confirmed. The page shows what Theseus holds.');
     }
-    for (const each of new Set([item, current])) each.acts = { ...each.acts, ...learned(kind, receipt.result, this.viewer, this.clock()) };
+    const answer = learned(kind, receipt.result, this.viewer, this.clock());
+    for (const each of new Set([item, current])) each.acts = laterActs(each.acts, answer);
     if (kind === 'message.star') this.starsChanged();
     return receipt.result;
   }
@@ -106,7 +155,7 @@ export class StackFeed {
     target.scrollIntoView?.({ block: 'nearest' });
   }
   star(item) {
-    const on = !item.acts?.starred;
+    const on = !this.actsOf(item.id).starred;
     this.act('message.star', item, { starred: on });
     this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
   }
@@ -114,22 +163,24 @@ export class StackFeed {
   // page shows takes the star off its card too.
   unstar(star) {
     const item = this.messages().get(star.message_id) ?? { id: star.message_id, acts: { starred: true, star_revision: star.star_revision } };
-    if (!item.acts?.starred) return;
+    if (!this.actsOf(item.id, item).starred) return;
     this.act('message.star', item, { starred: false });
     this.arrange(); this.say('Star taken off');
   }
   // A stack dealt with folds to its newest reply when the reader comes back.
   deal(item) {
     const found = stackOf(this.list, this.entryFor(item.id));
-    if (!found || !found.stack.replies.length || item.acts?.dealt) return;
+    if (!found || !found.stack.replies.length || this.actsOf(item.id).dealt) return;
     this.act('message.deal', item, { dealt: true });
   }
-  // The reader's own reply arriving in a stack, or their thumbs-up on a reply,
-  // deals with the stack up to it. The page's first messages are none of these.
+  // Messages arrived: the stacks are drawn with them in, then the reader's own
+  // reply arriving in a stack deals with the stack up to it, as does their
+  // thumbs-up on a reply (thumbed). The page's first messages are none of these.
   arrived(items) {
+    this.arrange();
     const newest = items.reduce((most, item) => Math.max(most, item.seq), 0);
     if (this.newestSeen === null) { this.newestSeen = newest; return; }
-    for (const item of items) if (item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || item.acts?.joined)) this.deal(item);
+    for (const item of items) if (item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || this.actsOf(item.id).joined)) this.deal(item);
     this.newestSeen = Math.max(this.newestSeen, newest);
   }
   thumbed(item) { if (stackOf(this.list, this.entryFor(item.id))?.head === false) this.deal(item); }
@@ -142,7 +193,7 @@ export class StackFeed {
     input?.focus(); input?.select?.();
   }
   rename(stack, text) {
-    const item = this.messages().get(stack.id) ?? stack.head, typed = item.acts?.name?.text ?? '';
+    const item = this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
     const name = String(text ?? '').replace(/\s+/g, ' ').trim();
     this.arrange();
     // Unchanged, or the first line it is named by already: nothing to record.
@@ -158,14 +209,14 @@ export class StackFeed {
     const stacks = this.state.stacks, changes = moveOf(stacks, found.index, way);
     if (!changes) { this.say(way === 'up' ? 'Already at the top' : 'Already at the bottom'); return; }
     const heads = changes.map(change => this.messages().get(change.id));
-    const before = heads.map(item => item.acts?.placed ?? null);
+    const before = heads.map(item => this.actsOf(item.id).placed ?? null);
     changes.forEach((change, index) => this.act('stack.place', heads[index], { key: change.key }));
     this.remember(() => { heads.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); this.focusOn(entry.dataset.id); });
     this.arrange(); this.focusOn(entry.dataset.id);
     this.say(`Moved ${way}, placed here by you`);
   }
   unplace(stack) {
-    const item = this.messages().get(stack.id), before = item.acts?.placed ?? null;
+    const item = this.messages().get(stack.id), before = this.actsOf(stack.id).placed ?? null;
     this.act('stack.place', item, { key: null });
     this.remember(() => { this.act('stack.place', item, { key: before }); this.arrange(); });
     this.arrange(); this.say('New replies move it again');
@@ -175,14 +226,14 @@ export class StackFeed {
     if (!found) return;
     const target = joinOf(this.state.stacks, found.index, way);
     if (!target) { this.say(way === 'up' ? 'No stack above to join' : 'No stack below to join'); return; }
-    const item = this.messages().get(found.stack.id), before = item.acts?.joined?.into ?? null;
+    const item = this.messages().get(found.stack.id), before = this.actsOf(item.id).joined?.into ?? null;
     this.act('stack.join', item, { into: target.id });
     this.remember(() => { this.act('stack.join', item, { into: before }); this.arrange(); this.focusOn(item.id); });
     this.arrange(); this.focusOn(item.id);
     this.say(`Joined to the stack ${way === 'up' ? 'above' : 'below'}, for everyone here`);
   }
-  split(item) {
-    const before = item.acts?.joined?.into ?? null;
+  split(shownItem) {
+    const item = this.messages().get(shownItem.id) ?? shownItem, before = this.actsOf(item.id, item).joined?.into ?? null;
     if (!before) return;
     this.act('stack.join', item, { into: null });
     this.remember(() => { this.act('stack.join', item, { into: before }); this.arrange(); this.focusOn(item.id); });
@@ -193,7 +244,7 @@ export class StackFeed {
   fold(entry, way) {
     const found = stackOf(this.list, entry);
     if (!found?.section || !found.stack.replies.length) return false;
-    const { stack } = found, state = this.state, starred = Boolean(stack.head.acts?.starred);
+    const { stack } = found, state = this.state, starred = Boolean(this.actsOf(stack.id).starred);
     const now = { level: state.levels.get(stack.id) ?? 'folded', headOpen: starred || state.headOpen.has(stack.id) };
     const options = { onHead: found.head, replies: true };
     let next = foldStep(now, way, options);
@@ -224,7 +275,7 @@ export class StackFeed {
     if (!start || !touch || touch.clientX - start.x < 80 || Math.abs(touch.clientY - start.y) > 40) return;
     const entry = entryOf(this.list, start.target), found = entry && stackOf(this.list, entry);
     const item = entry && this.messages().get(entry.dataset.id);
-    if (!found || found.head || !item || found.stack.joins.has(item.id) || item.acts?.starred) return;
+    if (!found || found.head || !item || found.stack.joins.has(item.id) || this.actsOf(item.id).starred) return;
     this.foldOne(item);
   }
   // The stack keys, on a message only, never in writing: ⌘← and ⌘→ are the
@@ -245,18 +296,19 @@ export class StackFeed {
   // first: what the message offers; last: its stack's moves and joins.
   menuItems(item, { phone = false, more = () => {} } = {}) {
     const entry = this.entryFor(item.id), found = entry && stackOf(this.list, entry);
-    const items = [{ label: item.acts?.starred ? 'Unstar' : 'Star for me', act: () => this.star(item) }];
+    const starred = Boolean(this.actsOf(item.id, item).starred);
+    const items = [{ label: starred ? 'Unstar' : 'Star for me', act: () => this.star(item) }];
     if (!found) return { first: items, last: [] };
     const { stack } = found, state = this.state;
     if (found.head && stack.replies.length) {
       items.push({ label: 'Rename', act: () => this.startRename(stack) });
-      if (!item.acts?.starred) {
+      if (!starred) {
         const open = state.headOpen.has(stack.id);
         items.push({ label: open ? 'Hide the full message' : 'Show the full message', keys: open ? '⌘←' : '⌘→',
           act: () => { if (open) state.headOpen.delete(stack.id); else state.headOpen.add(stack.id); this.arrange(); this.focusOn(stack.id); } });
       }
     }
-    if (!found.head && !stack.joins.has(item.id) && !item.acts?.starred && shown(stack, item, { level: 'folded', kept: () => true, handFolded: state.handFolded })) {
+    if (!found.head && !stack.joins.has(item.id) && !starred && shown(stack, item, { level: 'folded', kept: () => true, handFolded: state.handFolded })) {
       items.push({ label: 'Fold into earlier replies', act: () => this.foldOne(item) });
     }
     if (stack.joins.has(item.id)) items.push({ label: 'Split back out', act: () => this.split(item) });

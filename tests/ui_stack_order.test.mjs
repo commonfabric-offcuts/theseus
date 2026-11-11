@@ -156,3 +156,25 @@ test('⌘→ shows the full first message, then opens the replies a step at a ti
   assert.deepEqual(foldStep({ level: 'head', headOpen: false }, 'open'), { level: 'folded', headOpen: false }, 'on a reply: the replies only');
   assert.equal(foldStep({ level: 'folded', headOpen: false }, 'open', { replies: false }), null, 'a message with no replies has nothing to open');
 });
+
+test('an acts answer read before an act the page has since heard of puts back nothing; a later one, from another device, shows', async () => {
+  const { TopicViews } = await import('../web/topic-views.mjs');
+  const painted = [];
+  const v = new TopicViews({ instanceId: 'i1', topicId: 't1', paint: kind => painted.push(kind) });
+  const none = { starred: false, star_revision: 0, dealt: false, deal_revision: 0, placed: null, place_revision: 0, name: null, name_revision: 0, joined: null, join_revision: 0 };
+  const item = acts => ({ id: 'm1', seq: 1, topic_id: 't1', body: 'The root.', author_id: 'agent-a', acts: { ...none, ...acts } });
+  v.messagesPage({ instance_id: 'i1', items: [item({})], next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true });
+  // The page heard of its own place at revision 2 and a star at revision 1.
+  v.messages.get('m1').acts = { ...none, placed: 10, place_revision: 2, starred: true, star_revision: 1 };
+  const answer = acts => async () => ({ instance_id: 'i1', topic_id: 't1', version: 9, next_cursor: null, items: [{ message_id: 'm1', seq: 1, acts: { ...none, ...acts } }] });
+  painted.length = 0;
+  await v.readActs(0, answer({ placed: 5, place_revision: 1, starred: true, star_revision: 1 }), () => true);
+  assert.deepEqual([v.messages.get('m1').acts.placed, v.messages.get('m1').acts.place_revision], [10, 2], 'an answer older than the place the page holds puts back nothing');
+  assert.deepEqual(painted, [], 'and draws nothing again');
+  await v.readActs(0, answer({ placed: 10, place_revision: 2, starred: false, star_revision: 2, name: { text: 'Cabin', by: 'aim-ux', at_ms: 1 }, name_revision: 1 }), () => true);
+  assert.deepEqual([v.messages.get('m1').acts.starred, v.messages.get('m1').acts.name?.text], [false, 'Cabin'], 'later acts, made elsewhere, show');
+  assert.deepEqual(painted, ['acts']);
+  // The message read again on a page read before those acts keeps them.
+  v.messagesPage({ instance_id: 'i1', items: [item({ placed: 5, place_revision: 1 })], next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true });
+  assert.deepEqual([v.messages.get('m1').acts.placed, v.messages.get('m1').acts.starred, v.messages.get('m1').acts.name?.text], [10, false, 'Cabin'], 'a message page read earlier puts back no act');
+});
