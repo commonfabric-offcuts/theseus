@@ -124,21 +124,30 @@ test('Tab puts a card under the one above it and shift-Tab takes it out after it
   assert.equal(after('## A\n## B\n###### B1\n', { kind: 'indent', text: 'B', near: 1 }), null);
 });
 
-test('Tab and shift-Tab take a new card not yet made where they would take a made card standing there, and nowhere else', () => {
-  const deck = parseDeck(GROUPS);
-  // After Q, at its depth: Tab puts it under Q, and shift-Tab has nowhere to go.
-  assert.deepEqual(placeNew(deck, { after: Q, near: 3, depth: 0 }, 'indent'), { after: Q, near: 3, depth: 1 });
-  assert.equal(placeNew(deck, { after: Q, near: 3, depth: 0 }, 'outdent'), null);
+test('Tab, shift-Tab, cmd-Up and cmd-Down take a new card not yet made where they would take a made card standing there, and nowhere else', () => {
+  const deck = parseDeck(GROUPS), indent = { kind: 'indent' }, outdent = { kind: 'outdent' }, up = { kind: 'move', step: -1 }, down = { kind: 'move', step: 1 };
+  // After Q, at its depth: Tab puts it under Q, cmd-Up takes it past Q, after P's children, and shift-Tab and cmd-Down
+  // have nowhere to go.
+  assert.deepEqual(placeNew(deck, { after: Q, near: 3, depth: 0 }, indent), { after: Q, near: 3, depth: 1 });
+  assert.deepEqual(placeNew(deck, { after: Q, near: 3, depth: 0 }, up), { after: P2, near: 2, depth: 0 });
+  assert.equal(placeNew(deck, { after: Q, near: 3, depth: 0 }, outdent), null);
+  assert.equal(placeNew(deck, { after: Q, near: 3, depth: 0 }, down), null);
   // Among P's children, after P1: Tab puts it under P1, and shift-Tab takes it out after P's children, never over P2.
-  assert.deepEqual(placeNew(deck, { after: P1, near: 1, depth: 1 }, 'indent'), { after: P1, near: 1, depth: 2 });
-  const out = placeNew(deck, { after: P1, near: 1, depth: 1 }, 'outdent');
+  assert.deepEqual(placeNew(deck, { after: P1, near: 1, depth: 1 }, indent), { after: P1, near: 1, depth: 2 });
+  const out = placeNew(deck, { after: P1, near: 1, depth: 1 }, outdent);
   assert.deepEqual(out, { after: P2, near: 2, depth: 0 });
   assert.equal(after(GROUPS, { kind: 'add', text: 'N', ...out }), '## P\n\np words\n\n### P1\n\none\n\n### P2\n\ntwo\n\n## N\n\n## Q\n\nq words\n');
+  // cmd-Up and cmd-Down take it past the child beside it, and never out of P.
+  assert.deepEqual(placeNew(deck, { after: P1, near: 1, depth: 1 }, up), { after: P, near: 0, depth: 1 });
+  assert.deepEqual(placeNew(deck, { after: P1, near: 1, depth: 1 }, down), { after: P2, near: 2, depth: 1 });
+  assert.equal(placeNew(deck, { after: P, near: 0, depth: 1 }, up), null);
+  assert.equal(placeNew(deck, { after: P2, near: 2, depth: 1 }, down), null);
   // First, in an empty deck, past six #s, or after a card that is gone: nowhere to go.
-  assert.equal(placeNew(deck, { after: null, near: -1, depth: 0 }, 'indent'), null);
-  assert.equal(placeNew(parseDeck(''), { after: null, near: -1, depth: 0 }, 'indent'), null);
-  assert.equal(placeNew(parseDeck('## A\n### B\n#### C\n##### D\n###### E\n'), { after: 'E', near: 4, depth: 4 }, 'indent'), null);
-  assert.equal(placeNew(deck, { after: 'gone', near: 1, depth: 0 }, 'indent'), null);
+  assert.equal(placeNew(deck, { after: null, near: -1, depth: 0 }, indent), null);
+  assert.equal(placeNew(deck, { after: null, near: -1, depth: 0 }, up), null);
+  assert.equal(placeNew(parseDeck(''), { after: null, near: -1, depth: 0 }, indent), null);
+  assert.equal(placeNew(parseDeck('## A\n### B\n#### C\n##### D\n###### E\n'), { after: 'E', near: 4, depth: 4 }, indent), null);
+  assert.equal(placeNew(deck, { after: 'gone', near: 1, depth: 0 }, indent), null);
 });
 
 test('a merge takes the lower card\'s children, a removed card takes its own, and each undo gives them back', () => {

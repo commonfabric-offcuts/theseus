@@ -2471,7 +2471,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "      else if (event.key === 'Tab' && !command) this.nestWriting(event.shiftKey ? 'outdent' : 'indent');\n",
+     "      else if (event.key === 'Tab' && !command) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });\n",
      ""
     ]
    ],
@@ -2576,8 +2576,8 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "const placed = placeNew(this.deck, editing, kind);",
-     "const placed = kind === 'outdent' && editing.depth > 0 ? { depth: editing.depth - 1 } : placeNew(this.deck, editing, kind);"
+     "const placed = placeNew(this.deck, editing, act);",
+     "const placed = act.kind === 'outdent' && editing.depth > 0 ? { depth: editing.depth - 1 } : placeNew(this.deck, editing, act);"
     ]
    ],
    "check": {
@@ -2643,6 +2643,36 @@
    "check": {
     "native": "notebook",
     "case": "notebook on the cards page, → gives a card's speech bubble the focus"
+   }
+  },
+  {
+   "item": 313,
+   "act": "⌘↑ and ⌘↓ while a card is written move it past the card beside it, saved at once, keeping what is written and the cursor",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it"
+   }
+  },
+  {
+   "item": 313,
+   "act": "⌘↑ and ⌘↓ on a new card not yet made change where it will go, and it is made there",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  const done = applyAct({ ...deck, cards }, { ...act, text, near: anchor + 1 });",
+     "  const done = applyAct({ ...deck, cards }, { kind: act.kind, text, near: anchor + 1 });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it"
    }
   }
  ]

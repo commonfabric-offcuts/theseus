@@ -7,7 +7,7 @@ import { timeNode } from './times.mjs';
 const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = '⌘Return or Escape done · Tab under the card above, ⇧Tab out · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = '⌘Return or Escape done · ⌘↑ ⌘↓ move · Tab under the card above, ⇧Tab out · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
@@ -310,15 +310,16 @@ export class DeckPage {
   key(event) {
     if (this.host.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
-    // A card's box keeps every key but these: Escape and ⌘Return finish the card, Tab and ⇧Tab move it, and ↑ at
-    // the box's very start or ↓ at its very end goes on into the card beside. Tab stays the box's where there is
+    // A card's box keeps every key but these: Escape and ⌘Return finish the card, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it as
+    // they move a picked card, and ↑ at the box's very start or ↓ at its very end goes on into the card beside. Tab stays the box's where there is
     // nowhere to go, as in an outliner, and so does ⌥Tab, Safari's Tab for every item, so no Tab takes the focus
     // out of a card half written.
     if (this.editing) {
       const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
       if (event.target !== field) return;
       if (event.key === 'Escape' || (event.key === 'Enter' && command)) this.finish();
-      else if (event.key === 'Tab' && !command) this.nestWriting(event.shiftKey ? 'outdent' : 'indent');
+      else if (event.key === 'Tab' && !command) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });
+      else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });
       else if (plain && up && field.selectionEnd === 0) { if (!this.writeBeside(-1)) return; }
       else if (plain && down && field.selectionStart === field.value.length) { if (!this.writeBeside(1)) return; }
       else return;
@@ -531,13 +532,13 @@ export class DeckPage {
     const at = Math.min(editing.at ?? field.value.length, field.value.length);
     field.setSelectionRange(at, at);
   }
-  // Tab or ⇧Tab while a card is written: the card goes under the card above or out of its parent by the rules of a
-  // picked card, and is saved there, while the writing and the cursor stay as they were; the writing is saved when
-  // the card is finished. A new card not yet made only changes where it will go.
-  nestWriting(kind) {
+  // Tab, ⇧Tab, ⌘↑ or ⌘↓ while a card is written: the card moves by the rules of a picked card, and is saved there,
+  // while the writing and the cursor stay as they were; the writing is saved when the card is finished. A new card
+  // not yet made only changes where it will go.
+  moveWriting(act) {
     const editing = this.editing;
-    if (!editing.fresh) { this.act({ kind, text: editing.text, near: editing.near }); return; }
-    const placed = placeNew(this.deck, editing, kind);
+    if (!editing.fresh) { this.act({ ...act, text: editing.text, near: editing.near }); return; }
+    const placed = placeNew(this.deck, editing, act);
     if (placed) { Object.assign(editing, placed); this.paint(); }
   }
   // ↑ at the very start of the card being written, or ↓ at its very end: the card is finished, and the card that

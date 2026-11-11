@@ -44,6 +44,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
 | finish editing | Escape or ⌘Return | Done |
+| while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
 | while editing, put the card under the one above it, or take it out of its parent | Tab, ⇧Tab | |
 | while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
@@ -63,11 +64,11 @@ go, Tab and ⇧Tab move the focus as they do elsewhere. A new card goes beside
 the picked one, after its children, or with ⌥Return right above it, at its
 depth.
 
-While a card is being written, Tab and ⇧Tab move it by the same rules, and
-the move is saved at once; what is written, and the cursor, stay where they
+While a card is being written, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it by the same
+rules, and the move is saved at once; what is written, and the cursor, stay where they
 were, and the writing is saved when the card is finished. A new card not yet
 made only changes where it will go, by the same rules, and nothing is saved
-until it is finished. The box keeps Tab and ⇧Tab even with nowhere to go, as
+until it is finished. The box keeps these keys even with nowhere to go, as
 an outliner does, so a Tab never takes the focus out of a card half written;
 Escape or ⌘Return leaves it. ↑ at the very start of what is written finishes
 the card and opens the card that shows above it for writing, the cursor at

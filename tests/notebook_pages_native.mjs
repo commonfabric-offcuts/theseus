@@ -398,4 +398,35 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it, keeping the writing and the cursor', async () => {
+    const id = 'notebook-cards-move', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    await p.key('ArrowDown'); await p.key('Enter', 4);
+    await p.send('Input.insertText', { text: ' Warp too.' });
+    await cursor(p, 3);
+    const notes = (above, words) => writing(p, { words: 'Notes\nDan reviews. Warp too.', at: [3, 3], depth: '0', above, focused: true }, words);
+    await p.key('ArrowUp', 4);
+    await notes(null, 'cmd-Up takes Notes past Plan, still written, the cursor where it was');
+    await saved(id, '## Notes\n\nDan reviews.\n\n## Plan\n\nShip it.\n\n## Risks\n\nNone yet.\n', 'the move is saved at once, the words when the card is finished');
+    await p.key('ArrowUp', 4);
+    assert.deepEqual(await box(p), { words: 'Notes\nDan reviews. Warp too.', at: [3, 3], depth: '0', above: null, focused: true }, 'cmd-Up on the first card moves nothing and keeps the box');
+    await p.key('ArrowDown', 4);
+    await notes('Plan', 'cmd-Down takes it back past Plan');
+    await saved(id, body, 'and that is saved too');
+    await p.key('ArrowDown', 4);
+    await notes('Risks', 'cmd-Down takes it past Risks');
+    await p.key('Escape');
+    const moved = '## Plan\n\nShip it.\n\n## Risks\n\nNone yet.\n\n## Notes\n\nDan reviews. Warp too.\n';
+    await saved(id, moved, 'finishing saves what was written where the card went');
+    // A new card, not yet made, only changes where it will go: past Notes, after Risks.
+    await p.key('Enter');
+    await writing(p, { words: '', at: [0, 0], depth: '0', above: 'Notes', focused: true }, 'a new card opens after Notes');
+    await p.send('Input.insertText', { text: 'Later' });
+    await p.key('ArrowUp', 4);
+    await writing(p, { words: 'Later', at: [5, 5], depth: '0', above: 'Risks', focused: true }, 'cmd-Up takes the new card past Notes');
+    await p.key('Escape');
+    await saved(id, moved.replace('## Notes', '## Later\n\n## Notes'), 'the new card is made where cmd-Up put it');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }
