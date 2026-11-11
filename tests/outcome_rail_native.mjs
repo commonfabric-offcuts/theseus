@@ -1594,6 +1594,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   });
 
   await check('rail ↑ from the top message reaches the buttons at the top of the feed, with a ring: ← and → move along them and on to the outline and the right rail, ↓ comes back, Return presses one', async () => {
+    // A check before this one leaves t1 Ready for review, which puts ✅ Done
+    // among the header's buttons; this one walks a plainly Active topic's two.
+    await control({ method: 'topic_state', operation_id: 'rail-header-keys-active', topic_id: 't1', args: { state: 'active', note: '' } });
     const p = await open('rail-header-keys', '/?topic=t1');
     await settled(p, 'the topic is up');
     await until(() => p.evaluate("document.querySelectorAll('#messages [data-id]').length > 1"), 'the messages are drawn');
