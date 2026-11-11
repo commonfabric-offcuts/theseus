@@ -429,4 +429,26 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('notebook while a card is written, option-Up and option-Down move the line the cursor is on, and the composer\'s line keys work', async () => {
+    const id = 'notebook-cards-lines', p = await cards(id, '## Plan\n\nShip it.\n\n## Notes\n\nOne.\nTwo.\nThree.\n');
+    const notes = (words, at) => ({ words, at: [at, at], depth: '0', above: 'Plan', focused: true });
+    await p.key('ArrowDown'); await p.key('Enter', 4);
+    await writing(p, notes('Notes\nOne.\nTwo.\nThree.', 22), 'Notes opens for writing');
+    await cursor(p, 12); await p.key('ArrowUp', 1);
+    await writing(p, notes('Notes\nTwo.\nOne.\nThree.', 7), 'option-Up moves Two. above One., the cursor with it');
+    await p.key('z', 4);
+    await writing(p, notes('Notes\nOne.\nTwo.\nThree.', 12), 'cmd-Z puts it back, the cursor where it was');
+    await p.key('ArrowUp', 1);
+    await writing(p, notes('Notes\nTwo.\nOne.\nThree.', 7), 'option-Up moves it again');
+    await p.key('ArrowDown', 1); await p.key('ArrowDown', 1);
+    await writing(p, notes('Notes\nOne.\nThree.\nTwo.', 19), 'option-Down twice moves it below Three.');
+    // Control-U, a line key of the composer's, deletes back to the start of the line.
+    await cursor(p, 22); await p.key('u', 2);
+    await writing(p, notes('Notes\nOne.\nThree.\n', 18), 'control-U deletes back to the start of the line');
+    await p.key('Escape');
+    await saved(id, '## Plan\n\nShip it.\n\n## Notes\n\nOne.\nThree.\n', 'what was written is saved');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

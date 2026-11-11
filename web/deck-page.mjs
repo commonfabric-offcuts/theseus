@@ -3,11 +3,12 @@ import { messageLink, messageOf, placeLink } from './links.mjs';
 import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
+import { WritingInput } from './writing-input.mjs';
 
 const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = '⌘Return or Escape done · ⌘↑ ⌘↓ move · Tab under the card above, ⇧Tab out · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = '⌘Return or Escape done · ⌘↑ ⌘↓ move · Tab under the card above, ⇧Tab out · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
@@ -317,6 +318,8 @@ export class DeckPage {
     if (this.editing) {
       const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
       if (event.target !== field) return;
+      // The composer's writing keys come first: ⌥↑ and ⌥↓ move a line, and the line keys of a Mac (writing-input.mjs).
+      if (this.editing.input.writingKey(event)) return;
       if (event.key === 'Escape' || (event.key === 'Enter' && command)) this.finish();
       else if (event.key === 'Tab' && !command) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });
       else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });
@@ -527,7 +530,7 @@ export class DeckPage {
     field.value = editing.shown ?? editing.text;
     field.setAttribute('aria-labelledby', 'deck-editor-label');
     field.addEventListener('input', () => this.fit(field));
-    this.editing = { ...editing, field };
+    this.editing = { ...editing, field, input: new WritingInput({ field }) };
     this.paint();
     const at = Math.min(editing.at ?? field.value.length, field.value.length);
     field.setSelectionRange(at, at);

@@ -46,6 +46,7 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | finish editing | Escape or ⌘Return | Done |
 | while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
 | while editing, put the card under the one above it, or take it out of its parent | Tab, ⇧Tab | |
+| while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
 | while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
 | a new card right above this one | ⌥Return | |
@@ -77,7 +78,12 @@ its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at
 the first or last card they do nothing more. A new card with nothing written
 is dropped on the way, as Escape drops it, and a card cleared of all its text
 is removed with its children, as below, so ↓ from it goes on to the card after
-them. The keys an input method takes while it composes stay its own.
+them. The keys an input method takes while it composes stay its own. The
+box shares the composer's writing keys (`web/writing-input.mjs`): ⌥↑ and ⌥↓
+move the line the cursor is on, or the lines selected, past the line beside
+them, as in the composer (interaction.md), and on a Mac ⌃A and ⌃E go to the
+start and end of the line, and ⌃K, ⌃U and ⌃W delete to its end, back to its
+start and the word before the cursor.
 
 Clearing all of a card's text removes the
 card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the

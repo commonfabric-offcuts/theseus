@@ -18,10 +18,12 @@ const TYPED_INPUTS = new Set(['text', 'search', 'email', 'url', 'tel', 'password
 export const typingField = node => Boolean(node && (node.tagName === 'TEXTAREA' || node.isContentEditable || node.tagName === 'INPUT' && TYPED_INPUTS.has(node.type)));
 
 // Textarea interaction only. Editor and EditorSession own writing and its acts;
-// the surface keeps context-level send, quote, note and focus routing.
+// the surface keeps context-level send, quote, note and focus routing. A
+// surface without an Editor, as the cards page's box is, gives none, and its
+// field alone holds what is written.
 export class WritingInput {
-  constructor({field,editor,admits,readOnly=()=>false,beforeEdit=()=>{},changed=()=>{},mac=onMac()}) {
-    Object.assign(this,{field,currentEditor:editor,admits,surfaceReadOnly:readOnly,beforeEdit,changed,mac});
+  constructor({field,editor=null,admits=()=>true,readOnly=()=>false,beforeEdit=()=>{},changed=()=>{},mac=onMac()}) {
+    Object.assign(this,{field,currentEditor:editor??(()=>null),editorless:!editor,admits,surfaceReadOnly:readOnly,beforeEdit,changed,mac});
     // Each line move as the field's Undo has it: Undo of a move puts the
     // cursor back where it was (the browser would select both blocks), Redo
     // where the move left it. Any other edit ends what Redo could bring back.
@@ -32,6 +34,7 @@ export class WritingInput {
       else if(again&&field.value===again.after){moves.at++;field.setSelectionRange(again.movedStart,again.movedEnd);}
       else if(!this.moving&&!['historyUndo','historyRedo'].includes(event.inputType))moves.done.length=moves.at;
     });
+    if(!editor)return;
     field.addEventListener('input',()=>{
       const current=this.currentEditor();
       if(this.readOnly()) { if(current)field.value=current.draft.body;return; }
@@ -45,6 +48,7 @@ export class WritingInput {
   caret() { return {start:this.field.selectionStart,end:this.field.selectionEnd}; }
   readOnly() {
     const editor=this.currentEditor();
+    if(this.editorless)return Boolean(!this.admits()||this.field.readOnly||this.surfaceReadOnly());
     return Boolean(!editor||!this.admits()||this.field.readOnly||editor.adopting||recoveryReadOnly(editor)||this.surfaceReadOnly());
   }
   insertText(text) {

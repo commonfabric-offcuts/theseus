@@ -2674,6 +2674,51 @@
     "native": "notebook",
     "case": "notebook while a card is written, cmd-Up and cmd-Down move it past the card beside it"
    }
+  },
+  {
+   "item": 314,
+   "act": "⌥↑ and ⌥↓ while a card is written move the line the cursor is on, as in the composer",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "      if (this.editing.input.writingKey(event)) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 314,
+   "act": "A card being written has the composer's other writing keys, ⌃U deleting back to the start of the line",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "  writingKey(event) { return this.terminalKey(event)||this.moveKey(event); }",
+     "  writingKey(event) { return this.moveKey(event); }"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
+  },
+  {
+   "item": 314,
+   "act": "The composer's writing keys serve a box with no Editor behind it, as the cards page's is",
+   "break": [
+    [
+     "web/writing-input.mjs",
+     "    if(this.editorless)return Boolean(!this.admits()||this.field.readOnly||this.surfaceReadOnly());\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, option-Up and option-Down move the line the cursor is on"
+   }
   }
  ]
 }
