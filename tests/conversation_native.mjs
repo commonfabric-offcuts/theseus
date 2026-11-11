@@ -516,8 +516,13 @@ export async function conversationChecks({ check, page, until, control, view, fa
       assert.deepEqual(last, expected, label);
     };
     const p = await open('conversation-stacks', '/?conversation=w1', desk('light'));
-    await settles(() => stack(p), { head: item, replies: [[answered, false], [followUp, true], [ask, true], [noted, false], [late, true]], lines: [], after: 'new' },
-      'the replies gather into the stack of the message they answer, oldest first, folded to the newest with the New item and the ask waiting on you kept in view where they sit, and the New line under the stack');
+    await settles(() => stack(p), { head: item, replies: [[answered, false], [followUp, false], [ask, false], [noted, false], [late, true]], lines: [], after: 'new' },
+      'the partial stack shows latest plus unread: read New items and read asks do not force earlier replies into view, and the New line stays under the stack');
+    // The chevron opens all messages; read items retain their tags and controls there.
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(item))}).scrollIntoView({block:'center'})`);
+    await p.point(`#messages .reply-stack[data-stack="${item}"] > .stack-toggle`);
+    await settles(() => stack(p), { head: item, replies: [[answered, true], [followUp, true], [ask, true], [noted, true], [late, true]], lines: [], after: 'new' },
+      'opening all shows every reply in order, including the read New item and the read ask');
     const seen = [await tags(p, item), await tags(p, followUp), await tags(p, ask)];
     assert.deepEqual([seen[0].mine, seen[1].tags, seen[1].shown, seen[2].asks, seen[2].shown], [['Waiting on you'], ['New'], true, 'Asks you', true],
       'the stacked New item shows its tag, the stacked ask its "Asks you", and its item waits on you');
@@ -528,10 +533,8 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(async () => (await tags(p, another))?.tags[0] === 'New', 'a new item lands, and the page paints every card\'s tags');
     assert.equal(await p.evaluate('window.tagLink.isConnected'), true, 'the stacked item\'s tag link is the one that was there');
     // The Answered tag's link to the reply the stack folds away opens the stack and lands on it, in the Reader.
-    // The item heads its stack as one row: a press on the row shows it whole, its tags too.
+    // Its original message and tags are available in the fully open stack.
     await p.evaluate(`document.querySelector(${JSON.stringify(card(item))}).scrollIntoView({block:'center'})`);
-    await p.point(`${card(item)} > .stack-head .stack-who`);
-    await until(() => quiet(p, `document.querySelector(${JSON.stringify(card(item) + ' .item-tags')})?.getClientRects().length > 0`), 'a press on the head shows the item whole');
     await p.point(`${card(item)} .item-tags .item-tag-group:first-child .item-link`);
     await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Yes, since Monday.')`), 'the Reader shows the reply');
     // In view as scrolling brings it, to the pixel it rounds to.
@@ -559,7 +562,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await p.point('.message-bar [data-act=more]');
     assert.deepEqual(await until(() => quiet(p, `(l=>l&&[...l.querySelectorAll('button')].map(b=>b.textContent))(document.querySelector('.message-menu-list'))`), 'the menu opens'),
       ['Star for me', 'Fold into earlier replies', 'Copy Link', 'Mark unread', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack⌘←', 'Open its stack⌘→',
-        'Join the stack above⇧⌘↑', 'Join the stack below⇧⌘↓']);
+        'Join the stack above⇧⌘↑', 'Join the stack below⇧⌘↓', 'Undo⌘Z']);
     await p.key('Escape'); await until(() => quiet(p, `!document.querySelector('.message-menu-list')`), 'Escape closes it');
     // A stack whose top message is the New item and no reply under it is New: the person adds to their own question, and the coordinator answers only that.
     const screen = await post('conversation-stack-screen', 'Can we add a second screen?');
@@ -602,6 +605,8 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await shot(p, 'conversation-stack-only-new');
     await pressOnlyNew();
     await until(async () => (await tags(p, item))?.shown, 'everything shows again');
+    assert.deepEqual([(await tags(p, cloakroom)).shown, (await tags(p, quietRoom)).shown], [false, true],
+      'leaving Only new restores latest plus unread for the partial stack');
     // Answered while the page is open, the stacked item's tag turns in place, and the answer joins its stack.
     const caterer = await answer('conversation-stack-caterer', 'The caterer is booked.', { reply_to: followUp });
     await until(async () => (await tags(p, followUp))?.tags[0] === 'Answered', 'the stacked item turns Answered without a reload');

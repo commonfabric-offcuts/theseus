@@ -1992,6 +1992,8 @@ function paintConversationPage() {
     const card = cardIn(entry), id = card?.dataset?.id, item = id ? conversationItem(id) : null;
     if (!item) continue;
     entry.dataset.item = item.item?.state ?? 'none';
+    // Only new is its own view: a read New item can be folded in the stack.
+    if (here.onlyNew && entry.dataset.item === 'new') entry.hidden = false;
     paintAbout(card, item, bootstrap.actor, openLinked);
     paintItemTags(card, item, view.waits, bootstrap.actor, openLinked);
     const author = card.querySelector('.message-author');
