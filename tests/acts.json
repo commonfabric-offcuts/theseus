@@ -1756,7 +1756,7 @@
    "break": [
     [
      "web/app.mjs",
-     "if (!shell.go(target)) location.assign(routeHref(target));",
+     "if (!shell.go(target)) shell.leave(routeHref(target));",
      "location.assign(routeHref(target));"
     ]
    ],
