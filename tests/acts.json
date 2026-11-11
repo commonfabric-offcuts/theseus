@@ -433,8 +433,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      if (entry && entry !== this.lit) this.light(entry);\n    });\n    // What was lit",
-     "    });\n    // What was lit"
+     "      if (entry && entry !== this.lit) this.light(entry);\n      else if (!entry && !this.ownsControls(event.target)) this.light(null);\n    });\n    // What was lit",
+     "      if (!entry && !this.ownsControls(event.target)) this.light(null);\n    });\n    // What was lit"
     ]
    ],
    "check": {
