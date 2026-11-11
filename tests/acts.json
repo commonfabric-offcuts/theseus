@@ -2497,12 +2497,12 @@
   },
   {
    "item": 103,
-   "act": "A folded stack's line says how many earlier replies it holds, and a press opens them in place",
+   "act": "A stack's header chevron expands and collapses its replies in place",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "    fold.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };",
-     "    fold.onclick = () => {};"
+     "  p.toggle.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };",
+     "  p.toggle.onclick = () => {};"
     ]
    ],
    "check": {
@@ -2561,8 +2561,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:none}",
-     ".reply-stack[data-head-open=false]:not(.only-new *)>:is(.stack-head-card,.message-fold>.stack-head-card)>:not(.stack-head){display:revert}"
+     ".reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card>:not(.stack-head){display:none}",
+     ".reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card>:not(.stack-head){display:revert}"
     ]
    ],
    "check": {
@@ -2602,12 +2602,12 @@
   },
   {
    "item": 283,
-   "act": "A line counts the new replies folded behind it, in red",
+   "act": "The stack header counts new replies in red, without repeating the count in a fold bar",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "...(row.fresh ? [element(doc, 'span', 'stack-fold-new', ` · ${row.fresh} new`)] : [])",
-     "...[]"
+     "  if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));",
+     ""
     ]
    ],
    "check": {
