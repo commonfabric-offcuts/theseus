@@ -78,21 +78,25 @@ a Notebook page either; Core cannot stop that, so it is on you. An agent never
 starts a whisper; it only answers one. A whisper is a question, never an
 instruction.
 
-## Marking done with what landed
+## Saying what landed
 
-When the work in a topic is finished, say what landed first, then mark it:
+When a piece of the pipeline ships, its release record sets its topic Ready
+for review, "Live in release N since …" ([pipeline.md](pipeline.md)). Post
+what landed and what to try there; the person marks it Done, with one tap. An
+agent never marks a Build topic Done:
 
 ```sh
-aim-next post TOPIC "Landed: the page link, commit 1a2b3c4, in release 25. Checks: 312 passed."
-aim-next state TOPIC done --note "Shipped in release 25"
+aim-next post TOPIC "Landed: the page link, commit 1a2b3c4, in release 25. Checks: 312 passed. To try: open a topic and press ✅ Done."
 ```
 
-The closing post is what people read later, so name what actually exists now:
-the commit, the release, the page or file, the checks that ran and what they
-showed. A post in a done topic makes it active again, so write the summary
-before `state TOPIC done`, not after. Use `state TOPIC review` when it waits
-on someone's review, and `state TOPIC waiting --waiting-on A` when it waits on
-someone else.
+The post is what people read later, so name what actually exists now: the
+commit, the release, the page or file, the checks that ran and what they
+showed, and what to try. A post leaves a topic Ready for review as it is; a
+post in a done topic makes it active again. For a topic outside the pipeline,
+use `aim-next state TOPIC review` when it waits on someone's review,
+`aim-next state TOPIC waiting --waiting-on A` when it waits on someone else,
+and `aim-next state TOPIC done` only after the last post, once the work is
+finished and nobody's review is asked for.
 
 ## Adding friction and ideas to the pipeline
 

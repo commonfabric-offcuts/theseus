@@ -12,13 +12,14 @@ stage entry.
 
 A whisper is never where an item came from (private_source_refused).
 
-What pieces hold, how each piece ended and which topics the pipeline holds Done are derived state: every command that
-changes what a piece holds or whether its items shipped (piece_start and its return to building, combine, a drop,
-piece_finish, turning releases on or off, and a release record) appends its fact to the outcome's log
-(pipeline_facts) and then _settle writes the differences between pipeline_state.derive() of the facts and what is
+What pieces hold, how each piece ended and which topics the pipeline holds shipped (Ready for review) are derived
+state: every command that changes what a piece holds or whether its items shipped (piece_start and its return to
+building, combine, a drop, piece_finish, turning releases on or off, and a release record) appends its fact to the
+outcome's log (pipeline_facts) and then _settle writes the differences between pipeline_state.derive() of the facts and what is
 stored. derive() is one pure function of the facts, so the state never depends on which command ran last.
 """
 
+import datetime
 import json
 import re
 import sqlite3
@@ -62,7 +63,7 @@ _BY_A_RECORD = (
     "AND NOT (NEW.left_by IS NULL AND EXISTS (SELECT 1 FROM pipeline_facts f WHERE f.workspace_id=OLD.workspace_id AND f.ms=NEW.left_ms "
     "AND (f.kind='record' OR (f.kind='ships' AND json_extract(f.payload,'$.on'))))) ")
 # Version 30: each outcome's pipeline facts, in the order they happened, which the derived state is computed from
-# (pipeline_state), and the topics the pipeline holds Done (derived, like the member rows and a piece's end).
+# (pipeline_state), and the topics the pipeline holds shipped (derived, like the member rows and a piece's end).
 PIPELINE_FACTS_SCHEMA = [
     "CREATE TABLE pipeline_facts (seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES pipelines(workspace_id), "
     "kind TEXT NOT NULL CHECK(kind IN ('ships','start','combine','drop','finish','record')), ms INTEGER NOT NULL, by TEXT REFERENCES actors(id), "
@@ -310,13 +311,15 @@ class Pipeline:
         this, in its own transaction: it derives the outcome's whole pipeline state from its facts alone
         (pipeline_state.derive) and writes only what differs from what is stored: the pieces' member rows, the end of each
         piece no act closed (with when it ended and whose act it was, kept once written: the database allows a later end
-        to change only how it ended), and the topics the pipeline holds Done. Nothing else writes these, so what is
+        to change only how it ended), and the topics the pipeline holds shipped. Nothing else writes these, so what is
         stored is always derive() of the facts so far, whatever order they came in.
 
-        A topic the pipeline newly holds Done is set Done by nobody, "Shipped in release N", unless someone has already
-        said it is done, so a person's earlier reopen gives way; one it holds with a newer N gets the new note, and one it
-        no longer holds (work for it appeared again) goes back to active, each only while its Done is the pipeline's own.
-        A person's word given while the pipeline holds a topic, a Done or a reopen, stands. The database keeps the owner's word
+        A topic the pipeline newly holds shipped is set Ready for review by nobody, "Live in release N since <its deployed
+        time>", unless someone has already said it is done, so a person's earlier word gives way; the person marks it
+        Done. One it holds with a newer N gets the new note while its review is the pipeline's own, and one it no longer
+        holds (work for it appeared again) goes back to active while its state is the pipeline's own (a review, or a Done
+        it said before it said review). A person's word given while the pipeline holds a topic, a Done or a reopen,
+        stands, and a message in the topic leaves the pipeline's review as it is. The database keeps the owner's word
         on leaving a stage (D24): an end written by someone's act that cannot leave it refuses the write, and an end a
         record wrote (nobody's) leaves any stage."""
         state = pipeline_state.derive(pipeline_state.read_facts(db, workspace_id))
@@ -356,17 +359,20 @@ class Pipeline:
         for piece in sorted(changed):
             db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece,))
             self._bump(db, workspace_id, piece)
+        # pipeline_done_topics keeps the topics the pipeline holds shipped (its name is from when it held them Done).
         held = dict(db.execute("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id=?", (workspace_id,)).fetchall())
         for topic_id in sorted(set(held) | set(state.done_topics)):
             new, old = state.done_topics.get(topic_id), held.get(topic_id)
             if new == old:
                 continue
             topic = db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone()
-            # Done by nobody is the pipeline's own word; anyone's Done, or a reopen since, is theirs.
-            its_own = topic["state"] == "done" and topic["state_by"] is None and topic["state_message_id"] is None
-            if new is not None and (its_own or (old is None and topic["state"] != "done")):
-                self._set_topic_state(db, topic, None, {"state": "done", "note": "Shipped in release %d" % new})
-            elif new is None and its_own:
+            # A state said by nobody is the pipeline's own word: Ready for review, or Done as it said before 10 Nov
+            # (kept Done, never moved back to review). Anyone's word, or a reopen since, is theirs.
+            nobodys = topic["state_by"] is None and topic["state_message_id"] is None
+            its_review = nobodys and topic["state"] == "review"
+            if new is not None and (its_review or (old is None and topic["state"] != "done")):
+                self._set_topic_state(db, topic, None, {"state": "review", "note": _live_since(db, new)})
+            elif new is None and nobodys and topic["state"] in ("review", "done"):
                 self._set_topic_state(db, topic, None, {"state": "active", "note": ""})
             if new is None:
                 db.execute("DELETE FROM pipeline_done_topics WHERE topic_id=?", (topic_id,))
@@ -1592,6 +1598,15 @@ def _words(text):
 def _clock(ms):
     import time
     return time.strftime("%-I:%M %p %a %b %-d", time.localtime(ms / 1000.0))
+
+
+def _live_since(db, release):
+    """A shipped piece's topic note: "Live in release 43 since 9:00 AM Tue Nov 10", the release's deployed time in the
+    dated form the page gives a time read on any day (docs/times.md), in the time zone the deploy wrote it in. A "Z" a
+    later Python accepted when the record was written reads as UTC here too."""
+    at = db.execute("SELECT deployed_at FROM releases WHERE number=?", (release,)).fetchone()[0]
+    when = datetime.datetime.fromisoformat(at[:-1] + "+00:00" if at.endswith("Z") else at)
+    return "Live in release %d since %d:%s %s" % (release, (when.hour + 11) % 12 + 1, when.strftime("%M %p %a %b"), when.day)
 
 
 def import_seed(store, db, seed, actor, now_ms):

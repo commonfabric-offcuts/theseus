@@ -227,6 +227,15 @@ export class TopicStatePanel {
 
   reset() { this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
 
+  // Whether the reader may say where the topic stands, by Core's rule: its
+  // participants, its creator, whoever organises the outcome and whoever has
+  // written in it (reader_may_say). Their chips are buttons.
+  get says() { return this.controls?.says === true; }
+
+  // ✅ Done at the top of a topic: the Done chip's tap, from the topic as it
+  // shows. A refusal or an answer lost is said in Topic settings, opened for it.
+  markDone() { return this.says ? this.tap('state', () => 'done', true) : this.queue; }
+
   // The chips, the note and the quiet line of who said it: chips to tap for
   // those who may say where it stands, the state alone for everyone else.
   build(says) {
@@ -375,11 +384,12 @@ export class TopicStatePanel {
 
   // A tap on a chip or Archive: a change of its own, from the topic as it
   // shows. change(intent) is what the person means now. Lines whose words are
-  // no change follow the data again.
-  tap(name, change) {
+  // no change follow the data again. away: the tap was made outside Topic
+  // settings, which then opens to say what became of it, unless it saved.
+  tap(name, change, away = false) {
     for (const field of Object.values(this.fields)) if (field.line && field.start && !field.out && !field.next && this.same(field)) this.stop(field);
     const field = this.fields[name];
-    field.start = this.snapshot(name); field.intent = change(field.intent); field.next = true;
+    field.start = this.snapshot(name); field.intent = change(field.intent); field.next = true; field.away = away;
     return this.turn(field);
   }
 
@@ -472,6 +482,7 @@ export class TopicStatePanel {
       const answer = await this.readAgain(topic);
       message = error ? error.message : this.unconfirmed(field, answer);
     }
+    if (message && field.away) this.attention();
     this.show(message ?? this.kept?.message ?? 'Saved', !message && !this.kept);
     this.refresh();
     for (const other of Object.values(this.fields)) if (other.next) this.turn(other, false);

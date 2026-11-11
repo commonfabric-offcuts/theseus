@@ -106,6 +106,81 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
+  // Tony, 10 Nov: a shipped piece's topic waits Ready for review until he marks
+  // it Done, with one tap at the top of the topic.
+  const doneButton = p => p.evaluate(`(b=>b?{name:b.getAttribute('aria-label'),text:b.textContent,visible:b.getClientRects().length>0,height:b.getBoundingClientRect().height,
+    beside:b.previousElementSibling?.classList.contains('topic-state')??false}:null)(document.querySelector('#topic-description .mark-done'))`);
+  // The open outcome's Done group in the outline: its count, and the topics it lists once opened.
+  const doneGroup = p => p.evaluate(`(()=>{const o=[...document.querySelectorAll('#outline .ol-outcome')].find(li=>li.querySelector('a[data-topic-id=t1]')||li.dataset.workspaceId==='w1');
+    const d=[...(o?.querySelectorAll('details.topic-group')??[])].find(e=>e.querySelector('summary')?.textContent.startsWith('Done'));
+    const row=o?.querySelector('a[data-topic-id=t1]');
+    return d?{label:d.querySelector('summary').textContent,open:d.open,hidden:d.hidden,listed:[...d.querySelectorAll('a[data-topic-id]')].map(a=>a.dataset.topicId),
+      inDone:Boolean(row&&row.closest('details.topic-group')===d),activeRow:Boolean(row&&!row.closest('details.topic-group'))}:null})()`);
+  const space = async p => {
+    const data = { key: ' ', code: 'Space', windowsVirtualKeyCode: 32 };
+    await p.send('Input.dispatchKeyEvent', { type: 'keyDown', ...data, text: ' ', unmodifiedText: ' ' });
+    await p.send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
+  };
+  const LIVE = 'Live in release 43 since 9:05 AM Tue Nov 10';
+
+  await check('header a topic Ready for review shows ✅ Done beside its state; a click marks it Done, into the Done group, and the button goes; an active topic shows none', async () => {
+    await setState('header-done-active', { state: 'active', note: NOTE });
+    const p = await page('header-done-click', null, true);
+    await until(async () => (await subtitle(p)).text === 'Each release and what comes next', 'the active topic painted');
+    assert.equal(await doneButton(p), null, 'an active topic shows no ✅');
+    await setState('header-done-review', { state: 'review', note: LIVE });
+    const shown = await until(async () => { const b = await doneButton(p); return b?.visible && b; }, '✅ Done shows, live, once the topic is Ready for review');
+    assert.deepEqual([shown.name, shown.text, shown.beside, shown.height >= 44], ['Mark done', '✅ Done', true, true], 'a button named Mark done, right after the state, big enough to tap: ' + JSON.stringify(shown));
+    assert.equal((await subtitle(p)).text, 'Ready for review ✅ Done ' + LIVE);
+    const before = p.calls.length, count = Number(((await doneGroup(p))?.label.match(/\d+/) ?? [0])[0]);
+    await shot(p, 'header-review-done-button');
+    await p.point('#topic-description .mark-done');
+    const done = await until(async () => { const s = await subtitle(p); return s.states[0] === 'Done' && s; }, 'one click: the topic reads Done');
+    assert.equal(done.text, 'Done ' + LIVE, 'the note stays with it');
+    assert.equal(await doneButton(p), null, 'and the button is gone');
+    assert.deepEqual(updates(p, before).map(u => u.args), [{ state: 'done', keep_note: true }], 'one click, one change, as the Done chip makes it');
+    assert.deepEqual([(await held()).state, (await held()).state_note, (await held()).state_by], ['done', LIVE, facts.actor]);
+    // It moves into the outcome's Done group in the outline, as the chip moves it.
+    await until(async () => { const g = await doneGroup(p); return g && !g.hidden && !g.activeRow && g.label === `Done (${count + 1})`; }, 'the outline counts it Done and lists it no more among the active topics');
+    if (!(await doneGroup(p)).open) await p.point('#outline details.topic-group:not([hidden]) > summary');
+    await until(async () => (await doneGroup(p))?.inDone, 'opened, the Done group lists it');
+    await shot(p, 'header-review-marked-done');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header ✅ Done is reached with Tab and pressed with Return or Space, and the focus lands on the subtitle saying Done', async () => {
+    await setState('header-done-keys-review', { state: 'review', note: LIVE });
+    const p = await page('header-done-keys', null, true);
+    await until(async () => (await doneButton(p))?.visible, '✅ Done shows');
+    for (const [press, name] of [[q => q.key('Enter'), 'Return'], [space, 'Space']]) {
+      await until(async () => (await doneButton(p))?.visible, `✅ Done shows for ${name}`);
+      await p.evaluate(`document.querySelector('#settings-open').focus()`);
+      let stops = 0;
+      const onIt = () => p.evaluate(`document.activeElement?.classList.contains('mark-done')`);
+      while (!await onIt() && stops < 4) { await p.key('Tab'); stops += 1; }
+      assert.equal(await p.evaluate(`document.activeElement?.classList.contains('mark-done')`), true, `Tab from the gear reaches ✅ Done (${name})`);
+      assert.equal(await p.evaluate(`document.activeElement.matches(':focus-visible')`), true, 'its focus shows');
+      const before = p.calls.length;
+      await press(p);
+      await until(async () => (await subtitle(p)).states[0] === 'Done' && !await doneButton(p), `${name} marks it Done and the button goes`);
+      assert.deepEqual(updates(p, before).map(u => u.args), [{ state: 'done', keep_note: true }]);
+      assert.equal(await focused(p), 'topic-description', 'the focus is on the subtitle, which says Done');
+      if (name === 'Return') await setState('header-done-keys-again', { state: 'review', note: LIVE });
+    }
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header a reader who may not say where a topic stands sees Ready for review and no ✅', async () => {
+    const made = await control({ method: 'agent_topic', operation_id: 'header-done-watching', title: 'Shipped by the agent', body: 'Live now.', team: true, watching: true });
+    await control({ method: 'agent_state', operation_id: 'header-done-watching-review', topic_id: made.topic_id, sender: 'fixture-notebook-agent', args: { state: 'review', note: LIVE } });
+    assert.equal((await view('topic', { topic_id: made.topic_id })).topic.reader_may_say, false, 'Core does not let this reader say where it stands');
+    const p = await page('header-done-watching', null, true, { url: `${facts.origin}/?topic=${made.topic_id}` });
+    await until(async () => (await subtitle(p)).text === 'Ready for review ' + LIVE, 'the topic reads Ready for review');
+    assert.equal(await doneButton(p), null, 'no ✅ for a reader Core does not let say where it stands');
+    assert.equal(await p.evaluate(`document.querySelectorAll('#topic-state .state-chips button').length`), 0, 'and no chips in Topic settings either');
+    assert.deepEqual(p.errors, []);
+  });
+
   await check('header the gear opens Topic settings with where it stands set in place, no form; Escape closes it and the focus is back on the gear', async () => {
     await setState('header-gear-ongoing', { state: 'active', note: NOTE });
     const p = await page('header-gear', null, true);

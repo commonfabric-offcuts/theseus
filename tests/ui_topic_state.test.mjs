@@ -164,6 +164,34 @@ test('a tap on a chip saves that state at once and keeps the note without sendin
   assert.deepEqual(sent[2], [{ note: 'Which name?' }, { note: 'Shipped' }]);
 });
 
+// ✅ Done at the top of a topic Ready for review (Tony, 10 Nov) is the Done chip's tap.
+test('✅ Done marks the topic Done as the Done chip does, for a reader who may say where it stands, and says a refusal in Topic settings', async t => {
+  dom(t);
+  const painted = [];
+  const { host, panel, sent } = live({ state: 'review', state_note: 'Live in release 43 since 9:05 AM Tue Nov 10' }, [{ actor_id: 'tony' }], 'tony',
+    { painted: item => painted.push(item.state) });
+  assert.equal(panel.says, true);
+  await panel.markDone();
+  assert.deepEqual(sent, [[{ state: 'review', waiting_on: [] }, { state: 'done', keep_note: true }]], 'the state alone, fenced as a chip is; Core keeps the note');
+  assert.deepEqual([lit(host), painted.at(-1), panel.topic.state_note], [['Done'], 'done', 'Live in release 43 since 9:05 AM Tue Nov 10'], 'it reads Done, and the top of the topic is painted Done');
+  await panel.markDone();
+  assert.equal(sent.length, 1, 'pressed again once Done, it sends nothing');
+  // A reader Core does not let say where it stands is offered no ✅, and pressing sends nothing.
+  const reader = live({ state: 'review' }, [{ actor_id: 'someone-else' }], 'fable');
+  assert.equal(reader.panel.says, false);
+  await reader.panel.markDone();
+  assert.deepEqual(reader.sent, []);
+  // Refused because someone changed where it stands first: Topic settings opens to say so; a chip's refusal opens nothing.
+  const opened = [];
+  const refusing = new TopicStatePanel({ host: new Element('section'), reader: 'tony', attention: () => opened.push('open'), read: async () => null,
+    send: async () => ({ status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'changed' } }) });
+  refusing.paint(topic({ state: 'review' }), [{ actor_id: 'tony' }]);
+  await chip(refusing.host, 'Active').onclick(); await settled();
+  assert.deepEqual(opened, [], 'a tap inside Topic settings is answered there');
+  await refusing.markDone(); await settled();
+  assert.deepEqual([opened, controls(refusing.host).notice.textContent], [['open'], CHANGED]);
+});
+
 test('a note a message wrote when it reopened the topic is started afresh by a tap; words typed over it stay and save on Return', async t => {
   dom(t);
   const reopened = { state_note: 'Reopened by a new message', state_message_id: 'm9', state_by: 'fable' };

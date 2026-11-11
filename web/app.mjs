@@ -847,8 +847,9 @@ function participantPill(person) {
 // The top of the open topic: its title, its note as the subtitle, and the
 // gear, except on a conversation, which refuses every change Topic settings makes.
 function paintHeader(current) {
+  // ✅ Done on a topic Ready for review, for a reader who may say where it stands: the Done chip's tap.
   paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
-    { settings: current.kind !== 'conversation' });
+    { settings: current.kind !== 'conversation', done: topicState?.says ? () => topicState.markDone() : null });
   // A conversation's heading says what it is for and who answers, not where it stands.
   if (current.kind === 'conversation') {
     $('topic-title').textContent = CONVERSATION_TITLE;

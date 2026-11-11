@@ -36,7 +36,10 @@ the message's author (`state_by`) at the message's send time (`state_ms`),
 with the note "Reopened by a new message" and `state_message_id` naming the
 message. A post, a prepared send and a reply all do this; a refused send
 changes nothing. A message in a topic that is active, waiting or ready for
-review leaves its state as it was. The next `topic.update` that says where the
+review leaves its state as it was, who said it included: a topic the pipeline
+set Ready for review when its piece shipped stays the pipeline's own, so the
+shipping agent's "what to try" never takes it out of review
+([pipeline.md](pipeline.md)). The next `topic.update` that says where the
 topic stands replaces all of it and clears `state_message_id`, even one that
 keeps the state and gives no note: the note is then empty, since the reopen's
 note was the message's, not said. Topic reads, list items and a committed

@@ -212,7 +212,7 @@ release check's `--report`, and which piece a candidate's readings name.
   record of the commit already live) ships none, and the release combined next
   is the number after it.
 - **The derived state.** What each piece holds, how each piece ended and which
-  topics the pipeline holds Done are derived, not decided by whichever command
+  topics the pipeline holds shipped are derived, not decided by whichever command
   ran last. The facts are each outcome's log, in the order things happened
   (`pipeline_facts`, which keeps its past): every `piece_start` (a return to
   building among them), `combine`, drop (by a move or an Undo, or one per item
@@ -247,26 +247,40 @@ release check's `--report`, and which piece a candidate's readings name.
   to what took a release's items, and the database allows that rewrite and no
   other on a left stage entry. A combine (`combined`) and a finish (`done`) end
   a piece by their own act.
-- **A topic the pipeline holds Done.** The pipeline holds an ordinary topic
-  (never the outcome's conversation) Done, "Shipped in release N" (D1), while
-  none of its pieces has work left (an item still in one, or combined from one
-  and still being built, that no record names and no drop ended), no release in
-  it is being put together, and some of its work shipped, N the newest release
-  that shipped any. The pipeline writes the topic's state itself, by nobody, in
-  the transaction of the write that changed what it holds (`_settle`), at three
-  moments and no others. Starting to hold a topic sets it Done, "Shipped in
-  release N", whatever it stood at (active after a person's reopen, waiting or
-  in review), unless someone has said it is Done: for a topic it starts to hold,
-  the pipeline's rule wins over every word but a Done. Holding it with a newer N
-  rewrites the note, while the Done is still the pipeline's own (Done by
-  nobody, and no reopen since). Work for it appearing again (a piece started or
-  a release combined there, or an item going back to building from a piece
-  there) withdraws the hold, and the topic goes back to active with no note,
-  again only while its Done is the pipeline's own. A person's word given while
-  the pipeline holds a topic stands: a reopen (a message in a done topic, or
-  `state active`) keeps the topic active until the pipeline lets it go and then
+- **A topic the pipeline holds shipped.** The pipeline holds an ordinary topic
+  (never the outcome's conversation) shipped (D1) while none of its pieces has
+  work left (an item still in one, or combined from one and still being built,
+  that no record names and no drop ended), no release in it is being put
+  together, and some of its work shipped, N the newest release that shipped
+  any. Such a topic is **Ready for review**, "Live in release N since 9:05 AM
+  Tue Nov 10": the release's deployed time in the page's dated form
+  ([times.md](times.md)), in the time zone the deploy wrote it in. The person
+  marks it Done, with ✅ Done at the top of the topic
+  ([topic-settings.md](topic-settings.md#done-at-the-top-of-a-topic)) or the
+  Done chip; the pipeline never says a topic is Done, and neither should an
+  agent of a Build topic. The pipeline writes the topic's state itself, by
+  nobody, in the transaction of the write that changed what it holds
+  (`_settle`), at three moments and no others. Starting to hold a topic sets it
+  Ready for review whatever it stood at (active after a person's reopen,
+  waiting, or a review someone said), unless someone has said it is Done: for a
+  topic it starts to hold, the pipeline's rule wins over every word but a Done.
+  Holding it with a newer N rewrites the note, while the review is still the
+  pipeline's own (said by nobody, with no `state_message_id`). Work for it
+  appearing again (a piece started or a release combined there, or an item
+  going back to building from a piece there) withdraws the hold, and the topic
+  goes back to active with no note, again only while its state is the
+  pipeline's own. A person's word given while the pipeline holds a topic stands:
+  a Done, or any other state said since (`state active`, waiting, a review of
+  their own), keeps the topic as they said it until the pipeline lets it go and
   starts to hold it again, and a person's Done stays Done through a newer N and
-  the end of the hold.
+  the end of the hold. A message in the topic changes none of this: the
+  shipping agent's "what to try" leaves the pipeline's review as it is, still
+  the pipeline's own ([topic-list.md](topic-list.md#a-message-in-a-done-topic)).
+  Until 10 November 2026 the pipeline held such a topic Done, "Shipped in
+  release N"; those topics stay Done (nothing moves them to review), that Done
+  still counts as the pipeline's own when work for the topic appears again,
+  and a newer N leaves it Done. The table that keeps what the pipeline holds is
+  still named `pipeline_done_topics`.
 - Upgrading to version 30 writes version 29's pipeline as facts, in time
   order; the first pipeline write after the upgrade (the deploy's record is one)
   writes the state they derive.

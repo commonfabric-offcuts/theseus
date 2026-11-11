@@ -1,12 +1,32 @@
 # Topic settings: fields set in place
 
 Topic settings (the gear beside a topic's title) has no form and no Save.
+A topic Ready for review also offers ✅ Done at its top, outside Topic
+settings (below).
 Four chips say where the topic stands, and Waiting adds a chip for each of
 its people. The note, the reader's own part ("Your part") and, for whoever
 organises the outcome and the topic's creator, the title are one line each. A tap
 saves at once; a line saves on Return or when the person leaves it, by Tab,
 by a press elsewhere, by ✕ or by closing Topic settings. Escape in a line
 puts back what is saved.
+
+## ✅ Done at the top of a topic
+
+A topic Ready for review shows ✅ Done right after its state at the top of the
+topic, before the note, whoever set it there: a shipped piece's topic waits
+there for the person to mark it Done ([pipeline.md](pipeline.md)). It shows
+only to a reader Core lets say where the topic stands (its participants, its
+creator, whoever organises the outcome and whoever has written in it, as
+`reader_may_say` says); anyone else sees the state alone. No other state shows
+it, and a conversation never does.
+
+One click, tap, Return or Space is the Done chip's tap: the same field, the
+same `topic.update` (`{state: "done", keep_note: true}`, fenced on `state` and
+`waiting_on`), the same answers. The topic then reads Done with its note,
+moves into the outcome's Done group in the outline, and the button goes. The
+focus, if it was on the button, moves to the subtitle, which now says Done. A
+refusal or a lost answer is said in Topic settings, which opens for it. The
+button is `web/topic-header.mjs`; the tap is `TopicStatePanel.markDone`.
 
 ## The rule for each field
 

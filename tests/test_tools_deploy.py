@@ -1722,6 +1722,13 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
     def record(self, number, commit, items, source="deploy", at="2026-11-07T09:00:00-08:00"):
         return self.store.record_release({"release": number, "commit": commit, "deployed_at": at, "items": list(items), "source": source})
 
+    @staticmethod
+    def live(number, at=None):
+        """The note on a topic the pipeline holds shipped in this release (docs/pipeline.md): when it went live, in the
+        page's dated form, as record() writes a release after 22 and backfill() an older one, unless at says otherwise."""
+        when = datetime.datetime.fromisoformat(at or ("2026-11-07T09:00:00-08:00" if number > 22 else "2026-10-0%dT09:00:00-07:00" % number))
+        return "Live in release %d since %s" % (number, when.strftime("%-I:%M %p %a %b %-d"))
+
     def start_of(self, numbers, topic):
         return self.command("pipeline.piece_start", {"numbers": list(numbers), "topic_id": self.topic_of_w1(topic), "stage_id": "build"},
                             {"workspace_id": "w1"}, actor="agent-a")
@@ -1775,7 +1782,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         # One the records do not name is built as before.
         self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-three"))
 
-    def test_a_piece_whose_items_have_all_shipped_is_finished_and_its_topic_done(self):
+    def test_a_piece_whose_items_have_all_shipped_is_finished_and_its_topic_ready_for_review(self):
         # 7.2 step 11 (D1): the record of release 23 names items 1 to 4. Release 23's own topic and the piece of item 3
         # are finished, "Shipped in release 23"; the piece of items 4 and 5 still builds item 5, so it and its topic stay
         # as they are, and so does the release piece of another outcome that does not ship in releases.
@@ -1808,7 +1815,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                          (("build", "shipped", "Shipped in release 23"), ("build", "shipped", "Shipped in release 23"), [("build",)], [("build",)]))
         self.assertEqual(self.sql("SELECT id,state,state_note,state_by FROM topics WHERE id IN ('t1','t-three','t-45','t-six','t-w2') ORDER BY id"),
                          [("t-45", "active", "", None), ("t-six", "done", "Wrapped up early", "agent-a"),
-                          ("t-three", "done", "Shipped in release 23", None), ("t-w2", "active", "", None), ("t1", "done", "Shipped in release 23", None)])
+                          ("t-three", "review", self.live(23), None), ("t-w2", "active", "", None), ("t1", "review", self.live(23), None)])
         # Nothing reads an open piece as the release once it has shipped, and the other outcome builds its own item 1.
         self.assertEqual(self.live_view()["release_piece"], None)
         self.committed(self.command("pipeline.piece_start", {"numbers": theirs[:1], "topic_id": self.topic_of_w1("t-w2b", workspace="w2"),
@@ -1830,7 +1837,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
 
     def test_a_release_sharing_its_topic_with_a_piece_whose_item_went_back_leaves_that_topic_open(self):
         # 7.2 step 11 (D1): release 24 is put together in Q's own topic, t-q, and its record names only item 3. Release 24
-        # has shipped, but item 4, combined from Q, went back to building, so Q's topic is not Done while item 4 is built there.
+        # has shipped, but item 4, combined from Q, went back to building, so Q's topic is not ready for review while item 4 is built there.
         release = self.release_24_from_its_own_topic("t-q")
         self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
         self.assertEqual((self.entries(release)[-1], self.members(release)), (("combine", "shipped", "Shipped in release 24"), [(3, None), (4, "returned")]))
@@ -1839,7 +1846,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                                             actor="agent-a"))["piece_id"]
         self.assertEqual(self.topics("t-q"), [("t-q", "active", "")])
         self.assertTrue(self.record(25, "e" * 40, [4])["recorded"])
-        self.assertEqual((self.entries(again)[-1], self.topics("t-q")), (("build", "shipped", "Shipped in release 25"), [("t-q", "done", "Shipped in release 25")]))
+        self.assertEqual((self.entries(again)[-1], self.topics("t-q")), (("build", "shipped", "Shipped in release 25"), [("t-q", "review", self.live(25))]))
 
     def test_an_item_a_record_ships_from_a_piece_still_being_built_leaves_it_and_is_never_combined_again(self):
         # Item 3 is built in piece P with item 4 when the record of release 23 names it (a trailer on release 23's commit):
@@ -1853,7 +1860,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"]["items"], [4])
         # Item 4 ships in release 24, and P with it.
         self.assertTrue(self.record(24, "a" * 40, [4])["recorded"])
-        self.assertEqual(self.topics("t-p"), [("t-p", "done", "Shipped in release 24")])
+        self.assertEqual(self.topics("t-p"), [("t-p", "review", self.live(24))])
 
     def test_a_piece_whose_combined_item_its_release_left_out_has_not_finished(self):
         # 7.2 step 11 (D1): items 3 and 4 left piece Q when it was combined, and release 24's record names only item 3, so
@@ -1861,13 +1868,13 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         release = self.release_24_from_its_own_topic()
         self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
         self.assertEqual((self.entries(release)[-1], self.members(release)), (("combine", "shipped", "Shipped in release 24"), [(3, None), (4, "returned")]))
-        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "done", "Shipped in release 24"), ("t-q", "active", "")])
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "review", self.live(24)), ("t-q", "active", "")])
         again = self.committed(self.command("pipeline.piece_start", {"numbers": [4], "topic_id": "t-q", "stage_id": "build"}, {"workspace_id": "w1"},
                                             actor="agent-a"))["piece_id"]
         self.assertEqual(self.topics("t-q"), [("t-q", "active", "")])
         # Once item 4 ships too, Q and the piece building item 4 are finished, and so is their topic.
         self.assertTrue(self.record(25, "e" * 40, [4])["recorded"])
-        self.assertEqual((self.entries(again)[-1], self.topics("t-q")), (("build", "shipped", "Shipped in release 25"), [("t-q", "done", "Shipped in release 25")]))
+        self.assertEqual((self.entries(again)[-1], self.topics("t-q")), (("build", "shipped", "Shipped in release 25"), [("t-q", "review", self.live(25))]))
 
     def test_a_piece_whose_combined_item_was_dropped_from_its_release_finishes_with_the_rest(self):
         # Item 4 was combined from Q into release 24 and dropped there, so it never ships: Q finishes when item 3 does.
@@ -1877,7 +1884,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                                     {"item_revision": version}, actor="owner"))
         self.assertEqual(self.members(release), [(3, None), (4, "dropped")])
         self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
-        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "done", "Shipped in release 24"), ("t-q", "done", "Shipped in release 24")])
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "review", self.live(24)), ("t-q", "review", self.live(24))])
 
     def test_older_records_that_take_every_item_out_of_the_release_end_it_unshipped(self):
         # An older record ends no release (3.4): one naming item 3 leaves release 24 open with item 4, and Q, whose item 4 is
@@ -1892,7 +1899,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual((self.entries(release)[-1], self.members(release)), (("combine", "held", "Its last items shipped in release 6"),
                                                                               [(3, "returned"), (4, "returned")]))
         self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 24))
-        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "active", ""), ("t-q", "done", "Shipped in release 6")])
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "active", ""), ("t-q", "review", self.live(6, "2026-10-02T09:00:00-07:00"))])
         new = self.approved([self.add("Item 5", section="now", size="small")], self.topic_of_w1("t-five"))
         self.assertEqual(self.committed(self.combine([new], topic_id="t-24"))["release_number"], 24)
 
@@ -1901,7 +1908,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertTrue(self.record(5, "a" * 40, [3, 4], source="backfill", at="2026-10-01T09:00:00-07:00")["recorded"])
         self.assertEqual(self.entries(release)[-1], ("combine", "held", "Its last items shipped in release 5"))
         self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 24))
-        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "active", ""), ("t-q", "done", "Shipped in release 5")])
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "active", ""), ("t-q", "review", self.live(5, "2026-10-01T09:00:00-07:00"))])
 
     # ---- the end of a piece is one rule over the facts, whatever order they come in (3.4, D1, D25) -------------------
 
@@ -1940,12 +1947,12 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
 
     def test_a_piece_whose_last_item_is_dropped_after_its_other_item_shipped_has_shipped_whichever_came_first(self):
         # Reviewer's case A: piece P builds items 3 and 4 in t-p. Release 5, recorded late, names item 3, and item 4 is
-        # dropped. Every item P held has shipped or left it and one shipped, so P has shipped and t-p is Done (D1), in
+        # dropped. Every item P held has shipped or left it and one shipped, so P has shipped and t-p is ready for review (D1), in
         # either order; the drop used to end P `dropped` by its own test and leave t-p open when it came last.
         piece = self.committed(self.start_of([self.add("Item %d" % n, section="now", size="small") for n in (3, 4)], "t-p"))["piece_id"]
         self.assert_one_end({"release 5 names 3": lambda: self.backfill(5, [3]), "drop 4": lambda: self.drop(4)},
                             lambda: self.end_of(piece, "t-p"),
-                            (("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)))
+                            (("build", "shipped", "Shipped in release 5"), (), (("t-p", "review", self.live(5)),)))
 
     def test_a_piece_whose_combined_item_is_dropped_after_its_release_shipped_finishes_whichever_came_first(self):
         # Reviewer's case B: release 24 holds items 3 and 4, combined from Q in t-q. Its record names item 3, and item 4 is
@@ -1955,7 +1962,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                              "drop 4": lambda: self.drop(4)},
                             lambda: self.end_of(release, "t-24", "t-q"),
                             (("combine", "shipped", "Shipped in release 24"), (3,),
-                             (("t-24", "done", "Shipped in release 24"), ("t-q", "done", "Shipped in release 24"))))
+                             (("t-24", "review", self.live(24)), ("t-q", "review", self.live(24)))))
 
     def test_a_release_taken_apart_by_a_return_and_a_drop_ends_held_whichever_came_first(self):
         # D35 and D25 on one release: item 1 goes back to building and item 2 is dropped. The release ends held, saying
@@ -1972,7 +1979,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         # Piece P builds items 3, 4 and 6 in t-p while release 23 (items 1 and 2) is held in checks. Releases 5 and 6,
         # recorded late, name items 3 and 6; item 4 is dropped; item 1 goes back to building from the release (D35); item 1
         # is moved below item 5 in Now. In all 120 orders P has shipped, "Shipped in release 6" (the newest record naming
-        # one of its items), t-p is Done with it, the release stays open with item 2 and t1 stays open.
+        # one of its items), t-p is ready for review with it, the release stays open with item 2 and t1 stays open.
         self.recorded("d" * 40, units="failed")
         numbers = [self.add("Item %d" % n, section="now", size="small") for n in (3, 4, 5, 6)]
         self.assertEqual(numbers, [3, 4, 5, 6])
@@ -1987,7 +1994,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                                                                                           "from_release": True}, {"workspace_id": "w1"})),
                  "move 1": move}
         self.assert_one_end(facts, lambda: (self.end_of(piece, "t-p"), self.end_of(self.release, "t1")),
-                            ((("build", "shipped", "Shipped in release 6"), (), (("t-p", "done", "Shipped in release 6"),)),
+                            ((("build", "shipped", "Shipped in release 6"), (), (("t-p", "review", self.live(6)),)),
                              (("checks", None, ""), (2,), (("t1", "active", ""),))))
 
     def test_turning_releases_on_decides_what_shipped_as_a_record_would_whichever_came_first(self):
@@ -2002,11 +2009,11 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         piece = self.committed(self.start_of(numbers, "t-p"))["piece_id"]
         self.assert_one_end({"releases on": lambda: self.committed(self.on(ships_in_releases=True)), "drop 4": lambda: self.drop(4)},
                             lambda: self.end_of(piece, "t-p"),
-                            (("build", "shipped", "Shipped in release 24"), (), (("t-p", "done", "Shipped in release 24"),)))
+                            (("build", "shipped", "Shipped in release 24"), (), (("t-p", "review", self.live(24)),)))
 
     def test_combining_work_into_the_topic_of_a_shipped_piece_keeps_that_topic_open_whichever_came_first(self):
         # Reviewer's case: piece P builds item 3 in t-p; release 5, recorded late, names item 3; approved piece Q (item 4)
-        # is combined as release 24 in t-p. Release 24 is being put together in t-p, so t-p is not Done, in either order;
+        # is combined as release 24 in t-p. Release 24 is being put together in t-p, so t-p is not ready for review, in either order;
         # the record used to close t-p "Shipped in release 5" when it came first, and the combine never opened it again.
         self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
         three, four = (self.add("Item %d" % n, section="now", size="small") for n in (3, 4))
@@ -2018,7 +2025,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
 
     def test_new_work_in_the_topic_of_a_shipped_release_keeps_that_topic_open_whichever_came_first(self):
         # Reviewer's case: release 24 holds Q's items 3 and 4 (Q in t-q); its record names both, and item 5 starts in t-q.
-        # Item 5 is being built in t-q, so t-q is not Done, in either order; the record used to close t-q when it came
+        # Item 5 is being built in t-q, so t-q is not ready for review, in either order; the record used to close t-q when it came
         # first, and the start never opened it again.
         self.release_24_from_its_own_topic()
         five = self.add("Item 5", section="now", size="small")
@@ -2047,7 +2054,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
             return self.end_of(made["release"], "t-24", "t-q"), tuple(self.members(waiting)), tuple(self.members(made["release"]))
         self.assert_one_end({"drop 3": lambda: self.drop(3), "combine Q": combine}, recorded_then_the_end,
                             ((("combine", "shipped", "Shipped in release 24"), (3, 4),
-                              (("t-24", "done", "Shipped in release 24"), ("t-q", "done", "Shipped in release 24"))),
+                              (("t-24", "review", self.live(24)), ("t-q", "review", self.live(24)))),
                              ((3, "combined"), (4, "combined")), ((3, None), (4, None))))
 
     def test_an_older_record_naming_an_item_dropped_before_its_piece_was_combined_ships_it_from_that_release_whichever_came_first(self):
@@ -2072,7 +2079,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
     def test_the_state_is_one_whatever_order_starts_combines_a_record_a_drop_and_a_move_come_in(self):
         # Release 23 has shipped. Piece P builds item 6 in t-p, and Q (items 3 and 4, in t-q) is approved. Q is combined as
         # release 24 in t-24; item 5 starts in t-5; release 5, recorded late, names item 6; item 3 is dropped (from Q, or
-        # from release 24); item 5 is moved below item 6. In all 120 orders P has shipped in release 5 and t-p is Done with
+        # from release 24); item 5 is moved below item 6. In all 120 orders P has shipped in release 5 and t-p is ready for review with
         # it, release 24 holds item 4 and keeps t-24 open, t-q stays open while item 4 is in release 24, and t-5 is open
         # with item 5's work.
         self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
@@ -2094,7 +2101,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                  "start 5 in t-5": lambda: self.committed(self.command("pipeline.piece_start", {"numbers": [5], "topic_id": "t-5", "stage_id": "build"},
                                                                        {"workspace_id": "w1"}, actor="agent-a"))}
         self.assert_one_end(facts, lambda: (self.end_of(piece, "t-p"), self.end_of(made["release"], "t-24", "t-q"), tuple(self.topics("t-5"))),
-                            ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)),
+                            ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "review", self.live(5)),)),
                              (("combine", None, ""), (4,), (("t-24", "active", ""), ("t-q", "active", ""))), (("t-5", "active", ""),)))
 
     def test_an_item_dropped_and_put_back_before_its_piece_was_combined_is_still_that_pieces_work(self):
@@ -2113,11 +2120,11 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
 
     def test_a_release_recorded_with_none_of_its_items_in_a_topic_of_its_own_closes_that_topic(self):
         # Release 24, put together in t-24 from Q's items 3 and 4, is recorded with no items: it has shipped, so t-24, where
-        # nothing else is built, is Done; items 3 and 4 went back to building, so Q's topic is not.
+        # nothing else is built, is ready for review; items 3 and 4 went back to building, so Q's topic is not.
         release = self.release_24_from_its_own_topic()
         self.assertTrue(self.record(24, "a" * 40, [])["recorded"])
         self.assertEqual(self.end_of(release, "t-24", "t-q"), (("combine", "shipped", "Shipped in release 24"), (),
-                                                               (("t-24", "done", "Shipped in release 24"), ("t-q", "active", ""))))
+                                                               (("t-24", "review", self.live(24)), ("t-q", "active", ""))))
 
     # ---- a record overtakes the acts it makes impossible: what it names shipped, as if it had come first (3.4, D25) ----
 
@@ -2157,14 +2164,14 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
     def test_a_record_naming_an_item_dropped_from_its_piece_ships_that_piece_and_closes_its_topic(self):
         # Review case (a): the deploy takes a record's items from its commits' trailers, so a record can name an item
         # already dropped. Piece P built item 3 alone in t-p; item 3 is dropped, and release 5, recorded late, names it.
-        # Item 3 shipped, so P has shipped and t-p is Done, as when the record came first and the drop was refused; the
+        # Item 3 shipped, so P has shipped and t-p is ready for review, as when the record came first and the drop was refused; the
         # drop used to end P `dropped` for good and leave t-p open while item 3 read as shipped, and the page showed it
         # in Dropped with the dropped glyph.
         piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-p"))["piece_id"]
         self.ship_naming([1, 2])
         self.assert_one_end_overtaken({"drop 3": lambda: self.drop_unless_shipped(3), "release 5 names 3": lambda: self.backfill(5, [3])},
                                       lambda: (self.end_of(piece, "t-p"), self.item_shipped(3)),
-                                      ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)), (5, "shipped", False)))
+                                      ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "review", self.live(5)),)), (5, "shipped", False)))
 
     def item_shipped(self, number):
         """How the page reads an item: the release it shipped in, its glyph, and whether Dropped lists it."""
@@ -2175,7 +2182,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
     def test_the_record_of_a_release_naming_an_item_dropped_from_it_keeps_that_item_in_it_and_closes_its_topic(self):
         # Review case (b): release 24 is combined from Q (item 4, t-q) and Q2 (item 3, t-q2) in t-24. Item 4 is dropped from
         # the release, and release 24's record names items 3 and 4: item 4 shipped in release 24, so it stays in that
-        # release and Q's topic is Done, as when the record came first. t-q used to stay open with item 4 shipped.
+        # release and Q's topic is ready for review, as when the record came first. t-q used to stay open with item 4 shipped.
         self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
         three, four = (self.add("Item %d" % n, section="now", size="small") for n in (3, 4))
         pieces = [self.approved([four], self.topic_of_w1("t-q")), self.approved([three], self.topic_of_w1("t-q2"))]
@@ -2184,23 +2191,23 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assert_one_end_overtaken({"drop 4": lambda: self.drop_unless_shipped(4),
                                        "release 24 names 3 and 4": lambda: self.assertTrue(self.record(24, "a" * 40, [3, 4])["recorded"])},
                                       lambda: self.end_of(release, "t-24", "t-q", "t-q2"),
-                                      (("combine", "shipped", shipped), (3, 4), (("t-24", "done", shipped), ("t-q", "done", shipped), ("t-q2", "done", shipped))))
+                                      (("combine", "shipped", shipped), (3, 4), (("t-24", "review", self.live(24)), ("t-q", "review", self.live(24)), ("t-q2", "review", self.live(24)))))
 
     def test_the_record_of_a_release_emptied_by_drops_it_overtakes_ships_that_release(self):
         # Release 24 (items 3 and 4 from Q in t-q, put together in t-24) loses both items to drops, so it ended and never
         # held its number; release 24's record then names them. It ships release 24 as it would have before the drops: the
-        # release is left `shipped` holding them, both topics are Done, and the next release is 25.
+        # release is left `shipped` holding them, both topics are ready for review, and the next release is 25.
         release = self.release_24_from_its_own_topic()
         shipped = "Shipped in release 24"
         self.assert_one_end_overtaken({"drop 3": lambda: self.drop_unless_shipped(3), "drop 4": lambda: self.drop_unless_shipped(4),
                                        "release 24 names 3 and 4": lambda: self.assertTrue(self.record(24, "a" * 40, [3, 4])["recorded"])},
                                       lambda: (self.end_of(release, "t-24", "t-q"), self.live_view()["release_piece"], self.live_view()["candidate_release"]),
-                                      ((("combine", "shipped", shipped), (3, 4), (("t-24", "done", shipped), ("t-q", "done", shipped))), None, 25))
+                                      ((("combine", "shipped", shipped), (3, 4), (("t-24", "review", self.live(24)), ("t-q", "review", self.live(24)))), None, 25))
 
     def test_the_record_of_the_next_release_ships_the_release_open_though_it_overtakes_a_drop_from_one_emptied_before(self):
         # Release 24's items 3 and 4 are both dropped, so it ended and passed its number on: item 5's piece is combined as
         # release 24 and deployed, and its record names item 5 and, from an older trailer, item 3. The release deployed is
-        # the one it ships; the emptied release only learns where item 3 went, and Q's topic is Done. (Had the record come
+        # the one it ships; the emptied release only learns where item 3 went, and Q's topic is ready for review. (Had the record come
         # before the drops, the combine would have made release 25, refused here as release 24: not the same facts.)
         release = self.release_24_from_its_own_topic()
         five = self.approved([self.add("Item 5", section="now", size="small")], self.topic_of_w1("t-five"))
@@ -2210,31 +2217,31 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertTrue(self.record(24, "a" * 40, [3, 5])["recorded"])
         shipped = "Shipped in release 24"
         self.assertEqual((self.end_of(release, "t-24", "t-q"), self.end_of(later, "t-25", "t-five")),
-                         ((("combine", "held", "Its items shipped in release 24 or were dropped"), (), (("t-24", "active", ""), ("t-q", "done", shipped))),
-                          (("combine", "shipped", shipped), (5,), (("t-25", "done", shipped), ("t-five", "done", shipped)))))
+                         ((("combine", "held", "Its items shipped in release 24 or were dropped"), (), (("t-24", "active", ""), ("t-q", "review", self.live(24)))),
+                          (("combine", "shipped", shipped), (5,), (("t-25", "review", self.live(24)), ("t-five", "review", self.live(24))))))
         self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 25))
 
     def test_a_release_emptied_by_drops_is_shipped_only_by_the_record_of_its_own_number(self):
         # Release 24 loses items 3 and 4 to drops; release 24 is then recorded naming neither (a hotfix, with no release
         # open), and release 25 names item 3. The emptied release would have been release 24, not 25, so release 25 does
-        # not ship it: it says item 3 shipped in release 25 and item 4 was dropped, and Q's topic is Done.
+        # not ship it: it says item 3 shipped in release 25 and item 4 was dropped, and Q's topic is ready for review.
         release = self.release_24_from_its_own_topic()
         self.drop(3)
         self.drop(4)
         self.assertTrue(self.record(24, "a" * 40, [])["recorded"])
         self.assertTrue(self.record(25, "e" * 40, [3])["recorded"])
         self.assertEqual(self.end_of(release, "t-24", "t-q"), (("combine", "held", "Its items shipped in release 25 or were dropped"), (),
-                                                               (("t-24", "active", ""), ("t-q", "done", "Shipped in release 25"))))
+                                                               (("t-24", "active", ""), ("t-q", "review", self.live(25)))))
 
     def test_an_older_record_naming_items_dropped_from_the_release_says_where_they_went(self):
         # Release 5, recorded late, names items 3 and 4, both dropped from release 24: they shipped in release 5, so the
-        # emptied release says so and Q's topic is Done, as when the record came first and they left it `returned`.
+        # emptied release says so and Q's topic is ready for review, as when the record came first and they left it `returned`.
         release = self.release_24_from_its_own_topic()
         self.assert_one_end_overtaken({"drop 3": lambda: self.drop_unless_shipped(3), "drop 4": lambda: self.drop_unless_shipped(4),
                                        "release 5 names 3 and 4": lambda: self.backfill(5, [3, 4])},
                                       lambda: self.end_of(release, "t-24", "t-q"),
                                       (("combine", "held", "Its last items shipped in release 5"), (),
-                                       (("t-24", "active", ""), ("t-q", "done", "Shipped in release 5"))))
+                                       (("t-24", "active", ""), ("t-q", "review", self.live(5)))))
 
     def test_a_newer_record_naming_an_item_dropped_after_its_piece_shipped_is_the_release_it_shipped_in(self):
         # P builds items 3 and 4 in t-p; release 5 names item 3, item 4 is dropped, and release 7 names item 4. Every order
@@ -2245,7 +2252,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assert_one_end_overtaken({"release 5 names 3": lambda: self.backfill(5, [3]), "drop 4": lambda: self.drop_unless_shipped(4),
                                        "release 7 names 4": lambda: self.backfill(7, [4])},
                                       lambda: self.end_of(piece, "t-p"),
-                                      (("build", "shipped", "Shipped in release 7"), (), (("t-p", "done", "Shipped in release 7"),)))
+                                      (("build", "shipped", "Shipped in release 7"), (), (("t-p", "review", self.live(7)),)))
 
     def test_turning_releases_on_overtakes_a_drop_of_an_item_a_record_names(self):
         # Out of releases, release 24's record names item 4 of piece P (items 3 and 4, t-p), which is then dropped, as is
@@ -2258,10 +2265,10 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assert_one_end_overtaken({"releases on": lambda: self.committed(self.on(ships_in_releases=True)),
                                        "drop 4": lambda: self.drop_unless_shipped(4), "drop 3": lambda: self.drop_unless_shipped(3)},
                                       lambda: self.end_of(piece, "t-p"),
-                                      (("build", "shipped", "Shipped in release 24"), (), (("t-p", "done", "Shipped in release 24"),)))
+                                      (("build", "shipped", "Shipped in release 24"), (), (("t-p", "review", self.live(24)),)))
 
     def test_turning_releases_back_on_never_takes_back_what_a_piece_shipped(self):
-        # P's item 3 shipped in release 5, so P has shipped and t-p is Done. Out of releases item 3 reads as unshipped and is
+        # P's item 3 shipped in release 5, so P has shipped and t-p is ready for review. Out of releases item 3 reads as unshipped and is
         # dropped and put back; turning releases back on decides P's end again, which only a record overtaking a drop
         # changes, and never from shipped: P and t-p stay as they were.
         self.ship_naming([1, 2])
@@ -2272,7 +2279,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=3")[0][0]
         self.committed(self.command("pipeline.item_move", {"section": "now"}, {"workspace_id": "w1", "number": 3}, {"item_revision": version}, actor="owner"))
         self.committed(self.on(ships_in_releases=True))
-        self.assertEqual(self.end_of(piece, "t-p"), (("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)))
+        self.assertEqual(self.end_of(piece, "t-p"), (("build", "shipped", "Shipped in release 5"), (), (("t-p", "review", self.live(5)),)))
 
     def test_an_item_put_back_after_its_drop_is_new_work_whatever_ships_it(self):
         # Item 3 is dropped from P (t-p), put back and built again by P2 (t-p2), which release 5 ships. Only the drop the
@@ -2286,7 +2293,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.backfill(5, [3])
         self.assertEqual((self.end_of(piece, "t-p"), self.end_of(again, "t-p2")),
                          ((("build", "dropped", ""), (), (("t-p", "active", ""),)),
-                          (("build", "shipped", "Shipped in release 5"), (), (("t-p2", "done", "Shipped in release 5"),))))
+                          (("build", "shipped", "Shipped in release 5"), (), (("t-p2", "review", self.live(5)),))))
 
     def test_an_item_put_back_after_its_drop_from_a_release_ships_as_new_work(self):
         # Release 24 (items 3 and 4 from Q) loses both to drops; item 3 is put back and built by P2 in t-p2, and release
@@ -2301,7 +2308,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
         self.assertEqual((self.end_of(release, "t-24", "t-q"), self.end_of(again, "t-p2")),
                          ((("combine", "dropped", ""), (), (("t-24", "active", ""), ("t-q", "active", ""))),
-                          (("build", "shipped", "Shipped in release 24"), (), (("t-p2", "done", "Shipped in release 24"),))))
+                          (("build", "shipped", "Shipped in release 24"), (), (("t-p2", "review", self.live(24)),))))
 
     def unless_shipped(self, name, receipt):
         """An act a record makes impossible: applied before the record, refused after it (ITEM_SHIPPED)."""
@@ -2325,14 +2332,14 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                  "release 24 names 3": lambda: self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])}
         shipped = "Shipped in release 24"
         self.assert_one_end_overtaken(facts, lambda: (self.end_of(release, "t-24", "t-q"), self.item_shipped(4)),
-                                      ((("combine", "shipped", shipped), (3,), (("t-24", "done", shipped), ("t-q", "done", shipped))), (5, "shipped", False)),
+                                      ((("combine", "shipped", shipped), (3,), (("t-24", "review", self.live(24)), ("t-q", "review", self.live(24)))), (5, "shipped", False)),
                                       orders=[("drop 4", "release 5 names 4", "release 24 names 3"), ("release 5 names 4", "drop 4", "release 24 names 3")])
 
     def test_a_release_never_takes_back_an_item_a_finished_piece_keeps(self):
         # Release 23 (items 1 and 2), held by a failed check, sends both back to building in t-fix and ends. Releases are
         # turned off, the piece in t-fix finishes (a finished piece keeps its items), and releases are turned on again before
         # release 23's record names them. The finished piece keeps them, so release 23 is not shipped holding them: the
-        # record is written, the emptied release says they shipped in release 23, and t1, whose work they were, is Done.
+        # record is written, the emptied release says they shipped in release 23, and t1, whose work they were, is ready for review.
         self.recorded("d" * 40, units="failed")
         self.topic_of_w1("t-fix")
         piece = self.committed(self.command("pipeline.piece_start", {"numbers": [1, 2], "topic_id": "t-fix", "stage_id": "build", "from_release": True},
@@ -2342,7 +2349,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.committed(self.on(ships_in_releases=True))
         self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
         self.assertEqual((self.end_of(self.release, "t1"), self.members(piece)),
-                         ((("checks", "held", "Its last items shipped in release 23"), (), (("t1", "done", "Shipped in release 23"),)), [(1, None), (2, None)]))
+                         ((("checks", "held", "Its last items shipped in release 23"), (), (("t1", "review", self.live(23)),)), [(1, None), (2, None)]))
 
     def test_a_record_naming_none_of_an_emptied_releases_items_never_ships_it(self):
         # Review T2: release 24 (items 3 and 4) loses both to drops, release 5, recorded late, names item 3, and release 24
@@ -2353,14 +2360,14 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                  "release 5 names 3": lambda: self.backfill(5, [3]), "release 24 names none": lambda: self.assertTrue(self.record(24, "a" * 40, [])["recorded"])}
         self.assert_one_end_overtaken(facts, lambda: (self.end_of(release, "t-24", "t-q"), self.live_view()["release_piece"], self.live_view()["candidate_release"]),
                                       ((("combine", "held", "Its items shipped in release 5 or were dropped"), (),
-                                        (("t-24", "active", ""), ("t-q", "done", "Shipped in release 5"))), None, 25),
+                                        (("t-24", "active", ""), ("t-q", "review", self.live(5)))), None, 25),
                                       orders=[("drop 3", "drop 4", "release 5 names 3", "release 24 names none"),
                                               ("release 5 names 3", "drop 3", "drop 4", "release 24 names none")])
 
     def test_the_record_of_a_release_whose_items_went_back_to_building_ships_that_release_holding_them(self):
         # Review T3: release 23 (items 1 and 2) is held by a failed check; both go back to building in t-fix, and release
         # 23's record (a went-live or kept record written late) names them. A return is refused after the record as a drop
-        # is, so the record wins over it too: release 23 ships holding items 1 and 2, and t1 is Done, in either order.
+        # is, so the record wins over it too: release 23 ships holding items 1 and 2, and t1 is ready for review, in either order.
         self.recorded("d" * 40, units="failed")
         self.applied, self.overtaken = set(), set()
         self.topic_of_w1("t-fix")
@@ -2370,20 +2377,20 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         shipped = "Shipped in release 23"
         states = self.in_every_order(facts, lambda: (self.end_of(self.release, "t1"), self.item_shipped(1), self.item_shipped(2),
                                                      self.live_view()["release_piece"], self.live_view()["candidate_release"]))
-        self.assertEqual(list(states), [((("checks", "shipped", shipped), (1, 2), (("t1", "done", shipped),)), (23, "shipped", False),
+        self.assertEqual(list(states), [((("checks", "shipped", shipped), (1, 2), (("t1", "review", self.live(23)),)), (23, "shipped", False),
                                          (23, "shipped", False), None, 24)], states)
         self.assertEqual((self.applied, self.overtaken), ({"return"}, {"return"}))
 
     def test_an_item_dropped_and_put_back_but_never_built_again_ships_from_the_piece_it_was_dropped_from(self):
         # Review T4: piece P builds item 3 alone in t-p; item 3 is dropped (ending P) and put back in Now, as an Undo does,
         # and nothing builds it again before release 5, recorded late, names it. No piece took it since the drop, so the
-        # record overtakes the drop: P has shipped and t-p is Done, as when the record came first.
+        # record overtakes the drop: P has shipped and t-p is ready for review, as when the record came first.
         piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-p"))["piece_id"]
         self.ship_naming([1, 2])
         self.assert_one_end_overtaken({"drop 3": lambda: self.drop_unless_shipped(3), "put back 3": lambda: self.put_back_unless_shipped(3),
                                        "release 5 names 3": lambda: self.backfill(5, [3])},
                                       lambda: (self.end_of(piece, "t-p"), self.item_shipped(3)),
-                                      ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)), (5, "shipped", False)),
+                                      ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "review", self.live(5)),)), (5, "shipped", False)),
                                       orders=[("drop 3", "put back 3", "release 5 names 3"), ("release 5 names 3", "drop 3", "put back 3")])
 
     def test_a_topic_whose_only_piece_was_dropped_stays_open_whatever_ships_after(self):
@@ -2406,10 +2413,10 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
 
     def test_a_persons_reopen_or_done_of_a_topic_the_pipeline_closed_stands_against_a_later_record(self):
         # P builds items 3 and 4 in t-p, Q builds 5 and 6 in t-q; 3 and 5 are dropped. Release 5, recorded late, names 4 and
-        # 6, so both pieces have shipped and the pipeline holds both topics Done. The owner reopens t-p and says t-q is done
+        # 6, so both pieces have shipped and the pipeline holds both topics shipped, ready for review. The owner reopens t-p and says t-q is done
         # in their own words. Release 6, recorded late, names 3 and 5: the drops count for nothing, both pieces shipped in
         # release 6 and the pipeline holds both topics with it, yet each topic keeps the person's word (docs/pipeline.md,
-        # "A topic the pipeline holds Done"; review follow-up 1).
+        # "A topic the pipeline holds shipped"; review follow-up 1).
         self.ship_naming([1, 2])
         p = self.committed(self.start_of([self.add("Item %d" % n, section="now", size="small") for n in (3, 4)], "t-p"))["piece_id"]
         q = self.committed(self.start_of([self.add("Item %d" % n, section="now", size="small") for n in (5, 6)], "t-q"))["piece_id"]
@@ -2417,8 +2424,8 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.drop(5)
         self.backfill(5, [4, 6])
         self.assertEqual((self.end_of(p, "t-p"), self.end_of(q, "t-q")),
-                         ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)),
-                          (("build", "shipped", "Shipped in release 5"), (), (("t-q", "done", "Shipped in release 5"),))))
+                         ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "review", self.live(5)),)),
+                          (("build", "shipped", "Shipped in release 5"), (), (("t-q", "review", self.live(5)),))))
         for topic, args in (("t-p", {"state": "active"}), ("t-q", {"state": "done", "note": "Wrapped up"})):
             version = self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]
             self.committed(self.command("topic.update", args, {"topic_id": topic}, {"topic_revision": version}, actor="owner"))
@@ -2475,12 +2482,16 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                                                              "(kind='ships' AND json_extract(payload,'$.on')))", (workspace, left_ms)).fetchone()
                 self.assertTrue(left_by == "owner" or by_a_record, "%s: %s left %s by %s" % (said, piece, stage, left_by))
             for topic in db.execute("SELECT t.* FROM topics t WHERE t.id IN (SELECT topic_id FROM pipeline_pieces WHERE workspace_id=?)", (workspace,)):
-                its_own = topic["state"] == "done" and topic["state_by"] is None and topic["state_message_id"] is None
-                if topic["id"] in state.done_topics and topic["state_by"] is None and topic["state_message_id"] is None:
-                    # Nobody has said anything since the pipeline did: it is Done with the release that shipped the last of it.
-                    self.assertEqual((topic["state"], topic["state_note"]), ("done", "Shipped in release %d" % state.done_topics[topic["id"]]), said)
+                nobodys = topic["state_by"] is None and topic["state_message_id"] is None
+                # The pipeline never says a topic is Done: only a person does.
+                self.assertFalse(nobodys and topic["state"] == "done", "%s: %s is Done by nobody" % (said, topic["id"]))
+                if topic["id"] in state.done_topics and nobodys:
+                    # Nobody has said anything since the pipeline did: it is Ready for review, live since the release that
+                    # shipped the last of it.
+                    self.assertEqual((topic["state"], topic["state_note"]), ("review", self.live(state.done_topics[topic["id"]], db.execute(
+                        "SELECT deployed_at FROM releases WHERE number=?", (state.done_topics[topic["id"]],)).fetchone()[0])), said)
                 elif topic["id"] not in state.done_topics:
-                    self.assertFalse(its_own, "%s: %s is held Done by nobody with work left in it" % (said, topic["id"]))
+                    self.assertFalse(nobodys and topic["state"] == "review", "%s: %s is held for review by nobody with work left in it" % (said, topic["id"]))
 
     def words(self):
         """Every topic's (state, note, who said it, the message that reopened it), and the topics the pipeline holds."""
@@ -2488,7 +2499,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                 {row[0] for row in self.sql("SELECT topic_id FROM pipeline_done_topics")})
 
     def assert_a_persons_word_stands(self, said, before, after):
-        """A person's word on a topic (docs/pipeline.md, "A topic the pipeline holds Done"): what they said is what the topic
+        """A person's word on a topic (docs/pipeline.md, "A topic the pipeline holds shipped"): what they said is what the topic
         says, and nothing but another person's word changes it afterwards. A Done stands against every write; a reopen
         stands while the pipeline goes on holding the topic (a record naming more of its work, review follow-up 1), lets
         it go, or never held it, and gives way only when the pipeline starts to hold the topic again."""
@@ -2628,7 +2639,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
             version = self.store.view("owner", "pipeline", {"workspace_id": "w2", "limit": 1})["pipeline"]["version"]
             return taken(self.command("pipeline.configure", {"enabled": True, "ships_in_releases": kind == "w2 releases on"}, {"workspace_id": "w2"},
                                       {"pipeline_revision": version}))
-        # Mostly a topic the pipeline holds Done, where a person's word meets the pipeline's.
+        # Mostly a topic the pipeline holds shipped, where a person's word meets the pipeline's.
         held = [row[0] for row in self.sql("SELECT topic_id FROM pipeline_done_topics ORDER BY topic_id")]
         topic = rng.choice(held if held and rng.random() < 0.7 else topics + w2_topics)
         if kind == "topic message":

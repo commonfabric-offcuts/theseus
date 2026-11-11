@@ -30,12 +30,34 @@ function stateMark(topic, reader, doc) {
   return mark;
 }
 
+// ✅ Done, beside the state of a topic Ready for review (Tony, 10 Nov: a
+// shipped piece's topic waits there for the person to mark it Done). done()
+// is the Done chip's own tap in Topic settings; the repaint after Core's
+// answer takes the button away.
+function doneButton(done, doc) {
+  const button = doc.createElement('button');
+  button.type = 'button'; button.className = 'mark-done'; button.title = 'Mark this topic done';
+  button.setAttribute('aria-label', 'Mark done');
+  const glyph = doc.createElement('span');
+  glyph.setAttribute('aria-hidden', 'true'); glyph.textContent = '✅';
+  button.append(glyph, ' Done');
+  button.onclick = () => done();
+  return button;
+}
+
 // subtitle: the #topic-description paragraph. The state word comes first,
 // then a real space, so a screen reader says "Done, Shipped…", not
 // "DoneShipped". A plainly Active topic with no note shows no subtitle.
-export function paintSubtitle(subtitle, topic, reader, doc = document) {
+// done: how the reader marks the topic Done, given only to a reader who may
+// say where it stands; a topic Ready for review then shows ✅ Done after its
+// state. A repaint keeps the focus on ✅ Done while it shows, and once it
+// goes, gives the focus to the subtitle, which now says Done.
+export function paintSubtitle(subtitle, topic, reader, doc = document, done = null) {
+  const focused = subtitle.children ? [...subtitle.children].some(node => node === doc.activeElement && node.classList?.contains('mark-done')) : false;
   const parts = [];
   if (!plainActive(topic)) parts.push(stateMark(topic, reader, doc));
+  const button = done && topic.state === 'review' ? doneButton(done, doc) : null;
+  if (button) parts.push(' ', button);
   const note = subtitleNote(topic);
   if (note) {
     const words = doc.createElement('span');
@@ -45,12 +67,17 @@ export function paintSubtitle(subtitle, topic, reader, doc = document) {
   }
   subtitle.replaceChildren(...parts);
   subtitle.hidden = !parts.length;
+  if (!focused) return;
+  if (button) { button.focus(); return; }
+  subtitle.setAttribute('tabindex', '-1');
+  subtitle.focus();
 }
 
 // The title, the subtitle and whether the gear shows. settings is false where
 // no Topic settings apply (a conversation refuses every change they make).
-export function paintTopicHeader({ title, subtitle, gear }, topic, reader, { settings = true, doc = document } = {}) {
+// done marks the topic Done from ✅ Done (paintSubtitle).
+export function paintTopicHeader({ title, subtitle, gear }, topic, reader, { settings = true, doc = document, done = null } = {}) {
   title.textContent = topic.title;
-  paintSubtitle(subtitle, topic, reader, doc);
+  paintSubtitle(subtitle, topic, reader, doc, settings ? done : null);
   gear.hidden = !settings;
 }

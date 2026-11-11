@@ -78,6 +78,49 @@ test('the state word stands before the note, with a real space, only when the to
   assert.deepEqual([host.hidden, host.text], [false, 'Back to work']);
 });
 
+// Tony, 10 Nov: a shipped piece's topic is Ready for review until he marks it
+// Done, with one tap at the top of the topic.
+test('a topic Ready for review shows ✅ Done after its state to a reader who may say it, and no other state or reader does', t => {
+  dom(t);
+  const marked = [];
+  const done = () => marked.push('done');
+  const paint = (item, how = done) => { const host = new Element('p'); paintSubtitle(host, item, 'tony', document, how); return host; };
+  const button = host => host.find(node => node.classes.has('mark-done'));
+  const review = paint(topic({ state: 'review', state_note: 'Live in release 43 since 9:05 AM Tue Nov 10' }));
+  assert.equal(review.text, 'Ready for review ✅ Done Live in release 43 since 9:05 AM Tue Nov 10', 'state, ✅ Done, then the note, each a real space apart');
+  const shown = button(review);
+  assert.deepEqual([shown.tag, shown.type, shown.attributes['aria-label'], shown.title, shown.children[0].attributes['aria-hidden']],
+    ['button', 'button', 'Mark done', 'Mark this topic done', 'true'], 'a real button named for what it does; the glyph is not read out');
+  shown.onclick();
+  assert.deepEqual(marked, ['done']);
+  for (const state of ['active', 'waiting', 'done']) assert.equal(button(paint(topic({ state, state_note: 'A note' }))), undefined, `${state} shows no ✅`);
+  assert.equal(button(paint(topic({ state: 'review', state_note: 'A note' }), null)), undefined, 'a reader who may not say where it stands sees none');
+  // On a conversation, where no Topic settings apply, there is none either.
+  const parts = { title: new Element('h1'), subtitle: new Element('p'), gear: new Element('button') };
+  paintTopicHeader(parts, topic({ state: 'review' }), 'tony', { settings: false, done });
+  assert.equal(button(parts.subtitle), undefined);
+  paintTopicHeader(parts, topic({ state: 'review' }), 'tony', { done });
+  assert.ok(button(parts.subtitle));
+});
+
+test('a repaint keeps the focus on ✅ Done while it shows, and gives it to the subtitle saying Done once it goes', t => {
+  dom(t);
+  const host = new Element('p');
+  paintSubtitle(host, topic({ state: 'review' }), 'tony', document, () => {});
+  host.find(node => node.classes.has('mark-done')).focus();
+  paintSubtitle(host, topic({ state: 'review', version: 5 }), 'tony', document, () => {});
+  const again = host.find(node => node.classes.has('mark-done'));
+  assert.equal(document.activeElement, again, 'fresh data repaints it with the focus on it');
+  paintSubtitle(host, topic({ state: 'done', version: 6 }), 'tony', document, () => {});
+  assert.deepEqual([host.text, document.activeElement === host, host.attributes.tabindex], ['Done', true, '-1']);
+  // Focus elsewhere stays where it is.
+  const other = new Element('button');
+  other.focus();
+  paintSubtitle(host, topic({ state: 'review', version: 7 }), 'tony', document, () => {});
+  paintSubtitle(host, topic({ state: 'done', version: 8 }), 'tony', document, () => {});
+  assert.equal(document.activeElement, other);
+});
+
 test('the header paints the title and the subtitle, and shows the gear only where Topic settings apply', t => {
   dom(t);
   const parts = { title: new Element('h1'), subtitle: new Element('p'), gear: new Element('button', { hidden: true }) };

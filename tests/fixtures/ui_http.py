@@ -721,7 +721,8 @@ def main():
                         # with the reader in it: the reader takes part but is neither
                         # the outcome's owner nor the topic's creator.
                         # With "team": true the reader is on the outcome's team, and with
-                        # "coordinator": true also its coordinator.
+                        # "coordinator": true also its coordinator; with "watching": true
+                        # (and "team") the reader only reads it.
                         agent, prefix = "fixture-notebook-agent", request["operation_id"]
                         workspace, topic_id = prefix + "-w", prefix + "-t"
                         command("workspace.create", prefix + "-workspace", dict(
@@ -736,6 +737,13 @@ def main():
                                                                            "send_operation_id": prefix + "-send"},
                                 {"topic_id": topic_id}, {"draft_revision": 1}, sender=agent)
                         command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}, sender=agent)
+                        if request.get("watching"):
+                            # The agent takes the reader out of the topic: on the team, they still read
+                            # it, but neither take part in it nor have written there, so they may not say
+                            # where it stands.
+                            revision = store().view(agent, "topic", {"topic_id": topic_id})["topic"]["version"]
+                            command("participation.set", prefix + "-watching", {"actor_id": actor, "present": False},
+                                    {"topic_id": topic_id}, {"topic_revision": revision}, sender=agent)
                         answer = {"topic_id": topic_id, "workspace_id": workspace}
                     elif freshness and request["method"] == "outcome_change":
                         # Someone who organises an outcome changes its record, as the CLI

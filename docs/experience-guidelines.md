@@ -95,7 +95,12 @@ messages shows them where they were asked for.
 
 An action sits on the surface where its work happens.
 
-- No automated check. Held by Tony's preview of every new surface.
+- `tests/topic_header_native.mjs` (`native-header`): "header a topic Ready for
+  review shows ✅ Done beside its state; a click marks it Done, into the Done
+  group, and the button goes; an active topic shows none", "header ✅ Done is
+  reached with Tab and pressed with Return or Space, and the focus lands on the
+  subtitle saying Done".
+- Otherwise no automated check. Held by Tony's preview of every new surface.
 
 ## Quiet, not button land
 

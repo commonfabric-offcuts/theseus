@@ -2857,14 +2857,14 @@ class ChecksStepCase(MigrationCase):
                                  ("drop", 3000, "owner", {"number": 4}),
                                  ("record", 4000, None, {"release": 1})])
         # The first pipeline write after the upgrade, the next deploy's record, writes the state the facts derive: release
-        # 1 shipped item 3 after item 4 was dropped, so p-1 has shipped, ended by that record, and t1 is Done with it.
+        # 1 shipped item 3 after item 4 was dropped, so p-1 has shipped, ended by that record, and t1 is ready for review.
         self.at_head()
         self.assertTrue(self.store.record_release({"release": 2, "commit": "b" * 40, "deployed_at": "2026-11-02T00:00:00-08:00", "items": [],
                                                    "source": "deploy"})["recorded"])
         with sqlite3.connect(str(self.path)) as db:
             self.assertEqual(db.execute("SELECT left_outcome,left_note,left_ms,left_by FROM pipeline_stage_entries WHERE piece_id='p-1'").fetchall(),
                              [("shipped", "Shipped in release 1", 4000, None)])
-            self.assertEqual(db.execute("SELECT state,state_note,state_by FROM topics WHERE id='t1'").fetchone(), ("done", "Shipped in release 1", None))
+            self.assertEqual(db.execute("SELECT state,state_note,state_by FROM topics WHERE id='t1'").fetchone(), ("review", "Live in release 1 since 12:00 AM Sun Nov 1", None))
 
     def test_step_back_refuses_once_an_outcome_is_started_or_given_a_target_through_its_commands(self):
         self.upgrade()

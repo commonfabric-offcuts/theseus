@@ -2127,6 +2127,164 @@
     "native": "rail",
     "case": "rail a press on a right-rail row that moves in place puts the focus on the page reached"
    }
+  },
+  {
+   "item": 295,
+   "act": "A release record shipping a piece's last work sets its topic Ready for review, \"Live in release N since …\", never Done",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "self._set_topic_state(db, topic, None, {\"state\": \"review\", \"note\": _live_since(db, new)})",
+     "self._set_topic_state(db, topic, None, {\"state\": \"done\", \"note\": _live_since(db, new)})"
+    ]
+   ],
+   "check": {
+    "python": "test_shipped_topic_review.py"
+   }
+  },
+  {
+   "item": 295,
+   "act": "A person's Done on a shipped piece's topic stands: the pipeline's review never overwrites it",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "if new is not None and (its_review or (old is None and topic[\"state\"] != \"done\")):",
+     "if new is not None:"
+    ]
+   ],
+   "check": {
+    "python": "test_shipped_topic_review.py"
+   }
+  },
+  {
+   "item": 295,
+   "act": "Work appearing again in a shipped piece's topic puts the pipeline's own review back to active",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "elif new is None and nobodys and topic[\"state\"] in (\"review\", \"done\"):",
+     "elif new is None and nobodys and topic[\"state\"] == \"done\":"
+    ]
+   ],
+   "check": {
+    "python": "test_shipped_topic_review.py"
+   }
+  },
+  {
+   "item": 295,
+   "act": "A message in a topic Ready for review leaves it in review; only a done topic is reopened",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "        if topic[\"state\"] == \"done\":\n            db.execute(\"UPDATE topics SET state='active'",
+     "        if topic[\"state\"] in (\"done\", \"review\"):\n            db.execute(\"UPDATE topics SET state='active'"
+    ]
+   ],
+   "check": {
+    "python": "test_shipped_topic_review.py"
+   }
+  },
+  {
+   "item": 295,
+   "act": "✅ Done shows only on a topic Ready for review",
+   "break": [
+    [
+     "web/topic-header.mjs",
+     "const button = done && topic.state === 'review' ? doneButton(done, doc) : null;",
+     "const button = done ? doneButton(done, doc) : null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_header.test.mjs"
+   }
+  },
+  {
+   "item": 295,
+   "act": "✅ Done marks the topic Done, as the Done chip does",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "markDone() { return this.says ? this.tap('state', () => 'done', true) : this.queue; }",
+     "markDone() { return this.says ? this.tap('state', () => 'active', true) : this.queue; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_state.test.mjs"
+   }
+  },
+  {
+   "item": 295,
+   "act": "A refused ✅ Done opens Topic settings to say so",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "if (message && field.away) this.attention();",
+     "if (false) this.attention();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_state.test.mjs"
+   }
+  },
+  {
+   "item": 295,
+   "act": "A click on ✅ Done marks the topic Done, it lands in the outline's Done group and the button goes",
+   "break": [
+    [
+     "web/app.mjs",
+     "done: topicState?.says ? () => topicState.markDone() : null",
+     "done: topicState?.says ? () => {} : null"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header a topic Ready for review shows ✅ Done beside its state"
+   }
+  },
+  {
+   "item": 295,
+   "act": "A reader Core does not let say where a topic stands sees no ✅ Done",
+   "break": [
+    [
+     "web/app.mjs",
+     "done: topicState?.says ? () => topicState.markDone() : null",
+     "done: () => topicState.markDone()"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header a reader who may not say where a topic stands sees Ready for review and no ✅"
+   }
+  },
+  {
+   "item": 295,
+   "act": "After Return or Space on ✅ Done the focus lands on the subtitle saying Done",
+   "break": [
+    [
+     "web/topic-header.mjs",
+     "  subtitle.setAttribute('tabindex', '-1');\n  subtitle.focus();",
+     "  subtitle.setAttribute('tabindex', '-1');"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header ✅ Done is reached with Tab and pressed with Return or Space"
+   }
+  },
+  {
+   "item": 295,
+   "act": "✅ Done is big enough to tap",
+   "break": [
+    [
+     "web/aim.css",
+     ".topic-subtitle .mark-done{display:inline-flex;align-items:center;gap:.3rem;min-height:2.75rem;",
+     ".topic-subtitle .mark-done{display:inline-flex;align-items:center;gap:.3rem;min-height:1rem;"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header a topic Ready for review shows ✅ Done beside its state"
+   }
   }
  ]
 }
