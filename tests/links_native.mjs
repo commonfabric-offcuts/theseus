@@ -683,7 +683,9 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     };
     for (const [device, metrics] of Object.entries(views)) {
       const p = await page('links-formatted-' + device, null, true, { url: facts.origin + '/?topic=links-fr', beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', metrics) });
-      await until(() => p.evaluate(`(c=>Boolean(c?.querySelector('.md-table-wrap'))&&c.querySelectorAll('a.words-link').length===4&&[...c.querySelectorAll('a.words-link')].every(a=>a.textContent!==a.title))(document.querySelector(${JSON.stringify(card)}))`), device + ': the card draws its blocks and names its links\' topics');
+      // A link to a place here is named once its topic's name is read (a read the page may make after the card draws):
+      // its words become its title. A link that leaves the page keeps its words and has no title.
+      await until(() => p.evaluate(`(c=>Boolean(c?.querySelector('.md-table-wrap'))&&c.querySelectorAll('a.words-link').length===4&&[...c.querySelectorAll('a.words-link')].every(a=>a.target==='_blank'||(a.title&&a.textContent!==a.title)))(document.querySelector(${JSON.stringify(card)}))`), device + ': the card draws its blocks and names its links\' topics');
       const onCard = await shape(card)(p);
       assert.deepEqual(onCard.links, [['named link', ELSEWHERE, '_blank', ''], ['Where the list points', '?topic=links-fr-b', '', `${facts.origin}/?topic=links-fr-b`],
         ['Message in Formatted in the Reader', `?topic=links-fr&message=${target}`, '', `${facts.origin}/?topic=links-fr&message=${target}`], [ELSEWHERE, ELSEWHERE, '_blank', '']], device + ': the card\'s links');
