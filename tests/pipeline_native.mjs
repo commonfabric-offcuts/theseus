@@ -503,4 +503,47 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     assert.deepEqual([back.key, back.role, back.value], ['add:next', 'add-title', ''], 'focus goes to Next’s line');
     assert.deepEqual(p.errors, []); await p.close();
   });
+
+  await check('pipeline an ask that holds a piece shows Held on its row, with who it waits on and the ask’s first line linking to it, until it is answered; a plain ask leaves the row as it was', async () => {
+    // Item 259. The piece is built in t1, and an agent on the team asks the person there.
+    await pipeline('pipeline.configure', { workspace_id: 'w1' }, { enabled: true });
+    await pipeline('pipeline.stages_set', { workspace_id: 'w1' }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    const { result: { number } } = await pipeline('pipeline.item_add', { workspace_id: 'w1' }, { title: 'Watch the files', section: 'now', size: 'small', sources: [{ note: 'the check' }] });
+    const { result: { piece_id: piece } } = await pipeline('pipeline.piece_start', { workspace_id: 'w1' }, { numbers: [number], topic_id: 't1', stage_id: 'build' });
+    const ask = (name, body, more = {}) => control({ method: 'agent_message', operation_id: `pipeline-held-${name}`, member: true, whole_topic: true, body,
+      post_args: { addressees: [facts.actor], intent: 'ask', ...more } });
+    const plain = await ask('plain', 'Which colour for the header?');
+    assert.equal(plain.status, 'committed', JSON.stringify(plain));
+    const p = await open('pipeline-held', '/?pipeline=w1');
+    await ready(p);
+    const card = `[data-key="piece:${piece}"]`;
+    const held = () => p.evaluate(`[...document.querySelectorAll('${card} .pl-held')].map(h=>({text:h.textContent,href:h.querySelector('a')?.getAttribute('href')??null}))`);
+    await until(() => p.evaluate(`document.querySelector('${card} .pl-chip[aria-current=step]')?.textContent==='Build'`), 'the piece card shows it in Build');
+    assert.deepEqual(await held(), [], 'a plain ask holds nothing on the row');
+    const before = await loaded(p);
+    const blocking = await ask('blocking', 'Please restart fseventsd.\nIt stopped at 9.', { blocks: { kind: 'piece', ref: piece } });
+    assert.equal(blocking.status, 'committed', JSON.stringify(blocking));
+    const message = blocking.result.message_id;
+    await until(async () => (await held()).length === 1, 'the row says it is held, live');
+    assert.deepEqual(await held(), [{ text: 'Held: waiting on you — Please restart fseventsd.', href: `?topic=t1&message=${message}` }],
+      'who it waits on, and the ask’s first line linking to the ask');
+    assert.equal(await loaded(p), before, 'with no reload');
+    assert.ok(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'no sideways scroll');
+    await p.evaluate(`document.querySelector('${card} .pl-held').scrollIntoView({block:'center'})`);
+    await shot(p, 'pipeline-held');
+    // The person answers in the topic: the row is as it was, live.
+    await control({ method: 'agent_message', operation_id: 'pipeline-held-answer', sender: 'person', whole_topic: true, body: 'Restarted.' });
+    await until(async () => (await held()).length === 0, 'the answer clears it, live');
+    assert.equal(await loaded(p), before, 'with no reload');
+    // Asked again, its link opens the ask in its topic.
+    const again = await ask('again', 'Restart it once more?', { blocks: { kind: 'piece', ref: piece } });
+    await until(async () => (await held()).length === 1, 'held again');
+    await tap(p, `${card} .pl-held a`);
+    await until(() => p.evaluate(`(()=>{const u=new URL(location.href).searchParams;return u.get('topic')==='t1'})()`), 'the link opens the topic');
+    assert.deepEqual(p.errors, []); await p.close();
+    // The person answers, and the piece finishes, so t1 holds no piece for the cases after.
+    await control({ method: 'agent_message', operation_id: 'pipeline-held-answer-2', sender: 'person', whole_topic: true, body: 'Done.' });
+    assert.equal(again.status, 'committed');
+    assert.equal((await pipeline('pipeline.piece_finish', { piece_id: piece }, {})).status, 'committed');
+  });
 }

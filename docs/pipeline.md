@@ -435,6 +435,15 @@ Views:
   facts boxes, the banner for the live release until a stage is entered after its deploy, the release
   being put together ([the release](#the-release)), what waits on the reader, the pieces in Now and the
   table of typical stage times. Section `shipped` gives groups, newest first.
+  Each piece in Now, and the release being put together, carries `held`: the
+  asks that hold it until they are answered, oldest first, `[{message_id,
+  topic_id, by, since_ms, waiting_on, line}]`
+  ([attention.md](attention.md#an-ask-that-holds-work)). Its row on the page
+  then says "Held: waiting on you — Please restart fseventsd." above its
+  stages, the reader named "you" and anyone else by name, the ask's first
+  line linking to the ask in its topic; once everyone asked has answered, the
+  line goes in the same commit. A piece no ask holds carries `held: []` and
+  its row is as before.
 - `pipeline_item {workspace_id, number}`: one item with every source, piece and
   event.
 - `pipeline_row {workspace_id}`: the rail's row (title, how many asks wait on

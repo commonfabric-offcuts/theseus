@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { dom } from './fixtures/ui_dom.mjs';
 import { AttemptError, isBusy, unconfirmed } from '../web/api.mjs';
 import {
-  checkPipeline, duration, eventRuns, eventWords, factBoxes, firstLine, historyLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
+  checkPipeline, duration, eventRuns, eventWords, factBoxes, firstLine, heldWords, historyLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
 } from '../web/pipeline-words.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from '../web/pipeline.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
@@ -1069,3 +1069,10 @@ for (const fails of ['busyReads', 'failReads']) {
     assert.doesNotMatch(text(), unplain);
   });
 }
+
+test('a piece or release an ask holds says Held, who it waits on and the ask\'s first line (item 259)', () => {
+  assert.deepEqual(heldWords({ waiting_on: ['tony'], line: 'Please restart fseventsd' }, 'fable'),
+    { lead: 'Held: waiting on tony', line: 'Please restart fseventsd' });
+  assert.deepEqual(heldWords({ waiting_on: ['tony', 'warp'], line: 'Both look' }, 'tony'), { lead: 'Held: waiting on you and warp', line: 'Both look' });
+  assert.deepEqual(heldWords({ waiting_on: [], line: '' }, 'tony'), { lead: 'Held: waiting on an answer', line: 'their answer' });
+});

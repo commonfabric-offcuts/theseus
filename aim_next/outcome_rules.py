@@ -46,17 +46,17 @@ def _by_newest(rows, ms):
     return sorted(rows, key=lambda row: -(ms(row) or 0))
 
 
-def unreadable(asks):
+def unreadable(asks, blocking=()):
     """The light when a read after the asks failed: Waiting on you still shows, else no light."""
     if asks:
-        answer = stands(asks, None, [], [], {}, True, None, None)
+        answer = stands(asks, None, [], [], {}, True, None, None, blocking)
         answer["light"]["unreadable"] = True
         return answer
     return {"light": {"light": None, "label": None, "short": None, "unreadable": True},
             "lead": {"kind": "unreadable"}, "facts": [], "also": []}
 
 
-def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created):
+def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, blocking=()):
     """The light, its lead, its facts and its also-lines (docs/outcome-light.md).
 
     asks: [{topic_id, title, by, ms}] open questions to the reader in this
@@ -73,6 +73,10 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created):
     last: {by, how, topic_id, topic_title, title_truncated, ms} the newest activity by others in its
       open topics, or None (none seen, or the scan stopped on its cap).
     created: {by, ms | None}, who started the outcome and when.
+    blocking: [{topic_id, blocks: {kind}, ...}] the asks among them that hold a
+      piece or a release and still wait on the reader, a release's first
+      (blocking.py). Waiting on you then says what it blocks, and its topics'
+      questions come first.
     """
     reached = done_facts.get("reached")
     if reached:
@@ -94,9 +98,17 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created):
         also = []
         if pipeline and now_worked:
             also.append({"kind": "also_built", "seen": len(now_worked), "of": len(now)})
-        return {"light": _light("waiting", {"kind": "asks", "count": len(asks)}),
-                "lead": {"kind": "asks", "count": len(asks)},
-                "facts": [dict(ask, kind="ask") for ask in asks], "also": also}
+        short = {"kind": "asks", "count": len(asks)}
+        facts = [dict(ask, kind="ask") for ask in asks]
+        if blocking:
+            # What it blocks rides on the same kind, so a page that knows no more says Waiting on you as before.
+            short["blocking"] = blocking[0]["blocks"]["kind"]
+            held = {}
+            for ask in blocking:
+                held.setdefault(ask["topic_id"], ask["blocks"])
+            facts = ([dict(fact, blocking=held[fact["topic_id"]]) for fact in facts if fact["topic_id"] in held]
+                     + [fact for fact in facts if fact["topic_id"] not in held])
+        return {"light": _light("waiting", short), "lead": dict(short), "facts": facts, "also": also}
 
     if pipeline and now_worked:
         facts = [{"kind": "item_work", "item": item["number"], "title": item["title"], "by": item["work"].get("by"),

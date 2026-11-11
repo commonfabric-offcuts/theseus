@@ -111,6 +111,34 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertEqual(code, 2)
         self.assertIn("NOT_FOUND", err)
 
+    def test_an_ask_names_the_piece_it_holds_and_the_listing_says_it_is_held_until_it_is_answered(self):
+        # Item 259.
+        self.ok("pipeline-on", "w1")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}]))
+        self.ok("stages", "w1", "--set", str(stages))
+        self.ok("add", "w1", "--title", "Build me", "--section", "now", "--size", "medium", "--note", "n", "-")
+        piece = self.ok("piece", "w1", "1", "--topic", "t1", "--stage", "build").split()[2]
+        before = self.sql("SELECT count(*) FROM messages")[0][0]
+        for argv, code in ((("--tells", "owner", "--blocks", "piece:" + piece), "BLOCKS_NEEDS_ASK"),
+                           (("--asks", "owner", "--blocks", "piece:p-nothing"), "BLOCKS_UNKNOWN"),
+                           (("--asks", "owner", "--blocks", "release:44"), "BLOCKS_UNKNOWN")):
+            status, out, err = self.run_cli("post", "t1", *argv, "Please restart fseventsd.")
+            self.assertEqual((status, out), (2, ""), argv)
+            self.assertIn(code, err)
+        self.assertEqual(self.sql("SELECT count(*) FROM messages")[0][0], before, "a refused post sends nothing")
+        out = self.ok("post", "t1", "--asks", "owner", "--blocks", "piece:" + piece, "Please restart fseventsd.\nIt stopped at 9.")
+        message = out.split()[1]
+        self.assertRegex(out, r"^posted m-\S+ in t1 \(\d+ deliveries queued\); it holds piece %s until it is answered\n$" % piece)
+        self.assertIn("  (holds piece %s until it is answered)\n" % piece, self.ok("read", "t1"))
+        held = "     held: waiting on owner — Please restart fseventsd. (%s)\n" % message
+        self.assertIn(held, self.ok("pipeline", "w1", "--section", "now"))
+        self.ok("post", "t1", "Restarted.", actor="owner")
+        self.assertNotIn("held:", self.ok("pipeline", "w1", "--section", "now"))
+        # A plain ask leaves the listing as it was.
+        self.ok("post", "t1", "--asks", "owner", "Anything else?")
+        self.assertNotIn("held:", self.ok("pipeline", "w1", "--section", "now"))
+
     def test_stages_and_a_piece_of_work_move_along_from_the_command_line(self):
         self.ok("pipeline-on", "w1")
         stages = Path(self.temp.name) / "stages.json"

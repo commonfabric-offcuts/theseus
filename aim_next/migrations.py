@@ -36,6 +36,7 @@ from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
 from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
+from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -139,6 +140,10 @@ STEPS = (
     # each outcome's topics, for themselves. Stepping back is refused once
     # anyone has placed one.
     ("33", "34", ORDER_SCHEMA, ORDER_DOWN, ORDER_OCCUPIED),
+    # Version 35 keeps what an ask blocks: the one pipeline piece or release
+    # that cannot go on until it is answered. A message keeps it as written,
+    # so stepping back is refused once any ask has named one.
+    ("34", "35", BLOCKS_SCHEMA, BLOCKS_DOWN, BLOCKS_OCCUPIED),
 )
 
 

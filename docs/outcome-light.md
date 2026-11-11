@@ -12,7 +12,12 @@ or has to remember to. The rules are `aim_next/outcome_rules.py`; the reads are
 In this order, the first that holds:
 
 1. **Waiting on you** (the only lit one): a question to the reader is open in
-   one of the outcome's topics. "Waiting on you · 2 questions".
+   one of the outcome's topics. "Waiting on you · 2 questions". When one of
+   them holds a piece or a release until it is answered
+   ([attention.md](attention.md#an-ask-that-holds-work)), it says so instead
+   of the count: "Blocking a release: waiting on you" (a release before a
+   piece), and its question leads the card ("A question is waiting for your
+   answer, and work can't go on until you answer it (blocking a piece):").
 2. **Being worked on**: with the pipeline on, someone other than the reader
    worked on an item in Now in the last hour; with it off, on any of the
    outcome's open topics, or one of them waits on someone. "Worked on at
@@ -70,7 +75,8 @@ A state and a time, and one line naming the newest thing; nothing more.
 - `workspaces` items carry `light`: `{light, label, short, unreadable}`.
   `light` is `waiting`, `built`, `done`, `quiet`, or null when the outcome's
   facts could not be read (`unreadable: true`). `short` is
-  `{kind: asks, count}`, `{kind: seen, ms}`, `{kind: checks_pass}`,
+  `{kind: asks, count}` (with `blocking: "release" | "piece"` when a question
+  holds work; a page that knows no `blocking` says Waiting on you as before), `{kind: seen, ms}`, `{kind: checks_pass}`,
   `{kind: reached, ms}`, `{kind: talk, ms, how, since_ms}`,
   `{kind: since, ms}` (ms null: no time is known) or `{kind: no_topics}`.
 - `outcome_light {workspace_id}` gives the whole of it, for the peek and the
