@@ -2554,6 +2554,66 @@
     "native": "notebook",
     "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
    }
+  },
+  {
+   "item": 311,
+   "act": "↓ from a card cleared of all its text goes on past the children that go with it, into the card after them",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "step > 0 ? (cleared ? groupEnd(this.deck.cards, at) : at + 1) :",
+     "step > 0 ? at + 1 :"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
+   }
+  },
+  {
+   "item": 311,
+   "act": "⇧Tab on a new card begun among siblings takes it out after all its parent's children, so the siblings after it stay where they were",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "const placed = placeNew(this.deck, editing, kind);",
+     "const placed = kind === 'outdent' && editing.depth > 0 ? { depth: editing.depth - 1 } : placeNew(this.deck, editing, kind);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, Tab puts it under the card above"
+   }
+  },
+  {
+   "item": 311,
+   "act": "Keys an input method composes with stay its own while a card is written: ↑, ↓, Tab and Escape move, save and finish nothing",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     " || event.isComposing || event.keyCode === 229) return;",
+     " || event.keyCode === 229) return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, the keys an input method composes with stay its own"
+   }
+  },
+  {
+   "item": 311,
+   "act": "The key that ends a composition, which Safari sends with isComposing false and keyCode 229, stays the input method's too",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     " || event.isComposing || event.keyCode === 229) return;",
+     " || event.isComposing) return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook while a card is written, the keys an input method composes with stay its own"
+   }
   }
  ]
 }

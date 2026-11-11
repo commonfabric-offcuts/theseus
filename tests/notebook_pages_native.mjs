@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 // it stands or at a revision, in the Reader or in place, from the address bar
 // or from a message's words, and the Reader's ⋯ copies it. On the cards page,
 // a card being written moves with Tab and ⇧Tab, and goes on into the card
-// beside with ↑ and ↓, each act read back from the page as saved.
+// beside with ↑ and ↓, each act read back from the page as saved, while the
+// keys an input method composes with stay its own.
 export async function notebookChecks({ check, page, until, control, view, facts, shot }) {
   const id = 'notebook-release-plan', row = `#outcome-references-list .reference[data-id="${id}"]`;
   const light = p => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(row + ' .unread-count')});return b?{text:b.textContent,className:b.className,said:document.querySelector(${JSON.stringify(row + ' .sr-only')})?.textContent}:null})()`);
@@ -277,6 +278,15 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await writing(p, { words: 'Later', at: [5, 5], depth: '1', above: 'Risks', focused: true }, 'Tab puts the new card under Notes');
     await p.key('Escape');
     await saved(id, `${under}\n### Later\n`, 'the new card is made where Tab put it');
+    // A new card begun among siblings, after Risks with Later still to come: shift-Tab takes it out of Notes after all
+    // the children of Notes, as it would a made card there, so Later stays under Notes and not under the new card.
+    await p.key('ArrowUp'); await p.key('Enter');
+    await writing(p, { words: '', at: [0, 0], depth: '1', above: 'Risks', focused: true }, 'a new card opens between Risks and Later');
+    await p.send('Input.insertText', { text: 'Soon' });
+    await p.key('Tab', 8);
+    await writing(p, { words: 'Soon', at: [4, 4], depth: '0', above: 'Later', focused: true }, 'shift-Tab takes the new card out of Notes, after Later');
+    await p.key('Escape');
+    await saved(id, `${under}\n### Later\n\n## Soon\n`, 'the new card is made beside Notes, and Later stays under Notes');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -320,6 +330,42 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await cursor(p, 0); await p.key('ArrowUp');
     await writing(p, { words: 'Risks\nNone yet.', at: [15, 15], depth: '0', above: 'Notes', focused: true }, 'Risks opens at its end');
     await saved(id, `${notes}\n## Later\n`, 'the new card is made as written');
+    await p.key('Escape');
+    // Plan, its child Steps shown again with →, cleared of all its text: ↓ removes it with Steps, as finishing does,
+    // and goes on into Notes, the card after them.
+    await p.key('ArrowUp'); await p.key('ArrowUp'); await p.key('ArrowRight'); await p.key('Enter', 4);
+    await writing(p, { words: 'Plan\nShip it.', at: [13, 13], depth: '0', above: null, focused: true }, 'Plan opens for writing');
+    await p.key('a', 4); await p.key('Backspace');
+    await writing(p, { words: '', at: [0, 0], depth: '0', above: null, focused: true }, 'Plan is cleared');
+    await p.key('ArrowDown');
+    await writing(p, { words: 'Notes\nDan reviews. Warp signs off.', at: [0, 0], depth: '0', above: null, focused: true }, '↓ goes on into Notes, past the child that went with Plan');
+    await saved(id, '## Notes\n\nDan reviews. Warp signs off.\n\n## Risks\n\nNone yet.\n\n## Later\n', 'Plan is removed with Steps');
+    await p.key('Escape');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook while a card is written, the keys an input method composes with stay its own', async () => {
+    const id = 'notebook-cards-composing', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    // A key sent into the box as a browser sends it while an input method composes (isComposing), as Safari sends the
+    // key that ends a composition (keyCode 229, isComposing false), or plainly; true when the page left it alone.
+    const dispatch = (key, { composing = false, keyCode = 0 } = {}) => p.evaluate(`(()=>{const e=new KeyboardEvent('keydown',{key:${JSON.stringify(key)},isComposing:${composing},bubbles:true,cancelable:true});
+      if(${keyCode})Object.defineProperty(e,'keyCode',{value:${keyCode}});return document.querySelector('#deck-page .deck-writing textarea').dispatchEvent(e)})()`);
+    const notes = at => ({ words: 'Notes\nDan reviews.', at: [at, at], depth: '0', above: 'Plan', focused: true });
+    await p.key('ArrowDown'); await p.key('Enter', 4);
+    await writing(p, notes(18), 'Notes opens for writing');
+    for (const [key, at] of [['ArrowUp', 0], ['ArrowDown', 18], ['Tab', 18], ['Escape', 18]]) {
+      for (const how of [{ composing: true }, { keyCode: 229 }]) {
+        await cursor(p, at);
+        assert.equal(await dispatch(key, how), true, `${key} ${JSON.stringify(how)} is the input method's`);
+        assert.deepEqual(await box(p), notes(at), `${key} ${JSON.stringify(how)} leaves the card as it was`);
+      }
+    }
+    // The same ↓ sent plainly is the deck's, and goes on into Risks.
+    await cursor(p, 18);
+    assert.equal(await dispatch('ArrowDown'), false, 'a plain ↓ at the very end is the deck\'s');
+    await writing(p, { words: 'Risks\nNone yet.', at: [0, 0], depth: '0', above: 'Notes', focused: true }, 'the plain ↓ goes on into Risks');
+    assert.equal((await view('memory_current', { item_id: id })).body, body, 'no key of the input method\'s moved or saved a card');
     await p.key('Escape');
     assert.deepEqual(p.errors, []);
     await p.close();

@@ -304,9 +304,11 @@ export class DeckPage {
     else if (this.owed) { this.owed = false; this.load(); }
   }
 
-  // The keys work while the deck or nothing has the focus, and while a card is written, only its own.
+  // The keys work while the deck or nothing has the focus, and while a card is written, only its own. An input
+  // method's keys are its own, among them the key that ends a composition, which Safari sends with isComposing false
+  // and keyCode 229.
   key(event) {
-    if (this.host.hidden || event.defaultPrevented || event.isComposing) return;
+    if (this.host.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
     // A card's box keeps every key but these: Escape and ⌘Return finish the card, Tab and ⇧Tab move it, and ↑ at
     // the box's very start or ↓ at its very end goes on into the card beside. Tab stays the box's where there is
@@ -538,7 +540,9 @@ export class DeckPage {
     // A card being written stands in its card's place; a new one, between the card it follows and the next.
     const at = editing.fresh ? (editing.after === null ? -1 : findCard(this.deck, editing.after, editing.near)) : findCard(this.deck, editing.text, editing.near);
     if (at < 0 && !(editing.fresh && editing.after === null)) return false;
-    let to = step > 0 ? at + 1 : editing.fresh ? at : at - 1;
+    // A card cleared of all its text goes with its children when it is finished, so ↓ goes on past them.
+    const cleared = !editing.fresh && !cardText(textCard(editing.field.value));
+    let to = step > 0 ? (cleared ? groupEnd(this.deck.cards, at) : at + 1) : editing.fresh ? at : at - 1;
     while (to >= 0 && to < shown.length && !shown[to]) to += step;
     if (to < 0 || to >= shown.length) return false;
     this.editAt(cardText(this.deck.cards[to]), to, step < 0 ? null : 0);

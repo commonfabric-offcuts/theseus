@@ -74,7 +74,9 @@ the card and opens the card that shows above it for writing, the cursor at
 its end; ↓ at the very end does the same with the card below, the cursor at
 its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at
 the first or last card they do nothing more. A new card with nothing written
-is dropped on the way, as Escape drops it.
+is dropped on the way, as Escape drops it, and a card cleared of all its text
+is removed with its children, as below, so ↓ from it goes on to the card after
+them. The keys an input method takes while it composes stay its own.
 
 Clearing all of a card's text removes the
 card, and ⌘⌫ and a clearing both take its children too. ⌘Z takes back the
