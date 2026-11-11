@@ -13,7 +13,7 @@
 // stacks are drawn again whenever an answer changes what they show. How far a
 // stack is folded is the page's own.
 import { cardIn } from './fold.mjs';
-import { arrangeStacks, entries, entryOf, stackOf, stackState, reveal, renameInput, unkeep } from './reply-stacks.mjs';
+import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, reveal, renameInput, unkeep } from './reply-stacks.mjs';
 import { moveOf, joinOf, foldStep, shown, laterActs } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
@@ -115,7 +115,7 @@ export class StackFeed {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       split: item => this.split(item), unplace: stack => this.unplace(stack), reply: stack => this.replyIn(stack),
-      folded: (stack, was) => this.remember(() => { this.state.levels.set(stack.id, was); this.arrange(); }),
+      folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
     } }));
   }
   // A stack's reply line: the Reader replying to its newest message, shown
@@ -273,22 +273,17 @@ export class StackFeed {
   fold(entry, way) {
     const found = stackOf(this.list, entry);
     if (!found?.section || !found.stack.replies.length) return false;
-    const { stack } = found, state = this.state, starred = Boolean(this.actsOf(stack.id).starred);
-    const now = { level: state.levels.get(stack.id) ?? 'folded', headOpen: starred || state.headOpen.has(stack.id) };
-    const options = { onHead: found.head, replies: true };
-    let next = foldStep(now, way, options);
-    // A starred head keeps its full message shown: that step is passed over.
-    while (next && starred && next.level === now.level && next.headOpen !== now.headOpen) next = foldStep({ ...next, headOpen: now.headOpen }, way, { ...options, onHead: false });
+    const { stack } = found, state = this.state;
+    const now = { level: state.levels.get(stack.id) ?? 'folded' };
+    const next = foldStep(now, way);
     if (!next) { this.say(way === 'open' ? 'Open as far as it goes' : 'Folded as far as it goes'); return true; }
     const apply = to => {
-      state.levels.set(stack.id, to.level);
-      if (to.headOpen) state.headOpen.add(stack.id); else state.headOpen.delete(stack.id);
+      setLevel(state, stack, to.level);
       this.arrange(); this.focusOn(entry.dataset.id);
     };
     apply(next);
     this.remember(() => apply(now));
-    this.say(next.headOpen !== now.headOpen ? (next.headOpen ? 'Full message shown' : 'Full message hidden')
-      : { open: 'Every reply shown', folded: 'Folded to the newest and unread replies', head: 'Folded to its first message' }[next.level]);
+    this.say({ open: 'Original message and every reply shown', folded: 'Latest and unread replies shown', head: 'Stack closed' }[next.level]);
     return true;
   }
   // A reply folded by hand, from ⋯ or a swipe: away until its stack opens.
@@ -331,11 +326,9 @@ export class StackFeed {
     const { stack } = found, state = this.state;
     if (found.head && stack.replies.length) {
       items.push({ label: 'Rename', act: () => this.startRename(stack) });
-      if (!starred) {
-        const open = state.headOpen.has(stack.id);
-        items.push({ label: open ? 'Hide the full message' : 'Show the full message', keys: open ? '⌘←' : '⌘→',
-          act: () => { if (open) state.headOpen.delete(stack.id); else state.headOpen.add(stack.id); this.arrange(); this.focusOn(stack.id); } });
-      }
+      const open = state.levels.get(stack.id) === 'open';
+      items.push({ label: open ? 'Show latest and unread replies' : 'Show all messages',
+        act: () => { setLevel(state, stack, open ? 'folded' : 'open'); this.arrange(); this.focusOn(stack.id); } });
     }
     if (!found.head && !stack.joins.has(item.id) && !starred && shown(stack, item, { level: 'folded', kept: () => true, handFolded: state.handFolded })) {
       items.push({ label: 'Fold into earlier replies', act: () => this.foldOne(item) });

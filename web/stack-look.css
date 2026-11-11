@@ -1,7 +1,7 @@
 /* How reply stacks look (docs/reply-stacks.md, "The look"): the Dossier look.
    A reply stack is one folder. Its tab is the head row and the handle; the
    replies are the sheets inside it (the page's own message cards, oldest
-   first); replies folded away are the edges of sheets filed underneath.
+   first); a chevron on the tab opens the replies filed underneath.
    Every visual choice about stacks is in this file alone; another look drops
    in by replacing it. It reads only the semantic colour tokens of aim.css
    (--paper --panel --ink --muted --line --accent --soft --alert --focus), and
@@ -21,8 +21,8 @@
                              (.stack-repliers, .stack-fresh), .stack-hide
      > .stack-rename         the rename field: .stack-rename-input, .stack-rename-hint
      > .stack-replies        the replies, oldest first, each an entry; between them
-       .stack-fold-line      a run folded away (data-fresh, data-all; .stack-fold-words, .stack-fold-new)
        .stack-join-line      above a joined stack's first message (.stack-join-words, .stack-split)
+     > .stack-toggle         the header's expand/collapse button (aria-expanded)
      > .stack-placed-line    the reader placed it (.stack-placed-words, .stack-unplace)
      > .stack-foot           last, on a stack with replies: .stack-reply, the reply
                              line (a button: .stack-reply-words, .stack-key)
@@ -44,14 +44,13 @@
   --stack-folder:#e9e5da;
   --stack-folder-deep:#dcd6c8;            /* the short name under the pointer */
   --stack-folder-ink:#2f363b;
-  --stack-meta-ink:#59636a;               /* counts, names, fold lines */
+  --stack-meta-ink:#59636a;               /* counts and names */
   --stack-lift:0 1px 0 rgb(84 70 42 / .14),0 7px 12px -5px rgb(84 70 42 / .16);
   /* the sheets */
   --stack-sheet:var(--panel);             /* an unread card */
   --stack-read-sheet:#f3f2ee;             /* a read card */
   --stack-read-hover:#ebe9e3;
   --stack-sheet-edge:rgb(70 60 40 / .10);
-  --stack-edge-1:#e1dccf; --stack-edge-2:#d8d2c2; --stack-edge-line:rgb(70 60 40 / .14);
   --stack-input-edge:rgb(70 60 40 / .28);
   --stack-crease:rgb(84 70 42 / .16); --stack-crease-light:rgb(255 255 255 / .6);
   /* the reply line */
@@ -65,6 +64,7 @@
   --stack-tab-max:70%;
   --stack-name-lh:1.5rem; --stack-meta-lh:1.3rem;
   --stack-tab-pad:.45rem .85rem .4rem;
+  --stack-toggle-size:1.75rem; --stack-toggle-inset:.3rem;
   --stack-tab-h:calc(.85rem + var(--stack-name-lh) + var(--stack-meta-lh));
   --stack-pad:.5rem;                      /* folder edge to sheet */
   --stack-sheet-gap:.45rem;
@@ -74,7 +74,6 @@
   --stack-folder:#1c2427; --stack-folder-deep:#2a3437; --stack-folder-ink:#d3dcd9; --stack-meta-ink:var(--muted);
   --stack-lift:0 1px 0 rgb(0 0 0 / .5),0 8px 14px -5px rgb(0 0 0 / .45);
   --stack-sheet:#2a3437; --stack-read-sheet:#232c2f; --stack-read-hover:#2c3639; --stack-sheet-edge:rgb(255 255 255 / .05);
-  --stack-edge-1:#20292c; --stack-edge-2:#1e2629; --stack-edge-line:rgb(0 0 0 / .45);
   --stack-input-edge:rgb(255 255 255 / .2);
   --stack-crease:rgb(0 0 0 / .45); --stack-crease-light:rgb(255 255 255 / .05);
   --stack-reply-edge:rgb(255 255 255 / .12);
@@ -90,17 +89,24 @@
 .reply-stack[data-single=true]:not(.only-new *){margin-top:var(--stack-gap);border-radius:var(--stack-r)}
 :is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
 .reply-stack:not(.only-new *) .message-card{border-radius:var(--stack-r-sheet)}
-.reply-stack:not(.only-new *) .message-card:not(.own-message){box-shadow:0 0 0 1px var(--stack-sheet-edge)}
-.reply-stack:not(.only-new *) .message-card:not(.own-message):not(:hover){border-color:transparent}
-/* The message the keys are on: its own hairline edge takes the focus colour. The folder's ring is the only ring. */
-.reply-stack:not(.only-new *) .message-card.lit,
-.reply-stack:not(.only-new *) .message-card:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}
-.reply-stack:not(.only-new *) .message-fold>.fold-line:focus-visible{outline:none;box-shadow:0 0 0 1px var(--stack-ring)}
+.reply-stack:not(.only-new *) .message-card{outline:none;border-color:transparent;box-shadow:0 0 0 1px var(--stack-sheet-edge)}
+/* Only the current message gets a strong ring. Keyboard focus left behind
+   when the pointer moves is not a second selection. */
+.reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}
+.reply-stack:not(.only-new *) .message-fold>.fold-line{outline:none;box-shadow:none}
+.reply-stack:not(.only-new *) .message-fold.lit>.fold-line{box-shadow:0 0 0 2px var(--stack-ring)}
 /* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */
-.only-new .stack-head{display:none}
+.only-new :is(.stack-head,.stack-toggle){display:none}
 
-/* The focused stack (the keys, or the rename field, in it): a paper gap, then the focus colour, round the whole folder, tab and all. */
-.reply-stack:not(.only-new *):focus-within{box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring),var(--stack-lift)}
+/* The stack owns the ring only on its compact header or its own controls.
+   Selecting a message, in any stack, takes that ring away. */
+.reply-stack[data-head-open=false]:not(.only-new *):has(.stack-head-card.lit),
+#messages:not(:has(.lit)) .reply-stack:not(.only-new *):focus-within{
+  box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring),var(--stack-lift);
+  --stack-tab-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring);
+  --stack-tab-fillet:radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - 4.5px),
+    var(--stack-ring) calc(var(--stack-r-tab) - 4px),var(--stack-ring) calc(var(--stack-r-tab) - 2.5px),
+    var(--stack-ring-gap) calc(var(--stack-r-tab) - 2px),var(--stack-ring-gap) calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab))}
 
 /* The head's card: no box of its own while it shows only its row; shown whole, it is the first sheet. */
 .reply-stack:not(.only-new *) .stack-head-card{position:static}
@@ -126,18 +132,24 @@
   display:flex;flex-wrap:wrap;align-items:baseline;align-content:center;column-gap:.5rem;margin:0;padding:var(--stack-tab-pad);
   border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;background:var(--stack-folder);color:var(--stack-folder-ink);
   font-size:.78rem;font-weight:400;line-height:var(--stack-meta-lh);text-align:left;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.reply-stack:not(.only-new *) .stack-head-card>.stack-head{padding-left:calc(var(--stack-toggle-size) + 2 * var(--stack-toggle-inset))}
+/* One compact control beside the name replaces the repeated fold bars.
+   It is a sibling of the head's message button, never a nested button. */
+.reply-stack:not(.only-new *)>.stack-toggle{position:absolute;z-index:1;left:var(--stack-toggle-inset);top:calc(-1 * var(--stack-tab-h) + var(--stack-toggle-inset));
+  display:grid;place-items:center;width:var(--stack-toggle-size);height:var(--stack-toggle-size);min-height:0;padding:0;
+  border:0;border-radius:.35rem;background:transparent;color:var(--stack-folder-ink)}
+.stack-toggle::before{content:"";width:.45rem;height:.45rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg)}
+.stack-toggle[data-state=head]::before{transform:rotate(-135deg)}
+.stack-toggle[data-state=open]::before{transform:rotate(45deg)}
+.reply-stack:not(.only-new *)>.stack-toggle:hover{background:var(--stack-folder-deep)}
+.stack-toggle:focus-visible{outline:none}
 /* Where the tab meets the body, a concave fillet: tab and body are one cut. The ring follows it. The focus ring's tab
    part is a layer under the tab that runs past the seam and drops its own bottom edge, so its sides run on into the
    body's. Both hang off the tab's box: the head row's own ::after breaks its first line, so they sit on its name. */
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::after{content:"";position:absolute;left:100%;bottom:0;width:var(--stack-r-tab);height:var(--stack-r-tab);pointer-events:none;
-  background:radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab))}
+  background:var(--stack-tab-fillet,radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab)))}
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{content:"";position:absolute;inset:0 0 -6px;border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;pointer-events:none;
-  clip-path:polygon(-8px -8px,calc(100% + 8px) -8px,calc(100% + 8px) calc(100% - 6px),0 calc(100% - 6px),0 100%,-8px 100%)}
-.reply-stack:not(.only-new *):focus-within :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{box-shadow:0 0 0 2px var(--stack-ring-gap),0 0 0 4px var(--stack-ring)}
-.reply-stack:not(.only-new *):focus-within :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::after{background:radial-gradient(circle at 100% 0,
-  transparent calc(var(--stack-r-tab) - 4.5px),var(--stack-ring) calc(var(--stack-r-tab) - 4px),
-  var(--stack-ring) calc(var(--stack-r-tab) - 2.5px),var(--stack-ring-gap) calc(var(--stack-r-tab) - 2px),
-  var(--stack-ring-gap) calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab))}
+  clip-path:polygon(-8px -8px,calc(100% + 8px) -8px,calc(100% + 8px) calc(100% - 6px),0 calc(100% - 6px),0 100%,-8px 100%);box-shadow:var(--stack-tab-shadow,none)}
 /* The head row's two lines: the name and its pen, a break, then the rest, which never wraps to a third: the count and
    who replied give way first. */
 .reply-stack:not(.only-new *) .stack-head::after{content:"";order:1;flex-basis:100%;height:0}
@@ -170,26 +182,12 @@
 .reply-stack:not(.only-new *) .stack-rename{cursor:default}
 .stack-rename-input{flex:1 1 auto;width:100%;min-width:0;height:var(--stack-name-lh);margin:0 -.15rem;padding:0 .45rem;
   border:1px solid var(--stack-input-edge);border-radius:.35rem;background:var(--stack-sheet);color:inherit;font-size:.95rem;font-weight:650;outline:none}
-.stack-rename-input:focus-visible{outline:none;border-color:var(--stack-ring)}
+.stack-rename-input:focus-visible{outline:none}
 .stack-rename-hint{flex:none;color:var(--stack-meta-ink)}
 
 /* The replies: sheets in the folder, oldest first. */
 .stack-replies{display:flex;flex-direction:column;gap:var(--stack-sheet-gap);margin:0}
 .stack-replies:empty{display:none}
-/* Folded replies: the edges of the sheets filed underneath, one edge for one reply, two for more. */
-.stack-fold-line{display:flex;align-items:center;width:100%;min-height:2.3rem;margin-bottom:5px;padding:0 1.15rem;border:0;border-radius:var(--stack-r-sheet);
-  background:var(--stack-read-sheet);color:var(--stack-meta-ink);font-size:.82rem;font-weight:400;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;
-  box-shadow:0 0 0 1px var(--stack-sheet-edge),0 5px 0 -2px var(--stack-edge-1),0 6px 0 -2px var(--stack-edge-line)}
-.stack-fold-line:has(+[hidden]+[hidden]){margin-bottom:9px;
-  box-shadow:0 0 0 1px var(--stack-sheet-edge),0 5px 0 -2px var(--stack-edge-1),0 6px 0 -2px var(--stack-edge-line),
-    0 9px 0 -4px var(--stack-edge-2),0 10px 0 -4px var(--stack-edge-line)}
-/* An open stack's "Fold N earlier replies" files nothing: a quiet line on the folder itself. */
-.stack-fold-line[data-all=true]{min-height:2rem;margin-bottom:0;background:transparent;box-shadow:none}
-.stack-fold-line:hover{color:var(--stack-folder-ink)}
-.stack-fold-line[data-all=true]:hover{background:var(--stack-folder-deep)}
-.stack-fold-line:focus-visible{outline:2px solid var(--stack-ring);outline-offset:2px}
-.stack-fold-new{color:var(--stack-new);font-weight:700}
-
 /* A joined stack's first message, and a stack the reader placed: one quiet line says so. */
 .stack-join-line,.stack-placed-line{display:flex;flex-wrap:wrap;align-items:center;gap:0 .4rem;margin:0;padding:.15rem .5rem 0;color:var(--stack-meta-ink);font-size:.76rem}
 .stack-placed-line{padding:.35rem .5rem 0}
@@ -204,12 +202,13 @@
 .stack-foot{position:relative;margin-top:var(--stack-pad);padding-top:calc(var(--stack-pad) + 2px)}
 .stack-foot::before{content:"";position:absolute;top:0;left:.25rem;right:.25rem;height:1px;background:var(--stack-crease);box-shadow:0 1px 0 var(--stack-crease-light)}
 .reply-stack:not([data-fold=open]):not([data-focused=true])>.stack-foot{display:none}
-@media(hover:hover){.reply-stack:not([data-fold=open]):not(.only-new *):hover>.stack-foot{display:block}}
+@media(hover:hover){.reply-stack[data-fold=folded]:not(.only-new *):hover>.stack-foot{display:block}}
+.reply-stack[data-fold=head]>.stack-foot{display:none}
 .only-new .stack-foot{display:none}
 .stack-reply{display:flex;align-items:center;gap:.5rem;width:100%;min-height:var(--stack-reply-h);margin:0;padding:0 .45rem 0 1rem;
   border:1px solid var(--stack-reply-edge);border-radius:var(--stack-r-reply);background:var(--stack-reply-bg);color:var(--stack-meta-ink);
   font-size:.95rem;font-weight:400;text-align:left;cursor:text;-webkit-tap-highlight-color:transparent}
-.stack-reply:focus-visible{outline:none;border-color:var(--stack-ring)}
+.stack-reply:focus-visible{outline:none}
 .stack-reply-words{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stack-key{flex-shrink:0;min-width:1.4rem;padding:0 .3rem;border:1px solid var(--stack-reply-edge);border-radius:.3rem;
   font:inherit;font-size:.72rem;line-height:1.25rem;text-align:center;color:var(--stack-meta-ink)}
@@ -229,5 +228,5 @@
 }
 /* A touch screen: full tap targets, a thumb-high reply line and no key hint; the quiet lines' buttons reach past the
    line rather than growing it. */
-@media(pointer:coarse){.stack-fold-line{min-height:2.75rem}:is(.stack-split,.stack-unplace){min-height:2.75rem;margin-block:-.5rem}
+@media(pointer:coarse){:is(.stack-split,.stack-unplace){min-height:2.75rem;margin-block:-.5rem}
   :root{--stack-reply-h:3rem}.stack-key{display:none}}

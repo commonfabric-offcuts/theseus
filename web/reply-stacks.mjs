@@ -14,7 +14,7 @@
 // documents. How far each stack is folded, and which head shows its full
 // message, are this page's own and never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, LEVELS } from './stack-order.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { shownTime } from './times.mjs';
 
@@ -53,9 +53,16 @@ export function topOf(list, entry) {
 // view once kept, replies folded one by one, the stack being renamed, and the
 // stacks as last drawn.
 export function stackState(list) {
-  if (!states.has(list)) states.set(list, { levels: new Map(), headOpen: new Set(), kept: new Set(), handFolded: new Set(), renaming: null,
+  if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), handFolded: new Set(), renaming: null,
     stacks: [], sections: new Map(), viewer: null, again: () => {} });
   return states.get(list);
+}
+
+// An explicit choice starts a fresh partial view. Replies that were unread
+// when drawn stay put while read, until the person changes the stack state.
+export function setLevel(state, stack, level) {
+  state.levels.set(stack.id, level);
+  for (const item of stack.replies) { state.kept.delete(item.id); state.handFolded.delete(item.id); }
 }
 
 // The stack an entry is in, as last drawn: { stack, section (null for a
@@ -87,7 +94,7 @@ export function reveal(entry, { full = false } = {}) {
   const state = stackState(list), id = section.dataset.stack;
   let changed = false;
   if (entry.hidden) { state.levels.set(id, 'open'); state.handFolded.delete(entry.dataset.id); changed = true; }
-  if (full && entry.dataset.id === id && !state.headOpen.has(id)) { state.headOpen.add(id); changed = true; }
+  if (full && entry.dataset.id === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
   if (changed) state.again();
   return entry;
 }
@@ -101,12 +108,12 @@ export function headClick(list, entry, event) {
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
   const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
-  const starred = Boolean(stack.head.acts?.starred), open = starred || state.headOpen.has(stack.id);
+  const open = state.levels.get(stack.id) === 'open';
   if (act === 'hide' || (open && event?.target?.closest?.('.stack-head'))) {
-    if (!starred) { state.headOpen.delete(stack.id); state.again(); }
+    setLevel(state, stack, 'folded'); state.again();
     return true;
   }
-  if (!open) { state.headOpen.add(stack.id); state.again(); return true; }
+  if (!open) { setLevel(state, stack, 'open'); state.again(); return true; }
   return false;
 }
 
@@ -120,7 +127,7 @@ export function unkeep(list, pick) {
     const section = state.sections.get(stack.id);
     if (!section || !pick(section)) continue;
     for (const item of stack.replies) changed = state.kept.delete(item.id) || changed;
-    changed = state.headOpen.delete(stack.id) || changed;
+    if (state.levels.get(stack.id) === 'open') { setLevel(state, stack, 'folded'); changed = true; }
   }
   if (changed) state.again();
 }
@@ -155,8 +162,10 @@ const element = (doc, tag, className, text) => {
 
 function makeStack(doc, id) {
   const section = element(doc, 'div', 'reply-stack'), replies = element(doc, 'div', 'stack-replies');
+  const toggle = element(doc, 'button', 'stack-toggle'); toggle.type = 'button';
+  replies.id = `stack-replies-${id}`; toggle.setAttribute('aria-controls', replies.id);
   section.dataset.stack = id; section.setAttribute('role', 'group');
-  parts.set(section, { replies, lines: new Map(), placed: null, rename: null, foot: makeFoot(doc) });
+  parts.set(section, { replies, toggle, lines: new Map(), placed: null, rename: null, foot: makeFoot(doc) });
   return section;
 }
 
@@ -180,10 +189,6 @@ function line(section, key, make) {
 }
 
 const replies = n => (n === 1 ? 'reply' : 'replies');
-// Replies at or before the newest message of the stack the reader dealt with
-// fold away when they come back, unread or not (docs/reply-stacks.md).
-const dealt = (stack, item) => [stack.head, ...stack.replies].some(other => other.acts?.dealt && item.seq <= other.seq);
-
 // The head's row, set into its card: its short name (renamed in place), who
 // started the stack, how many replied and who, and what is new.
 function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
@@ -204,7 +209,7 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   row.replaceChildren(name, pen, element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)),
     ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
-    meta, ...(open && !starred ? [act('hide', 'stack-hide', 'Hide the full message')] : []));
+    meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
 }
@@ -245,22 +250,21 @@ function paintStack(section, stack, byId, context) {
   const { state, keep, unread, nameOf, doc } = context;
   const p = parts.get(section), head = byId.get(stack.id), single = !stack.replies.length;
   const level = single ? 'open' : state.levels.get(stack.id) ?? 'folded';
-  const starred = Boolean(stack.head.acts?.starred), open = !single && (starred || state.headOpen.has(stack.id));
+  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open';
   const kept = item => {
     if (state.kept.has(item.id)) return true;
-    if (!keep(item) || dealt(stack, item)) return false;
+    if (!unread(item)) return false;
     state.kept.add(item.id); return true;
   };
   head.hidden = false;
   if (!single) opened(head);
   const shown = single ? { name: firstLine(stack.head.body) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
+  p.toggle.dataset.state = level;
+  p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
+  p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; close stack' }[level]}: ${shown.name}`);
+  p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
   const rows = single ? [] : rowsOf(stack, { level, kept, handFolded: state.handFolded, unread });
-  // The newest reply a folded stack shows stays in view once drawn, as a kept
-  // one does: a newer reply arriving shows under it, rather than folding it
-  // away under the person's eyes. Coming back to the page lets go (unkeep).
-  const newest = stack.replies.reduce((most, item) => (most && most.seq > item.seq ? most : item), null);
-  if (level === 'folded' && newest && !state.handFolded.has(newest.id)) state.kept.add(newest.id);
   for (const row of rows) {
     if (row.kind === 'reply') { const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry); continue; }
     if (row.kind === 'join') {
@@ -273,13 +277,8 @@ function paintStack(section, stack, byId, context) {
       join.split.onclick = () => state.on?.split?.(row.item);
       desired.push(join); continue;
     }
-    const key = row.kind === 'fold-all' ? 'fold-all' : `fold:${row.items[0].id}`;
-    const fold = line(section, key, () => { const node = element(doc, 'button', 'stack-fold-line'); node.type = 'button'; return node; });
-    fold.replaceChildren(element(doc, 'span', 'stack-fold-words', row.words), ...(row.fresh ? [element(doc, 'span', 'stack-fold-new', ` · ${row.fresh} new`)] : []));
-    fold.dataset.fresh = String(Boolean(row.fresh)); fold.dataset.all = String(row.kind === 'fold-all');
-    fold.setAttribute('aria-expanded', String(level === 'open'));
-    fold.onclick = () => { state.levels.set(stack.id, level === 'open' ? 'folded' : 'open'); state.on?.folded?.(stack, level); state.again(); };
-    desired.push(fold);
+    // Folded runs need no repeated count or control between the messages:
+    // the header already gives the count, and its chevron opens every run.
     for (const item of row.items ?? []) { const entry = byId.get(item.id); entry.hidden = true; desired.push(entry); }
   }
   const used = new Set(desired);
@@ -296,7 +295,8 @@ function paintStack(section, stack, byId, context) {
     p.foot.reply.setAttribute('aria-label', `Reply in this stack: ${shown.name}`);
     p.foot.reply.onclick = () => state.on?.reply?.(stack);
   }
-  reconcile(section, [head, ...(rename ? [rename] : []), p.replies, ...(stack.placed !== null ? [p.placed] : []), ...(single ? [] : [p.foot])]);
+  reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : []), ...(single ? [] : [p.foot])]);
+  if (single || rename) p.toggle.remove();
   if (stack.placed === null) p.placed?.remove();
   if (single) p.foot.remove();
   Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
