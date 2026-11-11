@@ -143,6 +143,15 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     else { await centre(p, card(id)); await tap(p, words(id)); await until(async () => (await lit(p)).includes(id), 'phone: the message lights'); await tap(p, words(id)); }
     await until(async () => (await readerOn(p))?.startsWith(starts), `${device}: the Reader opens on "${starts}"`);
   };
+  // The Reader opened to be read: a click on the lit message, or a phone's second tap. The cursor is never put
+  // in the reply, which is one quiet line.
+  const readerByClick = async (p, device, id, starts) => {
+    await p.evaluate('document.activeElement?.blur()');
+    if (device === 'laptop') { await light(p, device, id); await p.point(words(id)); await until(async () => (await readerOn(p))?.startsWith(starts), `laptop: a click opens the Reader on "${starts}"`); }
+    else await openReader(p, device, id, starts);
+    await until(() => p.evaluate(`document.querySelector('#reader-composer').dataset.compose === 'line' && document.activeElement?.id !== 'writing-body'`),
+      `${device}: the Reader's reply is one quiet line, with no cursor in it`);
+  };
   // The cursor put in a field by a press, as the person puts it there.
   const into = async (p, device, field) => {
     await centre(p, field);
@@ -585,20 +594,20 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const state = () => p.evaluate(`({composer:document.querySelector('#reader-composer').dataset.compose,focus:document.activeElement?.id,words:document.querySelector('#writing-body').value})`);
       if (device === 'laptop') assert.deepEqual(await state(), { composer: 'writing', focus: 'writing-body', words: '' }, 'laptop: Return leaves the cursor in an empty reply');
       assert.deepEqual(await button(), { text: '👍', pressed: 'false', beside: 'send-reply', clear: true }, device + ': 👍 beside Send');
-      if (device === 'laptop') {
-        // A 👍 given while the reply is open closes the Reader, as Send does (the next check); on the quiet line
-        // it is given and taken back with the Reader open. A click on the lit message opens it to be read.
-        await closeReader(p, device);
-        await light(p, device, ids.theirs);
-        await p.point(words(ids.theirs));
-        await until(async () => (await readerOn(p))?.startsWith('A message to thumb up') && (await state()).composer === 'line', 'laptop: a click opens the Reader with its reply one quiet line');
-      }
-      for (const on of [true, false]) {
-        await press(p, device, '#thumb-source');
-        await until(async () => await thumbsBy(ids.theirs, facts.actor) === (on ? 1 : 0), `${device}: Core holds the thumbs-up ${on ? 'on' : 'taken back'}`);
-        await until(async () => (await button())?.pressed === String(on), `${device}: the Reader's 👍 shows it ${on ? 'on' : 'taken back'}`);
-        assert.equal((await button()).text, on ? '👍 1' : '👍', device + ': and counts it');
-      }
+      // Given, the 👍 closes the Reader once Core holds it (the next check); opened again by a click, it shows
+      // given and counted, and a second press takes it back with the Reader open.
+      await closeReader(p, device);
+      await readerByClick(p, device, ids.theirs, 'A message to thumb up');
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 1, `${device}: Core holds the thumbs-up`);
+      await until(async () => await readerOn(p) === null, `${device}: the 👍 closes the Reader`);
+      await readerByClick(p, device, ids.theirs, 'A message to thumb up');
+      await until(async () => (await button())?.pressed === 'true', `${device}: opened again, the Reader's 👍 shows it on`);
+      assert.equal((await button()).text, '👍 1', device + ': and counts it');
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, `${device}: Core holds the thumbs-up taken back`);
+      await until(async () => (await button())?.pressed === 'false', `${device}: the Reader's 👍 shows it taken back`);
+      assert.deepEqual([(await button()).text, await readerOn(p) !== null], ['👍', true], device + ': and counts it, with the Reader still open');
       // In the reply, writing and still empty, 👍 stays beside Send; it goes once a word is
       // typed, while Send can send it.
       await into(p, device, '#writing-body');
@@ -642,15 +651,37 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
-  await check('reading 👍 given while the reply is open closes the Reader as Send does, keeping what the reply holds; a 👍 Theseus refuses leaves it open', async () => {
+  await check('reading 👍 given in the Reader closes it as Send does, on its quiet line or with the cursor in the reply, keeping what the reply holds; taken back or refused, it stays open', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-thumb-close-' + device;
       const ids = await seed(topic, [['theirs', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A message to answer with a thumbs-up.' }]]);
       const p = await open('reading-thumb-close-' + device, device, topic, ids.theirs);
       const reader = () => p.evaluate(`(()=>{const n=document.querySelector('#reader-notice');return {open:document.querySelector('#reader').open,composer:document.querySelector('#reader-composer').dataset.compose,
         chip:document.querySelector('#who-chip').textContent,thumb:document.querySelector('#thumb-source').getAttribute('aria-pressed'),notice:n.hidden?'':n.textContent}})()`);
+      // Opened to be read, by a click or a phone's second tap, the cursor never in the reply: the quiet line's 👍.
+      await readerByClick(p, device, ids.theirs, 'A message to answer');
+      // Refused there, the Reader stays open on its quiet line and says why.
+      assert.equal((await reader()).notice, '', device + ': the Reader opens saying nothing');
+      await p.evaluate('window.staleThumb = true');
+      await press(p, device, '#thumb-source');
+      await until(async () => (await reader()).notice !== '', device + ': on the quiet line, the refusal is said in the Reader');
+      assert.equal(await thumbsBy(ids.theirs, facts.actor), 0, device + ': Core holds no thumbs-up');
+      assert.deepEqual({ ...(await reader()), notice: undefined, chip: undefined }, { open: true, composer: 'line', chip: undefined, thumb: 'false', notice: undefined },
+        device + ': refused on the quiet line, the Reader stays open as it was');
+      // Given there, Core holds it and the Reader closes, as after Send.
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 1, device + ': Core holds the quiet line\'s thumbs-up');
+      await until(async () => await readerOn(p) === null, device + ': the quiet line\'s 👍 closes the Reader, as Send does');
+      // Opened again the same way, it shows given; taken back on the quiet line, the Reader stays.
+      await readerByClick(p, device, ids.theirs, 'A message to answer');
+      await until(async () => (await reader()).thumb === 'true', device + ': opened again, 👍 shows given');
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, device + ': the 👍 on the quiet line is taken back');
+      await until(async () => (await reader()).thumb === 'false', device + ': and shows taken back');
+      assert.deepEqual([await readerOn(p) !== null, (await reader()).composer], [true, 'line'], device + ': taking it back leaves the Reader open on its quiet line');
+      await closeReader(p, device);
+      // With the cursor in the reply: on a laptop Return leaves it there; on a phone the reply opens with a tap in it.
       await openReader(p, device, ids.theirs, 'A message to answer');
-      // On a laptop Return leaves the cursor in the reply; on a phone the reply opens with a tap in it.
       if (device === 'phone') await into(p, device, '#writing-body');
       await until(async () => (await reader()).composer === 'writing', device + ': the reply is open');
       // What the reply holds, with nothing written, so 👍 still shows: it goes as a whisper.
@@ -663,6 +694,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         device + ': the panel is put away, the reply still open, 👍 beside Send');
       const chip = (await reader()).chip;
       // Refused: the 👍 goes fenced on a revision Core does not hold, and Core says no.
+      assert.equal((await reader()).notice, '', device + ': the reopened Reader says nothing');
       await p.evaluate('window.staleThumb = true');
       await press(p, device, '#thumb-source');
       await until(async () => (await reader()).notice !== '', device + ': the refusal is said in the Reader');
@@ -677,20 +709,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await openReader(p, device, ids.theirs, 'A message to answer');
       await until(async () => (await reader()).thumb === 'true', device + ': opened again, 👍 shows given');
       assert.equal((await reader()).chip, chip, device + ': and the reply is still a whisper');
-      // On the quiet line, or taking the 👍 back, the Reader stays.
-      if (device === 'phone') {
-        assert.equal((await reader()).composer, 'line', 'phone: opened to be read, the reply is one quiet line');
-        await press(p, device, '#thumb-source');
-        await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, 'phone: the 👍 on the quiet line is taken back');
-        await until(async () => (await reader()).thumb === 'false', 'phone: and shows taken back');
-        assert.equal(await readerOn(p) !== null, true, 'phone: the Reader stays open');
-      } else {
-        assert.equal((await reader()).composer, 'writing', 'laptop: Return leaves the reply open');
-        await press(p, device, '#thumb-source');
-        await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, 'laptop: the 👍 is taken back');
-        await until(async () => (await reader()).thumb === 'false', 'laptop: and shows taken back');
-        assert.deepEqual([await readerOn(p) !== null, (await reader()).composer], [true, 'writing'], 'laptop: taking it back leaves the Reader and its reply open');
-      }
+      // Taken back with the cursor in the reply, the Reader and its reply stay open.
+      if (device === 'phone') { assert.equal((await reader()).composer, 'line', 'phone: opened to be read, the reply is one quiet line'); await into(p, device, '#writing-body'); }
+      await until(async () => (await reader()).composer === 'writing', device + ': the reply is open again');
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, device + ': the 👍 is taken back');
+      await until(async () => (await reader()).thumb === 'false', device + ': and shows taken back');
+      assert.deepEqual([await readerOn(p) !== null, (await reader()).composer], [true, 'writing'], device + ': taking it back leaves the Reader and its reply open');
       await closeReader(p, device);
       assert.deepEqual(p.errors, []);
       await p.close();

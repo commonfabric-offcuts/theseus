@@ -4167,17 +4167,17 @@
   },
   {
    "item": 326,
-   "act": "A 👍 given while the reply is open closes the Reader once Core holds it, keeping what the reply holds",
+   "act": "A 👍 given in the Reader closes it once Core holds it, on the quiet line or writing, keeping what the reply holds",
    "break": [
     [
      "web/app.mjs",
-     "        if (on && writing && receipt && registry.isCurrent(presentation)) await registry.close(presentation);\n",
+     "        if (on && receipt && registry.isCurrent(presentation)) await registry.close(presentation);\n",
      ""
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "closes the Reader as Send"
+    "case": "given in the Reader closes it as Send"
    }
   },
   {
@@ -4186,43 +4186,48 @@
    "break": [
     [
      "web/app.mjs",
-     "        const receipt = await thumbMessage(item, on);\n        if (on && writing && receipt &&",
-     "        if (on && writing) registry.close(presentation);\n        const receipt = await thumbMessage(item, on);\n        if (on && writing && receipt &&"
+     "        const receipt = await thumbMessage(item, on);\n        if (on && receipt &&",
+     "        if (on) registry.close(presentation);\n        const receipt = await thumbMessage(item, on);\n        if (on && receipt &&"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "closes the Reader as Send"
+    "case": "given in the Reader closes it as Send"
    }
   },
   {
    "item": 326,
-   "act": "Taking a 👍 back while the reply is open leaves the Reader open",
+   "act": "Taking a 👍 back in the Reader leaves it open",
    "break": [
     [
      "web/app.mjs",
-     "        if (on && writing && receipt &&",
-     "        if (writing && receipt &&"
+     "        if (on && receipt &&",
+     "        if (receipt &&"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "closes the Reader as Send"
+    "case": "given in the Reader closes it as Send"
    }
   },
   {
    "item": 326,
-   "act": "A 👍 on the quiet line leaves the Reader open",
+   "act": "A 👍 on the quiet line of a Reader opened by a click closes it, as one given while writing does",
    "break": [
     [
      "web/app.mjs",
-     "        if (on && writing && receipt &&",
-     "        if (on && receipt &&"
+     "    const item = readerItem(), presentation = registry.current;\n",
+     "    const item = readerItem(), presentation = registry.current, writing = reader.compose.state === 'writing';\n"
+    ],
+    [
+     "web/app.mjs",
+     "        if (on && receipt &&",
+     "        if (on && writing && receipt &&"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "👍 in the Reader beside Send"
+    "case": "given in the Reader closes it as Send"
    }
   },
   {

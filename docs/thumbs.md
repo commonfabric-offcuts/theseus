@@ -51,9 +51,10 @@ A thumb whose result says `settled` places the New line afresh, as Mark read doe
 nothing moves it nowhere. Every other page and device the person has open
 hears the `reaction` change, reads the message's reactions and shows the card
 read, and reads its counts and New line again after the commit. Given from
-the Reader's 👍 while the reply is open, a thumbs-up is a reply of one thumb:
-once Core holds it, the Reader closes as after Send, keeping what the reply
-holds (docs/reader.md); a refusal leaves the Reader and the reply open. An answer also posts
+the Reader's 👍, a thumbs-up is a reply of one thumb, whether the reply is
+its quiet line or being written: once Core holds it, the Reader closes as
+after Send, keeping what the reply holds (docs/reader.md); a refusal, or a
+thumb taken back, leaves the Reader and the reply open. An answer also posts
 a short reply from the person to the asker in the same act: `✅ Go ahead` or
 `🚫 Don't`, with "(I changed my answer)" when it replaces one. The agent hears
 it through its delivery like any reply, and the topic stops waiting on the

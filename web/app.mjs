@@ -1721,17 +1721,17 @@ async function initialize() {
     thumb: (item, on) => act(thumbMessage(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
     more: openMessageMore, copy: copyMessage,
     expand: (card, item) => cardScroll.expand(card, item) });
-  // The Reader's 👍. Given while the reply is open, it is a reply of one thumb:
-  // once Core holds it the Reader closes, as after Send, keeping what the reply
-  // holds. Refused, or given on the quiet line, or taken back, the Reader stays.
+  // The Reader's 👍 is a reply of one thumb, whether the reply is its quiet
+  // line or being written: once Core holds it the Reader closes, as after
+  // Send, keeping what the reply holds. Refused, or taken back, it stays.
   $('thumb-source').onclick = () => {
-    const item = readerItem(), presentation = registry.current, writing = reader.compose.state === 'writing';
+    const item = readerItem(), presentation = registry.current;
     if (!item) return;
     const on = !item.reactions?.thumbs?.some(thumb => thumb.actor_id === bootstrap.actor);
     run(async () => {
       try {
         const receipt = await thumbMessage(item, on);
-        if (on && writing && receipt && registry.isCurrent(presentation)) await registry.close(presentation);
+        if (on && receipt && registry.isCurrent(presentation)) await registry.close(presentation);
       } catch (error) { reader.notice(error); } finally { paintReaderThumb$(); }
     });
   };

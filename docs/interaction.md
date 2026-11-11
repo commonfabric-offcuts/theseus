@@ -53,10 +53,10 @@ the pointer's way, the keys' and the phone's.
   message names who: on hover, or where nothing hovers (a
   phone), on the lit message, whose count then reads the names. A press on the
   count thumbs up; a tap on it on a phone lights the message and names who, and
-  the bar's 👍 thumbs up. In the Reader 👍 sits beside Send; pressed while the
-  reply is open (writing, not the quiet line) it is a reply of one thumb, and
-  once Core holds it the Reader closes as after Send, keeping what the reply
-  holds. Refused, it leaves the Reader and the reply open. **✅ and 🚫**
+  the bar's 👍 thumbs up. In the Reader 👍 sits on the quiet line and beside Send;
+  pressed in either it is a reply of one thumb, and once Core holds it the
+  Reader closes as after Send, keeping what the reply holds. Refused, or
+  taken back, it leaves the Reader and the reply open. **✅ and 🚫**
   answer an agent's go-ahead ask in one tap or click, on the message or its
   bar, and the agent hears it as a reply (docs/thumbs.md).
 
@@ -197,9 +197,10 @@ page painted. Its checks, by rule:
   and to stay under 60% of the window; the drag runs in Chrome.
 - 👍: "reading the bar's 👍 and the card's 👍 count …", "reading 👍 in the
   Reader beside Send …" and "reading a thumbs-up an agent gives shows on the
-  card …"; the Reader closing on a 👍 given while the reply is open, and staying
-  open when Core refuses it: "reading 👍 given while the reply is open closes
-  the Reader …"; a 👍 reading its message, with the counts and the New line,
+  card …"; the Reader closing on a 👍 given on its quiet line (opened by a
+  click, the cursor never in the reply) or with the cursor in the reply, and
+  staying open when the 👍 is taken back or Core refuses it: "reading 👍 given
+  in the Reader closes it as Send does …"; a 👍 reading its message, with the counts and the New line,
   on a second page and after a reload: "reading a 👍 on an unread message reads
   that message at once …"; a 👍 on a card marked unread, clearing its mark:
   "reading a 👍 on a message marked unread clears the mark …", and in Core

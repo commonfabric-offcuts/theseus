@@ -62,11 +62,11 @@ A press or Tab into the field makes it the composer:
   how it asks and where it is posted are not writing, so choosing them, or
   moving the reply to the conversation, never hides 👍. In Wide, 👍 is on
   the row under the field, so the field keeps the column's width either way.
-  A 👍 given here, while the reply is open, is a reply of one thumb: once
-  Core holds it the Reader closes, as after Send, keeping what the reply
-  holds (who it goes to and how) for the next time the message opens. A 👍
-  Core refuses leaves the Reader and the reply open, and says why; one given
-  on the quiet line, or taken back, leaves the Reader as it is.
+  A 👍 given here or on the quiet line is a reply of one thumb: once Core
+  holds it the Reader closes, as after Send, keeping what the reply holds
+  (who it goes to and how) for the next time the message opens. A 👍 Core
+  refuses leaves the Reader and the reply open, and says why; one taken back
+  leaves the Reader as it is.
   Send stands clear of the field, so a touch between them never sends.
 
 The field grows with its writing, then scrolls: up to four lines on a laptop
