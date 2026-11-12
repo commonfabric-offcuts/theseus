@@ -31,7 +31,7 @@ export class NotebookImages {
     if(w.closed||w.readOnly)return;
     if(entry){entry.removed=true;entry.bytes=null;}
     const media=entry?.ready?.media_id??id;
-    w.edit({attachments:w.value.attachments.filter(a=>a.id!==media)});
+    w.edit({attachments:w.value.attachments.filter(a=>a.id!==media)},w.capture());
     await w.persist(); w.notify();
   }
   run(entry) {
@@ -87,7 +87,7 @@ export class NotebookImages {
     const w=this.writing;
     if(w.closed||w.readOnly||e.removed||e.associated)return;
     e.associated=true;
-    if(!w.value.attachments.some(a=>a.id===e.ready.media_id))w.edit({attachments:[...w.value.attachments,{id:e.ready.media_id}]});
+    if(!w.value.attachments.some(a=>a.id===e.ready.media_id))w.edit({attachments:[...w.value.attachments,{id:e.ready.media_id}]},w.capture());
     else w.persist().catch(error=>{e.error=error.message;w.notify();});
   }
   resume() {

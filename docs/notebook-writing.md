@@ -13,6 +13,12 @@ including Option-arrow line moves, remain available. Images and `#img` use
 the page's topic (or its outcome's Conversation) and become page attachments.
 There is no Cards view of a message draft.
 
+A reload with a pending choice draws the retained writing in both views before
+accepting input; an edit without that displayed snapshot is refused. Card
+gestures replay their acts on the latest deck, retaining card identity. Remote
+card rewrites follow the card through moves and insertions, and a same-card
+conflict still keeps both versions. Discard removes the paused-writing status.
+
 An edit carries the revision and content its visible surface was computed
 from. The writer applies it against that snapshot, not whichever revision
 arrived most recently: a stale Cards edit merges disjoint card changes, while

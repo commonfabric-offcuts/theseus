@@ -99,7 +99,8 @@ export class NotebookPage extends DeckPage {
     if(!w?.base)return;
     this.source=w.base.source; this.base={revision:w.base.revision,body:w.base.content.body}; this.readOnly=w.readOnly;
     this.header.title.textContent=w.value.title;
-    if(!w.conflict && (force || deckBody(this.deck)!==w.value.body)) {
+    const drawKept=force || !this.cardsSeen || !this.textSeen;
+    if((!w.conflict || drawKept) && (drawKept || deckBody(this.deck)!==w.value.body)) {
       const e=this.editing;
       const unpreview=e?mergeCardContent({...w.value,body:this.previewBody()},{...w.value,body:deckBody(this.deck)},w.value):null;
       const deck=parseDeck(unpreview?.body??w.value.body);
@@ -108,12 +109,12 @@ export class NotebookPage extends DeckPage {
       this.picked=Math.min(this.picked,Math.max(0,this.deck.cards.length-1));
       this.paint();
     }
-    if(this.text.value!==w.value.body&&!w.conflict) {
+    if(this.text.value!==w.value.body&&(!w.conflict || drawKept)) {
       const focused=this.doc.activeElement===this.text,selection=[this.text.selectionStart,this.text.selectionEnd];
       this.text.value=w.value.body;
       if(focused)this.text.setSelectionRange(...selection.map(at=>Math.min(at,this.text.value.length)));
     }
-    if(!w.conflict) {
+    if(!w.conflict || drawKept) {
       this.textSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.text.value}};
       this.cardsSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.previewBody()}};
     }
@@ -130,10 +131,10 @@ export class NotebookPage extends DeckPage {
     return done?deckBody(done.deck):deckBody(this.deck);
   }
   save() {
-    if(!this.writing)return;
-    this.acts=[];
-    const body=this.previewBody(),seen=this.cardsSeen??this.writing.capture();
-    this.writing.edit({body},seen,'cards');
+    if(!this.writing || !this.cardsSeen)return;
+    const acts=this.acts;this.acts=[];
+    const body=this.previewBody(),seen=this.cardsSeen;
+    this.writing.edit({body},seen,'cards',acts);
     this.cardsSeen={revision:seen.revision,content:{...seen.content,body}};
   }
   open(editing) {

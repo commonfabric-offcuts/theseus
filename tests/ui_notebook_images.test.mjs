@@ -6,7 +6,7 @@ const copy=structuredClone;
 function fixture() {
   let snapshot;
   const calls=[];
-  const w={closed:false,readOnly:false,images:[],value:{attachments:[]},base:{source:{attachments:[]}},
+  const w={closed:false,readOnly:false,capture(){return {content:copy(this.value),revision:1};},images:[],value:{attachments:[]},base:{source:{attachments:[]}},
     bootstrap:{instance_id:'i1',authority:{authority_id:'a',authority_epoch:'e'},limits:{image_bytes:1000,media_name_utf8_bytes:100,attachment_count:8,attachment_bytes:8000}},
     notify:()=>{},persist:async()=>{snapshot=copy({images:w.images,value:w.value});},edit:patch=>{Object.assign(w.value,copy(patch));w.persist();},
     api:{command:async e=>{calls.push(copy(e));assert.deepEqual(snapshot.images[0].begin,e);return{instance_id:'i1',operation_id:e.operation_id,kind:e.kind,status:'committed',recorded:true,result:{media_id:e.target.media_id,media_revision:1,state:'pending'}};},

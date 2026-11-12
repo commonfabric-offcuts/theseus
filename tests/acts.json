@@ -5016,12 +5016,55 @@
    "break": [
     [
      "web/notebook-writing.mjs",
-     "return {...merged,body:original.join('')};",
-     "return {...merged,body:original.join('').replace(/\\n(?=##)/g,'\\n\\n')};"
+     "if(byCard!==undefined)return byCard===null?null:{...merged,body:byCard};",
+     "if(byCard!==undefined)return byCard===null?null:{...merged,body:byCard.replace(/\\n(?=##)/g,'\\n\\n')};"
     ]
    ],
    "check": {
     "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A blank Notebook surface without a snapshot cannot overwrite retained writing",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "edit(patch, seen, mode = 'text', acts = [])",
+     "edit(patch, seen = this.capture(), mode = 'text', acts = [])"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Reloading a Notebook with a pending choice draws the retained Cards before accepting input",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "const drawKept=force || !this.cardsSeen || !this.textSeen;",
+     "const drawKept=false;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook warp probe 302 r3: after a reload with a choice pending, the cards"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Notebook card moves retain concurrent edits to the neighboring card",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "const byCard=mergeRewrittenCards(base.body,mine.body,theirs.body);",
+     "const byCard=undefined;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_card_merges.test.mjs"
    }
   }
  ]

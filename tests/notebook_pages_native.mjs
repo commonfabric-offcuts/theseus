@@ -166,7 +166,10 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   };
   const openRow = async p => {
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
-    await until(()=>p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(row)}).getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})()`),'Notebook row finishes scrolling into view');
+    await until(()=>p.evaluate(`new Promise(resolve=>{
+      const e=document.querySelector(${JSON.stringify(row)});e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
+      const a=e.getBoundingClientRect();requestAnimationFrame(()=>{const b=e.getBoundingClientRect();resolve(a.top===b.top&&a.bottom===b.bottom&&b.top>=0&&b.bottom<=innerHeight);});
+    })`),'Notebook row stays in view across an animation frame');
     await p.point(row);
     await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.length > 0"), 'the Reader shows the page');
   };
@@ -581,6 +584,117 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     const after = await view('memory_current', { item_id: id }), asked = await wPanel(p);
     assert.equal(shown.includes('Two risks.'), false, '(setup) the cards still showed the old Risks when the key was pressed');
     assert.ok(asked || after.body.includes('Two risks.'), `the agent’s change to Risks was written over without a question: page now ${JSON.stringify(after.body)}`);
+    await p.close();
+  });
+
+  const w3Panel = p => p.evaluate("Boolean(document.querySelector('.notebook-conflict') && !document.querySelector('.notebook-conflict').hidden)");
+  const w3Held = p => p.evaluate("new Promise(r=>{const q=indexedDB.open('theseus-notebook-writing-v1');q.onsuccess=()=>{const db=q.result;const s=db.transaction('writing').objectStore('writing');const c=s.getAll();c.onsuccess=()=>{r(JSON.stringify(c.result.map(v=>({conflict:Boolean(v?.conflict),body:v?.value?.body}))));db.close();};};})");
+  await check('notebook warp probe 302 r3: after Discard my writing, the status does not say the words are kept', async () => {
+    const item = 'w302-discard-status';
+    assert.equal((await control({ method: 'outcome_reference', operation_id: item, item_id: item, title: 'Discarded writing', body: 'Saved words.' })).status, 'committed');
+    const p = await page(item, null, true, { url: `${facts.origin}/?cards=${item}&view=text`, beforeNavigate: async q => {
+      await q.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+        const originalFetch=fetch.bind(globalThis);
+        globalThis.fetch=async(...args)=>{let e;try{e=JSON.parse(args[1]?.body)}catch{}
+          if(e?.kind==='memory.revise')return new Response(JSON.stringify({instance_id:e.instance_id,operation_id:e.operation_id,kind:e.kind,status:'rejected',recorded:false,error:{code:'FORBIDDEN',message:'Access removed'}}),{status:200,headers:{'content-type':'application/json'}});
+          return originalFetch(...args);
+        };` });
+    } });
+    await until(() => p.evaluate("document.body.dataset.ready==='true' && document.querySelector('#notebook-text')?.value==='Saved words.'"), 'Notebook opens');
+    await p.point('#notebook-text'); await p.key('a', 4); await p.send('Input.insertText', { text: 'Words to discard.' });
+    await until(() => p.evaluate("document.querySelector('#notebook-text').readOnly && document.querySelectorAll('.deck-status button').length===2"), 'the refusal offers recovery');
+    await p.point('.deck-status button:last-child');
+    await until(() => p.evaluate("document.querySelector('#notebook-text').value==='Saved words.'"), 'Discard shows the saved words');
+    const after = await p.evaluate("({status:document.querySelector('.deck-status > span')?.textContent??'',buttons:[...document.querySelectorAll('.deck-status button')].map(b=>b.textContent)})");
+    assert.equal(/kept/i.test(after.status), false, `after Discard the status says: ${JSON.stringify(after)}`);
+    await p.close();
+  });
+  await check('notebook warp probe 302 r3: after a reload with a choice pending, Text shows the kept writing and keeps what is typed', async () => {
+    const id = 'w302-reload-choice';
+    assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Reload', body: 'Original words.' })).status, 'committed');
+    const url = `${facts.origin}/?cards=${id}&view=text`;
+    let p = await page(id, null, true, { url });
+    await until(() => p.evaluate("document.body.dataset.ready==='true' && document.querySelector('#notebook-text')?.value==='Original words.'"), 'Text opens');
+    await p.point('#notebook-text');
+    // Hold the save back so the agent's revision lands first.
+    await p.evaluate("(()=>{const f=fetch.bind(globalThis);globalThis.fetch=async(...a)=>{let e;try{e=JSON.parse(a[1]?.body)}catch{}if(e?.kind==='memory.revise')await new Promise(r=>setTimeout(r,60000));return f(...a);};return true})()");
+    await p.evaluate("(()=>{const t=document.querySelector('#notebook-text');t.setSelectionRange(t.value.length,t.value.length);return true})()");
+    await p.send('Input.insertText', { text: ' Mine.' });
+    assert.equal((await control({ method: 'memory_revise', operation_id: `${id}-agent`, item_id: id, expected_revision: 1, title: 'Reload', body: 'Agent words.' })).status, 'committed');
+    await until(() => w3Panel(p), 'the agent’s revision asks for a choice', 30000).catch(() => {});
+    const asked = await w3Panel(p);
+    await until(async () => (await w3Held(p)).includes('"conflict":true'), 'the choice is kept on this device', 10000).catch(() => {});
+    const held = await w3Held(p);
+    await p.close();
+    p = await page(id, null, true, { url });
+    await until(() => p.evaluate("document.body.dataset.ready==='true'"), 'the page opens again');
+    await until(() => w3Panel(p), 'the choice shows again', 10000).catch(() => {});
+    const shown = await p.evaluate("document.querySelector('#notebook-text').value");
+    await p.point('#notebook-text');
+    await p.evaluate("(()=>{const t=document.querySelector('#notebook-text');t.setSelectionRange(t.value.length,t.value.length);return true})()");
+    await p.send('Input.insertText', { text: ' More.' });
+    await p.point('.notebook-conflict button:first-of-type');
+    await until(async () => (await view('memory_current', { item_id: id })).source_ref.revision >= 3, 'Save my version saves', 15000).catch(() => {});
+    const saved = (await view('memory_current', { item_id: id })).body;
+    assert.deepEqual({ asked, held: held.includes('"conflict":true'), shown, saved }, { asked: true, held: true, shown: 'Original words. Mine.', saved: 'Original words. Mine. More.' }, 'a reload with a choice pending');
+    await p.close();
+  });
+
+  await check('notebook warp probe 302 r3: a move past a card the agent just changed merges without a question', async () => {
+    const id = 'w302-move-past', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    // Hold the device write so the move is made from the cards as they showed before the agent's change.
+    const slow = "(()=>{const d=Object.getOwnPropertyDescriptor(IDBTransaction.prototype,'oncomplete');Object.defineProperty(IDBTransaction.prototype,'oncomplete',{configurable:true,get(){return d.get.call(this);},set(fn){d.set.call(this,fn&&((...a)=>setTimeout(()=>fn.apply(this,a),8000)));}});return true;})()";
+    await p.evaluate(slow);
+    const before = await p.evaluate("performance.getEntriesByType('resource').filter(e=>e.name.endsWith('/api/view')).length");
+    assert.equal((await control({ method: 'memory_revise', operation_id: `${id}-agent`, item_id: id, expected_revision: 1, title: 'Cards', body: body.replace('Dan reviews.', 'Dan approves.') })).status, 'committed');
+    await until(async () => (await p.evaluate("performance.getEntriesByType('resource').filter(e=>e.name.endsWith('/api/view')).length")) >= before + 2, 'the page reads the newer revision');
+    await p.key('ArrowDown', 4);   // Cmd-Down: Plan moves past Notes
+    await until(async () => (await view('memory_current', { item_id: id })).source_ref.revision >= 3 || await w3Panel(p), 'the move is saved, or a choice is asked', 60000);
+    const asked = await w3Panel(p), after = (await view('memory_current', { item_id: id })).body;
+    assert.deepEqual({ asked, after }, { asked: false, after: '## Notes\n\nDan approves.\n\n## Plan\n\nShip it.\n\n## Risks\n\nNone yet.\n' }, 'Plan moved past Notes while the agent changed Notes');
+    await p.close();
+  });
+
+  await check('notebook warp probe 302 r3: a move made just before the agent changes the card it passed merges without a question', async () => {
+    const id = 'w302-move-then-agent', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    await p.key('ArrowDown', 4);   // Cmd-Down: Plan moves past Notes; the page saves it after its usual pause
+    const agent = await control({ method: 'memory_revise', operation_id: `${id}-agent`, item_id: id, expected_revision: 1, title: 'Cards', body: body.replace('Dan reviews.', 'Dan approves.') });
+    assert.equal(agent.status, 'committed', `(setup) the agent wrote before the move was saved: ${JSON.stringify(agent.error ?? null)}`);
+    await until(async () => (await view('memory_current', { item_id: id })).source_ref.revision >= 3 || await w3Panel(p), 'the move is saved, or a choice is asked', 30000);
+    const asked = await w3Panel(p), after = (await view('memory_current', { item_id: id })).body;
+    assert.deepEqual({ asked, after }, { asked: false, after: '## Notes\n\nDan approves.\n\n## Plan\n\nShip it.\n\n## Risks\n\nNone yet.\n' }, 'Plan moved past Notes; the agent changed Notes a moment later');
+    await p.close();
+  });
+
+  const w3bPanel = p => p.evaluate("Boolean(document.querySelector('.notebook-conflict') && !document.querySelector('.notebook-conflict').hidden)");
+  const w3bHeld = p => p.evaluate("new Promise(r=>{const q=indexedDB.open('theseus-notebook-writing-v1');q.onsuccess=()=>{const db=q.result;const s=db.transaction('writing').objectStore('writing');const c=s.getAll();c.onsuccess=()=>{r(JSON.stringify(c.result.map(v=>({conflict:Boolean(v?.conflict),body:v?.value?.body}))));db.close();};};})");
+  await check('notebook warp probe 302 r3: after a reload with a choice pending, the cards show the kept writing and a new card does not replace it', async () => {
+    const id = 'w302-reload-cards', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n';
+    let p = await cards(id, body);
+    await p.key('Enter', 4);
+    await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), 'Plan opens for writing');
+    await p.send('Input.insertText', { text: ' Soon.' });
+    await saved(id, body.replace('Ship it.', 'Ship it. Soon.'), 'the unfinished card autosaves');
+    await p.send('Input.insertText', { text: ' Maybe.' });
+    const now = await view('memory_current', { item_id: id });
+    assert.equal((await control({ method: 'memory_revise', operation_id: `${id}-agent`, item_id: id, expected_revision: now.source_ref.revision, title: 'Cards', body: now.body.replace('Ship it. Soon.', 'Ship it on Friday.') })).status, 'committed');
+    await until(() => w3bPanel(p), 'a change to the card being written asks for a choice');
+    await until(async () => (await w3bHeld(p)).includes('"conflict":true'), 'the choice is kept on this device', 10000);
+    const held = await w3bHeld(p);
+    await p.close();
+    p = await page(id, null, true, { url: `${facts.origin}/?cards=${id}` });
+    await until(() => p.evaluate("document.body.dataset.ready==='true'"), 'the page opens again');
+    await until(() => w3bPanel(p), 'the choice shows again', 10000).catch(() => {});
+    const again = await w3bPanel(p), shownCards = await p.evaluate("document.querySelectorAll('#deck-page .deck-card').length"), focus = await p.evaluate("document.activeElement?.tagName+'.'+(document.activeElement?.className??'')");
+    await p.key('Enter');
+    const writing = await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), 'a new card opens for writing', 5000).then(() => true, () => false);
+    if (writing) { await p.send('Input.insertText', { text: 'New' }); await p.key('Escape'); }
+    const offered = await p.evaluate("Boolean(document.querySelector('.notebook-conflict button:first-of-type')?.getClientRects().length)");
+    if (offered) await p.point('.notebook-conflict button:first-of-type');
+    await until(async () => (await view('memory_current', { item_id: id })).source_ref.revision >= 4, 'Save my version saves', 15000).catch(() => {});
+    const after = (await view('memory_current', { item_id: id })).body;
+    assert.deepEqual({ again, shownCards, writing, offered, keptPlan: after.includes('Ship it. Soon. Maybe.'), keptNotes: after.includes('Dan reviews.') },
+      { again: true, shownCards: 3, writing: true, offered: true, keptPlan: true, keptNotes: true }, `held ${held}; focus ${focus}; page now ${JSON.stringify(after)}`);
     await p.close();
   });
 

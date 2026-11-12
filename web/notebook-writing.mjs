@@ -1,4 +1,4 @@
-import { parseDeck } from './deck.mjs';
+import { parseDeck, deckBody, cardText, applyAct, findCard } from './deck.mjs';
 const copy = structuredClone;
 const same = (a, b) => a === b || Boolean(a && b && typeof a === 'object' && typeof b === 'object' &&
   Array.isArray(a) === Array.isArray(b) && Object.keys(a).length === Object.keys(b).length &&
@@ -71,12 +71,19 @@ export class NotebookWriting {
     this.notify();
   }
   capture() { return {revision:this.base?.revision,content:copy(this.value)}; }
-  edit(patch, seen = this.capture(), mode = 'text') {
-    if (!this.value || this.readOnly || this.closed) return false;
+  edit(patch, seen, mode = 'text', acts = []) {
+    // A caller must name the content it actually edited. In particular an
+    // empty, not-yet-drawn surface must never borrow the current revision.
+    if (!seen?.content || !Number.isInteger(seen.revision) || !this.value || this.readOnly || this.closed) return false;
     const next = { ...seen.content, ...copy(patch) };
     if (sameContent(next, seen.content)) return false;
-    const merged = sameContent(seen.content,this.value) ? next :
-      (mode === 'cards' ? mergeCardContent : mergeTextContent)(seen.content,next,this.value);
+    let merged;
+    if(sameContent(seen.content,this.value)) merged=next;
+    else if(mode==='cards' && acts.length && applyCardActs(seen.content.body,acts)===next.body) {
+      // Structural gestures retain their card identity across a delayed redraw.
+      const body=rebaseCardActs(seen.content.body,this.value.body,acts);
+      merged=body===null?null:mergeTextContent({...seen.content,body},{...next,body},{...this.value,body});
+    } else merged=(mode === 'cards' ? mergeCardContent : mergeTextContent)(seen.content,next,this.value);
     if(merged === null) {
       this.conflict ??= this.base;
       this.value = {...this.value,...copy(patch)};
@@ -171,6 +178,7 @@ export class NotebookWriting {
       this.discardVersion=(this.discardVersion??0)+1;
       for(const image of this.images){image.removed=true;image.bytes=null;}
       this.base=latest;this.value=copy(latest.content);this.conflict=null;this.images=[];this.error=null;
+      this.readOnly=false;this.refusalCode=null;
       this.localVersion++;await this.persist();this.notify();return true;
     } catch(error) { this.error='Your writing is kept: '+error.message;this.notify();return false; }
   }
@@ -252,9 +260,74 @@ export async function notebookStore(binding, win = globalThis) {
   };
 }
 
-// Merge nonoverlapping card changes. Card text and its exact separators are
-// separate units: edits to the same card require a choice. LCS
-// identifies insertions/deletions/moves without interpreting the prose.
+export function applyCardActs(body, acts) {
+  let deck=parseDeck(body);
+  for(const act of acts) {
+    const result=applyAct(deck,act);if(!result)return null;
+    deck=parseDeck(deckBody(result.deck));
+  }
+  return deckBody(deck);
+}
+
+// Replay gestures on the new deck. The target's text identifies what was
+// acted on. An insertion's anchor only names a position, so its words may
+// have changed. A remove or merge may not silently consume changed children.
+export function rebaseCardActs(before, latest, acts) {
+  for(const act of acts) {
+    if(act.kind==='many') {
+      latest=rebaseCardActs(before,latest,act.acts);
+      if(latest===null)return null;
+      before=applyCardActs(before,act.acts);continue;
+    }
+    const prior=parseDeck(before),current=parseDeck(latest),after=applyCardActs(before,[act]);
+    if(after===null)return null;
+    const remaining=parseDeck(after).cards.map(cardText);
+    for(const card of prior.cards) {
+      if(!remaining.includes(cardText(card))&&findCard(current,cardText(card),card.at)<0)return null;
+    }
+    const rebased={...act};
+    if(act.after!==undefined&&act.after!==null&&findCard(current,act.after,act.near)<0) {
+      const anchor=prior.cards[findCard(prior,act.after,act.near)];
+      const matches=anchor?current.cards.filter(c=>c.title===anchor.title&&c.depth===anchor.depth):[];
+      if(matches.length!==1)return null;
+      rebased.after=cardText(matches[0]);
+    }
+    latest=applyCardActs(latest,[rebased]);if(latest===null)return null;
+    before=after;
+  }
+  return latest;
+}
+
+// A remote text edit is applied to that card wherever a local gesture moved
+// it. This also handles a gesture awaiting autosave (and a restored journal):
+// moving past a changed neighbor never treats the neighbor as deleted.
+function mergeRewrittenCards(before, mine, theirs) {
+  const base=parseDeck(before),left=parseDeck(mine),right=parseDeck(theirs);
+  if(base.cards.length!==right.cards.length || base.cards.some((c,i)=>c.title!==right.cards[i].title||c.depth!==right.cards[i].depth))return undefined;
+  if(base.opening!==right.opening) {
+    if(left.opening!==base.opening&&left.opening!==right.opening)return null;
+    left.opening=right.opening;
+  }
+  for(let i=0;i<base.cards.length;i++) {
+    const a=base.cards[i],b=right.cards[i];
+    if(a.raw===b.raw)continue;
+    const at=findCard(left,cardText(a),i);
+    if(at<0) {
+      if(findCard(left,cardText(b),i)>=0)continue;
+      return null;
+    }
+    const old=left.cards[at],trim=s=>s.replace(/\n*$/,'');
+    if(trim(old.raw)!==trim(a.raw)&&trim(old.raw)!==trim(b.raw))return null;
+    const baseEnd=/\n*$/.exec(a.raw)[0],newEnd=/\n*$/.exec(b.raw)[0],ownEnd=/\n*$/.exec(old.raw)[0];
+    if(baseEnd!==newEnd&&ownEnd!==baseEnd&&ownEnd!==newEnd)return null;
+    left.cards[at]={...old,raw:trim(b.raw)+(baseEnd!==newEnd?newEnd:ownEnd)};
+  }
+  return deckBody(left);
+}
+
+// Fallback for text edits/additions in both copies, with exact separators.
+// Structural UI gestures use rebaseCardActs, and a remote card rewrite uses
+// card identity above. LCS is only the remaining unambiguous text delta.
 function cardEdits(before, after) {
   const equal=(a,b)=>a===b;
   let start=0,end=before.length,tail=after.length;
@@ -283,6 +356,8 @@ export function mergeCardContent(base, mine, theirs) {
   }
   if(mine.body===base.body) return {...merged,body:theirs.body};
   if(theirs.body===base.body||mine.body===theirs.body)return {...merged,body:mine.body};
+  const byCard=mergeRewrittenCards(base.body,mine.body,theirs.body);
+  if(byCard!==undefined)return byCard===null?null:{...merged,body:byCard};
   const chunks=body=>{const deck=parseDeck(body);return [deck.opening,...deck.cards.flatMap(card=>{
     const end=/\n*$/.exec(card.raw)[0];return [card.raw.slice(0,card.raw.length-end.length),end];
   })];};
@@ -293,10 +368,13 @@ export function mergeCardContent(base, mine, theirs) {
     let identical=false;
     for(const l of left) {
       if(same(l,r)){identical=true;break;}
-      if(l.start===r.start||l.start<r.end&&r.start<l.end)return null;
+      const li=l.start===l.end,ri=r.start===r.end;
+      if((li&&ri&&l.start===r.start)||(!li&&!ri&&l.start<r.end&&r.start<l.end)||
+        (li&&l.start>r.start&&l.start<r.end)||(ri&&r.start>l.start&&r.start<l.end))return null;
     }
     if(!identical)all.push(r);
   }
-  for(const edit of all.sort((a,b)=>b.start-a.start))original.splice(edit.start,edit.end-edit.start,...edit.put);
+  // At the same boundary apply a replacement first, then the insertion.
+  for(const edit of all.sort((a,b)=>b.start-a.start||b.end-a.end))original.splice(edit.start,edit.end-edit.start,...edit.put);
   return {...merged,body:original.join('')};
 }
