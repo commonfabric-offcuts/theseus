@@ -4728,6 +4728,36 @@
     "native": "reading",
     "case": "is recorded to that member"
    }
+  },
+  {
+   "item": 329,
+   "act": "A leading @name of someone on the outcome's team who is in neither the topic nor its conversation shows as \"To\" them before Send, in the conversation and its topic, and Core records them",
+   "break": [
+    [
+     "web/app.mjs",
+     "const members = topicId => [...outcomeMembers ?? [], ...topicId",
+     "const members = topicId => [...topicId"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "neither the topic nor its conversation"
+   }
+  },
+  {
+   "item": 329,
+   "act": "Writing moved from a topic to the outcome's conversation names by a leading @name only the conversation's members, not the topic's participants",
+   "break": [
+    [
+     "web/app.mjs",
+     "...topicId === topic?.id ? views?.participants ?? [] : []]",
+     "...views?.participants ?? []]"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "neither the topic nor its conversation"
+   }
   }
  ]
 }

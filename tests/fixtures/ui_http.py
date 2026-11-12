@@ -517,16 +517,17 @@ def main():
                     elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_delay", "read_fault", "read_fault_clear", "admission_events"):
                         answer = controls.control(request, server)
                     elif freshness and request["method"] == "navigation_topics":
-                        # Isolated fixture setup through real creation commands.
+                        # Isolated fixture setup through real creation commands; each topic
+                        # in w1, or in the outcome its "workspace_id" names.
                         created = []
                         for item in request["topics"]:
-                            topic_id = item["id"]
+                            topic_id, workspace = item["id"], item.get("workspace_id", "w1")
                             prefix = "navigation-" + topic_id
                             draft_id = prefix + "-draft"
                             command("draft.save", prefix + "-save", {
-                                "source_ref": {"kind": "new_topic", "id": prefix, "workspace_id": "w1"},
+                                "source_ref": {"kind": "new_topic", "id": prefix, "workspace_id": workspace},
                                 "topic_id": topic_id, "generation": prefix + "-generation", "body": "Fixture conversation " + topic_id,
-                                "opening": {"workspace_id": "w1", "title": item["title"], "participants": []}},
+                                "opening": {"workspace_id": workspace, "title": item["title"], "participants": []}},
                                 {"draft_id": draft_id}, {"draft_revision": 0})
                             command("submission.prepare", prefix + "-prepare", {
                                 "draft_id": draft_id, "submission_id": prefix + "-submission", "send_operation_id": prefix + "-send"},

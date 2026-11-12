@@ -691,6 +691,103 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
+  // Tony's case (item 329): an outcome of the person's, one per device, where fable answers in its conversation and
+  // aim-spec is on its team but in neither the conversation (only the team's people and fable take part there) nor
+  // its topic; warp takes part in the topic and is not on the team. A leading @name names whom Core can send to
+  // where the writing goes: the line says so before Send, and Core records it.
+  await check('reading a leading @name of a member of the outcome\'s team who is in neither the topic nor its conversation says "To" them and is recorded to them; one only in the topic names nobody in writing sent to the conversation', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const outcome = 'reading-at-team-' + device, topic = outcome + '-topic';
+      await control({ method: 'navigation_workspaces', workspaces: [{ id: outcome, title: 'At names ' + device, team: ['fable', 'aim-spec'], coordinator: 'fable' }] });
+      const conversation = (await view('conversation', { workspace_id: outcome })).conversation.topic_id;
+      await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'At names ' + device, workspace_id: outcome }] });
+      const say = async (n, topicId, more) => (await control({ method: 'agent_message', operation_id: `${outcome}-${n}`, topic_id: topicId, source: 'topic', ...more })).result.message_id;
+      const status = await say(0, conversation, { sender: 'fable', addressees: [facts.actor], body: 'The wake check is in.' });
+      const fable = await say(1, topic, { sender: 'fable', join: true, addressees: [facts.actor], body: 'Fable in the topic.' });
+      await say(2, topic, { sender: 'warp', join: true, body: 'Warp is here too.' });
+      const again = await say(4, topic, { sender: 'fable', addressees: [facts.actor], body: 'Fable again in the topic.' });
+      const present = async topicId => (await view('topic', { topic_id: topicId })).participants.map(person => person.actor_id).sort();
+      assert.deepEqual([await present(conversation), await present(topic)], [['fable', facts.actor].sort(), ['fable', facts.actor, 'warp'].sort()],
+        device + ': aim-spec takes part in neither the conversation nor the topic');
+      // The person's message in a topic, by its words: [addressees, the message it answers].
+      const recorded = async (topicId, body) => {
+        const item = await until(async () => (await view('topic_messages', { topic_id: topicId, direction: 'before', limit: 50 })).items
+          .find(entry => entry.author_id === facts.actor && entry.body === body), `${device}: Core holds "${body}"`);
+        return [item.addressees, item.reply_to ?? null];
+      };
+      // Types each piece as keys would give it, and waits for the line to say want.
+      const types = async (p, line, steps) => {
+        for (const [text, want] of steps) {
+          await p.send('Input.insertText', { text });
+          await becomes(() => toLine(p, line), want, `${device}: after "${text}" the line says ${JSON.stringify(want)}`);
+        }
+      };
+      // The page has drawn the message just sent and has no read out, so nothing moves under the next press.
+      const settled = async (p, topicId, body) => {
+        const id = await until(async () => (await view('topic_messages', { topic_id: topicId, direction: 'before', limit: 50 })).items
+          .find(entry => entry.author_id === facts.actor && entry.body === body)?.id, `${device}: "${body}" is sent`);
+        if (await readerOn(p) !== null) await closeReader(p, device);
+        await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${id}"]')) && window.fetchesOut === 0`), device + ': the page shows the message sent');
+      };
+
+      // In the conversation, a reply to fable's message that starts with @aim-spec goes to aim-spec, as the line says.
+      const tony = '@aim-spec can you reply here when your tool for watching this topic is running?';
+      const p = await open('reading-at-team-conversation-' + device, device, conversation, status);
+      await openReader(p, device, status, 'The wake check is in.');
+      await into(p, device, '#writing-body');
+      await becomes(() => toLine(p, '#writing-to'), 'To fable', device + ' conversation Reader: fable, whose message it answers, by default');
+      await types(p, '#writing-to', [['@aim-sp', 'To fable'], [tony.slice('@aim-sp'.length), 'To aim-spec']]);
+      await shot(p, 'reading-at-team-conversation-' + device);
+      await press(p, device, '#send-reply');
+      await settled(p, conversation, tony);
+      assert.deepEqual(await recorded(conversation, tony), [['aim-spec'], status], device + ': Core records it to aim-spec, in place of fable');
+      // aim-spec answers it where it was asked.
+      const asked = (await view('topic_messages', { topic_id: conversation, direction: 'before', limit: 50 })).items.find(entry => entry.body === tony).id;
+      const running = await say(3, conversation, { sender: 'aim-spec', reply_to: asked, addressees: [facts.actor], body: 'It is running now.' });
+      // Its answer, drawn, moves the writing box: the box is pressed after.
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${running}"]')) && window.fetchesOut === 0`), device + ': the page shows aim-spec\'s answer');
+      // The conversation's own composer names aim-spec the same way.
+      const build = '@aim-spec please check the build';
+      await into(p, device, '#inline-writing-body');
+      await types(p, '#inline-writing-to', [[build, 'To aim-spec']]);
+      await centre(p, '#inline-send');
+      await press(p, device, '#inline-send');
+      await settled(p, conversation, build);
+      assert.deepEqual((await recorded(conversation, build))[0], ['aim-spec'], device + ': Core records the composer\'s message to aim-spec');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+
+      // In the outcome's topic, a reply to fable's message names aim-spec, on the team and not in the topic.
+      const q = await open('reading-at-team-topic-' + device, device, topic, fable);
+      const over = '@aim-spec over to you';
+      await openReader(q, device, fable, 'Fable in the topic.');
+      await into(q, device, '#writing-body');
+      await types(q, '#writing-to', [['@aim-spec', 'To aim-spec'], [' over to you', 'To aim-spec']]);
+      await press(q, device, '#send-reply');
+      await settled(q, topic, over);
+      assert.deepEqual(await recorded(topic, over), [['aim-spec'], fable], device + ': Core records the topic\'s reply to aim-spec, in place of fable');
+      // warp, in the topic and not on the team, is someone writing here goes to, and no one in the conversation:
+      // the same words moved there by one tap on To go to fable, whose message they answer.
+      const there = '@warp are you there?';
+      await openReader(q, device, again, 'Fable again in the topic.');
+      await into(q, device, '#writing-body');
+      await types(q, '#writing-to', [[there, 'To warp']]);
+      // On a phone In is in the who panel, which the who chip opens and Done closes (docs/reader.md).
+      const panel = shown => q.evaluate(`!document.querySelector('#who-panel').hidden === ${shown}`);
+      if (device === 'phone') { await press(q, device, '#who-chip'); await until(() => panel(true), 'phone: the who panel opens'); }
+      await press(q, device, '#reply-destination button[data-destination]:not([aria-pressed="true"])');
+      await until(() => q.evaluate(`document.querySelector('#reply-destination button[aria-pressed="true"]')?.textContent === 'Conversation' && document.querySelector('#writing-body').value === ${JSON.stringify(there)}`),
+        device + ': the conversation is chosen and the writing came along');
+      if (device === 'phone') { await press(q, device, '#who-done'); await until(() => panel(false), 'phone: the who panel closes'); }
+      await becomes(() => toLine(q, '#writing-to'), 'To fable', device + ': in the conversation, @warp names nobody and the line says fable');
+      await press(q, device, '#send-reply');
+      assert.deepEqual(await recorded(conversation, there), [['fable'], null], device + ': Core records it in the conversation to fable, not warp');
+      if (await readerOn(q) !== null) await closeReader(q, device);
+      assert.deepEqual(q.errors, []);
+      await q.close();
+    }
+  });
+
   await check('reading 👍 in the Reader beside Send records a thumbs-up in Core, and a second press takes it back', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-reader-thumb-' + device;
