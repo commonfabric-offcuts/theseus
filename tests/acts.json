@@ -3178,7 +3178,13 @@
   {
    "item": 357,
    "act": "A reply sent in the current view stays beside its answer until the reader resets the stack state",
-   "break": [["web/stack-feed.mjs", "    for (const item of mine) this.state.kept.add(item.id);", "    // Own reply retention removed."]],
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    for (const item of mine) this.state.kept.add(item.id);",
+     "    // Own reply retention removed."
+    ]
+   ],
    "check": {
     "native": "reading",
     "case": "reading stacks a sent reply stays visible when its answer arrives"
@@ -3187,7 +3193,13 @@
   {
    "item": 357,
    "act": "Only the reader's own reply is held beside its answer: another reader's read reply is replaced by a newer one as before",
-   "break": [["web/stack-feed.mjs", "    for (const item of mine) this.state.kept.add(item.id);", "    for (const item of items) if (this.newestSeen !== null && item.seq > this.newestSeen && item.reply_to) this.state.kept.add(item.id);"]],
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    for (const item of mine) this.state.kept.add(item.id);",
+     "    for (const item of items) if (this.newestSeen !== null && item.seq > this.newestSeen && item.reply_to) this.state.kept.add(item.id);"
+    ]
+   ],
    "check": {
     "native": "reading",
     "case": "reading stacks a sent reply is held alone"
@@ -3196,7 +3208,13 @@
   {
    "item": 357,
    "act": "A sent reply arriving in one update with its answer, dealt with already on another device, shows in the first draw",
-   "break": [["web/stack-feed.mjs", "    for (const item of mine) this.state.kept.add(item.id);\n    this.arrange();", "    this.arrange();\n    for (const item of mine) this.state.kept.add(item.id);"]],
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    for (const item of mine) this.state.kept.add(item.id);\n    this.arrange();",
+     "    this.arrange();\n    for (const item of mine) this.state.kept.add(item.id);"
+    ]
+   ],
    "check": {
     "native": "reading",
     "case": "reading stacks a sent reply arriving already dealt with"
@@ -4965,6 +4983,20 @@
    "check": {
     "native": "reading",
     "case": "a join you make shows where it went"
+   }
+  },
+  {
+   "item": 359,
+   "act": "One human or room-directed message keeps the whole joined dossier visible",
+   "break": [
+    [
+     "web/coordination-stacks.mjs",
+     "items.every(item => quiet(item)",
+     "items.some(item => quiet(item)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_coordination_stacks.test.mjs"
    }
   }
  ]
