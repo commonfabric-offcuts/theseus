@@ -4834,6 +4834,81 @@
    "check": {
     "python": "test_hosted_controls.py"
    }
+  },
+  {
+   "item": 43,
+   "act": "A Stop after claiming work is rechecked before the native turn request",
+   "break": [
+    [
+     "aim_next/codex_host.py",
+     "if work.thread.control_stopped:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "Provisioning requires a human owner, not another agent",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "owner[\"kind\"] != \"human\" or",
+     "False or"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "A malformed control record stops only its own hosted seat",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "return {\"desired\":\"stopped\", \"fault\":error.code}",
+     "raise"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "A misbound or invalid control never becomes schedulable work",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "return 0\n",
+     "return 1\n"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "Hosted waiting state and work links use only messages the viewer can read",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "m.author_id=:agent AND \" + READABLE_WORK + ",
+     "m.author_id=:agent AND \" + \"1\" + "
+    ],
+    [
+     "aim_next/hosted_control.py",
+     "g.pending_count>0 AND \" + READABLE_WORK + ",
+     "g.pending_count>0 AND \" + \"1\" + "
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
   }
  ]
 }

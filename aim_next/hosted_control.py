@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import json
 
-from .contract import Refusal, _identifier, _json
-from . import delivery
+from .contract import Refusal, READABLE, _identifier, _json
+from . import delivery, whispers
 
 PREFIX = "hosted_control.v1:"
+READABLE_WORK = (whispers.VISIBLE + " AND (" + READABLE + " OR EXISTS (SELECT 1 FROM deliveries vd "
+                 "JOIN delivery_reasons vr ON vr.delivery_id=vd.id WHERE vd.message_id=m.id "
+                 "AND vd.recipient_id=:actor AND vr.reason='addressed'))")
 
 
 class HostedControl:
     def _hosted_status(self, db, actor_id, viewer, runner_live):
-        control = self._hosted_control(db, actor_id)
+        control = self._hosted_control_read(db, actor_id)
+        if control and control.get("fault"):
+            return {"state":"unavailable", "desired":"stopped", "execution_revision":None,
+                    "can_control":False, "since_ms":None, "last_finished":None,
+                    "failure":control["fault"], "work":None}
         thread = self._hosted_thread(db, actor_id)
         if control is None or thread is None:
             return None
@@ -23,8 +30,10 @@ class HostedControl:
         last = json.loads(last[0]) if last else None
         if last and last.get("thread_id") != thread:
             last = None
+        access = {"actor":viewer, "owner":control["owner_id"], "agent":actor_id}
         waiting = db.execute("SELECT q.ask_message_id FROM topic_waiting q INDEXED BY reader_waiting JOIN messages m ON m.id=q.ask_message_id "
-                             "WHERE q.actor_id=? AND q.archived=0 AND m.author_id=? LIMIT 1", (control["owner_id"], actor_id)).fetchone()
+                             "JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+                             "WHERE q.actor_id=:owner AND q.archived=0 AND m.author_id=:agent AND " + READABLE_WORK + " LIMIT 1", access).fetchone()
         fault = db.execute("SELECT failed_wakes,failed_reason,failed_outcome FROM wake_facts WHERE recipient_id=?", (actor_id,)).fetchone()
         failure = None
         if fault and fault[0]:
@@ -34,7 +43,8 @@ class HostedControl:
         if source is None:
             row = db.execute("SELECT d.message_id FROM delivery_groups g INDEXED BY eligible_groups "
                              "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-                             "WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 LIMIT 1", (actor_id,)).fetchone()
+                             "JOIN messages m ON m.id=d.message_id JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+                             "WHERE g.recipient_id=:agent AND g.active=1 AND g.pending_count>0 AND " + READABLE_WORK + " LIMIT 1", access).fetchone()
             source = row[0] if row else None
         work = None
         if source:
@@ -64,21 +74,38 @@ class HostedControl:
         row = db.execute("SELECT substr(value,1,8193) FROM metadata WHERE key=?", (PREFIX + actor_id,)).fetchone()
         if row is None:
             return None
+        return self._parse_hosted_control(row[0], actor_id)
+
+    def _parse_hosted_control(self, raw, actor_id):
         try:
-            value = json.loads(row[0])
-            assert len(row[0]) <= 8192
+            value = json.loads(raw)
+            assert len(raw) <= 8192
             assert set(value) == {"v", "binding", "owner_id", "desired", "revision", "changed_ms"}
             assert value["v"] == 1 and value["desired"] in ("running", "stopped")
             assert type(value["revision"]) is int and value["revision"] >= 1
             assert type(value["changed_ms"]) is int
             _identifier(value["owner_id"], "owner_id")
-        except (ValueError, TypeError, AssertionError, Refusal):
+        except (ValueError, TypeError, AssertionError, Refusal, KeyError, RecursionError):
             raise Refusal("HOSTED_CONTROL_INVALID", "The hosted control record is invalid; preserve it for inspection")
         expected = dict(self.binding, instance_id=self.instance_id, actor_id=actor_id, db_path=str(self.path))
         # A copied database or a new authority cannot silently inherit control.
         if value["binding"] != expected:
             raise Refusal("HOSTED_CONTROL_BINDING_MISMATCH", "The hosted control belongs to another binding")
         return value
+
+    def _hosted_control_read(self, db, actor_id):
+        # A bad seat fails closed without breaking the shared runner or Health.
+        # Commands and provisioning still use the strict reader and refuse.
+        try:
+            return self._hosted_control(db, actor_id)
+        except Refusal as error:
+            return {"desired":"stopped", "fault":error.code}
+
+    def _hosted_execution_allowed(self, raw, actor_id):
+        try:
+            return int(self._parse_hosted_control(raw, actor_id)["desired"] == "running")
+        except Refusal:
+            return 0
 
     def _provision_hosted_owner(self, db, actor_id, owner_id, now):
         owner = db.execute("SELECT kind,enabled FROM actors WHERE id=?", (_identifier(owner_id, "owner_id"),)).fetchone()
@@ -127,5 +154,5 @@ class HostedControl:
             status = self._ownership(self._runner_state(db), guard, runner_token, now)
             if status != "running":
                 return {"status": status}, False
-            return {"status": "ok", "controls": {agent: self._hosted_control(db, agent) for agent in recipients}}, False
+            return {"status": "ok", "controls": {agent: self._hosted_control_read(db, agent) for agent in recipients}}, False
         return self._effect(guard, action)

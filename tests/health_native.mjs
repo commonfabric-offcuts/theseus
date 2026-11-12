@@ -24,6 +24,7 @@ export async function healthChecks({ check, page, until, control, view, facts, s
 
   await check('health hosted Stop and Continue preserve pending work across reloads', async () => {
     await control({method:'hosted_setup'});
+    try {
     const agent='fixture-outside-agent';
     for (const [size,mobile] of [['laptop',false],['phone',true]]) {
     const p=await healthPage('health-hosted-controls-'+size,{beforeNavigate:async q=>{
@@ -63,6 +64,7 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors,[]);
     await p.close();
     }
+    } finally { assert.equal((await control({method:'hosted_cleanup'})).restored,true); }
   });
 
   await check('health the page says the runner and every agent from the view, and the link is quiet while nothing is red', async () => {

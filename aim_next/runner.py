@@ -257,9 +257,10 @@ class Runner:
         return self._effect(guard, action)
 
     def _execution_allowed(self, db):
-        # Metadata is bound to the same authority. A stale authority is not a
-        # usable route; explicit controls are checked again before dispatch.
-        return "NOT EXISTS (SELECT 1 FROM metadata WHERE key='hosted_control.v1:'||recipient_schedule.recipient_id AND json_extract(value,'$.desired')='stopped')"
+        # Use the same bound parser as dispatch, including malformed JSON. A
+        # single invalid record cannot fault the scheduler for other routes.
+        db.create_function("hosted_execution_allowed", 2, self._hosted_execution_allowed)
+        return "NOT EXISTS (SELECT 1 FROM metadata WHERE key='hosted_control.v1:'||recipient_schedule.recipient_id AND NOT hosted_execution_allowed(value,recipient_schedule.recipient_id))"
 
     def _next_due(self, db, routed=None):
         if routed is None:
@@ -766,7 +767,7 @@ class Runner:
                     result = {"instance_id": self.instance_id, "state": state["state"],
                               "version": state["version"], "lease_until_ms": state["lease_until_ms"],
                               "next_due_ms": self._next_due(db, routed),
-                              "hosted_controls": {agent: self._hosted_control(db, agent) for agent in json.loads(routed)}}
+                              "hosted_controls": {agent: self._hosted_control_read(db, agent) for agent in json.loads(routed)}}
                     if state["reason_code"] is not None:
                         result["reason_code"] = state["reason_code"]
                     return result

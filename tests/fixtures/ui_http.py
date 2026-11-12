@@ -652,6 +652,17 @@ def main():
                             answer = {"parked": agent}
                         else:
                             raise ValueError("Unknown wakes action")
+                    elif freshness and request["method"] == "hosted_cleanup":
+                        # Only this isolated native fixture's hosted case. Clear
+                        # its work through Core before restoring its prior route.
+                        with sqlite3.connect(str(path)) as db:
+                            pending = db.execute("SELECT id FROM deliveries WHERE recipient_id='fixture-outside-agent' AND topic_id='hosted-topic' AND state='pending'").fetchall()
+                        for (identity,) in pending:
+                            command("delivery.ack", "hosted-cleanup-" + identity, {}, {"delivery_id":identity}, sender="fixture-outside-agent")
+                        with sqlite3.connect(str(path)) as db:
+                            db.execute("DELETE FROM metadata WHERE key IN ('hosted_control.v1:fixture-outside-agent','hosted_activity.v1:fixture-outside-agent')")
+                            db.execute("DELETE FROM metadata WHERE key LIKE 'route_pin.v1:%' AND json_extract(value,'$.binding.actor_id')='fixture-outside-agent'")
+                        answer = {"restored":True}
                     elif freshness and request["method"] == "hosted_setup":
                         home = root / "hosted-controls-home"
                         home.mkdir(mode=0o700, exist_ok=True)
