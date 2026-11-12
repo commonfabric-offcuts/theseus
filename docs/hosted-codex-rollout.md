@@ -28,12 +28,14 @@ Do not print credentials, complete profiles, or account responses.
 
 ## Stop the supervisor and prove the guard is free
 
-Stopping its child runner alone would cause an automatic restart. This uses
-the deploy tool's exact recorded identity and its kernel exit wait. It neither
-stops the web server nor starts a second runner.
+Stopping its child runner alone would cause an automatic restart. Verify the
+recorded process start time and exact supervisor arguments, then use the
+kernel exit wait. The interpreter path may change when macOS's `/usr/bin/python3`
+shim execs the actual interpreter; that path is not the process identity.
+This neither stops the web server nor starts a second runner.
 
 ```sh
-/usr/bin/python3 -I - <<'PY'
+/usr/bin/python3 -B -I - <<'PY'
 import sys, os, json
 sys.path[:0]=['/Users/commonfabric/aim-next','/Users/commonfabric/aim-next/tools']
 import deploy
@@ -43,7 +45,9 @@ pid=deploy.recorded(c,'runner')
 rows=deploy.processes()
 assert deploy.find(rows,deploy.supervisor_argv(c)[1:])==[pid], 'supervisor identity mismatch'
 record=json.loads((deploy.run_dirs(c,'runner')[-1]/'pid.json').read_text())
-assert deploy.identity(pid)==record['identity'], 'PID identity changed'
+current=deploy.identity(pid)
+assert current and len(current.split(None,5))==6, 'supervisor disappeared'
+assert current.split(None,5)[:5]==record['identity'].split(None,5)[:5], 'PID start time changed'
 os.kill(pid,15)
 print({'supervisor':pid,'exit':deploy.wait_exit(pid)})
 final=(deploy.run_dirs(c,'runner')[-1]/'stdout.log').read_text().splitlines()[-1]
@@ -56,16 +60,19 @@ PY
 
 ## Register, bind, and provision once
 
-Registration is idempotent for this same actor; profile creation refuses to
-overwrite anything. If a prior attempt left a pin or native orphan, inspect
-its recorded identity and reconcile it; never repeatedly provision new threads.
+Run registration and provisioning once. `add-actor` refuses a retry with
+`ACTOR_EXISTS`; this is not an idempotent success. Before continuing after that
+refusal, read back the existing actor and verify its identity and agent kind.
+Profile creation below preserves an existing matching binding and refuses a
+mismatch. If a prior attempt left a pin or native orphan, inspect its recorded
+identity and reconcile it; never repeatedly provision new threads.
 The `--owner tony` is essential: the auditor operator is not the human owner.
 
 ```sh
-/usr/bin/python3 -I /Users/commonfabric/aim-next/bin/aim-next-admin add-actor \
+/usr/bin/python3 -B -I /Users/commonfabric/aim-next/bin/aim-next-admin add-actor \
   --profile /Users/commonfabric/.local/share/theseus/instances/tony-first-01/auditor.profile.json \
   --id codex-worker --kind agent --name 'Codex worker'
-/usr/bin/python3 -I - <<'PY'
+/usr/bin/python3 -B -I - <<'PY'
 import sys
 from pathlib import Path
 sys.path.insert(0,'/Users/commonfabric/aim-next')
@@ -81,7 +88,7 @@ else:
 (root/'hosted/codex-worker/work').mkdir(mode=0o700,exist_ok=True)
 print({'actor':'codex-worker','profile_bound':True})
 PY
-/usr/bin/python3 -I /Users/commonfabric/aim-next/bin/aim-next-runner host-provision \
+/usr/bin/python3 -B -I /Users/commonfabric/aim-next/bin/aim-next-runner host-provision \
   --profile /Users/commonfabric/.local/share/theseus/instances/tony-first-01/auditor.profile.json \
   --runner-id theseus-first-use-runner-01 \
   --actor-profile /Users/commonfabric/.local/share/theseus/instances/tony-first-01/codex-worker.profile.json \
@@ -104,8 +111,15 @@ The following changes only the new entry. Save the backup once and keep it.
 Validation reads the immutable pin, bound actor profile and trusted executables
 before the atomic rename. It performs no wake.
 
+If validation fails before the rename, the live route map is unchanged. Keep
+the one-time backup. Inspect the named staged file against the unchanged live
+map, then remove only that failed staged file before retrying the corrected
+write; do not overwrite the backup or repeatedly provision the seat. If the
+rename already succeeded, read back the installed route instead of retrying
+this insertion block.
+
 ```sh
-/usr/bin/python3 -I - <<'PY'
+/usr/bin/python3 -B -I - <<'PY'
 import sys,json,os
 from pathlib import Path
 sys.path.insert(0,'/Users/commonfabric/aim-next')
@@ -126,7 +140,7 @@ os.replace(stage,p)
 fd=os.open(str(root),os.O_RDONLY);os.fsync(fd);os.close(fd)
 print({'route_count':len(routes),'hosted_actor':'codex-worker','validated':True})
 PY
-/usr/bin/python3 -I - <<'PY'
+/usr/bin/python3 -B -I - <<'PY'
 import sys,subprocess,json
 sys.path[:0]=['/Users/commonfabric/aim-next','/Users/commonfabric/aim-next/tools']
 import deploy
@@ -146,7 +160,7 @@ PY
 ## Read back the pin, human owner, and actual resume
 
 ```sh
-/usr/bin/python3 -I - <<'PY'
+/usr/bin/python3 -B -I - <<'PY'
 import sys,json
 from pathlib import Path
 sys.path.insert(0,'/Users/commonfabric/aim-next')
@@ -160,14 +174,23 @@ control=store.runner_schedule(['codex-worker'])['hosted_controls']['codex-worker
 assert control['owner_id']=='tony' and control['desired']=='running'
 print({'actor':'codex-worker','owner':control['owner_id'],'thread':c.destination['thread_id'],'pin':pin})
 path=root/'hosted-runner/events.jsonl'
-found=[]
+found=[]; runtime=[]
 for line in path.read_text().splitlines():
     e=json.loads(line)
-    if e.get('thread')==c.destination['thread_id'] and e.get('event') in ('resume','resume_refused','turn_end','dispatch'):
-        found.append({k:e[k] for k in ('event','thread','turn','status','reason','mode') if k in e})
-print({'observed_events':found[-8:]})
+    fields=('at_ms','event','thread','turn','status','reason','mode','attempt','pid','outcome')
+    safe={k:e[k] for k in fields if k in e}
+    if e.get('thread')==c.destination['thread_id'] and e.get('event') in ('resume','resume_failed','resume_settings_refused','seen','turn_end'):
+        found.append(safe)
+    elif e.get('event') in ('dispatch','auth_failed','child_refused'):
+        runtime.append(safe)
+print({'thread_events':found[-8:], 'runtime_events_without_thread_attribution':runtime[-8:]})
 PY
 ```
+
+Dispatch and child authentication/refusal events have no thread field. Keep
+them visible as runtime evidence, and correlate their attempt or child identity
+before attributing one to a seat. Do not silently discard them with a thread
+filter or treat dispatch as a full delivery read.
 
 A route installation or resume event is not successful activation. Auditor
 will assign useful bounded work: inspect the shipped source and report a short
@@ -200,7 +223,7 @@ the same thread and retains any genuine Stop Tony recorded.
 After the supervisor has stopped, this is the exact route removal:
 
 ```sh
-/usr/bin/python3 -I - <<'PYROLLBACK'
+/usr/bin/python3 -B -I - <<'PYROLLBACK'
 import sys,json,os
 from pathlib import Path
 sys.path.insert(0,'/Users/commonfabric/aim-next')
@@ -223,3 +246,23 @@ Then use the restart block above. Do not invoke provisioning again.
 
 Existing desktop-seat migration remains an explicit later handoff of owner,
 context and unfinished work, not an implicit part of activating codex-worker.
+
+## Observed live activation, 12 November 2026
+
+Release 62 (`3ed416d4e50b3342698579f0ab8862d0d2bae3ef`) activated the new
+Tony-owned seat. Its native thread is
+`01a1cee9-add2-7730-88e0-68d75183f9c6`; do not reprovision it by rerunning this
+document. Task #2170 in `t-b9a28549446e9d985cddea9cfa83c08f` produced a useful
+map of the actual shipped Notebook code and a real HTTP 200 check in #2171.
+After supervisor `run-runner-56` was stopped and `run-runner-57` resumed the same
+thread, addressed follow-up #2175 recovered the un-repeated conversation label
+and continued that analysis in #2176. The second turn's recorded tools read
+only the new delivery, posted, read back its reply and acknowledged separately;
+they did not retrieve the original task or a file to recover context.
+
+Both turns completed with separate delivery acknowledgments. At 00:50 Pacific,
+Health showed idle, desired running, no pending delivery or failure, and the
+same native thread. Exact evidence is in
+`auditor/2026-11-11/hosted-codex/live-activation-proof.json` under Theseus's local
+data directory. Live Stop/Continue was not operated as Tony; its proof remains
+the separate isolated native and real-runtime checks.
