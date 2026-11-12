@@ -120,8 +120,13 @@ topic row (that topic's ask, from its `asks`) and the Conversation row on the
 outcome's page (its waits on the reader). A press opens the oldest question
 there at its message, however the server orders the facts, and each press
 after it the next one, round to the oldest again after the newest
-(`web/waiting-questions.mjs`). The page keeps only the last question each place
-opened, so one answered since drops out and the next press goes on from there.
+(`web/waiting-questions.mjs`). Only the last question each place opened is
+kept, so one answered since drops out and the next press goes on from there. It
+is kept for the browser tab (sessionStorage) rather than the page, because most
+presses load a page: from the outcome's page a press loads the topic, and Back
+loads the outcome's page again, whose next press opens the next question. The
+outline's outcome row and the light share one place. A tab that cannot keep it
+starts at the oldest each time a page loads, and says nothing of it.
 The outline's control reads `outcome_light` again first; the outcome's page
 uses the facts it last read. The Reader loads the message directly, even
 outside the loaded feed or in a folded dossier, and on the page already open.
