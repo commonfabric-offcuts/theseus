@@ -260,6 +260,7 @@ class LightReadsCase(fixtures.StoreCase):
     def post(self, actor, topic_id, body="A post", **args):
         receipt = self.command("message.post", dict(args, body=body), target={"topic_id": topic_id}, actor=actor)
         self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]["message_id"]
 
     def update(self, actor, topic_id, **args):
         version = self.store.view(actor, "topic", {"topic_id": topic_id})["topic"]["version"]
@@ -276,11 +277,11 @@ class LightReadsCase(fixtures.StoreCase):
     def test_waiting_on_you_is_read_first_and_alone_so_a_failed_read_after_it_still_shows_it(self):
         self.topic("t1", "Speaker notes")
         self.now += MINUTE
-        self.post("agent-a", "t1", "Which order?", intent="ask", addressees=["owner"])
+        message_id = self.post("agent-a", "t1", "Which order?", intent="ask", addressees=["owner"])
         asked = self.now
         answer = self.stands()
         self.assertEqual(light(answer), ("waiting", {"kind": "asks", "count": 1}))
-        self.assertEqual(answer["facts"], [{"kind": "ask", "topic_id": "t1", "title": "Speaker notes", "title_truncated": False, "by": "agent-a", "ms": asked}])
+        self.assertEqual(answer["facts"], [{"kind": "ask", "topic_id": "t1", "title": "Speaker notes", "title_truncated": False, "by": "agent-a", "ms": asked, "message_id": message_id}])
         self.assertEqual(light(self.stands("agent-b"))[0], "built", "the question is to the owner, not to agent-b")
         with mock.patch("aim_next.outcome_light.OutcomeLight._light_reads", side_effect=sqlite3.DatabaseError("database disk image is malformed")):
             failed = self.stands()

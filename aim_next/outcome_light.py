@@ -28,7 +28,7 @@ class OutcomeLight:
     """Store mixin: the `light` on each `workspaces` item, and the `outcome_light` view."""
 
     def _light_asks(self, db, actor, workspace_id):
-        rows = db.execute("SELECT q.topic_id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,q.said,q.state_ms,"
+        rows = db.execute("SELECT q.topic_id,q.ask_message_id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,q.said,q.state_ms,"
                           "m.author_id AS asked_by,m.sent_ms AS asked_ms,t.state_by "
                           "FROM topic_waiting q INDEXED BY reader_waiting CROSS JOIN topics t ON t.id=q.topic_id "
                           "LEFT JOIN messages m ON m.id=q.ask_message_id "
@@ -39,7 +39,8 @@ class OutcomeLight:
             title, truncated = _prefix(row["title_prefix"])
             # Asked by a message, or said by whoever set the topic waiting on the reader.
             by, ms = (row["asked_by"], row["asked_ms"]) if row["asked_by"] is not None else (row["state_by"], row["state_ms"])
-            asks.append({"topic_id": row["topic_id"], "title": title, "title_truncated": truncated, "by": by, "ms": ms})
+            asks.append({"topic_id": row["topic_id"], "title": title, "title_truncated": truncated, "by": by, "ms": ms,
+                         **({"message_id": row["ask_message_id"]} if row["ask_message_id"] is not None else {})})
         return asks
 
     def _light_topics(self, db, actor, rows):

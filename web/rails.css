@@ -31,17 +31,17 @@
 .ol-outcome{margin:0 0 .15rem}
 .ol-outcome[hidden]{display:none}
 /* The whole row is the outcome's one control: no fold button beside it, so the name has the rail's width. */
-.ol-row{display:flex;align-items:flex-start}
+.ol-row{display:flex;align-items:stretch;flex-direction:column}
 .ol-name{display:block;flex:1;min-width:0;min-height:2.75rem;padding:.45rem .55rem;border:1px solid transparent;border-radius:.5rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
 .ol-name:hover{background:var(--soft)}
 .ol-name[aria-current=page]{background:var(--soft);border-color:var(--line)}
 .ol-name-line{display:block;font-weight:600}
 .ol-name-line .topic-state{font-weight:500}
 .ol-outcome[data-fresh]:not([data-open])>.ol-row .ol-title,.ol-name:has(.unread-count) .ol-title{font-weight:700}
-.ol-name small.standing{display:block;margin-top:.15rem;font-size:.74rem;color:var(--muted)}
-.ol-name small.standing :is(.what,.when){white-space:nowrap}
-.ol-name small.standing[data-light=waiting]{color:var(--ink);font-weight:650}
-.ol-name small.standing[data-light=unknown]{color:var(--warn)}
+.ol-row small.standing{display:block;margin-top:.15rem;font-size:.74rem;color:var(--muted)}
+.ol-row small.standing :is(.what,.when){white-space:nowrap}
+.ol-row small.standing[data-light=waiting]{color:var(--ink);font-weight:650}
+.ol-row small.standing[data-light=unknown]{color:var(--warn)}
 .ol-topics{margin:0 0 .5rem .9rem}
 .ol-topics[hidden]{display:none}
 .ol-topics .topic-list{display:block;overflow:visible;padding:0}
@@ -150,3 +150,6 @@ a.things-name[href]{color:var(--accent)}
   [data-rails] #outline-elsewhere .ol-go{margin-left:auto;color:var(--muted)}
 }
 @media(prefers-reduced-motion:reduce){.things{transition:none!important}}
+
+.ol-waiting{align-self:stretch;text-align:left;margin:0 .55rem .35rem;padding:.15rem .4rem;min-height:2rem;background:var(--soft);border:1px solid var(--line);border-radius:.45rem;color:var(--ink)}
+.ol-waiting:hover{border-color:var(--accent)}

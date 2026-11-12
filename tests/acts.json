@@ -4793,6 +4793,36 @@
     "native": "reading",
     "case": "fully expanded dossiers keep"
    }
+  },
+  {
+   "item": 148,
+   "act": "Waiting on you loads and opens the exact question even outside the loaded feed",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "...(ask.message_id ? {message:ask.message_id} : {})",
+     "...{}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "outcome clicks toggle"
+   }
+  },
+  {
+   "item": 320,
+   "act": "Clicking an open outcome folds its topics and preserves that choice while opening its Conversation",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const open = !this.isOpen(outcome.id);",
+     "const open = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "outcome clicks toggle"
+   }
   }
  ]
 }
