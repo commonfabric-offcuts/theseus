@@ -45,7 +45,7 @@ from .stacks import Stacks, ACT_FRESH
 from .blocking import Blocking, BLOCKS_SCHEMA
 
 
-SCHEMA_VERSION = "37"
+SCHEMA_VERSION = "38"
 
 
 def commit_identity_intact(metadata):

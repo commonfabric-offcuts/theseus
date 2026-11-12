@@ -315,3 +315,13 @@ Not yet:
 - A head shown as one row has no room for its reply arrow. The reply sits
   in the stack under it.
 - Archive, Make it a heading, Edit and Lift out come with the next piece.
+
+## Put a dossier aside
+
+A right swipe on its header or last visible message moves the dossier below
+More messages for you, on every device. Other messages keep their individual
+fold gesture. The menu offers Move below More and Bring back above More;
+Command-Z undoes a move. Existing unread messages and your own replies leave
+it there; a newer visible reply from someone else brings it back. Links can
+show its messages without clearing your choice. See [the Core contract and
+checks](dossier-below-more.md).

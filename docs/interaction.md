@@ -176,6 +176,11 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   ⇧⌘↓ join it to the stack above or below for everyone, and ⌘Z puts the
   last of these back (docs/reply-stacks.md). The keys stay on the message
   that moved, and a screen reader hears what happened.
+- **Put a dossier aside.** Swipe its header or last visible message right,
+  on a phone or with two fingers on a trackpad, to move it below More messages
+  for you on every device. The menu offers Move below More and Bring back
+  above More; ⌘Z undoes it. Your own replies leave it there; a new reply from
+  someone else brings it back. Other messages still swipe to fold individually.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
   line's start and end, ⌘↑ and ⌘↓ the writing's, and no stack moves. A pane not on screen (the

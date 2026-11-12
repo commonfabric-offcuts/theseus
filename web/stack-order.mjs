@@ -18,7 +18,7 @@
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -226,4 +226,16 @@ export function foldStep({ level }, way, { replies: has = true } = {}) {
   const at = LEVELS.indexOf(level);
   const next = at + (way === 'open' ? 1 : -1);
   return has && at >= 0 && next >= 0 && next < LEVELS.length ? { level: LEVELS[next] } : null;
+}
+
+// A position is read at a message/act snapshot. Neither side may move back;
+// an old page cannot undo a newer join, personal move, or arriving reply.
+export function laterPosition(known, answer) {
+  if (!answer) return known;
+  if (known && (answer.at.messages < known.at.messages || answer.at.acts < known.at.acts)) return known;
+  return answer;
+}
+export function positionOf(stack) {
+  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(Boolean)
+    .reduce((known, next) => laterPosition(known, next), null);
 }

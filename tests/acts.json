@@ -5087,6 +5087,93 @@
     "native": "reading",
     "case": "stacks on a laptop two fingers swiped right on the trackpad"
    }
+  },
+  {
+   "item": 355,
+   "act": "A reader own reply never revives a dossier put below More",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "WHERE m.seq>:through AND m.author_id<>:actor LIMIT 1",
+     "WHERE m.seq>:through LIMIT 1"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A partial page uses the canonical dossier root outside its loaded messages",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "root = roots.root(item[\"id\"])",
+     "root = item[\"id\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "An aside record cannot be dropped by a schema downgrade",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ASIDE_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='aside')\"",
+     "ASIDE_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A dossier put aside is actually below More in the browser",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const destination = below ? aside : top;",
+     "const destination = top;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More persists"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A swipe on the last visible message moves its whole dossier",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "chrome || displayed.at(-1) === entry",
+     "chrome"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More uses a real swipe"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A link reveals a loaded message below More without clearing its personal choice",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "state.folded.has(own) || stack && positionOf(stack)?.below",
+     "state.folded.has(own)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More handles"
+   }
   }
  ]
 }

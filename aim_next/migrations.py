@@ -36,7 +36,7 @@ from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
 from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
-from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP
+from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 
 
@@ -155,6 +155,7 @@ STEPS = (
     # act, its id and where the next id goes on from. Stepping back is
     # refused once anyone has folded a message, even one unfolded since.
     ("36", "37", FOLD_UP, FOLD_DOWN, FOLD_OCCUPIED),
+    ("37", "38", ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED),
 )
 
 
