@@ -21,12 +21,15 @@ class StackCase(fixtures.ReaderCase):
         return self.committed(self.command("message.post", dict({"body": body}, **args), target={"topic_id": topic}, actor=actor))["message_id"]
 
     def act(self, kind, message, args, revision=0, actor="owner", op=None):
-        name = {"message.star": "star_revision", "message.deal": "deal_revision", "stack.place": "place_revision",
-                "stack.name": "name_revision", "stack.join": "join_revision"}[kind]
+        name = {"message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision",
+                "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision"}[kind]
         return self.command(kind, args, target={"message_id": message}, expected={name: revision}, actor=actor, op=op)
 
     def star(self, message, on=True, revision=0, actor="owner", op=None):
         return self.act("message.star", message, {"starred": on}, revision, actor, op)
+
+    def fold(self, message, on=True, revision=0, actor="owner", op=None):
+        return self.act("message.fold", message, {"folded": on}, revision, actor, op)
 
     def name(self, message, text, revision=0, actor="owner"):
         return self.act("stack.name", message, {"name": text}, revision, actor)
@@ -99,7 +102,7 @@ class StarCase(StackCase):
         message = self.post()
         asked = self.post("Between us?", actor="owner", addressees=["agent-a"], whisper=True)
         whisper = self.post("Between us", addressees=["owner"], whisper=True, reply_to=asked)
-        for kind, args in (("message.star", {"starred": True}), ("message.deal", {"dealt": True}), ("stack.place", {"key": 3}),
+        for kind, args in (("message.star", {"starred": True}), ("message.deal", {"dealt": True}), ("message.fold", {"folded": True}), ("stack.place", {"key": 3}),
                            ("stack.name", {"name": "Ours"}), ("stack.join", {"into": None})):
             self.rejected(self.act(kind, message, args, actor="other-reader"), "FORBIDDEN")
             self.rejected(self.act(kind, whisper, args, actor="agent-b"), "FORBIDDEN")
@@ -112,6 +115,78 @@ class StarCase(StackCase):
         self.committed(self.command("workspace.member_set", {"actor_id": "agent-b", "present": False}, {"workspace_id": "w1"},
                                     {"workspace_revision": self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]}))
         self.assertEqual(self.store.view("agent-b", "stars", {})["items"], [])
+
+
+class FoldCase(StackCase):
+    def test_a_fold_is_the_readers_own_held_in_core_and_no_one_elses_view_changes(self):
+        message = self.post()
+        folded = self.committed(self.fold(message))
+        self.assertEqual((folded["folded"], folded["fold_revision"], folded["changed"]), (True, 1, True))
+        self.assertEqual((self.acts(message)["folded"], self.acts(message)["fold_revision"]), (True, 1), "the reader's page reads it folded")
+        theirs = self.acts(message, actor="agent-a")
+        self.assertEqual((theirs["folded"], theirs["fold_revision"]), (False, 0), "another reader of the topic sees it as it was")
+        self.assertEqual(self.store.view("agent-a", "message_acts", {"topic_id": "t1"})["items"], [], "and has no act on it to read")
+        self.assertEqual(self.told(), [("actor", "owner")], "only the reader is told")
+        # agent-a's own fold is its own: owner's stays as it was.
+        self.committed(self.fold(message, actor="agent-a"))
+        self.assertEqual((self.acts(message)["fold_revision"], self.acts(message, actor="agent-a")["fold_revision"]), (1, 1))
+        unfolded = self.committed(self.fold(message, on=False, revision=1))
+        self.assertEqual((unfolded["folded"], unfolded["fold_revision"]), (False, 2))
+        self.assertEqual(self.acts(message)["folded"], False)
+        self.assertEqual(self.acts(message, actor="agent-a")["folded"], True, "unfolding owner's leaves agent-a's")
+        self.assertEqual([row[4] for row in self.rows("fold") if row[1] == "owner"], [1, 2], "every act is a new row")
+        # A fold leaves the reader's star, and every other act, as it was.
+        self.assertEqual((self.acts(message)["starred"], self.acts(message)["star_revision"]), (False, 0))
+
+    def test_a_fold_is_fenced_on_its_revision_and_a_retry_answers_what_was_recorded(self):
+        message = self.post()
+        first = self.fold(message, op="fold-once")
+        self.assertEqual(self.fold(message, op="fold-once"), first, "the same operation is answered with what it recorded")
+        conflict = self.fold(message, on=False, revision=0)
+        self.rejected(conflict, "REVISION_CONFLICT")
+        self.assertEqual(conflict["error"]["current_versions"], {"fold_revision": 1})
+        self.assertEqual(self.acts(message)["folded"], True, "a late unfold undoes nothing")
+        again = self.committed(self.fold(message, revision=1))
+        self.assertEqual((again["fold_revision"], again["changed"]), (1, False), "folding a folded message changes nothing")
+        self.assertNotIn("acts_version", again)
+        self.assertEqual(len(self.rows("fold")), 1)
+
+    def test_a_fold_names_one_message_and_whether_it_is_folded(self):
+        message = self.post()
+        for args in ({}, {"folded": "yes"}, {"folded": 1}, {"folded": True, "note": "x"}, {"starred": True}):
+            self.rejected(self.act("message.fold", message, args), "INVALID_ARGUMENT")
+        self.rejected(self.command("message.fold", {"folded": True}, target={"message_id": message}), "INVALID_ARGUMENT")
+        self.rejected(self.command("message.fold", {"folded": True}, target={"message_id": message}, expected={"star_revision": 0}), "INVALID_ARGUMENT")
+        self.assertEqual(self.rows("fold"), [])
+
+    def test_a_reader_who_cannot_read_a_message_cannot_fold_it(self):
+        message = self.post()
+        asked = self.post("Between us?", actor="owner", addressees=["agent-a"], whisper=True)
+        self.rejected(self.fold(message, actor="other-reader"), "FORBIDDEN")
+        self.rejected(self.fold(asked, actor="agent-b"), "FORBIDDEN")
+        self.rejected(self.fold("m-unknown"), "FORBIDDEN")
+        self.assertEqual(self.rows("fold"), [])
+        self.committed(self.fold(asked, actor="agent-a"))
+        self.assertEqual(self.told(), [("actor", "agent-a")], "a whisper's reader folds it for themselves alone")
+
+    def test_a_fold_moves_nothing_in_the_topic_and_saves_in_a_reached_outcome(self):
+        head = self.post()
+        before = self.sql("SELECT version FROM topics WHERE id='t1'") + self.sql("SELECT version FROM workspaces WHERE id='w1'")
+        changes = self.sql("SELECT count(*) FROM changes WHERE scope_kind IN ('topic','workspace','outcome')")
+        self.committed(self.fold(head))
+        self.assertEqual(self.sql("SELECT version FROM topics WHERE id='t1'") + self.sql("SELECT version FROM workspaces WHERE id='w1'"), before)
+        self.assertEqual(self.sql("SELECT count(*) FROM changes WHERE scope_kind IN ('topic','workspace','outcome')"), changes)
+        version = lambda: self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        self.committed(self.command("outcome.kind_set", {"kind": "reach"}, {"workspace_id": "w1"}, {"workspace_revision": version()}))
+        self.committed(self.command("outcome.reach", {"words": "Done", "unmet_confirmed": True}, {"workspace_id": "w1"}, {"workspace_revision": version()}))
+        self.committed(self.fold(head, on=False, revision=1))
+
+    def test_the_acts_view_carries_a_fold_for_its_reader_alone(self):
+        folded, plain = self.post("Folded"), self.post("Plain")
+        self.committed(self.fold(folded))
+        page = self.store.view("owner", "message_acts", {"topic_id": "t1"})
+        self.assertEqual([(item["message_id"], item["acts"]["folded"], item["acts"]["fold_revision"]) for item in page["items"]], [(folded, True, 1)])
+        self.assertEqual(self.acts(plain)["folded"], False)
 
 
 class PersonalCase(StackCase):
@@ -237,13 +312,13 @@ class ReadCase(StackCase):
         message = self.post()
         with sqlite3.connect(str(self.path)) as db:
             seq = db.execute("SELECT seq FROM messages WHERE id=?", (message,)).fetchone()[0]
-            for kind, value in (("star", {"starred": True, "colour": "gold"}), ("place", {"key": 4, "anchor": "x"}),
+            for kind, value in (("star", {"starred": True, "colour": "gold"}), ("place", {"key": 4, "anchor": "x"}), ("fold", {"folded": True, "until": "later"}),
                                 ("name", {"name": "Later", "suggested_by": "agent-a"}), ("join", {"into": None, "why": "tidy"})):
                 db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,1)",
-                           (kind, message, "t1", seq, "owner" if kind in ("star", "place") else "", "owner", json.dumps(value), 1))
+                           (kind, message, "t1", seq, "owner" if kind in ("star", "place", "fold") else "", "owner", json.dumps(value), 1))
         shown = self.acts(message)
-        self.assertEqual((shown["starred"], shown["placed"], shown["name"]["text"], shown["joined"]), (True, 4, "Later", None))
-        self.assertEqual(set(shown), {"starred", "star_revision", "dealt", "deal_revision", "placed", "place_revision",
+        self.assertEqual((shown["starred"], shown["placed"], shown["folded"], shown["name"]["text"], shown["joined"]), (True, 4, True, "Later", None))
+        self.assertEqual(set(shown), {"starred", "star_revision", "dealt", "deal_revision", "folded", "fold_revision", "placed", "place_revision",
                                       "name", "name_revision", "joined", "join_revision"})
         # And the next act is fenced on it as on any other.
         self.committed(self.name(message, "Typed", revision=1))

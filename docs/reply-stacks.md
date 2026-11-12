@@ -16,9 +16,9 @@ The code:
 - `web/stack-order.mjs`: the pure decisions about what goes where (no page).
 - `web/reply-stacks.mjs`: draws those decisions into the page, keeping each
   card's node.
-- `web/stack-feed.mjs`: what the person does to a stack. It shows the act at
-  once, sends it to Core in order, and holds ⌘Z, the keys, the ⋯ items and
-  the swipe.
+- `web/stack-feed.mjs`: what the person does to a stack and its messages. It
+  shows the act at once, sends it to Core in order, and holds ⌘Z, the keys,
+  the ⋯ items and the swipe.
 - `web/stack-look.css`: how a stack looks, and nothing else does.
 
 ## What Core records
@@ -27,19 +27,25 @@ A message never changes. Each act about a message is a new row in
 `message_acts`, recording who acted, when, and what the act now stands at.
 Nothing is overwritten, so every rename and every join can be read back.
 Schema version 35 adds the table. Stepping back to 34 is refused once any
-row exists, because dropping rows would restart their revisions.
+row exists, because dropping rows would restart their revisions. Version 37
+lets the table hold a fold. SQLite changes the kinds a table takes only by
+building it again, and the step keeps every row, its id, and where the next
+id goes on from. Stepping back to 36 is refused once anyone has folded a
+message, even one unfolded since.
 
 | Act | Command | Value | Whose |
 | --- | --- | --- | --- |
 | star | `message.star` | `{"starred": true}` | the reader's own |
 | deal | `message.deal` | `{"dealt": true}` | the reader's own |
+| fold | `message.fold` | `{"folded": true}` | the reader's own |
 | place | `stack.place` | `{"key": 1.5}` or `{"key": null}` | the reader's own |
 | name | `stack.name` | `{"name": "Cabin week"}` (empty gives back the first line) | the topic's |
 | join | `stack.join` | `{"into": "m-…"}` or `{"into": null}` (split back out) | the topic's |
 
 Each act names one message, `target: {"message_id": "m-…"}`, and is fenced on
 the revision its sender read: `expected: {"star_revision": 3}` (and likewise
-`deal_revision`, `place_revision`, `name_revision` and `join_revision`). An
+`deal_revision`, `fold_revision`, `place_revision`, `name_revision` and
+`join_revision`). An
 act's revision counts its rows for that message, kind and owner. A late
 request is refused with `REVISION_CONFLICT`, and the refusal carries the
 current revision. Sending a value the act already stands at records nothing
@@ -56,7 +62,7 @@ These rules refuse an act:
 - `INVALID_ARGUMENT` for a join into another topic, into the stack itself, or
   into a stack inside it (a loop, followed through joins and replies).
 - `OUTCOME_REACHED` for a name or a join once the topic's outcome is reached;
-  a star, a deal or a place is still the reader's to make.
+  a star, a deal, a fold or a place is still the reader's to make.
 
 Who hears of an act depends on whose it is. A personal act reaches only its
 reader. A shared act reaches everyone who reads the message, so a whisper's
@@ -67,9 +73,9 @@ changes.
 
 Reads:
 
-- Each `topic_messages` item carries `acts`: `starred`, `dealt`, `placed`,
-  `name` (`{text, by, at_ms}` or null) and `joined` (`{into, by, at_ms}` or
-  null), each with its revision.
+- Each `topic_messages` item carries `acts`: `starred`, `dealt`, `folded`,
+  `placed`, `name` (`{text, by, at_ms}` or null) and `joined`
+  (`{into, by, at_ms}` or null), each with its revision.
 - `message_acts {topic_id, cursor?, limit?}` pages the topic's messages that
   have any act, newest first, with `version`, the newest act the reader hears
   of. The page reads it when an `acts` change arrives.
@@ -86,10 +92,17 @@ their acts.
   that one is loaded. Otherwise it is the message it answers, when loaded.
   Otherwise it heads its own stack. A loop, which joins made by different
   people can form, is cut at its newest message.
-- **Inside a stack.** The replies run oldest first, by sequence. A joined
-  stack's messages follow, as one run, in the order the joins were made, its
-  first message preceded by a line: "Joined from its own stack by …, time"
-  with Split back out.
+- **Inside a stack.** The head stays first. Every other message in the
+  stack runs oldest first, by sequence, as one run: the head's replies, each
+  joined stack's messages, the replies to those, and stacks joined to a
+  joined stack. A join makes two stacks one, so a new reply to any message
+  in it lands at the bottom. A joined stack's first message keeps a line
+  just before it, wherever it falls: "Joined from its own stack by …, time"
+  with Split back out. The latest reply in latest plus unread, the New
+  line, what counts as new, the Reader's ↑ and ↓ and the phone all read
+  this one run. A join changes no message, only the display, so Split back
+  out puts both stacks back exactly as they were. A stack's key is unchanged:
+  its newest message, whichever stack it came from.
 - **The stacks.** Each stack sorts by its key, newest first. The key is the
   reader's place if they set one, or else the sequence of the newest message
   in it that lifts it: any message but a reply of the reader's own. A new
@@ -118,6 +131,22 @@ their acts.
   A newer reply replaces the previous latest if that previous reply was
   already read; read asks and stars do not add exceptions to latest plus unread.
   Coming back also returns off-screen fully open stacks to the partial view.
+- **Folded messages.** A message the reader folded stays folded for them, on
+  every device and after a reload, until they unfold it; nobody else's view
+  changes. Wherever its stack shows it, at every state, fully open included,
+  and on its own, it is one row: who wrote it, its first words, and
+  "Folded". A fold never shows or hides a message; the stack's state alone
+  does that, and changing the state leaves every fold as it was. A press on
+  the row unfolds it (one tap on a phone, where a tap on a card otherwise
+  lights it first). A star keeps a message in view: a starred message is
+  never folded, ⋯ offers it no Fold, and starring a folded message unfolds
+  it. A stack's first message folds into its head row, which already
+  says who began the stack and its first line: the row adds "Folded", the
+  full message stays hidden even with the stack fully open, and no second
+  row doubles the tab. A press on that head row unfolds it and opens the
+  stack. A link, search or the rail's Starred that lands on a folded
+  message opens it whole for that view without unfolding it; changing its
+  stack's state folds it to its row again.
 - **Expand and collapse.** One chevron beside the title cycles ↑ → ↓ → ↑.
   It is a button reachable by Tab and operable by Return or
   Space, with `aria-expanded` and a label naming the stack. The header already
@@ -173,9 +202,10 @@ their acts.
   stays hidden. Each stack step can be undone with ⌘Z.
 
 Each viewer has their own order and folds, because they come from that
-viewer's places and the page's own state. Names and joins are the topic's,
-the same for everyone. A star is the reader's alone, and only they see it,
-on the card and in the rail.
+viewer's places, folded messages and the page's own state. Names and joins
+are the topic's, the same for everyone. A star and a folded message are the
+reader's alone, and only they see them; a star shows on the card and in the
+rail.
 
 ## Doing it
 
@@ -186,7 +216,7 @@ On a message (its card focused, never in writing), these keys work:
 | ⌘↑ ⌘↓ | move its stack up or down, for you alone |
 | → ← | open or fold its stack a step, then move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
-| ⌘Z | undo the last of these |
+| ⌘Z | undo the last of these, or the last Fold or Unfold |
 
 The keys come from the shared key map (`web/pane-keys.mjs`), so the
 outline and the messages read one set of keys.
@@ -194,21 +224,28 @@ outline and the messages read one set of keys.
 The ⋯ menu offers:
 
 - Star for me (or Unstar)
+- Fold (or Unfold), for you alone; a starred message offers no Fold
 - Rename (on a head)
 - Show or Hide the full message
-- Fold into earlier replies
 - Split back out (on a joined stack's first message)
 - every move above, each naming its keys
+
+A join makes the two stacks one: after it every message of both reads as
+one run under the head, oldest first, and a new reply to any of them lands
+at the bottom. The joined stack's first message keeps its "Joined from its
+own stack" line, with Split back out there and in ⋯.
 
 The right rail's Starred lists the reader's stars, this place's first and
 then Elsewhere. A press lands on the message, opening its stack if it is
 folded, and Unstar beside each takes the star off.
 
 On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
-"Move or join…", which opens a second sheet. A reply swiped to the right
-folds into the earlier replies; a drag that starts on something scrolling
-sideways, such as a wide table or a block of code, scrolls it instead. A right-click (a long press on Android)
-opens the same menu.
+"Move or join…", which opens a second sheet. A message swiped to the right
+folds to its row, in any state of its stack, fully open included, and its
+row swiped to the left, or tapped, unfolds it. A drag that starts on
+something scrolling sideways, such as a wide table or a block of code,
+scrolls it instead. A right-click (a long press on Android) opens the same
+menu.
 
 A card that a join, a move or a new reply carries to another place keeps
 where it was scrolled: a table scrolled sideways, or a long message scrolled
@@ -259,6 +296,9 @@ the semantic colour tokens of `web/aim.css` and only the names that
     (`.stack-join-words` and `.stack-split`).
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
 - `[data-starred=true]` on any card the reader starred.
+- `[data-folded=true]` on any card the reader folded, holding its one row,
+  `.message-folded` (`.folded-author`, `.folded-words`, `.folded-cue`);
+  `.stack-folded` in a head row whose first message is folded.
 
 Another look replaces that one file. Nothing in the drawing code chooses a
 colour, a border or a spacing. The look now is the Dossier: a stack is one
@@ -281,11 +321,13 @@ the stacks draw nothing.
 
 | What | Where |
 | --- | --- |
-| Core's acts | `tests/test_stacks.py` |
-| the migration | `tests/test_migrations.py` (`StacksStepCase`) |
+| Core's acts | `tests/test_stacks.py` (a fold: `FoldCase`) |
+| the migrations | `tests/test_migrations.py` (`StacksStepCase`; the fold's step, `FoldStepCase`) |
 | the display order | `tests/ui_stack_order.test.mjs` |
 | what a join the reader makes shows | `tests/ui_stack_order.test.mjs` (`joinShown`); in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a join you make shows where it went …" |
+| a join makes one stack: every message oldest first under the head, a new reply at the bottom, a join of a join, Split back out | `tests/ui_stack_order.test.mjs`; in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a join makes one stack …" |
 | on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
+| a fold: in a fully open stack, through every state, a reload and another device, unfolded by a press and ⌘Z, a link, Starred and the first message | `tests/stack_native.mjs`, "reading stacks a message folded in a fully open stack …"; on a phone, swiped right, swiped left and tapped, "reading stacks on a phone a message swiped right …" (Chrome only: Safari's engine in the harness has no finger drag) |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |

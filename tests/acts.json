@@ -508,7 +508,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line')) {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -2546,8 +2546,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "      replies.push(...within.get(segment).sort(bySeq));",
-     "      replies.push(...within.get(segment).sort((a, b) => bySeq(b, a)));"
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
     ]
    ],
    "check": {
@@ -2726,8 +2726,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "PERSONAL = {\"star\", \"deal\", \"place\"}",
-     "PERSONAL = {\"deal\", \"place\"}"
+     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\"}",
+     "PERSONAL = {\"deal\", \"fold\", \"place\"}"
     ]
    ],
    "check": {
@@ -3027,21 +3027,6 @@
    }
   },
   {
-   "item": 266,
-   "act": "On a phone a reply swiped to the right folds into the earlier replies",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "    if (!start || !touch || touch.clientX - start.x < 80 || Math.abs(touch.clientY - start.y) > 40) return;",
-     "    return;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply swiped to the right"
-   }
-  },
-  {
    "item": 283,
    "act": "Quick acts on one stack, answered while a later act is unanswered and with the page drawn again between, show the last act and end where Core does",
    "break": [
@@ -3241,8 +3226,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "      replies.push(...within.get(segment).sort(bySeq));",
-     "      replies.push(...within.get(segment).sort((a, b) => b.seq - a.seq));"
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
     ]
    ],
    "check": {
@@ -4997,6 +4982,268 @@
    ],
    "check": {
     "node": "tests/ui_coordination_stacks.test.mjs"
+   }
+  },
+  {
+   "item": 266,
+   "act": "On a phone a reply swiped to the right folds to its row",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (!start || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;",
+     "    return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply swiped to the right"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A fold is the reader's own, kept in Core: nobody else's view changes",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\"}",
+     "PERSONAL = {\"star\", \"deal\", \"place\"}"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A message's acts, as every read carries them, say whether the reader folded it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return {\"folded\": value[\"folded\"]}",
+     "        return {\"folded\": False}"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 356,
+   "act": "The fold's schema step keeps every act, its id, and where the next id goes on from",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"INSERT INTO sqlite_sequence(name,seq) SELECT 'message_acts',seq FROM message_acts_sequence\",",
+     "\"SELECT 1\","
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 356,
+   "act": "Stepping back from the fold's version is refused once anyone has folded a message",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "FOLD_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='fold')\"",
+     "FOLD_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A folded message reads as its one-line row wherever its stack shows it, fully open included",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }) });",
+     "rows.push({ kind: 'reply', item, folded: false });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A star keeps a message in view: a starred message never reads as its row",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "return acts.folded === true && acts.starred !== true && !peeked(item);",
+     "return acts.folded === true && !peeked(item);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 356,
+   "act": "⋯ Fold in a fully open stack records the fold in Core, and the row shows at once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.act('message.fold', item, { folded: on });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a message folded in a fully open stack"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A press on a folded message's row unfolds it and opens no Reader",
+   "break": [
+    [
+     "web/app.mjs",
+     "        if (foldedClick($('messages'), messageEntries.get(item.id))) return;",
+     "        if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a message folded in a fully open stack"
+   }
+  },
+  {
+   "item": 356,
+   "act": "⌘Z undoes the fold just made",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (undoable) this.remember(() => { this.setFold(item, !on, { undoable: false }); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a message folded in a fully open stack"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A link to a folded message opens it whole for that view, and its fold stays in Core",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (state.folded.has(own)) { state.peeked.add(own); changed = true; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a message folded in a fully open stack"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A stack's folded first message is its head row alone, and a press on that row unfolds it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    state.on?.unfold?.(stack.id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a message folded in a fully open stack"
+   }
+  },
+  {
+   "item": 356,
+   "act": "Starring a folded message unfolds it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (on && this.actsOf(item.id).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a message folded in a fully open stack"
+   }
+  },
+  {
+   "item": 356,
+   "act": "On a phone a folded message's row swiped to the left unfolds it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.setFold(item, across > 0, { focus: false });",
+     "    this.setFold(item, true, { focus: false });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a phone a message swiped right in a fully open stack"
+   }
+  },
+  {
+   "item": 356,
+   "act": "On a phone one tap on a folded message's row unfolds it",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     " && cardIn(entry).dataset.folded !== 'true') {",
+     ") {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a phone a message swiped right in a fully open stack"
+   }
+  },
+  {
+   "item": 361,
+   "act": "After a join every message of both stacks reads as one run under the head, oldest first, and a new reply to any of them lands at the bottom",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 361,
+   "act": "A joined stack's first message keeps its join line wherever the one run puts it, a join of a join included",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 361,
+   "act": "On the page a join makes one stack: both stacks' messages oldest first under the head, a new reply to the joined stack's message at the bottom, the keys and the phone reading the same",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a join makes one stack"
    }
   }
  ]

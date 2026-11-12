@@ -1,13 +1,14 @@
 // How a topic's loaded messages read as reply stacks (docs/reply-stacks.md):
 // which stack each message is in, the order inside a stack and of the stacks,
-// what a fold shows, where the one New line goes, and what a move or a join
+// what a fold shows, which messages read as one line because the reader
+// folded them, where the one New line goes, and what a move or a join
 // sends. Nothing here touches the page or Core; reply-stacks.mjs draws what
 // these answer and stack-feed.mjs sends the acts.
 //
 // A stack is a message and every loaded reply to it, and to those replies,
 // plus each stack someone joined to it. The message it starts with (its head)
-// stays at the top; its replies read as a chat does, oldest first, and a
-// stack joined to it comes after them, in the order the joins were made. The
+// stays at the top; every other message in it reads as a chat does, oldest
+// first, a joined stack's among the rest, as one run. The
 // stacks themselves keep the topic newest on top: each sits where its newest
 // message would, unless the reader placed it somewhere of their own, where it
 // holds whatever replies arrive. A reply of the reader's own never lifts it:
@@ -18,7 +19,7 @@
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { starred: 'star_revision', dealt: 'deal_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
+const REVISIONS = { starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -68,13 +69,12 @@ export function gather(items, { has = null, viewer = null } = {}) {
       break;
     }
   }
-  // The head each message is under, and the joined stack it came with: the
-  // nearest message up from it (itself included) that was joined, else null.
-  const headOf = new Map(), segmentOf = new Map();
+  // The head each message is under.
+  const headOf = new Map();
   for (const item of items) {
-    let at = item.id, segment = null;
-    for (let next = up(at); next; next = up(at)) { if (next.joined && segment === null) segment = at; at = next.id; }
-    headOf.set(item.id, at); segmentOf.set(item.id, segment);
+    let at = item.id;
+    for (let next = up(at); next; next = up(at)) at = next.id;
+    headOf.set(item.id, at);
   }
   const stacks = new Map();
   for (const item of items) {
@@ -83,22 +83,11 @@ export function gather(items, { has = null, viewer = null } = {}) {
     stacks.get(head).members.push(item);
     if (item.id !== head && up(item.id)?.joined) stacks.get(head).joins.set(item.id, up(item.id).joined);
   }
-  const bySeq = (a, b) => a.seq - b.seq;
   return [...stacks.values()].map(({ head, members, joins }) => {
-    // The head's own replies first, oldest first; then each stack joined to
-    // one of them, in the order it was joined, its first message and its own
-    // replies, each followed in turn by the stacks joined to it.
-    const within = new Map([[null, []]]), under = new Map([[null, []]]);
-    for (const id of joins.keys()) { within.set(id, []); under.set(id, []); }
-    for (const item of members) if (item.id !== head.id) within.get(segmentOf.get(item.id)).push(item);
-    for (const [id, join] of joins) under.get(segmentOf.get(join.into) ?? null).push(byId.get(id));
-    const replies = [];
-    const emit = segment => {
-      replies.push(...within.get(segment).sort(bySeq));
-      const joined = under.get(segment).sort((a, b) => (joins.get(a.id).at_ms ?? 0) - (joins.get(b.id).at_ms ?? 0) || bySeq(a, b));
-      for (const item of joined) emit(item.id);
-    };
-    emit(null);
+    // Every message under the head as one run, oldest first: its replies, each
+    // stack joined to it and the replies to those, however deep. A join
+    // changes no message, so splitting it out puts both stacks back as they were.
+    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);
     const placed = typeof actsOf(head).placed === 'number' ? actsOf(head).placed : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
@@ -119,12 +108,21 @@ export function ordered(stacks) {
 export const LEVELS = ['head', 'folded', 'open'];
 
 // Whether a reply shows at the stack's level. kept(item) holds replies that
-// were unread when this partial view drew them; handFolded holds replies the
-// reader explicitly hid, until the next state choice.
-export function shown(stack, item, { level = 'folded', kept = () => false, handFolded = new Set() } = {}) {
+// were unread when this partial view drew them. A fold never decides this:
+// a folded reply shows where it would, as its one-line row (rowFolded).
+export function shown(stack, item, { level = 'folded', kept = () => false } = {}) {
   if (level === 'open') return true;
-  if (level === 'head' || handFolded.has(item.id)) return false;
+  if (level === 'head') return false;
   return kept(item) || item.seq === newestReply(stack);
+}
+
+// Whether a message reads as its one-line row: the reader folded it (their
+// own act, kept in Core), it is not starred (a star keeps a message in view),
+// and it was not opened for this view by a link, search or Starred
+// (peeked(item)), which shows it whole without unfolding it.
+export function rowFolded(item, { peeked = () => false } = {}) {
+  const acts = actsOf(item);
+  return acts.folded === true && acts.starred !== true && !peeked(item);
 }
 const newestReply = stack => stack.replies.reduce((most, item) => Math.max(most, item.seq), 0);
 
@@ -134,11 +132,12 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // { kind: 'fold', items, words, fresh } for each run of replies folded away
 // where it sits, so a reply kept in view never reads as inside the fold. Open
 // with replies the fold would take, a { kind: 'fold-all', count } line comes
-// first. unread(item): whether a folded reply counts as new on its line.
-export function rowsOf(stack, { level = 'folded', kept, handFolded, unread = () => false } = {}) {
-  const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept, handFolded });
+// first. unread(item): whether a folded reply counts as new on its line. A
+// reply row says whether it reads as its one-line row (folded, rowFolded).
+export function rowsOf(stack, { level = 'folded', kept, unread = () => false, peeked = () => false } = {}) {
+  const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept });
   if (level === 'open') {
-    const would = all.filter(item => !shown(stack, item, { level: 'folded', kept, handFolded })).length;
+    const would = all.filter(item => !shown(stack, item, { level: 'folded', kept })).length;
     if (would) rows.push({ kind: 'fold-all', count: would, words: `Fold ${would} earlier ${replies(would)}` });
   }
   let run = [], before = true;
@@ -153,7 +152,7 @@ export function rowsOf(stack, { level = 'folded', kept, handFolded, unread = () 
     if (!show(item)) { run.push(item); continue; }
     flush(); before = false;
     if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });
-    rows.push({ kind: 'reply', item });
+    rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }) });
   }
   flush();
   return rows;
@@ -161,14 +160,16 @@ export function rowsOf(stack, { level = 'folded', kept, handFolded, unread = () 
 
 // A stack's head row: its name (the short name someone typed, else its first
 // message's first line, firstLine), who replied in the order they first did,
-// and what is new: the head itself, or how many replies.
-export function headOf(stack, { firstLine = text => String(text ?? '').split('\n')[0], unread = () => false } = {}) {
+// and what is new: the head itself, or how many replies. folded: the first
+// message is folded, so the row stands for it at every level and its full
+// message does not show.
+export function headOf(stack, { firstLine = text => String(text ?? '').split('\n')[0], unread = () => false, peeked = () => false } = {}) {
   const typed = actsOf(stack.head).name;
   const repliers = [];
   for (const item of stack.replies) if (!repliers.includes(item.author_id)) repliers.push(item.author_id);
   const headNew = unread(stack.head);
   return { name: typed?.text || firstLine(stack.head.body), typed: typed ?? null, count: stack.replies.length, repliers,
-    headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length };
+    headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length, folded: rowFolded(stack.head, { peeked }) };
 }
 
 // The index, in the stacks as shown, of the lowest one holding anything new

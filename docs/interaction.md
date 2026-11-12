@@ -230,7 +230,7 @@ page painted. Its checks, by rule:
 - How cards read (docs/topic-reading.md): "reading read cards sit back on the
   read fill …", "reading the reply arrow says "You replied at" …" and
   "reading replies gather into a stack …"; every act on a reply stack (the
-  head's row, rename, Star and the rail's Starred, ⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓ and Split
+  head's row, rename, Star and the rail's Starred, Fold and Unfold, ⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓ and Split
   back out, → ← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
   and swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
   (docs/reply-stacks.md).
