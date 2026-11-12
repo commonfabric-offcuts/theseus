@@ -5961,6 +5961,20 @@
    "check": {
     "python": "test_hosted_review_fixes.py"
    }
+  },
+  {
+   "item": 359,
+   "act": "One human or room-directed message keeps the whole joined dossier visible",
+   "break": [
+    [
+     "web/coordination-stacks.mjs",
+     "items.every(item => quiet(item)",
+     "items.some(item => quiet(item)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_coordination_stacks.test.mjs"
+   }
   }
  ]
 }

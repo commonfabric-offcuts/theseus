@@ -371,3 +371,21 @@ Not yet:
 - A head shown as one row has no room for its reply arrow. The reply sits
   in the stack under it.
 - Archive, Make it a heading, Edit and Lift out come with the next piece.
+
+## Agent coordination (359)
+
+A dossier entirely between known agents starts as one quiet title row, with
+its reply count. The same up/right/down control still opens latest/unread and
+then all messages. Explicitly opening it stays open as new agent replies arrive.
+This presentation is not the reader's saved message fold or saved placement.
+
+Show agent coordination above either feed is on initially; turning it off
+hides these rows (including standalone agent coordination). It is a page-local
+view, changes no unread or delivery records, and can always be turned back on.
+A message link reveals its target even with this filter off.
+
+Classification uses addressing, not inferred intent: every message must be
+from a known agent and explicitly addressed only to known agents. Room posts,
+messages to the reader, direct replies to the reader, unknown people, missing
+ancestry and any mixed joined dossier stay visible. Further agent-only replies
+stay quiet; a human or room-directed reply brings the dossier back immediately.

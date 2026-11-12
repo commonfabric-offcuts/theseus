@@ -15,7 +15,7 @@
 // stack is folded is the page's own; a message folded to its row is the
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
-import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, reveal, renameInput, unkeep } from './reply-stacks.mjs';
+import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, unkeep } from './reply-stacks.mjs';
 import { moveOf, joinShown, foldStep, laterActs } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
@@ -71,9 +71,9 @@ export class StackFeed {
   // the reader's stars moved (the right rail's Starred). status(error): says a failure.
   // hold(paint): repaints keeping the page where the person is. press: the
   // press held down on the page (press-hold.mjs).
-  constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, reread = () => {}, starsChanged = () => {}, status = () => {},
+  constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {},
     hold = paint => paint(), press, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, hold, press, clock, doc });
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, hold, press, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
@@ -117,11 +117,25 @@ export class StackFeed {
     } };
   }
   arrange() {
-    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
+    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
+      coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
     } }));
+  }
+  paintCoordination(count = this.coordinationCount ?? 0) {
+    this.coordinationCount = count;
+    if (!this.filterHost) return;
+    let button = this.filterHost.querySelector('button');
+    if (!button) {
+      button = this.doc.createElement('button'); button.type = 'button'; button.className = 'filter-chip';
+      this.filterHost.append(button);
+      button.onclick = () => { this.state.showCoordination = !this.state.showCoordination; this.arrange(); };
+    }
+    button.textContent = `Show agent coordination (${count})`;
+    button.setAttribute('aria-pressed', String(this.state.showCoordination));
+    this.filterHost.hidden = count === 0 && this.state.showCoordination;
   }
   // Says what just happened, for a screen reader.
   say(words) { this.said.textContent = ''; this.said.textContent = words; }
@@ -293,7 +307,7 @@ export class StackFeed {
     const found = stackOf(this.list, entry);
     if (!found?.section || !found.stack.replies.length) return false;
     const { stack } = found, state = this.state;
-    const now = { level: state.levels.get(stack.id) ?? 'folded' };
+    const now = { level: levelOf(state, stack.id) };
     const next = foldStep(now, way);
     if (!next) return false;
     const apply = to => {
