@@ -429,15 +429,20 @@ export class StackFeed {
   // x on a message (item 388): folds it to its row, as Fold in ⋯ does
   // (setFold), and x again unfolds it; the keys stay on its row, and ⌘Z puts
   // it back. A starred message stays open, which is said. On a dossier as a
-  // whole (its chevron, or its compact header) x does nothing yet.
+  // whole (its chevron, or its compact header) x does nothing yet. A folded
+  // first message is its head row at every state of its dossier, and x there
+  // unfolds it, as a press on the row does: at latest and unread that opens
+  // the dossier too, so the message shows and x again folds it.
   foldKey(event, entry, toggle) {
-    const section = entry.closest('.reply-stack');
-    if (toggle || (section && section.dataset.single !== 'true' && section.dataset.headOpen === 'false' && entry.dataset.id === section.dataset.stack)) return;
+    if (toggle) return;
     const item = this.messages().get(entry.dataset.id);
     if (!item) return;
+    const acts = this.actsOf(item.id, item), found = stackOf(this.list, entry);
+    const tab = Boolean(found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false');
+    if (tab && !acts.folded) return;
     event.preventDefault();
-    const acts = this.actsOf(item.id, item);
     if (acts.starred && !acts.folded) { this.say('Starred messages stay open'); return; }
+    if (tab && levelOf(this.state, found.stack.id) !== 'open') setLevel(this.state, found.stack, 'open');
     this.setFold(item, !acts.folded);
   }
   // What ⋯ offers for the stack a message is in, with the keys that do the

@@ -6652,13 +6652,48 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (toggle || (section && section.dataset.single !== 'true' && section.dataset.headOpen === 'false' && entry.dataset.id === section.dataset.stack)) return;",
+     "    if (toggle) return;\n",
+     ""
+    ],
+    [
+     "web/stack-feed.mjs",
+     "    if (tab && !acts.folded) return;",
      "    if (false) return;"
     ]
    ],
    "check": {
     "native": "reading",
     "case": "reading stacks x folds the selected message"
+   }
+  },
+  {
+   "item": 388,
+   "act": "x on a dossier's folded first message, its head row, unfolds it, whether x or the person's reply folded it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (tab && !acts.folded) return;",
+     "    if (tab) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks x folds a dossier's original message"
+   }
+  },
+  {
+   "item": 388,
+   "act": "x unfolding a first message at latest and unread opens its dossier, so x again folds it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (tab && levelOf(this.state, found.stack.id) !== 'open') setLevel(this.state, found.stack, 'open');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks x folds a dossier's original message"
    }
   },
   {

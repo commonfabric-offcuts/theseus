@@ -183,8 +183,8 @@ their acts.
 - **First messages.** A stack's first message folds into its head row, which already
   says who began the stack and its first line: the row adds "Folded", the
   full message stays hidden even with the stack fully open, and no second
-  row doubles the tab. A press on that head row unfolds it and opens the
-  stack. A link, search or the rail's Starred that lands on a folded
+  row doubles the tab. A press on that head row, or x on it, unfolds it and
+  opens the stack, so x on it again folds it. A link, search or the rail's Starred that lands on a folded
   message opens it whole for that view without unfolding it; changing its
   stack's state folds it to its row again.
 - **Expand and collapse.** One chevron beside the title switches between
@@ -260,7 +260,7 @@ On a message (its card focused, never in writing), these keys work:
 | ⌘↑ ⌘↓ | move its stack up or down, for you alone |
 | → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
-| x | fold it to its row, for you alone, or unfold it; a starred message stays open, and on a dossier as a whole x does nothing yet |
+| x | fold it to its row, for you alone, or unfold it; a starred message stays open, and on a dossier as a whole x does nothing yet, unless its first message is folded: then its head row is that message, and x unfolds it and opens the dossier |
 | ⌘Z | undo the last of these, or the last Fold or Unfold (not a fold a reply or a 👍 made) |
 
 The keys come from the shared key map (`web/pane-keys.mjs`), so the

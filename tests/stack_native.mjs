@@ -2197,6 +2197,55 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Item 388 on a dossier's original message. Folded, it is its head row, at every state of the dossier; x on that
+  // row unfolds it, whether x or the person's reply (item 377) folded it, and at latest and unread it does as a
+  // press on the row does, opening the dossier so the message reads whole. So x then x always comes back.
+  await check('reading stacks x folds a dossier\'s original message to its head row and x again unfolds it, after x or the person\'s reply folded it, fully open or at latest and unread', async () => {
+    const topic = 'stack-fold-key-head';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original message.', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one.', read: true }],
+      ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two.', read: true }]]);
+    const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+    const head = async () => { const l = await look(p, ids, 'root'); return [l.fold, l.headOpen]; };
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await fullyOpen(p, 'laptop', ids);
+    await keyTo(p, ids.root);
+    assert.deepEqual(await head(), ['open', 'true'], 'fully open, the original message reads whole');
+    const sent = await foldsSent(p);
+    await typeX(p);
+    await until(async () => await foldOf(topic, ids.root), 'x folds the original message, in Core');
+    await becomes(head, ['open', 'false'], 'it is its head row, the dossier still fully open');
+    assert.equal(await focusedOn(p), ids.root, 'the keys stay on it');
+    await typeX(p);
+    await until(async () => !await foldOf(topic, ids.root), 'x again unfolds it, in Core');
+    await becomes(head, ['open', 'true'], 'and it reads whole');
+    assert.equal(await foldsSent(p), sent + 2, 'one fold sent for each x');
+    assert.equal(await focusedOn(p), ids.root, 'the keys still on it');
+    // The person's reply to it folds it (item 377); x on its head row unfolds it.
+    ids.mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor,
+      reply_to: ids.root, addressees: [other], body: 'My answer to the original.' })).result.message_id;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.mine))})) && window.fetchesOut === 0`), 'my reply is drawn');
+    await until(async () => await foldOf(topic, ids.root), 'my reply folds the original message, in Core');
+    await becomes(async () => (await look(p, ids, 'root')).headOpen, 'false', 'the page shows it as its head row');
+    await keyTo(p, ids.root);
+    await typeX(p);
+    await until(async () => !await foldOf(topic, ids.root), 'x unfolds what my reply folded, in Core');
+    await becomes(head, ['open', 'true'], 'and it reads whole');
+    // At latest and unread a folded first message is its head row too: x unfolds it and opens the dossier.
+    await typeX(p);
+    await until(async () => await foldOf(topic, ids.root), 'x folds it once more');
+    await centre(p, toggle); await press(p, 'laptop', toggle);
+    await becomes(head, ['folded', 'false'], 'the dossier at latest and unread, its head one row');
+    await keyTo(p, ids.root);
+    await typeX(p);
+    await until(async () => !await foldOf(topic, ids.root), 'x on the head row unfolds the folded first message, in Core');
+    await becomes(head, ['open', 'true'], 'and opens the dossier, so the message reads whole');
+    assert.equal(await focusedOn(p), ids.root, 'the keys stay on it');
+    await typeX(p);
+    await until(async () => await foldOf(topic, ids.root), 'and x again folds it');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Item 390: a folded message's row carries its 👍.
   await check('reading stacks a folded message\'s row carries its 👍: pressed once given, with the count, given and taken back without unfolding, reached by Tab, named, and 44px under a finger', async () => {
     for (const device of Object.keys(DEVICES)) {
