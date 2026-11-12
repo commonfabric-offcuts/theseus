@@ -101,6 +101,8 @@ a.things-name[href]{color:var(--accent)}
 .things-sec[hidden]{display:none}
 .things-sec>summary{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.75rem;cursor:pointer;font-weight:650;font-size:.9rem}
 .things-sec>summary .sum{color:var(--muted);font-weight:500;font-size:.82rem}
+/* A topic's Notebook pencil sits just after the section's name; the count keeps the end of the row (notebook-create.mjs). */
+.things-sec>summary .notebook-create{order:1;margin:0 auto 0 -.35rem}.things-sec>summary .sum{order:2}.things-sec>summary:has(.notebook-create){-webkit-tap-highlight-color:transparent}
 .things-body{padding:0 0 .6rem}
 .things-list{list-style:none;margin:0;padding:0}
 .things-list li{margin:.1rem 0}

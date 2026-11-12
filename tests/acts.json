@@ -5993,6 +5993,36 @@
   },
   {
    "item": 296,
+   "act": "A topic's Notebook pencil sits beside the right rail's Notebook section, not in the page between the rails",
+   "break": [
+    [
+     "web/app.mjs",
+     "unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });",
+     "unstar: star => stackFeed?.unstar(star) });\n  notebookCreator($('notebook'), {kind:'topic',id:topic.id});"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook creation pencil opens a title line"
+   }
+  },
+  {
+   "item": 296,
+   "act": "A topic with no Notebook pages keeps the right rail's Notebook heading and its pencil",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "return items && this.notebookCreate?.available ?",
+     "return false && items && this.notebookCreate?.available ?"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook creation pencil opens a title line"
+   }
+  },
+  {
+   "item": 296,
    "act": "Retrying an uncertain Notebook creation keeps its operation and item identity",
    "break": [
     [
