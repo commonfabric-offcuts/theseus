@@ -598,7 +598,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (item?.preview && !cardIn(entry).hidden) this.expand(cardIn(entry), item);",
+     "if (item.preview && !card.hidden) this.expand(card, item);",
      ""
     ]
    ],
@@ -2471,8 +2471,8 @@
    "break": [
     [
      "web/aim.css",
-     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;",
-     ".message-preview.scroll-in-place{display:block;overflow:visible;overscroll-behavior:auto;"
+     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;",
+     ".message-card.scroll-in-place{overflow:visible;overscroll-behavior:auto;"
     ]
    ],
    "check": {
@@ -3151,8 +3151,8 @@
    "break": [
     [
      "web/aim.css",
-     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;",
-     ".message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:contain;"
+     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;",
+     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:contain;"
     ]
    ],
    "check": {
@@ -4574,6 +4574,21 @@
    ],
    "check": {
     "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 350,
+   "act": "Long message headers scroll away with the words while the card and dossier tab stay fixed",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;scrollbar-gutter:stable}",
+     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;scrollbar-gutter:stable}\n.message-card.scroll-in-place>:is(.message-author,.message-reply-to){position:sticky;top:0}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "long message headers scroll away"
    }
   }
  ]

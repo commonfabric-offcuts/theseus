@@ -75,6 +75,46 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, `.message-menu-list button:nth-of-type(${at + 1})`);
   };
 
+  await check('reading stacks long message headers scroll away inside their cards without moving the dossier tab', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-scrolling-headers-' + device;
+      const body = Array.from({ length: 80 }, (_, i) => `Line ${i}: long words to read inside this message.`).join('\n');
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body }],
+        ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body }]]);
+      const p = await open(topic, device, topic, ids.root);
+      await keyTo(p, ids.root);
+      await p.key('ArrowRight');
+      await becomes(async () => (await look(p, ids, 'root')).fold, 'open', 'the full stack opens');
+      for (const name of ['root', 'reply']) {
+        const selector = card(ids[name]);
+        await keyTo(p, ids[name]);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).dataset.whole === 'shown'`), name + ' loads the whole message');
+        await centre(p, selector);
+        const measure = () => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(selector)}),b=c.getBoundingClientRect(),t=c.closest('.reply-stack').querySelector('.stack-head').getBoundingClientRect();
+          return {top:b.top,height:b.height,page:scrollY,scroll:c.scrollTop,author:c.querySelector('.message-author').getBoundingClientRect().bottom-b.top,
+            reply:c.querySelector('.message-reply-to')?.getBoundingClientRect().bottom-b.top,tabTop:t.top,tabHeight:t.height,
+            tabHit:c.closest('.reply-stack').querySelector('.stack-head').contains(document.elementFromPoint(t.left+t.width/2,t.top+t.height/2))}})()`);
+        const before = await measure();
+        const b = await p.box(selector), x = b.x + b.width / 2, y = Math.max(0,b.y) + Math.min(120, (Math.min(b.y+b.height,b.viewportHeight)-Math.max(0,b.y))/2);
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 240 });
+        await until(async () => (await measure()).scroll > 100, name + ': the wheel scrolls inside the message');
+        const after = await measure();
+        assert.ok(after.author < 0, name + ': the author scrolls out of the card');
+        if (name === 'reply') assert.ok(after.reply < 0, 'the reply context scrolls away too');
+        assert.deepEqual([after.top,after.height,after.page,after.tabTop,after.tabHeight], [before.top,before.height,before.page,before.tabTop,before.tabHeight], 'card and dossier tab stay in place');
+        if (name === 'root') assert.equal(after.tabHit, true, 'the dossier title is still visible and clickable');
+        await shot(p, 'stack-headers-away-' + name + '-' + device);
+      }
+      // Folding and reopening must retain a usable card and title, including a loaded root.
+      await keyTo(p, ids.root); await p.key('ArrowLeft'); await p.key('ArrowLeft');
+      await becomes(async () => (await look(p, ids, 'root')).fold, 'head', 'the loaded stack closes');
+      await p.key('ArrowRight'); await p.key('ArrowRight');
+      await becomes(async () => (await look(p, ids, 'root')).fold, 'open', 'the loaded stack reopens');
+      assert.ok(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).clientHeight > 96`), 'the reopened root has its scrolling viewport');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('reading stacks plain arrows change the stack before leaving for a siderail, and leave writing alone', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-plain-arrows-' + device;
