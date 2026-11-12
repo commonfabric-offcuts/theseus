@@ -432,6 +432,9 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
         await r.point('#reader-close');
         await until(() => r.evaluate(`!document.querySelector('#reader').open`), 'the Reader closes');
       }
+      // The person's whisper, answered before this visit, folds under its answer (docs/reply-stacks.md): a reader
+      // opens its stack first.
+      await r.unfold(card);
       await tap(r, card);
       await until(() => r.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(words)})`), 'the Reader shows it');
     };

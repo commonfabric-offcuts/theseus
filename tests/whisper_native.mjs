@@ -39,8 +39,11 @@ export async function whispersChecks({ check, page, until, control, view, facts,
   const card = id => `#messages [data-id="${id}"]`;
   const cardShown = (p, id) => quiet(p, `(c=>c&&{whisper:c.classList.contains('whisper'),label:c.querySelector('.whisper-label')?.textContent??null,
     wait:c.querySelector('.whisper-wait')?.textContent??null,line:getComputedStyle(c).borderTopStyle,aria:c.getAttribute('aria-label')})(document.querySelector(${JSON.stringify(card(id))}))`);
+  // A card its reply stack folds away (docs/reply-stacks.md: a later visit shows the latest reply plus unread, so an
+  // answered whisper of the person's own folds under its answer) is opened as a reader opens it: its stack first.
   const openCard = async (p, id, words) => {
     await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(id))}))`), 'the card is drawn');
+    await p.unfold(card(id));
     await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
     await p.point(card(id));
     await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(words)})`), 'the Reader shows it');
