@@ -75,7 +75,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     return {shown:shown(o),scroll:document.getElementById('rail').scrollTop,fresh:chip('outline-only-new'),waiting:chip('outline-only-waiting'),
       outcomes:Object.fromEntries([...o.querySelectorAll('.ol-outcome')].filter(li=>!li.hidden).map(li=>{const name=li.querySelector('.ol-name'),badge=name.querySelector('.unread-count');
         return [li.dataset.workspaceId,{open:li.hasAttribute('data-open'),count:badge?Number(badge.textContent):0,lit:Boolean(name.querySelector('.outcome-light[data-light=waiting]')),
-          current:name.getAttribute('aria-current'),href:name.getAttribute('href'),standing:name.querySelector('.standing')?.textContent??'',
+          current:name.getAttribute('aria-current'),href:name.getAttribute('href'),standing:li.querySelector('.standing')?.textContent??'',
           topics:[...li.querySelectorAll('.ol-topics a[data-topic-id]')].filter(shown).map(a=>({id:a.dataset.topicId,unread:Number(a.querySelector('.unread-count')?.textContent??0),current:a.getAttribute('aria-current')}))}]}))}})()`);
   const home = p => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
     return {lit:Boolean(l)&&l.getClientRects().length>0,words:w&&w.getClientRects().length>0?w.textContent:null,said:w?.textContent??null,label:h.getAttribute('aria-label')}})()`);
@@ -1813,5 +1813,174 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual([(await placeOf(p)).origin, (await placeOf(p)).search], [start.origin, '?topic=rail-refused-a'], 'the page stayed, in place, with no load');
     await network(false);
     assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Items 148 and 320 come last: their outcomes, and the questions left waiting in them,
+  // would change what the checks before them count and push their rows down the outline.
+  await check('rail outcome clicks toggle topics and waiting opens the exact unloaded question', async () => {
+    for (const size of ['laptop', 'phone']) {
+      const oid='rail-toggle-'+size, tid=oid+'-topic';
+      await control({method:'light_outcome',outcome:oid,title:'Outcome toggle '+size,topic:{id:tid,title:'Question beyond the first page'}});
+      const ask=await control({method:'agent_message',operation_id:oid+'-ask',body:'Which notebook should the agent use?',topic_id:tid,addressees:[facts.actor],intent:'ask'});
+      for(let n=0;n<8;n++) await control({method:'agent_message',operation_id:oid+'-later-'+n,body:'Later coordination '+n,topic_id:tid});
+      const p=await open(oid,'/?topic='+tid,size);
+      // On a laptop the page settles its things and its scroll first; a phone keeps them behind a sheet.
+      if(size==='laptop')await settled(p,'the topic is up');
+      const name=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-name`;
+      const waiting=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
+      // Brought into view and held there: the outline may still be settling its own scroll as the page comes up.
+      const press=async selector=>{await until(()=>p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector(${JSON.stringify(selector)}))`),selector+' is in view');return size==='phone'?tap(p,selector):p.point(selector);};
+      const showRail=async()=>{if(size==='phone'&&!((await drawer(p)).open))await tap(p,'#rail-open');};
+      await showRail();
+      await until(async()=>(await outline(p)).outcomes[oid]?.open,'outcome starts expanded');
+      await p.evaluate(`document.querySelector(${JSON.stringify(name)}).scrollIntoView({block:'center'})`);
+      await press(name);
+      await until(async()=>(await outline(p)).outcomes[oid]?.current==='page'&&!(await outline(p)).outcomes[oid]?.open,'click both opens Conversation and folds topics');
+      await showRail();
+      await press(name);
+      await until(async()=>(await outline(p)).outcomes[oid]?.open,'second click expands topics');
+      await showRail();
+      await press(name);
+      await until(async()=>!(await outline(p)).outcomes[oid]?.open,'third click folds topics');
+      if(size==='laptop')assert.equal(await p.evaluate(`document.activeElement?.id==='topic-title'`),true,'the focus is on the page\'s heading, as after any press in the outline');
+      await showRail();
+      await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(waiting)})?.getClientRects().length)`),'waiting control is visible even with topics folded');
+      await press(waiting);
+      await until(()=>p.evaluate('document.querySelector("#reader").open'),'the exact question opens in the Reader');
+      assert.match(await p.evaluate('document.querySelector("#reader").textContent'),/Which notebook should the agent use/,'not a recent unrelated message');
+      await shot(p,'waiting-question-'+size);
+      assert.deepEqual(p.errors,[]);await p.close();
+    }
+  });
+
+  // Item 148: Waiting on you takes the reader to the question, the oldest first
+  // and each press after it the next, from the outline's outcome row, a topic
+  // row, the outcome light on its page and its Conversation row.
+  await check('rail Waiting on you opens the oldest question first, each press the next, from the outline, a topic row, the outcome light and the Conversation row', async () => {
+    const oid = 'rail-148', a = oid + '-a', b = oid + '-b';
+    await control({ method: 'light_outcome', outcome: oid, title: 'Oldest first', topic: { id: a, title: 'Topic A older ask' } });
+    await control({ method: 'light_outcome', outcome: oid, exists: true, topic: { id: b, title: 'Topic B newer ask' } });
+    await control({ method: 'agent_message', operation_id: oid + '-ask-a', body: 'OLDEST question in A', topic_id: a, addressees: [facts.actor], intent: 'ask' });
+    await control({ method: 'agent_message', operation_id: oid + '-ask-b', body: 'NEWER question in B', topic_id: b, addressees: [facts.actor], intent: 'ask' });
+    const asks = (await view('outcome_light', { workspace_id: oid })).facts.filter(fact => fact.kind === 'ask');
+    assert.deepEqual(asks.map(fact => fact.topic_id), [b, a], 'the server lists the asks newest first, so the order is the page\'s to choose');
+    const p = await open(oid + '-outline', '/?topic=' + a);
+    await settled(p, 'the topic is up');
+    const reader = () => p.evaluate(`(r=>({open:r.open,text:r.textContent,topic:new URL(location.href).searchParams.get('topic')}))(document.querySelector('#reader'))`);
+    // A press, then what the Reader shows; Escape puts it away before the next press.
+    const pressed = async (selector, words) => {
+      await p.point(selector);
+      const shown = await until(async () => { const seen = await reader(); return seen.open && /question in [AB]/.test(seen.text) && seen; }, words + ': a question opens in the Reader');
+      await p.key('Escape');
+      await until(async () => !(await reader()).open, words + ': Escape closes the Reader');
+      return [shown.text.match(/(OLDEST|NEWER) question in [AB]/)?.[0] ?? null, shown.topic];
+    };
+    const waiting = `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(waiting)})?.getClientRects().length)`), 'the outline shows Waiting on you');
+    assert.equal(await pressed(waiting, 'first press').then(seen => seen.join(' @ ')), `OLDEST question in A @ ${a}`, 'the first press opens the oldest question, on its own page');
+    assert.equal(await pressed(waiting, 'second press').then(seen => seen.join(' @ ')), `NEWER question in B @ ${b}`, 'the second press opens the next one');
+    assert.equal(await pressed(waiting, 'third press').then(seen => seen.join(' @ ')), `OLDEST question in A @ ${a}`, 'after the newest, round to the oldest');
+    // A topic row waiting on the reader opens its question, on the page of that topic or of another.
+    for (const [topic, words] of [[a, 'OLDEST question in A'], [b, 'NEWER question in B']]) {
+      assert.equal(await pressed(`#outline a[data-topic-id="${topic}"]`, topic + ' row').then(seen => seen.join(' @ ')), `${words} @ ${topic}`, 'a topic row opens its question');
+    }
+    await shot(p, 'waiting-oldest-first');
+    assert.deepEqual(p.errors, []); await p.close();
+    // The same from another outcome's page, where the outline draws this outcome's topics itself.
+    const away = await open(oid + '-away', '/?topic=t1');
+    await settled(away, 'the topic is up');
+    const awayRow = `#outline .ol-outcome[data-workspace-id="${oid}"] a[data-topic-id="${b}"]`;
+    await until(() => away.evaluate(`!document.getElementById('outline-only-waiting').disabled`), 'something waits on the reader');
+    await away.point('#outline-only-waiting');
+    await until(() => away.evaluate(`Boolean(document.querySelector(${JSON.stringify(awayRow)})?.getClientRects().length)`), 'the outline shows the other outcome\'s topics');
+    await away.evaluate(`document.querySelector(${JSON.stringify(awayRow)}).scrollIntoView({block:'center'})`);
+    await away.point(awayRow);
+    const there = await until(async () => { const seen = await away.evaluate(`(r=>r.open&&new URL(location.href).searchParams.get('topic')+' '+r.textContent)(document.querySelector('#reader'))`); return seen && /question in B/.test(seen) && seen; }, 'the other outcome\'s topic row opens its question');
+    assert.match(there, new RegExp('^' + b + ' [\\s\\S]*NEWER question in B'));
+    assert.deepEqual(away.errors, []); await away.close();
+    // The Conversation's own questions come after the topics'.
+    const conversation = (await view('conversation', { workspace_id: oid })).conversation;
+    await control({ method: 'agent_message', operation_id: oid + '-ask-c1', body: 'OLDEST question in C', topic_id: conversation.topic_id, addressees: [facts.actor], intent: 'ask' });
+    await control({ method: 'agent_message', operation_id: oid + '-ask-c2', body: 'NEWER question in C', topic_id: conversation.topic_id, addressees: [facts.actor], intent: 'ask' });
+    const o = await open(oid + '-page', '/?workspace=' + oid);
+    const words = `#outcome-standing .state-line button`;
+    await until(() => o.evaluate(`document.querySelector(${JSON.stringify(words)})?.textContent==='Waiting on you · 3 questions'`), 'the outcome light says three questions, and is a control');
+    await shot(o, 'waiting-outcome-light');
+    await o.point(words);
+    const first = await until(async () => { const seen = await o.evaluate(`(r=>r.open&&r.textContent)(document.querySelector('#reader'))`); return seen && /question in A/.test(seen) && seen; }, 'the outcome light opens the oldest question');
+    assert.match(first, /OLDEST question in A/);
+    assert.deepEqual(o.errors, []); await o.close();
+    const c = await open(oid + '-conversation-row', '/?workspace=' + oid);
+    const row = '#conversation-row a';
+    await until(() => c.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)})?.querySelector('.topic-state'))`), 'the Conversation row says Waiting on you');
+    await c.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+    await c.point(row);
+    const asked = await until(async () => { const seen = await c.evaluate(`(r=>r.open&&r.textContent)(document.querySelector('#reader'))`); return seen && /question in C/.test(seen) && seen; }, 'the Conversation row opens its question');
+    assert.match(asked, /OLDEST question in C/, 'the Conversation\'s oldest question, not the outcome\'s');
+    assert.equal(await c.evaluate(`new URL(location.href).searchParams.get('conversation')`), oid, 'in the Conversation');
+    assert.deepEqual(c.errors, []); await c.close();
+  });
+
+  // Item 148, from the outcome's page: each press there loads the topic, and
+  // Back loads the outcome's page again, so where the presses have got to is
+  // kept for the tab. Press, Back (a real load), press again: the next question.
+  await check('rail Waiting on you goes on to the next question across the loads the outcome page makes: press, Back, press again, from the light, the outline and the Conversation row', async () => {
+    const oid = 'rail-148-back', a = oid + '-a', b = oid + '-b';
+    await control({ method: 'light_outcome', outcome: oid, title: 'Press, back, press', topic: { id: a, title: 'Back topic A' } });
+    await control({ method: 'light_outcome', outcome: oid, exists: true, topic: { id: b, title: 'Back topic B' } });
+    await control({ method: 'agent_message', operation_id: oid + '-ask-a', body: 'OLDEST question in A', topic_id: a, addressees: [facts.actor], intent: 'ask' });
+    await control({ method: 'agent_message', operation_id: oid + '-ask-b', body: 'NEWER question in B', topic_id: b, addressees: [facts.actor], intent: 'ask' });
+    const conversation = (await view('conversation', { workspace_id: oid })).conversation;
+    await control({ method: 'agent_message', operation_id: oid + '-ask-c1', body: 'OLDEST question in C', topic_id: conversation.topic_id, addressees: [facts.actor], intent: 'ask' });
+    await control({ method: 'agent_message', operation_id: oid + '-ask-c2', body: 'NEWER question in C', topic_id: conversation.topic_id, addressees: [facts.actor], intent: 'ask' });
+    const shown = p => p.evaluate(`(r=>({open:Boolean(r?.open),text:r?.textContent??'',origin:performance.timeOrigin}))(document.querySelector('#reader'))`).catch(() => null);
+    // A press, the question the Reader shows (on a page loaded since the press, when it says so), then Escape.
+    const asked = async (p, selector, words, { loads = true } = {}) => {
+      const before = (await shown(p)).origin;
+      // The page up and both rails read, then the control brought into view and held there: the page may still be settling its scroll.
+      await until(() => p.evaluate(`document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), words + ': the page is up');
+      await until(() => p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector(${JSON.stringify(selector)}))`), words + ': ' + selector + ' is in view');
+      await p.point(selector);
+      const seen = await until(async () => { const at = await shown(p); return at?.open && /question in [ABC]/.test(at.text) && at; }, words + ': a question opens in the Reader');
+      if (loads) assert.ok(seen.origin > before, words + ': the press loaded the page of the question');
+      await p.key('Escape');
+      await until(async () => (await shown(p))?.open === false, words + ': Escape closes the Reader');
+      return seen.text.match(/(OLDEST|NEWER) question in [ABC]/)?.[0] ?? null;
+    };
+    // Back to the outcome's page, a real load: a new document, up and showing its controls.
+    const back = async (p, ready, words) => {
+      const before = (await shown(p)).origin;
+      await p.evaluate('history.back()');
+      await until(async () => { const at = await shown(p); return at && at.origin > before && await p.evaluate(`new URL(location.href).searchParams.get('workspace')===${JSON.stringify(oid)}&&Boolean(document.querySelector(${JSON.stringify(ready)})?.getClientRects().length)`).catch(() => false); }, words + ': Back loads the outcome\'s page again');
+    };
+    const light = '#outcome-standing .state-line button.state-question';
+    const o = await open(oid + '-light', '/?workspace=' + oid);
+    await until(() => o.evaluate(`document.querySelector(${JSON.stringify(light)})?.textContent==='Waiting on you · 3 questions'`), 'the outcome light says three questions, and is a control');
+    const lit = [await asked(o, light, 'first press')];
+    for (const n of [2, 3, 4]) { await back(o, light, 'before press ' + n); lit.push(await asked(o, light, 'press ' + n)); }
+    assert.deepEqual(lit.slice(0, 2), ['OLDEST question in A', 'NEWER question in B'], 'after Back the light opens the next question, not the oldest again');
+    assert.match(lit[2], /question in C/, 'then the Conversation\'s');
+    assert.equal(lit[3], 'OLDEST question in A', 'and round to the oldest');
+    // The light's last press opened A; the outline on A's page goes on from there, to B, not A again.
+    const waiting = `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
+    await until(() => o.evaluate(`Boolean(document.querySelector(${JSON.stringify(waiting)})?.getClientRects().length)`), 'the outline shows Waiting on you');
+    assert.equal(await asked(o, waiting, 'the outline after the light', { loads: false }), 'NEWER question in B', 'the outline goes on from the light\'s press');
+    assert.deepEqual(o.errors, []); await o.close();
+    // The Conversation row: each press leaves the outcome's page for the Conversation.
+    const row = '#conversation-row a';
+    const c = await open(oid + '-row', '/?workspace=' + oid);
+    await until(() => c.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)})?.querySelector('.topic-state'))`), 'the Conversation row says Waiting on you');
+    const rowed = [await asked(c, row, 'first row press')];
+    for (const n of [2, 3]) { await back(c, row + ' .topic-state', 'before row press ' + n); rowed.push(await asked(c, row, 'row press ' + n)); }
+    assert.deepEqual(rowed, ['OLDEST question in C', 'NEWER question in C', 'OLDEST question in C'], 'after Back the row opens the Conversation\'s next question, then round to its oldest');
+    assert.deepEqual(c.errors, []); await c.close();
+    // The outcome page's own topic list: a row waiting on the reader opens the topic at its question, and its link says so.
+    const t = await open(oid + '-topics', '/?workspace=' + oid);
+    const listed = `#topics a[data-topic-id="${b}"]`;
+    await until(() => t.evaluate(`Boolean(document.querySelector(${JSON.stringify(listed)})?.getClientRects().length)`), 'the outcome\'s page lists topic B');
+    assert.ok(new URL(await t.evaluate(`document.querySelector(${JSON.stringify(listed)}).href`)).searchParams.get('message'), 'the row\'s link names the question\'s message');
+    assert.equal(await asked(t, listed, 'topic B in the outcome\'s list'), 'NEWER question in B', 'the row opens the topic at its question');
+    assert.equal(await t.evaluate(`new URL(location.href).searchParams.get('topic')`), b);
+    assert.deepEqual(t.errors, []); await t.close();
   });
 }

@@ -29,7 +29,7 @@
 // it come from the run of the page that is up, and from nothing before it.
 // Each run's reads and drawing are its own: what a run read lands only while
 // it is still the page, and a run that has gone draws nothing.
-import { TopicRail, TopicPages, WorkspacePages, reread, routeHref, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
+import { TopicRail, TopicPages, WorkspacePages, reread, routeHref, topicTarget, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
 import { paintRowLight } from './outcome-light.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton } from './quick-create.mjs';
 import { readFailure } from './freshness.mjs';
@@ -39,6 +39,7 @@ import { KeyTree } from './key-tree.mjs';
 import { KEY_WORDS, MESSAGE_KEY_WORDS, keyAction } from './pane-keys.mjs';
 import { book, scopeOf, arrangeItems, moved, movedWords, orderOf } from './outline-order.mjs';
 import { panes } from './panes.mjs';
+import { presses, questionTarget } from './waiting-questions.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -210,6 +211,9 @@ export class OutlineRail {
     }
     // Arriving anywhere tidies the outline: the outcome being read is open, every other folded.
     this.opened.tidy();
+    const chosen = this.clickedExpansion;
+    this.clickedExpansion = null;
+    if (chosen?.id === this.here) this.opened.set(chosen.id, chosen.open);
     this.unlisten?.();
     this.unlisten = handles.live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && this.doc.visibilityState === 'visible') this.reload(); }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
@@ -285,7 +289,8 @@ export class OutlineRail {
     const name = element(doc, 'a', { className: 'ol-name' }, element(doc, 'span', { className: 'ol-name-line' }, title), standing);
     name.dataset.conversationOf = id;
     // The whole row (its light, its name and where it stands) is the one thing to press.
-    const row = element(doc, 'div', { className: 'ol-row' }, name);
+    const waiting = element(doc, 'button', { type: 'button', className: 'ol-waiting', hidden: true });
+    const row = element(doc, 'div', { className: 'ol-row' }, name, waiting);
     // The tree's rows are the names and the topics (key-tree.mjs); what holds them is no list of its own.
     row.setAttribute('role', 'none');
     const topics = element(doc, 'div', { className: 'ol-topics', id: `ol-topics-${id}` });
@@ -312,19 +317,45 @@ export class OutlineRail {
     const own = part('div', { className: 'ol-own' });
     own.append(message, host, more, retry, done.details, archived.details, newTopic);
     topics.append(own);
-    outcome = { id, item, li, name, title, standing, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, notes: null,
+    outcome = { id, item, li, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, notes: null,
       parts: { host, more, retry, message, done, archived } };
-    // A click or Return opens its Conversation, and with it its topics: the
-    // outline tidies itself, every other outcome folded. Already there, it tidies at once.
-    name.onclick = event => {
+    // The name opens its Conversation. A click or a tap also folds its topics
+    // when they are open and opens them when folded (item 320), and that
+    // choice holds through the move; Return, the keys' press, opens the
+    // Conversation with its topics as before (⌘→ and ⌘← fold), and the outline
+    // tidies itself as on any arrival. The focus goes where any press in the
+    // outline puts it: the heading of the page reached, or of the page it stayed on.
+    name.onclick = async event => {
       if (!plainClick(event)) return;
       event.preventDefault();
-      this.opened.tidy(); this.paint();
-      this.open(this.nameTarget(outcome), outcome.item.title);
+      if (event.detail === 0) { this.opened.tidy(); this.paint(); this.open(this.nameTarget(outcome), outcome.item.title); return; }
+      const open = !this.isOpen(outcome.id);
+      this.clickedExpansion = {id:outcome.id, open};
+      this.setOpen(outcome, open);
+      if (await this.open(this.nameTarget(outcome), outcome.item.title) === false) this.clickedExpansion = null;
     };
+    waiting.onclick = () => this.openQuestion(outcome);
     this.topicLine(outcome);
     this.outcomes.set(id, outcome);
     return outcome;
+  }
+  async openQuestion(outcome) {
+    if (outcome.waiting.disabled) return;
+    outcome.waiting.disabled = true;
+    const run = this.run;
+    try {
+      const answer = await this.read('outcome_light', {workspace_id:outcome.id}, 'foreground');
+      if (run !== this.run) return;
+      // The oldest question first, and each press after it the next (waiting-questions.mjs).
+      const ask = presses.next('outcome:' + outcome.id, (answer.facts ?? []).filter(fact => fact.kind === 'ask'));
+      if (!ask) {
+        this.message.textContent = 'Nothing is waiting on you in this outcome now.';
+        this.message.hidden = false; this.reload(); return;
+      }
+      await this.open(questionTarget(ask), ask.title);
+    } catch (error) {
+      this.message.textContent = readFailure(error).message; this.message.hidden = false;
+    } finally { outcome.waiting.disabled = false; }
   }
   // Opens or folds one outcome from the keys, until the next place tidies it (Opened).
   setOpen(outcome, open) {
@@ -358,6 +389,7 @@ export class OutlineRail {
       // Open as drawn: between two runs the outline knows no place, and stays as the run before drew it.
       const open = li.hasAttribute('data-open'), id = outcome.id;
       rows.push({ el: outcome.name, level: 1, set: this.list, key: 'outcome:' + id, parent: null, expanded: open, outcome });
+      if (!outcome.waiting.hidden) rows.push({el:outcome.waiting, level:2, set:outcome.li, key:'waiting:'+id, parent:outcome.name, outcome});
       if (!open) continue;
       for (const el of outcome.topics.querySelectorAll('a[href], button, summary')) {
         if (el.closest('.one-line')) continue;
@@ -458,7 +490,7 @@ export class OutlineRail {
     outcome.rail ??= new TopicRail({ reader: this.bootstrap.actor, pageMax: this.pageMax,
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id)), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
-      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle) => this.open({ kind: 'topic', id: topicId }, topicTitle) });
+      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });
     return outcome.rail;
   }
   // An outcome's topics, read again: the page's own list reads itself.
@@ -586,7 +618,11 @@ export class OutlineRail {
         line.querySelector(':scope > .outcome-light')?.remove(); line.querySelector(':scope > .topic-state')?.remove();
         if (lamp) line.prepend(lamp);
         if (own?.work) outcome.title.append(element(this.doc, 'span', { className: 'topic-work', ariaHidden: 'true' }));
-        if (own?.waiting) { const state = element(this.doc, 'span', { className: 'topic-state mine', textContent: 'Waiting on you' }); state.dataset.state = 'waiting'; line.append(state); }
+        // A separate control reaches the question; the name keeps its own toggle.
+        const waits = asksIn(item) > 0;
+        outcome.waiting.hidden = !waits;
+        outcome.waiting.setAttribute('aria-label', `Open a question waiting on you in ${item.title}`);
+        (waits ? outcome.waiting : outcome.name).append(outcome.standing);
       }
     });
     for (const [id, outcome] of this.outcomes) if (!shown.has(id)) { outcome.li.remove(); this.outcomes.delete(id); }

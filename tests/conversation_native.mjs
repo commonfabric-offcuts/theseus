@@ -41,7 +41,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     return cards.map(card => card.id);
   };
   // The Conversation's row: in the outline, the outcome's own row, open (outline-rail.mjs).
-  const row = p => quiet(p, `(r=>r&&{current:r.getAttribute('aria-current'),waiting:r.querySelector('.topic-state')?.textContent??null,
+  const row = p => quiet(p, `(r=>r&&{current:r.getAttribute('aria-current'),waiting:r.closest('.ol-outcome')?.querySelector('.ol-waiting:not([hidden])')?'Waiting on you':null,
     unread:r.querySelector('.unread-count')?.textContent??null,shown:r.getClientRects().length>0})(document.querySelector('#outline .ol-name[data-conversation-of="w1"]'))`);
   const chip = p => quiet(p, `(h=>({hidden:h.hidden||h.getClientRects().length===0,text:h.querySelector('button')?.textContent??null,
     pressed:h.querySelector('button')?.getAttribute('aria-pressed')??null}))(document.querySelector('#conversation-show'))`);

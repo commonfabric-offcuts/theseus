@@ -46,6 +46,30 @@ export class OutcomeStart {
   }
 }
 
+// A new Notebook page starts empty. The exact identity, title and scope stay
+// together until Core confirms or refuses the creation, even after a lost answer.
+export class NotebookStart {
+  constructor({ api, bootstrap, scope }) { Object.assign(this, { api, bootstrap, scope }); this.pending = null; }
+  async create(title) {
+    if (!hasTitle(title)) throw Error('Type the page’s title, then press Return.');
+    if (this.pending && this.pending.args.title !== title) throw Error(`First confirm “${this.pending.args.title}”: restore that title and press Return.`);
+    this.pending ??= envelope(this.bootstrap, 'memory.create',
+      { item_id: 'n-' + crypto.randomUUID().replaceAll('-', ''), owner_scope: copy(this.scope) }, { item_revision: 0 },
+      { title, body: '', attachments: [], references: [] });
+    const request = this.pending;
+    try {
+      const result = await sent(this.api, request, () => {});
+      if (result?.item_id !== request.target.item_id || result.revision !== 1 ||
+          result.owner_scope?.kind !== request.target.owner_scope.kind || result.owner_scope?.id !== request.target.owner_scope.id) {
+        throw Error('The created page could not be confirmed.' + AGAIN);
+      }
+    }
+    catch (error) { if (!error.message.endsWith(AGAIN)) this.pending = null; throw error; }
+    this.pending = null;
+    return request.target.item_id;
+  }
+}
+
 // One topic from a title, through the private opening Core already keeps:
 // opening.save with the title (and the message it answers), then
 // opening.publish. With nothing written, Core starts the topic with no

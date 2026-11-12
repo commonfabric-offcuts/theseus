@@ -248,7 +248,12 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(await held(), { tag: 'BUTTON', inCard: true, info: true, last: false, fact: false, expanded: 'true', more: true });
     await commit();
     assert.deepEqual(await held(), { tag: 'BUTTON', inCard: true, info: true, last: false, fact: false, expanded: 'true', more: true }, 'the ⓘ keeps focus, still open, after the repaint');
-    // Tab on from the ⓘ: the Last line's link, then a fact's link, each keeps focus across a repaint.
+    // Tab on from the ⓘ: Waiting on you, the way to the question (item 148), then the Last line's link,
+    // then a fact's link, each keeps focus across a repaint.
+    await p.key('Tab');
+    assert.equal(await p.evaluate(`document.activeElement===document.querySelector('#outcome-standing .state-line .state-question')`), true, 'Tab goes on to Waiting on you');
+    await commit();
+    assert.equal(await p.evaluate(`document.activeElement===document.querySelector('#outcome-standing .state-line .state-question')`), true, 'Waiting on you keeps focus after the repaint');
     await p.key('Tab');
     assert.equal((await held()).last, true, 'Tab goes on to the Last line\'s link');
     await commit();
