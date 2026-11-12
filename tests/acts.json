@@ -4940,6 +4940,94 @@
    }
   },
   {
+   "item": 148,
+   "act": "Where Waiting on you's presses have got to is kept for the tab, so the next page loaded goes on from it",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "try { this.storage()?.setItem(KEY + place, JSON.stringify(last)); } catch",
+     "try { } catch"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "A page the outcome's page loads, or Back loads again, goes on from the question the tab kept",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "try { return JSON.parse(this.storage()?.getItem(KEY + place) ?? 'null'); } catch { return null; }",
+     "return null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
+   "item": 148,
+   "act": "A tab that cannot keep a press keeps none, so the next page starts at the oldest rather than after an older press",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "try { this.storage()?.removeItem(KEY + place); } catch { /* the next page starts at the oldest */ }",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outline's Waiting on you goes on from the outcome light's press, on the page that press loaded",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "presses.next('outcome:' + outcome.id,",
+     "presses.next('outline:' + outcome.id,"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The Conversation row goes on to its next question after Back loads the outcome's page again",
+   "break": [
+    [
+     "web/outcome-conversation.mjs",
+     "presses.next('conversation:' + view.topic_id, asks)",
+     "presses.next('conversation:' + Math.random(), asks)"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome page's own topic list opens a topic waiting on the reader at its question",
+   "break": [
+    [
+     "web/app.mjs",
+     "open:(id,title,message)=>openDestination(topicTarget(id,message),title),\n        updated:",
+     "open:(id,title)=>openDestination(topicTarget(id),title),\n        updated:"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
    "item": 320,
    "act": "Clicking an open outcome folds its topics and preserves that choice while opening its Conversation",
    "break": [
