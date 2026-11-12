@@ -238,3 +238,12 @@ test('a new Notebook page opens its empty card editor through an exact cards rou
   assert.deepEqual(parseRoute(new URL('https://example.test/?cards=n-first&write=new')), route);
   assert.throws(() => parseRoute(new URL('https://example.test/?cards=n-first&write=anything')), /incomplete|ambiguous/);
 });
+
+test('Notebook writing links name Text or Cards without changing the page identity',()=>{
+  for(const view of ['text','cards']){
+    const route={kind:'cards',id:'n-notes',view};
+    assert.equal(routeHref(route),'?cards=n-notes&view='+view);
+    assert.deepEqual(parseRoute(new URL('https://example.test/'+routeHref(route))),route);
+  }
+  assert.throws(()=>parseRoute(new URL('https://example.test/?cards=n-notes&view=unknown')),/incomplete|ambiguous/);
+});

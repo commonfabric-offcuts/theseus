@@ -4837,6 +4837,63 @@
    "check": {
     "node": "tests/ui_quick_create.test.mjs"
    }
+  },
+  {
+   "item": 302,
+   "act": "An uncertain Notebook save retries its complete original request after reload",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "this.pending ??= this.envelope();",
+     "this.pending = this.envelope();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A confirmed Notebook save never overwrites newer words typed while it was in flight",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "this.pending = null; this.error = null; this.dirtySince=null;",
+     "this.value = copy(sent.args); this.pending = null; this.error = null; this.dirtySince=null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A removed Notebook image is never attached by a late upload confirmation",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "if(valid())this.associate(e);",
+     "e.removed=false; if(valid())this.associate(e);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_images.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "An unfinished Notebook card saves its actual words before Done, alongside Text view",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "this.editing.field.addEventListener('input',()=>this.save());",
+     "this.editing.field.addEventListener('input',()=>{});"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook Text and Cards share exact words"
+   }
   }
  ]
 }

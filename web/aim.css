@@ -918,3 +918,14 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-create{display:inline-grid;place-items:center;margin-left:auto;padding:.35rem;min-width:2.75rem;min-height:2.75rem;border:0;background:transparent;color:var(--muted)}
 .notebook-create svg{width:1.1rem;height:1.1rem}
 .notebook-create:hover{color:var(--ink);background:var(--soft)}
+
+/* One Notebook body, with two writing views. */
+.notebook-views{display:flex;gap:.35rem;align-items:center}
+.notebook-views button[aria-pressed=true]{background:var(--soft);border-color:var(--accent)}
+.notebook-text-panel{min-width:0}.notebook-text{width:100%;min-height:55dvh;resize:vertical;font:inherit;line-height:1.6}
+.notebook-conflict{padding:1rem;border:1px solid var(--accent);border-radius:.8rem}
+.notebook-conflict h2{font-size:1rem}.notebook-conflict button{margin:.5rem .5rem 0 0}
+.notebook-latest{white-space:pre-wrap;overflow-wrap:anywhere;max-height:18rem;overflow:auto;font:inherit;padding:.75rem;background:var(--soft)}
+.notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
+.notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
+.notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
