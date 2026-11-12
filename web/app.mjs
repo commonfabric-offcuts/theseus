@@ -1142,7 +1142,7 @@ async function copyPageLink(source, revision, say) {
 // The Reader's ⋯ (docs/reader.md): Copy Link, the mark, Quote selection while
 // there is something to quote, Start a topic from this, Add to pipeline, and
 // Wide or Stacked; for a Notebook page, Copy Link, Copy Link to Revision N and
-// Open as cards (docs/decks.md).
+// Edit page (docs/notebook-writing.md).
 // The message's own acts live here, not in a row under it; on a phone the
 // menu opens as a sheet from the bottom.
 function openReaderMenu() {

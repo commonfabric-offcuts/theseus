@@ -9,7 +9,7 @@ import { linkWords } from './links.mjs';
 export class PageHere {
   // read(ref): the page's source view at that exact revision.
   // reads: a PageReads, which records the read and answers the revision read before.
-  // cards(id), when given: the address of the page as a deck of cards (docs/decks.md).
+  // cards(id), when given: the address of the shared page editor (docs/notebook-writing.md).
   constructor({ host, read, reads, cards = null, doc = globalThis.document }) {
     Object.assign(this, { host, read, reads, cards, doc });
     this.serial = 0; this.opener = null;

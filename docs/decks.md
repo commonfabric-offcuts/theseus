@@ -194,6 +194,8 @@ bubble without a count.
 `?cards=ITEM` (topic-navigation.mjs), with no rail, so the deck has the
 width; the eyebrow goes back to the page in its topic or outcome. A Notebook
 page's ⋯ in the Reader, and a page opened in place on its outcome's page,
-offer Open as cards ([links.md](links.md)). The count and the buttons stand
+offer Edit page, opening the shared writing place in Text with a Cards switch
+([notebook-writing.md](notebook-writing.md)). Existing Cards links still open
+Cards. The count and the buttons stand
 above the cards, where a phone's keyboard never covers Done, and a phone
 opens scrolled to them.
