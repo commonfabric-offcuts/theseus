@@ -36,7 +36,7 @@ from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
 from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
-from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA
+from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 
 
@@ -150,6 +150,11 @@ STEPS = (
     # that cannot go on until it is answered. A message keeps it as written,
     # so stepping back is refused once any ask has named one.
     ("35", "36", BLOCKS_SCHEMA, BLOCKS_DOWN, BLOCKS_OCCUPIED),
+    # Version 37 lets a reader fold a message for themselves, so the acts
+    # about messages take a sixth kind. The table is built again with every
+    # act, its id and where the next id goes on from. Stepping back is
+    # refused once anyone has folded a message, even one unfolded since.
+    ("36", "37", FOLD_UP, FOLD_DOWN, FOLD_OCCUPIED),
 )
 
 

@@ -49,7 +49,7 @@ COMMANDS = {
     "outcome.kind_set": "_command_outcome_kind_set",
     "outcome.reach": "_command_outcome_reach",
     "outline.order_set": "_command_outline_order_set",
-    "message.star": "_command_message_star", "message.deal": "_command_message_deal",
+    "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
     "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
@@ -85,7 +85,7 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "outcome.kind_set": {"workspace_revision"},
             "outcome.reach": {"workspace_revision"},
             "outline.order_set": {"order_revision"},
-            "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "stack.place": {"place_revision"},
+            "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "stack.place": {"place_revision"},
             "stack.name": {"name_revision"}, "stack.join": {"join_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
@@ -98,7 +98,7 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
                      "message.thumb": "thumb_revision", "message.answer": "answer_revision",
                      "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision",
                      "outline.order_set": "order_revision",
-                     "message.star": "star_revision", "message.deal": "deal_revision", "stack.place": "place_revision",
+                     "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "stack.place": "place_revision",
                      "stack.name": "name_revision", "stack.join": "join_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},

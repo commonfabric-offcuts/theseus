@@ -68,7 +68,8 @@ export class MessageMenu {
         if (!(this.touch && react.classList.contains('reaction-count'))) this.act(react.dataset.react);
         return;
       }
-      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line')) {
+      // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
+      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
         // The reply arrow answers its own first tap with its words (card-reading.mjs).
         if (event.target.closest?.('.replied-mark')) return;

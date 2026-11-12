@@ -12,9 +12,12 @@
 // its head in data-stack. What a stack looks like is web/stack-look.css's
 // alone: this module sets only the class names and data attributes it
 // documents. How far each stack is folded, and which head shows its full
-// message, are this page's own and never recorded.
+// message, are this page's own and never recorded. A message the reader
+// folded is their own act, kept in Core (stack-feed.mjs): wherever it shows
+// it is one row, who wrote it and its first words, with a cue that it is
+// folded; a stack's folded first message is its head row alone.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, LEVELS } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS } from './stack-order.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { shownTime } from './times.mjs';
 
@@ -22,6 +25,7 @@ const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope >
 const states = new WeakMap();
 const parts = new WeakMap();
 const headRows = new WeakMap();
+const foldedRows = new WeakMap();
 
 // Every message entry in the list, in the page's order: each stack's head,
 // then its replies, folded ones included.
@@ -49,20 +53,23 @@ export function topOf(list, entry) {
 }
 
 // What the page keeps for a list's stacks: each stack's level ('head',
-// 'folded', 'open'), the heads showing their full message, replies kept in
-// view once kept, replies folded one by one, the stack being renamed, and the
-// stacks as last drawn.
+// 'folded', 'open'), replies kept in view once kept, folded messages opened
+// for this view (peeked), the stack being renamed, the stacks as last drawn,
+// and the messages last drawn as their folded row (folded).
 export function stackState(list) {
-  if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), handFolded: new Set(), renaming: null,
-    stacks: [], sections: new Map(), viewer: null, again: () => {} });
+  if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), renaming: null,
+    stacks: [], sections: new Map(), folded: new Set(), viewer: null, again: () => {} });
   return states.get(list);
 }
 
 // An explicit choice starts a fresh partial view. Replies that were unread
 // when drawn stay put while read, until the person changes the stack state.
+// A message opened for that view folds to its row again; the reader's folds
+// themselves are theirs in Core, and no state choice changes them.
 export function setLevel(state, stack, level) {
   state.levels.set(stack.id, level);
-  for (const item of stack.replies) { state.kept.delete(item.id); state.handFolded.delete(item.id); }
+  state.peeked.delete(stack.id);
+  for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); }
 }
 
 // The stack an entry is in, as last drawn: { stack, section (null for a
@@ -86,28 +93,49 @@ export function lineSeq(list, seq) {
 }
 
 // Opens the stack that folds entry away, so the entry can be shown or take
-// the focus; full: a head shows its full message too.
+// the focus; full: a head shows its full message too. A message the reader
+// folded opens from its row for this view (a link, search, Starred), and its
+// fold stays theirs in Core: nothing is written.
 export function reveal(entry, { full = false } = {}) {
   const section = entry?.closest?.('.reply-stack');
-  const list = section?.parentElement;
+  const list = section ? section.parentElement : entry?.parentElement;
   if (!list || !states.has(list)) return entry;
-  const state = stackState(list), id = section.dataset.stack;
+  const state = stackState(list), id = section?.dataset.stack, own = entry.dataset.id;
   let changed = false;
-  if (entry.hidden) { state.levels.set(id, 'open'); state.handFolded.delete(entry.dataset.id); changed = true; }
-  if (full && entry.dataset.id === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
+  if (section && entry.hidden) { state.levels.set(id, 'open'); changed = true; }
+  if (section && full && own === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
+  if (state.folded.has(own)) { state.peeked.add(own); changed = true; }
   if (changed) state.again();
   return entry;
 }
 
+// A click on a message drawn as its folded row unfolds it (its head row's
+// click does, for a stack's first message: headClick). Answers whether the
+// click was the row's.
+export function foldedClick(list, entry) {
+  if (!entry) return false;
+  const state = stackState(list), id = entry.dataset.id;
+  if (cardIn(entry).dataset.folded !== 'true' || !state.folded.has(id)) return false;
+  state.on?.unfold?.(id);
+  return true;
+}
+
 // A click on a stack's head row: a press on its name or ✎ renames it, on
 // "Hide the full message" hides it; anywhere else on the row shows the full
-// message, or hides it again. Answers whether the click was the row's; a
-// click on the full message's words is not, and opens it as any card's does.
+// message, or hides it again. On the row of a folded first message it unfolds
+// that message and opens the stack, so the message shows. Answers whether the
+// click was the row's; a click on the full message's words is not, and opens
+// it as any card's does.
 export function headClick(list, entry, event) {
   const found = stackOf(list, entry), state = stackState(list);
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
   const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
+  if (state.folded.has(stack.id)) {
+    if (state.levels.get(stack.id) !== 'open') setLevel(state, stack, 'open');
+    state.on?.unfold?.(stack.id);
+    return true;
+  }
   const open = state.levels.get(stack.id) === 'open';
   if (act === 'hide' || (open && event?.target?.closest?.('.stack-head'))) {
     setLevel(state, stack, 'folded'); state.again();
@@ -179,13 +207,14 @@ function line(section, key, make) {
 
 const replies = n => (n === 1 ? 'reply' : 'replies');
 // The head's row, set into its card: its short name (renamed in place), who
-// started the stack, how many replied and who, and what is new.
+// started the stack, how many replied and who, what is new, and whether its
+// first message is folded.
 function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
   if (card.firstElementChild !== row) card.prepend(row);
   card.classList.add('stack-head-card');
-  const head = headOf(stack, { firstLine, unread });
+  const head = headOf(stack, { firstLine, unread, peeked: item => state.peeked.has(item.id) });
   const act = (name, className, text, title) => {
     const span = element(doc, 'span', `stack-act ${className}`, text); span.dataset.stackAct = name;
     if (title) span.title = title; return span;
@@ -201,6 +230,7 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   row.replaceChildren(name, pen, element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)),
     ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
+    ...(head.folded ? [element(doc, 'span', 'stack-folded', 'Folded')] : []),
     meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
@@ -211,6 +241,25 @@ function unhead(entry) {
   const card = cardIn(entry);
   card.classList.remove('stack-head-card');
   headRows.get(card)?.remove();
+}
+
+// A message the reader folded, as one row set into its card: who wrote it,
+// its first words, and that it is folded (stack-look.css hides the rest of the
+// card). folded false takes the row away and the card reads whole.
+function paintFolded(entry, item, folded, { nameOf, doc }) {
+  const card = cardIn(entry);
+  if (!folded) { foldedRows.get(card)?.remove(); if (card.dataset.folded) card.dataset.folded = 'false'; return; }
+  let row = foldedRows.get(card);
+  if (!row) {
+    row = element(doc, 'span', 'message-folded');
+    row.append(element(doc, 'span', 'folded-author'), element(doc, 'span', 'folded-words'), element(doc, 'span', 'folded-cue', 'Folded'));
+    foldedRows.set(card, row);
+  }
+  const [author, words] = row.children;
+  author.textContent = nameOf(item.author_id);
+  words.textContent = firstLine(item.body);
+  if (card.firstElementChild !== row) card.prepend(row);
+  card.dataset.folded = 'true';
 }
 
 function renameField(section, stack, head, { state, doc }) {
@@ -242,7 +291,8 @@ function paintStack(section, stack, byId, context) {
   const { state, keep, unread, nameOf, doc } = context;
   const p = parts.get(section), head = byId.get(stack.id), single = !stack.replies.length;
   const level = single ? 'open' : state.levels.get(stack.id) ?? 'folded';
-  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open';
+  // A folded first message is its head row alone, at every level.
+  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && !state.folded.has(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
     if (!unread(item)) return false;
@@ -256,7 +306,7 @@ function paintStack(section, stack, byId, context) {
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; close stack' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
-  const rows = single ? [] : rowsOf(stack, { level, kept, handFolded: state.handFolded, unread });
+  const rows = single ? [] : rowsOf(stack, { level, kept, unread, peeked: item => state.peeked.has(item.id) });
   for (const row of rows) {
     if (row.kind === 'reply') { const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry); continue; }
     if (row.kind === 'join') {
@@ -304,8 +354,10 @@ export function arrangeStacks(list, messages, options = {}) {
   if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
-  const stacks = ordered(gather([...byId.keys()].map(id => messages.get(id)).filter(Boolean)));
+  const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
+  const stacks = ordered(gather(loaded));
   state.stacks = stacks;
+  state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
   const top = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
   for (const stack of stacks) {
     const head = byId.get(stack.id);
@@ -324,6 +376,8 @@ export function arrangeStacks(list, messages, options = {}) {
   // join, or before its replies went, is a card again.
   const heads = new Set(stacks.filter(stack => stack.replies.length).map(stack => stack.id));
   for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);
+  // Every other message the reader folded is its one-line row, in a stack or on its own.
+  for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id) && !heads.has(id), { nameOf, doc });
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
