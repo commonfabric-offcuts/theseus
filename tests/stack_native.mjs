@@ -1198,6 +1198,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await foldOf(topic, ids.one), true, 'and Core keeps its fold');
     await until(async () => (await readerOn(p))?.startsWith('Reply one'), 'the Reader opens on it, as a link does');
     await closeReader(p, 'laptop');
+    // Opened only for that view: changing its stack's state folds it to its row again, and Core is unchanged.
+    for (const level of ['head', 'folded', 'open']) {
+      await press(p, 'laptop', '#messages .reply-stack .stack-toggle');
+      await becomes(async () => (await look(p, ids, 'root')).fold, level, `after the link, the chevron steps to ${level}`);
+    }
+    await becomes(async () => (await folded(p, ids.one)).row, true, 'a state change folds the message the link opened back to its row');
+    assert.equal(await foldOf(topic, ids.one), true, 'and Core still holds its fold');
     // A star keeps a message in view: starring a folded message unfolds it, and a starred one offers no Fold.
     await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.three, operation_id: topic + '-fold-three', args: { folded: true } });
     await becomes(async () => (await folded(p, ids.three)).row, true, 'three is folded');
@@ -1261,6 +1268,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => !await foldOf(topic, ids.two), 'phone: one tap on its row unfolds it, in Core');
     await becomes(async () => (await folded(p, ids.two)).whole, true, 'phone: and it reads whole');
     assert.equal(await readerOn(p), null, 'phone: the tap opened no Reader');
+    // A starred message is not folded: a swipe right on it writes nothing and leaves it whole. Acts go to Core in
+    // order, so once a later swipe's fold is in Core, any fold the starred one had sent would be there before it.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.three, operation_id: topic + '-star-three', args: { starred: true } });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.three))})?.dataset.starred === 'true'`), 'phone: three shows starred');
+    await drag(card(ids.three), 20, 160);
+    await drag(card(ids.two), 20, 160);
+    await until(async () => await foldOf(topic, ids.two), 'phone: the later swipe on two lands in Core');
+    assert.equal(await foldOf(topic, ids.three), false, 'phone: the starred message swiped right is not folded in Core');
+    assert.deepEqual(await folded(p, ids.three), { row: false, words: null, whole: true }, 'phone: and its card is whole');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
