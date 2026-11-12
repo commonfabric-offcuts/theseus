@@ -43,7 +43,9 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 | fold away a card's children, or show them | ← →, or a click on the chevron before its title | a tap on its chevron |
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
-| finish editing | Escape or ⌘Return | Done |
+| finish editing | Escape | Done |
+| finish editing, and write a new card below it | ⌘Return | |
+| finish editing a card with children, and fold them away | ← at the very start | |
 | while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
 | while editing, put the card under the one above it, or take it out of its parent | Tab, ⇧Tab | |
 | while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
@@ -71,7 +73,12 @@ and unfinished writing autosave through the shared Notebook writer (302,
 notebook-writing.md). A new card with words also saves before Done; an empty
 new card changes only where it will go. The box keeps these keys even with nowhere to go, as
 an outliner does, so a Tab never takes the focus out of a card half written;
-Escape or ⌘Return leaves it. ↑ at the very start of what is written finishes
+Escape leaves it, and ⌘Return leaves it and opens a new card for writing
+right after it and its children, at its depth, as Return does from a picked
+card; from a box with nothing written ⌘Return only leaves, so it never makes
+an empty card. ← at the very start of a card that has children finishes it
+and folds its children away, the card picked; on a card with none, ← stays
+the box's. ↑ at the very start of what is written finishes
 the card and opens the card that shows above it for writing, the cursor at
 its end; ↓ at the very end does the same with the card below, the cursor at
 its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at
@@ -191,11 +198,62 @@ bubble without a count.
 
 ## Where it opens
 
-`?cards=ITEM` (topic-navigation.mjs), with no rail, so the deck has the
-width; the eyebrow goes back to the page in its topic or outcome. A Notebook
-page's ⋯ in the Reader, and a page opened in place on its outcome's page,
-offer Edit page, opening the shared writing place in Text with a Cards switch
-([notebook-writing.md](notebook-writing.md)). Existing Cards links still open
-Cards. The count and the buttons stand
-above the cards, where a phone's keyboard never covers Done, and a phone
-opens scrolled to them.
+A page opens in the composer over the feed (item 396, `web/notebook-sheet.mjs`):
+the New message sheet comes up with the page in it, from every place a page is
+opened as it stands: a row of the outline's Outcome Notebook, a card of the
+topic's own Notebook, a row of the right rail's Notebook, a row on the
+outcome's own page, a link to a page as it stands, the pencil that starts a
+page (its first card ready to write), and Edit page in the ⋯ of the Reader
+showing a page at a revision. Over the outcome's own page, which has no feed,
+it comes up over that page. A link to a page at a revision still opens it in
+the Reader, or in place on its outcome's page, to read.
+
+The sheet's head is one line on a laptop: the page's title, Text and Cards as
+chips, the saving sign, a Full page glyph (↗, `?cards=ITEM`, below) and ✕, each
+glyph named for screen readers and with a tooltip; on a phone it takes two
+lines, the title with ↗ and ✕, then the chips and the sign. Below it is one
+place that scrolls; on a phone one card fills it, swiped through as on the full
+page. The line of keys above the cards is short there (↑ ↓ pick · Return new
+card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
+full page's line its tooltip.
+
+✕, Escape or a press on the backdrop closes it. While a card is being written
+the first Escape finishes the card and a second closes the sheet; ✕ and a press
+outside close it with the card still open. The feed comes back where it was
+read and the focus to what opened the page, at once, so a page opened from the
+keys straight after (Tab to the next card, Return) stays open; the feed keeps
+its length while the sheet is up, so one read to its end does not move behind
+the backdrop. Unfinished writing keeps saving
+(notebook-writing.md), and the page keeps its picked card, its place in the
+cards and an open card box until another page is opened in its place: opening
+it again shows it as it was left. A second page replaces the first, whose
+writing goes on to Core; a card box it had open opens again with it, as it does
+after a reload or a move to another topic and back. While the sheet shows, the
+keys are its own: an arrow, Page Up or Down, Home, End or Space that the page
+does not use moves nothing behind it, and neither does a wheel, a trackpad or
+a finger over the backdrop or the sheet's head, or past the end of what scrolls
+in the sheet. The page showing is read again on every commit, so a revision
+made elsewhere shows at once; a page whose sheet is closed is not read again
+until it opens, though writing of its own that Core has not confirmed still
+goes.
+
+Opening a page reads it, as the Reader did (notebook-pages.md): its changed
+light goes out, and what changed since the revision the person last read shows
+above the cards, under "What changed since you read revision N".
+
+A card's speech bubble with a reply stack sets the sheet aside and opens the
+stack in the Reader, whose header then says "← <page title>" in place of its
+way back to the topic. Closing the Reader any way, by that button, ✕, Escape or
+the backdrop, brings the page back exactly as it was. A stack in another topic
+(an outcome page's asks go to its Conversation) opens on that topic's page; its
+way back comes back to the page the sheet stood over, the feed where it was and
+the page open over it with its card box as it was.
+
+`?cards=ITEM` (topic-navigation.mjs) is the full page, with no rail, so the
+deck has the width; the eyebrow goes back to the page in its topic or outcome.
+Existing Cards links still open it. Its count and buttons stand above the
+cards, where a phone's keyboard never covers Done, and a phone opens scrolled
+to them.
+
+The checks are `tests/notebook_sheet_native.mjs`, in the `notebook` and
+`webkit-notebook` modes, at a laptop's width and a phone's.

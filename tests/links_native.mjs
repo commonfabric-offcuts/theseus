@@ -614,16 +614,12 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header the Reader\'s ⋯ on a Notebook page copies its links and holds the layout, and at a phone\'s width still copies them', async () => {
+  await check('header the Reader\'s ⋯ on a Notebook page at a revision copies its links and holds the layout, and at a phone\'s width still copies them', async () => {
     // A page of the outcome's own Notebook, listed in the rail of every topic in it.
     await control({ method: 'outcome_reference', operation_id: 'links-reader-notebook', item_id: 'links-reader-notebook', title: 'Layout notes', body: 'A page of the outcome\'s Notebook.' });
-    const row = '#outcome-references-list .reference[data-id="links-reader-notebook"]';
-    const p = await page('links-reader-notebook', null, true, { url: facts.origin + '/?topic=links-m' });
+    // The page at a revision opens in the Reader; as it stands it opens in the composer (docs/decks.md).
+    const p = await page('links-reader-notebook', null, true, { url: facts.origin + '/?topic=links-m&page=links-reader-notebook&revision=1' });
     const shown = () => p.evaluate(`!document.querySelector('#reader-menu').hidden && document.querySelector('#reader-menu').getClientRects().length > 0`);
-    // Shown, as the person sees it: the outcome's Notebook waits out of sight until it moves into the outline (docs/rails.md).
-    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.getClientRects().length > 0`), 'the Notebook page in the rail');
-    await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
-    await p.point(row);
     await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes("A page of the outcome's Notebook.")`), 'the Reader shows the page');
     await settled(p);
     assert.equal(await shown(), true);

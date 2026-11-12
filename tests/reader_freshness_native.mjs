@@ -167,19 +167,22 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       await p.send('Input.dispatchMouseEvent', { type:'mousePressed',x,y,button:'left',clickCount:1 });
       await p.send('Input.dispatchMouseEvent', { type:'mouseReleased',x,y,button:'left',clickCount:1 });
     };
+    // A card opens its page in the composer over the feed (docs/decks.md).
+    const sheet = '#new-message-sheet', shown = `${sheet} .notebook-sheet-page:not([hidden])`;
     const open = async (expectedTitle,expectedBody) => {
-      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent===${JSON.stringify(expectedTitle)}`), 'native activation opens exact Notebook title');
-      assert.equal(await p.evaluate('document.querySelector("#source-body").textContent'), expectedBody);
-      await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled Reader');
+      // A page with no card heading shows its words as the cards' opening, or in Text.
+      const words = `(h=>Boolean(h)&&(h.textContent.includes(${JSON.stringify(expectedBody)})||h.querySelector('.notebook-text')?.value.includes(${JSON.stringify(expectedBody)})))(document.querySelector('${shown}'))`;
+      await until(() => p.evaluate(`document.querySelector('${sheet}.notebook-mode')?.open && document.querySelector('#notebook-sheet-title').textContent===${JSON.stringify(expectedTitle)} && ${words}`), 'native activation opens exact Notebook title and its words');
+      await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled composer');
     };
     const close = async id => {
-      await p.point('#reader-close');
-      await until(() => p.evaluate('!document.querySelector("#reader").open'), 'Reader closed');
+      await p.point(`${sheet} .notebook-sheet-close`);
+      await until(() => p.evaluate(`!document.querySelector('${sheet}').open`), 'composer closed');
       assert.equal(await p.evaluate('document.activeElement.dataset.id'), id, 'opener focus restored');
     };
     const gapX=(before[0].x+before[0].width+before[1].x)/2, gapY=before[1].y+before[1].height/2;
     assert.equal(await p.evaluate(`document.elementFromPoint(${gapX},${gapY}).id`), 'memory-items', 'point is truly the card gap');
-    await click(gapX,gapY); assert.equal(await p.evaluate('document.querySelector("#reader").open'), false);
+    await click(gapX,gapY); assert.deepEqual(await p.evaluate(`[document.querySelector("#reader").open,document.querySelector('${sheet}').open]`), [false,false]);
     const lower={x:before[1].x+before[1].width/2,y:before[1].y+before[1].height*.93};
     assert.ok(lower.y>before[1].bodyBottom+20, 'bottom 7% point is in empty lower card space');
     await click(lower.x,lower.y); await open('Fixture item 0','Fixture Notebook body 0'); await close(ids[1]);
@@ -212,7 +215,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await tap(p,card(ids[1])); await open('Fixture item 0','Fixture Notebook body 0');
     const touchEvents=await p.evaluate('notebookTouches');
     assert.ok(touchEvents.some(e=>e.type==='click' && e.id===ids[1]),'native touch activates the intended card');
-    await tap(p,'#reader-close'); await until(()=>p.evaluate('!document.querySelector("#reader").open'),'touch close');
+    await tap(p,`${sheet} .notebook-sheet-close`); await until(()=>p.evaluate(`!document.querySelector('${sheet}').open`),'touch close');
     assert.equal(p.calls.some(c=>['message.send','submission.prepare','memory.create','memory.revise'].includes(c.payload?.kind)),false,'native card actions publish nothing');
     observations.push({name:'Notebook mobile geometry',boxes:mobile,touchEvents}); await shot(p,'notebook-mobile');
     assert.deepEqual(p.errors,[]);
@@ -495,6 +498,17 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     } finally { await control({ method: 'read_release', hold_id: holdId }); }
   });
 
+  // The Reader shows a Notebook page at a revision, from the page's link to it in a message, pressed in this same
+  // document; as it stands the page opens in the composer over the feed (docs/decks.md).
+  const notebookReader = async (p, id, name) => {
+    const revision = (await view('memory_current', { item_id: id })).source_ref.revision;
+    const message = (await control({ method: 'agent_message', operation_id: operation(name), topic_id: 't1',
+      body: `The page: ${facts.origin}/?topic=t1&page=${encodeURIComponent(id)}&revision=${revision}` })).result.message_id;
+    const anchor = `#messages [data-id="${message}"] a.words-link`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(anchor)}))`), 'the message shows the page\'s link');
+    await p.evaluate(`document.querySelector(${JSON.stringify(anchor)}).scrollIntoView({block:'center'})`);
+    await p.point(anchor);
+  };
   await check('freshness F2 loaded paging and explicit Notebook revision preserve editor identity', async () => {
     const seeded = await control({ method: 'seed', messages: 35, memory_items: 25, unrelated_records: 200 });
     const p = await page('freshness-paging', null, true);
@@ -508,9 +522,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       expected_revision: 1, title: 'Loaded item revised', body: 'Changed beyond the first twenty' });
     await until(() => hasText(p, `#memory-items [data-id="${lastId}"]`, 'Changed beyond the first twenty'), 'keyed loaded summary updated');
     assert.ok(p.calls.some(c => c.payload?.name === 'memory_items' && c.payload.args.limit === 1 && c.payload.args.cursor > 0), 'loaded key has an exact bounded summary read');
-    const memorySelector = '#memory-items [data-id="fixture-notebook"]';
-    await p.evaluate(`document.querySelector(${JSON.stringify(memorySelector)}).scrollIntoView({block:'center'})`);
-    await p.point(memorySelector);
+    await notebookReader(p, 'fixture-notebook', 'paging-page-link');
     await until(() => p.evaluate('observedRegistry?.current?.source.source_ref.kind === "memory"'), 'Notebook opens in the ordinary reader');
     await replace(p, 'Writing stays pinned to this Notebook revision');
     await p.point('#source-body span:first-child'); await p.key('Enter');
@@ -583,8 +595,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
 
   await check('freshness F2 revision offer survives delayed summary and a newer commit during explicit opening', async () => {
     const p = await page('freshness-offer-race', null, true);
-    await p.evaluate('document.querySelector(\'#memory-items [data-id="fixture-notebook"]\').scrollIntoView({block:"center"})');
-    await p.point('#memory-items [data-id="fixture-notebook"]');
+    await notebookReader(p, 'fixture-notebook', 'offer-race-page-link');
     await until(() => p.evaluate('window.observedRegistry?.current?.source.source_ref.kind==="memory"'), 'ordinary Notebook presentation');
     await replace(p, 'Pinned writing stays with the original revision'); await idleRead(p);
     const before = await p.evaluate('freshSnapshot()');

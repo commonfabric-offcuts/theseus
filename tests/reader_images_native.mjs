@@ -183,8 +183,9 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.equal(source.attachments[0].sha256, createHash('sha256').update(Buffer.from(png, 'base64')).digest('hex'));
     assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 1);
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close sent reader');
-    await p.evaluate('document.querySelector("#memory-items .memory-card").scrollIntoView({block:"center"})'); await p.point('#memory-items .memory-card');
-    await until(() => p.evaluate('document.querySelector("#reader").open && document.querySelector("#reader-title").textContent === "Image Notebook"'), 'Notebook reader');
+    // The Notebook page at its revision, in the Reader (as it stands it opens in the composer, docs/decks.md).
+    await p.send('Page.navigate', { url: `${facts.origin}/?topic=t1&page=fixture-notebook&revision=${(await view('memory_current', { item_id: 'fixture-notebook' })).source_ref.revision}` });
+    await until(() => p.evaluate('document.body.dataset.ready === "true" && document.querySelector("#reader").open && document.querySelector("#reader-title").textContent === "Image Notebook"'), 'Notebook reader');
     await p.point('#writing-body'); assert.equal(await pasteImage(p), true);
     await until(() => p.evaluate('document.querySelector("#writing-attachments").textContent.includes("Ready")'), 'Notebook reply image ready');
     await until(async () => (await view('editor_state', { source_ref: { kind: 'memory', id: 'fixture-notebook', revision: 1 }, topic_id: 't1' })).draft?.attachments.length === 1, 'Notebook draft saves the ready attachment');
@@ -867,11 +868,10 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   });
 
   await check('images Notebook held Remove explicit download and recorded refusal cards', async () => {
-    const p = await page('images-notebook', null, true);
-    const notebook = '#memory-items [data-id="fixture-notebook"]';
-    // Notebook follows the conversation; position the actual card first.
-    await p.evaluate(`document.querySelector(${JSON.stringify(notebook)}).scrollIntoView({block:'center'})`);
-    await p.point(notebook); await until(() => p.evaluate('document.querySelector("#reader-origin").textContent.includes("Notebook")'), 'Notebook Reader');
+    // The Notebook page at its revision, from its link, in the Reader (as it stands it opens in the composer, docs/decks.md).
+    const revision = (await view('memory_current', { item_id: 'fixture-notebook' })).source_ref.revision;
+    const p = await page('images-notebook', null, true, { url: `${facts.origin}/?topic=t1&page=fixture-notebook&revision=${revision}` });
+    await until(() => p.evaluate('document.querySelector("#reader").open && document.querySelector("#reader-origin").textContent.includes("Notebook")'), 'Notebook Reader');
     await until(() => p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled Notebook reader');
     const choose = async filename => {
       await until(() => p.evaluate('!document.querySelector("#add-image").disabled'), 'Notebook image action ready');
@@ -924,12 +924,8 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.equal(await field(p), 'Successor B is untouched');
     await p.point('#review-close'); await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'Notebook reader closed');
     await p.close();
-    const q = await page('images-refusal-restored', null, true);
-    // The newly sent replies push Notebook below the viewport. Position the
-    // actual card before native input; offscreen coordinates are not a click.
-    await q.evaluate(`document.querySelector(${JSON.stringify(notebook)}).scrollIntoView({block:'center'})`);
-    const bounds = await q.box(notebook); assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 900);
-    await q.point(notebook);
+    // The Notebook page at its revision again, from its link, in a page loaded afresh.
+    const q = await page('images-refusal-restored', null, true, { url: `${facts.origin}/?topic=t1&page=fixture-notebook&revision=${revision}` });
     try { await until(() => q.evaluate('document.querySelector("#reader").open'), 'restored Notebook reader'); }
     catch (error) { observations.push({ name: 'restored Notebook failure', text: await q.evaluate('document.body.innerText'), errors: q.errors, calls: q.calls }); await shot(q, 'restored-notebook-failure'); throw error; }
     await until(() => q.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled restored Notebook');

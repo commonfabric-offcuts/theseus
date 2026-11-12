@@ -3924,7 +3924,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "    doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); });\n",
+     "    doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); }, { signal });\n",
      ""
     ]
    ],
@@ -6495,6 +6495,276 @@
    "check": {
     "native": "rail",
     "case": "a press on an outline row puts the focus"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A page opened from the outline comes up in the New message sheet over the feed",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    if (!this.dialog.open) this.dialog.showModal();\n",
+     "    if (false) this.dialog.showModal();\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page opened from the outline"
+   }
+  },
+  {
+   "item": 396,
+   "act": "The sheet's head shows the short keys line, each line's long words in its tooltip",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "const line = this.node('span', '', shortKeys ? SHORT_KEYS[i] : words);",
+     "const line = this.node('span', '', words);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page opened from the outline"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A card in the topic's own Notebook opens its page in the sheet",
+   "break": [
+    [
+     "web/app.mjs",
+     "card.onclick = () => run(() => openNotebook(item.id, { opener: card }));",
+     "card.onclick = () => run(() => openSource(item.source_ref, card));"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page opened from the outline"
+   }
+  },
+  {
+   "item": 396,
+   "act": "Closing the sheet gives the focus back to what opened the page",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "if (place.opener?.isConnected) { place.opener.focus({ preventScroll: true }); this.returnFocus = place.opener; }",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a card being written survives"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A key the page does not use moves nothing behind the sheet",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "      if (event.target.closest?.('textarea, input, select, [contenteditable]')) return;\n      event.preventDefault();\n",
+     "      if (event.target.closest?.('textarea, input, select, [contenteditable]')) return;\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "composer: keys"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A wheel over the backdrop or the sheet's head moves nothing behind the sheet",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "if (!this.scrolls(event.target, event.deltaX, event.deltaY)) event.preventDefault();",
+     "if (false) event.preventDefault();"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "composer: keys"
+   }
+  },
+  {
+   "item": 396,
+   "act": "Opening the sheet over a feed read to its end moves nothing behind",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    this.dialog.before(this.holder);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "composer: keys"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A card's reply stack opens in the Reader with the page set aside",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "        this.setAside(topicId, messageId);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "reply stack opens"
+   }
+  },
+  {
+   "item": 396,
+   "act": "The Reader opened from a card says the way back to the page",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "this.backButton.textContent = `← ${title}`;",
+     "this.backButton.textContent = '';"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "reply stack opens"
+   }
+  },
+  {
+   "item": 396,
+   "act": "The way back from a stack in another topic comes back to the page it was left from",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "keep(RETURN, { ...aside, back: true }); this.goBack(aside.from); return;",
+     "return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "reply stack opens"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A second page replaces the first in the sheet",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    if (this.current && this.current !== page) this.letGo(this.current);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "opening another page replaces"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A page let go opens again with the card box it had open",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "if (kept && page.reopen?.(kept))",
+     "if (false)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "opening another page replaces"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A reload while a card is written keeps its box for the page's next opening",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "globalThis.addEventListener('pagehide', () => { for (const page of this.pages()) this.keepWriting(page); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a reload while a card is written"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A page closed in the sheet is not read again on each commit",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "if (this.current === page && this.showing) return page.load();",
+     "if (this.current === page) return page.load();"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a revision made elsewhere"
+   }
+  },
+  {
+   "item": 396,
+   "act": "Opening a page in the sheet shows what changed since the revision last read",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    page.changes.replaceChildren(changes); page.changes.hidden = false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "opening it shows what changed"
+   }
+  },
+  {
+   "item": 396,
+   "act": "← at the very start of a card being written folds away its children",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "if (!this.foldWriting()) return;",
+     "return;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "← at its very start folds"
+   }
+  },
+  {
+   "item": 396,
+   "act": "⌘Return while a card is written goes on to a new card below it",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    this.finish();\n    if (!this.editing) this.start();\n",
+     "    this.finish();\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "← at its very start folds"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A page opened from the keys right after ✕ stays open, the sheet put away as it closed",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    this.closer.onclick = () => this.close();",
+     "    this.closer.onclick = () => this.dialog.close();"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "from the keys right after"
    }
   }
  ]

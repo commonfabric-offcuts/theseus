@@ -1080,15 +1080,16 @@ export async function liveChecks({ check, page, until, control, observations, or
     const target = await p.box(notebook);
     const at = { x: target.x + Math.min(12, target.width / 2), y: target.y + Math.min(12, target.height / 2) };
     assert.equal(await p.evaluate(`Boolean(document.elementFromPoint(${at.x},${at.y})?.closest('#reader'))`), true, 'the press lands on the Reader');
+    // A Notebook page opens in the composer over the feed (docs/decks.md): neither it nor the Reader opens.
+    const sheet = "Boolean(document.querySelector('#new-message-sheet.notebook-mode')?.open)";
     await p.point(notebook, 'click', { covered: true });
-    assert.equal(await p.evaluate('freshEvidence.opens.length'), opens, 'a card behind the open Reader opens nothing');
+    assert.deepEqual([await p.evaluate('freshEvidence.opens.length'), await p.evaluate(sheet)], [opens, false], 'a card behind the open Reader opens nothing');
     await p.evaluate('releaseKeptWrites()');
     await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes once its writing is kept');
-    assert.equal(await p.evaluate('freshEvidence.opens.length'), opens, 'the press made while it was open is not replayed');
+    assert.deepEqual([await p.evaluate('freshEvidence.opens.length'), await p.evaluate(sheet)], [opens, false], 'the press made while it was open is not replayed');
     await p.evaluate(`document.querySelector(${JSON.stringify(notebook)}).scrollIntoView({block:'center'})`);
     await p.point(notebook);
-    await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#reader-origin').textContent.includes('Notebook')"), 'the Notebook opens once the Reader has closed');
-    assert.equal(await p.evaluate('freshEvidence.opens.length'), opens + 1);
+    await until(() => p.evaluate(`${sheet} && !document.querySelector('#reader').open`), 'the Notebook page opens once the Reader has closed');
     p.intercept(null);
     for (const entry of p.held.splice(0)) await p.release(entry);
     assert.deepEqual(p.errors, []); await p.close();
@@ -1099,7 +1100,7 @@ export async function liveChecks({ check, page, until, control, observations, or
   const pageTitle = "(row => { const title = row.cloneNode(true); title.querySelectorAll('.unread-count, .sr-only').forEach(light => light.remove()); return title.textContent; })";
   // Last, because it adds to the outcome's Notebook, which every later topic
   // page would list.
-  await check('live the outcome Notebook pages sit in the sidebar beside the topics, open whole in the Reader, and follow a revision', async () => {
+  await check('live the outcome Notebook pages sit in the sidebar beside the topics, open whole in the composer, and in the Reader at a revision follow a revision', async () => {
     const p = await page('live-outcome-references', null, true);
     await settled(p);
     const rows = () => p.evaluate(`[...document.querySelectorAll('#outcome-references-list .reference')].map(${pageTitle})`);
@@ -1119,7 +1120,14 @@ export async function liveChecks({ check, page, until, control, observations, or
     // Below the topics the earlier checks left, in the sidebar's own scroll.
     await p.evaluate("document.querySelector('#outcome-references-list .reference').scrollIntoView({block:'center'})");
     await p.point('#outcome-references-list .reference');
-    await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('The outcome passage every topic stands on.')"), 'the Reader shows the item whole');
+    // As it stands, in the composer over the feed (docs/decks.md).
+    await until(() => p.evaluate("document.querySelector('#new-message-sheet.notebook-mode')?.open && document.querySelector('#new-message-sheet .notebook-sheet-page:not([hidden])')?.textContent.includes('The outcome passage every topic stands on.')"), 'the composer shows the item whole');
+    await p.point('#new-message-sheet .notebook-sheet-close');
+    await until(() => p.evaluate("!document.querySelector('#new-message-sheet').open"), 'the composer closes');
+    // At a revision, from its link, in the Reader.
+    await p.send('Page.navigate', { url: `${origin}/?topic=${facts.topic_id}&page=live-outcome-reference&revision=1` });
+    await until(() => p.evaluate("document.body?.dataset.ready === 'true' && document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('The outcome passage every topic stands on.')"), 'the Reader shows the item whole at its revision');
+    await settled(p);
     await control({ method: 'memory_revise', operation_id: 'live-outcome-reference-revise', item_id: 'live-outcome-reference',
       expected_revision: 1, title: 'Architecture, revised', body: 'The revised outcome passage.' });
     await until(async () => JSON.stringify(await rows()) === JSON.stringify(['Architecture, revised']), 'the row shows the revision');
@@ -1131,7 +1139,7 @@ export async function liveChecks({ check, page, until, control, observations, or
   });
 
   // Also adds to the outcome's Notebook, so it runs after the case above.
-  await check('live an outcome Notebook page revised after a reply opens at its revision, before and after a reload, and only writing keeps an older one', async () => {
+  await check('live an outcome Notebook page revised after a reply opens at the revision its link names, before and after a reload, and only writing keeps an older one', async () => {
     const p = await page('live-notebook-revision', null, true);
     await settled(p);
     const url = await p.evaluate('location.href');
@@ -1141,20 +1149,18 @@ export async function liveChecks({ check, page, until, control, observations, or
     const revise = (expected, title, body) => control({ method: 'memory_revise', operation_id: `live-notebook-revision-${expected}`, item_id: id,
       expected_revision: expected, title, body });
     const has = (selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
-    // After a reload the row takes its title before the outline takes the
-    // Notebook in (until then rails.css keeps it out of view under #rail),
-    // so it is scrolled to once it shows and holds its place.
-    const open = async title => {
+    // The Reader shows a Notebook page at a revision, from the page's link to it (as it stands it opens in the
+    // composer, docs/decks.md); the row in the outline has the revision's title.
+    const open = async (title, revision) => {
+      await p.send('Page.navigate', { url: `${origin}/?topic=${facts.topic_id}&page=${id}&revision=${revision}` });
+      await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'the page is read again');
       await until(() => p.evaluate(`(row => row?.getClientRects().length > 0 && ${pageTitle}(row))(document.querySelector(${JSON.stringify(row)})) === ${JSON.stringify(title)}`), `the outcome Notebook shows ${title}`);
-      let last;
-      await until(async () => { const now = JSON.stringify(await p.box(row)), same = now === last; last = now; return same; }, `${title} holds its place`);
-      await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
-      await p.point(row);
       await until(() => p.evaluate("document.querySelector('#reader').open"), 'the Reader opens the page');
+      await settled(p);
     };
     const close = async () => { await p.point('#reader-close'); await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes'); };
     await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Release pipeline', body: 'Pipeline revision one.' });
-    await open('Release pipeline');
+    await open('Release pipeline', 1);
     await until(() => has('#source-body', 'Pipeline revision one.'), 'revision one is shown');
     await p.point('#writing-body'); await p.send('Input.insertText', { text: 'A reply about revision one' });
     await p.key('Enter', 12);
@@ -1168,7 +1174,7 @@ export async function liveChecks({ check, page, until, control, observations, or
         await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'the page is read again');
         await settled(p);
       }
-      await open('Release pipeline, revised');
+      await open('Release pipeline, revised', 2);
       await until(() => has('#source-body', 'Pipeline revision two.'), `reload ${reload}: the page opens at revision two`);
       assert.equal(await has('#reader-origin', 'Notebook · revision 2'), true);
       assert.equal(await p.evaluate("document.querySelector('#source-update').hidden"), true, `reload ${reload}: an empty reply names no older revision`);
@@ -1179,7 +1185,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     await close();
     // Writing keeps its revision, and the Reader says the page has changed since.
     await revise(2, 'Release pipeline, third', 'Pipeline revision three.');
-    await open('Release pipeline, third');
+    await open('Release pipeline, third', 3);
     await until(() => has('#source-body', 'Pipeline revision three.'), 'the page opens at revision three');
     assert.equal(await p.evaluate("document.querySelector('#writing-body').value"), 'Unsent words about revision two');
     assert.equal(await p.evaluate("document.querySelector('#source-update').hidden"), false);

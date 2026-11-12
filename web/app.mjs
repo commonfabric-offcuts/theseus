@@ -48,6 +48,7 @@ import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine }
 import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
 import { NotebookPage } from './notebook-page.mjs';
+import { NotebookSheet, returning as notebookReturning } from './notebook-sheet.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
@@ -69,9 +70,9 @@ import { showLine, lineText } from './lines.mjs';
 // Each page is one run of this module (in-place-navigation.mjs). A run that a
 // move in place has ended finds its own elements still, so work it had under
 // way lands there and never on the page that followed it.
-let retired = null;
+let retired = null, notebookSheet = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; } });
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); } });
 const node = (tag, text, className) => {
   const element = document.createElement(tag); if (text !== undefined) element.textContent = text;
   if (className) element.className = className; return element;
@@ -766,7 +767,7 @@ function paintViews(kind) {
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
-      card = button('', () => openSource(item.source_ref, card)); card.className = 'memory-card';
+      card = button('', () => openNotebook(item.id, { opener: card })); card.className = 'memory-card';
       card.dataset.id = item.id; card.append(node('strong'), node('span')); $('memory-items').append(card);
       memoryCards.set(item.id, card);
     }
@@ -777,7 +778,7 @@ function paintViews(kind) {
       card.dataset.source = identity; card.dataset.changed = changed;
       title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item); linkWords(body, item.body, { partial: item.preview === true });
     }
-    card.onclick = () => run(() => openSource(item.source_ref, card));
+    card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
   }
   if (kind === 'messages') { placeLine(); menu?.paint(); }
   if (kind === 'messages' && here?.page) paintConversationPage();
@@ -1152,7 +1153,7 @@ function openReaderMenu() {
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
       { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) },
-      { label: 'Edit page', act: () => run(() => openDestination({ kind: 'cards', id: ref.id, view: 'text' }, p.source.title || 'Notebook')) });
+      { label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
@@ -1804,7 +1805,7 @@ async function initialize() {
       if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
       return answer;
     },
-    open: (ref, row) => run(() => openSource(ref, row)),
+    open: (ref, row) => run(() => openNotebook(ref.id, { opener: row })),
     seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
   });
   // The rail shows only this topic's outcome. A message's Add to pipeline
@@ -1866,10 +1867,13 @@ async function initialize() {
   // message in the Reader; the address then names the page alone, as any does.
   if (anchored) {
     const card = landOn(anchored);
-    run(() => openSource({ kind: 'message', id: anchored }, card ?? $('main')));
+    run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
+  } else if (!pageAnchor && notebookReturning()) {
+    // Back from a card's reply stack in another topic, by the way back its Reader showed (notebook-sheet.mjs).
+    notebookSheetOf().resume();
   }
   // A Notebook page's link opens the page in the Reader, as its card or row does.
-  if (pageAnchor) run(async () => openSource(await pageSource(pageAnchor), $('main')));
+  if (pageAnchor) run(async () => (pageAnchor.revision ? openSource(await pageSource(pageAnchor), $('main')) : openNotebook(pageAnchor.id, { opener: $('main') })));
 }
 // A message sent by name opens its topic, or, where the reader has lost the
 // topic, the outcomes page that lists it to be marked read.
@@ -2152,6 +2156,12 @@ async function openDestination(target, title, from = null) {
   // when it is the open topic's or its outcome's, in place on its outcome's page.
   if (target.page) {
     const page = { id: target.page, revision: target.revision ?? null };
+    // As it stands, it opens in the composer over the page (notebook-sheet.mjs); at a revision, to read.
+    if (!page.revision) {
+      const opener = from?.closest?.('dialog') ? registry?.current?.opener : from;
+      if ((topic && views && (target.kind === 'topic' ? target.id === topic.id : target.id === topic.workspace_id)) || (!topic && pageHere && target.kind === 'workspace' && target.id === pageHereOutcome))
+        return run(() => openNotebook(page.id, { opener: opener?.isConnected ? opener : document.activeElement }));
+    }
     if (topic && views && (target.kind === 'topic' ? target.id === topic.id : target.id === topic.workspace_id)) {
       const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
       return run(async () => openSource(await pageSource(page), opener?.isConnected ? opener : document.activeElement));
@@ -2313,7 +2323,8 @@ async function initializeOutcomePage(route) {
       return reads.every(read=>read.value!==false);
     });
     await reload();
-    if(shown)run(async()=>pageHere.open(await pageSource(shown),$('main')));
+    if(shown)run(async()=>(shown.revision?pageHere.open(await pageSource(shown),$('main')):openNotebook(shown.id,{opener:$('main')})));
+    else if(notebookReturning())notebookSheetOf().resume();
   }
   document.body.dataset.ready='true';
 }
@@ -2391,15 +2402,8 @@ async function initializeDeckPage(route) {
     try { return {href,title:scope.kind==='topic'?(await pipelineView('topic',{topic_id:scope.id})).topic.title:(await pipelineView('workspace',{workspace_id:scope.id})).workspace.title}; }
     catch { return {href,title:'The page'}; }
   };
-  // A card's ask goes to the page's topic, or to its outcome's conversation, and to an agent there (docs/decks.md).
-  const askIn=async scope=>{
-    const topicId=scope.kind==='topic'?scope.id:(await pipelineView('conversation',{workspace_id:scope.id})).conversation?.topic_id;
-    if(!topicId)return null;
-    const {participants}=await pipelineView('topic',{topic_id:topicId});
-    return {topicId,agents:participants.filter(p=>p.kind==='agent'&&p.enabled).map(p=>p.actor_id)};
-  };
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn,api,bootstrap,mode:route.view??'cards'});
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.view??'cards'});
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
   $('deck-page').hidden=false;
   await followCommits(()=>page.load())();
@@ -2428,8 +2432,42 @@ async function initializeMeasurementsPage(route) {
   document.body.dataset.ready='true';
 }
 function notebookCreator(host, scope) {
-  return new NotebookCreate({ host, scope, api, bootstrap, open: route => openDestination(route, 'Notebook') });
+  // A new page opens in the composer over the page, its first card ready to write.
+  return new NotebookCreate({ host, scope, api, bootstrap, open: route => openNotebook(route.id, { write: route.write, opener: host.querySelector('.notebook-create') }) });
 }
+// A card's ask goes to the page's topic, or to its outcome's conversation, and to an agent there (docs/decks.md).
+async function notebookAskIn(scope) {
+  const topicId=scope.kind==='topic'?scope.id:(await pipelineView('conversation',{workspace_id:scope.id})).conversation?.topic_id;
+  if(!topicId)return null;
+  const {participants}=await pipelineView('topic',{topic_id:topicId});
+  return {topicId,agents:participants.filter(p=>p.kind==='agent'&&p.enabled).map(p=>p.actor_id)};
+}
+// A Notebook page in the composer over the page being read (item 396; notebook-sheet.mjs): the full page's
+// Text and Cards, saving and recovery. The page showing is read again on every commit; one closed is not.
+function notebookSheetOf() {
+  if (notebookSheet) return notebookSheet;
+  notebookSheet = new NotebookSheet({
+    make: (id, host, header, idSuffix) => {
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, mode: 'cards', idSuffix, shortKeys: true,
+        place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
+      followCommits(() => notebookSheet.followed(page));
+      return page;
+    },
+    fullHref: (id, mode) => routeHref({ kind: 'cards', id, ...(mode === 'text' ? { view: 'text' } : {}) }),
+    // A stack in the open topic opens in its Reader over the feed; one elsewhere opens its topic's page.
+    openStack: async (topicId, messageId) => {
+      if (topic && views && topicId === topic.id) { await openSource({ kind: 'message', id: messageId }, $('main')); return true; }
+      await openDestination({ kind: 'topic', id: topicId, message: messageId }, 'the reply');
+      return false;
+    },
+    goBack: address => openDestination(parseRoute(new URL(address, location.href)), 'the Notebook page'),
+    // A topic's page records reads as its Reader did; an outcome's page as its pages opened in place do.
+    reads: () => pageReads ?? pageHere?.reads ?? null,
+    source: async ref => checkedView(await api.view('source', ref, { readClass: 'foreground' }), bootstrap.instance_id) });
+  shell.guard(() => notebookSheet.holds());
+  return notebookSheet;
+}
+function openNotebook(id, options = {}) { return notebookSheetOf().open(id, options); }
 
 // An outcome's Notebook pages on its own page, each opening in place.
 function outcomePages(workspace,recorded) {
@@ -2442,7 +2480,7 @@ function outcomePages(workspace,recorded) {
   const here=pageHere=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref),cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
     message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
-    read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>here.open(ref,row))});
+    read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.

@@ -2,8 +2,8 @@
 
 An outcome's Notebook pages sit beside its topics. A page someone has read
 and that has been revised since is marked changed for them, the way a topic
-with unread messages carries a count, until they open it again, and the
-Reader then shows what changed since the revision they last read.
+with unread messages carries a count, until they open it again, and opening
+it then shows what changed since the revision they last read.
 
 ## Core
 
@@ -46,7 +46,8 @@ page look changed again.
 On a topic's page the sidebar lists the outcome's Notebook pages under the
 heading Outcome Notebook, below its topics (named for the outcome, so it is
 not taken for the topic's own Notebook in the page beside it): one row per page, by title, as tall as
-a topic row and in the same column, opening the page in the Reader. On a
+a topic row and in the same column, opening the page in the composer over the
+feed ([decks.md](decks.md#where-it-opens)). On a
 phone the rows scroll sideways, as topics do. An empty outcome Notebook keeps its heading and creation pencil. A Notebook
 the reader cannot list shows no section; a read that fails
 says so above the rows and keeps what was shown. The list is read again
@@ -59,16 +60,16 @@ of its new revisions in the sidebar, in the same badge a topic's unread
 count wears, and screen readers hear ", changed since you read it, N new
 revisions". A page never read, or read as it stands, wears nothing.
 
-Showing a page in the Reader reads it once the person can see it, as a
-message counts as read only then: the page sends `memory.read` with the
-exact revision shown while the tab is visible and focused. One shown in the
-background, such as a Reader restored on load, is read when the tab comes
-forward, if the Reader still shows it; a page the Reader cannot show is not
-read. The commit
+Showing a page, in the composer over the feed or in the Reader, reads it once
+the person can see it, as a message counts as read only then: the page sends
+`memory.read` with the exact revision shown while the tab is visible and
+focused. One shown in the background, such as a Reader restored on load, is
+read when the tab comes forward, if it still shows; a page that cannot be
+shown is not read. The commit
 reaches every open page through the live feed, whose next reload draws the
 row without its light; a page without the feed reloads after the read is
-recorded. A read Core did not record is said in the Reader, and the page
-keeps its light until it is opened again.
+recorded. A read Core did not record is said where the page shows, and the
+page keeps its light until it is opened again.
 
 ## A topic's own Notebook
 
@@ -85,18 +86,21 @@ no longer read is not read again, so its refusal never fills the page's
 status at each commit, and while the runtime has changed the read waits,
 owed, until the saved writing is reviewed.
 
-## What changed, in the Reader
+## What changed
 
 When the read answers a `previous_revision` older than the revision shown,
-the Reader reads that revision (`source` with its exact `revision`) and
-shows, above the page, "What changed since you read revision N": the page's
+the page reads that revision (`source` with its exact `revision`) and shows,
+above the page, "What changed since you read revision N", in the composer
+above the cards (`web/notebook-sheet.mjs`) and in the Reader above the page's
+words: the page's
 words with what was added marked and what was removed struck through
 (screen readers hear "[added: …]" and "[removed: …]"), and a count of
 additions and removals. Long unchanged stretches keep about a line of
 context on each side of a change, with a gap for the rest, so the changes
-read in place; the whole page as it now stands is below, to read and quote.
-The panel is a disclosure, open at first, and scrolls on its own so a phone
-keeps room for the page. The page remembers what each revision it showed was
+read in place; the whole page as it now stands is below. The panel is a
+disclosure, open at first; in the Reader it scrolls on its own so a phone
+keeps room for the page, and in the composer it scrolls with the cards, whose
+bar stays at the top. The page remembers what each revision it showed was
 compared with, so showing that revision again, once Core has it read, shows
 the same changes, as long as it is still the latest revision the person has
 read; once they have read a later one, here or elsewhere, it shows none. A
@@ -118,18 +122,23 @@ to another source by the time the earlier revision arrives is left alone.
 
 An outcome's page lists its topics in the page itself rather than the
 sidebar, so its Notebook pages are listed right after them, as cards like
-the topics', with the same light. There is no Reader on this page: a page
-opens in place below the list (`web/page-here.mjs`), with its title, its
-revision, what changed since the person last read it, and its words, and
-opening it reads it as the Reader does. One page shows at a time; one opened
-while another is still opening replaces it, and Close gives the focus back
-to its row. The list is read again with the topics after every commit.
+the topics', with the same light. A row opens its page in the composer over
+this page, as anywhere ([decks.md](decks.md#where-it-opens)), and ✕ gives the
+focus back to the row. A link to a page at a revision opens it in place below
+the list (`web/page-here.mjs`), with its title, its revision, what changed
+since the person last read it, and its words, and opening it reads it as the
+Reader does. One page shows at a time; one opened while another is still
+opening replaces it, and Close gives the focus back to its row. The list is
+read again with the topics after every commit.
 
 ## A page's link
 
-Each page has a link, latest or at a revision, that opens it in the Reader on
-its topic's page or in place on its outcome's page
-([links.md](links.md#a-notebook-pages-link)); the Reader's ⋯ copies it.
+Each page has a link, latest or at a revision
+([links.md](links.md#a-notebook-pages-link)). The latest opens the page in the
+composer over its topic's page or its outcome's; one at a revision opens it in
+the Reader on its topic's page or in place on its outcome's page, and the
+Reader's ⋯ copies both and offers Edit page, which opens it as it stands in
+the composer.
 
 ## Checks
 
@@ -139,11 +148,12 @@ Core: `tests/test_memory_reads.py` and the 19→20 step in
 `ui_topic_notebook_light` and the wiring cases in `ui_inline_wiring`. In the browser: the `notebook` mode of
 `tests/reader_persistence_native.mjs` (`tests/notebook_pages_native.mjs`):
 the light coming on live and going out on opening, in the sidebar and in
-the topic's own Notebook, the changes in the Reader and none of them on the
+the topic's own Notebook, the changes in the composer and none of them on the
 page opened next, 390 wide in light and dark with contrast measured, the outcome
-page, and a page's link opening the page as it stands and at a revision, in
-the Reader and in place, from the address and from a message, with the
-Reader's ⋯ copying both links.
+page, and a page's link opening the page as it stands in the composer and at a
+revision in the Reader and in place, from the address and from a message, with
+the Reader's ⋯ copying both links and editing the page. The composer itself:
+`tests/notebook_sheet_native.mjs` ([decks.md](decks.md#where-it-opens)).
 
 ## Start a page (296)
 
@@ -154,7 +164,8 @@ it has a page (its one line says No pages yet) and opens if it was folded. The
 rail shows the topic's pencil only while it lists that topic's own pages, not
 the whole outcome's. Return
 creates an empty page in that exact outcome or topic using `memory.create`
-with item revision zero, then opens Cards with the first card ready to write.
+with item revision zero, then opens it in the composer over the page, in Cards
+with the first card ready to write.
 Escape or a press outside closes the line. The author, owner scope and item
 identity come from the bound page; there is no implicit fallback to another
 Notebook. The outcome heading remains visible when its Notebook is empty.

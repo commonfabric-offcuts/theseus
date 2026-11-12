@@ -16,8 +16,10 @@ export class NotebookPage extends DeckPage {
       const b=this.node('button','',mode === 'text' ? 'Text' : 'Cards'); b.type='button'; b.onclick=()=>this.switchView(mode); this.views.append(b); return b;
     });
     this.textPanel=this.node('div','notebook-text-panel');
-    const label=this.node('label','sr-only','Notebook writing'); label.htmlFor='notebook-text';
-    this.text=this.node('textarea','notebook-text'); this.text.id='notebook-text'; this.text.rows=18; this.text.setAttribute('autocomplete','off');
+    // A page in the composer has its own ids, beside the full page's (notebook-sheet.mjs).
+    const textId='notebook-text'+(options.idSuffix??'');
+    const label=this.node('label','sr-only','Notebook writing'); label.htmlFor=textId;
+    this.text=this.node('textarea','notebook-text'); this.text.id=textId; this.text.rows=18; this.text.setAttribute('autocomplete','off');
     this.textInput=new WritingInput({field:this.text});
     this.text.addEventListener('input',()=>{
       if(!this.writing || !this.textSeen)return;
@@ -53,8 +55,8 @@ export class NotebookPage extends DeckPage {
         reconcile:(base,mine,theirs)=>this.mergeIncoming(base,mine,theirs),localActive:()=>Boolean(this.editing&&this.editing.field.value!==this.editing.startedValue)});
       if(this.unavailable)this.writing.readOnly=true;
       await this.writing.open();
-      globalThis.addEventListener('pagehide',()=>{this.writing.close();this.writing.serial.finally(()=>this.store.close());});
-      globalThis.addEventListener('pageshow',event=>{if(event.persisted)globalThis.location.reload();});
+      globalThis.addEventListener('pagehide',()=>{this.writing.close();this.writing.serial.finally(()=>this.store.close());},{signal:this.listening.signal});
+      globalThis.addEventListener('pageshow',event=>{if(event.persisted)globalThis.location.reload();},{signal:this.listening.signal});
     } else {
       if(this.writing.running){
         if(!this.refreshOwed){this.refreshOwed=true;this.writing.running.finally(()=>{this.refreshOwed=false;if(!this.writing.closed)this.load().catch(error=>{this.writing.error=error.message;this.writingChanged();});});}
@@ -75,6 +77,12 @@ export class NotebookPage extends DeckPage {
       this.textImages=this.imagePicker(this.text,this.textInput,this.textPanel);
     }
     await this.loadTalks(); this.writingChanged(); return Boolean(this.writing.base);
+  }
+  // Let go without a pagehide (an in-place move, another page in the composer, notebook-sheet.mjs): writing closes
+  // as on pagehide, and the page's keys and listeners go with it.
+  close() {
+    this.listening.abort();
+    if(this.writing&&!this.writing.closed){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
   }
   mergeIncoming(base,mine,theirs) {
     if(this.mode!=='cards')return null;
