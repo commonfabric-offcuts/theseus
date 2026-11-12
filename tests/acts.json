@@ -4837,6 +4837,21 @@
    "check": {
     "node": "tests/ui_quick_create.test.mjs"
    }
+  },
+  {
+   "item": 358,
+   "act": "Up and Down from a dossier's chevron that is not a stop move on from that dossier",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const entry = toggle ? toggle.parentElement.querySelector(':scope > [data-id]') : entryOf(list, target);",
+     "const entry = toggle ? null : entryOf(list, target);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "move the keys from a dossier whose chevron"
+   }
   }
  ]
 }

@@ -14,6 +14,9 @@ the fully expanded state the header is a separate stop before the original
 message; in the other states the compact header already serves as that stop.
 Down from the page header enters the first dossier header. The dossier owns
 the strong outline there, and message actions appear only on message stops.
+A chevron that holds the focus without being a stop (Tab or a click onto it,
+or Return or Space that just closed the dossier) stands for the dossier's
+compact header, so Up and Down move on from that dossier.
 
 The code:
 
