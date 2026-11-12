@@ -615,16 +615,40 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // own above it. Drawn as a stack is by default, the stack it went into showed its head as one row and only
   // its newest reply, with neither the joined message nor its join line, and the keys went to the head.
   await check('reading stacks a join you make shows where it went: the stack it went into open, its head and the joined messages under their join line, the keys on the message you acted on, in the window; a join made elsewhere opens nothing', async () => {
-    // The stack headed by head as the page shows it, with the keys' message and whether the acted message and
-    // the join line before the joined stack's first message (joined) are in the window, uncovered (a pixel's
-    // leeway for an edge that scrolling to it leaves a fraction past the window).
-    const where = async (p, ids, head, acted, joined) => {
+    // The stack headed by head as the page shows it, with the keys' message, whether the acted message and the
+    // join line before the joined stack's first message (joined) are in the window, uncovered (a pixel's leeway
+    // for an edge that scrolling to it leaves a fraction past the window), and where the page went since from,
+    // what placeOf read before the join: 'kept' when the list's frame or the card still has not moved in the window
+    // (a browser that keeps the page's place by a card the reader sees holds that card, and the frame moves by the
+    // room a stack's tab takes above a message that was on its own; one that holds what is above the list holds
+    // the frame, and the card moves by that room); else 'to the join line at the top' when the page moved just
+    // until the line's top met the window's, or 'to the message at the bottom' when it moved just until the acted
+    // message's bottom met the window's; anything else is how far it moved, which a join that scrolls only as far
+    // as it needs never does.
+    const where = async (p, ids, head, acted, joined, still, from) => {
       const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+      const now = await placeOf(p, ids[still]);
       const at = await p.evaluate(`(()=>{const inWindow=e=>{if(!e)return false;const r=e.getBoundingClientRect();return r.height>0&&r.top>=-1&&r.bottom<=innerHeight+1&&e.contains(document.elementFromPoint(r.left+r.width/2,(r.top+r.bottom)/2))};
         const c=document.querySelector(${JSON.stringify(card(ids[acted]))}),line=[...document.querySelectorAll('#messages .stack-join-line')].find(n=>n.dataset.join===${JSON.stringify(ids[joined])});
-        return {acted:inWindow(c),line:inWindow(line)}})()`);
+        return {acted:inWindow(c),line:inWindow(line),lineTop:line?.getBoundingClientRect().top,bottom:innerHeight-document.querySelector(${JSON.stringify(entry(ids[acted]))}).getBoundingClientRect().bottom}})()`);
+      const went = Math.abs(now.frame - from.frame) < 1 || Math.abs(now.card - from.card) < 1 ? 'kept'
+        : Math.abs(at.lineTop) <= 1 ? 'to the join line at the top'
+          : Math.abs(at.bottom) <= 1 ? 'to the message at the bottom'
+            : `moved ${Math.round(from.frame - now.frame)}px`;
       const shown = await look(p, ids, head);
-      return { fold: shown?.fold, full: shown?.full, rows: shown?.rows, keys: names[await focusedOn(p)] ?? null, ...at };
+      return { fold: shown?.fold, full: shown?.full, rows: shown?.rows, keys: names[await focusedOn(p)] ?? null, acted: at.acted, line: at.line, went };
+    };
+    // Where the list's frame (what holds the list, which a join leaves where it is on the page) and a message's
+    // card are in the window: their tops.
+    const placeOf = (p, id) => p.evaluate(`({frame:document.querySelector('#messages').parentElement.getBoundingClientRect().top,card:document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect().top})`);
+    // Scrolls the page so the acted message's card starts where a step needs it: its top just inside the window's
+    // top ('top'), its bottom just inside the window's bottom ('bottom'), wholly above the window ('above') or wholly
+    // below it ('below').
+    const startAt = async (p, id, at) => {
+      const r = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),r=c.getBoundingClientRect(),at=${JSON.stringify(at)};
+        scrollBy(0,{top:r.top-2,bottom:r.bottom-innerHeight+2,above:r.bottom+40,below:r.top-innerHeight-40}[at]);const n=c.getBoundingClientRect();return {top:n.top,bottom:n.bottom,h:innerHeight}})()`);
+      const want = { top: [r.top, 2], bottom: [r.bottom, r.h - 2], above: [r.bottom, -40], below: [r.top, r.h + 40] }[at];
+      assert.ok(Math.abs(want[0] - want[1]) < 1, `the page scrolls the card ${at}: ${JSON.stringify(r)}`);
     };
     const seeds = (older, newer, newerReplies) => [[older, { sender: other, join: true, addressees: [facts.actor], body: `Stack ${older}, older.`, read: true }],
       [older + '1', { sender: other, reply_to: older, addressees: [facts.actor], body: `A read reply to ${older}.`, read: true }],
@@ -633,64 +657,90 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ...Array.from({ length: newerReplies }, (_, n) => [newer + (n + 1), { sender: other, reply_to: newer, addressees: [facts.actor], body: `A read reply to ${newer}.`, read: true }])];
     const line = 'join: Joined from its own stack by You';
 
-    // ⇧⌘↑ on A's first message, into B on its own above it; then ⌘Z, the ⋯ menu's join, and Split back out.
+    // ⇧⌘↑ into B on its own above A's stack: from A's first message, with A and the place its join line takes in
+    // the window already; from A's last reply with its card at the window's top, wholly above the window, and wholly
+    // below it; each undone by ⌘Z. Then the ⋯ menu's join, and Split back out.
     let topic = 'stack-join-shows-up';
     let ids = await seed(topic, seeds('a', 'b', 0));
     let p = await open(topic, 'laptop', topic, ids.a);
-    await p.evaluate(`document.body.style.paddingBottom = '2000px'`);
+    await p.evaluate(`document.body.style.paddingTop = document.body.style.paddingBottom = '2000px'`);
     await becomes(() => stacks(p, ids), ['b', 'a'], 'B on its own above A\'s stack');
     await keyTo(p, ids.a);
-    // A and the place its join line takes are in the window already, so the join scrolls nothing.
-    const before = await p.evaluate('scrollY');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).scrollIntoView({block:'start'})`);
+    let from = await placeOf(p, ids.b);
     await p.key('ArrowUp', 12);
     await becomes(() => stacks(p, ids), ['b'], '⇧⌘↑ joins A\'s stack into B');
-    await becomes(() => where(p, ids, 'b', 'a', 'a'), { fold: 'open', full: true, rows: [line, 'a', 'a1', 'a2'], keys: 'a', acted: true, line: true },
-      '⇧⌘↑: B open, its own message whole, then A under its join line with every reply; the keys on A, in the window with its join line');
-    assert.equal(await p.evaluate('scrollY'), before, 'the page keeps its place when A and its line are in the window already');
+    await becomes(() => where(p, ids, 'b', 'a', 'a', 'b', from), { fold: 'open', full: true, rows: [line, 'a', 'a1', 'a2'], keys: 'a', acted: true, line: true, went: 'kept' },
+      '⇧⌘↑: B open, its own message whole, then A under its join line with every reply; the keys on A, in the window with its join line, and the page where it was');
     await shot(p, 'stack-join-shows-up');
     await p.key('z', 4);
     await becomes(() => stacks(p, ids), ['b', 'a'], '⌘Z puts A\'s stack back');
     assert.equal(await focusedOn(p), ids.a, '⌘Z leaves the keys on A, as before');
+    for (const [at, place, went] of [['top', 'at the window\'s top', 'to the join line at the top'], ['above', 'above the window', 'to the join line at the top'], ['below', 'below the window', 'to the message at the bottom']]) {
+      await keyTo(p, ids.a2);
+      await startAt(p, ids.a2, at);
+      from = await placeOf(p, ids.b);
+      await p.key('ArrowUp', 12);
+      await becomes(() => stacks(p, ids), ['b'], `⇧⌘↑ from A's last reply ${place} joins A's stack into B`);
+      await becomes(() => where(p, ids, 'b', 'a2', 'a', 'b', from), { fold: 'open', full: true, rows: [line, 'a', 'a1', 'a2'], keys: 'a2', acted: true, line: true, went },
+        `⇧⌘↑ from A's last reply ${place}: the keys on it, in the window with A's join line, the page scrolled ${went}`);
+      await p.key('z', 4);
+      await becomes(() => stacks(p, ids), ['b', 'a'], `⌘Z puts A's stack back (from ${place})`);
+    }
     await menuOf(p, 'laptop', ids.a2);
+    from = await placeOf(p, ids.b);
     await choose(p, 'laptop', 'Join the stack above');
     await becomes(() => stacks(p, ids), ['b'], '⋯ Join the stack above joins A\'s stack into B');
-    await becomes(() => where(p, ids, 'b', 'a2', 'a'), { fold: 'open', full: true, rows: [line, 'a', 'a1', 'a2'], keys: 'a2', acted: true, line: true },
+    await becomes(() => where(p, ids, 'b', 'a2', 'a', 'b', from), { fold: 'open', full: true, rows: [line, 'a', 'a1', 'a2'], keys: 'a2', acted: true, line: true, went: 'kept' },
       '⋯: B open with A under its join line; the keys on the reply the menu was opened on, in the window with the join line');
     await p.point(`#messages .stack-join-line .stack-split`);
     await becomes(() => stacks(p, ids), ['b', 'a'], 'Split back out takes A out again');
     assert.deepEqual(p.errors, []);
     await p.close();
 
-    // ⇧⌘↓ on a reply of D, into C's stack below it.
+    // ⇧⌘↓ on a reply of D, into C's stack below it, read against E, on its own above both: with D's reply where
+    // the page opened, then with its card at the window's bottom, where the join carries it below the window.
+    const newest = ['e', { sender: other, addressees: [facts.actor], body: 'On its own, newest.', read: true }];
     topic = 'stack-join-shows-down';
-    ids = await seed(topic, seeds('c', 'd', 2));
+    ids = await seed(topic, [...seeds('c', 'd', 2), newest]);
     p = await open(topic, 'laptop', topic, ids.c);
-    await p.evaluate(`document.body.style.paddingBottom = '2000px'`);
-    await becomes(() => stacks(p, ids), ['d', 'c'], 'D\'s stack above C\'s');
+    await p.evaluate(`document.body.style.paddingTop = document.body.style.paddingBottom = '2000px'`);
+    await becomes(() => stacks(p, ids), ['e', 'd', 'c'], 'D\'s stack above C\'s');
     await keyTo(p, ids.d2);
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.e))}).scrollIntoView({block:'start'})`);
+    from = await placeOf(p, ids.e);
     await p.key('ArrowDown', 12);
-    await becomes(() => stacks(p, ids), ['c'], '⇧⌘↓ joins D\'s stack into C');
-    await becomes(() => where(p, ids, 'c', 'd2', 'd'), { fold: 'open', full: true, rows: ['c1', 'c2', line, 'd', 'd1', 'd2'], keys: 'd2', acted: true, line: true },
+    await becomes(() => stacks(p, ids), ['e', 'c'], '⇧⌘↓ joins D\'s stack into C');
+    await becomes(() => where(p, ids, 'c', 'd2', 'd', 'e', from), { fold: 'open', full: true, rows: ['c1', 'c2', line, 'd', 'd1', 'd2'], keys: 'd2', acted: true, line: true, went: 'kept' },
       '⇧⌘↓: C open, its own message whole and its replies, then D under its join line with every reply; the keys on D\'s reply, in the window with the join line');
     await p.key('z', 4);
-    await becomes(() => stacks(p, ids), ['d', 'c'], '⌘Z puts D\'s stack back');
+    await becomes(() => stacks(p, ids), ['e', 'd', 'c'], '⌘Z puts D\'s stack back');
     assert.equal((await look(p, ids, 'c')).fold, 'folded', '⌘Z puts back how far C was folded');
+    await keyTo(p, ids.d2);
+    await startAt(p, ids.d2, 'bottom');
+    from = await placeOf(p, ids.e);
+    await p.key('ArrowDown', 12);
+    await becomes(() => stacks(p, ids), ['e', 'c'], '⇧⌘↓ from D\'s reply at the window\'s bottom joins D\'s stack into C');
+    await becomes(() => where(p, ids, 'c', 'd2', 'd', 'e', from), { fold: 'open', full: true, rows: ['c1', 'c2', line, 'd', 'd1', 'd2'], keys: 'd2', acted: true, line: true, went: 'to the message at the bottom' },
+      '⇧⌘↓ from D\'s reply at the window\'s bottom: the join carries it below the window, and the page scrolls down just until it shows, with its join line');
     assert.deepEqual(p.errors, []);
     await p.close();
 
-    // On a phone, ⋯'s Move or join… sheet.
+    // On a phone, ⋯'s Move or join… sheet, from where the page opened: on the phone's shorter window the join
+    // carries D's reply below it.
     topic = 'stack-join-shows-phone';
-    ids = await seed(topic, seeds('c', 'd', 2));
+    ids = await seed(topic, [...seeds('c', 'd', 2), newest]);
     p = await open(topic, 'phone', topic, ids.c);
     await p.evaluate(`document.body.style.paddingBottom = '2000px'`);
-    await becomes(() => stacks(p, ids), ['d', 'c'], 'phone: D\'s stack above C\'s');
+    await becomes(() => stacks(p, ids), ['e', 'd', 'c'], 'phone: D\'s stack above C\'s');
     await menuOf(p, 'phone', ids.d2);
     await choose(p, 'phone', 'Move or join…');
     await until(() => p.evaluate(`[...document.querySelectorAll('.message-menu-list.menu-sheet button')].some(b=>b.firstChild.textContent==='Join the stack below')`), 'phone: the second sheet');
+    from = await placeOf(p, ids.e);
     await choose(p, 'phone', 'Join the stack below');
-    await becomes(() => stacks(p, ids), ['c'], 'phone: the sheet joins D\'s stack into C');
-    await becomes(() => where(p, ids, 'c', 'd2', 'd'), { fold: 'open', full: true, rows: ['c1', 'c2', line, 'd', 'd1', 'd2'], keys: 'd2', acted: true, line: true },
-      'phone: C open with D under its join line; the keys on the reply the sheet was opened on, in the window with the join line');
+    await becomes(() => stacks(p, ids), ['e', 'c'], 'phone: the sheet joins D\'s stack into C');
+    await becomes(() => where(p, ids, 'c', 'd2', 'd', 'e', from), { fold: 'open', full: true, rows: ['c1', 'c2', line, 'd', 'd1', 'd2'], keys: 'd2', acted: true, line: true, went: 'to the message at the bottom' },
+      'phone: C open with D under its join line; the keys on the reply the sheet was opened on, which the join carries below the phone\'s window, scrolled just into it with the join line');
     await shot(p, 'stack-join-shows-phone');
     assert.deepEqual(p.errors, []);
     await p.close();
