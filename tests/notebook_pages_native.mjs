@@ -442,6 +442,13 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       { title: 'Linked plan', revision: 'Notebook · revision 1', body: 'Ship on Friday.\nDan reviews the notes.\n', at: '?workspace=w1' });
     assert.deepEqual(p.errors, []);
     await p.close();
+    // As it stands, on the outcome's own page, in the composer over it, nothing opening in place.
+    p = await page('notebook-link-outcome-latest', null, true, { url: `${facts.origin}/?workspace=w1&page=${plan}` });
+    await sheetShows(p, 'Linked plan');
+    assert.deepEqual(await p.evaluate(`({body:document.querySelector(${JSON.stringify(SHEET_PAGE + ' .notebook-text')}).value,inPlace:!document.querySelector('#page-here').hidden})`),
+      { body: 'Ship on Monday.\nDan reviews the notes.\n', inPlace: false }, 'the outcome page\'s link as it stands opens the page in the composer');
+    assert.deepEqual(p.errors, []);
+    await p.close();
     // Pasted into a message, the outcome page's link opens the page in the composer, here.
     const message = (await control({ method: 'agent_message', operation_id: 'notebook-link-message', topic_id: 't1', body: `The plan: ${facts.origin}/?workspace=w1&page=${plan} as it stands.` })).result.message_id;
     p = await page('notebook-link-message', null, true);

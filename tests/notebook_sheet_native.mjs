@@ -301,6 +301,57 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await p.close();
   });
 
+  await check('notebook in the composer: on a phone a finger dragged on the sheet\'s head or a card moves nothing behind it, a swipe still goes through the cards, and ✕ puts the feed back where it was read however it moved', async () => {
+    const id = await topicPage('Sheet finger', cardsBody);
+    const p = await page('notebook-sheet-finger', null, true, phone);
+    // WebKit's harness taps but has no finger drag (webkit_native.mjs): the drags are Chrome's.
+    if (p.pw) { await p.close(); return; }
+    // A finger set down, drawn by (dx, dy) in ten moves, and lifted.
+    const drag = async (from, dx, dy) => {
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [from] });
+      for (let step = 1; step <= 10; step++) await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + dx * step / 10, y: from.y + dy * step / 10 }] });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      return rested(p);
+    };
+    await listed(p, card(id), 'the topic\'s Notebook lists its page');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center',behavior:'instant'})`);
+    // Without the sheet a finger drawn down the feed moves it: what follows measures a real drag.
+    const start = await rested(p);
+    assert.ok(start > 0, 'the feed is scrolled down to the topic\'s Notebook');
+    await drag({ x: 195, y: 300 }, 0, 150);
+    assert.ok((await scrolled(p)) < start, 'a finger drag moves the feed while nothing is open over it');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center',behavior:'instant'})`);
+    const at = await rested(p);
+    await tap(p, card(id));
+    await opened(p, 'Sheet finger', ['Plan', 'Steps', 'Notes']);
+    const still = async said => { assert.equal(await rested(p), at, said); assert.equal((await state(p)).open, true, `${said}, and the sheet stays open`); };
+    await still('opening the page moves nothing behind');
+    // Down and up on each part of the head, and on the card that fills the sheet, which has nowhere to go that way.
+    for (const [where, selector] of [['the title', `${SHEET} .notebook-sheet-title`], ['the Text and Cards chips', `${SHEET} .notebook-sheet-views button:first-child`],
+      ['the saving sign', `${SHEET} .notebook-sheet-status`], ['the card', `${PAGE} .deck-card[aria-current=true]`]]) {
+      const b = await p.box(selector);
+      assert.ok(b && b.width > 0 && b.height > 0, `${where} shows`);
+      const from = { x: Math.round(b.x + Math.min(b.width / 2, 40)), y: Math.round(b.y + Math.min(b.height / 2, 20)) };
+      await drag(from, 0, 150); await still(`a finger drawn down on ${where} moves nothing behind`);
+      await drag(from, 0, -Math.min(150, from.y - 2)); await still(`a finger drawn up on ${where} moves nothing behind`);
+    }
+    // A box in the sheet that scrolls that way keeps the finger: a swipe goes on to the next card.
+    const cards = `${PAGE} .deck-cards`, swiped = () => p.evaluate(`document.querySelector(${JSON.stringify(cards)}).scrollLeft`);
+    const b = await p.box(`${PAGE} .deck-card[aria-current=true]`), left = await swiped();
+    await drag({ x: Math.round(b.x + b.width - 30), y: Math.round(b.y + Math.min(b.height / 2, 120)) }, -240, 0);
+    await until(async () => (await swiped()) > left, 'a swipe across the card goes on through the cards');
+    await still('a swipe through the cards moves nothing behind');
+    // However the feed moved while the sheet was up (its scrollbar dragged, which no harness here sends, stands
+    // as a scroll by the page), ✕ puts it back where it was read.
+    await p.evaluate(`(()=>{scrollTo({top:${at - 200},behavior:'instant'});return true})()`);
+    assert.equal(await rested(p), at - 200, 'the feed moved behind the sheet');
+    await tap(p, `${SHEET} .notebook-sheet-close`);
+    await closed(p);
+    assert.equal(await rested(p), at, '✕ puts the feed back where it was read');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('notebook in the composer: a card\'s reply stack opens in the Reader with the way back to the page, and closing it brings the page back as it was, in the same topic and from another topic with the feed where it was', async () => {
     const stack = (topic, message) => `[Reply stack](${facts.origin}/?topic=${topic}&message=${message})`;
     // In the same topic: the stack opens in this page's Reader, over the feed.
@@ -478,12 +529,40 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await press(p, card(id));
     await opened(p, 'Sheet live', ['One']);
     let revision = (await view('memory_current', { item_id: id })).source_ref.revision;
+    // What Core holds the person has read of the page.
+    const readOf = async () => {
+      for (let cursor = 0; ;) {
+        const listed = await view('memory_items', { owner_scope: { kind: 'topic', id: 't1' }, cursor });
+        const item = listed.items.find(entry => entry.id === id);
+        if (item || listed.next_cursor === null) return item?.read_revision ?? null;
+        cursor = listed.next_cursor;
+      }
+    };
+    await until(async () => (await readOf()) === revision, 'opening the page reads it')
+      .catch(async error => { assert.equal(await readOf(), revision, 'opening the page reads it'); throw error; });
     const revise = async body => {
       const answer = await control({ method: 'memory_revise', operation_id: `${id}-live-${revision}`, item_id: id, expected_revision: revision, title: 'Sheet live', body });
       assert.equal(answer.status, 'committed', JSON.stringify(answer)); revision += 1;
     };
     await revise('## One\n\nFirst words.\n\n## Two\n\nAn agent added this.\n');
     await opened(p, 'Sheet live', ['One', 'Two']);
+    // Watched as it arrived, the revision is read: Core holds it read, and the page's card wears no light.
+    await until(async () => (await readOf()) === revision, 'the revision that reached the page while it showed is read')
+      .catch(async error => { assert.equal(await readOf(), revision, 'the revision that reached the page while it showed is read'); throw error; });
+    await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(id) + ' .unread-count')})`), 'the topic\'s Notebook card wears no light for it');
+    // The person's own revision Core counts as read already: a card they write sends no read of it.
+    const marked = () => p.calls.filter(call => call.payload?.kind === 'memory.read' && call.payload.target?.item_id === id).length, readBefore = marked();
+    assert.ok(readBefore > 0, 'the reads so far are counted');
+    await writeIn(p, 'Two', ' Mine.');
+    await p.key('Escape');
+    await saved(id, 'An agent added this. Mine.', 'the person\'s card is saved');
+    revision = (await view('memory_current', { item_id: id })).source_ref.revision;
+    const mine = (await control({ method: 'agent_message', operation_id: 'notebook-sheet-live-mine', topic_id: 't1', body: 'A message after the person\'s own revision.' })).result.message_id;
+    await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${mine}"]'))`), 'a message after the person\'s revision reaches the feed');
+    await settle(p);
+    assert.equal(marked() - readBefore, 0, 'the person\'s own revision sends no read');
+    // Nor, all that while, was anything drawn over the cards for the revision watched as it came.
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(PAGE + ' .notebook-sheet-changes')}).hidden`), true, 'nothing is drawn above the cards for a revision watched as it came');
     await p.point(`${SHEET} .notebook-sheet-close`);
     await closed(p);
     const reads = () => p.calls.filter(call => call.payload?.name === 'memory_current' && call.payload.args?.item_id === id).length;

@@ -221,7 +221,9 @@ full page's line its tooltip.
 the first Escape finishes the card and a second closes the sheet; ✕ and a press
 outside close it with the card still open. The feed comes back where it was
 read and the focus to what opened the page, at once, so a page opened from the
-keys straight after (Tab to the next card, Return) stays open; the feed keeps
+keys straight after (Tab to the next card, Return) stays open; should anything
+have moved the feed while the sheet was up (its scrollbar, say), closing puts it
+back. The feed keeps
 its length while the sheet is up, so one read to its end does not move behind
 the backdrop. Unfinished writing keeps saving
 (notebook-writing.md), and the page keeps its picked card, its place in the
@@ -231,9 +233,14 @@ writing goes on to Core; a card box it had open opens again with it, as it does
 after a reload or a move to another topic and back. While the sheet shows, the
 keys are its own: an arrow, Page Up or Down, Home, End or Space that the page
 does not use moves nothing behind it, and neither does a wheel, a trackpad or
-a finger over the backdrop or the sheet's head, or past the end of what scrolls
-in the sheet. The page showing is read again on every commit, so a revision
-made elsewhere shows at once; a page whose sheet is closed is not read again
+a finger over the backdrop or the sheet's head (its title, chips and saving
+sign), or over a card or past the end of what scrolls in the sheet. Each is
+the sheet's own only where a box in it would scroll that way, a finger's way
+counted from where it touched down, so a swipe still goes through the cards.
+The page showing is read again on every commit, so a
+revision made elsewhere shows at once, and is read as it comes, so its light
+stays out (nothing is drawn above the cards for it; the person's own revisions
+Core counts as read already); a page whose sheet is closed is not read again
 until it opens, though writing of its own that Core has not confirmed still
 goes.
 

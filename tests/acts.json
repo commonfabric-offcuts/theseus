@@ -6766,6 +6766,201 @@
     "native": "notebook",
     "case": "from the keys right after"
    }
+  },
+  {
+   "item": 396,
+   "act": "A finger drawn on the sheet's head, or on a card that cannot scroll that way, moves nothing behind the sheet",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "if ((dx || dy) && !this.scrolls(event.target, dx, dy)) event.preventDefault();",
+     "if (false) event.preventDefault();"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "on a phone a finger dragged"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A swipe on a box in the sheet that scrolls that way still goes on through the cards",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "if ((dx || dy) && !this.scrolls(event.target, dx, dy)) event.preventDefault();",
+     "if (dx || dy) event.preventDefault();"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "on a phone a finger dragged"
+   }
+  },
+  {
+   "item": 396,
+   "act": "Closing the sheet puts the feed back where it was read, however it moved while the sheet was up",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    if (globalThis.scrollX !== place.x || globalThis.scrollY !== place.y) globalThis.scrollTo({ left: place.x, top: place.y, behavior: 'instant' });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "on a phone a finger dragged"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A revision that reaches the page while it shows in the sheet is read, so its light stays out",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    this.readPage(page, this.serial, false);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a revision made elsewhere"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A revision watched as it came draws nothing above the cards",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    if (!opening || since === null || !live()) return;\n",
+     "    if (since === null || !live()) return;\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a revision made elsewhere"
+   }
+  },
+  {
+   "item": 396,
+   "act": "The person's own revision in the sheet sends no read",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "|| !base?.source || base.own ||",
+     "|| !base?.source ||"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a revision made elsewhere"
+   }
+  },
+  {
+   "item": 396,
+   "act": "Opening a page in the sheet records the read, so its light goes out",
+   "break": [
+    [
+     "web/notebook-sheet.mjs",
+     "    if (loaded) this.readPage(page, serial);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a revision made elsewhere"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A Notebook link as it stands, in the right rail or a message, opens the page in the sheet over the page being read",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (!page.revision) {\n",
+     "    if (false) {\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page's link opens the page as it stands"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A topic's address naming a page as it stands opens the page in the sheet",
+   "break": [
+    [
+     "web/app.mjs",
+     ": openNotebook(pageAnchor.id, { opener: $('main') })));",
+     ": openSource(await pageSource(pageAnchor), $('main'))));"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page's link opens the page as it stands"
+   }
+  },
+  {
+   "item": 396,
+   "act": "An outcome page's address naming a page as it stands opens the page in the sheet",
+   "break": [
+    [
+     "web/app.mjs",
+     ":openNotebook(shown.id,{opener:$('main')})));",
+     ":pageHere.open(await pageSource(shown),$('main'))));"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page's link opens the page as it stands"
+   }
+  },
+  {
+   "item": 396,
+   "act": "A row on the outcome's page opens its page in the sheet",
+   "break": [
+    [
+     "web/app.mjs",
+     "open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});",
+     "open:(ref,row)=>run(()=>here.open(ref,row))});"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page opened from the outline"
+   }
+  },
+  {
+   "item": 396,
+   "act": "The creation pencil opens the new page in the sheet with its first card ready to write",
+   "break": [
+    [
+     "web/app.mjs",
+     "open: route => openNotebook(route.id, { write: route.write, opener: host.querySelector('.notebook-create') })",
+     "open: route => openDestination(route, 'Notebook')"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "creation pencil opens a title line"
+   }
+  },
+  {
+   "item": 396,
+   "act": "The Reader's ⋯ Edit page opens the page as it stands in the sheet, in the Reader's place",
+   "break": [
+    [
+     "web/app.mjs",
+     "{ label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } }",
+     "{ label: 'Edit page', act: () => run(() => openDestination({ kind: 'cards', id: ref.id, view: 'text' }, p.source.title || 'Notebook')) }"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a page's link opens the page as it stands"
+   }
   }
  ]
 }

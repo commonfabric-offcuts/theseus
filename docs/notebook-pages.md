@@ -65,7 +65,10 @@ the person can see it, as a message counts as read only then: the page sends
 `memory.read` with the exact revision shown while the tab is visible and
 focused. One shown in the background, such as a Reader restored on load, is
 read when the tab comes forward, if it still shows; a page that cannot be
-shown is not read. The commit
+shown is not read. A revision that reaches a page while it shows in the
+composer (a commit elsewhere, taken in as the page is read again) is read
+the same way, so watching an agent revise a page leaves no light on it; the
+person's own revisions are read already, and send nothing. The commit
 reaches every open page through the live feed, whose next reload draws the
 row without its light; a page without the feed reloads after the read is
 recorded. A read Core did not record is said where the page shows, and the

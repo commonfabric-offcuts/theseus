@@ -2447,8 +2447,8 @@ async function notebookAskIn(scope) {
 function notebookSheetOf() {
   if (notebookSheet) return notebookSheet;
   notebookSheet = new NotebookSheet({
-    make: (id, host, header, idSuffix) => {
-      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, mode: 'cards', idSuffix, shortKeys: true,
+    make: (id, host, header, idSuffix, revisionShown) => {
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, mode: 'cards', idSuffix, shortKeys: true, revisionShown,
         place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
       followCommits(() => notebookSheet.followed(page));
       return page;

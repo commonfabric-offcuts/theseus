@@ -12,7 +12,8 @@
 // Core and it lets go, and a card box it had open opens again with it.
 //
 // Opening a page reads it, as the Reader did, and what changed since the
-// revision the person last read shows above its cards.
+// revision the person last read shows above its cards; a revision that
+// reaches it while it shows is read as it comes.
 //
 // A card's speech bubble with a reply stack sets the sheet aside and opens the
 // stack in the Reader; the Reader's header then says "← <page>", and closing
@@ -35,7 +36,8 @@ const keep = (key, value) => { try { globalThis.sessionStorage.setItem(key, JSON
 export const returning = () => { try { return Boolean(globalThis.sessionStorage.getItem(RETURN)); } catch { return false; } };
 
 export class NotebookSheet {
-  // make(id, host, header, suffix): a NotebookPage drawing into host.
+  // make(id, host, header, suffix, revisionShown): a NotebookPage drawing into host, calling revisionShown after each
+  // change to its writing.
   // fullHref(id, mode): the page's full-page address. openStack(topicId, messageId): opens a stack's
   // first message, true when in this page's Reader, false when its topic's page loads instead.
   // goBack(address): opens the page of Theseus at that address again. reads(): the PageReads that
@@ -135,7 +137,7 @@ export class NotebookSheet {
     if (!page) {
       const host = this.node('section', 'deck-page notebook-sheet-page'); host.setAttribute('aria-label', 'Notebook page');
       const header = { eyebrow: this.node('span'), title: this.node('span'), description: this.node('span') };
-      page = this.make(id, host, header, '-sheet');
+      page = this.make(id, host, header, '-sheet', () => this.revised(page));
       page.sheetTitle = header.title;
       page.changes = this.node('div', 'notebook-sheet-changes'); page.changes.hidden = true;
       host.prepend(page.changes);
@@ -153,6 +155,7 @@ export class NotebookSheet {
     this.show(page);
     if (!this.dialog.open) this.dialog.showModal();
     const kept = first ? take(WRITING + id) : null;
+    page.readAt = undefined;
     let loaded = false;
     try { loaded = await page.load(); } catch (error) { page.say?.(`${error.message} The page could not be read.`, 'attention'); }
     if (serial !== this.serial || this.current !== page || !this.showing) return loaded;
@@ -178,12 +181,22 @@ export class NotebookSheet {
       this.root.hidden = false; this.showing = true;
       // Nor does a wheel, a trackpad or a finger: over the backdrop or the sheet's head, and past the end of what
       // scrolls in the sheet, it moves nothing behind (overscroll-behavior holds a box that scrolls, not one that
-      // cannot, nor the backdrop). Listened for on the window while the sheet shows: a browser hands a wheel over
-      // the backdrop, outside the dialog's own box, to the page uncancelable when only the dialog listens.
+      // cannot, nor the backdrop). Each is the sheet's own only where a box in the sheet would scroll that way: a
+      // finger's way is from where it touched down, so a drag on the head, a chip or a card that cannot scroll is
+      // held as a wheel there is, and a swipe through the cards is not. Listened for on the window while the sheet
+      // shows: a browser hands a wheel over the backdrop, outside the dialog's own box, to the page uncancelable
+      // when only the dialog listens. Two fingers are a pinch, left to the browser.
       this.still = new AbortController();
       const options = { passive: false, signal: this.still.signal };
+      let down = null;
       globalThis.addEventListener('wheel', event => { if (!this.scrolls(event.target, event.deltaX, event.deltaY)) event.preventDefault(); }, options);
-      globalThis.addEventListener('touchmove', event => { if (event.target === this.dialog || !this.dialog.contains(event.target)) event.preventDefault(); }, options);
+      globalThis.addEventListener('touchstart', event => { const at = event.touches[0]; down = event.touches.length === 1 ? { x: at.clientX, y: at.clientY } : null; }, { passive: true, signal: this.still.signal });
+      globalThis.addEventListener('touchmove', event => {
+        const at = event.touches[0];
+        if (!down || event.touches.length !== 1 || !event.cancelable) return;
+        const dx = down.x - at.clientX, dy = down.y - at.clientY;
+        if ((dx || dy) && !this.scrolls(event.target, dx, dy)) event.preventDefault();
+      }, options);
     }
     page.host.hidden = false;
     // The cards' and the writing's own scroll places, kept while the page was closed.
@@ -214,13 +227,24 @@ export class NotebookSheet {
     if (first) page.paint();
     page.show(true);
   }
+  // A revision that reaches the page while it shows, after the one opening it read (a commit elsewhere, taken in
+  // as the page is read again, after its own save or as the person chooses the saved version), is read too, so
+  // watching an agent revise a page leaves no light on it. It shows on the cards as it comes, so nothing is drawn
+  // above them for it. The person's own revisions Core counts as read already.
+  revised(page) {
+    const base = page.writing?.base;
+    if (!this.showing || this.current !== page || page.readAt === undefined || !base?.source || base.own || base.revision <= page.readAt) return;
+    this.readPage(page, this.serial, false);
+  }
   // Opening a page reads it, once the person can see it, as the Reader read it; what changed since the revision
   // they last read shows above the cards. A read Core did not record says so there, and the page keeps its light.
-  async readPage(page, serial) {
-    const live = () => serial === this.serial && this.current === page && this.showing;
-    page.changes.hidden = true; page.changes.replaceChildren();
+  async readPage(page, serial, opening = true) {
     const reads = this.reads(), source = page.writing?.base?.source;
+    // live: still the page shown and, for a later revision, still the revision shown (a newer one is read by its own call).
+    const live = () => serial === this.serial && this.current === page && this.showing && (opening || page.writing?.base?.source === source);
+    if (opening) { page.changes.hidden = true; page.changes.replaceChildren(); }
     if (!reads || !source) return;
+    page.readAt = source.source_ref.revision;
     while (this.doc.visibilityState !== 'visible' || !this.doc.hasFocus()) {
       await new Promise(resolve => {
         const go = () => { globalThis.removeEventListener('focus', go); this.doc.removeEventListener('visibilitychange', go); resolve(); };
@@ -231,7 +255,7 @@ export class NotebookSheet {
     const say = words => { if (!live()) return; const line = this.node('p', 'notice', words); line.setAttribute('role', 'status'); page.changes.replaceChildren(line); page.changes.hidden = false; };
     let since;
     try { since = await reads.opened(source); } catch (error) { say(error.message); return; }
-    if (since === null || !live()) return;
+    if (!opening || since === null || !live()) return;
     let earlier;
     try { earlier = await this.source({ ...source.source_ref, revision: since }); }
     catch (error) { say(`What changed since revision ${since} could not be read. ${error.message}`); return; }
@@ -268,10 +292,12 @@ export class NotebookSheet {
     if (this.labelledBy) this.dialog.setAttribute('aria-labelledby', this.labelledBy);
     if (this.inline) this.inline.hidden = this.inlineHidden;
     if (this.aside) return;
-    // Back where the person was reading: the feed never moved (the holder, the keys and the wheel kept it), and the
-    // focus goes back to what opened the page.
+    // Back where the person was reading: the holder, the keys, the wheel and the finger keep the feed still, and
+    // should anything else have moved it while the sheet was up (its scrollbar, say), it goes back; the focus goes
+    // back to what opened the page.
     const place = this.place; this.place = null;
     if (!place) return;
+    if (globalThis.scrollX !== place.x || globalThis.scrollY !== place.y) globalThis.scrollTo({ left: place.x, top: place.y, behavior: 'instant' });
     if (place.opener?.isConnected) { place.opener.focus({ preventScroll: true }); this.returnFocus = place.opener; }
   }
 

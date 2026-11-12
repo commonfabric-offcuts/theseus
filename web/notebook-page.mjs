@@ -11,6 +11,8 @@ export class NotebookPage extends DeckPage {
   constructor(options) {
     super(options);
     Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? 'cards' });
+    // Told after each change to the writing, so a page in the composer reads a revision that reaches it (notebook-sheet.mjs).
+    this.revisionShown = options.revisionShown ?? (() => {});
     this.views = this.node('div', 'notebook-views'); this.views.setAttribute('role', 'group'); this.views.setAttribute('aria-label', 'Notebook view');
     this.viewButtons = ['text', 'cards'].map(mode => {
       const b=this.node('button','',mode === 'text' ? 'Text' : 'Cards'); b.type='button'; b.onclick=()=>this.switchView(mode); this.views.append(b); return b;
@@ -225,6 +227,7 @@ export class NotebookPage extends DeckPage {
       discard.onclick=async()=>{if(await w.discard()){this.finish({discard:true});this.sync(true);}};
       this.status.append(discard);
     }
+    this.revisionShown();
   }
   async captureImage(file) {
     try {this.imageError=null;await this.images.capture(file);}
