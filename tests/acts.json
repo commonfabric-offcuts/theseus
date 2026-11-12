@@ -4825,6 +4825,21 @@
   },
   {
    "item": 354,
+   "act": "A join scrolls the page only as far as it needs: with the acted message and its join line in the window already, the page keeps its place",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "above?.scrollIntoView?.({ block: 'nearest' })",
+     "above?.scrollIntoView?.({ block: 'start' })"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a join you make shows where it went"
+   }
+  },
+  {
+   "item": 354,
    "act": "⌘Z after a join puts back how far the stack it went into was folded",
    "break": [
     [

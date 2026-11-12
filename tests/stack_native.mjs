@@ -640,10 +640,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.evaluate(`document.body.style.paddingBottom = '2000px'`);
     await becomes(() => stacks(p, ids), ['b', 'a'], 'B on its own above A\'s stack');
     await keyTo(p, ids.a);
+    // A and the place its join line takes are in the window already, so the join scrolls nothing.
+    const before = await p.evaluate('scrollY');
     await p.key('ArrowUp', 12);
     await becomes(() => stacks(p, ids), ['b'], '⇧⌘↑ joins A\'s stack into B');
     await becomes(() => where(p, ids, 'b', 'a', 'a'), { fold: 'open', full: true, rows: [line, 'a', 'a1', 'a2'], keys: 'a', acted: true, line: true },
       '⇧⌘↑: B open, its own message whole, then A under its join line with every reply; the keys on A, in the window with its join line');
+    assert.equal(await p.evaluate('scrollY'), before, 'the page keeps its place when A and its line are in the window already');
     await shot(p, 'stack-join-shows-up');
     await p.key('z', 4);
     await becomes(() => stacks(p, ids), ['b', 'a'], '⌘Z puts A\'s stack back');
