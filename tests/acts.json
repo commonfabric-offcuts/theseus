@@ -4813,8 +4813,8 @@
    "break": [
     [
      "aim_next/runner.py",
-     "json_extract(value,'$.desired')='stopped'",
-     "json_extract(value,'$.desired')='never-stopped'"
+     "AND NOT hosted_execution_allowed(value,recipient_schedule.recipient_id)",
+     "AND 0"
     ]
    ],
    "check": {
