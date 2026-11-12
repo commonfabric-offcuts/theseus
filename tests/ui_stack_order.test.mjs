@@ -24,7 +24,7 @@ test('a stack keeps its first message on top and reads its replies oldest first,
   const alone = stacksOf([message(7, { reply_to: 'm6' }), message(8, { reply_to: 'm7' })]);
   assert.deepEqual([alone.length, alone[0].id, ids(alone[0].replies)], [1, 'm7', ['m8']]);
   // A message the page does not show (has) heads nothing and is under nothing.
-  const hidden = gather(items, id => id !== 'm2');
+  const hidden = gather(items, { has: id => id !== 'm2' });
   assert.deepEqual(ids(hidden.find(stack => stack.id === 'm1').replies), ['m2', 'm5'], 'm2 still listed, m4 now its own');
 });
 
@@ -38,6 +38,34 @@ test('stacks keep newest activity on top; one the reader placed holds its place 
   assert.equal(keyOf(stacksOf(later).at(-1)), 1.5);
   // Another reader's place is not on this reader's messages: unplaced, the same messages keep newest on top.
   assert.deepEqual(ids(stacksOf([...items, message(9, { reply_to: 'm1' }), message(10)]).map(stack => stack.head)), ['m10', 'm1', 'm3', 'm2']);
+});
+
+test('the reader\'s own reply leaves its stack where it was; anyone else\'s lifts it, a new stack of the reader\'s own lands on top, and a place still wins', () => {
+  const viewer = 'owner';
+  const mine = (seq, extra = {}) => message(seq, { author_id: viewer, ...extra });
+  const items = [message(1), message(2), message(3), message(4, { reply_to: 'm1' })];
+  const heads = (list, who = viewer) => ids(ordered(gather(list, { viewer: who })).map(stack => stack.head));
+  assert.deepEqual(heads(items), ['m1', 'm3', 'm2'], 'before: m1 sits where its newest reply puts it');
+  // The reader replies to the stack at the bottom, and to a message standing alone: neither moves.
+  const replied = [...items, mine(5, { reply_to: 'm2' }), mine(6, { reply_to: 'm3' }), mine(7, { reply_to: 'm6' })];
+  assert.deepEqual(heads(replied), ['m1', 'm3', 'm2'], 'own replies, and a reply to an own reply, lift nothing');
+  const [, , bottom] = ordered(gather(replied, { viewer }));
+  assert.deepEqual([bottom.id, bottom.newest, keyOf(bottom)], ['m2', 5, 2], 'its newest is the reply; its key is still its own message');
+  // Every other reader sees the reply as anyone else's, so it lifts the stack for them.
+  assert.deepEqual(heads(replied, 'agent-b'), ['m3', 'm2', 'm1'], 'another reader: the newest activity on top');
+  assert.deepEqual(heads(replied, null), ['m3', 'm2', 'm1'], 'no reader named: newest on top as before');
+  // Anyone else's reply lifts it as today, the reader's own replies in it notwithstanding.
+  assert.deepEqual(heads([...replied, message(8, { reply_to: 'm5' })]), ['m2', 'm1', 'm3'], 'another\'s reply to the reader\'s own lifts the stack');
+  // A new stack of the reader's own lands on top, and its own replies keep it there, not higher.
+  assert.deepEqual(heads([...replied, mine(9)]), ['m9', 'm1', 'm3', 'm2'], 'the reader\'s new message is a new stack, on top');
+  assert.deepEqual(heads([...replied, mine(9), message(10), mine(11, { reply_to: 'm9' })]), ['m10', 'm9', 'm1', 'm3', 'm2']);
+  // A place the reader set wins either way.
+  const placed = replied.map(item => item.id === 'm2' ? { ...item, acts: { placed: 9.5 } } : item);
+  assert.deepEqual(heads([...placed, message(9, { reply_to: 'm2' })]), ['m2', 'm1', 'm3'], 'placed on top, it stays on top');
+  // A joined stack moves its stack where the newer of the two would, though the reader started it, as joins always have.
+  const joined = [...items, mine(5, { acts: { joined: { into: 'm2', by: viewer, at_ms: 1 } } })];
+  assert.deepEqual(heads(joined), ['m2', 'm1', 'm3'], 'the reader\'s own message joined into m2 still counts for it');
+  assert.deepEqual(heads([...joined, mine(6, { reply_to: 'm5' })]), ['m2', 'm1', 'm3'], 'and an own reply inside the joined part lifts nothing');
 });
 
 test('a move places the stack just past its neighbour, refuses at either end, and trades places where no number fits', () => {

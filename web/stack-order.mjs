@@ -10,7 +10,8 @@
 // stack joined to it comes after them, in the order the joins were made. The
 // stacks themselves keep the topic newest on top: each sits where its newest
 // message would, unless the reader placed it somewhere of their own, where it
-// holds whatever replies arrive.
+// holds whatever replies arrive. A reply of the reader's own never lifts it:
+// what they answer stays where they were reading it.
 
 // Acts recorded about a message (Core's message_acts, as topic_messages
 // carries them): absent on a page from a Core before them, read as none.
@@ -43,11 +44,13 @@ function parentOf(item, has) {
 }
 
 // Gathers the loaded messages (items: topic_messages items, has(id): whether
-// a message is on the page) into stacks. Each stack: { id: its head's id,
-// head, replies: every other message in reading order, joins: Map of the id
-// of each joined stack's first message to its join ({ into, by, at_ms }),
-// newest: the newest seq in it, placed: the reader's own place for it or null }.
-export function gather(items, has = null) {
+// a message is on the page; viewer: who reads) into stacks. Each stack: { id:
+// its head's id, head, replies: every other message in reading order, joins:
+// Map of the id of each joined stack's first message to its join ({ into, by,
+// at_ms }), newest: the newest seq in it, lifted: the newest seq that lifts it,
+// any but a reply of the viewer's own (a stack joined to it lifts it however
+// it began), placed: the reader's own place for it or null }.
+export function gather(items, { has = null, viewer = null } = {}) {
   const byId = new Map(items.map(item => [item.id, item]));
   const on = has ?? (id => byId.has(id));
   const parent = new Map(items.map(item => [item.id, parentOf(item, on)]));
@@ -97,16 +100,18 @@ export function gather(items, has = null) {
     };
     emit(null);
     const placed = typeof actsOf(head).placed === 'number' ? actsOf(head).placed : null;
-    return { id: head.id, head, replies, joins, newest: members.reduce((most, item) => Math.max(most, item.seq), 0), placed };
+    const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
+    const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
+    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed };
   });
 }
 
-// Where a stack sorts: its own place, else its newest message.
-export const keyOf = stack => stack.placed ?? stack.newest;
+// Where a stack sorts: its own place, else its newest message that lifts it.
+export const keyOf = stack => stack.placed ?? stack.lifted;
 
 // The stacks newest on top, each placed one where the reader put it.
 export function ordered(stacks) {
-  return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || b.newest - a.newest);
+  return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || b.lifted - a.lifted);
 }
 
 // The only three stack states: header alone, latest plus unread replies,

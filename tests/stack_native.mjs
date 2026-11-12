@@ -478,6 +478,42 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  await check('reading stacks the reader\'s own reply leaves its stack where it was, under their eyes and after a reload; anyone else\'s reply lifts it', async () => {
+    const topic = 'stack-own-reply';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.', read: true }],
+      ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
+    let p = await open('stack-own-reply', 'laptop', topic, ids.c);
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'newest activity on top');
+    const topOf = () => p.evaluate(`document.querySelector('#messages .reply-stack[data-stack=${JSON.stringify(ids.b)}]').getBoundingClientRect().top`);
+    const before = await topOf();
+    // The reader answers B's reply as a person does: Reply on its bar, the words, Send.
+    const text = 'My own reply to B.';
+    await light(p, 'laptop', ids.b1);
+    await press(p, 'laptop', '.message-bar [data-act=reply]');
+    await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), 'the cursor is in the reply');
+    await p.send('Input.insertText', { text });
+    await press(p, 'laptop', '#send-reply');
+    const mine = await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+      .find(item => item.author_id === facts.actor && item.body === text)?.id, 'Core holds the reply');
+    if (await readerOn(p) !== null) await closeReader(p, 'laptop');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(mine))})?.closest('.reply-stack')?.dataset.stack === ${JSON.stringify(ids.b)} && window.fetchesOut === 0`),
+      'the reply is drawn into B\'s stack');
+    assert.deepEqual(await stacks(p, ids), ['c', 'b', 'a'], 'the reader\'s own reply leaves B where it was, under C');
+    assert.equal(await topOf(), before, 'B\'s stack holds still on the page as the reply arrives');
+    await p.close();
+    p = await open('stack-own-reply-again', 'laptop', topic, ids.c);
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'after a reload B is still where it was');
+    // A reply by anyone else lifts its stack, B's own included, the reader's reply in it notwithstanding.
+    await control({ method: 'agent_message', operation_id: topic + '-to-a', topic_id: topic, source: 'topic', sender: other, reply_to: ids.a, addressees: [facts.actor], body: 'A reply to A.', read: true });
+    await becomes(() => stacks(p, ids), ['a', 'c', 'b'], 'another\'s reply lifts A to the top');
+    await control({ method: 'agent_message', operation_id: topic + '-to-b', topic_id: topic, source: 'topic', sender: other, reply_to: ids.b1, addressees: [facts.actor], body: 'Another reply in B.', read: true });
+    await becomes(() => stacks(p, ids), ['b', 'a', 'c'], 'another\'s reply in B lifts B to the top');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // Core's answers held at the network (the Chrome harness's interception), and let go one at a time.
   if (engine === 'chrome') await check('reading stacks quick acts and late answers: the page always draws the last act and ends where Core does, an answer read before an act puts nothing back, and a quick star then unstar shows unstarred', async () => {
     const topic = 'stack-quick';

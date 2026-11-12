@@ -4,8 +4,9 @@ A topic page reads as stacks: a message, every loaded reply to it, and the
 replies to those, gathered into one stack. A stack reads as a chat does, its
 first message on top and its replies under it oldest first. The topic's
 stacks sit newest activity on top, unless the reader has put one somewhere
-else. This page holds the contract: what Core records, how the page orders
-and folds what it shows, and the one layer that decides how a stack looks.
+else; the reader's own reply never moves its stack. This page holds the
+contract: what Core records, how the page orders and folds what it shows,
+and the one layer that decides how a stack looks.
 docs/topic-reading.md says how a card reads inside a stack, and
 docs/interaction.md has the keys.
 
@@ -90,9 +91,15 @@ their acts.
   first message preceded by a line: "Joined from its own stack by …, time"
   with Split back out.
 - **The stacks.** Each stack sorts by its key, newest first. The key is the
-  reader's place if they set one, or else the newest message's sequence. A
-  new stack therefore lands on top, and a new reply lifts its stack unless
-  the reader placed it. ⌘↑ and ⌘↓ set a place halfway past the neighbour.
+  reader's place if they set one, or else the sequence of the newest message
+  in it that lifts it: any message but a reply of the reader's own. A new
+  stack therefore lands on top, the reader's own included, and a new reply
+  by anyone else lifts its stack unless the reader placed it. The reader's
+  own reply leaves its stack where it was, on every device and after a
+  reload, so what they answered stays where they were reading it; for
+  everyone else it lifts the stack as any reply does. A stack joined to
+  another counts for it whoever began it, so a join still puts the two
+  where the newer would sit. ⌘↑ and ⌘↓ set a place halfway past the neighbour.
   When no number fits between two places, the two stacks trade keys. A
   placed stack says "Placed here by you", and "Let new replies move it"
   takes the place away.

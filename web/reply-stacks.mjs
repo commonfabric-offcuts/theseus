@@ -304,7 +304,7 @@ export function arrangeStacks(list, messages, options = {}) {
   if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
-  const stacks = ordered(gather([...byId.keys()].map(id => messages.get(id)).filter(Boolean)));
+  const stacks = ordered(gather([...byId.keys()].map(id => messages.get(id)).filter(Boolean), { viewer }));
   state.stacks = stacks;
   const top = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
   for (const stack of stacks) {

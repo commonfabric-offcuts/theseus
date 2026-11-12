@@ -3210,8 +3210,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "export const keyOf = stack => stack.placed ?? stack.newest;",
-     "export const keyOf = stack => stack.newest;"
+     "export const keyOf = stack => stack.placed ?? stack.lifted;",
+     "export const keyOf = stack => stack.lifted;"
     ]
    ],
    "check": {
@@ -4777,6 +4777,63 @@
    "check": {
     "native": "reading",
     "case": "neither the topic nor its conversation"
+   }
+  },
+  {
+   "item": 353,
+   "act": "The reader's own reply leaves its stack where it was",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "lifted: newest(members.filter(item => !own(item)))",
+     "lifted: newest(members)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 353,
+   "act": "A reply by anyone else still lifts its stack, the reader's own replies in it notwithstanding",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "viewer !== null && item.author_id === viewer",
+     "viewer !== null"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 353,
+   "act": "A stack joined to another counts for it whoever began it, as joins always have",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "!joins.has(item.id) && viewer",
+     "viewer"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 353,
+   "act": "A reply sent from the page leaves its stack where it was, under the reader's eyes and after a reload",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     ".filter(Boolean), { viewer }));",
+     ".filter(Boolean)));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "own reply leaves"
    }
   }
  ]
