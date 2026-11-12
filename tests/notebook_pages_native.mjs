@@ -40,9 +40,13 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   })()`);
 
   await check('notebook creation pencil opens a title line and creates the exact scoped page ready to write', async () => {
-    for (const [scope, phone] of [[{kind:'workspace',id:'w1'},false],[{kind:'topic',id:'t1'},false],[{kind:'workspace',id:'w1'},true]]) {
-      const label = scope.kind + (phone ? '-phone' : '-desktop'), name = 'Create notes in ' + label;
-      const p = await page('notebook-create-' + label, null, true, {beforeNavigate: async q => {
+    // A topic's pencil sits beside the Notebook section of the right rail, also
+    // for a topic whose Notebook is still empty; the outcome's sits in the outline.
+    const empty = ['t-notebook-empty', 't-notebook-empty-phone'];
+    await control({method:'navigation_topics', topics:empty.map(id => ({id, title:'No pages yet'}))});
+    for (const [scope, phone] of [[{kind:'workspace',id:'w1'},false],[{kind:'topic',id:'t1'},false],[{kind:'topic',id:empty[0]},false],[{kind:'topic',id:empty[1]},true],[{kind:'workspace',id:'w1'},true]]) {
+      const label = scope.id + (phone ? '-phone' : '-desktop'), name = 'Create notes in ' + label;
+      const p = await page('notebook-create-' + label, null, true, {url: `${facts.origin}/?topic=${scope.kind === 'topic' ? scope.id : 't1'}`, beforeNavigate: async q => {
         if (phone) {
           await q.send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
           await q.send('Emulation.setTouchEmulationEnabled', {enabled:true,maxTouchPoints:1});
@@ -50,24 +54,47 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       }});
       const press = async selector => {
         if (!phone) return p.point(selector);
-        const b = await p.box(selector), x = b.x + b.width/2, y = b.y + b.height/2;
+        // A finger aims once the target holds its place (the right rail's sheet slides up).
+        let last = null;
+        await until(async () => { const now = await p.box(selector), same = Boolean(last && now) && ['x','y','width','height'].every(key => now[key] === last[key]); last = now; return same; }, selector + ' holds its place');
+        const b = last, x = b.x + b.width/2, y = b.y + b.height/2;
         assert.ok(x>=0 && y>=0 && x<390 && y<844, selector + ' is on screen');
         await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x,y}]});
         await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
       };
-      const host = scope.kind === 'workspace' ? '#outcome-references' : '#notebook';
-      const button = host + ' .notebook-create', input = host + ' input';
-      await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(button)}))`), 'the Notebook pencil is available');
-      if (phone) { await press('#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), 'the Notebook drawer opens'); }
+      const host = scope.kind === 'workspace' ? '#outcome-references' : '#things .things-sec[data-key="notebook"]';
+      const button = host + (scope.kind === 'workspace' ? ' .notebook-create' : ' > summary .notebook-create'), input = host + ' input';
+      if (phone) {
+        const opener = scope.kind === 'workspace' ? '#rail-open' : '#things-open';
+        await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(opener)}))`), 'the page is up');
+        await press(opener);
+        await until(() => p.evaluate(scope.kind === 'workspace' ? `document.getElementById('rail').classList.contains('open')` : `document.documentElement.hasAttribute('data-things-open')`), 'the Notebook drawer opens');
+      }
+      await until(() => p.evaluate(`document.body.dataset.ready==='true' && document.querySelector(${JSON.stringify(button)})?.checkVisibility()===true`), 'the Notebook pencil is available');
+      if (scope.kind === 'topic') {
+        // Beside the rail's Notebook heading, and nowhere in the page between the rails.
+        const where = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)}).getBoundingClientRect(),h=document.querySelector(${JSON.stringify(host + ' > summary')}).getBoundingClientRect();
+          return {heading:document.querySelector(${JSON.stringify(host + ' > summary > span')}).textContent,beside:b.top>=h.top-1&&b.bottom<=h.bottom+1&&b.right<=h.right+1,
+            inMain:document.querySelectorAll('#main .notebook-create').length,inRail:document.querySelectorAll('#things .notebook-create').length}})()`);
+        assert.deepEqual(where, {heading:'Notebook',beside:true,inMain:0,inRail:1}, 'the topic pencil is beside the right rail\'s Notebook heading');
+        if (empty.includes(scope.id)) assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(host + ' .things-body')}).textContent`), 'No pages yet.', 'an empty topic Notebook keeps its heading');
+      }
       await p.evaluate(`document.querySelector(${JSON.stringify(button)}).scrollIntoView({block:'center'})`);
       await press(button);
       await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(input)})`), 'one title line, focused');
+      if (scope.kind === 'topic') await shot(p, 'notebook-create-' + label + '-line');
       await p.send('Input.insertText', {text:'Cancelled notes'});
       await p.key('Escape');
       assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), false, 'Escape closes the line');
       const before = await view('memory_items', {owner_scope:scope});
       assert.equal(before.items.some(item => item.title==='Cancelled notes'), false, 'Escape creates nothing');
-      await press(button);
+      if (phone) await press(button);
+      else {
+        // The keys reach it too: Escape gives the focus back to the pencil, and Return presses it.
+        assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(button)})`), true, 'Escape gives the focus back to the pencil');
+        await p.key('Enter');
+      }
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(input)})`), 'the line opens again, focused');
       await p.key('a', 4);
       await p.send('Input.insertText', {text:name});
       await p.key('Enter');

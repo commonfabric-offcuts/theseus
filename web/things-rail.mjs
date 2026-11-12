@@ -231,6 +231,7 @@ export class ThingsRail {
     this.close(false);
     this.host.hidden = !feed;
     this.unlisten?.(); this.unlisten = null; this.handles = null;
+    this.notebookCreate?.remove(); this.notebookCreate = null;
     this.serial += 1;
     this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';
     this.paintHead(); this.clear();
@@ -250,6 +251,13 @@ export class ThingsRail {
     this.scope = handles.route.kind === 'topic' ? 'topic' : 'outcome';
     this.paintHead(); this.clear();
     this.unlisten = handles.live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') this.changed(); }) ?? null;
+    // A topic's new Notebook page starts from the pencil beside this section's
+    // heading (docs/notebook-pages.md); it shows while the topic's own pages do,
+    // and goes as the next run begins.
+    if (handles.route.kind === 'topic' && handles.topic) {
+      this.notebookCreate = handles.notebookCreate?.(this.sections.get('notebook').details, { kind: 'topic', id: handles.topic.id }) ?? null;
+      this.notebookCreate?.setAvailable(false);
+    }
     this.stale = true;
     if (this.shows()) this.reload();
   }
@@ -274,6 +282,7 @@ export class ThingsRail {
   // with its words, until this one's read lands.
   clear() {
     for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
+    this.notebookCreate?.setAvailable(false);
     this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
     this.drawnOnce = false; this.holder.setAttribute('aria-busy', 'true');
   }
@@ -322,7 +331,7 @@ export class ThingsRail {
     const images = new Map();
     for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
     const conversation = found.find(read => read.value?.place.conversation)?.value.messages ?? [];
-    this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value?.items ?? (notes.error ? undefined : []),
+    this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value === null ? null : notes.value?.items ?? (notes.error ? undefined : []),
       messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation, stars: starred.value?.items ?? (starred.error ? undefined : []) });
     this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
     this.message.hidden = this.retry.hidden = !failed.length;
@@ -371,6 +380,7 @@ export class ThingsRail {
     const reader = this.handles.bootstrap.actor, nowMs = clock.now();
     const items = found.pipeline ? this.pipelineRows(found.pipeline, found.byTopic ? found.topicId : null) : null;
     const { previews, prs } = thingsIn(found.messages);
+    if (found.notebook !== undefined) this.notebookCreate?.setAvailable(found.byTopic && found.notebook !== null);
     const shown = {
       starred: found.stars === undefined ? undefined : this.starredSection(found.stars, found, reader),
       pipeline: found.pipeline === undefined ? undefined : this.pipelineSection(items, found, nowMs),
@@ -388,7 +398,8 @@ export class ThingsRail {
       const appears = part.details.hidden && Boolean(section);
       part.details.hidden = !section;
       if (!section) { part.drawn = null; part.body.replaceChildren(); continue; }
-      if (key !== 'tools') any = true;
+      // Skills and tools, and an empty Notebook kept for its pencil, are not something the place refers to.
+      if (key !== 'tools' && section.key !== 'note-none') any = true;
       part.sum.textContent = section.sum;
       if (part.drawn !== section.key) {
         part.drawn = section.key;
@@ -471,7 +482,10 @@ export class ThingsRail {
       element(doc, 'p', { className: 'things-quiet', textContent: 'Only you see your stars.' })) };
   }
   notebookSection(items, found) {
-    if (!items.length) return null;
+    if (!items?.length) {
+      // An empty topic Notebook keeps its heading, and with it the pencil that starts its first page.
+      return items && this.notebookCreate?.available ? { sum: '', key: 'note-none', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'No pages yet.' }) } : null;
+    }
     const doc = this.doc, scope = found.byTopic ? { kind: 'topic', id: found.topicId } : { kind: 'workspace', id: this.handles.workspaceId };
     return { sum: String(items.length), key: JSON.stringify(['note', scope, items.map(item => [item.id, item.title, item.revision, item.read_revision])]), node: () => element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
       const link = this.placeLink({ ...scope, page: item.id }, item.title || 'Notebook page');

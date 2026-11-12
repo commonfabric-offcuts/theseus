@@ -88,7 +88,9 @@ says so in one quiet line.
 - **Waiting for…** is the Now and Next items the reader raised, at their
   stage, and the reader's Conversation posts nobody has taken up yet.
 - **Notebook pages** come from `memory_items`: the topic's own pages on a
-  topic, the outcome's otherwise, each with its light.
+  topic, the outcome's otherwise, each with its light. On a topic its heading
+  carries the pencil that starts a new page there (docs/notebook-pages.md), so
+  it shows with No pages yet when the topic has none.
 - **Previews and pull requests** are links people posted in messages: a
   build on the tailnet or this machine, or an address that names a preview or
   a mockup, and GitHub pull requests. On a whole outcome they come from its

@@ -147,7 +147,12 @@ Reader's ⋯ copying both links.
 
 ## Start a page (296)
 
-A pencil beside a Notebook heading opens a single title line in place. Return
+A pencil beside a Notebook heading opens a single title line in place: the
+outcome's beside Outcome Notebook in the outline, a topic's beside the
+Notebook section of the right rail, which then shows for the topic even before
+it has a page (its one line says No pages yet) and opens if it was folded. The
+rail shows the topic's pencil only while it lists that topic's own pages, not
+the whole outcome's. Return
 creates an empty page in that exact outcome or topic using `memory.create`
 with item revision zero, then opens Cards with the first card ready to write.
 Escape or a press outside closes the line. The author, owner scope and item

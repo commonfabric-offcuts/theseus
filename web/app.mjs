@@ -1804,7 +1804,6 @@ async function initialize() {
     open: (ref, row) => run(() => openSource(ref, row)),
     seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
   });
-  notebookCreator($('notebook'), {kind:'topic',id:topic.id});
   // The rail shows only this topic's outcome. A message's Add to pipeline
   // follows the Pipeline row's read.
   const pipeline = pipelineSection(topic.workspace_id, false, paintReaderMark); pipelineRow = pipeline.row;
@@ -1858,8 +1857,8 @@ async function initialize() {
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
     open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
-    // The rail's Starred takes a star off (stack-feed.mjs).
-    unstar: star => stackFeed?.unstar(star) });
+    // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages.
+    unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   if (anchored) {
