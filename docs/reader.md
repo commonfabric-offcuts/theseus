@@ -213,6 +213,11 @@ above it, focused and ready to type. It is the only control it adds to the
 page. ✕, Escape or a press on the backdrop closes it, keeping what was
 written, and focus returns to ✎.
 
+A Notebook page opened as it stands comes up in the same sheet, with the
+page's title, Text and Cards, its saving sign, Full page and ✕ in place of the
+message's (docs/decks.md, "Where it opens"). A card's reply stack opens here in
+the Reader, whose header then leads back to the page ("← page title").
+
 ## What the checks see
 
 `tests/reader_compose_native.mjs` runs in Chrome for Testing and in

@@ -932,3 +932,38 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
+/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the New message sheet, tall, its head one line on a laptop (title, Text / Cards, the saving sign, Full page, ✕), the page below it the one place that scrolls; on a phone the head takes two lines and a card fills what is left, swiped through as on the full page. */
+dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - 3rem);overflow:hidden}
+.notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
+.notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:"title views status full close";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
+.notebook-sheet-title{grid-area:title;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notebook-sheet-views{grid-area:views}.notebook-sheet-status{grid-area:status;min-width:0;max-width:16rem}.notebook-sheet-full{grid-area:full}.notebook-sheet-close{grid-area:close}
+.notebook-sheet-status .deck-status{min-height:0;flex-wrap:nowrap}.notebook-sheet-status .deck-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notebook-sheet-views .notebook-views{gap:.25rem}
+.notebook-sheet-views .notebook-views button{min-height:2.25rem;padding:.2rem .8rem;border-radius:999px;font-size:.85rem;background:transparent}
+.notebook-sheet-views .notebook-views button[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--ink);font-weight:600}
+.sheet-glyph{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:0;padding:0;border:0;border-radius:.5rem;background:transparent;color:var(--muted);font-size:1.05rem;text-decoration:none}
+.sheet-glyph:hover{background:var(--soft);color:var(--ink)}
+.notebook-sheet-pages{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--paper)}
+.notebook-sheet-page{flex:1;min-height:0;max-width:none;scroll-padding-top:3.5rem;display:flex;flex-direction:column;gap:.6rem;overflow:auto;overscroll-behavior:contain;padding:0 1.1rem 1.1rem}
+.notebook-sheet-page>*{flex:none}
+.notebook-sheet-page>.deck-bar{position:sticky;top:0;z-index:2;padding:.55rem 0 .35rem;background:var(--paper)}
+.notebook-sheet-page>.notebook-text-panel:not([hidden]){flex:1 1 auto;display:flex;min-height:10rem;padding-top:.75rem}
+.notebook-sheet-page .notebook-text{flex:1;min-height:0;height:auto;resize:none}
+.notebook-sheet-page>.notebook-images:has(.notebook-image-rows:empty){display:flex;justify-content:flex-end;margin-bottom:-.4rem}
+.notebook-sheet-page>.notebook-images>button{min-height:2.25rem;padding:.15rem .7rem;font-size:.8rem;border-color:transparent;background:transparent;color:var(--muted)}
+.notebook-sheet-changes{padding-top:.75rem}.notebook-sheet-changes>.source-changes{margin:0}.notebook-sheet-changes-body{padding:0 .7rem .6rem;overflow-wrap:anywhere}.notebook-sheet-changes>.notice{margin:0}
+.notebook-sheet-page .deck-keys>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
+@media(pointer:coarse){.notebook-sheet-views .notebook-views button{min-height:2.75rem}.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}}
+@media(max-width:760px){
+  dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - .75rem)}
+  .notebook-sheet-head{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"title full close" "views status status";padding:.3rem .35rem .45rem 1rem}
+  .notebook-sheet-status{max-width:none;justify-self:end}
+  .notebook-sheet-page{padding:0 .75rem .75rem}
+  .notebook-sheet-page>.deck-cards{flex:1 1 auto;min-height:0;align-items:stretch}
+  .notebook-sheet-page .deck-card{min-height:0;max-height:none}
+  .notebook-sheet-views .notebook-views button,.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}
+  .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
+  .notebook-back{max-width:9rem}
+}

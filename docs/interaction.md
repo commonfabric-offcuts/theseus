@@ -73,6 +73,11 @@ the pointer's way, the keys' and the phone's.
   composer on its own, with no message above it and the cursor in the field;
   Escape, ✕ or a press outside puts it back at the page's end with the writing
   kept. (docs/reader.md)
+- **A Notebook page** opens in that sheet, over the feed, from wherever it is
+  listed or linked as it stands; ✕, Escape (a second one while a card is
+  written) or a press outside closes it, keeping a card half written, and puts
+  the feed and the focus back. While it shows the keys and the wheel are its
+  own and never move the feed. (docs/decks.md, "Where it opens")
 - **👍** means read and understood, never "do it"; pressing it again takes it
   back. It marks that message read at once, even one marked unread, and only
   that one: its card, the counts and the New line follow, here and on every

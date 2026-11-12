@@ -152,9 +152,11 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       // it is modal and a press on the card behind it lands on the Reader.
       await p.point('#reader-close');
       await until(()=>p.evaluate('!document.querySelector("#reader").open'),'Reader closed');
-      await p.evaluate(`document.querySelector('#memory-items .memory-card').scrollIntoView({block:'center'})`);
-      await p.point('#memory-items .memory-card');
-      await until(()=>p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#reader-origin').textContent.includes('Notebook')`),'Notebook source open');
+      // A Notebook page is read in the Reader at a revision (as it stands it opens in the composer, docs/decks.md).
+      const notebookItem=await p.evaluate(`document.querySelector('#memory-items .memory-card').dataset.id`);
+      const notebookRevision=(await view('memory_current',{item_id:notebookItem})).source_ref.revision;
+      await p.send('Page.navigate',{url:`${facts.origin}/?topic=t1&page=${encodeURIComponent(notebookItem)}&revision=${notebookRevision}`});
+      await until(()=>p.evaluate(`document.body.dataset.ready==='true'&&document.querySelector('#reader').open&&document.querySelector('#reader-origin').textContent.includes('Notebook')`),'Notebook source open');
       expect((await style('.reading-pane')).background===neutral[theme],theme+': a Notebook page is read on the neutral page');
       assert.match(await p.evaluate(`document.querySelector('#reader-origin').textContent`),/Notebook · revision/,'Notebook provenance intact');
       await p.point('#reader-close');
