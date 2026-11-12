@@ -3,7 +3,7 @@
 Owner: auditor. Source: Tony's New Charter topic,
 `t-314359e63ef84d59ace7349c3a167221`, especially 2448, 2450, 2453 and 2455.
 Implementation tracking: Building Theseus item **405**, created and read back.
-Snapshot: 12 November 2026. Update this record when evidence changes; do not
+Snapshot: 12 November 2026, 13:44 Pacific (status request #2481). Update this record when evidence changes; do not
 interpret a planned step as installed behavior or infer approval from silence.
 
 ## Finish the existing delivery commitments
@@ -11,17 +11,26 @@ interpret a planned step as installed behavior or infer approval from silence.
 Fable retains ownership of the active UX work and live deployment. The last
 verified live release is 64, `e710d88`, at 05:12 Pacific. Current scoped work:
 
-- 379, keyboard selection margin: waiting to combine; not yet live.
-- 355, move dossiers below More: the board's stage label says Build round 5,
-  while its latest note describes round 7 and an independent re-review. Report
-  that inconsistency rather than inventing a clean completion status.
-- 396, Notebook cards in composer: feel accepted, production work still active.
+- 379, keyboard selection margin: independently approved at 10:21 and waiting
+  to combine since then; not yet live. Identify any concrete dependency that
+  prevents this approved change shipping separately from 355.
+- 355, move dossiers below More: the board's stage label says Review round 8,
+  while its latest note describes round 10 repairs. Fable's note reports 19
+  further visibility problems: 12 also fail on live and are filed as 407-410;
+  seven belong to 355 and are being fixed. That is attributed builder evidence,
+  not a fresh independent audit. The candidate is not ready to ship.
+- 396, Notebook cards in composer: feel accepted; review sent it back at 13:33
+  and Build round 2 is active.
 - Remaining agreed UX feel batch: 376; 377/381/388/390/393/394;
   385/386/387; 382/384/389. Some are represented by grouped work rather than
-  separate stage records. Scope is the agreed batch, not the whole Now list.
+  separate stage records. Group 377 entered Review round 1 at 13:40; 376 still
+  displays Feel preview. Scope is the agreed batch, not the whole Now list.
 - 402, agent replies stay in the request stack: final candidate `7c88d23`
   independently approved and pushed; Fable has the handoff for after the current
   UX batch. Auditor owns post-deploy instruction and actual-task verification.
+- 406, the composer's personal thumbs-up action must not display everyone
+  else's reaction count: filed in Next with source screenshot, confirmed cause
+  and acceptance checks. Auditor owns tracking; implementation has not started.
 
 The charter, assessment tooling and a later agent migration must not become
 prerequisites for these releases. Independently finished work can ship when its
@@ -75,6 +84,9 @@ their specific evidence is linked; a Markdown rule does not implement a dispatch
 - This establishes a usable local procedure and limited behavioral evidence. It
   does not establish real-team performance, a deployed Theseus trigger, automatic
   checkpoint monitoring, or installation in the hosted worker's separate home.
+- At the 13:44 status check, steps 2-4 have not advanced. Item 405 remains Next;
+  there is no dispatcher implementation in progress. Keep that gap explicit:
+  responding to deliveries and recording plans are not implementation progress.
 
 ## Put the new charter into practice
 
@@ -103,15 +115,22 @@ that add ceremony without demonstrated benefit; do not erase failing evidence.
 ## Hosted runtime capacity and continuity
 
 The existing Codex worker is hosted and retains its pinned thread; this is not a
-new hosting build. On 12 November its separate sign-in remained valid after the
-desktop account switch, but the account reported 100% weekly usage, resetting
-16 November at 15:00 Pacific. Evidence:
+new hosting build. An earlier 12 November probe found its separate sign-in valid
+after the desktop account switch but reported 100% weekly usage. That was a
+point-in-time account response, not proof that later work could not run. Evidence:
 `auditor/2026-11-12/account-switch-worker-check.json` under the local Theseus directory.
 
-To use another account's capacity sooner requires a separate hosted-runtime sign-in
-with Tony. Do not infer that desktop login changes or permission to inspect authorize
-credential copying or a worker account migration. Preserve the existing context
-and binding; after an authorized login, prove a real turn completes on the same
-thread. Changing accounts is not a prerequisite for writing the skill or rollout
-record. Automatic cross-model team provisioning and migration of existing seats
-come after a successful bounded trial, not before UX delivery.
+Subsequent actual work supersedes that earlier operational blocker: posts 2461-2479
+show the worker making and revising the standalone dossier study and delivering
+its implementation research. Health at 13:44 reports idle, zero waiting, no
+failure and a completed run at 12:00 on the same pinned thread
+`01a1cee9-add2-7730-88e0-68d75183f9c6`. The research handoff is docs-only commit
+`778ba1b605145f880f90f8b99a46cce7367836ea`; auditor has read the delivery report,
+not independently reviewed that document or approved production implementation.
+
+No new sign-in is currently a demonstrated dependency. The account/quota mechanism
+behind the recovery has not been rechecked; do not claim a particular account or
+allowance changed. Do not copy credentials or migrate the worker's account based
+on a desktop login change. Preserve its context and binding. Automatic cross-model
+team provisioning and migration of existing seats remain later work. The visual
+study is useful hosted work, not a formally instrumented charter trial.
