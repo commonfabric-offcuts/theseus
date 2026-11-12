@@ -1306,4 +1306,109 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
   else observations.push({ name: 'stacks swipe', engine, held: 'Safari\'s engine in this harness has a tap but no finger drag: the swipe is checked in Chrome' });
+
+  // A trackpad's two-finger swipe reaches the page as wheel events, sideways. With macOS's natural scrolling, fingers moving
+  // right give a negative deltaX: a run of events close together, then the smaller ones of the momentum after the fingers lift.
+  await check('reading stacks on a laptop two fingers swiped right on the trackpad fold a reply once, swiped left unfold it, and a scroll, a sideways table or a star folds nothing', async () => {
+    const topic = 'stack-trackpad';
+    const table = ['| ' + Array.from({ length: 14 }, (_, i) => `Column ${i} heading`).join(' | ') + ' |', '|' + ' --- |'.repeat(14),
+      '| ' + Array.from({ length: 14 }, (_, i) => `cell ${i} with words`).join(' | ') + ' |'].join('\n');
+    const tall = Array.from({ length: 8 }, (_, i) => `Line ${i} of a message that makes the page taller than the window.`).join('\n');
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, unread.' }],
+      ['wide', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A wide table, unread:\n\n' + table }],
+      ['kept', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply kept, starred.' }],
+      ...[1, 2, 3, 4, 5].map(n => ['tall' + n, { sender: other, addressees: [facts.actor], body: `Message ${n} on its own.\n${tall}`, read: true }])]);
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.kept, operation_id: topic + '-star', args: { starred: true } });
+    // Every wheel event the window hears, after the feed has had it: its deltas and whether the page took it from the browser.
+    const heard = `addEventListener('wheel',e=>{(window.wheels??=[]).push({x:e.deltaX,y:e.deltaY,prevented:e.defaultPrevented})},{passive:true})`;
+    const p = await open('stack-trackpad', 'laptop', topic, ids.root, heard);
+    // The stack fully open, every reply in view; each new document opens it again.
+    const fullyOpen = async () => {
+      const toggle = `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`;
+      if ((await look(p, ids, 'root')).fold !== 'open') { await centre(p, toggle); await press(p, 'laptop', toggle); }
+      await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'wide', 'kept'], 'the stack fully open, every reply in view');
+    };
+    await fullyOpen();
+    const where = await p.evaluate('JSON.stringify([location.href, history.length])');
+    const folds = () => p.evaluate(`window.sent.filter(kind=>kind==='message.fold').length`);
+    const wheels = () => p.evaluate(`(window.wheels??[]).splice(0)`);
+    const RIGHT = [[-30, 0], [-30, 0], [-30, 0], [-30, 0], [-18, 0], [-10, 0], [-5, 0], [-2, 0], [-1, 0]];
+    const LEFT = RIGHT.map(([x, y]) => [-x, y]);
+    // Fingers that come back to the left before they lift, in the same swipe, further than a swipe left goes.
+    const BACK = Array.from({ length: 8 }, () => [30, 0]);
+    // Fingers on the trackpad over a target, the pointer resting on it; done when the window has heard every delta.
+    const fingers = async (selector, steps, modifiers = 0) => {
+      await centre(p, selector);
+      const b = await p.box(selector), x = b.x + b.width / 2, y = b.y + Math.min(b.height / 2, 20);
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      for (const [deltaX, deltaY] of steps) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY, modifiers });
+      const sum = steps.reduce((s, [dx, dy]) => [s[0] + dx, s[1] + dy], [0, 0]);
+      const got = [];
+      await until(async () => { got.push(...await wheels()); return got.reduce((s, w) => s + w.x, 0) === sum[0] && got.reduce((s, w) => s + w.y, 0) === sum[1]; }, `the window heard the gesture over ${selector}`);
+      return got;
+    };
+    // A new document is a new gesture: what the page heard of the last one goes with it.
+    const reload = async () => {
+      const origin = await p.evaluate('performance.timeOrigin');
+      await p.send('Page.reload');
+      await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(card(ids.kept))}))`).catch(() => false), 'the page loads again');
+      await fullyOpen();
+    };
+
+    // Two fingers right over reply one fold it, once: neither the momentum after it nor the fingers coming back
+    // before they lift folds it again or unfolds it.
+    const right = await fingers(card(ids.one), [...RIGHT, ...BACK]);
+    await until(async () => await foldOf(topic, ids.one), 'two fingers right: reply one is folded, in Core');
+    await becomes(async () => (await folded(p, ids.one)).row, true, 'and it is its one row');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    assert.equal(await folds(), 1, 'one swipe, momentum and coming back and all, sent one fold');
+    assert.equal(await foldOf(topic, ids.one), true, 'and it stays folded');
+    assert.ok(right.length > 0 && right.every(w => w.prevented), `the page took every event of the sideways swipe from the browser: ${JSON.stringify(right)}`);
+    assert.equal(await p.evaluate(`getComputedStyle(document.documentElement).overscrollBehaviorX`), 'none', 'over the feed a sideways overscroll goes back to no page');
+    assert.equal(await p.evaluate('JSON.stringify([location.href, history.length])'), where, 'the page went nowhere');
+    // Folded is the reader's: after a reload it is still folded, and two fingers left over its row unfold it.
+    await reload();
+    await becomes(async () => (await folded(p, ids.one)).row, true, 'after a reload reply one is still folded');
+    await fingers(card(ids.one), LEFT);
+    await until(async () => !await foldOf(topic, ids.one), 'two fingers left over its row unfold it, in Core');
+    await becomes(async () => (await folded(p, ids.one)).whole, true, 'and it reads whole');
+    // A scroll down that drifts to the right scrolls the page and folds nothing; the page leaves it to the browser.
+    await reload();
+    await centre(p, card(ids.one));
+    const top = () => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).getBoundingClientRect().top`);
+    const before = await top();
+    const down = await fingers(card(ids.one), [[-25, 80], [-25, 80], [-25, 80], [-25, 80], [-25, 80]]);
+    await until(async () => before - await top() > 100, 'the scroll moves the page');
+    assert.equal((await folded(p, ids.one)).whole, true, 'a scroll folds nothing');
+    assert.ok(down.every(w => !w.prevented), `the page left every event of the scroll to the browser: ${JSON.stringify(down)}`);
+    // Two fingers over a table wider than its card scroll the table, and fold nothing.
+    await reload();
+    const wrap = `${card(ids.wide)} .md-table-wrap`;
+    const left = () => p.evaluate(`document.querySelector(${JSON.stringify(wrap)}).scrollLeft`);
+    await until(() => p.evaluate(`(e=>e.scrollWidth-e.clientWidth>200)(document.querySelector(${JSON.stringify(wrap)}))`), 'the table is wider than its card');
+    await centre(p, wrap);
+    await p.evaluate(`document.querySelector(${JSON.stringify(wrap)}).scrollLeft=200`);
+    await until(async () => await left() === 200, 'the table scrolled sideways');
+    const sideways = await fingers(wrap, RIGHT);
+    await until(async () => await left() < 200, 'the swipe scrolls the table back');
+    assert.deepEqual([(await folded(p, ids.wide)).whole, (await look(p, ids, 'root')).rows], [true, ['one', 'wide', 'kept']], 'a swipe on the table folds nothing');
+    assert.ok(sideways.every(w => !w.prevented), `the page left every event over the table to the browser: ${JSON.stringify(sideways)}`);
+    // A starred message is not folded.
+    await reload();
+    await fingers(card(ids.kept), RIGHT);
+    assert.equal((await folded(p, ids.kept)).whole, true, 'two fingers right over a starred message fold nothing');
+    assert.equal(await folds(), 0, 'and send no fold');
+    assert.equal(await foldOf(topic, ids.kept), false, 'Core holds no fold');
+    // The wheel with Ctrl held zooms, and folds nothing. Safari's engine in this harness turns the wheel with no keys held.
+    if (engine === 'chrome') {
+      await reload();
+      await fingers(card(ids.one), RIGHT, 2);
+      assert.equal((await folded(p, ids.one)).whole, true, 'two fingers right with Ctrl held fold nothing');
+      assert.equal(await folds(), 0, 'and send no fold');
+    }
+    assert.equal(await p.evaluate('JSON.stringify([location.href, history.length])'), where, 'the page went nowhere through it all');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }
