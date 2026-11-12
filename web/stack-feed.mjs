@@ -14,7 +14,7 @@
 // stack is folded is the page's own.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, reveal, renameInput, unkeep } from './reply-stacks.mjs';
-import { moveOf, joinOf, foldStep, shown, laterActs } from './stack-order.mjs';
+import { moveOf, joinShown, foldStep, shown, laterActs } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
 
@@ -149,13 +149,17 @@ export class StackFeed {
   }
   // The message's entry, its stack and its card.
   entryFor(id) { return entries(this.list).find(entry => entry.dataset.id === id) ?? null; }
-  focusOn(id) {
+  // Puts the keys on a message, or on its stack's head when the stack folds it
+  // away, and scrolls it into view only as far as it needs. above: something
+  // over it to bring into view with it where both fit (a join line).
+  focusOn(id, { above = null } = {}) {
     const entry = this.entryFor(id);
     if (!entry) return;
     const target = entry.hidden ? this.entryFor(stackOf(this.list, entry)?.stack.id) : entry;
     if (!target) return;
     const card = cardIn(target), stop = card.hidden ? target.querySelector?.('.fold-line') ?? card : card;
     stop.focus({ preventScroll: true });
+    above?.scrollIntoView?.({ block: 'nearest' });
     target.scrollIntoView?.({ block: 'nearest' });
   }
   star(item) {
@@ -230,15 +234,26 @@ export class StackFeed {
     this.remember(() => { this.act('stack.place', item, { key: before }); this.arrange(); });
     this.arrange(); this.say('New replies move it again');
   }
+  // A join from the keys, ⋯ or the phone's sheet shows where it went
+  // (joinShown): the stack it goes into is drawn open, and the keys stay on the
+  // message acted on, brought into view with its join line. ⌘Z puts back how
+  // far that stack was folded too. A join from anyone else opens nothing.
   join(entry, way) {
     const found = stackOf(this.list, entry);
     if (!found) return;
-    const target = joinOf(this.state.stacks, found.index, way);
-    if (!target) { this.say(way === 'up' ? 'No stack above to join' : 'No stack below to join'); return; }
-    const item = this.messages().get(found.stack.id), before = this.actsOf(item.id).joined?.into ?? null;
-    this.act('stack.join', item, { into: target.id });
-    this.remember(() => { this.act('stack.join', item, { into: before }); this.arrange(); this.focusOn(item.id); });
-    this.arrange(); this.focusOn(item.id);
+    const shows = joinShown(this.state.stacks, found.index, way, entry.dataset.id);
+    if (!shows) { this.say(way === 'up' ? 'No stack above to join' : 'No stack below to join'); return; }
+    const state = this.state, was = state.levels.get(shows.open);
+    const item = this.messages().get(shows.act.id), before = this.actsOf(item.id).joined?.into ?? null;
+    this.act('stack.join', item, { into: shows.act.into });
+    this.remember(() => {
+      this.act('stack.join', item, { into: before });
+      if (was === undefined) state.levels.delete(shows.open); else state.levels.set(shows.open, was);
+      this.arrange(); this.focusOn(item.id);
+    });
+    state.levels.set(shows.open, shows.level);
+    this.arrange();
+    this.focusOn(shows.select, { above: [...this.list.querySelectorAll('.stack-join-line')].find(line => line.dataset.join === item.id) });
     this.say(`Joined to the stack ${way === 'up' ? 'above' : 'below'}, for everyone here`);
   }
   split(shownItem) {
