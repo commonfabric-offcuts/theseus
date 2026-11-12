@@ -1048,6 +1048,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  await check('reading stacks a sent reply stays visible when its answer arrives', async () => {
+    const topic = 'stack-sent-answer';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A question I am reading.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one'], 'the unread question is visible');
+    ids.mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor,
+      reply_to: ids.one, addressees: [other], body: 'My reply must stay while I read the answer.' })).result.message_id;
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'mine'], 'my sent reply joins the question');
+    await until(async () => (await actsOf(topic, ids.mine))?.dealt === true, 'my reply is dealt with before the answer arrives');
+    ids.answer = (await control({ method: 'agent_message', operation_id: topic + '-answer', topic_id: topic, source: 'topic', sender: other,
+      reply_to: ids.mine, addressees: [facts.actor], body: 'The answer to your reply.' })).result.message_id;
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'mine', 'answer'], 'the answer does not hide my intervening reply');
+    assert.equal((await look(p, ids, 'root')).full, false, 'retaining my reply does not expand the original');
+    await keyTo(p, ids.root); await p.key('ArrowLeft');
+    await becomes(async () => (await look(p, ids, 'root')).fold, 'head', 'I explicitly close the stack');
+    await p.key('ArrowRight');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['answer'], 'opening latest/unread again clears the temporary retention');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks a reply arriving replaces the read latest in the partial view', async () => {
     const topic = 'stack-arrive';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],

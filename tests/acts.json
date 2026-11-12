@@ -3176,6 +3176,15 @@
    }
   },
   {
+   "item": 357,
+   "act": "A reply sent in the current view stays beside its answer until the reader resets the stack state",
+   "break": [["web/stack-feed.mjs", "      this.state.kept.add(item.id);", "      // Own reply retention removed."]],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a sent reply stays visible when its answer arrives"
+   }
+  },
+  {
    "item": 256,
    "act": "A card a join or a move carries into another place keeps its table scrolled sideways",
    "break": [

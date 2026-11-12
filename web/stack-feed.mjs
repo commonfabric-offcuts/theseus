@@ -184,7 +184,12 @@ export class StackFeed {
     this.arrange();
     const newest = items.reduce((most, item) => Math.max(most, item.seq), 0);
     if (this.newestSeen === null) { this.newestSeen = newest; return; }
-    for (const item of items) if (item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || this.actsOf(item.id).joined)) this.deal(item);
+    for (const item of items) if (item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || this.actsOf(item.id).joined)) {
+      // Own replies are never unread. Keep one sent in this view beside its
+      // answer until an explicit state change or return clears retention.
+      this.state.kept.add(item.id);
+      this.deal(item);
+    }
     this.newestSeen = Math.max(this.newestSeen, newest);
   }
   thumbed(item) { if (stackOf(this.list, this.entryFor(item.id))?.head === false) this.deal(item); }
