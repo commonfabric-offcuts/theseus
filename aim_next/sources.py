@@ -49,8 +49,8 @@ class Sources:
     def _source_message(self, db, actor, message_id):
         """A source the actor can read, by its id."""
         found = self._message_access(db, actor, _identifier(message_id, "source_message_id"))["id"]
-        # A whisper is never a topic's source: the topic would carry it onto the record.
-        private_source_refused(db, found)
+        # An agent's whisper is never a topic's source; a person's may be, to its two people, as their Tell may.
+        private_source_refused(db, actor, found)
         return found
 
     def _unseen_from_source(self, db, actor, message_id, seen):

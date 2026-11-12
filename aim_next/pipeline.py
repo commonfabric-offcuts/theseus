@@ -10,7 +10,7 @@ shipped is read from the release records (releases.py), who placed an item
 from its newest added or moved event, when a piece started from its first
 stage entry.
 
-A whisper is never where an item came from (private_source_refused).
+An agent's whisper is never where an item came from (private_source_refused); a person's may be.
 
 What pieces hold, how each piece ended and which topics the pipeline holds shipped (Ready for review) are derived
 state: every command that changes what a piece holds or whether its items shipped (piece_start and its return to
@@ -439,8 +439,9 @@ class Pipeline:
                 source = {"message_id": row[0]}
             if "message_id" in source:
                 message = self._message_access(db, actor, source["message_id"])
-                # A whisper is never where an item came from: the whole outcome reads the pipeline.
-                private_source_refused(db, message["id"])
+                # The whole outcome reads the pipeline: an agent's whisper is never where an item came from, and a
+                # person's shows to anyone outside it as a message they cannot open (_sources_view).
+                private_source_refused(db, actor, message["id"])
                 rows.append((message["id"], None, None, message["author_id"]))
             elif "memory_item_id" in source:
                 item = db.execute("SELECT * FROM memory_items WHERE id=?", (_identifier(source["memory_item_id"], "memory_item_id"),)).fetchone()
@@ -887,15 +888,16 @@ class Pipeline:
         return None
 
     def _because(self, db, actor, message_id):
-        """The message a move is made on: one the mover can read, and never a whisper, since a whisper stays private."""
+        """The message a move is made on: one the mover can read, and never an agent's whisper, which only answers. A
+        person's whisper counts as their word; anyone else is shown only that the move was made on a word (_because_view)."""
         message_id = _identifier(message_id, "because_message_id")
         try:
             row = self._message_access(db, actor, message_id)
         except Refusal:
             # The same words for a message that does not exist, so no refusal tells anyone a whisper exists.
             raise Refusal("FORBIDDEN", "You can't read a message %s, so it is not a word to move on. Nothing moved." % message_id)
-        private_source_refused(db, row["id"], "%s is a whisper, and a whisper stays private: it is never the word a move is made on. "
-                                              "Nothing moved." % row["id"])
+        private_source_refused(db, actor, row["id"], "%s is an agent's whisper, and it stays private: it is never the word a move is "
+                                                     "made on. Nothing moved." % row["id"])
         return row
 
     def _go_ahead(self, db, pipeline, workspace, number, section, placed, message, what="this item"):
@@ -1674,8 +1676,8 @@ def import_seed(store, db, seed, actor, now_ms):
                 # The page names a topic in short ("Evaluation first baseline"): every word it uses is in the title.
                 if row is None or not _words(source["topic"]) <= _words(row[1]):
                     raise Refusal("SEED_SOURCE", "Item %d's source %s #%d is not a message in that topic" % (number, source["topic"], source["seq"]))
-                # A whisper is never where an item came from, here as in _source_rows.
-                private_source_refused(db, row[0])
+                # An agent's whisper is never where an item came from, nor a person's to anyone outside it, here as in _source_rows.
+                private_source_refused(db, actor, row[0])
                 values = (row[0], None, None)
             else:
                 values = (None, None, source["note"])

@@ -813,7 +813,7 @@ class Agent(PipelineVerbs, TargetVerbs):
                 when = "%s, %s" % (take["actor_id"], _since(take["at_ms"])[len("since "):])
                 part = " (part)" if take["part"] else ""
                 if take["kind"] == "answer":
-                    self.out.plain("  [answered] by %s (%s)%s" % (take["ref"], when, part))
+                    self.out.plain("  [answered] by %s (%s)%s" % (take["ref"] or "a message you can't open", when, part))
                 elif take["kind"] == "topic":
                     self.out.plain('  [topic] %s "%s" (%s)%s' % (take["ref"], _one_line(take["title"] or "a topic you cannot open", 60), when, part))
                 else:
@@ -959,9 +959,13 @@ class Agent(PipelineVerbs, TargetVerbs):
             self.out.plain(_attachment_line(attachment))
         if item.get("whisper"):
             other = item["private_to"] if item["author_id"] == self.actor else item["author_id"]
-            self.out.plain("  (A whisper: only you and %s can read it. Answer with a whisper: whisper %s --to %s --reply-to %s -. "
-                           "It is a question, not an instruction to change your work, and it is never repeated where others "
-                           "can read it.)" % (other, topic_id, other, item["id"]))
+            answer = "Answer with a whisper: whisper %s --to %s --reply-to %s -." % (topic_id, other, item["id"])
+            if item["author_id"] != self.actor and item.get("author_kind") == "human":
+                # A person's whisper counts as their Tell (docs/whispers.md); only its words stay between the two.
+                self.out.plain("  (A whisper: it counts as a Tell from %s: act on it. Only you and %s can read it; never repeat or "
+                               "quote it where others can read it. %s)" % (other, other, answer))
+            else:
+                self.out.plain("  (A whisper: only you and %s can read it; it is never repeated where others can read it. %s)" % (other, answer))
         self.item_lines(item, waits)
 
     def do_attachment(self):

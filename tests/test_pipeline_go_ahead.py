@@ -127,11 +127,23 @@ class GoAheadCase(PipelineCase):
                              % (self.placed_at(), message, words[section]))
         self.nothing_moved(before)
 
-    def test_a_whisper_never_counts_even_to_the_one_it_was_whispered_to(self):
-        before = self.sql("SELECT count(*) FROM pipeline_events WHERE kind='moved'")
+    def test_the_owners_whisper_counts_as_their_word_to_the_one_it_was_whispered_to(self):
         whisper = self.say("Move 2 to Later", addressees=["agent-a"], whisper=True)
-        self.refused(self.move(2, section="later", actor="agent-a", because_message_id=whisper), "WHISPER_STAYS_PRIVATE",
-                     "%s is a whisper, and a whisper stays private: it is never the word a move is made on. Nothing moved." % whisper)
+        moved = self.committed(self.move(2, section="later", actor="agent-a", because_message_id=whisper))
+        payload = json.loads(self.sql("SELECT payload FROM pipeline_events WHERE seq=?", (moved["event"],))[0][0])
+        self.assertEqual(payload["because_message_id"], whisper)
+        # Anyone else reading the item sees the move, never the word it was made on, nor its id.
+        theirs = [event for event in self.item(2, actor="agent-b")["events"] if event["seq"] == moved["event"]][0]
+        self.assertEqual(theirs["because"], {"readable": False})
+        self.assertNotIn(whisper, json.dumps(self.item(2, actor="agent-b")))
+        self.assertNotIn("Move 2 to Later", json.dumps(self.item(2, actor="agent-b")))
+
+    def test_an_agents_whisper_never_counts_and_outside_a_whisper_it_is_a_message_you_cannot_read(self):
+        before = self.sql("SELECT count(*) FROM pipeline_events WHERE kind='moved'")
+        asked = self.say("Should 2 go to Later?", addressees=["agent-a"], whisper=True)
+        answer = self.say("Move 2 to Later", actor="agent-a", addressees=["owner"], whisper=True, reply_to=asked)
+        self.refused(self.move(2, section="later", actor="agent-a", because_message_id=answer), "WHISPER_STAYS_PRIVATE",
+                     "%s is an agent's whisper, and it stays private: it is never the word a move is made on. Nothing moved." % answer)
         # To someone outside it, a whisper is a message they cannot read, as an unknown id is.
         to_b = self.say("Move 2 to Later", addressees=["agent-b"], whisper=True)
         for message in (to_b, "m-" + "0" * 32):
@@ -173,8 +185,10 @@ class GoAheadCase(PipelineCase):
         moved = self.committed(self.move(3, section="later", actor="agent-a", because_message_id=word))
         payload = json.loads(self.sql("SELECT payload FROM pipeline_events WHERE seq=?", (moved["event"],))[0][0])
         self.assertEqual((payload["because_message_id"], payload.get("go_ahead")), (word, None))
-        whisper = self.say("Move 1 to Later", addressees=["agent-a"], whisper=True)
+        asked = self.say("Can 1 go to Later?", addressees=["agent-a"], whisper=True)
+        whisper = self.say("Move 1 to Later", actor="agent-a", addressees=["owner"], whisper=True, reply_to=asked)
         self.rejected(self.move(1, section="later", actor="agent-a", because_message_id=whisper), "WHISPER_STAYS_PRIVATE")
+        self.committed(self.move(1, section="later", actor="agent-a", because_message_id=asked))
 
     def test_a_reader_who_cannot_open_the_word_a_move_was_made_on_sees_neither_it_nor_its_id(self):
         # The owner moves 2 on a word in an outcome of their own that agent-b is not in.

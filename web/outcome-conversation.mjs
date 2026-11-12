@@ -8,7 +8,6 @@
 import { timeNode } from './times.mjs';
 import { workNote } from './topic-state.mjs';
 import { WRITING_FIELDS, noWriting } from './editor.mjs';
-import { shownChoice } from './whisper-choice.mjs';
 
 const element = (doc, tag, props = {}, ...children) => {
   const node = doc.createElement(tag);
@@ -53,7 +52,9 @@ export function itemTags(message, waits, reader) {
     for (const take of takes) {
       const by = named(take.actor_id, reader);
       if (take.kind === 'answer') {
-        tags.push({ tag: 'Answered', parts: [{ link: `${by === 'you' ? 'your' : `${by}'s`} reply`, message: take.ref }, ' · ', { time: take.at_ms }] });
+        // An answer by whisper, read by someone outside it, says who answered and when, and links nowhere.
+        const reply = take.readable === false ? `${by}, in a message you can't open` : { link: `${by === 'you' ? 'your' : `${by}'s`} reply`, message: take.ref };
+        tags.push({ tag: 'Answered', parts: [reply, ' · ', { time: take.at_ms }] });
       } else if (take.kind === 'topic') {
         const title = take.readable && typeof take.title === 'string' ? { link: take.title, topic: take.ref } : 'a topic you cannot open';
         tags.push({ tag: 'Taken into a topic', parts: [title, ` · ${by}, `, { time: take.at_ms }] });
@@ -223,23 +224,22 @@ export function conversationDestination(host, { topic, conversation, outcome, ch
 // to nobody. keep(editor) keeps an editor's writing on this device.
 //
 // Writing moves as the Reader showed it, so it is the same message where it
-// arrives: the author a reply is offered to counts as named, and with no choice
-// of the person's the default where it was written is written down (D1 makes a
-// reply to one agent a Whisper in a topic, I3 a Tell in the conversation).
-// shown is {kindOf, conversation}: who is an agent, and whether the place left
-// is the conversation.
+// arrives: the author a reply is offered to counts as named, and a choice of
+// the person's goes with it. With no choice the default is a Tell in both
+// places (whisper-choice.mjs), and a whisper is never offered the switch, so
+// nothing is written down for it.
 const NONE = noWriting();
 const chosenImage = entry => entry?.selected !== false && entry?.owner?.kind !== 'submission';
 const imageIn = editor => Boolean(editor.draft.attachments?.length || editor.imageBusy || editor.imageReservation || editor.adopting ||
   editor.uploadOpaque || editor.uploadState && !(Array.isArray(editor.uploadState.entries) && !editor.uploadState.entries.some(chosenImage)));
 const writingIn = editor => imageIn(editor) ||
   WRITING_FIELDS.some(name => name !== 'caret' && JSON.stringify(editor.draft[name] ?? NONE[name]) !== JSON.stringify(NONE[name]));
-export const switchWriting = async (left, there, keep, { kindOf, conversation }) => {
+export const switchWriting = async (left, there, keep) => {
   if (!writingIn(left)) return false;
   if (imageIn(left) || writingIn(there) || there.unavailable || there.conflict || there.authorityRecovery) return true;
   const writing = Object.fromEntries(WRITING_FIELDS.map(name => [name, left.draft[name] ?? NONE[name]]));
   writing.addressees = [...left.offeredAddressees, ...writing.addressees];
-  there.receive({ ...writing, ...shownChoice(writing, writing.addressees, kindOf, { conversation }) });
+  there.receive(writing);
   await keep(there);
   left.edit(noWriting());
   await keep(left);

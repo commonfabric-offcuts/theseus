@@ -33,15 +33,20 @@ function painted(t) {
   return { document, row, field, send, word, paint, radios, line, chosenBy };
 }
 
-test('a message starts as a whisper only when it names exactly one agent, and as a Tell in an outcome\'s conversation', () => {
+test('with no choice of the person\'s a message starts as a Tell, even to one agent; only a reply to a whisper starts as a whisper', () => {
   assert.equal(defaultChoice([], kindOf), 'tell', 'nobody named');
-  assert.equal(defaultChoice(['fable'], kindOf), 'whisper', 'one agent');
+  assert.equal(defaultChoice(['fable'], kindOf), 'tell', 'one agent');
   assert.equal(defaultChoice(['fable', 'warp'], kindOf), 'tell', 'two agents');
   assert.equal(defaultChoice(['cynthia'], kindOf), 'tell', 'one person');
-  assert.equal(defaultChoice(['stranger'], kindOf), 'tell', 'someone whose kind the page does not know');
-  assert.equal(defaultChoice(['fable'], kindOf, { conversation: true }), 'tell', 'in the conversation, even one agent');
+  // Answering a whisper continues the private exchange, with exactly one agent named.
+  assert.equal(defaultChoice(['fable'], kindOf, { answeringWhisper: true }), 'whisper', 'a reply to fable\'s whisper');
+  assert.equal(defaultChoice(['fable', 'warp'], kindOf, { answeringWhisper: true }), 'tell', 'answering a whisper, two agents');
+  assert.equal(defaultChoice(['cynthia'], kindOf, { answeringWhisper: true }), 'tell', 'answering a whisper, a person');
+  assert.equal(defaultChoice(['stranger'], kindOf, { answeringWhisper: true }), 'tell', 'someone whose kind the page does not know');
   // With no choice of the person's own, the writing goes as the default shows.
-  assert.deepEqual(sending({}, ['fable'], kindOf), { whisper: true, intent: null });
+  assert.deepEqual(sending({}, ['fable'], kindOf), { whisper: false, intent: 'tell' }, 'nothing goes private by default');
+  assert.deepEqual(sending({}, ['fable'], kindOf, { answeringWhisper: true }), { whisper: true, intent: null });
+  assert.deepEqual(sending(chosen('whisper'), ['fable'], kindOf), { whisper: true, intent: null }, 'a whisper only when the person presses it');
   assert.deepEqual(sending({}, ['fable', 'warp'], kindOf), { whisper: false, intent: 'tell' });
   assert.deepEqual(sending({}, [], kindOf), { whisper: false, intent: null }, 'a message to nobody neither asks, tells nor whispers');
   assert.deepEqual(sending({ whisper: true }, [], kindOf), { whisper: false, intent: null });
@@ -60,7 +65,7 @@ test('Whisper greys out unless exactly one agent is named, and Ask while nobody 
   assert.equal(f.row.querySelector('.intent-choice').attributes['aria-label'], 'How this is sent');
   f.paint({}, ['fable']);
   assert.deepEqual(Object.fromEntries(Object.entries(f.radios()).map(([key, value]) => [key, [value.checked, value.disabled]])),
-    { whisper: [true, false], tell: [false, false], ask: [false, false] });
+    { whisper: [false, false], tell: [true, false], ask: [false, false] }, 'one agent named: Whisper can be chosen, Tell is on');
   f.paint({}, ['cynthia']);
   assert.deepEqual([f.radios().whisper.disabled, f.radios().whisper.why, f.radios().tell.checked], [true, 'Name one agent to whisper to them.', true], 'a person is never whispered to');
   f.paint({}, ['fable', 'warp']);
@@ -70,13 +75,13 @@ test('Whisper greys out unless exactly one agent is named, and Ask while nobody 
   // A tap on a choice is handed to the composer that owns the draft; a tap on the one already on changes nothing.
   const chip = value => f.row.querySelectorAll('button[data-intent]').find(each => each.dataset.intent === value);
   chip('tell').onclick(); chip('whisper').onclick();
-  assert.deepEqual(f.chosenBy, ['tell']);
+  assert.deepEqual(f.chosenBy, ['whisper']);
   // An arrow moves the choice along the chips, as on round buttons, wrapping at either end, and passes over one that cannot be chosen.
   f.paint({ intent: 'tell' }, ['fable']);
   const key = (value, name) => { let stopped = false; f.row.querySelector('.intent-choice').listeners.keydown({ key: name, target: chip(value), preventDefault: () => { stopped = true; } }); return stopped; };
   assert.equal(key('ask', 'ArrowRight'), true); assert.equal(key('whisper', 'ArrowLeft'), true); assert.equal(key('tell', 'ArrowRight'), true);
   assert.equal(key('tell', 'Enter'), false, 'other keys are the button\'s own');
-  assert.deepEqual(f.chosenBy, ['tell', 'whisper', 'ask', 'ask']);
+  assert.deepEqual(f.chosenBy, ['whisper', 'whisper', 'ask', 'ask']);
   assert.equal(f.document.activeElement, chip('ask'), 'the focus goes with the choice');
   f.paint({ intent: 'ask' }, ['cynthia']);
   key('ask', 'ArrowRight');
@@ -87,12 +92,14 @@ test('the who chip says in words what Send does and who sees it, in the short fo
   const f = painted(t);
   const chip = f.document.createElement('button');
   const words = (draft, names, options = {}) => { f.paint(draft, names, { chip, ...options }); return [chip.textContent, chip.classList.contains('whispering')]; };
-  assert.deepEqual(words({}, ['fable']), ['Whisper to fable · only you two', true]);
+  assert.deepEqual(words({}, ['fable']), ['Tell fable · everyone here', false], 'the default chip');
+  assert.deepEqual(words(chosen('whisper'), ['fable']), ['Whisper to fable · only you two', true]);
+  assert.deepEqual(words({}, ['fable'], { answeringWhisper: true }), ['Whisper to fable · only you two', true], 'a reply to a whisper');
   assert.deepEqual(words({ intent: 'tell' }, ['fable']), ['Tell fable · everyone here', false]);
   assert.deepEqual(words({ intent: 'ask' }, ['fable', 'warp']), ['Ask fable and warp · everyone here', false]);
   assert.deepEqual(words({}, []), ['Everyone here', false]);
   // The short form follows the full sentence the panel shows: who sees it comes from audienceWords, never a second rule.
-  for (const [draft, names] of [[{}, ['fable']], [{ intent: 'tell' }, ['fable']], [{}, []]]) {
+  for (const [draft, names] of [[{}, ['fable']], [chosen('whisper'), ['fable']], [{ intent: 'tell' }, ['fable']], [{}, []]]) {
     const [who] = audienceWords(choiceOf(draft, names, kindOf), names, EVERYONE);
     assert.equal(words(draft, names)[0].endsWith('only you two'), who.startsWith('Only you and '), `${who} → ${chip.textContent}`);
   }
@@ -108,7 +115,8 @@ test('writing that goes somewhere other than the topic being read says where, on
     ['Ask fable and warp · in the conversation', 'Everyone in the conversation', 'Everyone in the conversation will see this, and it waits on fable and warp until each replies.']);
   assert.deepEqual(words({}, [], 'the conversation'), ['Everyone in the conversation', 'Everyone in the conversation', 'Everyone in the conversation will see this. It goes to no one by name.']);
   // A whisper is between the two of you wherever it is posted.
-  assert.deepEqual(words({}, ['fable'], 'the conversation').slice(0, 2), ['Whisper to fable · only you two', 'Only you and fable']);
+  assert.deepEqual(words(chosen('whisper'), ['fable'], 'the conversation').slice(0, 2), ['Whisper to fable · only you two', 'Only you and fable']);
+  assert.deepEqual(words({}, ['fable'], 'the conversation').slice(0, 2), ['Tell fable · in the conversation', 'Everyone in the conversation'], 'a Tell there too by default');
   // Read where it is written, the same writing is this topic's.
   assert.deepEqual(words({ intent: 'tell' }, ['fable'], null).slice(0, 2), ['Tell fable · everyone here', 'Everyone in this topic']);
 });
@@ -116,9 +124,12 @@ test('writing that goes somewhere other than the topic being read says where, on
 test('the line above Send says in words who will see it, for each choice, and a phone keeps who', t => {
   const f = painted(t);
   const words = () => [f.line().querySelector('strong').text, f.line().text, f.line().querySelector('.audience-more')?.text];
+  f.paint(chosen('whisper'), ['fable']);
+  assert.deepEqual(words(), ['Only you and fable', 'Only you and fable will see this. No other agent gets it; fable acts on it as on a Tell.',
+    ' No other agent gets it; fable acts on it as on a Tell.']);
   f.paint({}, ['fable']);
-  assert.deepEqual(words(), ['Only you and fable', 'Only you and fable will see this. No other agent gets it, and fable takes it as a question, not an instruction.',
-    ' No other agent gets it, and fable takes it as a question, not an instruction.']);
+  assert.equal(f.line().text, 'Everyone in this topic will see this. That is aim-ux, fable and warp. It goes to fable by name; nothing is owed back.',
+    'with no choice, what the person reads before Send is that everyone here will see it');
   assert.equal(f.line().attributes['aria-live'], 'polite');
   f.paint({}, []);
   assert.equal(f.line().text, 'Everyone in this topic will see this. That is aim-ux, fable and warp. It goes to no one by name.');
@@ -135,15 +146,17 @@ test('the line above Send says in words who will see it, for each choice, and a 
 
 test('Send names what it does, Whisper, Tell or Ask, Send when it goes to no one by name, and only a whisper\'s writing box wears the dashed line, never italics', t => {
   const f = painted(t);
-  f.paint({}, ['fable']);
+  f.paint(chosen('whisper'), ['fable']);
   assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Whisper', true]);
+  f.paint({}, ['fable']);
+  assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Tell', false]);
   f.paint({ intent: 'ask' }, ['fable']);
   assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Ask', false]);
   f.paint({ intent: 'tell' }, ['fable']);
   assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Tell', false]);
   f.paint({}, []);
   assert.deepEqual([f.word.textContent, f.field.classList.contains('whispering')], ['Send', false], 'to no one by name it is sent, not told');
-  f.paint({}, ['fable']);
+  f.paint(chosen('whisper'), ['fable']);
   clearChoice(f.row, f.field, f.send);
   assert.deepEqual([f.row.children.length, f.word.textContent, f.field.classList.contains('whispering')], [0, 'Send', false], 'a private note has no choice');
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -162,18 +175,16 @@ test('a person\'s own choice is kept as names come and go; naming nobody clears 
   draft = { ...chosen('ask') };
   assert.equal(choiceOf(draft, ['fable'], kindOf).choice, 'ask');
   assert.equal(choiceOf(draft, ['fable', 'warp'], kindOf).choice, 'ask');
-  draft = { ...draft, ...unnamed };
-  assert.equal(choiceOf(draft, ['fable'], kindOf).choice, 'whisper', 'once nobody was named, one agent named again starts as a whisper');
+  draft = { ...chosen('whisper'), ...unnamed };
+  assert.equal(choiceOf(draft, ['fable'], kindOf).choice, 'tell', 'once nobody was named, one agent named again starts as a Tell');
+  assert.equal(choiceOf(draft, ['fable'], kindOf, { answeringWhisper: true }).choice, 'whisper', 'or, answering a whisper, as a whisper');
   assert.deepEqual(chosen('whisper'), { whisper: true, intent: null });
   assert.deepEqual(chosen('ask'), { whisper: false, intent: 'ask' });
 });
 
-test('a second name moves a whisper to a Tell and says so; taking it away makes it a whisper again unless the person chose in between', t => {
+test('a second name moves a chosen whisper to a Tell and says so; taking it away makes it a whisper again unless the person chose in between', t => {
   const f = painted(t);
-  let draft = {};
-  // Adding warp to a whisper to fable, as the composers do: the whisper is held.
-  draft = { ...draft, ...naming(draft, ['fable'], kindOf) };
-  assert.equal(draft.whisper, true);
+  let draft = chosen('whisper');
   const state = f.paint(draft, ['fable', 'warp']);
   assert.deepEqual(state, { choice: 'tell', switched: true });
   assert.deepEqual([f.radios().whisper.disabled, f.radios().tell.checked], [true, true]);
@@ -186,9 +197,16 @@ test('a second name moves a whisper to a Tell and says so; taking it away makes 
   // A person's click in between is kept.
   draft = { ...draft, ...chosen('tell') };
   assert.deepEqual(f.paint(draft, ['fable']), { choice: 'tell', switched: false });
-  // A message that was a Tell by default is not made a whisper by naming more.
+  // A message that is a Tell by default is never made a whisper by naming more, nor shown as switched.
+  assert.deepEqual(naming({}, ['fable'], kindOf), {});
   assert.deepEqual(naming({}, ['fable', 'warp'], kindOf), {});
   assert.deepEqual(naming({}, [], kindOf), {});
+  assert.deepEqual(f.paint({}, ['fable', 'warp']), { choice: 'tell', switched: false });
+  // A reply to a whisper, a whisper by default, holds it when a second name comes, as a chosen one does.
+  draft = { ...naming({}, ['fable'], kindOf, { answeringWhisper: true }) };
+  assert.equal(draft.whisper, true);
+  assert.deepEqual(f.paint(draft, ['fable', 'warp'], { answeringWhisper: true }), { choice: 'tell', switched: true });
+  assert.deepEqual(f.paint(draft, ['fable'], { answeringWhisper: true }), { choice: 'whisper', switched: false });
 });
 
 test('a whisper\'s card keeps its author\'s colour, adds the dashed line, says whom it is to from the viewer\'s side, and "no answer yet" only on the viewer\'s own', t => {
@@ -241,13 +259,19 @@ function reader(t, { source, offered = ['fable'], kinds = kindOf } = {}) {
   return { r, reply, sent, checked, line: () => document.byId('who-sentence').querySelector('.audience-line').text, document, send };
 }
 
-test('in the Reader a reply to one agent\'s message starts as a whisper, whether that message was a whisper, a Tell or an Ask', t => {
-  for (const [kind, source] of [['whisper', { whisper: true, private_to: 'tony', author: 'fable' }], ['tell', { whisper: false, intent: 'tell', author: 'fable' }],
-    ['ask', { whisper: false, intent: 'ask', author: 'fable' }], ['nobody', { whisper: false, intent: null, author: 'fable' }]]) {
+test('in the Reader a reply to one agent starts as a Tell, unless it answers that agent\'s whisper, which starts as a whisper', t => {
+  for (const [kind, source, expected] of [['whisper', { whisper: true, private_to: 'tony', author: 'fable' }, 'whisper'],
+    ['tell', { whisper: false, intent: 'tell', author: 'fable' }, 'tell'], ['ask', { whisper: false, intent: 'ask', author: 'fable' }, 'tell'],
+    ['nobody', { whisper: false, intent: null, author: 'fable' }, 'tell']]) {
     const f = reader(t, { source: { source_ref: { kind: 'message', id: 'm-' + kind }, body: 'Words', ...source } });
     f.r.paintChoice();
-    assert.equal(f.checked(), 'whisper', `a reply to a ${kind} from fable`);
-    assert.equal(f.send.querySelector('.send-word').textContent, 'Whisper');
+    assert.equal(f.checked(), expected, `a reply to a ${kind} from fable`);
+    assert.equal(f.send.querySelector('.send-word').textContent, expected === 'whisper' ? 'Whisper' : 'Tell');
+    assert.equal(f.r.field.placeholder, expected === 'whisper' ? 'Whisper to fable…' : 'Reply to fable…');
+    // Adding a second name to a Tell by default is not shown as switched from anything.
+    f.r.addName('warp');
+    assert.equal(f.checked(), 'tell');
+    assert.equal(f.line().includes('A whisper goes to one agent'), expected === 'whisper', `${kind}: only a whisper is said to be switched`);
   }
   const person = reader(t, { source: { source_ref: { kind: 'message', id: 'm-person' }, body: 'Words', author: 'cynthia' }, offered: ['cynthia'] });
   person.r.paintChoice();
@@ -257,7 +281,7 @@ test('in the Reader a reply to one agent\'s message starts as a whisper, whether
 test('a Tell answering a whisper says the whisper stays private, and each reply goes with the choice it shows', async t => {
   const f = reader(t, { source: { source_ref: { kind: 'message', id: 'm-w' }, body: 'Is the copy final?', whisper: true, private_to: 'tony', author: 'fable' } });
   f.r.paintChoice();
-  assert.equal(f.line(), 'Only you and fable will see this. No other agent gets it, and fable takes it as a question, not an instruction.');
+  assert.equal(f.line(), 'Only you and fable will see this. No other agent gets it; fable acts on it as on a Tell.');
   f.reply.edit({ body: 'Yes, final.' });
   await f.r.send(false);
   assert.deepEqual([f.sent[0].addressees, f.sent[0].whisper, f.sent[0].intent], [['fable'], true, null], 'the default goes as a whisper');
@@ -281,6 +305,7 @@ test('a Tell answering a whisper says the whisper stays private, and each reply 
 test('in the Reader, Send with a name typed in To and not named sends nothing; the whisper is still a whisper', async t => {
   const f = reader(t, { source: { source_ref: { kind: 'message', id: 'm-w' }, body: 'Words', author: 'fable' } });
   f.r.paintChoice();
+  f.r.choose('whisper');
   f.reply.edit({ body: 'Just between us.' });
   f.r.compose.typed = 'warp';
   await f.r.send(false);
@@ -345,4 +370,23 @@ test('a whisper\'s key reads the topic\'s newest messages down to it, and is don
   assert.equal(views.messages.get('m-5').whisper, true);
   assert.equal(await views.refresh('whisper:5', 5, read), true, 'already loaded');
   assert.equal(reads.length, 1, 'and not read again');
+});
+
+test('the page of pointer, keys and taps shows the default chip, a Tell to everyone here', async () => {
+  const { RULES } = await import('../web/interaction-guide.mjs');
+  const reply = RULES.find(([name]) => name === 'The reply')[1];
+  assert.match(reply, /"Tell fable · everyone here"/);
+  assert.doesNotMatch(reply, /only you two/);
+});
+
+test('a person\'s whisper may start a topic or a pipeline item, as their Tell may; an agent\'s whisper never', async () => {
+  const { mayStartFrom } = await import('../web/whisper-choice.mjs');
+  assert.equal(mayStartFrom({ whisper: false, author_kind: 'agent' }), true, 'any message on the record');
+  assert.equal(mayStartFrom({ whisper: true, author_kind: 'human', private_to: 'fable' }), true, 'a person\'s whisper');
+  assert.equal(mayStartFrom({ whisper: true, author_kind: 'agent', private_to: 'tony' }), false, 'an agent\'s whisper');
+  assert.equal(mayStartFrom({ whisper: true, private_to: 'tony' }), false, 'a whisper whose author\'s kind is not known');
+  // The Reader's ⋯ shows each only through this rule, and the conversation switch stays hidden for every whisper.
+  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
+  assert.equal((app.match(/mayStartFrom\(p\.source\)/g) ?? []).length, 3, 'Start a topic, Add to pipeline and its line');
+  assert.match(app, /function offerConversation[^\n]*\n[^\n]*source\.whisper/, 'writing about a whisper never links to it');
 });

@@ -1329,12 +1329,12 @@
   },
   {
    "item": 239,
-   "act": "A whisper is neither writing in a topic nor a reply in the conversation: a 👍 after one still answers the ask, and taking it back still brings the wait back",
+   "act": "A whisper to someone other than whoever asked answers no ask: a 👍 after one still answers it, and taking it back still brings the wait back",
    "break": [
     [
      "aim_next/reactions.py",
-     "\" AND author_id=? AND private_to IS NULL LIMIT 1\"",
-     "\" AND author_id=? LIMIT 1\""
+     "\" AND author_id=? AND (private_to IS NULL OR private_to=?) LIMIT 1\"",
+     "\" AND author_id=? AND (1 OR private_to=?) LIMIT 1\""
     ]
    ],
    "check": {
@@ -4998,6 +4998,440 @@
    "check": {
     "native": "conversation",
     "case": "conversation replies stack under the message"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A message starts as a Tell with no choice of the person's, even to one agent; only a reply to a whisper starts as one",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     "return answeringWhisper && canWhisper(names, kindOf) ? 'whisper' : 'tell';",
+     "return canWhisper(names, kindOf) ? 'whisper' : 'tell';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_whisper.test.mjs"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A reply to a whisper starts as a whisper to its one agent",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     "return answeringWhisper && canWhisper(names, kindOf) ? 'whisper' : 'tell';",
+     "return 'tell';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_whisper.test.mjs"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A whisper's line says the agent acts on it as on a Tell, and only the two of them see it",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     "No other agent gets it; ${names[0]} acts on it as on a Tell.",
+     "No other agent gets it, and ${names[0]} takes it as a question, not an instruction."
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_whisper.test.mjs"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The Reader offers Start a topic and Add to pipeline on a person's whisper, never on an agent's",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     "export const mayStartFrom = source => !source?.whisper || source.author_kind === 'human';",
+     "export const mayStartFrom = source => !source?.whisper;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_whisper.test.mjs"
+   }
+  },
+  {
+   "item": 281,
+   "act": "An answer by whisper shows anyone outside it who answered and when, with no link",
+   "break": [
+    [
+     "web/outcome-conversation.mjs",
+     "const reply = take.readable === false ? `${by}, in a message you can't open` :",
+     "const reply = false ? `${by}, in a message you can't open` :"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_conversation.test.mjs"
+   }
+  },
+  {
+   "item": 281,
+   "act": "An agent's whisper changes nothing anyone else can see: no writer, no wait, no reopen, no version",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        counts = private is None or self._actor(db, actor)[\"kind\"] == \"human\"",
+     "        counts = True"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A person's whisper counts as their writing in the topic: it reopens a done topic, moves the version and records its writer",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        counts = private is None or self._actor(db, actor)[\"kind\"] == \"human\"",
+     "        counts = private is None"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A whisper never moves the topic's count, latest message or latest by someone else",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        else:\n            # Who wrote the latest message before this one decides",
+     "        if True:\n            # Who wrote the latest message before this one decides"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A person's whisper answers only the asks of the agent it goes to; another's ask keeps waiting",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "            if row[\"author_id\"] != to:",
+     "            if row[\"author_id\"] == \"nobody\":"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "When the wait is from the agent whispered to, it moves to the oldest ask nobody has answered",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "            following = self._next_open_ask(db, topic, author, row[\"seq\"])",
+     "            following = None"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "An ask the person already answered by whisper to whoever asked is not the next open ask",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "\"AND w.private_to=m.author_id) ORDER BY a.seq\"",
+     "\"AND w.private_to='nobody') ORDER BY a.seq\""
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "In a conversation a person's whisper answers an item or an ask only when it goes to that message's author",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "        reaches = private is None or parent_id is not None and db.execute(",
+     "        reaches = True or parent_id is not None and db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_conversation.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A person's whisper is never a conversation item",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "        if private is None and actor not in (coordinator, HEALTH_ACTOR) and not answering and not answers_ask:",
+     "        if actor not in (coordinator, HEALTH_ACTOR) and not answering and not answers_ask:"
+    ]
+   ],
+   "check": {
+    "python": "test_conversation.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "An answer take by whisper withholds its reply from anyone outside it",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "        return dict(take, ref=row[\"ref\"] if readable else None, readable=readable)",
+     "        return dict(take, ref=row[\"ref\"], readable=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_conversation.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "An agent's whisper is never a source, evidence, a problem's message or the word a move is made on",
+   "break": [
+    [
+     "aim_next/whispers.py",
+     "    if row[\"kind\"] != \"human\":\n        raise Refusal(STAYS, words)",
+     "    if False:\n        raise Refusal(STAYS, words)"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A person's whisper may be a source, evidence or the owner's word for its two people",
+   "break": [
+    [
+     "aim_next/whispers.py",
+     "    if row is None or row[\"private_to\"] is None:\n        return",
+     "    if row is None:\n        return"
+    ]
+   ],
+   "check": {
+    "python": "test_pipeline_go_ahead.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "An import naming a person's whisper by number is refused for anyone outside it",
+   "break": [
+    [
+     "aim_next/whispers.py",
+     "    if not visible(row, actor):\n        raise Refusal(STAYS, QUOTE_PRIVATE)",
+     "    if False:\n        raise Refusal(STAYS, QUOTE_PRIVATE)"
+    ]
+   ],
+   "check": {
+    "python": "test_targets.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The person who whispered counts the agent's pending work for it; nobody else does",
+   "break": [
+    [
+     "aim_next/whispers.py",
+     "READ_BY = \"(m.private_to IS NULL OR m.author_id=?)\"",
+     "READ_BY = \"(m.private_to IS NULL OR ?='')\""
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "An agent is told a person's whisper counts as a Tell from them, and never to repeat or quote it",
+   "break": [
+    [
+     "aim_next/hosted_notice.py",
+     "\"It counts as a Tell from %s: act on it as you would on their Tell. Never repeat or quote it where others \"",
+     "\"It is a question, not an instruction %s. Never repeat or quote it where others \""
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "read says under a person's whisper that it counts as a Tell, and under an agent's whisper only who may read it",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "            if item[\"author_id\"] != self.actor and item.get(\"author_kind\") == \"human\":",
+     "            if item[\"author_id\"] != self.actor:"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A whispered reply to whoever asked answers a conversation ask, so taking a 👍 back puts nothing back",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "\" AND author_id=? AND (private_to IS NULL OR private_to=?) LIMIT 1\"",
+     "\" AND author_id=? AND (private_to IS NULL OR private_to='nobody' OR ?='') LIMIT 1\""
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "Outside a person's whisper, a topic it reopened or was started from names no message: state_message_id and source_message_id are null",
+   "break": [
+    [
+     "aim_next/whispers.py",
+     "                topic[field] = None",
+     "                topic[field] = topic[field]"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The topic list names the whisper that reopened or started a topic only to its two people",
+   "break": [
+    [
+     "aim_next/store.py",
+     "        items = [redact_topic(db, actor, row) for row in rows[:limit]]",
+     "        items = [dict(row) for row in rows[:limit]]"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A topic's page names the whisper that reopened or started it only to its two people",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        topic = dict(whispers.redact_topic(db, actor, topic), archived=",
+     "        topic = dict(topic, archived="
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A topic.update's answer names the whisper that reopened the topic only to someone in it",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "\"state_message_id\": redact_topic(db, actor, row)[\"state_message_id\"]}",
+     "\"state_message_id\": row[\"state_message_id\"]}"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved before a new message started as a Tell, naming one agent in a topic with no choice, is read and sent as the Whisper it showed",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "            writing[\"whisper\"] = True\n",
+     "            pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved before shows as the Whisper it showed when its editor opens",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        draft = dict(self._as_shown(db, actor, row[\"topic_id\"], json.loads(row[\"payload\"])), id=row[\"id\"], revision=row[\"revision\"],",
+     "        draft = dict(json.loads(row[\"payload\"]), id=row[\"id\"], revision=row[\"revision\"],"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved before is sent as the Whisper it showed, not only read as one",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        snapshot = self._as_shown(db, actor, row[\"topic_id\"], json.loads(row[\"payload\"]))",
+     "        snapshot = json.loads(row[\"payload\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved since, naming one agent with no choice, stays a Tell when read and when sent",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        payload[TELL_FIRST] = True\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The owner is told of agents waiting in an outcome they own only from work they can read, never another person's whisper",
+   "break": [
+    [
+     "aim_next/wake_health.py",
+     "JOIN messages m ON m.id=d.message_id AND \" + READ_BY + \" \"",
+     "JOIN messages m ON m.id=d.message_id AND (1 OR ?='') \""
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The CLI reads an answer by whisper, outside it, as a message you can't open, with who answered and when",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "(take[\"ref\"] or \"a message you can't open\", when, part)",
+     "(take[\"ref\"], when, part)"
+    ]
+   ],
+   "check": {
+    "python": "test_conversation.py"
    }
   }
  ]

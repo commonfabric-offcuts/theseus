@@ -10,8 +10,8 @@ says: a reading's release is the release whose record names its commit, and a
 run is a candidate's while no record names it. The target's word is worked out
 from the readings and the outcome's kind (outcome_kind.py); nobody sets it.
 
-A whisper is never where a problem was found, nor the account of a worse check
-(private_source_refused, private_to).
+An agent's whisper is never where a problem was found (private_source_refused),
+and no whisper is the account of a worse check, which the whole outcome reads (private_to).
 
 Seams until the rest of release 21 lands:
 - skills (17) is absent: readings carry no skill versions, so tools_words is
@@ -629,8 +629,9 @@ class Checks:
                     raise Refusal("FORBIDDEN", "No readable source")
                 message = row[0]
             row = self._message_access(db, actor, message)
-            # The whole outcome reads its problems, who found each and when, so a whisper is never where one was found.
-            private_source_refused(db, row["id"])
+            # The whole outcome reads its problems, who found each and when: an agent's whisper is never where one was found,
+            # and a person's shows to anyone outside it with no id, number or topic (_problems_facts).
+            private_source_refused(db, actor, row["id"])
             found_by = row["author_id"]
             found_ms = db.execute("SELECT sent_ms FROM messages WHERE id=?", (row["id"],)).fetchone()[0]
             message = row["id"]
@@ -1188,7 +1189,7 @@ def import_checks(store, db, seed, actor, now_ms):
             row = db.execute("SELECT id,author_id,sent_ms FROM messages WHERE seq=?", (problem["seq"],)).fetchone()
             if row is None:
                 raise Refusal("SEED_SOURCE", "Problem %r names message #%s, which is not here" % (problem["what"], problem["seq"]))
-            private_source_refused(db, row["id"])
+            private_source_refused(db, actor, row["id"])
             message = row
         problem_id = "fp-" + hashlib.sha256(problem["what"].encode("utf-8")).hexdigest()[:24]
         db.execute("INSERT INTO found_problems(id,workspace_id,what,kind,found_by,message_id,note,found_ms,cover_item,cover_words,version) "

@@ -413,15 +413,17 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     assert.deepEqual(o.errors, []); await o.close();
   });
 
-  await check('pipeline a whisper in the Reader is never offered as an item, and a message on the record next to it still is', async () => {
-    // A whisper stays between its two people (docs/whispers.md): its words never
-    // become an item's title on a page the whole outcome reads.
-    const said = 'The page could say which release is live.', kept = 'Just between us: the release notes are late.';
+  await check('pipeline a person\'s whisper in the Reader is offered as an item, an agent\'s whisper never, and a message on the record still is', async () => {
+    // A person's whisper counts as their Tell (docs/whispers.md): it may become an item, its title shown to the person
+    // before Return. An agent's whisper only answers, so it is never offered.
+    const said = 'The page could say which release is live.', kept = 'Just between us: the release notes are late.', back = 'Noted; I will chase them.';
     // On when the checks before it ran; on its own, the person turns it on as their CLI does.
     if (!(await view('pipeline', { workspace_id: 'w1', limit: 1 })).pipeline?.enabled) await pipeline('pipeline.configure', { workspace_id: 'w1' }, { enabled: true });
     const message = (await control({ method: 'agent_message', operation_id: 'pipeline-native-record', body: said })).result.message_id;
     const whisper = (await control({ method: 'agent_message', operation_id: 'pipeline-native-whisper', sender: 'person', body: kept,
       addressees: [facts.agent], whisper: true })).result.message_id;
+    const answer = (await control({ method: 'agent_message', operation_id: 'pipeline-native-whisper-answer', body: back, reply_to: whisper,
+      addressees: [facts.actor], whisper: true })).result.message_id;
     const r = await open('pipeline-reader-whisper', '/?topic=t1');
     const show = async (id, words) => {
       const card = `#messages [data-id="${id}"]`;
@@ -430,6 +432,9 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
         await r.point('#reader-close');
         await until(() => r.evaluate(`!document.querySelector('#reader').open`), 'the Reader closes');
       }
+      // The person's whisper, answered before this visit, folds under its answer (docs/reply-stacks.md): a reader
+      // opens its stack first.
+      await r.unfold(card);
       await tap(r, card);
       await until(() => r.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(words)})`), 'the Reader shows it');
     };
@@ -437,7 +442,9 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     await show(message, said);
     await until(offered, 'a message on the record offers Add to pipeline');
     await show(whisper, kept);
-    assert.equal(await offered(), false, 'a whisper does not offer Add to pipeline');
+    await until(offered, 'a person\'s whisper offers Add to pipeline');
+    await show(answer, back);
+    assert.equal(await offered(), false, 'an agent\'s whisper does not offer Add to pipeline');
     assert.equal(await r.evaluate(`document.getElementById('pipeline-add').hidden`), true, 'and no line opens under it');
     await show(message, said);
     await until(offered, 'back on the message on the record, Add to pipeline is offered again');

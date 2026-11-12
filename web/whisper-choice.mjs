@@ -5,8 +5,8 @@
 // Whisper (or held it while a second name made it a Tell), false when they
 // chose Tell or Ask, and absent or null while they have not chosen; `intent`
 // as ever. With no choice of theirs the default decides (defaultChoice, the
-// one place D1 and I3 live). Core refuses a whisper to more than one name
-// whatever the page sends.
+// one place it lives): a Tell, except a reply to a whisper. Core refuses a
+// whisper to more than one name whatever the page sends.
 
 const node = (tag, text, className) => {
   const el = document.createElement(tag);
@@ -28,11 +28,13 @@ export function list(names) {
 
 const canWhisper = (names, kindOf) => names.length === 1 && kindOf(names[0]) === 'agent';
 
-// What a message starts as when the person has not chosen: exactly one agent
-// named, a new message or a reply to anything, is a whisper (D1); in an
-// outcome's conversation it is a Tell, replies included (I3); otherwise a Tell.
-export function defaultChoice(names, kindOf, { conversation = false } = {}) {
-  return canWhisper(names, kindOf) && !conversation ? 'whisper' : 'tell';
+// What a message starts as when the person has not chosen: a Tell, wherever
+// it is written, so nothing goes private unless the person presses Whisper. A
+// reply to a whisper (answeringWhisper), to the one agent in it, continues the
+// private exchange as a whisper, since a Tell there would put the person's side
+// on the record unnoticed.
+export function defaultChoice(names, kindOf, { answeringWhisper = false } = {}) {
+  return answeringWhisper && canWhisper(names, kindOf) ? 'whisper' : 'tell';
 }
 
 // The choice the writing is sent with, and whether a second name moved a
@@ -54,18 +56,10 @@ export function chosen(choice) {
   return { whisper: false, intent: choice };
 }
 
-// The fields that write down the choice the writing shows now, for writing
-// that moves whole to a place with another default (the Reader's To, I3):
-// with someone named and no choice of the person's, the default where it was
-// written becomes the choice, so it is sent there as it was shown here.
-export function shownChoice(draft, names, kindOf, options = {}) {
-  const own = typeof draft.whisper === 'boolean' || ['ask', 'tell'].includes(draft.intent);
-  return own || !names.length ? {} : chosen(defaultChoice(names, kindOf, options));
-}
-
-// Naming someone more: a message that was a whisper by default holds the
-// whisper, so it shows as switched to a Tell and becomes a whisper again
-// when the second name is taken away.
+// Naming someone more: a reply to a whisper that was a whisper by default
+// holds the whisper, so it shows as switched to a Tell and becomes a whisper
+// again when the second name is taken away. Anything else is a Tell by
+// default, which naming more leaves as it is.
 export function naming(draft, names, kindOf, options = {}) {
   return choiceOf(draft, names, kindOf, options).choice === 'whisper' && draft.whisper !== true ? { whisper: true } : {};
 }
@@ -86,7 +80,7 @@ export function sending(draft, names, kindOf, options = {}) {
 // topic's people are not named as them.
 export function audienceWords({ choice, switched }, names, everyone, { answeringWhisper = false, place = null } = {}) {
   if (choice === 'whisper') {
-    return [`Only you and ${names[0]}`, ' will see this.', ` No other agent gets it, and ${names[0]} takes it as a question, not an instruction.`];
+    return [`Only you and ${names[0]}`, ' will see this.', ` No other agent gets it; ${names[0]} acts on it as on a Tell.`];
   }
   const readers = place ? `Everyone in ${place}` : 'Everyone in this topic';
   const all = !place && everyone.length ? ` That is ${list(everyone)}.` : '';
@@ -143,7 +137,7 @@ export function sendWord(state, names) {
 // place: where the writing is posted when that is not the topic being read (audienceWords).
 // to: the quiet line that says who it goes to (toWords), when the composer has one.
 export function paintChoice(row, { draft, names, kindOf, everyone, send, field, chip = null, lineHost = null, readOnly = false, answeringWhisper = false,
-  conversation = false, place = null, to = null, onChoose }) {
+  place = null, to = null, onChoose }) {
   if (!row.querySelector('.intent-choice')) {
     const group = node('div', undefined, 'intent-choice');
     group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'How this is sent');
@@ -166,7 +160,7 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
     if (lineHost) { row.replaceChildren(group); lineHost.replaceChildren(line); } else row.replaceChildren(group, line);
   }
   row.choose = onChoose;
-  const state = choiceOf(draft, names, kindOf, { conversation });
+  const state = choiceOf(draft, names, kindOf, { answeringWhisper });
   for (const chip of row.querySelectorAll('button[data-intent]')) {
     const value = chip.dataset.intent;
     const why = value === 'whisper' && !canWhisper(names, kindOf) ? (names.length > 1 ? WHISPER_TO_ONE : WHISPER_NEEDS_ONE)
@@ -201,6 +195,12 @@ export function clearChoice(row, field, send, lineHost = null, to = null) {
   const word = send?.querySelector('.send-word');
   if (word) word.textContent = 'Send';
 }
+
+// Whether a message read in the Reader may be where a topic or a pipeline item
+// came from: anything but an agent's whisper. A person's whisper counts as
+// their Tell; the whole outcome then sees the topic or item, and the whisper
+// only as a message they can't open (docs/whispers.md). Core refuses the rest.
+export const mayStartFrom = source => !source?.whisper || source.author_kind === 'human';
 
 // A whisper's card, read from the viewer's side: after the author's name,
 // "· whisper to aim-ux" or "· whisper to you", and on the viewer's own

@@ -80,8 +80,8 @@ class Memory:
                 self._memory_ref(db, actor, ref)
             elif isinstance(ref, dict) and set(ref) == {"kind", "id"} and ref["kind"] == "message":
                 self._message_access(db, actor, ref["id"])
-                # A whisper is never Notebook evidence: it stays between its two people.
-                private_source_refused(db, ref["id"])
+                # An agent's whisper is never Notebook evidence; a person's may be, cited by id only its two people can open.
+                private_source_refused(db, actor, ref["id"])
             else:
                 raise Refusal("INVALID_ARGUMENT", "Evidence must name an exact message or Notebook revision")
         attachments = self._attachment_refs(db, actor, attachments, ready=True, retained=retained)

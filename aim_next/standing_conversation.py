@@ -26,6 +26,7 @@ import uuid
 from .contract import READABLE, Refusal, _identifier, _revision
 from .delivery import _now_ms
 from .health import HEALTH_ACTOR
+from . import whispers
 
 
 # Version 28: a topic's kind, the conversation a replaced topic gave way to,
@@ -337,17 +338,24 @@ class StandingConversation:
         if taken:
             self._touch_topic(db, conversation)
 
-    def _conversation_record(self, db, actor, topic, message_id, snapshot, intent):
-        """After a message on the record lands in a conversation: its item, its answer take, and its waits."""
+    def _conversation_record(self, db, actor, topic, message_id, snapshot, intent, private=None):
+        """After a message on the record, or a person's whisper (private: the agent it goes to), lands in a conversation:
+        its item, its answer take, and its waits.
+
+        A person's whisper counts as their reply only to the one it goes to, who alone can read it: it answers an
+        item or an ask when it replies to that agent's. It is never an item itself, which the whole team would see
+        listed and counted."""
         parent_id = snapshot.get("reply_to")
         addressees = snapshot["addressees"]
         coordinator = db.execute("SELECT coordinator_id FROM workspaces WHERE id=?", (topic["workspace_id"],)).fetchone()[0]
-        parent_item = self._item(db, parent_id) if parent_id else None
+        reaches = private is None or parent_id is not None and db.execute(
+            "SELECT 1 FROM messages WHERE id=? AND author_id=?", (parent_id, private)).fetchone() is not None
+        parent_item = self._item(db, parent_id) if parent_id and reaches else None
         answering = parent_item is not None and actor in self._answerers(db, parent_id)
-        answers_ask = parent_id is not None and db.execute(
+        answers_ask = parent_id is not None and reaches and db.execute(
             "SELECT 1 FROM conversation_waits WHERE ask_id=? AND actor_id=?", (parent_id, actor)).fetchone() is not None
         # Theseus's own notices (health.py) are nobody's request, as the coordinator's posts are not.
-        if actor not in (coordinator, HEALTH_ACTOR) and not answering and not answers_ask:
+        if private is None and actor not in (coordinator, HEALTH_ACTOR) and not answering and not answers_ask:
             db.execute("INSERT INTO conversation_items(message_id) VALUES (?)", (message_id,))
         if answering:
             # An answer even when it asks the item's author back: its ask waits on them apart (below).
@@ -444,7 +452,10 @@ class StandingConversation:
             topic = db.execute("SELECT t.id,t.title FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:topic AND " + READABLE,
                                {"topic": row["ref"], "actor": actor}).fetchone()
             return dict(take, ref=row["ref"], title=topic["title"] if topic else None, readable=topic is not None)
-        return dict(take, ref=row["ref"])
+        # An answer by whisper shows anyone outside it who settled the item and when, never the reply.
+        reply = db.execute("SELECT author_id,private_to FROM messages WHERE id=?", (row["ref"],)).fetchone()
+        readable = reply is not None and whispers.visible(reply, actor)
+        return dict(take, ref=row["ref"] if readable else None, readable=readable)
 
     def _about(self, db, actor, message_id):
         try:

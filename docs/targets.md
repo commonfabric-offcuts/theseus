@@ -127,8 +127,10 @@ is not stopped as worse ships and leaves its new checks behind), which items
 likely caused a check to stop (from trial runs that leave items out), and the
 problems found before a check caught them, counted by kind per release
 (defects and design misses), each with what now covers it. The whole outcome
-reads them, so a problem is found in a message on the record or in a note, never
-in a whisper (`WHISPER_STAYS_PRIVATE`, from `problem.file` and the import alike),
+reads them, so a problem is found in a message on the record, in a person's
+whisper (shown to anyone outside it with no id, number or topic) or in a note,
+never in an agent's whisper (`WHISPER_STAYS_PRIVATE`, from `problem.file` and
+the import alike),
 and the account the loop shows beside a stopped check is the newest message on
 the record about it in its fix topic. Tolerances are said
 as fractions ("a quarter"), never percentages.

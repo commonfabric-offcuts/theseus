@@ -68,7 +68,7 @@ test('Whisper, Tell or Ask follows who the reply names, keeps the person\'s choi
   remove('tony');
   assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, f.reply.draft.whisper], [[], null, null], 'the last name taken away takes the choice with it');
   f.r.addName('fable');
-  assert.deepEqual(state(), { checked: 'whisper', disabled: [] }, 'one agent named: a whisper');
+  assert.deepEqual(state(), { checked: 'tell', disabled: [] }, 'one agent named: still a Tell; a whisper is only the person\'s choice');
   f.r.choose('ask');
   assert.deepEqual([f.reply.draft.intent, f.reply.draft.whisper, state().checked], ['ask', false, 'ask']);
   f.r.addName('warp');
