@@ -28,6 +28,17 @@ beside `body`, `addressees`, `reply_to`, `quotes` and `attachments`; a draft
 carries it into `submission.prepare` and `message.send`. A whisper names
 exactly one addressee, its other person, and no `intent`.
 
+Before item 281 the page showed writing that names exactly one agent in a
+topic, with no choice of the person's, as a Whisper, and sent it so. Every
+draft `draft.save` keeps since is stamped `tell_first`, so a draft saved before
+keeps what it showed: when it names one agent in a topic, by its addressees or
+its leading @names, and says neither `whisper` nor `intent`, `editor_state`
+reads it, and `submission.prepare` freezes it, as the person's Whisper. A draft
+in the conversation showed a Tell and stays one, and a draft saved since with
+no choice is a Tell. The stamp stays inside the stored draft; reads leave it
+out. A browser's unsaved recovery copy from before is saved again as written,
+so it shows as a Tell before it is sent.
+
 | Code | When |
 | --- | --- |
 | `WHISPER_SHAPE` | Other than one addressee; a person whispering to a person; an agent whispering other than to answer a whisper sent to it, to the person who sent it; a whisper answering a whisper between a different pair; a whisper with an intent; a whisper on writing that opens a topic (`opening.save`, or `draft.save` with a new-topic source or an `opening`). |
@@ -56,9 +67,11 @@ effect, never the whisper:
   from anyone else keeps waiting, and so does an ask an open record holds
   (a proposed target, an owner-gated stage). In an outcome's conversation, a
   whisper replying to an ask answers it when it goes to whoever asked.
-- It reopens a done topic, which says it was reopened by a message others
-  cannot open, and moves the topic up the list. The topic's version moves, and
-  whoever stopped waiting gets a `waiting` change.
+- It reopens a done topic and moves the topic up the list. The topic's version
+  moves, and whoever stopped waiting gets a `waiting` change. Its two people
+  read the whisper's id in the topic's `state_message_id`; everyone else reads
+  the reopen (state, who, when and the note "Reopened by a new message") with
+  `state_message_id` null.
 - In a conversation, the coordinator's whisper replying to an item, to the
   item's author, answers the item. Others see "Answered" with who and when,
   and no link (the take's `ref` is null and `readable` false for them). A
@@ -67,7 +80,9 @@ effect, never the whisper:
 - It may be a topic's source, Notebook evidence, where a pipeline item or a
   problem came from, what an item is still gathering, and the owner's word a
   move is made on, by either of its two people. Everyone else reads each of
-  these as a message they can't open: no id, number, topic or words.
+  these as a message they can't open: no id, number, topic or words. A topic
+  started from it has `source_message_id` null for them, in the `topic` and
+  `workspace_topics` views alike.
 - The person who wrote it counts the agent's pending work for it, and how long
   its wakes have gone unanswered, as they would for a Tell.
 
@@ -97,12 +112,27 @@ whisper. Its acts (a move, an item, a commit) are seen as usual and may name
 the whisper as their source or reason, which others read as a message they
 can't open.
 
+## What anyone outside it can learn
+
+Core gives someone outside a person's whisper exactly this: that a topic
+changed (its version, activity and order), was reopened and by whom and when;
+that an ask waiting on the writer ended; that an item was answered, by whom
+and when; and that a topic, item, problem or move came from a message they
+can't open. No view, refusal or
+command answer gives them the whisper's id, number, topic, words, excerpt or
+attachments: `state_message_id` and `source_message_id` on a topic, a take's
+`ref`, a pipeline source or because, and a problem's message are null or
+unopenable for them, and a reply, quote or source naming it is refused as one
+that does not exist. A Notebook revision's references are the agent's own
+writing and keep any id it wrote (see Limits).
+
 ## Limits
 
 The database file is outside this boundary: anything that opens the SQLite
 file directly reads every row, as it reads drafts and private notes. A
 Notebook page is free writing, so Core cannot stop an agent paraphrasing a
-whisper there.
+whisper there, or naming its id among a revision's references, which a reader
+outside it sees as written but cannot open.
 
 Schema version 27 adds `messages.private_to`, the `message_reply_links`
 index and the `whisper_shape` trigger. Stepping back to 26 is refused once a

@@ -5072,6 +5072,146 @@
    "check": {
     "python": "test_thumb_answers.py"
    }
+  },
+  {
+   "item": 281,
+   "act": "Outside a person's whisper, a topic it reopened or was started from names no message: state_message_id and source_message_id are null",
+   "break": [
+    [
+     "aim_next/whispers.py",
+     "                topic[field] = None",
+     "                topic[field] = topic[field]"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The topic list names the whisper that reopened or started a topic only to its two people",
+   "break": [
+    [
+     "aim_next/store.py",
+     "        items = [redact_topic(db, actor, row) for row in rows[:limit]]",
+     "        items = [dict(row) for row in rows[:limit]]"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A topic's page names the whisper that reopened or started it only to its two people",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        topic = dict(whispers.redact_topic(db, actor, topic), archived=",
+     "        topic = dict(topic, archived="
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A topic.update's answer names the whisper that reopened the topic only to someone in it",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "\"state_message_id\": redact_topic(db, actor, row)[\"state_message_id\"]}",
+     "\"state_message_id\": row[\"state_message_id\"]}"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved before a new message started as a Tell, naming one agent in a topic with no choice, is read and sent as the Whisper it showed",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "            writing[\"whisper\"] = True\n",
+     "            pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved before shows as the Whisper it showed when its editor opens",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        draft = dict(self._as_shown(db, actor, row[\"topic_id\"], json.loads(row[\"payload\"])), id=row[\"id\"], revision=row[\"revision\"],",
+     "        draft = dict(json.loads(row[\"payload\"]), id=row[\"id\"], revision=row[\"revision\"],"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved before is sent as the Whisper it showed, not only read as one",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        snapshot = self._as_shown(db, actor, row[\"topic_id\"], json.loads(row[\"payload\"]))",
+     "        snapshot = json.loads(row[\"payload\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "A draft saved since, naming one agent with no choice, stays a Tell when read and when sent",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        payload[TELL_FIRST] = True\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The owner is told of agents waiting in an outcome they own only from work they can read, never another person's whisper",
+   "break": [
+    [
+     "aim_next/wake_health.py",
+     "JOIN messages m ON m.id=d.message_id AND \" + READ_BY + \" \"",
+     "JOIN messages m ON m.id=d.message_id AND (1 OR ?='') \""
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 281,
+   "act": "The CLI reads an answer by whisper, outside it, as a message you can't open, with who answered and when",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "(take[\"ref\"] or \"a message you can't open\", when, part)",
+     "(take[\"ref\"], when, part)"
+    ]
+   ],
+   "check": {
+    "python": "test_conversation.py"
+   }
   }
  ]
 }

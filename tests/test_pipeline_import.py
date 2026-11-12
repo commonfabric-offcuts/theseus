@@ -160,6 +160,7 @@ class ImportCase(ReaderCase):
         seed = self.seed()
         seed["items"][0]["sources"] = [{"topic": "Topic", "seq": seq(whisper)}]
         self.assertEqual(self.store.import_pipeline(seed, "agent-a")["items"], 5)
+
     def test_the_operator_imports_through_the_admin_command(self):
         seed_path = Path(self.temp.name).resolve() / "seed.json"
         seed_path.write_text(json.dumps(self.seed()))

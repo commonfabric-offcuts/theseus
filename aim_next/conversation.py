@@ -501,7 +501,8 @@ class Conversation:
         waits = self._waits_by_topic(db, [topic["id"]])
         waiting_on, asks = waits[topic["id"]]
         # reader_may_say: whether the reader may say where it stands, so a page offers its form.
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]],
+        # The message that reopened or started it is named only to a reader who may see it (whispers.py).
+        topic = dict(whispers.redact_topic(db, actor, topic), archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]],
                      reader_may_say=self._may_say(db, topic, actor))
         # D10: the outcome's target, closed, above the conversation; None for an outcome to keep with no target and no checks.
         target = self._outcome_target_line(db, actor, topic["workspace_id"])

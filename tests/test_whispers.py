@@ -84,6 +84,55 @@ class WritingCase(WhisperCase):
         self.assertEqual(self.sql("SELECT addressees,intent,private_to,reply_to FROM messages WHERE id=?", (sent["message_id"],)),
                          [('["agent-a"]', None, "agent-a", posted)], "a whisper written about a whisper answers it")
 
+    def test_a_draft_saved_before_a_new_message_started_as_a_tell_keeps_the_whisper_it_showed(self):
+        # Before item 281 the page showed writing to one agent in a topic, with no choice of the person's, as a Whisper and
+        # sent it so. Such a draft, saved then, is read and sent as a Whisper; one saved since, with no choice, is a Tell.
+        conversation = self.sql("SELECT id FROM topics WHERE workspace_id='w1' AND kind='conversation'")[0][0]
+        writings = {
+            "absent": {"addressees": ["agent-a"]},
+            "null": {"addressees": ["agent-a"], "whisper": None},
+            "at-name": {"body": "@agent-a between us"},
+            "two": {"addressees": ["agent-a", "agent-b"]},
+            "by-agent": {"addressees": ["agent-a"], "whisper": None, "actor": "agent-b"},
+            "told": {"addressees": ["agent-a"], "intent": "tell"},
+            "asked": {"addressees": ["agent-a"], "intent": "ask"},
+            "chose-tell": {"addressees": ["agent-a"], "whisper": False},
+            "conversation": {"addressees": ["agent-a"]},
+            "since": {"addressees": ["agent-a"]},
+        }
+        places = {}
+        for name, writing in writings.items():
+            # Each is a reply to its own message in t1, but the conversation's, which is its composer's.
+            if name == "conversation":
+                places[name] = ({"kind": "topic", "id": conversation}, conversation)
+            else:
+                places[name] = ({"kind": "message", "id": self.committed(self.post("About " + name, actor="agent-b"))["message_id"]}, "t1")
+            writing = dict(writing)
+            actor = writing.pop("actor", "owner")
+            self.committed(self.draft("d-" + name, places[name][0], writing.pop("body", "Between us"), actor=actor, topic=places[name][1], **writing))
+        # Release 56 kept each draft's writing alone: take away whatever a save adds to it now, but from the one saved since.
+        for draft_id, payload in self.sql("SELECT id,payload FROM drafts WHERE id LIKE 'd-%' AND id<>'d-since'"):
+            writing = {key: value for key, value in json.loads(payload).items()
+                       if key in ("source_ref", "body", "attachments", "quotes", "addressees", "intent", "whisper")}
+            self.sql("UPDATE drafts SET payload=? WHERE id=?", (json.dumps(writing), draft_id))
+
+        def shown(name):
+            source, topic = places[name]
+            actor = writings[name].get("actor", "owner")
+            return self.store.view(actor, "editor_state", {"source_ref": source, "topic_id": topic})["draft"].get("whisper")
+        self.assertEqual({name: shown(name) for name in writings},
+                         {"absent": True, "null": True, "at-name": True, "two": None, "by-agent": None, "told": None, "asked": None,
+                          "chose-tell": False, "conversation": None, "since": None}, "only what showed as a Whisper is read as one")
+
+        def sent(name):
+            topic = places[name][1]
+            self.committed(self.prepare("d-" + name, topic, submission="s-" + name, send_op="send-" + name))
+            message = self.committed(self.command("message.send", {"submission_id": "s-" + name}, target={"topic_id": topic}, op="send-" + name))
+            return self.sql("SELECT intent,private_to FROM messages WHERE id=?", (message["message_id"],))[0]
+        self.assertEqual({name: sent(name) for name in ("absent", "at-name", "conversation", "since")},
+                         {"absent": (None, "agent-a"), "at-name": (None, "agent-a"), "conversation": ("tell", None), "since": ("tell", None)},
+                         "sent as it showed: a Whisper in a topic, a Tell in the conversation, and a Tell when saved since")
+
     def test_every_wrong_shape_is_refused_in_its_own_words_and_nothing_is_sent(self):
         asked = self.whisper()
         told = self.committed(self.post("On the record", addressees=["agent-a"], intent="tell"))["message_id"]
@@ -328,6 +377,48 @@ class ReadPathCase(WhisperCase):
         self.assertNotEqual(horizon, self.sql("SELECT seq FROM reply_horizons WHERE topic_id='t1' AND actor_id='owner'"))
         self.assertEqual(self.store.view("agent-b", "topic_messages", {"topic_id": "t1", "limit": 50})["items"], outside,
                          "nobody else reads a word of it")
+
+    def test_a_topic_names_the_whisper_that_reopened_or_started_it_only_to_its_two_people(self):
+        # The owner whispers to agent-a in a done topic, which reopens it; agent-b, outside it, reads only that it was reopened.
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        self.committed(self.command("topic.update", {"state": "done", "note": "Shipped"}, target={"topic_id": "t1"}, expected={"topic_revision": version}))
+        reopened = self.whisper("Secret words here")
+        started = self.whisper("Make a topic of this")
+        opening = {"workspace_id": "w1", "topic_id": "t9", "title": "From a whisper", "participants": ["agent-b"], "body": "Picking it up",
+                   "attachments": [], "source_message_id": started}
+        self.committed(self.command("opening.save", opening, target={"opening_id": "o1"}, expected={"opening_revision": 0}))
+        self.committed(self.command("opening.publish", {}, target={"opening_id": "o1"}, expected={"opening_revision": 1}))
+
+        def seen(actor):
+            listed = {item["id"]: item for item in self.store.view(actor, "workspace_topics", {"workspace_id": "w1"})["items"]}
+            topics = {topic_id: self.store.view(actor, "topic", {"topic_id": topic_id})["topic"] for topic_id in ("t1", "t9")}
+            return ((topics["t1"]["state_message_id"], listed["t1"]["state_message_id"]),
+                    (topics["t9"]["source_message_id"], listed["t9"]["source_message_id"]),
+                    (topics["t1"]["state"], topics["t1"]["state_note"]))
+        for actor in ("owner", "agent-a"):
+            self.assertEqual(seen(actor), ((reopened, reopened), (started, started), ("active", "Reopened by a new message")), actor)
+        self.assertEqual(seen("agent-b"), ((None, None), (None, None), ("active", "Reopened by a new message")),
+                         "outside it, the topic says it was reopened and was started from a message, and names neither")
+        for name, args in (("topic", {"topic_id": "t1"}), ("topic", {"topic_id": "t9"}), ("workspace_topics", {"workspace_id": "w1"})):
+            view = json.dumps(self.store.view("agent-b", name, args))
+            self.assertNotIn(reopened, view, name)
+            self.assertNotIn(started, view, name)
+        # A topic.update's answer says the topic as it stands, to whoever made it: a coordinator outside the whisper renames t1.
+        workspace = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        self.committed(self.command("workspace.coordinator_set", {"actor_id": "agent-b"}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": workspace}))
+        version = self.store.view("agent-b", "topic", {"topic_id": "t1"})["topic"]["version"]
+        renamed = self.committed(self.command("topic.update", {"title": "Launch, again"}, target={"topic_id": "t1"},
+                                              expected={"topic_revision": version}, actor="agent-b"))
+        self.assertIsNone(renamed["state_message_id"])
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        renamed = self.committed(self.command("topic.update", {"title": "Launch"}, target={"topic_id": "t1"}, expected={"topic_revision": version}))
+        self.assertEqual(renamed["state_message_id"], reopened)
+        # A message on the record that reopens a topic is named to everyone.
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        self.committed(self.command("topic.update", {"state": "done"}, target={"topic_id": "t1"}, expected={"topic_revision": version}))
+        told = self.committed(self.post("On the record"))["message_id"]
+        self.assertEqual(self.store.view("agent-b", "topic", {"topic_id": "t1"})["topic"]["state_message_id"], told)
 
     def test_an_agents_whisper_leaves_every_shared_fact_alone(self):
         asked = self.whisper()
@@ -616,6 +707,35 @@ class WhisperPausedWakesCase(hosted_tests.HostedCase):
         self.assertEqual(waiting("owner"), [(1, True)])
         self.assertEqual(waiting("agent-b"), [(0, False)])
 
+    def test_the_owner_is_told_of_work_in_their_outcome_only_from_what_they_can_read(self):
+        # reader-two, a person on w1's team, whispers to agent-a in the owner's t1; agent-a also has a delivery the owner
+        # can read, in w2, an outcome reader-two owns. The owner sees agent-a waiting on that one, and is told of nothing
+        # waiting in an outcome they own, since all that waits there is a whisper between others.
+        def done(receipt):
+            self.assertEqual(receipt["status"], "committed", receipt)
+            return receipt.get("result")
+        for item in self.store.view("agent-a", "deliveries", {"limit": 100})["items"]:
+            done(self.command("delivery.ack", target={"delivery_id": item["id"]}, actor="agent-a"))
+        self.sql("INSERT INTO actors(id,kind,name) VALUES ('reader-two','human','Reader Two')")
+        workspace = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        done(self.command("workspace.member_set", {"actor_id": "reader-two", "present": True}, {"workspace_id": "w1"},
+                          {"workspace_revision": workspace}))
+        done(self.command("message.post", {"body": "Just between us", "addressees": ["agent-a"], "whisper": True}, target={"topic_id": "t1"},
+                          actor="reader-two"))
+        done(self.command("workspace.create", {"id": "w2", "title": "Elsewhere", "team": ["owner", "agent-a"]}, actor="reader-two"))
+        opening = {"workspace_id": "w2", "topic_id": "t2", "title": "Over here", "participants": ["agent-a"], "body": "Hello", "attachments": []}
+        done(self.command("opening.save", opening, target={"opening_id": "o2"}, expected={"opening_revision": 0}, actor="reader-two"))
+        done(self.command("opening.publish", {}, target={"opening_id": "o2"}, expected={"opening_revision": 1}, actor="reader-two"))
+        done(self.command("message.post", {"body": "On the record", "addressees": ["agent-a"], "intent": "tell"}, target={"topic_id": "t2"},
+                          actor="reader-two"))
+        self.now += 31000
+        owner = self.store.view("owner", "wakes", {})
+        self.assertFalse(owner["runner"]["live"])
+        self.assertEqual([(item["actor_id"], item["why"]) for item in owner["quiet"]], [("agent-a", "wakes_paused")])
+        self.assertNotIn("notice", owner, "nothing the owner can read waits in an outcome they own")
+        writer = self.store.view("reader-two", "wakes", {})
+        self.assertEqual(writer.get("notice"), {"waiting_agents": 1}, "the person who whispered, owning w2, is told")
+
 
 class WhisperCLICase(verbs.AgentVerbCase):
     def test_an_agent_reads_a_whisper_with_how_to_answer_and_answers_with_the_whisper_verb_and_others_see_nothing(self):
@@ -681,8 +801,8 @@ VIEW_PATHS = {
     "topic_unread": "the reader's own deliveries",
     "marks": "visible() before a mark; the reader's own marks",
     "changes": "a whisper writes only to its two people's actor scopes",
-    "topic": "summaries, waits and participation are untouched by a whisper",
-    "workspace_topics": "summaries, activity, order and waits are untouched by a whisper",
+    "topic": "summaries, waits and participation are untouched by a whisper; the message that reopened or started it through redact_topic",
+    "workspace_topics": "summaries, activity, order and waits are untouched by a whisper; each topic's reopening and source through redact_topic",
     "workspaces": "per-reader delivery counts",
     "outcome_light": "reads asks and summaries, which a whisper never writes",
     "source_topics": "_message_access applies visible()",
@@ -736,7 +856,7 @@ MESSAGE_READS = {
                            "reads of when an agent wrote, its own acts, of which only a time is kept, as live keeps any act", 5),
     "aim_next/stacks.py": ("a message acted on, and a join's message, checked by visible() before anything is recorded; a reply's parent "
                            "id, read only to refuse a join that would loop, never shown; and the acts and stars views, under the whisper rule", 6),
-    "aim_next/whispers.py": ("the rule itself", 5),
+    "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
                              "number then read through _message_access; sources and gathering shown through _message_access; "

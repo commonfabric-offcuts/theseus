@@ -20,6 +20,12 @@ DRAFT_SCHEMA = [
 ]
 
 
+# Until item 281 the page showed writing that names one agent in a topic, with no choice of the person's, as a
+# Whisper, and sent it so; since, a new message starts as a Tell (docs/whispers.md). Every draft saved since carries
+# TELL_FIRST, so a draft saved before keeps the Whisper it showed: _as_shown reads it, and prepares it, as one.
+TELL_FIRST = "tell_first"
+
+
 def _source_key(ref):
     if not isinstance(ref, dict):
         raise Refusal("INVALID_ARGUMENT", "A source reference is required")
@@ -43,6 +49,21 @@ def _topic_composition(ref, topic_id):
 
 
 class Drafts:
+    def _as_shown(self, db, actor, topic_id, payload):
+        """A draft's writing as its person last saw it: one saved before TELL_FIRST that names exactly one agent in a
+        topic, by its addressees or its leading @names, and says neither whisper, ask nor tell, is their Whisper."""
+        writing = dict(payload)
+        if (writing.pop(TELL_FIRST, False) or writing.get("whisper") is not None or writing.get("intent") is not None
+                or writing.get("opening") is not None or (writing.get("source_ref") or {}).get("kind") == "new_topic"):
+            return writing
+        place = db.execute("SELECT kind FROM topics WHERE id=?", (topic_id,)).fetchone()
+        if place is None or place["kind"] != "topic" or whispers.actor_kind(db, actor) != "human":
+            return writing
+        names = addressing.addressed(db, topic_id, actor, writing)
+        if len(names) == 1 and whispers.actor_kind(db, names[0]) == "agent":
+            writing["whisper"] = True
+        return writing
+
     def _check_send_reservation(self, db, actor, envelope):
         row = db.execute("SELECT id,topic_id,send_kind,send_operation_id,authority_id,authority_epoch FROM submissions WHERE actor_id=? AND send_operation_id=?",
                          (actor, envelope["operation_id"])).fetchone()
@@ -134,6 +155,7 @@ class Drafts:
             whispers.refuse_opening(payload)
         payload["attachments"] = self._attachment_refs(db, actor, payload["attachments"])
         payload["source_ref"] = ref
+        payload[TELL_FIRST] = True
         if row:
             db.execute("UPDATE drafts SET revision=?,payload=? WHERE actor_id=? AND id=?", (revision + 1, _json(payload), actor, draft_id))
         else:
@@ -178,7 +200,7 @@ class Drafts:
         _revision(envelope.get("expected", {}), "draft_revision", row["revision"])
         if envelope.get("target", {}).get("topic_id") != row["topic_id"]:
             raise Refusal("INVALID_ARGUMENT", "The prepared destination must match the saved draft")
-        snapshot = json.loads(row["payload"])
+        snapshot = self._as_shown(db, actor, row["topic_id"], json.loads(row["payload"]))
         # The durable saved revision, never a late HTTP payload, is the source
         # of the frozen act. Callers may echo fields, but cannot override them.
         for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent", "whisper", "part"):
@@ -217,7 +239,7 @@ class Drafts:
                          (submission_id, actor, row["source_key"], row["topic_id"], envelope["operation_id"], send_op, send_kind,
                           snapshot["authority"]["authority_id"], snapshot["authority"]["authority_epoch"], _json(metadata), _json(snapshot))).lastrowid
         generation = "g-" + uuid.uuid4().hex
-        successor = {"source_ref": snapshot["source_ref"], "body": "", "attachments": [], "quotes": [], "addressees": []}
+        successor = {"source_ref": snapshot["source_ref"], "body": "", "attachments": [], "quotes": [], "addressees": [], TELL_FIRST: True}
         db.execute("UPDATE drafts SET revision=?,generation=?,payload=? WHERE actor_id=? AND id=?",
                    (row["revision"] + 1, generation, _json(successor), actor, row["id"]))
         self._change(db, "actor", actor, "draft", row["id"], row["revision"] + 1)
@@ -273,7 +295,8 @@ class Drafts:
         topic_composition = _topic_composition(args["source_ref"], args.get("topic_id"))
         note_only = args["source_ref"]["kind"] != "new_topic" and args.get("topic_id") is None
         row = None if note_only else db.execute("SELECT * FROM drafts WHERE actor_id=? AND source_key=? AND topic_id=?", (actor, key, args.get("topic_id"))).fetchone()
-        draft = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"], generation=row["generation"]) if row else None
+        draft = dict(self._as_shown(db, actor, row["topic_id"], json.loads(row["payload"])), id=row["id"], revision=row["revision"],
+                     generation=row["generation"]) if row else None
         row = None if topic_composition else db.execute("SELECT * FROM notes WHERE actor_id=? AND source_key=?", (actor, key)).fetchone()
         note = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"]) if row else None
         source_available = True

@@ -85,7 +85,8 @@ def refuse_opening(writing):
         raise Refusal(SHAPE, NEEDS_TOPIC)
 
 
-def _kind(db, actor):
+def actor_kind(db, actor):
+    """An actor's kind ("human" or "agent"), or None for nobody."""
     row = db.execute("SELECT kind FROM actors WHERE id=?", (actor,)).fetchone()
     return row["kind"] if row else None
 
@@ -108,8 +109,8 @@ def check_publish(db, actor, snapshot, parent):
     if len(addressees) != 1:
         raise Refusal(SHAPE, TO_ONE)
     other = addressees[0]
-    if _kind(db, actor) == "human":
-        if other == actor or _kind(db, other) != "agent":
+    if actor_kind(db, actor) == "human":
+        if other == actor or actor_kind(db, other) != "agent":
             raise Refusal(SHAPE, TO_AGENT)
         if parent is not None and parent["private_to"] is not None and {parent["author_id"], parent["private_to"]} != {actor, other}:
             raise Refusal(SHAPE, SAME_PAIR)
@@ -133,7 +134,7 @@ def quote_allowed(db, actor, source, private_to):
     if private_to is not None:
         if pair == {actor, private_to}:
             return
-    elif actor in pair and _kind(db, actor) == "human":
+    elif actor in pair and actor_kind(db, actor) == "human":
         return
     raise Refusal(STAYS, QUOTE_PRIVATE)
 
@@ -164,6 +165,23 @@ def redact_quotes(db, actor, quotes):
                 quote = dict(quote, source=None)
         result.append(quote)
     return result
+
+
+# The message a topic names: the one that reopened it, and the one it was started from.
+TOPIC_MESSAGES = ("state_message_id", "source_message_id")
+
+
+def redact_topic(db, actor, topic):
+    """A topic (a row or dict with TOPIC_MESSAGES) as actor may read it: each message it names stays named only to a
+    reader who may see that message. Anyone outside a person's whisper that reopened or started the topic reads null,
+    so the topic says it was reopened (its note) or started from something, and names nothing."""
+    topic = dict(topic)
+    for field in TOPIC_MESSAGES:
+        if topic.get(field) is not None:
+            row = db.execute("SELECT author_id,private_to FROM messages WHERE id=?", (topic[field],)).fetchone()
+            if row is not None and not visible(row, actor):
+                topic[field] = None
+    return topic
 
 
 def no_answer(db, message):

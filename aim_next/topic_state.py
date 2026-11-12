@@ -19,6 +19,7 @@ it is said, else the ask's.
 from .contract import LIMITS, READABLE, Refusal, organises, _body, _identifier, _prefix, _revision
 from .delivery import _now_ms
 from .outcome_asks import held_ask
+from .whispers import redact_topic
 
 
 STATES = ("active", "waiting", "review", "done")
@@ -207,7 +208,8 @@ class TopicState:
         row = db.execute("SELECT title,archived,state,state_note,state_by,state_ms,state_message_id FROM topics WHERE id=?", (topic["id"],)).fetchone()
         return {"topic_id": topic["id"], "version": version, "title": row["title"], "archived": bool(row["archived"]), "state": row["state"],
                 "note": row["state_note"], "waiting_on": waiting, "state_by": row["state_by"], "state_ms": row["state_ms"],
-                "state_message_id": row["state_message_id"]}, [
+                # Named only to a reader who may see the message that reopened it (whispers.py).
+                "state_message_id": redact_topic(db, actor, row)["state_message_id"]}, [
                     {"kind": "topic", "id": topic["id"], "version": version}]
 
     def _may_say(self, db, topic, actor):

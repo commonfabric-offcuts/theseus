@@ -595,6 +595,21 @@ class CliCase(ConversationCase):
         code, out, err = self.run_cli("topics", "w1")
         self.assertEqual(out.splitlines()[0], "conversation %s (agent-a answers; 1 new)" % self.conversation)
 
+    def test_an_answer_by_whisper_reads_in_the_cli_as_a_message_only_its_two_people_can_open(self):
+        # The coordinator, a person here, answers agent-a's item by whisper to agent-a; agent-b reads who answered and when.
+        self.committed(self.command("workspace.coordinator_set", {"actor_id": "owner"}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": self.versions()[0]}))
+        raised = self.posted("Is the copy final?", actor="agent-a")
+        answer = self.posted("Yes, final.", addressees=["agent-a"], whisper=True, reply_to=raised)
+        code, out, err = self.run_cli("conversation", "w1", actor="agent-b")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("  [answered] by a message you can't open (owner, ", out)
+        self.assertNotIn(answer, out)
+        self.assertNotIn("None", out)
+        code, out, err = self.run_cli("conversation", "w1")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("  [answered] by %s (owner, " % answer, out, "the agent it went to reads which message answered")
+
     def test_the_owner_chooses_the_coordinator_and_an_answerer_posts_part_of_an_answer(self):
         asked = self.posted("Copy and date?")
         code, out, err = self.run_cli("post", self.conversation, "--reply-to", asked, "--part", "Copy is final.")

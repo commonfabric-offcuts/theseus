@@ -27,7 +27,9 @@ names a source and no open opening's payload names one.
   recorded, naming the first few; nothing is created and the opening stays
   open. Publishing again with them in `seen` goes ahead. `seen` on an opening
   without a source is `INVALID_ARGUMENT`. The new topic records its
-  `source_message_id`, which the `topic` and `workspace_topics` views carry.
+  `source_message_id`, which the `topic` and `workspace_topics` views carry,
+  null for a reader outside a person's whisper it was started from
+  ([whispers.md](whispers.md)).
 - `opening.discard` still takes `args: {}` only.
 
 ## View
