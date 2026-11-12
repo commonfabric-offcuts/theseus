@@ -84,8 +84,13 @@ class AsideCase(StackCase):
     def test_only_visible_replies_bring_back_and_inaccessible_ancestry_is_not_disclosed(self):
         root = self.post()
         self.committed(self.aside(root, self.latest(), actor='agent-b'))
+        before = self.position(root, 'agent-b')
         hidden = self.post('Private answer', actor='owner', reply_to=root, addressees=['agent-a'], whisper=True)
-        self.assertTrue(self.position(root, 'agent-b')['below'])
+        self.assertEqual(self.position(root, 'agent-b'), before, 'a hidden whisper changes no visible position or watermark')
+        self.committed(self.command('stack.name', {'name': 'A private name'}, target={'message_id': hidden},
+                                    expected={'name_revision': 0}, actor='owner'))
+        self.assertEqual(self.position(root, 'agent-b'), before, 'a hidden whisper act changes no visible watermark')
+        self.rejected(self.aside(root, self.latest(), revision=1, actor='agent-b'), 'INVALID_ARGUMENT')
         answer = self.store.view('agent-b', 'stack_positions', {'topic_id': 't1', 'message_ids': [hidden]})
         self.assertEqual(answer['error']['code'], 'FORBIDDEN')
 

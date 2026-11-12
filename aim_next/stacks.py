@@ -40,7 +40,7 @@ import math
 
 from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
-from .whispers import visible
+from .whispers import VISIBLE, visible
 
 
 def _act_table(kinds):
@@ -246,8 +246,10 @@ def stack_positions(db, actor, items):
     for item in items:
         topic = item["topic_id"]
         if topic not in topics:
-            topics[topic] = {"messages": db.execute("SELECT coalesce(max(seq),0) FROM messages WHERE topic_id=?", (topic,)).fetchone()[0],
-                             "acts": db.execute("SELECT coalesce(max(id),0) FROM message_acts WHERE topic_id=? AND owner IN ('',?)", (topic, actor)).fetchone()[0]}
+            params = {"topic": topic, "actor": actor}
+            topics[topic] = {"messages": db.execute("SELECT coalesce(max(m.seq),0) FROM messages m WHERE m.topic_id=:topic AND " + VISIBLE, params).fetchone()[0],
+                             "acts": db.execute("SELECT coalesce(max(a.id),0) FROM message_acts a JOIN messages m ON m.id=a.message_id "
+                                                "WHERE a.topic_id=:topic AND a.owner IN ('',:actor) AND " + VISIBLE, params).fetchone()[0]}
         root = roots.root(item["id"])
         if root not in positions:
             acts = current_acts(db, actor, [root]).get(root, EMPTY)
@@ -308,7 +310,8 @@ class Stacks:
         if kind == "aside":
             if StackRoots(db, actor).root(message["id"]) != message["id"]:
                 raise Refusal("STACK_CHANGED", "This dossier was joined since it was read; read it again")
-            latest = db.execute("SELECT coalesce(max(seq),0) FROM messages WHERE topic_id=?", (message["topic_id"],)).fetchone()[0]
+            latest = db.execute("SELECT coalesce(max(m.seq),0) FROM messages m WHERE m.topic_id=:topic AND " + VISIBLE,
+                                {"topic": message["topic_id"], "actor": actor}).fetchone()[0]
             if value["through"] is not None and value["through"] > latest:
                 raise Refusal("INVALID_ARGUMENT", "The observed sequence is ahead of this topic")
         personal = kind in PERSONAL

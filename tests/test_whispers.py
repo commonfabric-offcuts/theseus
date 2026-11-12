@@ -537,6 +537,7 @@ class WhisperCLICase(verbs.AgentVerbCase):
 # Every view, and how a whisper is kept from anyone outside it (spec §6). A new
 # view is classified here before it ships; until then this audit fails.
 VIEW_PATHS = {
+    "stack_positions": "_acted_message checks visible() and topic access for each requested message; ancestry stops at an invisible parent; reply traversal and refresh watermarks apply the visibility rule",
     "topic_messages": "VISIBLE in each of its queries; a hidden parent's excerpt is blanked",
     "topic_images": "VISIBLE in its window over each topic's newest messages",
     "source": "_message_access applies visible(); quotes are redacted",
@@ -600,7 +601,9 @@ MESSAGE_READS = {
                            "the step back's check for Theseus's notices, which are never whispers; and the upgrade's "
                            "reads of when an agent wrote, its own acts, of which only a time is kept, as live keeps any act", 5),
     "aim_next/stacks.py": ("a message acted on, and a join's message, checked by visible() before anything is recorded; a reply's parent "
-                           "id, read only to refuse a join that would loop, never shown; and the acts and stars views, under the whisper rule", 6),
+                           "id, read only to refuse a join that would loop, never shown; acts and stars under the whisper rule; "
+                           "position roots start at visible messages and stop before invisible ancestors; recursive reply/join members "
+                           "must be visible; message/act watermarks and aside cutoff validation apply VISIBLE", 16),
     "aim_next/whispers.py": ("the rule itself", 5),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
