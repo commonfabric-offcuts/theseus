@@ -4,6 +4,8 @@ Revised 12 November 2026 with Tony's direction in New Charter messages 2448
 and 2450. Incorporates the answers in 2440 and 2447. Team-renewal rules below
 answer 2450. This branch records the operating agreement and rollout work;
 it does not itself install monitoring, replace active briefs or move ownership.
+The owned implementation sequence and current status are in
+[charter-rollout.md](charter-rollout.md).
 
 ## The core
 

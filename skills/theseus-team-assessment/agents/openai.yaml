@@ -1,0 +1,4 @@
+interface:
+  display_name: "Theseus team assessment"
+  short_description: "Assess a team's progress and next intervention"
+  default_prompt: "Use $theseus-team-assessment to independently assess this team's current assignment and recommend the smallest useful intervention."
