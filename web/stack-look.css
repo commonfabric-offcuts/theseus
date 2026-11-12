@@ -212,3 +212,20 @@
 }
 /* A touch screen: quiet line buttons keep full tap targets. */
 @media(pointer:coarse){:is(.stack-split,.stack-unplace){min-height:2.75rem;margin-block:-.5rem}}
+
+/* Agent-only dossiers start as one quiet row. Opening it uses the same
+   three states; the compact treatment never means a saved message fold. */
+.reply-stack[data-compact=true]:not(.only-new *){margin:.65rem 0;padding:0;border-radius:.55rem;box-shadow:none;min-height:2.75rem;background:transparent}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{position:relative;top:0;width:100%;max-width:100%;height:2.75rem;flex-wrap:nowrap;align-items:center;padding-block:.25rem;border-radius:.55rem;background:transparent}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head-card{height:2.75rem;scroll-margin-top:4px}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head>:not(.stack-name,.stack-meta){display:none}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head::after,
+.reply-stack[data-compact=true]:not(.only-new *) .stack-name::before,
+.reply-stack[data-compact=true]:not(.only-new *) .stack-name::after{display:none}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-name{flex:1;font-size:.85rem;font-weight:400;color:var(--muted)}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-meta{flex:none;font-size:.75rem;max-width:35%}
+.reply-stack[data-compact=true] .stack-repliers{display:none}
+.reply-stack[data-compact=true]:not(.only-new *)>.stack-toggle{top:.5rem}
+.reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
+#messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
+#agent-coordination-show:has(~ #messages[hidden]){display:none}

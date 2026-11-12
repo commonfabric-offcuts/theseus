@@ -77,6 +77,77 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, `.message-menu-list button:nth-of-type(${at + 1})`);
   };
 
+  await check('reading coordination dossiers stay compact, can be hidden, and return for human or room replies', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-coordination-' + device;
+      const ids = await seed(topic, [
+        ['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Ready for this topic.' }],
+        ['root', { sender: 'aim-core', join: true, addressees: ['aim-ux'], body: 'Review between agents only' }],
+        ['reply', { sender: 'aim-ux', join: true, addressees: ['aim-core'], reply_to: 'root', body: 'The review is ready.' }],
+        ['room', { sender: 'aim-core', addressees: [], body: 'An update for the room.' }],
+        ['roomReply', { sender: 'aim-ux', addressees: ['aim-core'], reply_to: 'room', body: 'I checked it.' }],
+        ['mine', { sender: facts.actor, addressees: ['aim-core'], body: 'My question.' }],
+        ['answer', { sender: 'aim-core', addressees: ['aim-ux'], reply_to: 'mine', body: 'Answering the human without a To field naming them.' }],
+      ]);
+      const p = await open(topic, device, topic, ids.root);
+      const target = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      const state = () => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(target)});return s?{compact:s.dataset.compact,fold:s.dataset.fold,visible:s.getClientRects().length>0,height:s.getBoundingClientRect().height}:null})()`);
+      await until(async () => (await state())?.compact === 'true', 'the agent-only dossier is compact');
+      assert.ok((await state()).height <= 52, 'one quiet row, not a folder and another row');
+      assert.equal((await look(p, ids, 'room')).fold, 'folded', 'room posts retain normal dossiers');
+      assert.equal((await look(p, ids, 'mine')).fold, 'folded', 'direct answers to the human stay visible');
+      await shot(p, 'coordination-compact-' + device);
+      const toggle = target + ' > .stack-toggle', filter = '#agent-coordination-show button';
+      for (const wanted of ['folded', 'open', 'head']) {
+        await centre(p, toggle); await press(p, device, toggle);
+        await becomes(async () => (await state()).fold, wanted, 'the same three states: ' + wanted);
+      }
+      await centre(p, filter); await press(p, device, filter);
+      await becomes(async () => (await state()).visible, false, 'Show agent coordination hides the row');
+      const later = (await control({ method: 'agent_message', operation_id: topic + '-later', topic_id: topic, source: 'topic', sender: 'aim-ux', addressees: ['aim-core'], reply_to: ids.reply, body: 'Another internal check.' })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(later))}))`), 'new internal reply arrives');
+      assert.equal((await state()).visible, false, 'agent replies do not make it reappear');
+      const human = (await control({ method: 'agent_message', operation_id: topic + '-human', topic_id: topic, source: 'topic', sender: 'aim-core', addressees: device === 'phone' ? [] : [facts.actor], reply_to: later, body: 'Now this needs your attention.' })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(human))}))`), 'human-addressed reply arrives');
+      await becomes(async () => (await state()).visible, true, 'a human-addressed reply brings the dossier back');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(target)}).dataset.coordination`), '', 'mixed stack is not classified as agent-only');
+      await shot(p, 'coordination-returned-' + device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading coordination links reveal hidden work and plain arrows keep all three states', async () => {
+    const topic = 'stack-coordination-links';
+    const ids = await seed(topic, [
+      ['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Ready.' }],
+      ['root', { sender: 'aim-core', join: true, addressees: ['aim-ux'], body: 'Internal dossier.' }],
+      ['reply', { sender: 'aim-ux', reply_to: 'root', addressees: ['aim-core'], body: 'Internal answer.' }],
+      ['single', { sender: 'aim-core', addressees: ['aim-ux'], body: 'Internal standalone.' }],
+    ]);
+    const link = (await control({ method: 'agent_message', operation_id: topic + '-link', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
+      body: `[Reply](${facts.origin}/?topic=${topic}&message=${ids.reply}) and [Standalone](${facts.origin}/?topic=${topic}&message=${ids.single}).` })).result.message_id;
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await keyTo(p, ids.root);
+    for (const [key, want] of [['ArrowRight', 'folded'], ['ArrowRight', 'open'], ['ArrowLeft', 'folded'], ['ArrowLeft', 'head']]) {
+      await p.key(key); await becomes(async () => (await look(p, ids, 'root')).fold, want, key + ' chooses ' + want);
+    }
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.reply,
+      operation_id: topic + '-saved-fold', args: { folded: true } });
+    await until(async () => (await actsOf(topic, ids.reply))?.folded === true, 'the quiet reply has a saved personal fold');
+    const filter = '#agent-coordination-show button';
+    for (const [id, words] of [[ids.reply, 'Internal answer.'], [ids.single, 'Internal standalone.']]) {
+      await centre(p, filter); await p.point(filter);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).getClientRects().length`), 0, 'the target is hidden');
+      const anchor = `${card(link)} a.words-link[href*="message=${id}"]`;
+      await centre(p, anchor); await p.point(anchor);
+      await until(async () => (await readerOn(p))?.startsWith(words), 'the link opens the hidden message in the Reader');
+      await closeReader(p, 'laptop');
+      assert.equal(await p.evaluate(`document.querySelector('#agent-coordination-show button').getAttribute('aria-pressed')`), 'true', 'the filter says the target is visible again');
+      assert.equal((await actsOf(topic, ids.reply)).folded, true, 'revealing hidden work preserves the saved personal fold');
+    }
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('reading stacks fully expanded dossiers keep their own keyboard stop in both directions', async () => {
     const topic = 'stack-open-header-stop';
     const ids = await seed(topic, [
