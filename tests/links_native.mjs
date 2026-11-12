@@ -627,15 +627,15 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes("A page of the outcome's Notebook.")`), 'the Reader shows the page');
     await settled(p);
     assert.equal(await shown(), true);
-    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Open as cards', 'Wide layout']); await p.key('Escape');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Edit page', 'Wide layout']); await p.key('Escape');
     // At a phone's width there is no layout to choose, and the page's links stay.
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await until(() => p.evaluate('innerWidth === 390'), 'a phone\'s width');
     await until(shown, 'the ⋯ at a phone\'s width');
-    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Open as cards']); await p.key('Escape');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Edit page']); await p.key('Escape');
     await p.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await until(() => p.evaluate('innerWidth === 1440'), 'a wide window');
-    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Open as cards', 'Wide layout']); await p.key('Escape');
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Copy Link to Revision 1', 'Edit page', 'Wide layout']); await p.key('Escape');
     assert.deepEqual(p.errors, []);
   });
 
