@@ -40,7 +40,7 @@ export class PageHere {
     heading.tabIndex = -1;
     const origin = this.node('p', `Notebook · revision ${source.source_ref.revision}`, 'muted');
     const body = linkWords(this.node('div', undefined, 'page-here-body'), source.body ?? '', { doc: this.doc });
-    const cards = this.cards ? Object.assign(this.node('a', 'Open as cards', 'page-here-cards'), { href: this.cards(source.source_ref.id) }) : '';
+    const cards = this.cards ? Object.assign(this.node('a', 'Edit page', 'page-here-cards'), { href: this.cards(source.source_ref.id) }) : '';
     this.host.replaceChildren(heading, origin, status, body, cards, close);
     heading.focus();
     let since;

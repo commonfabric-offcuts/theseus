@@ -66,10 +66,10 @@ the picked one, after its children, or with ⌥Return right above it, at its
 depth.
 
 While a card is being written, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it by the same
-rules, and the move is saved at once; what is written, and the cursor, stay where they
-were, and the writing is saved when the card is finished. A new card not yet
-made only changes where it will go, by the same rules, and nothing is saved
-until it is finished. The box keeps these keys even with nowhere to go, as
+rules; what is written, and the cursor, stay where they were. Both the move
+and unfinished writing autosave through the shared Notebook writer (302,
+notebook-writing.md). A new card with words also saves before Done; an empty
+new card changes only where it will go. The box keeps these keys even with nowhere to go, as
 an outliner does, so a Tab never takes the focus out of a card half written;
 Escape or ⌘Return leaves it. ↑ at the very start of what is written finishes
 the card and opens the card that shows above it for writing, the cursor at
@@ -133,21 +133,20 @@ child card shows its parent's title above its own.
 
 ## Saving
 
-Every act writes a new revision with `memory.revise`, expecting the revision
-the deck was read at, and the saving sign says when it was saved. Acts made
-while a save is on its way go together in the next one. When the page changed
-elsewhere first (`REVISION_CONFLICT`), the deck reads the page again and makes
-the waiting acts again on it, each finding its card by its words; an act whose
-card is gone is dropped, and the page says so. A save whose answer was lost
-goes again exactly as it was, under the same operation, so Core records it
-once: on Try again, or by itself the next time Theseus is heard from. On every
-commit the live feed announces, the deck reads its Notebook's version, and
-reads the page again only when that has moved, so a change made on a laptop
-shows on the phone. An edit in progress is kept through a re-read;
-if its card changed elsewhere meanwhile, the edit is added as a card beside
-it rather than written over it. A person who may read the page but not write
-it (`FORBIDDEN`, `OUTCOME_REACHED`) gets the deck to read, and the page says
-why.
+Text and Cards now share `NotebookWriting` (302, notebook-writing.md), using
+`memory.revise` and the last confirmed revision. Unfinished writing autosaves,
+and edits made during a save go in the next revision. Switching views does
+not save or normalize the words. The exact request and newer local writing
+survive a lost response and reload. A second tab may read while the first
+holds its device journal.
+
+Changes to different cards merge while the current card stays open, including
+when an agent answers the card's bubble by editing elsewhere in the deck.
+Changes to the same card on both sides, or overlapping Text writing, show both
+versions and ask which to continue with. Untouched writing accepts a newer
+revision without a question. A permission refusal preserves local writing and
+makes the page read-only. Background reads still check the Notebook version
+before reading the page body again.
 
 ## Asking about a card
 

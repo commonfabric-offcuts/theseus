@@ -9,8 +9,9 @@ import { PAGE, paintChanged } from './topic-navigation.mjs';
 // The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, pageMax = PAGE }) {
+  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, create = null, pageMax = PAGE }) {
     Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, pageMax });
+    this.creation = create?.(); this.creation?.setAvailable(false);
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
   }
@@ -29,7 +30,7 @@ export class OutcomeReferences {
       if (this.list.children[index] !== row) this.list.insertBefore(row, this.list.children[index] ?? null);
     });
     this.more.hidden = this.next === null;
-    this.host.hidden = this.items.length === 0 && this.message.hidden;
+    this.host.hidden = this.items.length === 0 && this.message.hidden && !this.creation?.available;
   }
   // As the rails: a More shares a running read, a reload asked for while one
   // runs follows it, and a reload reads again, from the start, every item the
@@ -47,6 +48,7 @@ export class OutcomeReferences {
       : this.reread()).then(({ items, next }) => {
       const focused = document.activeElement;
       this.items = items; this.next = next;
+      this.creation?.setAvailable(true);
       this.message.hidden = true; this.paint(); this.seen(items);
       // More, once it has nothing left to bring, hands focus to what it brought.
       if (focused === this.more && this.more.hidden) [...this.list.children].find(row => !prior.has(row.dataset.id))?.focus();
@@ -54,7 +56,7 @@ export class OutcomeReferences {
     }).catch(error => {
       // Someone outside the outcome cannot list its Notebook: an answer, not a failure.
       const denied = this.isDenied(error);
-      if (denied) { this.items = []; this.next = null; this.message.hidden = true; }
+      if (denied) { this.creation?.setAvailable(false); this.items = []; this.next = null; this.message.hidden = true; }
       else { this.message.textContent = `${error.message} The outcome references could not be read.`; this.message.hidden = false; }
       this.paint();
       return denied;

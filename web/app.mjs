@@ -26,6 +26,7 @@ import { paintTopicHeader } from './topic-header.mjs';
 import { TopicSettings } from './topic-settings.mjs';
 import { repaintTimes, watchDays } from './times.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
+import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
@@ -46,7 +47,7 @@ import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
-import { DeckPage } from './deck-page.mjs';
+import { NotebookPage } from './notebook-page.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
@@ -1151,7 +1152,7 @@ function openReaderMenu() {
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
       { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) },
-      { label: 'Open as cards', act: () => run(() => openDestination({ kind: 'cards', id: ref.id }, p.source.title || 'Cards')) });
+      { label: 'Edit page', act: () => run(() => openDestination({ kind: 'cards', id: ref.id, view: 'text' }, p.source.title || 'Notebook')) });
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
@@ -1794,6 +1795,7 @@ async function initialize() {
     updated: () => { $('topic-navigation').dataset.listed = ''; },
   });
   outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'),
+    create: () => notebookCreator($('outcome-references'), {kind:'workspace',id:topic.workspace_id}),
     list: $('outcome-references-list'), more: $('more-references'), message: $('outcome-references-status'), pageMax: pageMax(),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
@@ -1805,6 +1807,7 @@ async function initialize() {
     open: (ref, row) => run(() => openSource(ref, row)),
     seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
   });
+  notebookCreator($('notebook'), {kind:'topic',id:topic.id});
   // The rail shows only this topic's outcome. A message's Add to pipeline
   // follows the Pipeline row's read.
   const pipeline = pipelineSection(topic.workspace_id, false, paintReaderMark); pipelineRow = pipeline.row;
@@ -2396,10 +2399,12 @@ async function initializeDeckPage(route) {
     const {participants}=await pipelineView('topic',{topic_id:topicId});
     return {topicId,agents:participants.filter(p=>p.kind==='agent'&&p.enabled).map(p=>p.actor_id)};
   };
-  const page=new DeckPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn});
+  const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn,api,bootstrap,mode:route.view??'cards'});
+  shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
   $('deck-page').hidden=false;
   await followCommits(()=>page.load())();
+  if(route.write==='new' && page.base && !page.base.body && !page.readOnly) page.start();
   document.body.dataset.ready='true';
 }
 // An outcome's Measurements: every check's readings by release (docs/targets.md). The rail
@@ -2423,6 +2428,10 @@ async function initializeMeasurementsPage(route) {
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
 }
+function notebookCreator(host, scope) {
+  return new NotebookCreate({ host, scope, api, bootstrap, open: route => openDestination(route, 'Notebook') });
+}
+
 // An outcome's Notebook pages on its own page, each opening in place.
 function outcomePages(workspace,recorded) {
   const view=async(name,args)=>checkedView(await api.view(name,args,{readClass:'foreground'}),bootstrap.instance_id);
@@ -2431,8 +2440,8 @@ function outcomePages(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  const here=pageHere=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref),cards:id=>routeHref({kind:'cards',id})});pageHereOutcome=workspace;
-  return new OutcomeReferences({scope:workspace,host:$('outcome-references'),list:$('outcome-references-list'),more:$('more-references'),
+  const here=pageHere=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref),cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
     message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
     read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>here.open(ref,row))});
 }

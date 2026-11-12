@@ -75,7 +75,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     return {shown:shown(o),scroll:document.getElementById('rail').scrollTop,fresh:chip('outline-only-new'),waiting:chip('outline-only-waiting'),
       outcomes:Object.fromEntries([...o.querySelectorAll('.ol-outcome')].filter(li=>!li.hidden).map(li=>{const name=li.querySelector('.ol-name'),badge=name.querySelector('.unread-count');
         return [li.dataset.workspaceId,{open:li.hasAttribute('data-open'),count:badge?Number(badge.textContent):0,lit:Boolean(name.querySelector('.outcome-light[data-light=waiting]')),
-          current:name.getAttribute('aria-current'),href:name.getAttribute('href'),standing:name.querySelector('.standing')?.textContent??'',
+          current:name.getAttribute('aria-current'),href:name.getAttribute('href'),standing:li.querySelector('.standing')?.textContent??'',
           topics:[...li.querySelectorAll('.ol-topics a[data-topic-id]')].filter(shown).map(a=>({id:a.dataset.topicId,unread:Number(a.querySelector('.unread-count')?.textContent??0),current:a.getAttribute('aria-current')}))}]}))}})()`);
   const home = p => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
     return {lit:Boolean(l)&&l.getClientRects().length>0,words:w&&w.getClientRects().length>0?w.textContent:null,said:w?.textContent??null,label:h.getAttribute('aria-label')}})()`);
@@ -177,6 +177,39 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (let n = 0; n < rows.length && await keyedAt(p) !== row; ++n) await p.key('ArrowDown');
     assert.equal(await keyedAt(p), row, `↓ reaches ${row}`);
   };
+
+  await check('rail outcome clicks toggle topics and waiting opens the exact unloaded question', async () => {
+    for (const size of ['laptop', 'phone']) {
+      const oid='rail-toggle-'+size, tid=oid+'-topic';
+      await control({method:'light_outcome',outcome:oid,title:'Outcome toggle '+size,topic:{id:tid,title:'Question beyond the first page'}});
+      const ask=await control({method:'agent_message',operation_id:oid+'-ask',body:'Which notebook should the agent use?',topic_id:tid,addressees:[facts.actor],intent:'ask'});
+      for(let n=0;n<8;n++) await control({method:'agent_message',operation_id:oid+'-later-'+n,body:'Later coordination '+n,topic_id:tid});
+      const p=await open(oid,'/?topic='+tid,size);
+      const name=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-name`;
+      const waiting=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
+      const press=async selector=>size==='phone'?tap(p,selector):p.point(selector);
+      const showRail=async()=>{if(size==='phone'&&!((await drawer(p)).open))await tap(p,'#rail-open');};
+      await showRail();
+      await until(async()=>(await outline(p)).outcomes[oid]?.open,'outcome starts expanded');
+      await p.evaluate(`document.querySelector(${JSON.stringify(name)}).scrollIntoView({block:'center'})`);
+      await press(name);
+      await until(async()=>(await outline(p)).outcomes[oid]?.current==='page'&&!(await outline(p)).outcomes[oid]?.open,'click both opens Conversation and folds topics');
+      await showRail();
+      await press(name);
+      await until(async()=>(await outline(p)).outcomes[oid]?.open,'second click expands topics');
+      await showRail();
+      await press(name);
+      await until(async()=>!(await outline(p)).outcomes[oid]?.open,'third click folds topics');
+      if(size==='laptop')assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(name)})`),true,'clicked outcome keeps keyboard focus');
+      await showRail();
+      await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(waiting)})?.getClientRects().length)`),'waiting control is visible even with topics folded');
+      await press(waiting);
+      await until(()=>p.evaluate('document.querySelector("#reader").open'),'the exact question opens in the Reader');
+      assert.match(await p.evaluate('document.querySelector("#reader").textContent'),/Which notebook should the agent use/,'not a recent unrelated message');
+      await shot(p,'waiting-question-'+size);
+      assert.deepEqual(p.errors,[]);await p.close();
+    }
+  });
 
   await check('rail the outline names an outcome by its light and name, which opens its Conversation; one with no conversation opens its page, and nothing moves when that read lands', async () => {
     // An outcome made before version 28, not yet given its conversation.

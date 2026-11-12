@@ -109,3 +109,16 @@ The pipeline (item 84), outcome kinds and Reached (D41, D42) and checks
 (item 14) are not records yet: every outcome's pipeline reads as off, every
 outcome is to keep with no checks, so Done does not show, and "Started by"
 names the owner without a time.
+
+### Jump to the unanswered question (148)
+
+An ask fact includes `message_id` when the wait comes from a message. A wait
+set on the topic itself has no message id. The outline's Waiting on you
+control reads `outcome_light` again, then opens the first current ask's exact
+message link (blocking asks retain priority). The Reader loads that message
+directly, even outside the loaded feed or in a folded dossier. It does not
+answer it. If the wait has cleared, say so and refresh the outline.
+
+An outcome name toggles its topics and opens its Conversation; this explicit
+choice survives that navigation. The name retains keyboard focus on desktop.
+Waiting on you is a separate keyboard-reachable control, not a nested link.

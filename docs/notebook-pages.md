@@ -47,8 +47,8 @@ On a topic's page the sidebar lists the outcome's Notebook pages under the
 heading Outcome Notebook, below its topics (named for the outcome, so it is
 not taken for the topic's own Notebook in the page beside it): one row per page, by title, as tall as
 a topic row and in the same column, opening the page in the Reader. On a
-phone the rows scroll sideways, as topics do. An outcome with no pages, or
-one the reader cannot list, shows no Notebook section; a read that fails
+phone the rows scroll sideways, as topics do. An empty outcome Notebook keeps its heading and creation pencil. A Notebook
+the reader cannot list shows no section; a read that fails
 says so above the rows and keeps what was shown. The list is read again
 after every commit the live feed names, as the topics are.
 
@@ -144,3 +144,24 @@ page opened next, 390 wide in light and dark with contrast measured, the outcome
 page, and a page's link opening the page as it stands and at a revision, in
 the Reader and in place, from the address and from a message, with the
 Reader's ⋯ copying both links.
+
+## Start a page (296)
+
+A pencil beside a Notebook heading opens a single title line in place. Return
+creates an empty page in that exact outcome or topic using `memory.create`
+with item revision zero, then opens Cards with the first card ready to write.
+Escape or a press outside closes the line. The author, owner scope and item
+identity come from the bound page; there is no implicit fallback to another
+Notebook. The outcome heading remains visible when its Notebook is empty.
+
+An uncertain create retains its exact operation and item identity for Return
+to retry, including its original title. Changing that title first does not
+start a second page. A confirmed refusal keeps the typed title and permits a
+new attempt. The title cannot change during an in-flight create. Closing the
+line retains its pending request for reopening on this page; this control is
+not an autosaved draft across a browser reload.
+
+`?cards=ID&write=new` requests the initial blank card editor only when that
+page's body is still empty. Existing Cards links and nonempty pages keep their
+normal behavior. This creates a Notebook page; it adds no Cards mode to message
+drafts. The shared Notebook Text/Cards editor is the separate item 302.
