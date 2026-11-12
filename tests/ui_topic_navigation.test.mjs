@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicPages, TopicNavigation, topicPosition } from '../web/topic-navigation.mjs';
+import { TopicPages, TopicNavigation, topicPosition, routeHref, parseRoute } from '../web/topic-navigation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { AttemptError, unreached } from '../web/api.mjs';
 
@@ -229,4 +229,12 @@ test('departure choice is not armed before the warning can be shown', async () =
   for(let n=0;n<20&&calls<2;n++)await Promise.resolve();assert.equal(calls,2);
   const second=f.navigation.open('b');await assert.rejects(second,/Review 1 reply/);
   gate.resolve();await first;assert.deepEqual(f.visits,[]);
+});
+
+
+test('a new Notebook page opens its empty card editor through an exact cards route', () => {
+  const route = {kind:'cards', id:'n-first', write:'new'};
+  assert.equal(routeHref(route), '?cards=n-first&write=new');
+  assert.deepEqual(parseRoute(new URL('https://example.test/?cards=n-first&write=new')), route);
+  assert.throws(() => parseRoute(new URL('https://example.test/?cards=n-first&write=anything')), /incomplete|ambiguous/);
 });

@@ -39,6 +39,51 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     const a=lum(rgb(getComputedStyle(e).color)),b=lum(bg);return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
   })()`);
 
+  await check('notebook creation pencil opens a title line and creates the exact scoped page ready to write', async () => {
+    for (const [scope, phone] of [[{kind:'workspace',id:'w1'},false],[{kind:'topic',id:'t1'},false],[{kind:'workspace',id:'w1'},true]]) {
+      const label = scope.kind + (phone ? '-phone' : '-desktop'), name = 'Create notes in ' + label;
+      const p = await page('notebook-create-' + label, null, true, {beforeNavigate: async q => {
+        if (phone) {
+          await q.send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
+          await q.send('Emulation.setTouchEmulationEnabled', {enabled:true,maxTouchPoints:1});
+        }
+      }});
+      const press = async selector => {
+        if (!phone) return p.point(selector);
+        const b = await p.box(selector), x = b.x + b.width/2, y = b.y + b.height/2;
+        assert.ok(x>=0 && y>=0 && x<390 && y<844, selector + ' is on screen');
+        await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x,y}]});
+        await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+      };
+      const host = scope.kind === 'workspace' ? '#outcome-references' : '#notebook';
+      const button = host + ' .notebook-create', input = host + ' input';
+      await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(button)}))`), 'the Notebook pencil is available');
+      if (phone) { await press('#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), 'the Notebook drawer opens'); }
+      await p.evaluate(`document.querySelector(${JSON.stringify(button)}).scrollIntoView({block:'center'})`);
+      await press(button);
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(input)})`), 'one title line, focused');
+      await p.send('Input.insertText', {text:'Cancelled notes'});
+      await p.key('Escape');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), false, 'Escape closes the line');
+      const before = await view('memory_items', {owner_scope:scope});
+      assert.equal(before.items.some(item => item.title==='Cancelled notes'), false, 'Escape creates nothing');
+      await press(button);
+      await p.key('a', 4);
+      await p.send('Input.insertText', {text:name});
+      await p.key('Enter');
+      await until(() => p.evaluate(`Boolean(document.querySelector('#deck-page .deck-writing textarea'))`), 'the new page opens with its first card ready to write');
+      const id = await p.evaluate(`new URL(location.href).searchParams.get('cards')`);
+      const made = await view('memory_current', {item_id:id});
+      assert.deepEqual(made.owner_scope, scope); assert.equal(made.title, name); assert.equal(made.body, '');
+      assert.equal(await p.evaluate(`document.activeElement===document.querySelector('#deck-page .deck-writing textarea')`), true, 'the cursor is in the first card');
+      await p.send('Input.insertText', {text:'First card\nThe new page is writable.'});
+      await p.key('Escape');
+      await until(async () => (await view('memory_current',{item_id:id})).body.includes('The new page is writable.'), 'the first card is saved in Core');
+      await shot(p, 'notebook-create-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('notebook a page read and revised since wears its new revisions in the sidebar until opened, and the Reader shows what changed', async () => {
     await revise('Ship on Friday.\nDan reviews the notes.\n');
     const p = await page('notebook-light', null, true);

@@ -4823,6 +4823,20 @@
     "native": "rail",
     "case": "outcome clicks toggle"
    }
+  },
+  {
+   "item": 296,
+   "act": "Retrying an uncertain Notebook creation keeps its operation and item identity",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "this.pending ??= envelope(this.bootstrap, 'memory.create',",
+     "this.pending = envelope(this.bootstrap, 'memory.create',"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_quick_create.test.mjs"
+   }
   }
  ]
 }

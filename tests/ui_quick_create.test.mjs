@@ -220,3 +220,30 @@ test('The purpose is set in place by whoever organises the outcome: Return saves
   line.paint({ id: 'w1', purpose: 'Changed elsewhere' }, true);
   assert.equal(box.value, 'Changed elsewhere', 'a closed box follows a change made elsewhere');
 });
+
+test('a Notebook create retries the same identity and scope after an uncertain answer', async () => {
+  const { NotebookStart } = await import('../web/quick-create.mjs');
+  const scope = { kind: 'workspace', id: 'w1' };
+  let lost = true;
+  const api = core(e => { if (lost) { lost = false; throw Error('offline'); } return committed(e, { item_id: e.target.item_id, revision: 1, owner_scope: e.target.owner_scope }); });
+  const start = new NotebookStart({ api, bootstrap, scope });
+  await assert.rejects(start.create(' '), /title/);
+  await assert.rejects(start.create('Working notes'), /Not confirmed/);
+  await assert.rejects(start.create('Different notes'), /Working notes/);
+  assert.equal(api.sent.length, 1, 'editing a name cannot abandon an uncertain creation');
+  const id = await start.create('Working notes');
+  assert.deepEqual(api.sent[1], api.sent[0]);
+  assert.deepEqual(api.sent[0].target, { item_id: id, owner_scope: scope });
+  assert.deepEqual(api.sent[0].args, { title: 'Working notes', body: '', attachments: [], references: [] });
+  assert.deepEqual(api.sent[0].expected, { item_revision: 0, authority: bootstrap.authority });
+  assert.equal(api.sent[0].kind, 'memory.create');
+});
+
+test('a Notebook creation with a mismatched result is still uncertain, not a second page', async () => {
+  const { NotebookStart } = await import('../web/quick-create.mjs');
+  const api = core(e => committed(e, {item_id:'wrong', revision:1, owner_scope:e.target.owner_scope}));
+  const start = new NotebookStart({api, bootstrap, scope:{kind:'topic',id:'t1'}});
+  await assert.rejects(start.create('Notes'), /could not be confirmed/);
+  await assert.rejects(start.create('Notes'), /could not be confirmed/);
+  assert.deepEqual(api.sent[1], api.sent[0]);
+});
