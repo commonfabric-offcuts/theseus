@@ -582,6 +582,25 @@ class RefusedChildCase(HostCase):
 
 
 class ResumeRefusalCase(HostCase):
+    def test_a_missing_rollout_refuses_the_pin_and_preserves_work_without_replacement(self):
+        self.open_topic("Keep this queued request when the pinned rollout is missing")
+        state = self.fake_state()
+        state["threads"][self.thread]["persisted"] = False
+        (self.home / "fake-state.json").write_text(json.dumps(state))
+        runner = Runner(self)
+        self.addCleanup(runner.cleanup)
+        code, final = runner.finish()
+        self.assertEqual((code, final["status"], final.get("reason")), (2, "paused", "route_binding_changed"))
+        self.assertTrue(any(event.get("event") == "host_resume_refused" for event in runner.events))
+        self.assertEqual(self.sql("SELECT state,reason_code FROM runner_state"), [("paused", "route_binding_changed")])
+        self.assertEqual(len(self.pending()), 1)
+        self.assertEqual(set(self.fake_state()["threads"]), {self.thread})
+        methods = [entry["in"].get("method") for entry in self.wire() if "in" in entry]
+        self.assertEqual(methods.count("thread/start"), 1, "only original provisioning may create a thread")
+        self.assertEqual(methods.count("turn/start"), 0, "missing context must not start a model turn")
+        self.assertEqual(self.turns_rows(), [])
+        self.assertEqual(self.sql("SELECT exited_ms IS NOT NULL,cleanup FROM hosted_children"), [(1, "confirmed")])
+
     def test_a_pinned_thread_the_child_does_not_know_pauses_the_runner(self):
         state = self.fake_state()
         state["threads"] = {}

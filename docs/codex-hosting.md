@@ -455,6 +455,14 @@ scheduling on the same immutable pinned thread. Pending work remains pending;
 Continue with no work does not spend a model turn. A real human question is
 posted through Theseus and its answer is a normal delivery in that context.
 
+`runner_schedule` includes `hosted_controls`, keyed by each requested recipient
+(null for an ordinary route), in the same read transaction as the lease and due
+time. This lets the runner observe Stop even when no new delivery is due. The
+lease-bound control recheck immediately before dispatch remains required.
+A missing pinned rollout is a binding refusal (`host_resume_refused` followed
+by `route_binding_changed`), not a transient resume retry. It preserves pending
+deliveries and never provisions a replacement context.
+
 Health distinguishes desired stop from an observed end: Stopping while an
 open turn remains, Stopped once the runner records its end, Working while an
 owned turn is active, and Idle or Failed otherwise. A lost runner is reported

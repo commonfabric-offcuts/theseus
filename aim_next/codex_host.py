@@ -146,7 +146,8 @@ def _refuses_pin(error):
     data = error.get("data")
     message = error.get("message")
     return ((isinstance(data, dict) and data.get("type") == "modelProviderMismatch")
-            or (isinstance(message, str) and "not found" in message.lower()))
+            or (isinstance(message, str) and ("not found" in message.lower()
+                or message.lower().startswith("no rollout found for thread id "))))
 
 
 def _thread_status(status):
