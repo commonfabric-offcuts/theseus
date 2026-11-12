@@ -200,6 +200,21 @@ export function joinOf(stacks, index, way) {
   return stacks[index + (way === 'up' ? -1 : 1)] ?? null;
 }
 
+// What a join the reader makes, from the message acted on in the stack at
+// index, shows at once: { act: { id, into }, what is sent for the stack's
+// first message; open: the stack it goes into, which heads the two together,
+// drawn at level, open, so its head shows whole and the joined messages show
+// under their join line; select: the message acted on, which keeps the
+// selection in its new place }. Null with no neighbour that way. A join that
+// reaches the page from anyone else, or from another device, opens nothing.
+export function joinShown(stacks, index, way, acted) {
+  const from = stacks[index], into = joinOf(stacks, index, way);
+  if (!from) throw Error(`No stack at ${index} to join.`);
+  if (acted !== from.id && !from.replies.some(item => item.id === acted)) throw Error(`A join is made from a message in the stack it joins, not ${acted}.`);
+  if (!into) return null;
+  return { act: { id: from.id, into: into.id }, open: into.id, level: 'open', select: acted };
+}
+
 // Every loaded message in the order the page shows them, top to bottom: each
 // stack's head, then its replies, folded ones included. The Reader's ↑ and ↓
 // step along it, as the eye goes down the page.

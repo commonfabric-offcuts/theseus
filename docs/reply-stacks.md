@@ -101,7 +101,8 @@ their acts.
   - Head (↑): the header only, with no message body or reply line.
   - Folded (→): the latest reply plus unread replies, each shown once.
     The original message is not shown here. Stars and joins do not force
-    additional read messages into this view.
+    additional read messages into this view; a join the reader makes opens
+    the stack it went into instead (see Doing it).
   - Open (↓): the original message and every reply.
 
   Replies that were unread when drawn stay in view while being read, so
@@ -197,6 +198,19 @@ A card that a join, a move or a new reply carries to another place keeps
 where it was scrolled: a table scrolled sideways, or a long message scrolled
 in its card, stays as it was, and the page keeps its place.
 
+A join the reader makes, by ⇧⌘↑ or ⇧⌘↓, from ⋯ or from the phone's sheet,
+shows where it went (`joinShown`). The stack it went into, which now heads
+the two, is drawn open: its own message whole, its replies, then the joined
+messages under their "Joined from its own stack" line. The keys stay on the
+message the reader acted on, in its new place, and the page scrolls only as
+far as it needs to bring that message into view, with its join line above it
+where both fit. Drawn folded, as any stack is, the stack showed its head as
+one row and only its newest reply, so a joined stack whose replies were read
+seemed to vanish. ⌘Z puts back the join and how far the stack it went into
+was folded, with the keys on the joined stack's first message, as before.
+A join made by someone else, or on another device, opens nothing and moves
+nothing under the reader: the stack is drawn as it would be.
+
 Every act shows at once, then goes to Core with the revision the page holds.
 Acts are sent one at a time, in order. Until Core answers an act, the page
 draws it over what Core holds, so a quick run of presses always shows the
@@ -254,6 +268,7 @@ the stacks draw nothing.
 | Core's acts | `tests/test_stacks.py` |
 | the migration | `tests/test_migrations.py` (`StacksStepCase`) |
 | the display order | `tests/ui_stack_order.test.mjs` |
+| what a join the reader makes shows | `tests/ui_stack_order.test.mjs` (`joinShown`); in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a join you make shows where it went …" |
 | on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |

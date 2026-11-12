@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, readingOrder, foldStep, keyOf, shown } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -92,6 +92,38 @@ test('a join appends the joined stack after the replies, in the order joined, wi
   assert.deepEqual(stacksOf([message(5, { acts: { joined: { into: 'm1', at_ms: 1 } } })]).map(stack => stack.id), ['m5']);
   assert.deepEqual(joinOf(stacksOf([message(1), message(2)]), 1, 'up').id, 'm2');
   assert.equal(joinOf(stacksOf([message(1), message(2)]), 0, 'up'), null);
+});
+
+// Item 354, Tony's case: ⇧⌘↑ on an older stack whose replies were read, into the newer message on its own above.
+test('a join the reader makes shows where it went: the stack it goes into open, its head whole and the joined messages under their join line, the selection on the message acted on', () => {
+  const items = [message(1), message(2, { reply_to: 'm1' }), message(3, { reply_to: 'm1' }), message(4)];
+  const stacks = stacksOf(items);
+  assert.deepEqual(ids(stacks.map(stack => stack.head)), ['m4', 'm1'], 'B (m4) on its own above A (m1) and its replies');
+  // What the rows show once the decision's act is recorded, at the level it draws the stack it goes into.
+  const after = (shown, at_ms = 5) => {
+    const joined = items.map(item => item.id === shown.act.id ? { ...item, acts: { joined: { into: shown.act.into, by: 'owner', at_ms } } } : item);
+    const together = stacksOf(joined);
+    assert.equal(together.length, 1, 'one stack');
+    assert.equal(together[0].id, shown.open, 'the stack opened is the one heading the two');
+    return rowsOf(together[0], { level: shown.level }).filter(row => row.kind !== 'fold-all');
+  };
+  for (const acted of ['m1', 'm3']) {
+    const up = joinShown(stacks, 1, 'up', acted);
+    assert.deepEqual(up, { act: { id: 'm1', into: 'm4' }, open: 'm4', level: 'open', select: acted }, `⇧⌘↑ from ${acted}: A joins B, B opens, the selection stays on ${acted}`);
+    assert.deepEqual(words(after(up)), ['join m1', 'm1', 'm2', 'm3'], 'B whole, then A under its join line with every read reply');
+    assert.ok(words(after(up)).includes(up.select), 'the message acted on shows');
+  }
+  // Drawn as any stack is drawn, folded: the head as one row and only the newest reply, which is what Tony saw.
+  const joined = stacksOf(items.map(item => item.id === 'm1' ? { ...item, acts: { joined: { into: 'm4', by: 'owner', at_ms: 5 } } } : item));
+  assert.deepEqual(words(rowsOf(joined[0], { level: 'folded' })), ['2 earlier replies', 'm3'], 'folded hides A and its join line');
+  // ⇧⌘↓ from a reply of the newer stack: it joins the older one below, which opens.
+  const down = joinShown(stacksOf([message(1), message(2, { reply_to: 'm1' }), message(3), message(4, { reply_to: 'm3' })]), 0, 'down', 'm4');
+  assert.deepEqual(down, { act: { id: 'm3', into: 'm1' }, open: 'm1', level: 'open', select: 'm4' });
+  // Nothing that way: no join and nothing opens. A message outside the stack cannot make its join.
+  assert.equal(joinShown(stacks, 0, 'up', 'm4'), null);
+  assert.equal(joinShown(stacks, 1, 'down', 'm2'), null);
+  assert.throws(() => joinShown(stacks, 1, 'up', 'm4'), /not m4/);
+  assert.throws(() => joinShown(stacks, 2, 'up', 'm1'), /No stack at 2/);
 });
 
 test('a fold shows the newest reply and every kept one in its place, with a line for each run folded away', () => {

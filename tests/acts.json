@@ -4778,6 +4778,65 @@
     "native": "reading",
     "case": "neither the topic nor its conversation"
    }
+  },
+  {
+   "item": 354,
+   "act": "A join the reader makes draws the stack it went into open: its head whole, then the joined messages under their join line",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "open: into.id, level: 'open', select: acted",
+     "open: into.id, level: 'folded', select: acted"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 354,
+   "act": "Right after ⇧⌘↑, ⇧⌘↓, ⋯ or the phone's sheet joins a stack, the page shows the stack it went into open, with the joined messages and their join line in the window",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    state.levels.set(shows.open, shows.level);\n",
+     "    void shows.level;\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a join you make shows where it went"
+   }
+  },
+  {
+   "item": 354,
+   "act": "After a join the keys stay on the message the reader acted on, in its new place",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.focusOn(shows.select, {",
+     "this.focusOn(item.id, {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a join you make shows where it went"
+   }
+  },
+  {
+   "item": 354,
+   "act": "⌘Z after a join puts back how far the stack it went into was folded",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      if (was === undefined) state.levels.delete(shows.open); else state.levels.set(shows.open, was);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a join you make shows where it went"
+   }
   }
  ]
 }
