@@ -15,8 +15,9 @@ removing the choice. Explicit Bring back clears it.
 
 `stack.aside`, target `{message_id: root}`, expected `{aside_revision, authority}`,
 args `{through: integer|null}` records an append-only personal message act.
-`through` is the last topic message sequence observed before the move; null
-brings it back. It cannot be a future sequence. A target which is no longer a
+`through` is the newest message of the dossier the page had seen before the
+move; null brings it back. It cannot be later than the newest message the
+reader can see in the topic. A target which is no longer a
 visible root is refused as STACK_CHANGED, so a concurrent join cannot hide a
 different dossier. Retry uses the same operation identity; ordinary act revision
 fencing prevents a late Undo from reversing another device's change.
@@ -28,12 +29,25 @@ Membership follows the latest shared join, otherwise same-topic reply ancestry,
 including ancestors outside the loaded page; inaccessible ancestors terminate
 it. Joined dossiers use the destination root's choice. Splitting restores the
 source root's choice, subject to its newer replies. No body or hidden ancestor
-is disclosed. `at` fences older reads against later message/act snapshots.
+is disclosed.
+
+`at` is the snapshot a position was read at: `acts`, the newest act in the
+topic the reader hears of (their own and the topic's, on messages they can
+see), and `messages`, the newest message the reader can see in a dossier put
+aside (0 for one that is not, since no message moves its position). A whisper
+the reader is outside moves neither, and neither moves for a message outside
+the dossier, so a page of earlier messages reads the same however the topic
+grows. A later read has more acts, or as many acts and more messages: while
+the acts stand still a dossier only gains messages, and a split, which can
+leave it fewer, is a later act. The page keeps the later of two reads.
 
 A root's newer visible messages are checked through indexed reply/join edges,
 not by scanning unrelated topics or by relying on the browser's loaded rows.
 The UI rereads positions for its bounded loaded ids on shared or personal acts;
-new message pages carry the current position for their root.
+new message pages carry the current position for their root. An act on a root
+the page has not loaded is sent for one stand-in kept for that root, so it
+learns the revision the act before it left: Command-Z at once after a move is
+fenced on the move's own answer, as on a loaded root.
 
 Schema 38 adds `aside` to the existing act table plus reply/join edge indexes.
 Upgrade preserves act ids, revisions and the sequence high-water mark. Downgrade

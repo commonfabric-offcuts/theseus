@@ -10,6 +10,14 @@ test('an old page cannot hide a revived dossier or undo a newer join', () => {
   assert.equal(laterPosition(joined, position(9,2)), joined);
   assert.equal(laterPosition(joined, position(8,4,{through:8})).below, true);
 });
+test('a split read later wins though it leaves the dossier fewer messages, and an older read never does', () => {
+  // `at.messages` is the dossier's newest message, so a split that takes replies away lowers it in a later act.
+  const joined = position(9,3,{below:false});
+  const split = position(5,4,{below:true});
+  assert.equal(laterPosition(joined, split), split);
+  assert.equal(laterPosition(split, joined), split);
+  assert.equal(positionOf({head:{stack_position:joined},replies:[{stack_position:split}]}), split);
+});
 test('a new reply updates every loaded fragment of its dossier but no unrelated one', () => {
   const views = new TopicViews({ instanceId:'i', topicId:'t' });
   views.messages.set('a',{id:'a',stack_position:position(4,1)});

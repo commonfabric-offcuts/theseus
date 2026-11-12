@@ -89,10 +89,37 @@ class AsideCase(StackCase):
         answer = self.store.view('agent-b', 'stack_positions', {'topic_id': 't1', 'message_ids': [hidden]})
         self.assertEqual(answer['error']['code'], 'FORBIDDEN')
 
-    def test_unrelated_topic_activity_does_not_revive_and_future_cutoff_is_refused(self):
+    def test_a_whisper_someone_is_outside_leaves_their_page_and_positions_unchanged(self):
+        root = self.post('Root on the record', actor='owner')
+        reply = self.post('A reply on the record', reply_to=root)
+        self.committed(self.aside(root, self.latest(), actor='agent-b'))
+
+        def seen():
+            page = self.store.view('agent-b', 'topic_messages', {'topic_id': 't1', 'audience': 'reader'})
+            acts = self.store.view('agent-b', 'message_acts', {'topic_id': 't1'})
+            self.assertNotIn('error', page, page)
+            self.assertNotIn('error', acts, acts)
+            # The commit number counts every commit on the instance, in any topic; it is not the topic's.
+            page.pop('commit_seq')
+            return page, acts, self.position(root, 'agent-b'), self.position(reply, 'agent-b')
+        before = seen()
+        # A whisper in the dossier, one on its own, and the topic's shared act on a whisper:
+        # agent-b is in none of them, so nothing agent-b reads may move.
+        asked = self.post('Private question', actor='owner', reply_to=reply, addressees=['agent-a'], whisper=True)
+        self.post('Private aside', actor='owner', addressees=['agent-a'], whisper=True)
+        self.committed(self.name(asked, 'Our secret', actor='agent-a'))
+        self.assertEqual(seen(), before)
+        # The rule acts where it should: a reply on the record by someone else moves agent-b's page and revives the dossier.
+        self.post('An answer on the record', reply_to=reply)
+        self.assertNotEqual(seen()[0], before[0])
+        self.assertFalse(self.position(root, 'agent-b')['below'])
+
+    def test_unrelated_topic_activity_does_not_revive_or_move_the_position_and_future_cutoff_is_refused(self):
         root = self.post()
         self.committed(self.aside(root, self.latest()))
+        before = self.position(root)
         self.post('Unrelated discussion')
+        self.assertEqual(self.position(root), before)
         self.assertTrue(self.position(root)['below'])
         self.rejected(self.aside(root, self.latest() + 1000, revision=1), 'INVALID_ARGUMENT')
         self.rejected(self.aside(root, True, revision=1), 'INVALID_ARGUMENT')

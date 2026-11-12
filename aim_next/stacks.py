@@ -40,7 +40,7 @@ import math
 
 from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
-from .whispers import visible
+from .whispers import VISIBLE, visible
 
 
 def _act_table(kinds):
@@ -219,41 +219,60 @@ class StackRoots:
         return at
 
 
-def _newer_other(db, actor, root, through):
-    # Both recursive arms seek indexed children of the current member. The join
-    # arm accepts only the latest act; a nonempty join overrides reply ancestry.
-    return bool(db.execute("""
+def _dossier(db, actor, root):
+    """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None.
+    Both recursive arms seek indexed children of the current member. The join
+    arm accepts only the latest act; a nonempty join overrides reply ancestry."""
+    row = db.execute("""
         WITH RECURSIVE members(id) AS (
           SELECT :root
           UNION
           SELECT m.id FROM members p JOIN messages m ON m.reply_to=p.id
           JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
-          WHERE (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor)
+          WHERE """ + VISIBLE + """
             AND coalesce((SELECT json_extract(a.value,'$.into') FROM message_acts a
               WHERE a.message_id=m.id AND a.kind='join' AND a.owner='' ORDER BY revision DESC LIMIT 1),'')=''
           UNION
           SELECT m.id FROM members p JOIN message_acts a ON json_extract(a.value,'$.into')=p.id AND a.kind='join'
           JOIN messages m ON m.id=a.message_id JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
           WHERE a.owner='' AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='join' AND b.owner='')
-            AND (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor)
-        ) SELECT 1 FROM members p JOIN messages m ON m.id=p.id
-          WHERE m.seq>:through AND m.author_id<>:actor LIMIT 1
-        """, {"root": root, "actor": actor, "through": through}).fetchone())
+            AND """ + VISIBLE + """
+        ) SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id
+        """, {"root": root, "actor": actor}).fetchone()
+    return row[0], row[1]
+
+
+def _seen_seq(db, actor, topic):
+    """The newest sequence in the topic the reader can see: a whisper they are outside never moves it."""
+    row = db.execute("SELECT m.seq FROM messages m INDEXED BY topic_messages WHERE m.topic_id=:topic AND " + VISIBLE +
+                     " ORDER BY m.seq DESC LIMIT 1", {"topic": topic, "actor": actor}).fetchone()
+    return row[0] if row else 0
+
+
+def _seen_acts(db, actor, topic):
+    """The newest act in the topic the reader hears of: their own and the topic's, on messages they can see."""
+    return db.execute("SELECT coalesce(max(a.id),0) FROM message_acts a INDEXED BY topic_acts JOIN messages m ON m.id=a.message_id "
+                      "WHERE a.topic_id=:topic AND a.owner IN ('',:actor) AND " + VISIBLE, {"topic": topic, "actor": actor}).fetchone()[0]
 
 
 def stack_positions(db, actor, items):
-    roots, topics, positions, result = StackRoots(db, actor), {}, {}, {}
+    """{message id: its dossier's position for the reader}. `at` is the snapshot it was read at: for a dossier put
+    aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
+    newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
+    the dossier, so a page of earlier messages reads the same however the topic grows."""
+    roots, acts_at, positions, result = StackRoots(db, actor), {}, {}, {}
     for item in items:
         topic = item["topic_id"]
-        if topic not in topics:
-            topics[topic] = {"messages": db.execute("SELECT coalesce(max(seq),0) FROM messages WHERE topic_id=?", (topic,)).fetchone()[0],
-                             "acts": db.execute("SELECT coalesce(max(id),0) FROM message_acts WHERE topic_id=? AND owner IN ('',?)", (topic, actor)).fetchone()[0]}
+        if topic not in acts_at:
+            acts_at[topic] = _seen_acts(db, actor, topic)
         root = roots.root(item["id"])
         if root not in positions:
             acts = current_acts(db, actor, [root]).get(root, EMPTY)
             through = acts["aside"]
+            latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
-                               "below": through is not None and not _newer_other(db, actor, root, through), "at": topics[topic]}
+                               "below": through is not None and (others is None or others <= through),
+                               "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
     return result
 
@@ -308,8 +327,7 @@ class Stacks:
         if kind == "aside":
             if StackRoots(db, actor).root(message["id"]) != message["id"]:
                 raise Refusal("STACK_CHANGED", "This dossier was joined since it was read; read it again")
-            latest = db.execute("SELECT coalesce(max(seq),0) FROM messages WHERE topic_id=?", (message["topic_id"],)).fetchone()[0]
-            if value["through"] is not None and value["through"] > latest:
+            if value["through"] is not None and value["through"] > _seen_seq(db, actor, message["topic_id"]):
                 raise Refusal("INVALID_ARGUMENT", "The observed sequence is ahead of this topic")
         personal = kind in PERSONAL
         if not personal:
@@ -368,8 +386,7 @@ class Stacks:
                           "WHERE a.topic_id=:topic AND a.seq<:cursor AND a.owner IN ('',:actor) AND (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor) "
                           "ORDER BY a.seq DESC LIMIT :limit", {"topic": topic["id"], "cursor": cursor, "actor": actor, "limit": limit + 1}).fetchall()
         found = current_acts(db, actor, [row["id"] for row in rows[:limit]])
-        version = db.execute("SELECT coalesce(max(id),0) FROM message_acts WHERE topic_id=? AND owner IN ('',?)", (topic["id"], actor)).fetchone()[0]
-        return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": version}, rows, limit,
+        return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": _seen_acts(db, actor, topic["id"])}, rows, limit,
                              lambda row: {"message_id": row["id"], "seq": row["seq"], "acts": found.get(row["id"], dict(EMPTY))}, "seq")
 
     def _view_stars(self, db, actor, args):

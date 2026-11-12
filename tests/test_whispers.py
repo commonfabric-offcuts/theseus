@@ -555,7 +555,9 @@ VIEW_PATHS = {
     "outcome_light": "reads asks and summaries, which a whisper never writes",
     "source_topics": "_message_access applies visible()",
     "reactions": "visible() on the message before its reactions",
-    "message_acts": "only acts on messages the reader may see: the whisper rule on each row's message in the query",
+    "message_acts": "only acts on messages the reader may see: the whisper rule on each row's message in the query, and in its version",
+    "stack_positions": "each message named through _acted_message, which applies visible(); its dossier's root, members, newest message and the "
+                       "topic's newest act under the whisper rule, so a whisper never moves a position anyone outside it reads",
     "stars": "the reader's own stars on messages they may see: the whisper rule and READABLE in the query",
     "wakes": "on_record_wake_health for every reader but the agent",
     "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
@@ -600,7 +602,10 @@ MESSAGE_READS = {
                            "the step back's check for Theseus's notices, which are never whispers; and the upgrade's "
                            "reads of when an agent wrote, its own acts, of which only a time is kept, as live keeps any act", 5),
     "aim_next/stacks.py": ("a message acted on, and a join's message, checked by visible() before anything is recorded; a reply's parent "
-                           "id, read only to refuse a join that would loop, never shown; and the acts and stars views, under the whisper rule", 6),
+                           "id, read only to refuse a join that would loop, never shown; the acts and stars views, under the whisper rule; "
+                           "a dossier's root, walked up from a message the reader sees through parents each checked by visible(); its "
+                           "members, its newest message and the topic's newest message and act, each under VISIBLE, so a whisper "
+                           "someone is outside never moves a position or a sequence they read", 15),
     "aim_next/whispers.py": ("the rule itself", 5),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "

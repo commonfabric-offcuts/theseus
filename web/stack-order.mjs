@@ -228,11 +228,15 @@ export function foldStep({ level }, way, { replies: has = true } = {}) {
   return has && at >= 0 && next >= 0 && next < LEVELS.length ? { level: LEVELS[next] } : null;
 }
 
-// A position is read at a message/act snapshot. Neither side may move back;
-// an old page cannot undo a newer join, personal move, or arriving reply.
+// A position is read at a snapshot: the newest act in the topic the reader
+// hears of, then the newest message they can see in the dossier. Acts only
+// grow, and while they stand still a dossier only gains messages, so the later
+// read has more acts, or as many and more messages. A split may leave the
+// dossier fewer messages, but the split is a later act. An old page cannot
+// undo a newer join, personal move, split or arriving reply.
 export function laterPosition(known, answer) {
   if (!answer) return known;
-  if (known && (answer.at.messages < known.at.messages || answer.at.acts < known.at.acts)) return known;
+  if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages)) return known;
   return answer;
 }
 export function positionOf(stack) {

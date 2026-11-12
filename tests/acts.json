@@ -2726,8 +2726,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\"}",
-     "PERSONAL = {\"deal\", \"fold\", \"place\"}"
+     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\", \"aside\"}",
+     "PERSONAL = {\"deal\", \"fold\", \"place\", \"aside\"}"
     ]
    ],
    "check": {
@@ -2917,7 +2917,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    const at = this.doc.activeElement;\n    if (!at || !this.list.contains(at)) return;\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
+     "    const at = this.doc.activeElement;\n    if (!at || !this.list.contains(at)) return;\n    if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
      "    const entry = this.entryFor(this.list.dataset.lastMessage);\n    if (!entry) return;"
     ],
     [
@@ -4785,8 +4785,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\"}",
-     "PERSONAL = {\"star\", \"deal\", \"place\"}"
+     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\", \"aside\"}",
+     "PERSONAL = {\"star\", \"deal\", \"place\", \"aside\"}"
     ]
    ],
    "check": {
@@ -4914,8 +4914,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (state.folded.has(own)) { state.peeked.add(own); changed = true; }\n",
-     ""
+     "if (state.folded.has(own) || stack",
+     "if (stack"
     ]
    ],
    "check": {
@@ -4959,8 +4959,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.setFold(item, across > 0, { focus: false });",
-     "    this.setFold(item, true, { focus: false });"
+     "    this.swipeAct(start.target, across > 0);",
+     "    this.swipeAct(start.target, true);"
     ]
    ],
    "check": {
@@ -5049,8 +5049,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "if (!swipe.item || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;",
-     "if (!swipe.item) return;"
+     "if (!swipe.valid || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;",
+     "if (!swipe.valid) return;"
     ]
    ],
    "check": {
@@ -5064,8 +5064,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "      const entry = scrollsSideways(event.target, this.list) ? null : entryOf(this.list, event.target);",
-     "      const entry = entryOf(this.list, event.target);"
+     "      const target = scrollsSideways(event.target, this.list) ? null : event.target;",
+     "      const target = event.target;"
     ]
    ],
    "check": {
@@ -5094,8 +5094,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "WHERE m.seq>:through AND m.author_id<>:actor LIMIT 1",
-     "WHERE m.seq>:through LIMIT 1"
+     "max(CASE WHEN m.author_id<>:actor THEN m.seq END)",
+     "max(m.seq)"
     ]
    ],
    "check": {
@@ -5168,6 +5168,63 @@
      "web/reply-stacks.mjs",
      "state.folded.has(own) || stack && positionOf(stack)?.below",
      "state.folded.has(own)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More handles"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A whisper someone is outside never moves the dossier positions or the act version they read",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"WHERE a.topic_id=:topic AND a.owner IN ('',:actor) AND \" + VISIBLE, {\"topic\": topic, \"actor\": actor}",
+     "\"WHERE a.topic_id=:topic AND a.owner IN ('',:actor)\", {\"topic\": topic, \"actor\": actor}"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A dossier's position reads the same however much else the topic grows",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"at\": {\"messages\": latest,",
+     "\"at\": {\"messages\": _seen_seq(db, actor, topic),"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A split read later wins over the joined dossier's position though it holds fewer messages",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages",
+     "answer.at.acts < known.at.acts || answer.at.messages < known.at.messages"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Command-Z right after a move on a dossier whose root is not loaded undoes the move",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const item = this.messages().get(root) ?? this.standIns.get(root);",
+     "const item = this.messages().get(root) ?? { ...this.standIns.get(root), acts: {} };"
     ]
    ],
    "check": {

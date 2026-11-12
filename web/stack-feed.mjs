@@ -77,6 +77,9 @@ export class StackFeed {
     refreshPositions = async () => {}, moreChanged = () => {}, hold = paint => paint(), press, clock = () => Date.now(), doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, reread, starsChanged, status, refreshPositions, moreChanged, hold, press, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
+    // A stand-in for each dossier root the page has not loaded, kept so each act
+    // on it learns the revision the act before it left, as a loaded message does.
+    this.standIns = new Map();
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
     this.pending = new Map(); this.drawn = new Map();
@@ -147,17 +150,18 @@ export class StackFeed {
       const left = (this.pending.get(item.id) ?? []).filter(each => each !== shown);
       if (left.length) this.pending.set(item.id, left); else this.pending.delete(item.id);
       this.settled(item.id);
-      if (kind === 'stack.aside') this.press.after('stacks', () => this.arrange());
     });
     this.chain = sent.catch(() => {});
     sent.catch(error => { this.status(error); this.reread(); });
     return sent;
   }
   // Draws the stacks again when a message's acts as shown are no longer what
-  // they were last drawn with; an answer landing under a press held down waits
-  // for it to end, so nothing moves under the pointer.
+  // they were last drawn with, or when an act on a dossier's unloaded root
+  // settles, as its loaded replies show where it is; an answer landing under a
+  // press held down waits for it to end, so nothing moves under the pointer.
   settled(id) {
-    if (this.messages().has(id) && this.drawn.get(id) !== JSON.stringify(this.actsOf(id))) this.press.after('stacks', () => this.arrange());
+    const changed = this.messages().has(id) ? this.drawn.get(id) !== JSON.stringify(this.actsOf(id)) : this.standIns.has(id);
+    if (changed) this.press.after('stacks', () => this.arrange());
   }
   async send(kind, item, args) {
     const field = FIELD[kind], { authority_id, authority_epoch } = this.authority();
@@ -319,9 +323,12 @@ export class StackFeed {
     const current = this.state.stacks.find(each => positionOf(each)?.root_id === root) ?? stack;
     const position = positionOf(current);
     if (!position) return false;
-    const item = this.messages().get(position.root_id) ?? { id: position.root_id, acts: { aside_revision: position.aside_revision } };
-    const through = restoreThrough !== undefined ? restoreThrough : below ? Math.max(position.at.messages, ...[...this.messages().values()].map(each => each.seq)) : null;
-    if (this.messages().has(item.id)) item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision });
+    if (!this.messages().has(root) && !this.standIns.has(root)) this.standIns.set(root, { id: root, acts: {} });
+    const item = this.messages().get(root) ?? this.standIns.get(root);
+    item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision });
+    // Below More through the newest message of the dossier the page has seen.
+    const through = restoreThrough !== undefined ? restoreThrough : below ? [...this.messages().values()]
+      .reduce((newest, each) => (each.stack_position?.root_id === root ? Math.max(newest, each.seq) : newest), position.at.messages) : null;
     for (const each of this.messages().values()) if (each.stack_position?.root_id === root) this.state.peeked.delete(each.id);
     this.act('stack.aside', item, { through });
     if (undoable) this.remember(() => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through }));

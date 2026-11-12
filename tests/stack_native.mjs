@@ -129,8 +129,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ...Array.from({length:35},(_,i)=>['r'+i,{sender:other,reply_to:i?'r'+(i-1):'root',addressees:[facts.actor],body:'Reply '+i,read:true}])]);
     const p=await open(topic,'laptop',topic,ids.r34);
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`),false,'the canonical root is outside the loaded page');
+    const position=async()=>(await view('stack_positions',{topic_id:topic,message_ids:[ids.root]})).items[0].stack_position;
+    const below=async()=>(await position()).below;
+    // Command-Z at once, while the move may still be on its way to Core: the undo follows the
+    // move's own answer, though the page holds no message for the root it acts on.
     await menuOf(p,'laptop',ids.r34); await choose(p,'laptop','Move below More');
-    const below=async()=>(await view('stack_positions',{topic_id:topic,message_ids:[ids.root]})).items[0].stack_position.below;
+    await p.key('z',4);
+    await until(async()=>(await position()).aside_revision===2,'Command-Z right after the move reaches Core as a second act');
+    assert.equal(await below(),false,'the undo brought the dossier back');
+    await becomes(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r34))})?.getClientRects().length)`),true,'the loaded fragment shows again');
+    await menuOf(p,'laptop',ids.r34); await choose(p,'laptop','Move below More');
     await until(below,'the unloaded canonical root holds the move');
     await becomes(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r34))})?.getClientRects().length)`),false,'the loaded fragment is hidden too');
     const linking=(await control({method:'agent_message',operation_id:topic+'-link',topic_id:topic,source:'topic',sender:other,addressees:[facts.actor],
