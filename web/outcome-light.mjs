@@ -6,6 +6,8 @@
 // the live feed announces, and spoken times follow the day through
 // repaintTimes.
 import { spokenNode, spokenTime } from './times.mjs';
+import { routeHref, topicTarget } from './topic-navigation.mjs';
+import { presses } from './waiting-questions.mjs';
 import { SOURCE, UNREADABLE_PEEK, alsoWords, factParts, lampKind, lastLine, leadWords, lightName, shortPieces } from './outcome-light-words.mjs';
 
 const element = (tag, props = {}, ...children) => {
@@ -38,14 +40,16 @@ export function paintRowLight(small, light) {
 
 const followed = (link, open) => event => {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  event.preventDefault(); open(link.topic, link.text);
+  event.preventDefault(); open(link.topic, link.text, link.message ?? null);
 };
+// A topic's link, at the message asked there when the line is about a question (item 148).
+const topicLink = (link, open) => element('a', { href: routeHref(topicTarget(link.topic, link.message ?? null)), textContent: link.text, onclick: followed(link, open) });
 // One fact as a list item: a topic is a link and its detail follows, muted, after " — ".
 function factItem(fact, open, hold) {
   const parts = factParts(fact);
   if (!parts.link) return element('li', {}, ...partsNodes(parts.text));
   const name = parts.link.topic && open
-    ? hold('fact ' + parts.link.topic, element('a', { href: '?topic=' + encodeURIComponent(parts.link.topic), textContent: parts.link.text, onclick: followed(parts.link, open) }))
+    ? hold('fact ' + parts.link.topic, topicLink(parts.link, open))
     : element('span', { textContent: parts.link.text });
   return element('li', {}, name, element('span', { className: 'muted' }, ' — ', ...partsNodes(parts.detail)));
 }
@@ -57,11 +61,25 @@ function lastNode(answer, open, tag = 'p', hold = (key, node) => node) {
   if (!line) return null;
   if (!line.link) return element(tag, { className: 'standing-last' }, ...partsNodes(line.text));
   const name = line.link.topic && open
-    ? hold('last', element('a', { href: '?topic=' + encodeURIComponent(line.link.topic), textContent: line.link.text, onclick: followed(line.link, open) }))
+    ? hold('last', topicLink(line.link, open))
     : element('span', { textContent: line.link.text });
   name.className = 'title';
   return element(tag, { className: 'standing-last' },
     element('span', { className: 'label' }, line.label), ' ', `${line.by ? `${line.by} in` : 'In'} “`, name, '”');
+}
+
+// The light's name and time. Waiting on questions, it is the way to them
+// (item 148): a press opens the oldest at its message, each press after it the
+// next (waiting-questions.mjs).
+function stateWords(light, facts, open, place, hold) {
+  const words = partsNodes(lightName(light)), asks = facts.filter(fact => fact?.kind === 'ask');
+  if (light?.light !== 'waiting' || !asks.length || !open || !place) return element('span', {}, ...words);
+  const button = hold('question', element('button', { type: 'button', className: 'state-question' }, ...words));
+  button.onclick = () => {
+    const ask = presses.next(place, asks);
+    if (ask) open(ask.topic_id, ask.title + (ask.title_truncated ? '…' : ''), ask.message_id ?? null);
+  };
+  return button;
 }
 
 // "Where it stands", at the top of an outcome's page: the light with its name
@@ -71,7 +89,7 @@ function lastNode(answer, open, tag = 'p', hold = (key, node) => node) {
 // A control on the card that held focus (the ⓘ, a topic's link, Try again)
 // keeps it when it is drawn again, and the page does not move to it; focus
 // anywhere else is left alone.
-export function paintStanding(host, answer, { open, retry, outcome = '' } = {}) {
+export function paintStanding(host, answer, { open, retry, outcome = '', place = null } = {}) {
   const light = answer?.light ?? null, facts = Array.isArray(answer?.facts) ? answer.facts : [], also = Array.isArray(answer?.also) ? answer.also : [];
   const unreadable = !light || light.light === null;
   const focused = globalThis.document.activeElement ?? null;
@@ -97,7 +115,7 @@ export function paintStanding(host, answer, { open, retry, outcome = '' } = {}) 
   };
   const children = [
     element('div', { className: 'standing-head' }, element('h2', { id: 'standing-heading', textContent: 'Where it stands' }), info),
-    element('p', { className: 'state-line' }, lightNode(light), element('span', {}, ...partsNodes(lightName(light)))),
+    element('p', { className: 'state-line' }, lightNode(light), stateWords(light, facts, open, place, hold)),
   ];
   const last = unreadable ? null : lastNode(answer, open, 'p', hold);
   if (last) children.push(last);

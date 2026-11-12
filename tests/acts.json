@@ -5975,6 +5975,527 @@
    "check": {
     "node": "tests/ui_coordination_stacks.test.mjs"
    }
+  },
+  {
+   "item": 320,
+   "act": "Clicking an open outcome folds its topics and preserves that choice while opening its Conversation",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const open = !this.isOpen(outcome.id);",
+     "const open = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "outcome clicks toggle"
+   }
+  },
+  {
+   "item": 296,
+   "act": "A topic's Notebook pencil sits beside the right rail's Notebook section, not in the page between the rails",
+   "break": [
+    [
+     "web/app.mjs",
+     "unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });",
+     "unstar: star => stackFeed?.unstar(star) });\n  notebookCreator($('notebook'), {kind:'topic',id:topic.id});"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook creation pencil opens a title line"
+   }
+  },
+  {
+   "item": 296,
+   "act": "A topic with no Notebook pages keeps the right rail's Notebook heading and its pencil",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "return items && this.notebookCreate?.available ?",
+     "return false && items && this.notebookCreate?.available ?"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook creation pencil opens a title line"
+   }
+  },
+  {
+   "item": 296,
+   "act": "Retrying an uncertain Notebook creation keeps its operation and item identity",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "this.pending ??= envelope(this.bootstrap, 'memory.create',",
+     "this.pending = envelope(this.bootstrap, 'memory.create',"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_quick_create.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "An uncertain Notebook save retries its complete original request after reload",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "this.pending ??= this.envelope();",
+     "this.pending = this.envelope();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A confirmed Notebook save never overwrites newer words typed while it was in flight",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "this.pending = null; this.error = null; this.dirtySince=null;",
+     "this.value = copy(sent.args); this.pending = null; this.error = null; this.dirtySince=null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A removed Notebook image is never attached by a late upload confirmation",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "if(valid())this.associate(e);\n      w.notify();",
+     "e.removed=false; if(valid())this.associate(e);\n      w.notify();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_images.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "An unfinished Notebook card saves its actual words before Done, alongside Text view",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "this.editing.field.addEventListener('input',()=>this.save());",
+     "this.editing.field.addEventListener('input',()=>{});"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook Text and Cards share exact words"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A definite unrecorded Notebook refusal clears the frozen envelope and keeps local writing",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "      if (receipt.status === 'committed') {",
+     "      if (receipt.recorded !== true) throw Error('Uncertain refusal');\n      if (receipt.status === 'committed') {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A confirmed Notebook page leaves no stale recovery record",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "    const snapshot = this.snapshot();",
+     "    const snapshot = this.snapshot() ?? {v:1,binding:this.binding,base:this.base,value:this.value,pending:null,conflict:null,images:[]};"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Cards accept another cards change while the current card stays open",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(this.mode!=='cards')return null;",
+     "    return null;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "probe 302: while a card"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Typing during a Notebook image upload never writes its bytes again",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "if(image.bytes&&!bytesKept.has(image.id))",
+     "if(image.bytes)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook recovery stores image bytes once"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Every Notebook edit is fenced by the content actually displayed before the edit",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "const next = { ...seen.content, ...copy(patch) };",
+     "seen = this.capture(); const next = { ...seen.content, ...copy(patch) };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A merged Notebook value settles by content independently of object key order",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "!sameContent(this.value, this.base?.content)",
+     "JSON.stringify(this.value) !== JSON.stringify(this.base?.content)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Notebook permission refusal permits a new attempt after reopening",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "// Refusals are scoped to this opening.",
+     "this.readOnly = Boolean(held.value); // Refusals are scoped to this opening."
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Notebook merges preserve every untouched card separator byte",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "if(byCard!==undefined)return byCard===null?null:{...merged,body:byCard};",
+     "if(byCard!==undefined)return byCard===null?null:{...merged,body:byCard.replace(/\\n(?=##)/g,'\\n\\n')};"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A blank Notebook surface without a snapshot cannot overwrite retained writing",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "edit(patch, seen, mode = 'text', acts = [])",
+     "edit(patch, seen = this.capture(), mode = 'text', acts = [])"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Reloading a Notebook with a pending choice draws the retained Cards before accepting input",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "const drawKept=force || !this.cardsSeen || !this.textSeen;",
+     "const drawKept=false;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook warp probe 302 r3: after a reload with a choice pending, the cards"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Notebook card moves retain concurrent edits to the neighboring card",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "const byCard=mergeRewrittenCards(base.body,mine.body,theirs.body);",
+     "const byCard=undefined;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_card_merges.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "Waiting on you loads and opens the exact question even outside the loaded feed",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "await this.open(questionTarget(ask), ask.title);",
+     "await this.open({kind:'topic', id:ask.topic_id}, ask.title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "outcome clicks toggle"
+   }
+  },
+  {
+   "item": 148,
+   "act": "Waiting on you opens the oldest question first, however the server orders them",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "return time(a) - time(b) ||",
+     "return time(b) - time(a) ||"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "Each press on Waiting on you opens the next question, round to the oldest after the newest",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "return ordered.find(question => compareQuestions(question, last) > 0) ?? ordered[0] ?? null;",
+     "return ordered[0] ?? null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outline's Waiting on you goes through the presses: the oldest question, then the next",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const ask = presses.next('outcome:' + outcome.id, (answer.facts ?? []).filter(fact => fact.kind === 'ask'));",
+     "const ask = answer.facts?.find(fact => fact.kind === 'ask');"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
+   }
+  },
+  {
+   "item": 148,
+   "act": "A topic row waiting on the reader opens the topic at its question",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "return this.open(item.id, this.title(item.id), this.question(item.id));",
+     "return this.open(item.id, this.title(item.id));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_rail.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outline's topic rows pass the question on to the page",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });",
+     "open: (topicId, topicTitle) => this.open(topicTarget(topicId), topicTitle) });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome light's Waiting on you on its page opens the questions, oldest first",
+   "break": [
+    [
+     "web/outcome-light.mjs",
+     "if (light?.light !== 'waiting' || !asks.length || !open || !place) return element('span', {}, ...words);",
+     "return element('span', {}, ...words);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_light.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome's page gives its light the place its presses are kept under",
+   "break": [
+    [
+     "web/app.mjs",
+     "place:'outcome:'+route.id,",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The Conversation row waiting on the reader opens its questions, oldest first",
+   "break": [
+    [
+     "web/outcome-conversation.mjs",
+     "if (ask) open(questionTarget(ask)); else open();",
+     "open();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_conversation.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome's page opens the Conversation row's question where the row says",
+   "break": [
+    [
+     "web/app.mjs",
+     "open: (to = target) => openDestination(to, CONVERSATION_TITLE) });",
+     "open: () => openDestination(target, CONVERSATION_TITLE) });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
+   }
+  },
+  {
+   "item": 148,
+   "act": "Where Waiting on you's presses have got to is kept for the tab, so the next page loaded goes on from it",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "try { this.storage()?.setItem(KEY + place, JSON.stringify(last)); } catch",
+     "try { } catch"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "A page the outcome's page loads, or Back loads again, goes on from the question the tab kept",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "try { return JSON.parse(this.storage()?.getItem(KEY + place) ?? 'null'); } catch { return null; }",
+     "return null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
+   "item": 148,
+   "act": "A tab that cannot keep a press keeps none, so the next page starts at the oldest rather than after an older press",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "try { this.storage()?.removeItem(KEY + place); } catch { /* the next page starts at the oldest */ }",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outline's Waiting on you goes on from the outcome light's press, on the page that press loaded",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "presses.next('outcome:' + outcome.id,",
+     "presses.next('outline:' + outcome.id,"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The Conversation row goes on to its next question after Back loads the outcome's page again",
+   "break": [
+    [
+     "web/outcome-conversation.mjs",
+     "presses.next('conversation:' + view.topic_id, asks)",
+     "presses.next('conversation:' + Math.random(), asks)"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome page's own topic list opens a topic waiting on the reader at its question",
+   "break": [
+    [
+     "web/app.mjs",
+     "open:(id,title,message)=>openDestination(topicTarget(id,message),title),\n        updated:",
+     "open:(id,title)=>openDestination(topicTarget(id),title),\n        updated:"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "press, Back, press"
+   }
+  },
+  {
+   "item": 320,
+   "act": "Return on an outcome name opens its Conversation with its topics, folding nothing",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if (event.detail === 0) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a press on an outline row puts the focus"
+   }
   }
  ]
 }

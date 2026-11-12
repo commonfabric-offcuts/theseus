@@ -421,3 +421,24 @@ test('opening a line under the pointer shows its rows at once, whether it was re
   f.area.handlers.pointerleave?.();
   assert.deepEqual(shown(f.host), ['z', 'a', 'g', 'h']);
 });
+
+// Item 148: a topic row that waits on the reader takes them to the question
+// (docs/outcome-light.md): a press opens the topic at its asking message, so
+// the Reader shows it; a row waiting on someone else, or on nobody, opens the topic.
+test('a topic row waiting on the reader opens the topic at its question, and a row waiting on someone else opens only the topic', async t => {
+  const f = fixture(t), at = f.item('a').activity_ms;
+  const asked = (id, actor, message) => ({ ...f.item(id), asks: [{ actor_id: actor, message_id: message, by: 'fable', since_ms: at }] });
+  f.queue.push({ instance_id: 'i1', items: [asked('a', 'tony', 'm-ask-a'), asked('b', 'cynthia', 'm-ask-b'), f.item('c')], next_cursor: null });
+  await f.rail.load();
+  const row = id => f.host.children.find(x => x.dataset.topicId === id);
+  const opened = [];
+  f.rail.open = (...args) => opened.push(args);
+  for (const id of ['a', 'b', 'c']) row(id).onclick({ button: 0, preventDefault() {} });
+  assert.deepEqual(opened, [['a', 'a', 'm-ask-a'], ['b', 'b', null], ['c', 'c', null]], 'only the question to the reader is opened');
+  assert.deepEqual(['a', 'b', 'c'].map(id => row(id).href), ['?topic=a&message=m-ask-a', '?topic=b', '?topic=c'], 'the link says where a press goes');
+  // Answered, the row opens the topic again.
+  f.queue.push({ instance_id: 'i1', items: [f.item('a'), f.item('c')], next_cursor: null });
+  await f.rail.load();
+  opened.length = 0; row('a').onclick({ button: 0, preventDefault() {} });
+  assert.deepEqual([opened, row('a').href], [[['a', 'a', null]], '?topic=a']);
+});

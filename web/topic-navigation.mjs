@@ -13,12 +13,14 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 // message to open in the Reader when it opens ('message', docs/links.md); a
 // topic or an outcome, a page of its Notebook to open ('page'), at a revision
 // ('revision') or as it stands.
-const OPTIONAL = {opening:['from'],topic:['message','page','revision'],workspace:['page','revision']};
+const OPTIONAL = {cards:['write','view'],opening:['from'],topic:['message','page','revision'],workspace:['page','revision']};
 const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
   const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>validId(route[key]))) badRoute();
+  if (route.kind === 'cards' && route.write !== undefined && route.write !== 'new') badRoute();
+  if (route.kind === 'cards' && route.view !== undefined && !['text','cards'].includes(route.view)) badRoute();
   // A page is named alone (not with a message), and a revision only with its page.
   if (('page' in route && 'message' in route) || ('revision' in route && !('page' in route)) || ('revision' in route && !REVISION.test(route.revision))) badRoute();
   return JSON.stringify([route.kind,...fields.map(key=>route[key]),...optional.map(key=>[key,route[key]])]);
@@ -27,11 +29,13 @@ export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
   const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
-    route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'cards' ? {cards:route.id} :
+    route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{})} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
   return params ? '?' + new URLSearchParams(params) : '/';
 }
+// A topic, opened at one of its messages when one is named.
+export const topicTarget = (id, message = null) => ({kind:'topic',id,...(message?{message}:{})});
 // A new opening in an outcome whose topic answers one message.
 export const startFrom = (workspace, message) => ({kind:'opening',workspace,opening:crypto.randomUUID(),topic:crypto.randomUUID(),from:message});
 export function parseRoute(url) {
@@ -55,7 +59,7 @@ export function parseRoute(url) {
   else if (keys.length===1 && p.has('measurements')) route={kind:'measurements',id:p.get('measurements')};
   else if (keys.length===2 && p.has('pipeline') && /^[1-9][0-9]{0,8}$/.test(p.get('item') ?? '')) route={kind:'item',id:p.get('pipeline'),item:p.get('item')};
   // A Notebook page as a deck of cards (docs/decks.md).
-  else if (keys.length===1 && p.has('cards')) route={kind:'cards',id:p.get('cards')};
+  else if (p.has('cards') && keys.every(k=>['cards','write','view'].includes(k))) route={kind:'cards',id:p.get('cards'),...(p.has('write')?{write:p.get('write')}:{}),...(p.has('view')?{view:p.get('view')}:{})};
   else if (keys.length===2 && p.get('new')==='outcome' && p.has('intent')) route={kind:'create',intent:p.get('intent')};
   // The phone check, posting what the phone did to one topic (docs/device-evidence.md).
   else if (keys.length===1 && p.has('phone-check')) route={kind:'phone-check',id:p.get('phone-check')};
@@ -322,15 +326,23 @@ export class TopicRail {
     return this.pages.started && this.lists.every(list => list.pages.items.length === 0) && !(this.groups?.done || this.groups?.archived);
   }
   title(id) { for (const list of this.lists) { const item = list.pages.items.find(item => item.id === id); if (item) return item.title; } return id; }
+  // The message of the question a topic waits on the reader for, as the lists last read it, or null.
+  question(id) {
+    for (const list of this.lists) {
+      const item = list.pages.items.find(item => item.id === id);
+      if (item) return (Array.isArray(item.asks) ? item.asks : []).find(ask => ask?.actor_id === this.reader && typeof ask.message_id === 'string')?.message_id ?? null;
+    }
+    return null;
+  }
   updateCurrent(topic) { for (const list of this.lists) list.pages.current = structuredClone(topic); this.paint(); }
   row(item) {
     let link = this.links.get(item.id);
     if (!link) {
       link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
-      link.href = '?topic=' + encodeURIComponent(item.id);
+      // A topic waiting on the reader opens at the question (item 148): the Reader shows it.
       link.onclick = event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault(); return this.open(item.id, this.title(item.id));
+        event.preventDefault(); return this.open(item.id, this.title(item.id), this.question(item.id));
       };
       this.links.set(item.id, link);
     }
@@ -344,6 +356,7 @@ export class TopicRail {
       paintState(link, item, this.reader);
       paintWork(link, item, this.reader);
     }
+    link.href = routeHref(topicTarget(item.id, this.question(item.id)));
     if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
     return link;

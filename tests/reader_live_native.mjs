@@ -1103,10 +1103,13 @@ export async function liveChecks({ check, page, until, control, observations, or
     const p = await page('live-outcome-references', null, true);
     await settled(p);
     const rows = () => p.evaluate(`[...document.querySelectorAll('#outcome-references-list .reference')].map(${pageTitle})`);
-    assert.equal(await p.evaluate("document.querySelector('#outcome-references').hidden"), true, 'an outcome with no Notebook shows nothing');
+    assert.equal(await p.evaluate("document.querySelector('#outcome-references').hidden"), false, 'an empty outcome Notebook keeps its creation heading');
+    await until(() => p.evaluate("(()=>{const h=document.querySelector('#notebook-heading'),b=document.querySelector('#outcome-references .notebook-create');return !!h?.getClientRects().length&&!!b?.getClientRects().length&&!b.disabled})()"),
+      'the empty Notebook shows its heading and available creation pencil in the outline');
+    assert.deepEqual(await rows(), [], 'an empty Notebook has no page rows');
     await control({ method: 'outcome_reference', operation_id: 'live-outcome-reference', item_id: 'live-outcome-reference',
       title: 'Architecture', body: 'The outcome passage every topic stands on.' });
-    await until(() => p.evaluate("!document.querySelector('#outcome-references').hidden"), 'the outcome Notebook appears without a reload');
+    await until(() => p.evaluate("!!document.querySelector('#outcome-references-list .reference[data-id=live-outcome-reference]')?.getClientRects().length"), 'the new Notebook page appears without a reload');
     assert.equal(await p.evaluate("document.querySelector('.rail').contains(document.querySelector('#outcome-references'))"), true, 'the pages are in the sidebar');
     assert.deepEqual(await rows(), ['Architecture']);
     // A page's row is a row like a topic's: as tall, and in the same column.
