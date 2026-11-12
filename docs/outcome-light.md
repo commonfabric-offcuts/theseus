@@ -113,12 +113,24 @@ names the owner without a time.
 ### Jump to the unanswered question (148)
 
 An ask fact includes `message_id` when the wait comes from a message. A wait
-set on the topic itself has no message id. The outline's Waiting on you
-control reads `outcome_light` again, then opens the first current ask's exact
-message link (blocking asks retain priority). The Reader loads that message
-directly, even outside the loaded feed or in a folded dossier. It does not
-answer it. If the wait has cleared, say so and refresh the outline.
+set on the topic itself has no message id. Waiting on you takes the reader to
+the question wherever it shows: the outline's outcome row and the light's words
+on the outcome's page (the outcome's asks, as `outcome_light` lists them), a
+topic row (that topic's ask, from its `asks`) and the Conversation row on the
+outcome's page (its waits on the reader). A press opens the oldest question
+there at its message, however the server orders the facts, and each press
+after it the next one, round to the oldest again after the newest
+(`web/waiting-questions.mjs`). The page keeps only the last question each place
+opened, so one answered since drops out and the next press goes on from there.
+The outline's control reads `outcome_light` again first; the outcome's page
+uses the facts it last read. The Reader loads the message directly, even
+outside the loaded feed or in a folded dossier, and on the page already open.
+It does not answer it. A wait said on a topic opens the topic. If nothing waits
+any more, the outline says so and reads itself again. The facts and the Asked
+line behind the light link to the exact message as well.
 
-An outcome name toggles its topics and opens its Conversation; this explicit
-choice survives that navigation. The name retains keyboard focus on desktop.
+A click or tap on an outcome name toggles its topics and opens its
+Conversation; this explicit choice survives that navigation (item 320). Return
+on the name opens the Conversation with its topics, as before; ⌘← folds them. The focus goes where any press in the outline
+puts it, on the heading of the page reached or stayed on.
 Waiting on you is a separate keyboard-reachable control, not a nested link.

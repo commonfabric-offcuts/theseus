@@ -502,3 +502,29 @@ test('a question that holds a release or a piece says so on the light, ahead of 
   assert.equal(words(lightName(light('waiting', { kind: 'asks', count: 1, blocking: 'other' }))), 'Waiting on you · 1 question');
   assert.deepEqual(pieces(light('waiting', { kind: 'asks', count: 1 })), ['Waiting on you ·', '1 question']);
 });
+
+// Item 148: on the outcome's page, Waiting on you is the way to the questions.
+// The light's words open the oldest question at its asking message, each press
+// after it the next, round to the oldest again; the facts and the Last line
+// link to the exact message too. The server lists the asks newest first.
+test('the card\'s Waiting on you opens the oldest question first, then each next one in turn, at its message', t => {
+  dom(t);
+  const host = new Element('section'), opened = [];
+  const answer = { light: light('waiting', { kind: 'asks', count: 2 }), lead: { kind: 'asks', count: 2 }, also: [], facts: [
+    { kind: 'ask', topic_id: 't-new', message_id: 'm-new', title: 'Newer question', title_truncated: false, by: 'fable', ms: at(6, 6, 40) },
+    { kind: 'ask', topic_id: 't-old', message_id: 'm-old', title: 'Older question', title_truncated: false, by: 'fable', ms: at(6, 6, 20) }] };
+  paintStanding(host, answer, { open: (...args) => opened.push(args), retry() {}, outcome: 'Pitch deck', place: 'outcome:test-148' });
+  const words = host.children[1].all().find(node => node.tag === 'button');
+  assert.ok(words, 'Waiting on you is a control');
+  assert.equal(words.text, 'Waiting on you · 2 questions');
+  assert.equal(host.children[1].children[0].dataset.light, 'waiting', 'the light still leads its words');
+  for (let n = 0; n < 3; n++) words.onclick();
+  assert.deepEqual(opened, [['t-old', 'Older question', 'm-old'], ['t-new', 'Newer question', 'm-new'], ['t-old', 'Older question', 'm-old']],
+    'oldest first, then the next, then round to the oldest');
+  // The Last line and the facts name each question by its own message.
+  const links = host.all().filter(node => node.tag === 'a').map(node => node.href);
+  assert.deepEqual(links, ['?topic=t-new&message=m-new', '?topic=t-new&message=m-new', '?topic=t-old&message=m-old']);
+  // Nothing waiting: the light's words are words, not a control.
+  paintStanding(host, { light: light('quiet', { kind: 'quiet', ms: at(6, 6, 0) }), lead: { kind: 'topics_quiet' }, facts: [], also: [] }, { open() {}, place: 'outcome:test-148' });
+  assert.equal(host.children[1].all().some(node => node.tag === 'button'), false);
+});

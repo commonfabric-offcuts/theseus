@@ -29,7 +29,7 @@
 // it come from the run of the page that is up, and from nothing before it.
 // Each run's reads and drawing are its own: what a run read lands only while
 // it is still the page, and a run that has gone draws nothing.
-import { TopicRail, TopicPages, WorkspacePages, reread, routeHref, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
+import { TopicRail, TopicPages, WorkspacePages, reread, routeHref, topicTarget, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
 import { paintRowLight } from './outcome-light.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton } from './quick-create.mjs';
 import { readFailure } from './freshness.mjs';
@@ -39,6 +39,7 @@ import { KeyTree } from './key-tree.mjs';
 import { KEY_WORDS, MESSAGE_KEY_WORDS, keyAction } from './pane-keys.mjs';
 import { book, scopeOf, arrangeItems, moved, movedWords, orderOf } from './outline-order.mjs';
 import { panes } from './panes.mjs';
+import { presses, questionTarget } from './waiting-questions.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -212,13 +213,7 @@ export class OutlineRail {
     this.opened.tidy();
     const chosen = this.clickedExpansion;
     this.clickedExpansion = null;
-    if (chosen?.id === this.here) {
-      this.opened.set(chosen.id, chosen.open);
-      queueMicrotask(() => {
-        const name = this.outcomes.get(chosen.id)?.name;
-        if (name?.getClientRects().length && !name.closest('[inert]')) name.focus({preventScroll:true});
-      });
-    }
+    if (chosen?.id === this.here) this.opened.set(chosen.id, chosen.open);
     this.unlisten?.();
     this.unlisten = handles.live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && this.doc.visibilityState === 'visible') this.reload(); }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
@@ -324,17 +319,20 @@ export class OutlineRail {
     topics.append(own);
     outcome = { id, item, li, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, notes: null,
       parts: { host, more, retry, message, done, archived } };
-    // The name chooses this outcome and toggles its topics. Keep this explicit
-    // fold through the page move; other navigation still tidies as before.
+    // The name opens its Conversation. A click or a tap also folds its topics
+    // when they are open and opens them when folded (item 320), and that
+    // choice holds through the move; Return, the keys' press, opens the
+    // Conversation with its topics as before (⌘→ and ⌘← fold), and the outline
+    // tidies itself as on any arrival. The focus goes where any press in the
+    // outline puts it: the heading of the page reached, or of the page it stayed on.
     name.onclick = async event => {
       if (!plainClick(event)) return;
       event.preventDefault();
+      if (event.detail === 0) { this.opened.tidy(); this.paint(); this.open(this.nameTarget(outcome), outcome.item.title); return; }
       const open = !this.isOpen(outcome.id);
       this.clickedExpansion = {id:outcome.id, open};
       this.setOpen(outcome, open);
-      const moved = await this.open(this.nameTarget(outcome), outcome.item.title);
-      if (moved === false) this.clickedExpansion = null;
-      if (this.here === outcome.id && name.getClientRects().length && !name.closest('[inert]')) name.focus({preventScroll:true});
+      if (await this.open(this.nameTarget(outcome), outcome.item.title) === false) this.clickedExpansion = null;
     };
     waiting.onclick = () => this.openQuestion(outcome);
     this.topicLine(outcome);
@@ -348,12 +346,13 @@ export class OutlineRail {
     try {
       const answer = await this.read('outcome_light', {workspace_id:outcome.id}, 'foreground');
       if (run !== this.run) return;
-      const ask = answer.facts?.find(fact => fact.kind === 'ask');
+      // The oldest question first, and each press after it the next (waiting-questions.mjs).
+      const ask = presses.next('outcome:' + outcome.id, (answer.facts ?? []).filter(fact => fact.kind === 'ask'));
       if (!ask) {
         this.message.textContent = 'Nothing is waiting on you in this outcome now.';
         this.message.hidden = false; this.reload(); return;
       }
-      await this.open({kind:'topic', id:ask.topic_id, ...(ask.message_id ? {message:ask.message_id} : {})}, ask.title);
+      await this.open(questionTarget(ask), ask.title);
     } catch (error) {
       this.message.textContent = readFailure(error).message; this.message.hidden = false;
     } finally { outcome.waiting.disabled = false; }
@@ -491,7 +490,7 @@ export class OutlineRail {
     outcome.rail ??= new TopicRail({ reader: this.bootstrap.actor, pageMax: this.pageMax,
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id)), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
-      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle) => this.open({ kind: 'topic', id: topicId }, topicTitle) });
+      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });
     return outcome.rail;
   }
   // An outcome's topics, read again: the page's own list reads itself.

@@ -8,7 +8,7 @@ import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refu
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
-import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince } from './topic-navigation.mjs';
+import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
@@ -1790,7 +1790,7 @@ async function initialize() {
       if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
       return answer;
     },
-    open: (id, title) => openDestination({kind:'topic',id},title),
+    open: (id, title, message) => openDestination(topicTarget(id, message), title),
     // Read once: the outline takes this list in from then on (outline-rail.mjs).
     updated: () => { $('topic-navigation').dataset.listed = ''; },
   });
@@ -2015,7 +2015,7 @@ const hasConversation = workspace => typeof workspace?.conversation_id === 'stri
 function paintConversationNav() {
   const target = { kind: 'conversation', id: here.workspaceId };
   const shown = paintConversationRow($('conversation-row'), { view: here.view ?? (here.read || !here.has ? null : {}), title: here.title, reader: bootstrap.actor, current: here.page,
-    href: routeHref(target), open: () => openDestination(target, CONVERSATION_TITLE) });
+    href: routeHref(target), open: (to = target) => openDestination(to, CONVERSATION_TITLE) });
   $('conversation-navigation').hidden = !shown;
 }
 const openLinked = (kind, id) => kind === 'topic' ? run(() => openDestination({ kind: 'topic', id }, 'Topic')) : goToMessage(id);
@@ -2259,7 +2259,7 @@ async function initializeOutcomePage(route) {
       const serial=++standingSerial,retry=()=>run(reload);
       try {
         const answer=checkedView(await api.view('outcome_light',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id);
-        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,open:(id,title)=>openDestination({kind:'topic',id},title)});
+        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
         return true;
       } catch {
         if(serial===standingSerial)paintStandingFailed($('outcome-standing'),retry);
@@ -2296,7 +2296,7 @@ async function initializeOutcomePage(route) {
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-        open:(id,title)=>openDestination({kind:'topic',id},title),
+        open:(id,title,message)=>openDestination(topicTarget(id,message),title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
       return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeReferences.load(),loadConversation(),
@@ -2347,7 +2347,7 @@ async function initializePipelinePage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title)=>openDestination({kind:'topic',id},title)});
+    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
   outcomeReferences=outcomePages(route.id,()=>{});
   // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
   here={workspaceId:route.id,title:route.id,view:null,page:false,has:false,onlyNew:false,items:new Map()};
@@ -2419,7 +2419,7 @@ async function initializeMeasurementsPage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title)=>openDestination({kind:'topic',id},title)});
+    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
   outcomeReferences=outcomePages(route.id,()=>{});
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'measurements',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
     sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},
@@ -2500,7 +2500,7 @@ async function initializeOpeningPage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.workspace,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title)=>openDestination({kind:'topic',id},title)});
+    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
   outcomeReferences=outcomePages(route.workspace,()=>{});
   here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,has:hasConversation(answer.workspace),onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,

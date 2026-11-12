@@ -87,7 +87,9 @@ leaves the team and so can no longer read the conversation; nothing else
 clears it. A coordinator the owner replaces stays
 on the team and still owes its asks.
 The conversation's `topic_waiting` rows follow the open asks, so attention and
-the sidebar read its waits as for any topic.
+the sidebar read its waits as for any topic. The Conversation row on the outcome's page,
+waiting on the reader, opens the oldest of its asks to them at its message, and
+each press after it the next (item 148, docs/outcome-light.md).
 
 A message sent to the conversation from the Reader about a message in another
 topic carries `about_id`, that message, set by `message.send`. Switching the
