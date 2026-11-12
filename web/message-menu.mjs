@@ -20,7 +20,7 @@ import { cardIn } from './fold.mjs';
 import { pageItself, writing } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
-import { entries, entryOf, navigationStops } from './reply-stacks.mjs';
+import { entries, entryOf, navigationStops, stopAt } from './reply-stacks.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -256,10 +256,15 @@ export class MessageMenu {
     const entries = this.entries();
     if (!entries.length) return;
     event.preventDefault();
-    const selected = at?.matches?.('.stack-toggle') ? at : this.lit ?? entries.find(entry => entry.dataset.id === this.host.dataset.lastMessage);
+    // A dossier's chevron holding the focus is where the keys are, whether it
+    // is a stop of its own or stands for its dossier's head; else the lit message.
+    const selected = (at?.matches?.('.stack-toggle') ? stopAt(this.host, at, entries) : null)
+      ?? this.lit ?? entries.find(entry => entry.dataset.id === this.host.dataset.lastMessage);
     const index = entries.indexOf(selected);
     const inView = entries.find(entry => entry.getBoundingClientRect().bottom > 0);
     const next = index < 0 ? inView ?? entries[0] : entries[Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+    // A dossier's header shows no message toolbar (focusin also clears the
+    // light when focus lands on the chevron).
     this.light(next.matches('.stack-toggle') ? null : next);
     const target = cardIn(next).hidden ? next.querySelector('.fold-line') : cardIn(next);
     target?.focus({ preventScroll: true });

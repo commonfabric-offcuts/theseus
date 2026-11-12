@@ -44,6 +44,17 @@ export function navigationStops(list) {
   return stops;
 }
 
+// The stop among stops that a focused element in the list stands for. A
+// dossier's chevron is its own stop while the dossier is fully expanded, and
+// otherwise stands for the dossier's head entry, its compact header; anything
+// else stands for the message entry it is in. Null when that is no stop.
+export function stopAt(list, target, stops = navigationStops(list)) {
+  if (stops.includes(target)) return target;
+  const toggle = target?.closest?.('.stack-toggle');
+  const entry = toggle ? toggle.parentElement.querySelector(':scope > [data-id]') : entryOf(list, target);
+  return stops.includes(entry) ? entry : null;
+}
+
 // The message entry a target is in, on its own or in a stack: the card, or
 // the fold holding it. Null for anything else in the list, a stack's lines included.
 export function entryOf(list, target) {
