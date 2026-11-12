@@ -194,8 +194,12 @@ test('Split back out puts both stacks back exactly as they were; a stack with no
   const plain = stacksOf([named('B', 1), named('b1', 5, { reply_to: 'B' }), named('b2', 6, { reply_to: 'b1' }), named('b3', 9, { reply_to: 'B' }), named('b4', 10, { reply_to: 'b2' })])[0];
   assert.deepEqual(shownRows(plain), ['b1', 'b2', 'b3', 'b4']);
   assert.ok(!shownRows(plain).some(row => row.startsWith('join')), 'and no join line');
-  // A joined stack's sort key is the newest message across both, as before.
+  // A joined stack's sort key is the newest message across both, as before,
+  // including when that newest message is a reply in the joined part.
   assert.equal(keyOf(stacksOf(tonys())[0]), 9);
+  assert.equal(keyOf(stacksOf([...tonys(), named('a11', 11, { reply_to: 'A' })])[0]), 11, 'a newer reply to the joined stack moves the combined stack\'s key');
+  assert.equal(keyOf(stacksOf([named('B', 1), named('b1', 5, { reply_to: 'B' }), named('A', 12, { acts: joinedA })])[0]), 12, 'a joined stack whose own first message is the newest gives the combined stack its key');
+  assert.deepEqual(stacksOf([...tonys(), named('D', 10), named('a11', 11, { reply_to: 'A' })]).map(stack => stack.id), ['B', 'D'], 'and so sorts it above a stack whose newest message is older');
 });
 
 test('a fold shows the newest reply and every kept one in its place, with a line for each run folded away', () => {
