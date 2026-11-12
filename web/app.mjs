@@ -903,7 +903,13 @@ function whisperPeople() {
   const kinds = new Map();
   for (const person of [...outcomeMembers ?? [], ...views?.participants ?? []]) if (person.kind) kinds.set(person.actor_id, person.kind);
   const everyone = (views?.participants ?? []).map(person => person.actor_id).filter(id => id !== bootstrap.actor).sort();
-  return { kindOf: name => kinds.get(name), everyone };
+  // Who a leading @name can name (at-names.mjs), as Core reads them (aim_next/addressing.py):
+  // the topic's participants and the outcome's team, switched on, never the reader. Writing
+  // moved to the outcome's conversation goes to its team.
+  const members = topicId => [...outcomeMembers ?? [], ...topicId === topic?.id ? views?.participants ?? [] : []]
+    .filter(person => person.enabled !== false && person.actor_id !== bootstrap.actor)
+    .map(person => ({ id: person.actor_id, name: person.name ?? null }));
+  return { kindOf: name => kinds.get(name), everyone, members };
 }
 // What the page knows of the person's marks: the topic's line, each loaded
 // card's pill and the Reader's button.

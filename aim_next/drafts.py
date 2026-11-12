@@ -6,7 +6,7 @@ from .authority import AuthorityError
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .conversation import INTENT_REQUIRED
-from . import whispers
+from . import addressing, whispers
 
 
 DRAFT_SCHEMA = [
@@ -184,6 +184,10 @@ class Drafts:
         for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent", "whisper", "part"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
+        # Writing that starts with @names of the topic's members goes to exactly them, frozen
+        # so (addressing.py); a new topic's opening names its people as it is made.
+        if "opening" not in snapshot:
+            snapshot["addressees"] = addressing.addressed(db, row["topic_id"], actor, snapshot)
         # A message to someone says whether it asks or tells; a person's that
         # says neither is a tell, frozen as one. An agent's is refused here, so
         # the writing stays in its draft to be corrected; frozen without it, it

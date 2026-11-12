@@ -3,6 +3,7 @@ import { recipientChoices, writingState, pasteImageError, namedPastedImage, imag
 import { paintImageRows } from './image-rows.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { paintChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
+import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { showLine } from './lines.mjs';
 import { ComposeBar } from './compose-bar.mjs';
@@ -147,13 +148,18 @@ export class InlineComposer {
   // In an outcome's conversation a message starts as a Tell, even to one agent (I3).
   get conversation() { return Boolean(this.callbacks.conversation?.()); }
   get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
+  // Who the topic's messages can be sent to by name (app.mjs whisperPeople).
+  members(editor = this.editor) { return this.callbacks.people?.().members?.(editor?.context?.topicId) ?? []; }
+  // Who the message goes to: the members its leading @names name, else whom its
+  // chips name (at-names.mjs, the rule Core records it by).
+  names(editor = this.editor) { return editor ? addressedTo(editor.draft.body, this.members(editor), editor.draft.addressees) : []; }
   // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above the writing.
   paintChoice(readOnly = this.state().readOnly) {
     const editor = this.editor;
     if (!editor) return;
-    paintChoice(this.$('intent-row'), { draft: editor.draft, names: editor.draft.addressees, kindOf: this.kindOf,
+    paintChoice(this.$('intent-row'), { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf,
       everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly,
-      conversation: this.conversation, onChoose: choice => this.choose(choice) });
+      conversation: this.conversation, to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
   }
   choose(choice) {
     const p = this.presentation, editor = this.editor;
@@ -261,8 +267,9 @@ export class InlineComposer {
     if (!this.admits(p, editor) || this.state().sendDisabled) return;
     // A name typed in To and not named: Send waits, and says so (compose-bar.mjs).
     if (this.bar.holdSend()) return;
-    // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
-    editor.edit(sending(editor.draft, editor.draft.addressees, this.kindOf, { conversation: this.conversation }));
+    // The writing goes as the choice shows: a whisper, or a tell or ask that says so, to
+    // whom the line said; Core records a leading @name's members itself (addressing.py).
+    editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { conversation: this.conversation }));
     const draft = editor.draft;
     try {
       const sent = this.callbacks.send(editor, p);

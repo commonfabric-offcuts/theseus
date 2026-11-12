@@ -232,7 +232,10 @@ recorded as one. `post --to`, which said neither, is refused the same way
 before anything is saved, as is a post with both `--asks` and `--tells`. An
 `--asks` or `--tells` that names nobody (`--asks ""`) is refused as
 `INVALID_ARGUMENT` before anything is saved, as is an intent on a message
-that names nobody.
+that names nobody. `message.post` sends to exactly the addressees it names,
+whatever its words start with: an "@auditor" at the start of a post changes
+nothing. Only writing from the web page's composers is sent to the members
+its leading @names name ([reader.md](reader.md#naming-who-a-message-is-to)).
 
 An ask makes the topic wait on each person it asks until they next write in
 the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the

@@ -4590,6 +4590,194 @@
     "native": "reading",
     "case": "long message headers scroll away"
    }
+  },
+  {
+   "item": 329,
+   "act": "Writing from the page that starts with @names of the topic's members is recorded to exactly them, in place of the author a reply answers or nobody",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "            snapshot[\"addressees\"] = addressing.addressed(db, row[\"topic_id\"], actor, snapshot)",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "python": "test_at_names.py"
+   }
+  },
+  {
+   "item": 329,
+   "act": "The member a leading @name addresses answers it in place in the outcome's conversation, and the author it answered is refused as for any item not addressed to it",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        if \"opening\" not in snapshot:\n            snapshot[\"addressees\"]",
+     "        if False:\n            snapshot[\"addressees\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_at_names.py"
+   }
+  },
+  {
+   "item": 329,
+   "act": "An @word that names no member is plain text, and the default addressee stands",
+   "break": [
+    [
+     "aim_next/addressing.py",
+     "        if member is None:\n            return named",
+     "        if member is None:\n            member = word.group(1)"
+    ]
+   ],
+   "check": {
+    "python": "test_at_names.py"
+   }
+  },
+  {
+   "item": 329,
+   "act": "A leading @name names a member by actor id or name, in any case",
+   "break": [
+    [
+     "aim_next/addressing.py",
+     "key = word.group(1).rstrip(\".\").lower()",
+     "key = word.group(1).rstrip(\".\")"
+    ]
+   ],
+   "check": {
+    "python": "test_at_names.py"
+   }
+  },
+  {
+   "item": 329,
+   "act": "An agent's post through message.post keeps the addressees it names, whatever its words start with",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        snapshot[\"go_ahead\"] = go_ahead_flag(args)\n",
+     "        snapshot[\"go_ahead\"] = go_ahead_flag(args)\n        snapshot[\"addressees\"] = __import__(\"aim_next.addressing\", fromlist=[\"addressed\"]).addressed(db, target[\"topic_id\"], actor, snapshot)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_at_names.py"
+   }
+  },
+  {
+   "item": 329,
+   "act": "The page reads leading @names as Core does",
+   "break": [
+    [
+     "web/at-names.mjs",
+     "const key = word[1].replace(/\\.+$/, '').toLowerCase()",
+     "const key = word[1].replace(/\\.+$/, '')"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_at_names.test.mjs"
+   }
+  },
+  {
+   "item": 329,
+   "act": "The composer's line says \"To everyone here\" when nobody is named",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     ": place ? `To everyone in ${place}` : 'To everyone here';",
+     ": place ? `To everyone in ${place}` : '';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_at_names.test.mjs"
+   }
+  },
+  {
+   "item": 329,
+   "act": "The composers say who the message will go to before it is sent, in a quiet line under the who chip",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     "  if (to) { const words = toWords(names, place);",
+     "  if (false) { const words = toWords(names, place);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a leading @name says who the writing goes to"
+   }
+  },
+  {
+   "item": 329,
+   "act": "The Reader's line follows a leading @name as it is typed, and shows the author it answers without one",
+   "break": [
+    [
+     "web/reader.mjs",
+     "return editor ? addressedTo(editor.draft.body, this.members(editor), this.own(editor)) : [];",
+     "return editor ? this.own(editor) : [];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a leading @name says who the writing goes to"
+   }
+  },
+  {
+   "item": 329,
+   "act": "The topic's composer's line follows a leading @name as it is typed, and shows everyone here without one",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "return editor ? addressedTo(editor.draft.body, this.members(editor), editor.draft.addressees) : [];",
+     "return editor ? editor.draft.addressees : [];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a leading @name says who the writing goes to"
+   }
+  },
+  {
+   "item": 329,
+   "act": "A reply to someone else's message sent from the Reader with a leading @name is recorded to the named member, as the line said; without one, to its author",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "            snapshot[\"addressees\"] = addressing.addressed(db, row[\"topic_id\"], actor, snapshot)",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "is recorded to that member"
+   }
+  },
+  {
+   "item": 329,
+   "act": "A leading @name of someone on the outcome's team who is in neither the topic nor its conversation shows as \"To\" them before Send, in the conversation and its topic, and Core records them",
+   "break": [
+    [
+     "web/app.mjs",
+     "const members = topicId => [...outcomeMembers ?? [], ...topicId",
+     "const members = topicId => [...topicId"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "neither the topic nor its conversation"
+   }
+  },
+  {
+   "item": 329,
+   "act": "Writing moved from a topic to the outcome's conversation names by a leading @name only the conversation's members, not the topic's participants",
+   "break": [
+    [
+     "web/app.mjs",
+     "...topicId === topic?.id ? views?.participants ?? [] : []]",
+     "...views?.participants ?? []]"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "neither the topic nor its conversation"
+   }
   }
  ]
 }

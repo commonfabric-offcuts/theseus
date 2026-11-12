@@ -1,0 +1,27 @@
+{
+  "members": [
+    {"id": "auditor", "name": "Auditor"},
+    {"id": "fable", "name": null},
+    {"id": "aim-ux", "name": "UX"},
+    {"id": "x1", "name": "Twin"},
+    {"id": "x2", "name": "Twin"},
+    {"id": "ux", "name": "Someone else"}
+  ],
+  "cases": [
+    ["@auditor can you reply here?", ["auditor"]],
+    ["@Auditor, @FABLE: both of you", ["auditor", "fable"]],
+    ["\n  @aim-ux.", ["aim-ux"]],
+    ["@ux! an id wins over a name", ["ux"]],
+    ["@auditor @auditor again", ["auditor"]],
+    ["@auditor hi", ["auditor"]],
+    ["@auditor @nobody @fable", ["auditor"]],
+    ["@twin a name two members share", []],
+    ["@auditor's tool", []],
+    ["hello @auditor", []],
+    ["@nobody @auditor", []],
+    ["@auditor@fable", []],
+    ["auditor@example.com", []],
+    ["@", []],
+    ["", []]
+  ]
+}

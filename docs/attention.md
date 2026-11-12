@@ -172,7 +172,11 @@ kind `waiting` reaches each person a topic starts or stops waiting on.
 
 In the web app a reply to someone tells them unless the writer ticks Ask,
 which shows in the Reader once the reply names someone and goes when the last
-name does. A topic row is marked "Waiting on …" while anyone is said or asked,
+name does. Writing that starts with @names of the topic's members is sent to
+exactly them, in place of the author a reply answers: Core records them as its
+addressees when it freezes the writing, so they are the ones it asks or tells
+and the ones it is for, and everyone else reads it as a message between
+others (docs/reader.md, "Naming who a message is to"). A topic row is marked "Waiting on …" while anyone is said or asked,
 whatever its state ("Ready for review · waiting on …" when it is ready), and
 the mark's title says who asked whom and since when. The "Waiting on you" list
 gives each topic's ask the same way and leaves out a state that was not said.
