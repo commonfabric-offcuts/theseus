@@ -7,8 +7,8 @@
 //
 // A stack is a message and every loaded reply to it, and to those replies,
 // plus each stack someone joined to it. The message it starts with (its head)
-// stays at the top; its replies read as a chat does, oldest first, and a
-// stack joined to it comes after them, in the order the joins were made. The
+// stays at the top; every other message in it reads as a chat does, oldest
+// first, a joined stack's among the rest, as one run. The
 // stacks themselves keep the topic newest on top: each sits where its newest
 // message would, unless the reader placed it somewhere of their own, where it
 // holds whatever replies arrive. A reply of the reader's own never lifts it:
@@ -69,13 +69,12 @@ export function gather(items, { has = null, viewer = null } = {}) {
       break;
     }
   }
-  // The head each message is under, and the joined stack it came with: the
-  // nearest message up from it (itself included) that was joined, else null.
-  const headOf = new Map(), segmentOf = new Map();
+  // The head each message is under.
+  const headOf = new Map();
   for (const item of items) {
-    let at = item.id, segment = null;
-    for (let next = up(at); next; next = up(at)) { if (next.joined && segment === null) segment = at; at = next.id; }
-    headOf.set(item.id, at); segmentOf.set(item.id, segment);
+    let at = item.id;
+    for (let next = up(at); next; next = up(at)) at = next.id;
+    headOf.set(item.id, at);
   }
   const stacks = new Map();
   for (const item of items) {
@@ -84,22 +83,11 @@ export function gather(items, { has = null, viewer = null } = {}) {
     stacks.get(head).members.push(item);
     if (item.id !== head && up(item.id)?.joined) stacks.get(head).joins.set(item.id, up(item.id).joined);
   }
-  const bySeq = (a, b) => a.seq - b.seq;
   return [...stacks.values()].map(({ head, members, joins }) => {
-    // The head's own replies first, oldest first; then each stack joined to
-    // one of them, in the order it was joined, its first message and its own
-    // replies, each followed in turn by the stacks joined to it.
-    const within = new Map([[null, []]]), under = new Map([[null, []]]);
-    for (const id of joins.keys()) { within.set(id, []); under.set(id, []); }
-    for (const item of members) if (item.id !== head.id) within.get(segmentOf.get(item.id)).push(item);
-    for (const [id, join] of joins) under.get(segmentOf.get(join.into) ?? null).push(byId.get(id));
-    const replies = [];
-    const emit = segment => {
-      replies.push(...within.get(segment).sort(bySeq));
-      const joined = under.get(segment).sort((a, b) => (joins.get(a.id).at_ms ?? 0) - (joins.get(b.id).at_ms ?? 0) || bySeq(a, b));
-      for (const item of joined) emit(item.id);
-    };
-    emit(null);
+    // Every message under the head as one run, oldest first: its replies, each
+    // stack joined to it and the replies to those, however deep. A join
+    // changes no message, so splitting it out puts both stacks back as they were.
+    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);
     const placed = typeof actsOf(head).placed === 'number' ? actsOf(head).placed : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;

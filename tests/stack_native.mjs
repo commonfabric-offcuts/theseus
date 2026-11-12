@@ -625,8 +625,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(() => stacks(p, ids), ['top'], '⇧⌘↑ joins the older stack into the one above');
     assert.match(await said(p), /Joined to the stack above/, 'a screen reader hears the join');
     // The join opens the stack it went into, with no → needed (item 354).
-    await becomes(async () => (await look(p, ids, 'top')).rows, ['topReply', 'join: Joined from its own stack by You', 'old', 'oldReply'],
-      'its messages come after the replies, its first message in view with a join line, and its reply, in view before, still in view');
+    await becomes(async () => (await look(p, ids, 'top')).rows, ['join: Joined from its own stack by You', 'old', 'oldReply', 'topReply'],
+      'one run, oldest first: its first message in view with a join line, its reply, in view before, still in view, then the newer stack\'s reply');
     // The joined stack's first message heads nothing now: its head row goes, and it reads as a card.
     const headed = id => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return {row:Boolean(c.querySelector(':scope > .stack-head')),head:c.classList.contains('stack-head-card')}})()`);
     assert.deepEqual(await headed(ids.old), { row: false, head: false }, 'the joined stack\'s first message keeps no head row');
@@ -791,6 +791,52 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const theirs = await look(p, ids, 'b');
     assert.deepEqual({ fold: theirs.fold, full: theirs.full, rows: theirs.rows }, { fold: 'folded', full: false, rows: ['a2'] },
       'their join draws B as any stack is drawn: its head as one row and its newest reply');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Item 361, Tony's case: a join makes the two stacks one, so a reply to any message in it lands at the bottom.
+  await check('reading stacks a join makes one stack: every message of both oldest first under its head, a new reply to the joined stack\'s message lands at the bottom, the keys and the phone read the same, and Split back out puts both back', async () => {
+    const topic = 'stack-join-one';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A, older.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, newer.', read: true }],
+      ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }],
+      ['a2', { sender: other, reply_to: 'a', addressees: [facts.actor], body: 'A reply to A.', read: true }],
+      ['b3', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'Another reply to B.', read: true }]]);
+    const line = 'join: Joined from its own stack by You';
+    const toggle = `#messages .reply-stack[data-stack="${ids.b}"] > .stack-toggle`;
+    const p = await open(topic, 'laptop', topic, ids.a);
+    await becomes(() => stacks(p, ids), ['b', 'a'], 'B above A');
+    await keyTo(p, ids.a);
+    await p.key('ArrowUp', 12);
+    await becomes(() => stacks(p, ids), ['b'], '⇧⌘↑ joins A into B');
+    // Fully open, every message shows: a join you make that already opens it (release 58) needs no press.
+    if ((await look(p, ids, 'b')).fold !== 'open') await press(p, 'laptop', toggle);
+    await becomes(async () => (await look(p, ids, 'b')).rows, [line, 'a', 'b1', 'a2', 'b3'], 'B\'s head, then A under its join line, b1, a2, b3: one run by when each was written');
+    const reply = async (name, to, body) => { ids[name] = (await control({ method: 'agent_message', operation_id: `${topic}-${name}`, topic_id: topic, source: 'topic', sender: other, reply_to: ids[to], addressees: [facts.actor], body })).result.message_id; };
+    await reply('a6', 'a', 'A new reply to A, after the join.');
+    await becomes(async () => (await look(p, ids, 'b')).rows, [line, 'a', 'b1', 'a2', 'b3', 'a6'], 'a new reply to the joined stack\'s message lands at the bottom');
+    await reply('b7', 'b1', 'A new reply to B\'s reply.');
+    await becomes(async () => (await look(p, ids, 'b')).rows, [line, 'a', 'b1', 'a2', 'b3', 'a6', 'b7'], 'and a new reply to B\'s own reply lands under it');
+    assert.deepEqual(await stacks(p, ids), ['b'], 'still one stack');
+    // The keys step down the stack in the same order.
+    await keyTo(p, ids.b);
+    const stepped = [];
+    for (let n = 0; n < 6; n++) { await p.key('ArrowDown'); const at = await focusedOn(p); stepped.push(Object.keys(ids).find(key => ids[key] === at) ?? at); }
+    assert.deepEqual(stepped, ['a', 'b1', 'a2', 'b3', 'a6', 'b7'], '↓ from B\'s head steps down the one run');
+    await shot(p, 'stack-join-one');
+    // The phone, opening the topic afresh, reads the same run.
+    const q = await open(topic + '-phone', 'phone', topic, ids.b);
+    await becomes(async () => (await look(q, ids, 'b')).fold, 'folded', 'phone: latest and unread first');
+    await press(q, 'phone', toggle);
+    await becomes(async () => (await look(q, ids, 'b')).rows, [line, 'a', 'b1', 'a2', 'b3', 'a6', 'b7'], 'phone: fully open, the same one run');
+    assert.deepEqual(q.errors, []);
+    await q.close();
+    // Split back out: B as it was with its own replies, A on its own again.
+    await p.point(`#messages .stack-join-line .stack-split`);
+    await becomes(() => stacks(p, ids), ['b', 'a'], 'Split back out: two stacks again');
+    await becomes(async () => (await look(p, ids, 'b')).rows, ['b1', 'b3', 'b7'], 'B keeps only its own replies, oldest first, and no join line');
+    await until(async () => (await actsOf(topic, ids.a, other))?.joined === null, 'for everyone');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

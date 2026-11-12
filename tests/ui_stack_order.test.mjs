@@ -1,7 +1,7 @@
 // How a topic's loaded messages read as reply stacks (docs/reply-stacks.md),
 // in the parts that decide: chat order inside a stack, the fold lines at each
-// gap, the stacks newest on top unless the reader placed one, joins appended
-// in the order made, the one New line under the lowest stack holding anything
+// gap, the stacks newest on top unless the reader placed one, a join read as
+// one stack oldest first, the one New line under the lowest stack holding anything
 // new, and the red count on a fold line. The native reading checks
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
@@ -92,21 +92,21 @@ test('a move places the stack just past its neighbour, refuses at either end, an
   assert.deepEqual(moveOf(near, 2, 'up'), [{ id: 'm1', key: 1 + e }, { id: 'm2', key: 1 }]);
 });
 
-test('a join appends the joined stack after the replies, in the order joined, with its own replies, and its first message keeps its line', () => {
+test('a join reads as one stack: the head first, then every other message oldest first, a joined stack\'s first message keeping its line', () => {
   const items = [message(1), message(2, { reply_to: 'm1' }), message(3), message(4, { reply_to: 'm3' }),
     message(5, { acts: { joined: { into: 'm1', by: 'owner', at_ms: 20 } } }), message(6, { reply_to: 'm5' }),
     message(7, { reply_to: 'm1' })];
   items[2].acts = { joined: { into: 'm1', by: 'agent-a', at_ms: 10 } };
   const [stack] = stacksOf(items);
   assert.equal(stacksOf(items).length, 1, 'one stack');
-  assert.deepEqual(ids(stack.replies), ['m2', 'm7', 'm3', 'm4', 'm5', 'm6'], 'own replies, then m3 (joined first), then m5');
+  assert.deepEqual(ids(stack.replies), ['m2', 'm3', 'm4', 'm5', 'm6', 'm7'], 'own replies and both joined stacks as one run, oldest first');
   assert.deepEqual([...stack.joins.keys()], ['m3', 'm5']);
   assert.deepEqual(words(rowsOf(stack, { level: 'head' })), ['6 replies'], 'closed hides joined messages too');
   assert.ok(words(rowsOf(stack, { level: 'open' })).includes('join m3'), 'open still shows join context');
-  // A join into a joined stack follows that stack.
+  // A join into a joined stack reads in the same run, whatever order the joins were made in.
   const nested = stacksOf([message(1), message(2, { acts: { joined: { into: 'm1', at_ms: 30 } } }),
     message(3, { acts: { joined: { into: 'm2', at_ms: 10 } } }), message(4, { acts: { joined: { into: 'm1', at_ms: 20 } } })]);
-  assert.deepEqual(ids(nested[0].replies), ['m4', 'm2', 'm3']);
+  assert.deepEqual(ids(nested[0].replies), ['m2', 'm3', 'm4']);
   // A joined message is cut from the message it answers.
   const cut = stacksOf([message(1), message(2), message(3, { reply_to: 'm1', acts: { joined: { into: 'm2', at_ms: 1 } } })]);
   assert.deepEqual(cut.map(stack => [stack.id, ids(stack.replies)]), [['m2', ['m3']], ['m1', []]]);
@@ -152,6 +152,54 @@ test('a join the reader makes shows where it went: the stack it goes into open, 
   assert.equal(joinShown(stacks, 1, 'down', 'm2'), null);
   assert.throws(() => joinShown(stacks, 1, 'up', 'm4'), /not m4/);
   assert.throws(() => joinShown(stacks, 2, 'up', 'm1'), /No stack at 2/);
+});
+
+// Item 361, Tony's case: a join makes the two stacks one, so a reply to any of their messages lands at the bottom.
+const named = (id, seq, extra = {}) => ({ id, seq, author_id: 'agent-a', body: `${id}\nmore`, ...extra });
+const joinedA = { joined: { into: 'B', by: 'owner', at_ms: 50 } };
+const tonys = (joined = joinedA) => [named('B', 1), named('A', 3, { acts: joined }), named('b1', 5, { reply_to: 'B' }), named('a2', 7, { reply_to: 'A' }), named('b3', 9, { reply_to: 'B' })];
+const shownRows = (stack, level = 'open') => words(rowsOf(stack, { level }).filter(row => row.kind !== 'fold-all'));
+
+test('a join interleaves both stacks oldest first under the head, the join line staying on the joined stack\'s first message', () => {
+  const [stack, ...rest] = stacksOf(tonys());
+  assert.deepEqual(rest, [], 'one stack');
+  assert.equal(stack.id, 'B', 'the head stays first');
+  assert.deepEqual(shownRows(stack), ['join A', 'A', 'b1', 'a2', 'b3'], 'B, then A under its join line, b1, a2, b3, by sequence');
+  assert.deepEqual(ids(readingOrder([stack])), ['B', 'A', 'b1', 'a2', 'b3'], 'the keys step in the same order');
+  // A new reply to A lands at the bottom, and so does one to B's own reply.
+  const later = stacksOf([...tonys(), named('a11', 11, { reply_to: 'A' })])[0];
+  assert.deepEqual(shownRows(later), ['join A', 'A', 'b1', 'a2', 'b3', 'a11'], 'a reply to the joined stack\'s message lands last');
+  const after = stacksOf([...tonys(), named('a11', 11, { reply_to: 'A' }), named('b12', 12, { reply_to: 'b1' })])[0];
+  assert.deepEqual(ids(after.replies).slice(-2), ['a11', 'b12'], 'a reply to the head\'s own reply lands last too');
+  assert.deepEqual(shownRows(after, 'folded'), ['5 earlier replies', 'b12'], 'latest plus unread: the newest across both stacks, at the bottom, everything older folded above it');
+  // Joined by someone else first, or later: the rule is the sequence, not the order of the joins.
+  assert.deepEqual(ids(stacksOf(tonys({ joined: { into: 'B', by: 'owner', at_ms: 1 } }))[0].replies), ['A', 'b1', 'a2', 'b3']);
+});
+
+test('a join of a join interleaves too, each joined stack\'s first message keeping its line', () => {
+  const items = [...tonys(), named('C', 4, { acts: { joined: { into: 'a2', by: 'owner', at_ms: 60 } } }), named('c6', 6, { reply_to: 'C' }), named('c10', 10, { reply_to: 'C' })];
+  const [stack, ...rest] = stacksOf(items);
+  assert.deepEqual([stack.id, rest.length], ['B', 0]);
+  assert.deepEqual(shownRows(stack), ['join A', 'A', 'join C', 'C', 'b1', 'c6', 'a2', 'b3', 'c10']);
+  assert.deepEqual([...stack.joins.keys()].sort(), ['A', 'C']);
+});
+
+test('Split back out puts both stacks back exactly as they were; a stack with no joins reads as it always did', () => {
+  const before = stacksOf(tonys(null));
+  const split = stacksOf(tonys({ joined: null, join_revision: 2 }));
+  const shape = stacks => stacks.map(stack => [stack.id, ids(stack.replies), [...stack.joins.keys()], stack.newest, keyOf(stack)]);
+  assert.deepEqual(shape(split), shape(before));
+  assert.deepEqual(shape(before), [['B', ['b1', 'b3'], [], 9, 9], ['A', ['a2'], [], 7, 7]]);
+  // With no joins nothing moves: replies, and replies to them, oldest first, under the head.
+  const plain = stacksOf([named('B', 1), named('b1', 5, { reply_to: 'B' }), named('b2', 6, { reply_to: 'b1' }), named('b3', 9, { reply_to: 'B' }), named('b4', 10, { reply_to: 'b2' })])[0];
+  assert.deepEqual(shownRows(plain), ['b1', 'b2', 'b3', 'b4']);
+  assert.ok(!shownRows(plain).some(row => row.startsWith('join')), 'and no join line');
+  // A joined stack's sort key is the newest message across both, as before,
+  // including when that newest message is a reply in the joined part.
+  assert.equal(keyOf(stacksOf(tonys())[0]), 9);
+  assert.equal(keyOf(stacksOf([...tonys(), named('a11', 11, { reply_to: 'A' })])[0]), 11, 'a newer reply to the joined stack moves the combined stack\'s key');
+  assert.equal(keyOf(stacksOf([named('B', 1), named('b1', 5, { reply_to: 'B' }), named('A', 12, { acts: joinedA })])[0]), 12, 'a joined stack whose own first message is the newest gives the combined stack its key');
+  assert.deepEqual(stacksOf([...tonys(), named('D', 10), named('a11', 11, { reply_to: 'A' })]).map(stack => stack.id), ['B', 'D'], 'and so sorts it above a stack whose newest message is older');
 });
 
 test('a fold shows the newest reply and every kept one in its place, with a line for each run folded away', () => {
