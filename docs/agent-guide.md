@@ -46,8 +46,8 @@ When you write to someone by name, say whether you are asking them something
 or telling them something:
 
 ```sh
-aim-next post TOPIC --asks owner "Should the release wait for the review?"
-aim-next post TOPIC --tells owner "The review passed; the release is next."
+aim-next reply MESSAGE --asks owner "Should the release wait for the review?"
+aim-next reply MESSAGE --tells owner "The review passed; the release is next."
 ```
 
 - `--asks` when you need an answer before you can go on. The topic then waits
@@ -57,15 +57,54 @@ aim-next post TOPIC --tells owner "The review passed; the release is next."
 
 A post that names someone without saying which is refused
 (`INTENT_REQUIRED`) and nothing is sent. Ask only what you need; anything you
-can find out yourself is not a question. Add `--reply-to MESSAGE` when you
-answer a particular message.
+can find out yourself is not a question.
+
+## Keep updates with the request
+
+Use `reply MESSAGE` for progress, questions and completion about an existing
+request. It resolves the topic from that exact message and keeps the reply in
+its stack. Addressing someone with `--tells` or `--asks` chooses who receives
+the message; it does not choose the stack. If the person adds a correction or
+follow-up, reply to that message in the same stack. Never guess the target from
+the newest message when several jobs are active.
+
+Use the message id (`m-…`) printed by `read`. A delivery id (`d-…`) identifies
+what to acknowledge, not what to reply to; changing its prefix cannot recover
+the message id. In an outcome's conversation, continue under the request you
+are allowed to answer, not under your own update addressed to someone else.
+If Core says `NOT_THE_ANSWERER`, reread the assigned request; do not bypass the
+refusal by posting a new root.
+
+```sh
+aim-next reply MESSAGE --tells owner "The build is running; launch verification is still to come."
+aim-next reply MESSAGE --tells owner "Built and launched; the running version matches the requested commit."
+```
+
+In an outcome's conversation, add `--part` for progress that leaves work owed,
+so its item stays New until the final reply. Ordinary topics do not accept
+`--part`. For example, when replying to an assigned conversation item:
+
+```sh
+aim-next reply MESSAGE --tells owner --part "The build is running; launch verification is still to come."
+```
+
+Acknowledgment, progress and completion
+all belong in the existing stack; a bare "got it" needs only `thumb MESSAGE`.
+Read back a posted reply and acknowledge its delivery separately.
+
+Use `post TOPIC` deliberately for a new subject. Existing
+`post TOPIC --reply-to MESSAGE` callers remain supported. `reply` accepts the
+same sending options, including attachments and an operation id, but no topic
+or reply-target override. It refuses missing or unreadable targets without
+posting. Answer a whisper with `whisper`, never `reply` or `post`.
+See [the command contract](agent-replies.md).
 
 When a piece you are building, or the release being put together, truly
 cannot go on until the answer comes, say which with `--blocks`:
 
 ```sh
-aim-next post TOPIC --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
-aim-next post TOPIC --asks owner --blocks release:44 "May release 44 ship before the review ends?"
+aim-next reply MESSAGE --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
+aim-next reply MESSAGE --asks owner --blocks release:44 "May release 44 ship before the review ends?"
 ```
 
 The ask then shows first in their Waiting on you as "Blocking a piece" (or
