@@ -137,6 +137,15 @@ their acts.
   message, to open the Reader with its reply composer. Stacks have no
   input-looking reply strip: that control opened the modal rather than
   accepting writing in place, so Tony asked to remove it.
+  A reply of yours that arrives while this page is open, sent here or from
+  another device, stays visible when its answer arrives, even in the same
+  update, just as unread replies already in view stay visible. Only your
+  own replies are held so; another person's read reply is replaced by a
+  newer one as usual. Changing the stack's state lets go of it, and so does
+  coming back to the page (the tab shown again) while that stack is off
+  screen, exactly as for unread replies kept in view; a stack on screen
+  when you come back keeps it. A later visit starts without it. The
+  latest/unread state then shows its usual selection again.
 - **Stable presses.** Anything that arrives while a press is held—a new
   message, a stack repaint, reactions or the New line—waits until the press
   ends, then shows at once (`web/press-hold.mjs`). The header and people

@@ -33,9 +33,13 @@ const BAR = '.message-bar';
 // window.holdReads: the page's reports of what it read on screen (topic.read_through) are held unanswered, as a
 // lost connection holds them, so Core keeps those messages unread and a check sees what one act read.
 // window.staleThumb: the next thumbs-up goes fenced on a revision Core does not hold, so Core refuses it.
+// window.waitView = name: the page's reads of the view so named wait unsent, as a slow connection holds them, until
+// window.letViews() sends them; what Core commits meanwhile reaches the page in one answer. window.waitingViews: those waiting.
 // window.fetchesOut: how many of the page's requests are out and not yet answered (held reports aside).
-const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;const f=window.fetch;window.fetch=function(input,init){
+const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;window.waitingViews=[];window.letViews=()=>{window.waitView=null;for(const go of window.waitingViews.splice(0))go()};
+  const f=window.fetch;window.fetch=function(input,init){
   let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}
+  if(b&&b.name&&b.name===window.waitView)return new Promise(go=>window.waitingViews.push(go)).then(()=>window.fetch.call(this,input,init));
   if(b&&b.kind==='topic.read_through'&&window.holdReads)return new Promise(()=>{});
   if(b&&b.kind==='message.thumb'&&window.staleThumb){window.staleThumb=false;b.expected.thumb_revision+=99;init={...init,body:JSON.stringify(b)}}
   const answer=f.call(this,input,init),watch=window.watchFor,back=()=>{window.fetchesOut--};window.fetchesOut++;answer.then(back,back);

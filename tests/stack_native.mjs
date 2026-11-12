@@ -1084,6 +1084,107 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  await check('reading stacks a sent reply stays visible when its answer arrives', async () => {
+    const topic = 'stack-sent-answer';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A question I am reading.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one'], 'the unread question is visible');
+    ids.mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor,
+      reply_to: ids.one, addressees: [other], body: 'My reply must stay while I read the answer.' })).result.message_id;
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'mine'], 'my sent reply joins the question');
+    await until(async () => (await actsOf(topic, ids.mine))?.dealt === true, 'my reply is dealt with before the answer arrives');
+    ids.answer = (await control({ method: 'agent_message', operation_id: topic + '-answer', topic_id: topic, source: 'topic', sender: other,
+      reply_to: ids.mine, addressees: [facts.actor], body: 'The answer to your reply.' })).result.message_id;
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'mine', 'answer'], 'the answer does not hide my intervening reply');
+    assert.equal((await look(p, ids, 'root')).full, false, 'retaining my reply does not expand the original');
+    await keyTo(p, ids.root); await p.key('ArrowLeft');
+    await becomes(async () => (await look(p, ids, 'root')).fold, 'head', 'I explicitly close the stack');
+    await p.key('ArrowRight');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['answer'], 'opening latest/unread again clears the temporary retention');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Only the reader's own reply is held so: another person's reply, read as it
+  // arrives, is replaced by a newer one as before; and coming back to the tab
+  // with the stack off screen lets go of the reader's reply, as a later visit
+  // never had it.
+  await check('reading stacks a sent reply is held alone: another reader\'s read reply arriving is replaced as before, and coming back with the stack off screen lets go', async () => {
+    const topic = 'stack-sent-held-alone';
+    // Messages after the stack's own, enough that it is off screen with the page scrolled to its end.
+    const later = Array.from({ length: 8 }, (_, n) => [`later${n}`, { sender: other, addressees: [facts.actor], read: true,
+      body: `An earlier message, number ${n}, long enough to take room on the page. `.repeat(6) }]);
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.', read: true }], ...later,
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'One, read.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    const rows = async () => (await look(p, ids, 'root')).rows;
+    await becomes(rows, ['one'], 'the read latest shows');
+    ids.mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor,
+      reply_to: ids.one, addressees: [other], body: 'Mine.' })).result.message_id;
+    await becomes(rows, ['mine'], 'my reply replaces the read latest');
+    await until(async () => (await actsOf(topic, ids.mine))?.dealt === true, 'my reply is dealt with');
+    ids.x = (await control({ method: 'agent_message', operation_id: topic + '-x', topic_id: topic, source: 'topic', sender: other,
+      reply_to: ids.root, addressees: [facts.actor], body: 'X, read on arrival.', read: true })).result.message_id;
+    await becomes(rows, ['mine', 'x'], 'my reply stays beside the newer reply');
+    ids.y = (await control({ method: 'agent_message', operation_id: topic + '-y', topic_id: topic, source: 'topic', sender: other,
+      reply_to: ids.root, addressees: [facts.actor], body: 'Y, read on arrival.', read: true })).result.message_id;
+    await becomes(rows, ['mine', 'y'], 'another reader\'s read reply is replaced by a newer one, not held as mine is');
+    // The reader scrolls to the end of the page, where the stack is off screen, and comes back to the tab.
+    const offScreen = () => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').getBoundingClientRect();return b.bottom<=0||b.top>=innerHeight})()`);
+    if (engine === 'chrome') {
+      const elsewhere = await open(topic + '-elsewhere', 'laptop', topic, ids.root);
+      await until(() => p.evaluate("document.visibilityState === 'hidden'"), 'with another tab in front, the page is hidden');
+      await p.evaluate('scrollTo(0,document.documentElement.scrollHeight)');
+      assert.equal(await offScreen(), true, 'at the end of the page the stack is off screen');
+      await p.send('Page.bringToFront');
+      await until(() => p.evaluate("document.visibilityState === 'visible'"), 'the page is shown again');
+      await elsewhere.close();
+    } else {
+      // Safari's headless harness never hides a page behind another, so it says the page is shown again itself.
+      await p.evaluate('scrollTo(0,document.documentElement.scrollHeight)');
+      assert.equal(await offScreen(), true, 'at the end of the page the stack is off screen');
+      await p.evaluate("document.dispatchEvent(new Event('visibilitychange'))");
+    }
+    await becomes(rows, ['y'], 'coming back with the stack off screen lets go of my reply');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    const q = await open(topic + '-back', 'laptop', topic, ids.root);
+    await becomes(async () => (await look(q, ids, 'root')).rows, ['y'], 'a later visit does not hold my reply');
+    assert.deepEqual(q.errors, []);
+    await q.close();
+  });
+
+  // A reply of the reader's own from another device, dealt with there, that
+  // arrives in one answer with its answer: the first draw with them in holds it.
+  await check('reading stacks a sent reply arriving already dealt with, in one update with its answer, shows from the first draw', async () => {
+    const topic = 'stack-sent-elsewhere';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'One, read.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one'], 'the read latest shows');
+    await p.evaluate("window.waitView = 'topic_messages'");
+    ids.mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor,
+      reply_to: ids.one, addressees: [other], body: 'Mine, from my phone.' })).result.message_id;
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.deal', message_id: ids.mine, operation_id: topic + '-deal', args: { dealt: true } });
+    ids.answer = (await control({ method: 'agent_message', operation_id: topic + '-answer', topic_id: topic, source: 'topic', sender: other,
+      reply_to: ids.mine, addressees: [facts.actor], body: 'The answer, read on arrival.', read: true })).result.message_id;
+    await until(() => p.evaluate('window.waitingViews.length > 0'), 'the page went to read the new messages, and its read waits');
+    // What the stack showed the first time the answer was drawn in it.
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    await p.evaluate(`(()=>{window.firstRows=null;const names=${JSON.stringify(names)},shown=e=>e.getClientRects().length>0;
+      new MutationObserver((_,o)=>{const c=document.querySelector(${JSON.stringify(card(ids.answer))}),s=c?.closest('.reply-stack');if(!s||!shown(c))return;
+        window.firstRows=[...s.querySelector(':scope > .stack-replies').children].filter(shown).map(e=>names[e.dataset.id]??e.className);o.disconnect()})
+        .observe(document.getElementById('messages'),{childList:true,subtree:true,attributes:true})})()`);
+    await p.evaluate('window.letViews()');
+    await until(() => p.evaluate('window.firstRows !== null'), 'the answer is drawn in the stack');
+    assert.deepEqual(await p.evaluate('window.firstRows'), ['mine', 'answer'], 'the first draw with them in shows my reply beside its answer');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['mine', 'answer'], 'and it stays');
+    assert.equal(await p.evaluate(`window.sent.filter(kind => kind === 'message.deal').length`), 0, 'a reply dealt with elsewhere sends no deal from here');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks a reply arriving replaces the read latest in the partial view', async () => {
     const topic = 'stack-arrive';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],
