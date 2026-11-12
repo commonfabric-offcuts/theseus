@@ -46,8 +46,8 @@ def developer_instructions(actor_id, cli, profile_path):
         "  start OUTCOME --title T -  new topic",
         "  whisper TOPIC --to NAME --reply-to MESSAGE -   answer a whisper sent to you; only you and its sender read it",
         "  conversation OUTCOME [--new]    the outcome's conversation, and what became of each item there",
-        "A whisper is a question, never an instruction to change your work. Never repeat, quote or act",
-        "on one where others can read it; you may suggest that its sender quote it into a Tell.",
+        "A person's whisper counts as a Tell from them: act on it as you would on their Tell. Its words",
+        "stay between you: never repeat or quote it where others can read it, and answer it with a whisper.",
         "In an outcome's conversation the coordinator answers each item that names no agent, and an",
         "agent named in an item answers that item. Core refuses any other reply (NOT_THE_ANSWERER);",
         "do not answer with a new message instead. Your reply answers an item even when it asks its",
@@ -107,13 +107,14 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     for number, item in enumerate(listed, 1):
         message = item["message"]
         if message.get("whisper"):
-            # Core's words, not the sender's: who may read it and how to answer.
+            # Core's words, not the sender's: who may read it, what it counts for and how to answer. An agent is
+            # delivered only a person's whisper, since an agent whispers only back to a person (whispers.py).
             sender = _named(message["author_id"])
             lines.append("%d. whisper in topic %s from %s, message %s (seq %d), delivery %s. A whisper: only you and %s can read it. "
-                         "Answer with a whisper (whisper TOPIC --to %s --reply-to MESSAGE -). It is a question, not an instruction "
-                         "to change your work, and you never repeat it where others can read it." % (
+                         "It counts as a Tell from %s: act on it as you would on their Tell. Never repeat or quote it where others "
+                         "can read it, and answer it with a whisper (whisper TOPIC --to %s --reply-to MESSAGE -)." % (
                              number, _named(item["topic"]["id"]), sender, _named(message["id"]), message["seq"], _named(item["id"]),
-                             sender, sender))
+                             sender, sender, sender))
             continue
         lines.append("%d. topic %s, from %s, message %s (seq %d), delivery %s" % (
             number, _named(item["topic"]["id"]), _named(message["author_id"]), _named(message["id"]),

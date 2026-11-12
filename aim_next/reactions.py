@@ -213,15 +213,16 @@ class Reactions:
         return ("yes" if answered else "up") if thumbed else None, affected
 
     def _answered_since(self, db, topic, actor, message):
-        """Whether actor has answered message, an ask in topic, by writing since it was sent: in a conversation a reply
-        to it (StandingConversation._conversation_record), in a topic any writing there, which answers every ask
-        there to its writer (TopicState._answered). A whisper is not writing in the topic and answers neither
-        (conversation.py's publish leaves the waits before it), so only writing on the record counts."""
+        """Whether actor, a person, has answered message, an ask in topic, by writing since it was sent: in a conversation
+        a reply to it (StandingConversation._conversation_record), in a topic any writing there, which answers every ask
+        there to its writer (TopicState._answered). A person's whisper counts as their writing when it goes to whoever
+        asked, the one who can read it; a whisper to anyone else answers neither."""
         if is_conversation(topic):
             since, args = "INDEXED BY message_reply_links WHERE reply_to=?", (message["id"],)
         else:
             since, args = "INDEXED BY topic_messages WHERE topic_id=? AND seq>?", (topic["id"], message["seq"])
-        return db.execute("SELECT 1 FROM messages " + since + " AND author_id=? AND private_to IS NULL LIMIT 1", args + (actor,)).fetchone() is not None
+        return db.execute("SELECT 1 FROM messages " + since + " AND author_id=? AND (private_to IS NULL OR private_to=?) LIMIT 1",
+                          args + (actor, message["author_id"])).fetchone() is not None
 
     def _thumb_ask_topic(self, db, actor, message):
         """The topic whose wait a thumb by actor on message would answer, or None: the message is a plain
@@ -275,15 +276,18 @@ class Reactions:
 
     def _next_open_ask(self, db, topic, member, after_seq):
         """The oldest ask to member in topic after after_seq that nothing has answered, or that a record holds open
-        (outcome_asks.held_ask): {id, seq, sent_ms}, or None. Member has not written there since after_seq, or the
-        topic would not be waiting on them from that ask, so none of these asks is theirs; a whisper never asks.
+        (outcome_asks.held_ask): {id, seq, sent_ms}, or None. Member has not written on the record there since
+        after_seq, or the topic would not be waiting on them from that ask, so none of these asks is theirs; a whisper
+        never asks. A whisper member sent since an ask, to whoever asked, answered it (TopicState._answered).
 
         Each ask is judged by the rule that decides it, never restated here: whether member's own 👍 answered it is
         their thumb row, read by the key message.thumb fences on (_reaction_row) and read as every reader reads it
         (answered_yes); whether a record answers it is outcome_asks.record_ask."""
         found = None
         for row in db.execute("SELECT m.id,m.seq,m.sent_ms FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
-                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' ORDER BY a.seq",
+                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM messages w "
+                              "INDEXED BY topic_messages WHERE w.topic_id=a.topic_id AND w.seq>m.seq AND w.author_id=a.actor_id "
+                              "AND w.private_to=m.author_id) ORDER BY a.seq",
                               (topic["id"], member, after_seq)):
             if not (answered_yes(self._reaction_row(db, member, row["id"], "thumb"))
                     or record_ask(db, row["id"], topic["workspace_id"], topic["id"])):

@@ -1,8 +1,25 @@
 # Whispers
 
 A person can whisper to one agent. Only the two of them ever see it, in every
-read, and the agent's answer is a whisper too. A whisper is a question, never
-an instruction, and it never makes a topic wait on anyone.
+read, and the agent's answer is a whisper too. Two rules decide what a whisper
+counts for:
+
+- A person's whisper counts as their Tell. The agent acts on it as on a Tell
+  from them, and it does what a Tell does in the topic: it is writing there,
+  answers what the agent it goes to asked of them, reopens a done topic, and
+  may be where a topic, a pipeline item or a problem came from, Notebook
+  evidence, or the owner's word a move is made on. Only who can read it stays
+  private.
+- An agent's whisper only answers a person's whisper. It changes nothing
+  anyone else can see and is never a source, evidence or the word a move is
+  made on.
+
+A whisper never asks, so it never makes a topic wait on anyone.
+
+A message starts as a Tell unless the person presses Whisper, so nothing goes
+private by default. The one exception is a reply to a whisper, to the one agent
+in it, which starts as a whisper and continues the private exchange; the
+person can still choose Tell.
 
 ## Writing
 
@@ -14,23 +31,53 @@ exactly one addressee, its other person, and no `intent`.
 | Code | When |
 | --- | --- |
 | `WHISPER_SHAPE` | Other than one addressee; a person whispering to a person; an agent whispering other than to answer a whisper sent to it, to the person who sent it; a whisper answering a whisper between a different pair; a whisper with an intent; a whisper on writing that opens a topic (`opening.save`, or `draft.save` with a new-topic source or an `opening`). |
-| `WHISPER_STAYS_PRIVATE` | A message on the record replying to a whisper; quoting a whisper other than into a Tell by the person in it, or into a whisper between the same two; a whisper as a topic's source, as Notebook evidence, or as where a pipeline item came from or what it is still gathering (`pipeline.item_add`, `pipeline.source_add`, `pipeline.item_edit`). |
+| `WHISPER_STAYS_PRIVATE` | A message on the record replying to a whisper; quoting a whisper other than into a Tell by the person in it, or into a whisper between the same two; an agent's whisper as a topic's source, as Notebook evidence, as where a pipeline item or a problem came from or what an item is still gathering (`pipeline.item_add`, `pipeline.source_add`, `pipeline.item_edit`, `problem.file`, the imports), or as the word a move is made on; a person's whisper named by number in an import for someone outside it. |
 
 A reply, quote or source the writer cannot see is refused as one that does not
 exist, so no refusal names a whisper to anyone outside it. Writing in the
 Reader about a whisper that is sent as a Tell goes as a new message, quoting
 only what was selected; it answers nothing.
 
-## What a whisper leaves alone
+## What a whisper counts for
 
 A whisper reaches its one other person as an addressed delivery and wakes
-them as any addressed message does. It changes nothing anyone else can see:
-the topic's version, latest message, count, activity and order, a done
-topic's state, who waits on whom, who has written in the topic, and the work
-ring. Each of the two gets an actor-scoped change `whisper` whose
-`resource_id` is the topic and whose `version` is the message's sequence; the
-topic page reads its reader's own scope on each commit to show a whisper as
-it arrives.
+them as any addressed message does. Each of the two gets an actor-scoped
+change `whisper` whose `resource_id` is the topic and whose `version` is the
+message's sequence; the topic page reads its reader's own scope on each commit
+to show a whisper as it arrives.
+
+A person's whisper then does what their Tell would, and others see only the
+effect, never the whisper:
+
+- Its writer has written in the topic, so they may say where it stands.
+- It answers the asks waiting on its writer from the agent it goes to, the one
+  who can read the answer. When the topic's wait on them is from that agent's
+  ask, it moves to their oldest ask that nothing has answered, or ends; an ask
+  from anyone else keeps waiting, and so does an ask an open record holds
+  (a proposed target, an owner-gated stage). In an outcome's conversation, a
+  whisper replying to an ask answers it when it goes to whoever asked.
+- It reopens a done topic, which says it was reopened by a message others
+  cannot open, and moves the topic up the list. The topic's version moves, and
+  whoever stopped waiting gets a `waiting` change.
+- In a conversation, the coordinator's whisper replying to an item, to the
+  item's author, answers the item. Others see "Answered" with who and when,
+  and no link (the take's `ref` is null and `readable` false for them). A
+  person's whisper is never an item itself, since the team sees items listed
+  and counted.
+- It may be a topic's source, Notebook evidence, where a pipeline item or a
+  problem came from, what an item is still gathering, and the owner's word a
+  move is made on, by either of its two people. Everyone else reads each of
+  these as a message they can't open: no id, number, topic or words.
+- The person who wrote it counts the agent's pending work for it, and how long
+  its wakes have gone unanswered, as they would for a Tell.
+
+It never moves what points at the message itself: the topic's count, latest
+message and latest by someone else stay as they were, and the loop's account
+of a worse check and the work ring read only messages on the record.
+
+An agent's whisper changes nothing anyone else can see: the topic's version,
+latest message, count, activity and order, a done topic's state, who waits on
+whom, who has written in the topic, items and takes, and the work ring.
 
 ## Reading
 
@@ -39,9 +86,16 @@ viewer's own whisper with no whisper reply yet carries `no_answer: true`. A
 reply whose parent the viewer cannot see has no `reply_to_author` or
 `reply_to_excerpt`. `source` carries `whisper` and `private_to`, and a quote of
 a whisper read by someone outside it keeps its excerpt with `source: null`.
-Delivery items carry `message.whisper`. `wakes` counts, for every reader but
-the agent itself, only deliveries on the record, and leaves out an agent whose
-pending work is whispers alone.
+Delivery items carry `message.whisper`. `wakes` and `health` count, for every
+reader but the agent itself, only deliveries on the record and the reader's own
+whispers, and leave out an agent whose pending work is others' whispers alone.
+
+An agent is told in Core's words, on each whisper delivered to it and under it
+in `read`, that a person's whisper counts as a Tell from them: it acts on it,
+never repeats or quotes it where others can read it, and answers with a
+whisper. Its acts (a move, an item, a commit) are seen as usual and may name
+the whisper as their source or reason, which others read as a message they
+can't open.
 
 ## Limits
 

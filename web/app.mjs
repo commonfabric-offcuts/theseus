@@ -33,7 +33,7 @@ import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, opened } from './fold.mjs';
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
-import { paintWhisperAuthor } from './whisper-choice.mjs';
+import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
@@ -968,7 +968,7 @@ function openStartLine() {
 // Core records the message's author as who raised it. Escape closes the line.
 function openPipelineAdd() {
   const p = registry?.current, ref = p?.source?.source_ref, host = $('pipeline-add');
-  if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic || p.source.whisper) return;
+  if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic || !mayStartFrom(p.source)) return;
   const author = p.source.author, raised = !author ? '' : author === bootstrap.actor ? ', raised by you' : `, raised by ${author}`;
   const workspace = topic.workspace_id;
   pipelineAddFor = ref.id;
@@ -1005,13 +1005,14 @@ function closePipelineAdd(refocus) {
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;
   // Any readable message can start a topic of its own in this outcome, except
-  // a whisper, which stays between its two people (docs/whispers.md).
-  $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && !p.source.whisper);
+  // an agent's whisper, which only answers (docs/whispers.md).
+  $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && mayStartFrom(p.source));
   // A title line started from another message goes when the Reader moves on.
   if (startLine && (startLine.message !== ref?.id || $('start-from-message').hidden)) closeStartLine();
-  // And, while the outcome's pipeline is on, become an item in it; a whisper
-  // never does, since the whole outcome reads the pipeline (Core refuses it too).
-  $('add-to-pipeline').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && pipelineRow?.on && !p.source.whisper);
+  // And, while the outcome's pipeline is on, become an item in it; an agent's
+  // whisper never does (Core refuses it too). A person's may: the title line
+  // shows what goes to the whole outcome before Return.
+  $('add-to-pipeline').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && pipelineRow?.on && mayStartFrom(p.source));
   if (pipelineAddFor !== null && pipelineAddFor !== ref?.id) closePipelineAdd(false);
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
@@ -1639,7 +1640,6 @@ async function initialize() {
     renderPending: () => paintReview(),
     retry: () => run(retryInline),
     people: whisperPeople,
-    conversation: () => Boolean(here?.page),
     recipientsPainted: names => { if (here?.page || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.page)); },
   });
   reader = new Reader({
@@ -2095,11 +2095,10 @@ async function switchDestination(value) {
   if (!ref || ref.kind !== 'message' || value === p.editors.reply.context.topicId) return;
   if (![topic.id, here?.view?.topic_id].includes(value)) { reader.notice('Choose this topic or the outcome\'s conversation.'); return; }
   const left = p.editors.reply, place = left.context.topicId === topic.id ? 'This topic' : 'the conversation';
-  const shown = { kindOf: reader.kindOf, conversation: reader.toConversation(left) };
   const next = await registry.open(ref, { topicId: value, opener: p.opener });
   if (!next) return;
   const keep = editor => { if (reader.editor === editor) reader.drawEditor(); return registry.edited(editor); };
-  if (await switchWriting(left, next.editors.reply, keep, shown)) reader.notice(`Your writing for ${place} is kept there.`);
+  if (await switchWriting(left, next.editors.reply, keep)) reader.notice(`Your writing for ${place} is kept there.`);
 }
 // The Done and Archived lines under the topic list, where the person's choice
 // to keep each open is remembered, and the area the lists keep still under.

@@ -276,20 +276,31 @@ class TopicState:
                 newly.append(member)
         return newly
 
-    def _answered(self, db, topic_id, author):
+    def _answered(self, db, topic, author, to=None):
         """Writing in a topic answers every ask there that waits on its author; whether one did.
 
+        A person's whisper (to: the agent it goes to) answers only that agent's asks, since only
+        it can read the answer: when the wait is from another's ask it stays, and when it is from
+        that agent's it moves to the oldest ask nobody has answered (Reactions._next_open_ask).
         A wait someone said stays until it is said otherwise, and an ask an open record still
         needs (a proposed target, an owner-gated stage: outcome_asks.held_ask) stays waiting."""
+        topic_id = topic["id"]
         held = held_ask(db, topic_id, author)
         if held is not None:
             db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=(SELECT sent_ms FROM messages WHERE id=?) "
                        "WHERE topic_id=? AND actor_id=?", (held, held, topic_id, author))
             return False
-        row = db.execute("SELECT said FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL",
-                         (topic_id, author)).fetchone()
+        row = db.execute("SELECT q.said,m.author_id,m.seq FROM topic_waiting q JOIN messages m ON m.id=q.ask_message_id "
+                         "WHERE q.topic_id=? AND q.actor_id=?", (topic_id, author)).fetchone()
         if row is None:
             return False
+        if to is not None:
+            if row["author_id"] != to:
+                return False
+            following = self._next_open_ask(db, topic, author, row["seq"])
+            if following is not None:
+                self._wait_from(db, topic, author, following)
+                return True
         if row["said"]:
             db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (topic_id, author))
         else:

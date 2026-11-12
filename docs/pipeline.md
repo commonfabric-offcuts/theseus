@@ -295,8 +295,10 @@ release check's `--report`, and which piece a candidate's readings name.
 ### The owner's go-ahead
 
 A move names the message it is made on as `because_message_id` (the CLI's
-`--because`): one the mover can read, and never a whisper
-(`WHISPER_STAYS_PRIVATE`, since a whisper stays private). For an item the owner
+`--because`): one the mover can read, and never an agent's whisper
+(`WHISPER_STAYS_PRIVATE`). A person's whisper counts as their word: the owner
+may whisper the go-ahead to the coordinator, and everyone else reads the move's
+reason as a message they can't open. For an item the owner
 placed last, a move by the coordinator goes through only when that message is
 the owner's go-ahead for this move:
 
@@ -319,7 +321,7 @@ go-ahead refuses the move and says why, and nothing moves:
 | --- | --- | --- |
 | none named | `OWNER_PLACED` | "tony placed this item at …. Say so once in this outcome's conversation; Theseus does not move it back. Once tony says go ahead, move it with that message as because." |
 | a message the mover cannot read, or none | `FORBIDDEN` | "You can't read a message m-…, so it is not a word to move on. Nothing moved." |
-| a whisper | `WHISPER_STAYS_PRIVATE` | "m-… is a whisper, and a whisper stays private: it is never the word a move is made on. Nothing moved." |
+| an agent's whisper | `WHISPER_STAYS_PRIVATE` | "m-… is an agent's whisper, and it stays private: it is never the word a move is made on. Nothing moved." |
 | in another outcome | `OWNER_PLACED` | "tony placed this item at …, so it moves only on tony's word, and m-… is not that: it is in another outcome. Nothing moved." |
 | not the owner's | `OWNER_PLACED` | "…: it is fable's message. Nothing moved." |
 | older than the placement | `OWNER_PLACED` | "…: it was written before that placement. Nothing moved." |
@@ -412,8 +414,11 @@ Commands, each with the revision it checks:
 | `pipeline.piece_finish` | `{piece_id}` | `piece_revision` (optional) |
 
 A source is `{message_id}`, `{message_seq}` (a message by its number,
-as people say it), `{memory_item_id}` or `{note}`; never a whisper
-(`WHISPER_STAYS_PRIVATE`), since the whole outcome reads the pipeline. When a
+as people say it), `{memory_item_id}` or `{note}`; never an agent's whisper
+(`WHISPER_STAYS_PRIVATE`). A person's whisper may be one, named by either of
+its two people; since the whole outcome reads the pipeline, everyone else sees
+it as a message they can't open, and the title says only what the person chose
+to write there. When a
 message source is an item of the outcome's conversation, `item_add` and
 `source_add` write its pipeline take in the same act (docs/conversation.md),
 and `part: true` keeps that item new. `item_move` takes `section`,
@@ -463,7 +468,8 @@ gathered sources, and writes one seed. `bin/aim-next-admin pipeline-import
 its stages, every item with its number, sources and progress, and the release
 notes. It refuses when the outcome already has a pipeline, when the page has
 moved on since the seed was built, when a source cannot be found, or when the
-seed disagrees with a release record, or when a source is a whisper. A question or a 🔨 on the page is not
+seed disagrees with a release record, or when a source is an agent's whisper or a
+person's whisper the importing actor is not in. A question or a 🔨 on the page is not
 carried: a question comes only from an open ask, a stage only from a tool.
 
 ## Not yet

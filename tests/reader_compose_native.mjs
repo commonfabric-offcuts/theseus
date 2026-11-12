@@ -352,7 +352,7 @@ async function run() {
   }
 
   for (const shape of ['phone', 'stacked']) {
-    await check(`${shape}: the who chip says in words what Send does and who sees it, as the panel's sentence does; a whisper is dashed and Send says Whisper, a Tell says Tell`, async () => {
+    await check(`${shape}: the who chip says in words what Send does and who sees it, as the panel's sentence does; a reply starts as a Tell, and a whisper chosen is dashed and Send says Whisper`, async () => {
       const p = await page(shape);
       await open(p, second);
       await type(p, 'A reply to the agent.');
@@ -360,21 +360,22 @@ async function run() {
         field: getComputedStyle(document.querySelector('#writing-body')).borderTopStyle, send: document.querySelector('#send-reply .send-word')?.textContent ?? document.querySelector('#send-reply').textContent,
         sentence: document.querySelector('#who-panel .audience-line')?.textContent ?? '', who: document.querySelector('#who-panel .audience-line strong')?.textContent ?? '' }));
       let now = await read();
-      assert.deepEqual([now.chip, now.dashed, now.field, now.send], [`Whisper to ${agent} · only you two`, true, 'dashed', 'Whisper']);
+      assert.deepEqual([now.chip, now.dashed, now.field === 'dashed', now.send], [`Tell ${agent} · everyone here`, false, false, 'Tell'], 'a reply to one agent starts as a Tell');
       await press(p, '#who-chip');
       await until(p, () => !document.querySelector('#who-panel').hidden, 'the who panel');
       now = await read();
-      assert.equal(now.who, `Only you and ${agent}`, 'the panel says the whole sentence');
+      assert.ok(now.who.startsWith('Everyone in this topic'), 'the panel says the whole sentence: ' + now.sentence);
       const order = await p.evaluate(() => [...document.querySelectorAll('#who-panel .audience-line, #who-panel .who-label')].filter(el => el.getClientRects().length).map(el => el.classList.contains('audience-line') ? 'sentence' : el.textContent));
       // This message's reply may go to the topic or the outcome's conversation, so In is offered.
       const offered = await p.evaluate(() => document.querySelectorAll('#reply-destination button[data-destination]').length > 1);
       assert.deepEqual(order, ['sentence', 'How', 'To', ...(offered ? ['In'] : [])], 'the sentence first, then How and To, and In only when offered');
-      await press(p, '#who-panel [data-intent="tell"]');
-      await until(p, () => document.querySelector('#who-chip').textContent.startsWith('Tell '), 'the chip following the choice');
-      now = await read();
-      assert.deepEqual([now.chip, now.dashed, now.field === 'dashed', now.send], [`Tell ${agent} · everyone here`, false, false, 'Tell']);
-      assert.ok(now.who.startsWith('Everyone in this topic'), now.sentence);
       await shot(p, 'tell');
+      await press(p, '#who-panel [data-intent="whisper"]');
+      await until(p, () => document.querySelector('#who-chip').textContent.startsWith('Whisper '), 'the chip following the choice');
+      now = await read();
+      assert.deepEqual([now.chip, now.dashed, now.field, now.send], [`Whisper to ${agent} · only you two`, true, 'dashed', 'Whisper']);
+      assert.equal(now.who, `Only you and ${agent}`, now.sentence);
+      await shot(p, 'whisper');
       await close(p);
     });
 
@@ -630,7 +631,7 @@ async function run() {
       await press(p, '#who-chip');
       await until(p, () => !document.querySelector('#who-panel').hidden, 'the who panel');
       assert.equal(await p.evaluate(() => document.querySelectorAll('#reply-destination button[data-destination]').length), 2, 'In offers This topic and Conversation');
-      // A Tell, as a whisper is between the two of you wherever it is posted.
+      // A Tell, as a reply starts (docs/whispers.md); a whisper is between the two of you wherever it is posted.
       await press(p, '#who-panel [data-intent="tell"]');
       await until(p, () => document.querySelector('#who-chip').textContent.startsWith('Tell '), 'a Tell');
       // Every input: a finger's tap on the phone, the keyboard alone on a laptop.
@@ -1358,9 +1359,12 @@ async function runSending() {
     await type(p, `Only for you, in ${engine}.`);
     const shown = () => p.evaluate(a => ({ chip: document.querySelector(a.chip).textContent, send: document.querySelector('#send-reply .send-word').textContent }), at);
     const whisper = { chip: `Whisper to ${agent} · only you two`, send: 'Whisper' };
-    assert.deepEqual(await shown(), whisper, 'the reply shows as a whisper');
+    assert.deepEqual(await shown(), { chip: `Tell ${agent} · everyone here`, send: 'Tell' }, 'the reply starts as a Tell');
     await press(p, at.chip);
     await until(p, a => !document.querySelector(a.panel).hidden, 'the who panel', at);
+    await press(p, `${at.panel} [data-intent="whisper"]`);
+    await until(p, a => document.querySelector(a.chip).textContent.startsWith('Whisper '), 'Whisper chosen', at);
+    assert.deepEqual(await shown(), whisper, 'the reply shows as a whisper');
     await p.locator(at.input).focus();
     await p.keyboard.insertText('warp');
     const before = await control({ method: 'deliveries_to', actors: [agent, 'warp'] });
