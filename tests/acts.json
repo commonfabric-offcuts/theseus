@@ -5351,6 +5351,21 @@
     "native": "reading",
     "case": "stacks a join makes one stack"
    }
+  },
+  {
+   "item": 356,
+   "act": "A pause of 250 ms or more between wheel events, by the events' own times, ends one trackpad swipe and starts the next, so on one page the reader folds and unfolds as many messages as they swipe",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {",
+     "if (!swipe) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
   }
  ]
 }
