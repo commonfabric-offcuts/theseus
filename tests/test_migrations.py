@@ -91,6 +91,19 @@ SCHEMA_BEFORE_STACKS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % 
 # these two and the fixture's file name.
 BEFORE_BLOCKS, BLOCKS_VERSION = STACKS_VERSION, str(int(STACKS_VERSION) + 1)
 SCHEMA_BEFORE_BLOCKS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_BLOCKS)).read_text().splitlines()
+# The step that lets a reader fold a message for themselves (item 356) follows
+# the blocks', so the layout before it is version 36's, read from a fresh
+# instance of release 56's code (89560d9). It widens the kinds message_acts
+# takes, which SQLite changes only by building the table again. Named here
+# once, so a renumbering of the step changes only these two and the fixture's
+# file name.
+BEFORE_FOLD, FOLD_VERSION = BLOCKS_VERSION, str(int(BLOCKS_VERSION) + 1)
+SCHEMA_BEFORE_FOLD = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_FOLD)).read_text().splitlines()
+OLD_ACTS = ("CREATE TABLE message_acts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "kind TEXT NOT NULL CHECK(kind IN ('star','deal','place','name','join')), "
+            "message_id TEXT NOT NULL REFERENCES messages(id), topic_id TEXT NOT NULL REFERENCES topics(id), seq INTEGER NOT NULL, "
+            "owner TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), value TEXT NOT NULL, at_ms INTEGER NOT NULL, "
+            "revision INTEGER NOT NULL CHECK(revision>0), UNIQUE(message_id,kind,owner,revision))")
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -110,6 +123,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The fold's version lets message_acts hold a fold: before it, the table names five kinds.
+        db.execute("DROP TABLE message_acts")
+        db.execute(OLD_ACTS)
+        db.execute("CREATE INDEX topic_acts ON message_acts(topic_id,seq)")
+        db.execute("CREATE INDEX reader_stars ON message_acts(owner,kind,id)")
+        if version == BEFORE_FOLD:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The blocks' version keeps what an ask blocks.
         db.execute("DROP TABLE message_blocks")
         if version == BEFORE_BLOCKS:
@@ -1855,7 +1876,8 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_REACTIONS, SCHEMA_BEFORE_REACTIONS),
                      (BEFORE_ORDER, SCHEMA_BEFORE_ORDER),
                      (BEFORE_STACKS, SCHEMA_BEFORE_STACKS),
-                     (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS))
+                     (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
+                     (BEFORE_FOLD, SCHEMA_BEFORE_FOLD))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3215,14 +3237,14 @@ class BlocksStepCase(MigrationCase):
         return done(self.command("message.post", {"body": "Restart it?", "addressees": ["owner"], "intent": "ask",
                                                   "blocks": {"kind": "piece", "ref": piece}}, {"topic_id": "t1"}, actor=asker))
 
-    def test_the_step_is_the_blocks_and_the_head_is_its_version(self):
+    def test_the_step_is_the_blocks_and_the_folds_step_follows_it(self):
         self.assertIn((BEFORE_BLOCKS, BLOCKS_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, BLOCKS_VERSION)
+        self.assertIn((BLOCKS_VERSION, FOLD_VERSION), [step[:2] for step in migrations.STEPS])
 
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_older_asks_hold_nothing(self):
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_BLOCKS,
-                                          "schema_version": BLOCKS_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
         self.assertEqual({table: kept for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
@@ -3253,7 +3275,80 @@ class BlocksStepCase(MigrationCase):
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], BLOCKS_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
+class FoldStepCase(MigrationCase):
+    """An instance at the blocks' version: the fold's step lets message_acts hold a reader's
+    fold, keeping every act and where its ids go on, and steps back only while nobody has
+    folded a message."""
+
+    VERSION, FIXTURE = BEFORE_FOLD, SCHEMA_BEFORE_FOLD
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_FOLD)
+
+    def acted(self):
+        """Two acts recorded at version 36, and a third whose row is gone, so the table's ids
+        have gone further than its rows: a rebuilt table must go on from there."""
+        with sqlite3.connect(str(self.path)) as db:
+            message, topic, seq = db.execute("SELECT id,topic_id,seq FROM messages ORDER BY seq LIMIT 1").fetchone()
+            for kind, owner, value in (("star", "owner", '{"starred":true}'), ("name", "", '{"name":"Ours"}'), ("deal", "owner", '{"dealt":true}')):
+                db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,1)",
+                           (kind, message, topic, seq, owner, "owner", value, 5))
+            db.execute("DELETE FROM message_acts WHERE kind='deal'")
+        return message
+
+    def fold(self, message, folded=True, revision=0):
+        receipt = self.command("message.fold", {"folded": folded}, {"message_id": message}, {"fold_revision": revision})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_follows_the_blocks_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_FOLD, FOLD_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, FOLD_VERSION)
+
+    def test_before_the_step_a_fold_cannot_be_kept(self):
+        message = self.acted()
+        with sqlite3.connect(str(self.path)) as db, self.assertRaises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
+                       "SELECT 'fold',id,topic_id,seq,'owner','owner','{\"folded\":true}',5,1 FROM messages WHERE id=?", (message,))
+
+    def test_upgrade_keeps_every_act_and_its_ids_matches_a_fresh_instance_and_a_fold_is_kept(self):
+        message = self.acted()
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_FOLD,
+                                          "schema_version": FOLD_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual(everything(self.path), stored, "every row is kept, sqlite_sequence's place for the acts included")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folded = self.fold(message)
+        self.assertEqual((folded["folded"], folded["fold_revision"], folded["acts_version"]), (True, 1, 4), "the next act's id follows the gone one")
+        acts = self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 50})["items"]
+        mine = next(item["acts"] for item in acts if item["id"] == message)
+        self.assertEqual((mine["starred"], mine["name"]["text"], mine["folded"]), (True, "Ours", True))
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_folded(self):
+        self.acted()
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_FOLD))
+        self.assertEqual(everything(self.path), stored, "every act and the acts' place in sqlite_sequence come back")
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_a_message_is_folded_and_changes_nothing(self):
+        message = self.acted()
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.fold(message)
+        self.fold(message, folded=False, revision=1)
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST", "an unfolded message still holds its fold's rows")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], FOLD_VERSION)
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.
@@ -3310,6 +3405,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(StacksStepCase, _name, None)
     if _name.startswith("test_") and _name not in BlocksStepCase.__dict__:
         setattr(BlocksStepCase, _name, None)
+    if _name.startswith("test_") and _name not in FoldStepCase.__dict__:
+        setattr(FoldStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

@@ -11,6 +11,8 @@ change:
 - `deal` (message.deal): the reader dealt with the stack as far as this message
   (by replying in it or a thumbs-up), so it folds to its newest reply the next
   time they come to it. Theirs alone.
+- `fold` (message.fold): the reader folded this message to one line, on every
+  device and after reloads, until they unfold it. Theirs alone.
 - `place` (stack.place): where the reader keeps the stack this message heads in
   their own order of the topic's stacks, as a number to sort by, or none to let
   new replies move it again. Theirs alone.
@@ -41,23 +43,47 @@ from .delivery import _now_ms
 from .whispers import visible
 
 
-ACT_SCHEMA = [
-    "CREATE TABLE message_acts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-    "kind TEXT NOT NULL CHECK(kind IN ('star','deal','place','name','join')), "
-    "message_id TEXT NOT NULL REFERENCES messages(id), topic_id TEXT NOT NULL REFERENCES topics(id), seq INTEGER NOT NULL, "
-    "owner TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), value TEXT NOT NULL, at_ms INTEGER NOT NULL, "
-    "revision INTEGER NOT NULL CHECK(revision>0), UNIQUE(message_id,kind,owner,revision))",
-    "CREATE INDEX topic_acts ON message_acts(topic_id,seq)",
-    "CREATE INDEX reader_stars ON message_acts(owner,kind,id)",
-]
+def _act_table(kinds):
+    return ("CREATE TABLE message_acts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "kind TEXT NOT NULL CHECK(kind IN (%s)), "
+            "message_id TEXT NOT NULL REFERENCES messages(id), topic_id TEXT NOT NULL REFERENCES topics(id), seq INTEGER NOT NULL, "
+            "owner TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), value TEXT NOT NULL, at_ms INTEGER NOT NULL, "
+            "revision INTEGER NOT NULL CHECK(revision>0), UNIQUE(message_id,kind,owner,revision))" % ",".join("'%s'" % kind for kind in kinds))
+
+
+ACT_INDEXES = ["CREATE INDEX topic_acts ON message_acts(topic_id,seq)", "CREATE INDEX reader_stars ON message_acts(owner,kind,id)"]
+# Version 35's table, which the stacks' step makes; version 37 adds the fold.
+ACT_SCHEMA = [_act_table(("star", "deal", "place", "name", "join"))] + ACT_INDEXES
+ACT_FRESH = [_act_table(("star", "deal", "fold", "place", "name", "join"))] + ACT_INDEXES
 ACT_DOWN = ("DROP INDEX reader_stars", "DROP INDEX topic_acts", "DROP TABLE message_acts")
 # Any row: dropping one would restart its revisions, and a late request could then undo a newer act.
 ACT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts)"
 
-PERSONAL = {"star", "deal", "place"}
+
+def _rebuilt(table):
+    """The statements that build message_acts again as table, keeping every row, its id, and where
+    the next id goes on from (sqlite_sequence), which a dropped table would lose: a change to the
+    acts is announced at its row id, which only grows."""
+    columns = "id,kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision"
+    return ["CREATE TABLE message_acts_kept AS SELECT %s FROM message_acts" % columns,
+            "CREATE TABLE message_acts_sequence AS SELECT seq FROM sqlite_sequence WHERE name='message_acts'",
+            "DROP TABLE message_acts", table,
+            "INSERT INTO message_acts(%s) SELECT %s FROM message_acts_kept ORDER BY id" % (columns, columns),
+            "DELETE FROM sqlite_sequence WHERE name='message_acts'",
+            "INSERT INTO sqlite_sequence(name,seq) SELECT 'message_acts',seq FROM message_acts_sequence",
+            "DROP TABLE message_acts_sequence", "DROP TABLE message_acts_kept"] + ACT_INDEXES
+
+
+# Version 37 lets the table hold a fold. SQLite changes a CHECK only by building the table again.
+FOLD_UP = _rebuilt(ACT_FRESH[0])
+FOLD_DOWN = _rebuilt(ACT_SCHEMA[0])
+# Any fold, even one taken back: version 36 cannot hold its rows, and dropping them would restart its revisions.
+FOLD_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='fold')"
+
+PERSONAL = {"star", "deal", "fold", "place"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
-         "stack.place": ("place", "place_revision"), "stack.name": ("name", "name_revision"),
+         "message.fold": ("fold", "fold_revision"), "stack.place": ("place", "place_revision"), "stack.name": ("name", "name_revision"),
          "stack.join": ("join", "join_revision")}
 # A short name is one line of at most this many characters; the page ends a long one in "…".
 NAME_CHARS = 200
@@ -66,8 +92,9 @@ PLACE_BOUND = 1e15
 # The longest chain of joins and replies a join is checked through for a loop.
 JOIN_DEPTH = 10000
 # What an act stands at before anyone has made it.
-NONE = {"star": {"starred": False}, "deal": {"dealt": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None}}
-EMPTY = {"starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "placed": None, "place_revision": 0,
+NONE = {"star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None}}
+EMPTY = {"starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
+         "placed": None, "place_revision": 0,
          "name": None, "name_revision": 0, "joined": None, "join_revision": 0}
 
 
@@ -83,6 +110,8 @@ def _value(kind, args):
         return _flag(args, "starred", "Name one message and whether it is starred")
     if kind == "deal":
         return _flag(args, "dealt", "Name one message and whether its stack is dealt with")
+    if kind == "fold":
+        return _flag(args, "folded", "Name one message and whether it is folded")
     if kind == "place":
         key = args.get("key") if set(args) == {"key"} else False
         if key is not None and (isinstance(key, bool) or not isinstance(key, (int, float)) or not math.isfinite(key) or abs(key) > PLACE_BOUND):
@@ -111,6 +140,8 @@ def _shown(kind, row):
         return {"starred": value["starred"]}
     if kind == "deal":
         return {"dealt": value["dealt"]}
+    if kind == "fold":
+        return {"folded": value["folded"]}
     if kind == "place":
         return {"placed": value["key"]}
     if kind == "name":
@@ -218,7 +249,7 @@ class Stacks:
         return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
 
-    _command_message_star = _command_message_deal = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_act
+    _command_message_star = _command_message_deal = _command_message_fold = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_act
 
     def _view_message_acts(self, db, actor, args):
         """The acts as they stand for the reader on one topic's messages, newest message first, paged by sequence:

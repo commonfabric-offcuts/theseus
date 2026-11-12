@@ -297,6 +297,9 @@ textarea.whispering,textarea.whispering:focus{border:1px dashed var(--whisper-li
 #messages.only-new :is(.reply-stack,.stack-replies){display:contents}
 #messages.only-new>:not([data-item=new],.reply-stack),#messages.only-new>.reply-stack>:not([data-item=new],.stack-replies),
 #messages.only-new>.reply-stack>.stack-replies>:not([data-item=new]){display:none}
+/* Two fingers swiped across the trackpad over the messages fold or unfold one (web/stack-feed.mjs), so with the pointer
+   there a sideways overscroll goes back or forward no page. Only the page's own scroller can say so, so it sits on the root. */
+html:has(#messages:hover){overscroll-behavior-x:none}
 .message-card .about-line{display:block;font-size:.78rem;opacity:.85;margin-bottom:.3rem}
 .message-card .item-tags{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;margin-top:.55rem;font-size:.76rem}
 .message-card .item-tag-group{display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%}
