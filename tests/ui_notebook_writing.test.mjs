@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NotebookWriting, mergeCardContent } from '../web/notebook-writing.mjs';
+import { NotebookWriting, mergeCardContent, sameContent } from '../web/notebook-writing.mjs';
 
 const copy = structuredClone;
 function fixture(t) {
@@ -78,7 +78,8 @@ test('a definite refusal clears the envelope but keeps writing and refuses furth
   const f=fixture(t), c=await f.make(); c.edit({body:'My retained words'});
   f.api.command=async e=>({instance_id:'i1',operation_id:e.operation_id,kind:e.kind,recorded:false,status:'rejected',error:{code:'AUTHORITY_CHANGED',message:'Authority changed'}});
   await c.flush(); assert.equal(c.pending,null);assert.equal(c.readOnly,true);assert.equal(c.value.body,'My retained words');
-  const next=await f.make();assert.equal(next.pending,null);assert.equal(next.readOnly,true);assert.equal(next.value.body,'My retained words');
+  const next=await f.make();assert.equal(next.pending,null);assert.equal(next.readOnly,false);assert.equal(next.value.body,'My retained words');
+  await next.flush();assert.equal(next.readOnly,true,'the current authority still refuses a new request');
 });
 test('a refusal without a record does not poison future valid requests', async t=>{
   const f=fixture(t), c=await f.make(), command=f.api.command;
@@ -103,4 +104,56 @@ test('Cards merge different card edits, preserve exact words, and require a choi
   assert.equal(mergeCardContent(base,mine,theirs).body,base.body.replace('One','Mine').replace('Two','Theirs'));
   assert.equal(mergeCardContent(base,mine,{...base,body:base.body.replace('One','Conflict')}),null);
   assert.equal(mergeCardContent(base,{...base,body:base.body+'\n## C\n\nNew\n'},theirs).body,theirs.body+'\n## C\n\nNew\n');
+});
+
+
+test('every edit carries its displayed content even while a slow journal holds a newer Text revision',async t=>{
+  const f=fixture(t),c=await f.make(),seen=c.capture(),put=f.store.put;
+  let entered,release;const blocked=new Promise(r=>entered=r);
+  f.store.put=async value=>{entered();await new Promise(r=>release=r);return put(value);};
+  f.revise({body:'Agent words'});const refreshing=c.refresh();await blocked;
+  f.store.put=put;
+  c.edit({body:seen.content.body+' X'},seen,'text');
+  assert.equal(c.conflict.content.body,'Agent words');assert.equal(f.source().body,'Agent words');
+  release();await refreshing;await c.serial;await c.flush();assert.equal(f.calls.length,0);
+  await c.resolve(false);assert.equal(c.dirty,false);
+});
+
+test('stale Cards edits rebase their own delta onto changes accepted before redraw',async t=>{
+  const f=fixture(t),c=await f.make(),body='## A\nOne\n## B\nTwo\n## C\nThree\n';
+  f.revise({body});await c.refresh();const seen=c.capture();
+  f.revise({body:body.replace('Three','Agent')});await c.refresh();
+  c.edit({body:body.replace('One','Mine')},seen,'cards');
+  assert.equal(c.conflict,null);assert.equal(c.value.body,body.replace('One','Mine').replace('Three','Agent'));
+  await c.flush();assert.equal(c.dirty,false);assert.equal(f.held(),null);
+});
+
+test('a merged saved content settles regardless of property order and untouched separators are exact',async t=>{
+  const f=fixture(t),c=await f.make(),base={...c.value,body:'## A\nOne\n## B\nTwo\n## C\nThree\n'};
+  const mine={...base,body:base.body.replace('One','Mine')},theirs={...base,body:base.body.replace('Three','Theirs')};
+  const merged=mergeCardContent(base,mine,theirs);
+  assert.equal(merged.body,base.body.replace('One','Mine').replace('Three','Theirs'));
+  c.value=merged;c.base={...c.base,content:{title:merged.title,body:merged.body,attachments:merged.attachments,references:merged.references}};
+  assert.ok(sameContent(c.value,c.base.content));assert.equal(c.dirty,false);await c.persist();assert.equal(f.held(),null);
+});
+
+test('permission refusals pause this opening only and Try again uses a new request',async t=>{
+  const f=fixture(t),c=await f.make(),command=f.api.command;let refused;
+  f.api.command=async e=>{refused=e;return {instance_id:'i1',operation_id:e.operation_id,kind:e.kind,recorded:true,status:'rejected',error:{code:'FORBIDDEN',message:'Access removed'}};};
+  c.edit({body:'Keep my words'});await c.flush();assert.equal(c.readOnly,true);
+  f.api.command=command;await c.retry();assert.equal(c.readOnly,false);assert.equal(f.source().body,'Keep my words');
+  assert.notEqual(f.calls.at(-1).operation_id,refused.operation_id);
+});
+
+test('a reload can save retained writing after membership returns',async t=>{
+  const f=fixture(t),c=await f.make(),command=f.api.command;
+  f.api.command=async e=>({instance_id:'i1',operation_id:e.operation_id,kind:e.kind,recorded:true,status:'rejected',error:{code:'OUTCOME_REACHED',message:'Read only'}});
+  c.edit({body:'Retained words'});await c.flush();assert.equal(c.readOnly,true);c.close();
+  f.api.command=command;const next=await f.make();await next.flush();assert.equal(next.readOnly,false);assert.equal(f.source().body,'Retained words');
+});
+
+test('discard after a refusal removes only local writing without sending it',async t=>{
+  const f=fixture(t),c=await f.make();c.edit({body:'Discard me'});await c.serial;c.readOnly=true;
+  const image={id:'pending',associated:false,bytes:new ArrayBuffer(1)};c.images.push(image);
+  assert.equal(await c.discard(),true);assert.equal(image.removed,true);assert.equal(image.bytes,null);assert.equal(c.value.body,f.source().body);assert.equal(c.dirty,false);assert.equal(f.held(),null);assert.equal(f.calls.length,0);
 });

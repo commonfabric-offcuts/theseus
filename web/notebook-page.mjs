@@ -19,7 +19,12 @@ export class NotebookPage extends DeckPage {
     const label=this.node('label','sr-only','Notebook writing'); label.htmlFor='notebook-text';
     this.text=this.node('textarea','notebook-text'); this.text.id='notebook-text'; this.text.rows=18; this.text.setAttribute('autocomplete','off');
     this.textInput=new WritingInput({field:this.text});
-    this.text.addEventListener('input',()=>this.writing?.edit({body:this.text.value}));
+    this.text.addEventListener('input',()=>{
+      if(!this.writing || !this.textSeen)return;
+      const body=this.text.value,seen=this.textSeen;
+      this.writing.edit({body},seen,'text');
+      this.textSeen={revision:seen.revision,content:{...seen.content,body}};
+    });
     this.text.addEventListener('focus',()=>{if(this.writing)this.writing.active=true;});
     this.text.addEventListener('blur',()=>{if(this.writing)this.writing.active=false;});
     this.textPanel.append(label,this.text);
@@ -108,6 +113,10 @@ export class NotebookPage extends DeckPage {
       this.text.value=w.value.body;
       if(focused)this.text.setSelectionRange(...selection.map(at=>Math.min(at,this.text.value.length)));
     }
+    if(!w.conflict) {
+      this.textSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.text.value}};
+      this.cardsSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.previewBody()}};
+    }
     this.text.readOnly=this.readOnly;
   }
   // Include the unfinished card without altering its textarea or native undo
@@ -123,7 +132,9 @@ export class NotebookPage extends DeckPage {
   save() {
     if(!this.writing)return;
     this.acts=[];
-    this.writing.edit({body:this.previewBody()});
+    const body=this.previewBody(),seen=this.cardsSeen??this.writing.capture();
+    this.writing.edit({body},seen,'cards');
+    this.cardsSeen={revision:seen.revision,content:{...seen.content,body}};
   }
   open(editing) {
     this.cardImages?.close();this.cardImages?.list?.remove();
@@ -191,7 +202,8 @@ export class NotebookPage extends DeckPage {
     if(this.unavailable)this.say(this.unavailable,'attention');
     else if(w.journalError)this.say('Device copy unavailable: '+w.journalError+'. Keep this page open.','attention',()=>w.flush());
     else if(this.imageError)this.say(this.imageError,'attention');
-    else if(w.error)this.say(w.error,'attention',w.readOnly?null:()=>w.flush());
+    else if(w.readOnly)this.say(w.error??'Writing is paused. Your words are kept on this device.','attention',()=>w.retry());
+    else if(w.error)this.say(w.error,'attention',()=>w.flush());
     else if(changed)this.say('Your writing is kept on this device. Review the changed page.','attention');
     else if(w.images.some(i=>!i.removed&&i.error))this.say('An image needs attention. Your words are kept.','attention');
     else if(w.images.some(i=>!i.removed&&!i.associated))this.say('Uploading image…','saving');
@@ -199,6 +211,11 @@ export class NotebookPage extends DeckPage {
     else if(w.busy)this.say('Saving…','saving');
     else if(w.dirty)this.say('Saved on this device · saving to Theseus…','saving');
     else if(w.base)this.say('Saved to Theseus','saved');
+    if(w.readOnly&&!this.unavailable) {
+      const discard=this.node('button','','Discard my writing');discard.type='button';
+      discard.onclick=async()=>{if(await w.discard()){this.finish({discard:true});this.sync(true);}};
+      this.status.append(discard);
+    }
   }
   async captureImage(file) {
     try {this.imageError=null;await this.images.capture(file);}

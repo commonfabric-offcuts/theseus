@@ -65,3 +65,11 @@ test('a published image whose local confirmation failed can resume attachment wi
   assert.ok(e.ready);assert.equal(e.associated,false);assert.equal(f.w.value.attachments.length,0);
   fail=false;await images.run(e);assert.equal(f.w.value.attachments.length,1);assert.equal(f.calls.length,2);
 });
+
+
+test('discard during file capture cancels it even if writing is allowed again',async()=>{
+  const f=fixture(),images=new NotebookImages(f.w);let release;
+  const file={name:'discarded.png',type:'image/png',size:3,arrayBuffer:()=>new Promise(done=>{release=done;})};
+  const capture=images.capture(file);f.w.discardVersion=1;release(new ArrayBuffer(3));
+  await assert.rejects(capture,/no longer open/);assert.equal(f.calls.length,0);assert.deepEqual(f.w.images,[]);
+});

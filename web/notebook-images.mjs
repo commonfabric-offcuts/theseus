@@ -8,7 +8,7 @@ const digest = async blob => [...new Uint8Array(await crypto.subtle.digest('SHA-
 export class NotebookImages {
   constructor(writing) { this.writing=writing; this.running=new Map(); }
   async capture(file) {
-    const w=this.writing, limits=w.bootstrap.limits;
+    const w=this.writing, limits=w.bootstrap.limits, discarded=w.discardVersion;
     if(w.closed||w.readOnly)throw Error('This page cannot be changed here.');
     if(!TYPES.has(file.type)||!file.size)throw Error('Choose a PNG, JPEG, GIF or WebP image.');
     if(file.size>limits.image_bytes)throw Error('This image exceeds the attachment size limit.');
@@ -19,7 +19,7 @@ export class NotebookImages {
     const name=file.name||'Pasted image.'+file.type.split('/')[1];
     if(new TextEncoder().encode(name).length>limits.media_name_utf8_bytes)throw Error('The image name is too long.');
     const bytes=await file.arrayBuffer();
-    if(w.closed||w.readOnly)throw Error('This page is no longer open for writing.');
+    if(w.closed||w.readOnly||discarded!==w.discardVersion)throw Error('This page is no longer open for writing.');
     const entry={id:crypto.randomUUID(),name,type:file.type,size:file.size,bytes,begin:null,publish:null,begun:false,ready:null,associated:false,removed:false,error:null};
     w.images.push(entry); w.notify();
     try {await w.persist();}

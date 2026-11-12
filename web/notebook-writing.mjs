@@ -1,6 +1,18 @@
 import { parseDeck } from './deck.mjs';
 const copy = structuredClone;
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a, b) => a === b || Boolean(a && b && typeof a === 'object' && typeof b === 'object' &&
+  Array.isArray(a) === Array.isArray(b) && Object.keys(a).length === Object.keys(b).length &&
+  Object.keys(a).every(key => Object.hasOwn(b,key) && same(a[key],b[key])));
+export const sameContent = (a,b) => Boolean(a && b && ['title','body','attachments','references'].every(key=>same(a[key],b[key])));
+function mergeTextContent(base,mine,theirs) {
+  const result={};
+  for(const field of ['title','body','attachments','references']) {
+    if(same(mine[field],base[field]))result[field]=copy(theirs[field]);
+    else if(same(theirs[field],base[field])||same(theirs[field],mine[field]))result[field]=copy(mine[field]);
+    else return null;
+  }
+  return result;
+}
 const content = source => ({ title: source.title, body: source.body ?? '',
   attachments: source.attachments.map(({ id }) => ({ id })), references: copy(source.references) });
 const authority = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
@@ -16,7 +28,7 @@ export class NotebookWriting {
     this.active = false; this.closed = false; this.serial = Promise.resolve(); this.localVersion = 0; this.images = [];
     this.journalPending = 0; this.journalError = null;
   }
-  get dirty() { return Boolean(this.value && !same(this.value, this.base?.content)); }
+  get dirty() { return Boolean(this.value && !sameContent(this.value, this.base?.content)); }
   get hasLocal() { return this.dirty || this.localActive(); }
   get busy() { return Boolean(this.running || this.pending); }
   get binding() { return { instance_id: this.bootstrap.instance_id, actor_id: this.bootstrap.actor, item_id: this.item }; }
@@ -26,8 +38,7 @@ export class NotebookWriting {
     // pending photograph every time a single character changes.
     const images = this.images.map(({bytes, ...image}) => ({...copy(image), bytes}));
     return { ...copy({ v: 1, binding: this.binding, base: this.base, value: this.value, pending: this.pending,
-      conflict: this.conflict, localVersion: this.localVersion, readOnly: this.readOnly,
-      refusalAuthority: this.readOnly ? authority(this.bootstrap) : null }), images };
+      conflict: this.conflict, localVersion: this.localVersion }), images };
   }
   persist() {
     const snapshot = this.snapshot();
@@ -51,18 +62,26 @@ export class NotebookWriting {
       if (held.v !== 1 || !same(held.binding, this.binding)) throw Error('The saved writing belongs to a different Notebook page.');
       Object.assign(this, copy({ base: held.base, value: held.value, pending: held.pending,
         conflict: held.conflict, localVersion: held.localVersion, images: held.images ?? [] }));
-      this.readOnly ||= Boolean(held.readOnly && same(held.refusalAuthority, authority(this.bootstrap)));
+      // Refusals are scoped to this opening. A fresh bootstrap and a new
+      // revision-fenced request decide access again, including old v1 journals.
     }
     if (this.pending) await this.flush();
     await this.refresh();
     if (this.dirty && !this.pending && !this.conflict && !this.readOnly) this.schedule();
     this.notify();
   }
-  edit(patch) {
+  capture() { return {revision:this.base?.revision,content:copy(this.value)}; }
+  edit(patch, seen = this.capture(), mode = 'text') {
     if (!this.value || this.readOnly || this.closed) return false;
-    const next = { ...this.value, ...copy(patch) };
-    if (same(next, this.value)) return false;
-    this.value = next; this.localVersion++; this.error = null;
+    const next = { ...seen.content, ...copy(patch) };
+    if (sameContent(next, seen.content)) return false;
+    const merged = sameContent(seen.content,this.value) ? next :
+      (mode === 'cards' ? mergeCardContent : mergeTextContent)(seen.content,next,this.value);
+    if(merged === null) {
+      this.conflict ??= this.base;
+      this.value = {...this.value,...copy(patch)};
+    } else this.value = merged;
+    this.localVersion++; this.error = null;
     this.persist().then(() => this.schedule()).catch(error => { this.error = `Device copy unavailable: ${error.message}. Keep this page open.`; this.notify(); });
     this.notify(); return true;
   }
@@ -124,7 +143,8 @@ export class NotebookWriting {
       this.pending = null;
       if (receipt.error?.code === 'REVISION_CONFLICT') this.takeLatest(await this.read());
       else {
-        this.readOnly = readOnly.has(receipt.error?.code);
+        this.refusalCode = receipt.error?.code;
+        this.readOnly = readOnly.has(this.refusalCode);
         this.error = receipt.error?.message ?? 'Theseus did not save the page.';
       }
       await this.persist(); this.notify(); return receipt;
@@ -137,6 +157,22 @@ export class NotebookWriting {
     if (!keep) this.value = copy(this.base.content);
     this.error = null; this.localVersion++;
     await this.persist(); this.notify(); this.schedule();
+  }
+  async retry() {
+    if(this.closed || this.pending || this.running) return;
+    if(this.refusalCode === 'AUTHORITY_CHANGED') { this.error='Reload this page to read the current authority before writing again.'; this.notify(); return; }
+    this.readOnly=false; this.refusalCode=null; this.error=null;
+    if(await this.refresh()) await this.flush();
+  }
+  async discard() {
+    if(this.closed || this.pending || this.running) return false;
+    try {
+      const latest=await this.read();
+      this.discardVersion=(this.discardVersion??0)+1;
+      for(const image of this.images){image.removed=true;image.bytes=null;}
+      this.base=latest;this.value=copy(latest.content);this.conflict=null;this.images=[];this.error=null;
+      this.localVersion++;await this.persist();this.notify();return true;
+    } catch(error) { this.error='Your writing is kept: '+error.message;this.notify();return false; }
   }
   close() { this.closed = true; clearTimeout(this.timer); this.timer = null; }
 }
@@ -216,11 +252,11 @@ export async function notebookStore(binding, win = globalThis) {
   };
 }
 
-// Merge nonoverlapping card changes. Whole raw cards (including their exact
-// whitespace) are the units: edits to the same card require a choice. LCS
+// Merge nonoverlapping card changes. Card text and its exact separators are
+// separate units: edits to the same card require a choice. LCS
 // identifies insertions/deletions/moves without interpreting the prose.
 function cardEdits(before, after) {
-  const equal=(a,b)=>a.replace(/\n+$/,'')===b.replace(/\n+$/,'');
+  const equal=(a,b)=>a===b;
   let start=0,end=before.length,tail=after.length;
   while(start<end&&start<tail&&equal(before[start],after[start]))start++;
   while(end>start&&tail>start&&equal(before[end-1],after[tail-1])){end--;tail--;}
@@ -247,7 +283,9 @@ export function mergeCardContent(base, mine, theirs) {
   }
   if(mine.body===base.body) return {...merged,body:theirs.body};
   if(theirs.body===base.body||mine.body===theirs.body)return {...merged,body:mine.body};
-  const chunks=body=>{const deck=parseDeck(body);return [deck.opening,...deck.cards.map(card=>card.raw)];};
+  const chunks=body=>{const deck=parseDeck(body);return [deck.opening,...deck.cards.flatMap(card=>{
+    const end=/\n*$/.exec(card.raw)[0];return [card.raw.slice(0,card.raw.length-end.length),end];
+  })];};
   const original=chunks(base.body),left=cardEdits(original,chunks(mine.body)),right=cardEdits(original,chunks(theirs.body));
   if(!left||!right)return null;
   const all=[...left];
@@ -260,5 +298,5 @@ export function mergeCardContent(base, mine, theirs) {
     if(!identical)all.push(r);
   }
   for(const edit of all.sort((a,b)=>b.start-a.start))original.splice(edit.start,edit.end-edit.start,...edit.put);
-  return {...merged,body:original.map((chunk,i)=>i>0&&i<original.length-1&&!/\n\n$/.test(chunk)?chunk.replace(/\n*$/,'\n\n'):chunk).join('')};
+  return {...merged,body:original.join('')};
 }

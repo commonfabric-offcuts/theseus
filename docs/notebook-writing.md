@@ -13,6 +13,17 @@ including Option-arrow line moves, remain available. Images and `#img` use
 the page's topic (or its outcome's Conversation) and become page attachments.
 There is no Cards view of a message draft.
 
+An edit carries the revision and content its visible surface was computed
+from. The writer applies it against that snapshot, not whichever revision
+arrived most recently: a stale Cards edit merges disjoint card changes, while
+overlapping Cards or Text edits keep both versions for a choice. Slow device
+writes, redraws and revision-conflict reloads cannot remove this fence.
+Changed/settled compares content fields, never object key order. Merging
+preserves untouched card bytes and separators. A permission refusal pauses
+writing only for the current opening; Try again rechecks access, Discard my
+writing takes the saved page, and reload retries once with a fresh request.
+An authority refusal requires reopening under the current instance binding.
+
 Before sending, the browser retains the complete request and current writing
 in a scoped device journal. A retry uses that exact request, including title,
 attachments, references, expected revision, authority and operation identity.
