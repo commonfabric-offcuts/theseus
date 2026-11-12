@@ -6,12 +6,12 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
 const stacksOf = items => ordered(gather(items));
-const words = rows => rows.map(row => row.kind === 'reply' ? row.item.id : row.kind === 'join' ? `join ${row.item.id}` : row.words + (row.fresh ? ` · ${row.fresh} new` : ''));
+const words = rows => rows.map(row => row.kind === 'reply' ? row.item.id + (row.folded ? ' (folded)' : '') : row.kind === 'join' ? `join ${row.item.id}` : row.words + (row.fresh ? ` · ${row.fresh} new` : ''));
 
 test('a stack keeps its first message on top and reads its replies oldest first, replies to replies with them', () => {
   const items = [message(1), message(2, { reply_to: 'm1' }), message(3), message(4, { reply_to: 'm2' }), message(5, { reply_to: 'm1' })];
@@ -161,10 +161,9 @@ test('a fold shows the newest reply and every kept one in its place, with a line
   assert.deepEqual(words(rowsOf(stack, { kept })), ['3 earlier replies', 'm5', '2 more replies', 'm8']);
   assert.deepEqual(words(rowsOf(stack, { level: 'open', kept })), ['Fold 5 earlier replies', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
   assert.deepEqual(words(rowsOf(stack, { level: 'head', kept })), ['7 replies'], 'every reply folded: one line counts them all');
-  // Stars do not override an explicit closed state. Manual reply folds remain local.
+  // Stars do not override an explicit closed state.
   const starred = stacksOf(items.map(item => item.seq === 3 ? { ...item, acts: { starred: true } } : item))[0];
   assert.deepEqual(words(rowsOf(starred, { level: 'head' })), ['7 replies']);
-  assert.deepEqual(words(rowsOf(stack, { kept, handFolded: new Set(['m5']) })), ['6 earlier replies', 'm8']);
   assert.deepEqual([5, 6, 8].map(seq => shown(stack, items[seq - 1], { kept })), [true, false, true], 'kept, folded, the newest');
   // Open with nothing the fold would take: no Fold line.
   const short = stacksOf([message(1), message(2, { reply_to: 'm1' })])[0];
@@ -237,4 +236,47 @@ test('an acts answer read before an act the page has since heard of puts back no
   // The message read again on a page read before those acts keeps them.
   v.messagesPage({ instance_id: 'i1', items: [item({ placed: 5, place_revision: 1 })], next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true });
   assert.deepEqual([v.messages.get('m1').acts.placed, v.messages.get('m1').acts.starred, v.messages.get('m1').acts.name?.text], [10, false, 'Cabin'], 'a message page read earlier puts back no act');
+});
+
+test('a message the reader folded reads as its one-line row wherever its stack shows it, fully open included', () => {
+  const fold = { folded: true, fold_revision: 1 };
+  const items = [message(1), ...[2, 3, 4, 5].map(seq => message(seq, { reply_to: 'm1', ...(seq === 3 || seq === 5 ? { acts: fold } : {}) }))];
+  const [stack] = stacksOf(items);
+  const kept = item => item.seq === 3;
+  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept })), ['Fold 2 earlier replies', 'm2', 'm3 (folded)', 'm4', 'm5 (folded)'],
+    'fully open: each folded message is its row, in its place, and nothing else changes');
+  assert.deepEqual(words(rowsOf(stack, { level: 'folded', kept })), ['1 earlier reply', 'm3 (folded)', '1 more reply', 'm5 (folded)'],
+    'latest and unread: a folded reply the view keeps, and a folded newest, are rows, never taken away');
+  assert.deepEqual(words(rowsOf(stack, { level: 'head', kept })), ['4 replies'], 'header only: nothing shows, folded or not');
+  // A fold neither shows nor hides a reply: the level alone decides that.
+  for (const level of ['head', 'folded', 'open']) {
+    const unfolded = stacksOf(items.map(item => ({ ...item, acts: {} })))[0];
+    assert.deepEqual(rowsOf(stack, { level, kept }).map(row => row.kind), rowsOf(unfolded, { level, kept }).map(row => row.kind), level);
+    assert.deepEqual(stack.replies.map(item => shown(stack, item, { level, kept })), unfolded.replies.map(item => shown(unfolded, item, { level, kept })), level);
+  }
+  // A star keeps a message in view: a starred message never reads as its row, folded or not.
+  const both = stacksOf(items.map(item => item.seq === 5 ? { ...item, acts: { ...fold, starred: true, star_revision: 1 } } : item))[0];
+  assert.deepEqual(words(rowsOf(both, { level: 'open', kept })).slice(-1), ['m5']);
+  // Opened for this view (a link, search, Starred): the message shows whole, its fold kept in Core.
+  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept, peeked: item => item.id === 'm3' })).slice(1), ['m2', 'm3', 'm4', 'm5 (folded)']);
+  // Unfolded (folded: false at a later revision), it reads whole again.
+  const back = stacksOf(items.map(item => item.seq === 3 ? { ...item, acts: { folded: false, fold_revision: 2 } } : item))[0];
+  assert.deepEqual(words(rowsOf(back, { level: 'open', kept })).slice(1), ['m2', 'm3', 'm4', 'm5 (folded)']);
+});
+
+test('a folded first message reads as its stack\'s head row alone, and a message on its own as its row', () => {
+  const items = [message(1, { acts: { folded: true, fold_revision: 1 } }), message(2, { reply_to: 'm1' }), message(3, { acts: { folded: true, fold_revision: 1 } }), message(4)];
+  const withReplies = stacksOf(items).find(stack => stack.id === 'm1');
+  assert.equal(headOf(withReplies).folded, true, 'the head row says its first message is folded');
+  assert.equal(headOf(stacksOf([message(1), message(2, { reply_to: 'm1' })])[0]).folded, false);
+  assert.equal(headOf(withReplies, { peeked: item => item.id === 'm1' }).folded, false, 'opened for this view, it shows whole');
+  assert.deepEqual(items.map(item => rowFolded(item)), [true, false, true, false]);
+  assert.equal(rowFolded(message(5, { acts: { folded: true, starred: true } })), false, 'a starred message is never a row');
+  assert.equal(rowFolded(message(6, { acts: { folded: true } }), { peeked: () => true }), false);
+});
+
+test('the page holds a fold or unfold until Core answers it, and an older answer puts back none', () => {
+  const known = { folded: true, fold_revision: 2, starred: false, star_revision: 0 };
+  assert.deepEqual(laterActs(known, { folded: false, fold_revision: 1, starred: false, star_revision: 0 }).folded, true, 'an answer read before the fold puts back nothing');
+  assert.deepEqual(laterActs(known, { folded: false, fold_revision: 3, starred: false, star_revision: 0 }).folded, false, 'a later unfold, from another device, shows');
 });

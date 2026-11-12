@@ -1,24 +1,26 @@
 // What a person does to reply stacks on a topic page or a Conversation
 // (docs/reply-stacks.md), and the keys and menu items that do it: star a
-// message, rename a stack, move it, join it to its neighbour and split it
-// back out, fold and open it, and put the last of those back with ⌘Z.
+// message, fold a message to one line and unfold it, rename a stack, move it,
+// join it to its neighbour and split it back out, fold and open it, and put
+// the last of those back with ⌘Z.
 //
-// A star, a stack's place and a stack dealt with are the reader's own; a
-// stack's short name and its joins are everyone's in the topic. Each is a new
-// record about a message, a Core command fenced on the revision the page last
-// read (aim_next/stacks.py); the page shows the act at once and sends the acts
-// one after another, so a quick run of presses each sends the revision the
-// one before it made. What Core holds stays the message's acts (topic-views.mjs);
+// A star, a folded message, a stack's place and a stack dealt with are the
+// reader's own; a stack's short name and its joins are everyone's in the
+// topic. Each is a new record about a message, a Core command fenced on the
+// revision the page last read (aim_next/stacks.py); the page shows the act at
+// once and sends the acts one after another, so a quick run of presses each
+// sends the revision the one before it made. What Core holds stays the message's acts (topic-views.mjs);
 // an act not yet answered is drawn over them until its answer lands, and the
 // stacks are drawn again whenever an answer changes what they show. How far a
-// stack is folded is the page's own.
+// stack is folded is the page's own; a message folded to its row is the
+// reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, reveal, renameInput, unkeep } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, shown, laterActs } from './stack-order.mjs';
+import { moveOf, joinShown, foldStep, laterActs } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
 
-const FIELD = { 'message.star': 'star', 'message.deal': 'deal', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
+const FIELD = { 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo'];
 
 // Whether a touch began on something between it and the list that scrolls
@@ -30,11 +32,24 @@ function scrollsSideways(target, list) {
   return false;
 }
 
+// A trackpad's two-finger swipe reaches the page as wheel events. One swipe
+// is a run of them less than SWIPE_GAP ms apart by the events' own times; it
+// acts once it has gone SWIPE_ACROSS pixels across, and further across than
+// down.
+const SWIPE_GAP = 250, SWIPE_ACROSS = 80;
+// Whether a swipe that went across (its summed deltaX) folds the message, or
+// unfolds it. With macOS's natural scrolling, the default, fingers moving
+// right scroll the content left, a negative deltaX: swiped right folds, as a
+// finger's swipe right does on a phone. With natural scrolling off the two
+// ways change places.
+const swipeFolds = across => across < 0;
+
 // The acts a commit's result says, as the message's acts read.
 function learned(kind, result, viewer, now) {
   const field = FIELD[kind], revision = { [`${field}_revision`]: result[`${field}_revision`] };
   if (kind === 'message.star') return { starred: result.starred, ...revision };
   if (kind === 'message.deal') return { dealt: result.dealt, ...revision };
+  if (kind === 'message.fold') return { folded: result.folded, ...revision };
   if (kind === 'stack.place') return { placed: result.key, ...revision };
   if (kind === 'stack.name') return { name: result.name ? { text: result.name, by: viewer, at_ms: now } : null, ...revision };
   return { joined: result.into ? { into: result.into, by: viewer, at_ms: now } : null, ...revision };
@@ -43,6 +58,7 @@ function learned(kind, result, viewer, now) {
 function shownAct(kind, args, viewer, now) {
   if (kind === 'message.star') return { starred: args.starred };
   if (kind === 'message.deal') return { dealt: args.dealt };
+  if (kind === 'message.fold') return { folded: args.folded };
   if (kind === 'stack.place') return { placed: args.key };
   if (kind === 'stack.name') return { name: args.name ? { text: args.name, by: viewer, at_ms: now } : null };
   return { joined: args.into ? { into: args.into, by: viewer, at_ms: now } : null };
@@ -68,13 +84,18 @@ export class StackFeed {
     // Take a stack step before the document's pane navigation sees the key.
     // At either end the event bubbles untouched, so the next press leaves.
     list.addEventListener('keydown', event => this.key(event));
-    // A reply swiped to the right on a phone folds into the earlier replies;
-    // a drag on something that scrolls sideways scrolls it instead.
+    // A message swiped to the right on a phone folds to its row, and its row
+    // swiped to the left unfolds it; a drag on something that scrolls
+    // sideways scrolls it instead.
     list.addEventListener('touchstart', event => {
       const touch = event.touches?.[0];
       this.swipe = touch && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
     }, { passive: true });
     list.addEventListener('touchend', event => this.swiped(event), { passive: true });
+    // Two fingers across a laptop's trackpad do the same. Not passive: while a
+    // swipe over a message goes across, the page keeps it from the browser,
+    // which would otherwise go back or forward a page.
+    list.addEventListener('wheel', event => this.wheeled(event), { passive: false });
   }
   get state() { return stackState(this.list); }
   // A message's acts as the page shows them: what Core holds, with each act
@@ -98,7 +119,7 @@ export class StackFeed {
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
-      split: item => this.split(item), unplace: stack => this.unplace(stack),
+      split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
     } }));
   }
@@ -162,9 +183,11 @@ export class StackFeed {
     above?.scrollIntoView?.({ block: 'nearest' });
     target.scrollIntoView?.({ block: 'nearest' });
   }
+  // A star keeps a message in view: starring a folded message unfolds it too.
   star(item) {
     const on = !this.actsOf(item.id).starred;
     this.act('message.star', item, { starred: on });
+    if (on && this.actsOf(item.id).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
     this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
   }
   // The right rail's Unstar, for a message here or in another place: one this
@@ -282,21 +305,56 @@ export class StackFeed {
     this.say({ open: 'Original message and every reply shown', folded: 'Latest and unread replies shown', head: 'Stack closed' }[next.level]);
     return true;
   }
-  // A reply folded by hand, from ⋯ or a swipe: away until its stack opens.
-  foldOne(item) {
-    const state = this.state;
-    state.handFolded.add(item.id); state.kept.delete(item.id);
-    this.remember(() => { state.handFolded.delete(item.id); this.arrange(); });
-    this.arrange(); this.say('Folded into the earlier replies');
+  // Folds a message to its one-line row (on true) or unfolds it, for the
+  // reader on every device: their own act in Core (message.fold), shown at
+  // once. A starred message is not folded. ⌘Z puts it back; focus: the message
+  // takes the focus, so ⌘Z is at hand (not on a phone's swipe).
+  setFold(item, on, { focus = true, undoable = true } = {}) {
+    const acts = this.actsOf(item.id, item);
+    if (Boolean(acts.folded) === on || (on && acts.starred)) return false;
+    this.state.peeked.delete(item.id);
+    this.act('message.fold', item, { folded: on });
+    if (undoable) this.remember(() => { this.setFold(item, !on, { undoable: false }); });
+    this.arrange();
+    if (focus) this.focusOn(item.id);
+    this.say(on ? 'Folded to one line, for you only' : 'Unfolded');
+    return true;
+  }
+  // A press on a folded message's row, or its stack's head row (reply-stacks.mjs).
+  unfoldId(id) {
+    const item = this.messages().get(id);
+    if (item) this.setFold(item, false);
   }
   swiped(event) {
     const start = this.swipe, touch = event.changedTouches?.[0];
     this.swipe = null;
-    if (!start || !touch || touch.clientX - start.x < 80 || Math.abs(touch.clientY - start.y) > 40) return;
-    const entry = entryOf(this.list, start.target), found = entry && stackOf(this.list, entry);
-    const item = entry && this.messages().get(entry.dataset.id);
-    if (!found || found.head || !item || found.stack.joins.has(item.id) || this.actsOf(item.id).starred) return;
-    this.foldOne(item);
+    const across = touch && start ? touch.clientX - start.x : 0;
+    if (!start || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;
+    const entry = entryOf(this.list, start.target), item = entry && this.messages().get(entry.dataset.id);
+    if (!item) return;
+    this.setFold(item, across > 0, { focus: false });
+  }
+  // A wheel event on the list: part of a trackpad swipe, or a scroll the
+  // browser keeps. The message is the one under the swipe's first event, and
+  // the swipe folds or unfolds it once; the rest of it, momentum and all, is
+  // still kept from the browser while it goes across. A scroll further down
+  // than across, a swipe that began on something scrolling sideways and the
+  // wheel with Ctrl or ⌘ (zoom) are left to the browser.
+  wheeled(event) {
+    if (event.ctrlKey || event.metaKey) return;
+    let swipe = this.wheelSwipe;
+    if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {
+      const entry = scrollsSideways(event.target, this.list) ? null : entryOf(this.list, event.target);
+      swipe = this.wheelSwipe = { x: 0, y: 0, item: entry && this.messages().get(entry.dataset.id), done: false };
+    }
+    swipe.last = event.timeStamp;
+    const [unitX, unitY] = event.deltaMode === 1 ? [16, 16] : event.deltaMode === 2 ? [this.list.clientWidth, this.doc.defaultView.innerHeight] : [1, 1];
+    swipe.x += event.deltaX * unitX; swipe.y += event.deltaY * unitY;
+    if (!swipe.item || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;
+    event.preventDefault();
+    if (swipe.done || Math.abs(swipe.x) < SWIPE_ACROSS) return;
+    swipe.done = true;
+    this.setFold(swipe.item, swipeFolds(swipe.x), { focus: false });
   }
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
@@ -332,9 +390,9 @@ export class StackFeed {
       items.push({ label: open ? 'Show latest and unread replies' : 'Show all messages',
         act: () => { setLevel(state, stack, open ? 'folded' : 'open'); this.arrange(); this.focusOn(stack.id); } });
     }
-    if (!found.head && !stack.joins.has(item.id) && !starred && shown(stack, item, { level: 'folded', kept: () => true, handFolded: state.handFolded })) {
-      items.push({ label: 'Fold into earlier replies', act: () => this.foldOne(item) });
-    }
+    // A star keeps a message in view: a starred message offers no Fold.
+    if (this.actsOf(item.id, item).folded) items.push({ label: 'Unfold', act: () => this.setFold(item, false) });
+    else if (!starred) items.push({ label: 'Fold', act: () => this.setFold(item, true) });
     if (stack.joins.has(item.id)) items.push({ label: 'Split back out', act: () => this.split(item) });
     const moves = [
       { label: 'Move its stack up', keys: '⌘↑', act: () => this.move(entry, 'up') },

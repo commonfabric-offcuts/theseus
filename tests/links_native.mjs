@@ -145,7 +145,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
   const items = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
   // A message's menu also offers its stack's acts (docs/reply-stacks.md),
   // which stack_native.mjs checks; here the menu is checked without them.
-  const STACK_ITEMS = /^(Star for me|Unstar|Rename|(Show|Hide) the full message|Fold into earlier replies|Split back out|Move or join…|Move its stack (up|down)|Join the stack (above|below))/;
+  const STACK_ITEMS = /^(Star for me|Unstar|Rename|(Show|Hide) the full message|Fold|Unfold|Split back out|Move or join…|Move its stack (up|down)|Join the stack (above|below))/;
   const own = labels => labels.filter(label => !STACK_ITEMS.test(label));
   // A menu that lists something else fails naming what it listed.
   const menuOpen = async (p, want) => {
@@ -246,7 +246,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual([Math.round(list.x), Math.round(list.y)], [x, y], 'at the pointer');
     assert.deepEqual(await p.evaluate('window.contexts'), [true], 'the page took that right-click');
     await p.key('ArrowDown');
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Copy Link', 'Down moves from Star for me to the next item');
+    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Fold', 'Down moves from Star for me to the next item: Fold, which a message on its own offers too');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'Escape closes it');
     // The words are formatted (docs/topic-reading.md), so their first text is inside a paragraph.
