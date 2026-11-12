@@ -5800,6 +5800,36 @@
     "native": "reading",
     "case": "stacks on a laptop two fingers swiped right on the trackpad"
    }
+  },
+  {
+   "item": 358,
+   "act": "Up and Down visit the header of a fully expanded dossier before its original message",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (toggle?.getClientRects().length) stops.push(toggle);",
+     "if (false && toggle?.getClientRects().length) stops.push(toggle);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "fully expanded dossiers keep"
+   }
+  },
+  {
+   "item": 358,
+   "act": "Up and Down from a dossier's chevron that is not a stop move on from that dossier",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const entry = toggle ? toggle.parentElement.querySelector(':scope > [data-id]') : entryOf(list, target);",
+     "const entry = toggle ? null : entryOf(list, target);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "move the keys from a dossier whose chevron"
+   }
   }
  ]
 }

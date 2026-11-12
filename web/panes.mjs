@@ -9,7 +9,7 @@
 // buttons at the top of the feed (headerKey), and ⌘Return anywhere outside
 // writing starts a new message (write).
 import { cardIn } from './fold.mjs';
-import { entries, entryOf } from './reply-stacks.mjs';
+import { navigationStops, stopAt } from './reply-stacks.mjs';
 import { keyAction, writing, pageItself } from './pane-keys.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
@@ -26,7 +26,7 @@ export function onScreen(el) {
 export function feedStop(doc, { first = false } = {}) {
   const list = doc.getElementById('messages');
   if (!list || !shown(list)) return null;
-  const all = entries(list).filter(shown);
+  const all = navigationStops(list).filter(shown);
   let entry = first ? all[0] : all.find(each => each.classList.contains('lit'));
   entry ??= all.find(each => each.dataset.id === list.dataset.lastMessage);
   if (!entry) {
@@ -50,8 +50,9 @@ export function headerButtons(doc) {
 function atTop(doc) {
   const list = doc.getElementById('messages'), at = doc.activeElement;
   if (!list?.contains(at)) return false;
-  const first = entries(list).find(shown);
-  return Boolean(first) && entryOf(list, at) === first && (at === cardIn(first) || at === first.querySelector('.fold-line'));
+  const stops = navigationStops(list).filter(shown), first = stops[0];
+  if (!first || stopAt(list, at, stops) !== first) return false;
+  return at.matches('.stack-toggle') || at === cardIn(first) || at === first.querySelector('.fold-line');
 }
 const reach = el => { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); return true; };
 

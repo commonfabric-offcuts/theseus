@@ -40,7 +40,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     // From the bar or a menu the keys come back to the page first, as Esc or a press on the page brings them.
     await p.evaluate(`(()=>{if(!document.querySelector('#messages').contains(document.activeElement))document.activeElement?.blur()})()`);
     for (let step = 0; step < 30; step++) {
-      const way = await p.evaluate(`(()=>{const at=document.activeElement?.closest?.('#messages [data-id]'),to=document.querySelector(${JSON.stringify(card(id))});
+      // A dossier's chevron is a stop before its head, so it is placed as the dossier itself.
+      const way = await p.evaluate(`(()=>{const here=document.activeElement,to=document.querySelector(${JSON.stringify(card(id))});
+        const at=here?.matches?.('#messages .reply-stack > .stack-toggle')?here.parentElement:here?.closest?.('#messages [data-id]');
         if(at?.dataset.id===${JSON.stringify(id)})return 'there';if(!at)return 'ArrowDown';return at.compareDocumentPosition(to)&Node.DOCUMENT_POSITION_FOLLOWING?'ArrowDown':'ArrowUp'})()`);
       if (way === 'there') return;
       await p.key(way);
@@ -74,6 +76,100 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.ok(at >= 0, `${label} is in the menu`);
     await press(p, device, `.message-menu-list button:nth-of-type(${at + 1})`);
   };
+
+  await check('reading stacks fully expanded dossiers keep their own keyboard stop in both directions', async () => {
+    const topic = 'stack-open-header-stop';
+    const ids = await seed(topic, [
+      ['older', { sender: other, join: true, addressees: [facts.actor], body: 'Older dossier' }],
+      ['olderReply', { sender: other, reply_to: 'older', addressees: [facts.actor], body: 'Older reply' }],
+      ['newer', { sender: other, addressees: [facts.actor], body: 'Newer dossier' }],
+      ['newerReply', { sender: other, reply_to: 'newer', addressees: [facts.actor], body: 'Newer reply' }],
+    ]);
+    const p = await open(topic, 'laptop', topic, ids.newer);
+    for (const id of [ids.older, ids.newer]) await press(p, 'laptop', `.reply-stack[data-stack="${id}"] > .stack-toggle`);
+    const focused = () => p.evaluate(`(()=>{const at=document.activeElement;return at.matches('.stack-toggle')?'stack:'+at.closest('.reply-stack').dataset.stack:at.closest('[data-id]')?.dataset.id??null})()`);
+    await keyTo(p, ids.newerReply);
+    await p.key('ArrowDown');
+    assert.equal(await focused(), 'stack:' + ids.older, 'Down reaches the neighboring dossier before its original message');
+    assert.equal(await p.evaluate("document.querySelector('.message-bar').hidden"), true, 'a dossier has no message toolbar');
+    await p.key('ArrowDown'); assert.equal(await focused(), ids.older);
+    await p.key('ArrowDown'); assert.equal(await focused(), ids.olderReply);
+    for (const expected of [ids.older, 'stack:' + ids.older, ids.newerReply, ids.newer, 'stack:' + ids.newer]) {
+      await p.key('ArrowUp'); assert.equal(await focused(), expected, 'Up traverses every message and dossier');
+    }
+    await p.key('ArrowUp');
+    assert.equal(await p.evaluate("Boolean(document.activeElement.closest('.topic-header'))"), true, 'Up from the first dossier reaches the page header');
+    await p.key('ArrowDown'); assert.equal(await focused(), 'stack:' + ids.newer);
+    await p.key('ArrowDown'); assert.equal(await focused(), ids.newer);
+    await shot(p, 'stack-expanded-header-keyboard');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('reading stacks move the keys from a dossier whose chevron holds the focus without being a stop', async () => {
+    const topic = 'stack-chevron-not-a-stop';
+    // Eight dossiers, s7 at the top of the page down to s0, each folded to its unread reply.
+    const said = [];
+    for (let n = 0; n < 8; n++) {
+      said.push(['s' + n, { sender: other, ...(n ? {} : { join: true }), addressees: [facts.actor], body: 'Dossier ' + n }]);
+      said.push(['s' + n + 'R', { sender: other, reply_to: 's' + n, addressees: [facts.actor], body: 'Reply in dossier ' + n }]);
+    }
+    const ids = await seed(topic, said);
+    const p = await open(topic, 'laptop', topic, ids.s3);
+    const toggle = id => `.reply-stack[data-stack="${id}"] > .stack-toggle`;
+    const fold = id => p.evaluate(`document.querySelector(${JSON.stringify(`.reply-stack[data-stack="${id}"]`)}).dataset.fold`);
+    const focused = () => p.evaluate(`(()=>{const at=document.activeElement;return at.matches('.stack-toggle')?'stack:'+at.closest('.reply-stack').dataset.stack:at.closest('[data-id]')?.dataset.id??null})()`);
+    const atPageHeader = () => p.evaluate("Boolean(document.activeElement.closest('.topic-header'))");
+    // Whether the dossier sits below the first message in view, so a move that
+    // starts over from the top of the window shows as a move from elsewhere.
+    const belowFirstInView = id => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(`.reply-stack[data-stack="${id}"]`)});
+      const first=[...document.querySelectorAll('#messages [data-id]')].find(e=>e.getClientRects().length&&e.getBoundingClientRect().bottom>0);return Boolean(first)&&!s.contains(first)})()`);
+    // Shift-Tab back onto a dossier's chevron from a message after it, so the
+    // message the keys were last on is not the dossier's head.
+    const backTo = async id => {
+      for (let step = 0; step < 12 && await focused() !== 'stack:' + id; step++) await p.key('Tab', 8);
+      assert.equal(await focused(), 'stack:' + id, 'Shift-Tab reaches the chevron of ' + id);
+    };
+    assert.equal(await fold(ids.s3), 'folded', 'an unread dossier starts folded');
+    for (let step = 0; step < 3 && await fold(ids.s3) !== 'open'; step++) { await centre(p, toggle(ids.s3)); await press(p, 'laptop', toggle(ids.s3)); }
+    assert.equal(await fold(ids.s3), 'open');
+    await centre(p, toggle(ids.s3));
+    await keyTo(p, ids.s4R);
+    await p.key('ArrowDown');
+    assert.equal(await focused(), 'stack:' + ids.s3, 'Down from the dossier above reaches the expanded header');
+    // (a) Enter on the expanded header closes the dossier; its chevron keeps the focus but is no longer a stop.
+    await p.key('Enter');
+    await becomes(() => fold(ids.s3), 'head', 'Enter on the expanded header closes the dossier');
+    assert.equal(await focused(), 'stack:' + ids.s3, 'the closing chevron keeps the focus');
+    assert.equal(await belowFirstInView(ids.s3), true, 'the dossier is not the first in view');
+    await p.key('ArrowDown');
+    assert.equal(await focused(), ids.s2, 'Down from a closed chevron reaches the next dossier');
+    await backTo(ids.s3);
+    await p.key('ArrowUp');
+    assert.equal(await focused(), ids.s4R, 'Up from a closed chevron reaches the last message of the dossier above');
+    // (b) Tab onto a folded dossier's chevron.
+    await keyTo(p, ids.s3); await p.key('ArrowRight');
+    await becomes(() => fold(ids.s3), 'folded', 'Right folds the dossier open to its unread reply');
+    await centre(p, toggle(ids.s3));
+    await keyTo(p, ids.s3R); await backTo(ids.s3);
+    assert.equal(await belowFirstInView(ids.s3), true, 'the folded dossier is not the first in view');
+    await p.key('ArrowDown');
+    assert.equal(await focused(), ids.s3R, 'Down from a folded chevron reaches its dossier\'s shown reply');
+    await backTo(ids.s3);
+    await p.key('ArrowUp');
+    assert.equal(await focused(), ids.s4R, 'Up from a folded chevron reaches the last message of the dossier above');
+    // Space on the first dossier's expanded header, then Up, reaches the page header.
+    for (let step = 0; step < 3 && await fold(ids.s7) !== 'open'; step++) { await centre(p, toggle(ids.s7)); await press(p, 'laptop', toggle(ids.s7)); }
+    assert.equal(await fold(ids.s7), 'open');
+    await keyTo(p, ids.s7);
+    await p.key('ArrowUp');
+    assert.equal(await focused(), 'stack:' + ids.s7, 'Up from the first original message reaches its expanded header');
+    await p.key(' ');
+    await becomes(() => fold(ids.s7), 'head', 'Space on the expanded header closes the first dossier');
+    assert.equal(await focused(), 'stack:' + ids.s7, 'the closing chevron keeps the focus');
+    await p.key('ArrowUp');
+    assert.equal(await atPageHeader(), true, 'Up from the first dossier\'s closed chevron reaches the page header');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
 
   await check('reading stacks long message headers scroll away inside their cards without moving the dossier tab', async () => {
     for (const device of Object.keys(DEVICES)) {
@@ -142,7 +238,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await keyTo(p, ids.two);
       await p.evaluate("document.getElementById('new-message').focus()");
       await p.key('ArrowDown');
-      assert.equal(await focusedOn(p), ids.root, 'Down from the header starts at the first stack, not a remembered reply');
+      assert.equal(await p.evaluate("document.activeElement.matches('.stack-toggle') ? document.activeElement.closest('.reply-stack').dataset.stack : null"), ids.root, 'Down from the page header starts at the first open dossier, not its original message or a remembered reply');
       await keyTo(p, ids.two);
       await p.key('ArrowLeft'); await state('folded');
       assert.equal(await focusedOn(p), ids.two, 'a still-visible reply retains the keys');
