@@ -381,3 +381,27 @@ Command-Z undoes a move. Existing unread messages and your own replies leave
 it there; a newer visible reply from someone else brings it back. Links can
 show its messages without clearing your choice. See [the Core contract and
 checks](dossier-below-more.md).
+
+## Agent coordination (359)
+
+A dossier entirely between known agents starts as one quiet title row, with
+its reply count. The same up/right/down control still opens latest/unread and
+then all messages. Explicitly opening it stays open as new agent replies arrive.
+This presentation is not the reader's saved message fold or saved placement.
+
+Show agent coordination above either feed is on initially; turning it off
+hides these rows (including standalone agent coordination). It is a page-local
+view, changes no unread or delivery records, and can always be turned back on.
+A message link reveals its target even with this filter off.
+
+Classification uses addressing, not inferred intent: every message must be
+from a known agent and explicitly addressed only to known agents. Room posts,
+messages to the reader, direct replies to the reader, unknown people, missing
+ancestry and any mixed joined dossier stay visible. Further agent-only replies
+stay quiet; a human or room-directed reply brings the dossier back immediately.
+
+An agent coordination row is a dossier too: a right swipe on its row, or the
+menu, moves it below More messages like any other dossier ([Put a dossier
+aside](#put-a-dossier-aside)), and it keeps its quiet row
+there. With Show agent coordination off, agent coordination below More is
+hidden as well and More counts only the dossiers it would show.

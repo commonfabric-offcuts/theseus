@@ -6105,6 +6105,35 @@
     "native": "reading",
     "case": "below More handles"
    }
+  },
+  {
+   "item": 359,
+   "act": "One human or room-directed message keeps the whole joined dossier visible",
+   "break": [
+    [
+     "web/coordination-stacks.mjs",
+     "items.every(item => quiet(item)",
+     "items.some(item => quiet(item)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_coordination_stacks.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "With Show agent coordination off, More counts only the dossiers it would show",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "state.showCoordination || node.dataset.coordination !== 'agents'",
+     "true"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More takes an agent coordination row"
+   }
   }
  ]
 }

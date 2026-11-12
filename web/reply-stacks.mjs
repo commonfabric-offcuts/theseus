@@ -20,6 +20,7 @@ import { cardIn, opened } from './fold.mjs';
 import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf } from './stack-order.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { shownTime } from './times.mjs';
+import { coordinationStack } from './coordination-stacks.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
 const states = new WeakMap();
@@ -86,9 +87,13 @@ export function topOf(list, entry) {
 // and the messages last drawn as their folded row (folded).
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), renaming: null,
-    stacks: [], sections: new Map(), folded: new Set(), viewer: null, again: () => {} });
+    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, viewer: null, again: () => {} });
   return states.get(list);
 }
+
+// Agent-only dossiers begin as one quiet title row; a person's explicit
+// expansion always wins. A new human-directed reply gets the normal partial view.
+export const levelOf = (state, id) => state.levels.get(id) ?? (state.coordination.has(id) ? 'head' : 'folded');
 
 // An explicit choice starts a fresh partial view. Replies that were unread
 // when drawn stay put while read, until the person changes the stack state.
@@ -125,11 +130,19 @@ export function lineSeq(list, seq) {
 // folded opens from its row for this view (a link, search, Starred), and its
 // fold stays theirs in Core: nothing is written.
 export function reveal(entry, { full = false } = {}) {
+  const feed = entry?.closest?.('#messages');
+  if (feed && states.has(feed)) {
+    const state = stackState(feed);
+    if (!state.showCoordination && (entry.dataset.coordination === 'agents' || entry.closest('[data-coordination=agents]'))) {
+      state.showCoordination = true; state.on?.coordinationShown?.(true); state.again();
+    }
+  }
   const section = entry?.closest?.('.reply-stack');
   const list = section ? section.parentElement : entry?.parentElement;
   if (!list || !states.has(list)) return entry;
   const state = stackState(list), id = section?.dataset.stack, own = entry.dataset.id;
   let changed = false;
+  if (section && levelOf(state, id) === 'head') { state.levels.set(id, 'open'); changed = true; }
   if (section && entry.hidden) { state.levels.set(id, 'open'); changed = true; }
   if (section && full && own === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
   const stack = state.stacks.find(each => each.id === own || each.replies.some(item => item.id === own));
@@ -319,7 +332,8 @@ export function renameInput(list, id) {
 function paintStack(section, stack, byId, context) {
   const { state, keep, unread, nameOf, doc } = context;
   const p = parts.get(section), head = byId.get(stack.id), single = !stack.replies.length;
-  const level = single ? 'open' : state.levels.get(stack.id) ?? 'folded';
+  const level = single ? 'open' : levelOf(state, stack.id);
+  const coordination = state.coordination.has(stack.id);
   // A folded first message is its head row alone, at every level.
   const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && !state.folded.has(stack.id);
   const kept = item => {
@@ -331,6 +345,7 @@ function paintStack(section, stack, byId, context) {
   if (!single) opened(head);
   const shown = single ? { name: firstLine(stack.head.body) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
   p.toggle.dataset.state = level;
+  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(coordination && level === 'head' && state.renaming !== stack.id) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; close stack' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
@@ -377,7 +392,7 @@ function paintStack(section, stack, byId, context) {
 // fold line and the head. viewer: who reads. nameOf(actor): a person's name
 // as the page shows it. on: what the stack's own controls do (stack-feed.mjs).
 export function arrangeStacks(list, messages, options = {}) {
-  const { keep = () => false, unread = () => false, viewer = null, nameOf = id => id, on = null, doc = list.ownerDocument } = options;
+  const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, on = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
   Object.assign(state, { viewer, again: () => arrangeStacks(list, messages, options) });
   if (on) state.on = on;
@@ -387,9 +402,14 @@ export function arrangeStacks(list, messages, options = {}) {
   const stacks = ordered(gather(loaded, { viewer }));
   state.stacks = stacks;
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
+  state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
+  list.dataset.showCoordination = String(state.showCoordination);
+  state.on?.coordinationCount?.(state.coordination.size);
   const top = [], aside = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
   for (const stack of stacks) {
     const head = byId.get(stack.id);
+    head.dataset.coordination = state.coordination.has(stack.id) ? 'agents' : '';
+    // An agent coordination dossier moves below More like any other.
     const below = positionOf(stack)?.below && ![stack.head, ...stack.replies].some(item => state.peeked.has(item.id));
     const destination = below ? aside : top;
     if (!stack.replies.length && stack.placed === null) { head.hidden = false; destination.push(head); continue; }
@@ -399,16 +419,19 @@ export function arrangeStacks(list, messages, options = {}) {
     paintStack(section, stack, byId, context);
     destination.push(section);
   }
-  state.belowCount = aside.length;
-  if (aside.length && !state.more) {
+  // More counts the dossiers it would show: with Show agent coordination off,
+  // agent coordination put aside stays hidden below More too and is not counted.
+  const shownAside = aside.filter(node => state.showCoordination || node.dataset.coordination !== 'agents').length;
+  state.belowCount = shownAside;
+  if (shownAside && !state.more) {
     state.more = element(doc, 'button', 'stack-more'); state.more.type = 'button';
     state.more.onclick = () => { state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
   }
-  if (aside.length) {
-    state.more.textContent = `${state.moreOpen ? 'Hide' : 'More'} messages · ${aside.length} put aside`;
+  if (shownAside) {
+    state.more.textContent = `${state.moreOpen ? 'Hide' : 'More'} messages · ${shownAside} put aside`;
     state.more.setAttribute('aria-expanded', String(Boolean(state.moreOpen)));
     top.push(state.more, ...aside);
-  } else state.more?.remove();
+  } else { state.more?.remove(); top.push(...aside); }
   // Entries the page has that Core's messages do not name stay where they are.
   reconcile(list, top, node => !node.dataset.line && (!node.dataset.id || messages.has(node.dataset.id)));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
