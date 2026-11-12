@@ -230,7 +230,12 @@ On a message (its card focused, never in writing), these keys work:
 | ⌘Z | undo the last of these, or the last Fold or Unfold |
 
 The keys come from the shared key map (`web/pane-keys.mjs`), so the
-outline and the messages read one set of keys.
+outline and the messages read one set of keys. What ↑ ↓ and these acts leave
+selected comes into view by the one rule (docs/interaction.md, "What the keys
+select comes into view"): a message is its card, and a dossier's chevron or
+compact header is the whole dossier, its header and whatever of its body
+shows, which lands with its top a tenth below the window's top when it is
+taller than the window.
 
 The ⋯ menu offers:
 
@@ -286,7 +291,8 @@ one run, oldest first, a joined stack's first message under its "Joined from
 its own stack" line. The keys stay on the
 message the reader acted on, in its new place, and the page scrolls only as
 far as it needs to bring that message into view, with its join line above it
-where both fit. Drawn folded, as any stack is, the stack showed its head as
+where both fit, each by the one rule for what the keys select: a tenth of the
+window beyond the edge it came in at (docs/interaction.md). Drawn folded, as any stack is, the stack showed its head as
 one row and only its newest reply, so a joined stack whose replies were read
 seemed to vanish. ⌘Z puts back the join and how far the stack it went into
 was folded, with the keys on the joined stack's first message, as before.

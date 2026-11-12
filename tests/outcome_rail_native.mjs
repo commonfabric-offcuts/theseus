@@ -26,7 +26,9 @@ import { fileURLToPath } from 'node:url';
 // reload, an unconfirmed state change says where the topic stands, the
 // opening page follows a save made elsewhere while it holds no unsaved
 // writing, and a second tab on a new outcome form opens when the first
-// closes. Run by reader_persistence_native.mjs with --rail; screenshots are
+// closes. What the keys select in the rails, on the header's buttons and back
+// in the messages comes into view with a tenth of its pane beyond it (379).
+// Run by reader_persistence_native.mjs with --rail; screenshots are
 // kept as rail-*.png for review.
 const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
 const COMBOS = [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark']];
@@ -1982,5 +1984,98 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await asked(t, listed, 'topic B in the outcome\'s list'), 'NEWER question in B', 'the row opens the topic at its question');
     assert.equal(await t.evaluate(`new URL(location.href).searchParams.get('topic')`), b);
     assert.deepEqual(t.errors, []); await t.close();
+  });
+
+  await check('rail what the keys select comes into view with a tenth of its pane beyond it: the outline\'s rows under ↓ ↑ and ← back to them, the header\'s buttons under ↑ → ←, and the message → and ↓ come back to', async () => {
+    // A topic of fourteen long messages, and twenty-four more topics, so the outline is taller than the window.
+    const place = 'rail-margin';
+    await control({ method: 'navigation_topics', topics: [{ id: place, title: 'Margin' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${place}-${k}`, title: `Margin topic ${k + 1}` }))] });
+    for (let k = 0; k < 14; k++) await control({ method: 'agent_message', operation_id: `${place}-m${k}`, topic_id: place, sender: 'person', whole_topic: true, body: `Message ${k} of a long topic. ` + 'Words to read, enough for a card of a few lines. '.repeat(3) });
+    const p = await open(place, '/?topic=' + place);
+    await settled(p, 'the topic is up');
+    await until(() => p.evaluate("document.querySelectorAll('#messages [data-id]').length >= 14"), 'the messages are drawn');
+    // What has the keys, as it shows selected (a message's entry, else the element itself): its box against the
+    // area it scrolls in, the rail it is in or else the window, and how far that area is and can be scrolled.
+    const AREA = `const a=document.activeElement,e=a.closest('#messages [data-id]')??a,rail=a.closest('.rail'),s=rail?rail.getBoundingClientRect():{top:0,bottom:innerHeight},
+      areaTop=Math.max(s.top,0),areaBottom=Math.min(s.bottom,innerHeight),scroll=by=>rail?rail.scrollBy({top:by,behavior:'instant'}):scrollBy({top:by,behavior:'instant'});`;
+    const keyed = () => p.evaluate(`(()=>{${AREA}const r=e.getBoundingClientRect();
+      return {at:a.id||a.dataset.topicId||e.dataset.id||a.textContent.trim().slice(0,30),top:r.top-areaTop,bottom:r.bottom-areaTop,h:areaBottom-areaTop,
+        y:rail?rail.scrollTop:scrollY,max:rail?rail.scrollHeight-rail.clientHeight:document.documentElement.scrollHeight-innerHeight}})()`);
+    // The keys' rule (docs/interaction.md): whole, with a tenth of the area below and above it, unless the area is
+    // scrolled as far as it goes that way. from: where it was before the key, when it was there to measure.
+    const roomy = async words => {
+      const a = await keyed(), room = a.h * 0.1, said = `${words}: ${JSON.stringify(a)}`;
+      assert.ok(a.top >= -0.5 && a.bottom <= a.h + 0.5, `${said}: it shows whole`);
+      if (a.y < a.max - 0.5) assert.ok(a.bottom <= a.h - room + 1.5, `${said}: a tenth of its area shows below it`);
+      if (a.y > 0.5) assert.ok(a.top >= room - 1.5, `${said}: a tenth of its area shows above it`);
+      return a;
+    };
+    // Before a key: the area what will have the keys scrolls in scrolled so it stands 4px inside the area's top
+    // edge, or its bottom one where the top cannot be reached, whole, where scrolling only as far as it needs
+    // would leave it. el: an expression for that element, run with the keys still where they are.
+    const edge = async (el, words) => {
+      const side = await p.evaluate(`(()=>{const t=${el};${AREA.replace('const a=document.activeElement', 'const a=t')}
+        const r=()=>t.getBoundingClientRect();scroll(r().top-areaTop-4);if(Math.abs(r().top-areaTop-4)<=1)return 'top';
+        scroll(r().bottom-(areaBottom-4));return Math.abs(r().bottom-(areaBottom-4))<=1?'bottom':null})()`);
+      assert.ok(side, `${words}: before the key, what it goes to stands 4px inside its area's top or bottom edge`);
+    };
+    // ↓ or ↑ along the outline from where the keys are to its end, each row by the rule; one already a tenth
+    // inside scrolls nothing.
+    const walk = async (key, words) => {
+      const ys = [];
+      let before = await keyed();
+      for (let n = 0; n < 80; n++) {
+        await p.key(key);
+        const now = await keyed();
+        if (now.at === before.at) break;
+        const moved = now.y - before.y, room = now.h * 0.1, was = { top: now.top + moved, bottom: now.bottom + moved };
+        await roomy(`${words}, onto ${now.at}`);
+        if (was.top >= room + 1.5 && was.bottom <= now.h - room - 1.5) assert.equal(moved, 0, `${words}, onto ${now.at}: a row already a tenth inside scrolls nothing: ${JSON.stringify({ was, now })}`);
+        ys.push(now.y); before = now;
+      }
+      assert.ok(new Set(ys).size >= 3, `${words}: the outline scrolled as the keys went: ${JSON.stringify(ys)}`);
+    };
+    await tabToOutline(p);
+    assert.equal(await keyedAt(p), 'topic:' + place, 'Tab reaches the outline on the topic being read');
+    await p.key('Home');
+    await walk('ArrowDown', '↓ down the outline');
+    await walk('ArrowUp', '↑ up the outline');
+    // → into the messages and ← back: the outline takes the keys to the topic's row, scrolled to the rule.
+    await p.key('End'); await p.key('Home');
+    for (let n = 0; n < 80 && await keyedAt(p) !== 'topic:' + place; ++n) await p.key('ArrowDown');
+    await p.key('ArrowRight');
+    assert.match(await keyedAt(p), /^message:/, '→ goes into the messages');
+    const message = await keyedAt(p);
+    await edge(`document.querySelector('#outline a[data-topic-id="${place}"]')`, '←');
+    await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'topic:' + place, '← comes back to the topic\'s row');
+    await roomy('← back to the outline, from its rail\'s edge');
+    // → back into the messages, the message the keys left standing at the window's edge.
+    await edge(`document.querySelector('#messages [data-id="${message.slice(8)}"]')`, '→');
+    await p.key('ArrowRight');
+    assert.equal(await keyedAt(p), message, '→ comes back to the message the keys left');
+    await roomy('→ back into the messages, from the window\'s edge');
+    // Up to the message at the top, then ↑ onto the header's buttons, each standing at the window's top edge.
+    const first = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].find(e=>e.checkVisibility()).dataset.id");
+    for (let n = 0; n < 40 && await keyedAt(p) !== 'message:' + first; ++n) await p.key('ArrowUp');
+    assert.equal(await keyedAt(p), 'message:' + first, '↑ reaches the message at the top');
+    await edge("document.getElementById('settings-open')", '↑ onto the header');
+    await p.key('ArrowUp');
+    assert.equal(await keyedAt(p), 'settings-open', '↑ from the top message goes to the header\'s first button');
+    await roomy('↑ onto the header\'s first button, from the window\'s top edge');
+    await edge("document.getElementById('new-message')", '→ along the header');
+    await p.key('ArrowRight');
+    assert.equal(await keyedAt(p), 'new-message', '→ goes to the next button');
+    await roomy('→ along the header\'s buttons, from the window\'s top edge');
+    await edge("document.getElementById('settings-open')", '← along the header');
+    await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'settings-open', '← goes to the button before');
+    await roomy('← along the header\'s buttons, from the window\'s top edge');
+    // ↓ from the header back to the message at the top, standing at the window's top edge.
+    await edge(`document.querySelector('#messages [data-id="${first}"]')`, '↓ from the header');
+    await p.key('ArrowDown');
+    assert.equal(await keyedAt(p), 'message:' + first, '↓ from the header goes to the message at the top');
+    await roomy('↓ from the header\'s buttons, from the window\'s top edge');
+    assert.deepEqual(p.errors, []); await p.close();
   });
 }

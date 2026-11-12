@@ -15,10 +15,11 @@
 // stack is folded is the page's own; a message folded to its row is the
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
-import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, unkeep } from './reply-stacks.mjs';
+import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep } from './reply-stacks.mjs';
 import { moveOf, joinShown, foldStep, laterActs } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
+import { revealSelection } from './reveal.mjs';
 
 const FIELD = { 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo'];
@@ -185,7 +186,7 @@ export class StackFeed {
   // The message's entry, its stack and its card.
   entryFor(id) { return entries(this.list).find(entry => entry.dataset.id === id) ?? null; }
   // Puts the keys on a message, or on its stack's head when the stack folds it
-  // away, and scrolls it into view only as far as it needs. above: something
+  // away, and scrolls it into view with room beyond it (reveal.mjs). above: something
   // over it to bring into view with it where both fit (a join line).
   focusOn(id, { above = null } = {}) {
     const entry = this.entryFor(id);
@@ -194,8 +195,8 @@ export class StackFeed {
     if (!target) return;
     const card = cardIn(target), stop = card.hidden ? target.querySelector?.('.fold-line') ?? card : card;
     stop.focus({ preventScroll: true });
-    above?.scrollIntoView?.({ block: 'nearest' });
-    target.scrollIntoView?.({ block: 'nearest' });
+    if (above) revealSelection(above);
+    revealSelection(shownSelected(target));
   }
   // A star keeps a message in view: starring a folded message unfolds it too.
   star(item) {

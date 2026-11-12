@@ -4843,8 +4843,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "above?.scrollIntoView?.({ block: 'nearest' })",
-     "above?.scrollIntoView?.({ block: 'start' })"
+     "if (above) revealSelection(above);",
+     "if (above) above.scrollIntoView({ block: 'start' });"
     ]
    ],
    "check": {
@@ -4858,7 +4858,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    above?.scrollIntoView?.({ block: 'nearest' });\n",
+     "    if (above) revealSelection(above);\n",
      ""
     ]
    ],
@@ -4873,7 +4873,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    target.scrollIntoView?.({ block: 'nearest' });\n",
+     "    revealSelection(shownSelected(target));\n",
      ""
     ]
    ],
@@ -6495,6 +6495,281 @@
    "check": {
     "native": "rail",
     "case": "a press on an outline row puts the focus"
+   }
+  },
+  {
+   "item": 379,
+   "act": "↑ and ↓ bring the lit message fully into view, scrolling the least that leaves a tenth of the window beyond the edge it came in at; one already a tenth inside stays",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "revealSelection(shownSelected(next));",
+     "next.scrollIntoView({ block: 'nearest' });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading ↓ and ↑ down a long feed"
+   }
+  },
+  {
+   "item": 379,
+   "act": "A dossier's compact header selected by the keys brings the whole dossier into view; one taller than the window lands with its top a tenth below the top",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "return head ? section : stop;",
+     "return stop;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a dossier taller than the window"
+   }
+  },
+  {
+   "item": 379,
+   "act": "Selected by the keys, one taller than the scrolling area puts its top a tenth below the area's top, going down or up",
+   "break": [
+    [
+     "web/reveal.mjs",
+     "if (size > height) return selection.top - (area.top + height * margin);",
+     "if (size > height) return selection.top - area.top;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reveal.test.mjs"
+   }
+  },
+  {
+   "item": 379,
+   "act": "Selected by the keys, one that fits but not with a whole tenth beside it shows whole, with the room there is",
+   "break": [
+    [
+     "web/reveal.mjs",
+     "const room = Math.min(height * margin, height - size);",
+     "const room = height * margin;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reveal.test.mjs"
+   }
+  },
+  {
+   "item": 379,
+   "act": "The scrolling area leaves out the scroll-padding a page declares at its top and bottom",
+   "break": [
+    [
+     "web/reveal.mjs",
+     "Math.max(shown.top, 0) + padding(style, 'Top')",
+     "Math.max(shown.top, 0)"
+    ],
+    [
+     "web/reveal.mjs",
+     "Math.min(shown.bottom, view.innerHeight) - padding(style, 'Bottom')",
+     "Math.min(shown.bottom, view.innerHeight)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reveal.test.mjs"
+   }
+  },
+  {
+   "item": 379,
+   "act": "A box that stays put on the screen, a sticky rail or a fixed drawer, scrolls its own rows when they fit, never the page under it",
+   "break": [
+    [
+     "web/reveal.mjs",
+     "if (style.position === 'fixed') return at;",
+     "if (false) return at;"
+    ],
+    [
+     "web/reveal.mjs",
+     "|| style.position === 'sticky')",
+     "|| false)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reveal.test.mjs"
+   }
+  },
+  {
+   "item": 379,
+   "act": "What the keys select scrolls into view at once, with no animation",
+   "break": [
+    [
+     "web/reveal.mjs",
+     "else view.scrollBy({ top: by, behavior: 'instant' });",
+     "else view.scrollBy({ top: by, behavior: 'smooth' });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reveal.test.mjs"
+   }
+  },
+  {
+   "item": 379,
+   "act": "On the cards page, ↑ and ↓ bring the picked card into view with a tenth of the window beyond it",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });",
+     "    row.scrollIntoView({ block: 'nearest' });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, every key that leaves a card picked"
+   }
+  },
+  {
+   "item": 379,
+   "act": "On the cards page, every key that moves the picked card or leaves it picked (⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓, Tab and ⇧Tab, ⌘⌫, ⌘Z, Escape) brings it into view by the same rule",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "event => { this.keyed = true; try",
+     "event => { this.keyed = false; try"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, every key that leaves a card picked"
+   }
+  },
+  {
+   "item": 379,
+   "act": "On the cards page, a card being written that ⌘↑ or ⌘↓ moves comes into view by the same rule",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "if (this.keyed && !this.phone) revealSelection(editing.field.closest('li'));",
+     "if (false) revealSelection(editing.field.closest('li'));"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, every key that leaves a card picked"
+   }
+  },
+  {
+   "item": 379,
+   "act": "On the cards page, a click on a card leaves the page where it is",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });",
+     "    revealSelection(row);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, every key that leaves a card picked"
+   }
+  },
+  {
+   "item": 379,
+   "act": "↓ and ↑ along a rail's rows bring each row into view with a tenth of the rail beyond it; one already a tenth inside stays",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "row.el.focus({ preventScroll: true }); revealSelection(row.el); }",
+     "row.el.focus({ preventScroll: true }); row.el.scrollIntoView({ block: 'nearest' }); }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail what the keys select comes into view"
+   }
+  },
+  {
+   "item": 379,
+   "act": "← back to the outline brings the row the keys land on into view by the same rule",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    this.visit(row); row.el.focus({ preventScroll: true }); revealSelection(row.el);",
+     "    this.visit(row); row.el.focus({ preventScroll: true }); row.el.scrollIntoView({ block: 'nearest' });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail what the keys select comes into view"
+   }
+  },
+  {
+   "item": 379,
+   "act": "↑ onto the header's buttons, and ← and → along them, bring the button into view by the same rule",
+   "break": [
+    [
+     "web/panes.mjs",
+     "const reach = el => { el.focus({ preventScroll: true }); revealSelection(el); return true; };",
+     "const reach = el => { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); return true; };"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail what the keys select comes into view"
+   }
+  },
+  {
+   "item": 379,
+   "act": "→ from the outline, or ↓ from the header's buttons, back into the messages brings the message into view by the same rule",
+   "break": [
+    [
+     "web/panes.mjs",
+     "revealSelection(shownSelected(stop.matches('.stack-toggle') ? stop : stop.closest('[data-id]')));",
+     "stop.closest('[data-id]')?.scrollIntoView({ block: 'nearest' });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail what the keys select comes into view"
+   }
+  },
+  {
+   "item": 379,
+   "act": "A dossier's chevron selected by the keys brings the whole dossier into view; one taller than the window lands with its top a tenth below the top",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "(stop.classList.contains('stack-toggle') || (stop.dataset.id",
+     "(false || (stop.dataset.id"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a dossier showing its whole first message"
+   }
+  },
+  {
+   "item": 379,
+   "act": "↓ and ↑ in the #img list bring the image chosen into view with a tenth of the list beyond it",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "    revealSelection(this.list.querySelector('[aria-selected=true]'));",
+     "    this.list.querySelector('[aria-selected=true]')?.scrollIntoView({ block: 'nearest' });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading #img: ↓ and ↑ through a long list"
+   }
+  },
+  {
+   "item": 379,
+   "act": "On the cards page, a card a key opens for writing (Return, ⌘Return, or ↑ ↓ at a written card's edge) comes into view by the same rule, once its box has the height it keeps",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (keyed && !this.phone) revealSelection(field.closest('li'));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook on the cards page, every key that leaves a card picked"
    }
   }
  ]

@@ -4,6 +4,7 @@ import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 import { WritingInput } from './writing-input.mjs';
+import { revealSelection } from './reveal.mjs';
 
 const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
@@ -47,7 +48,9 @@ export class DeckPage {
     // held: a refusal stopped saving until Try again. notebook: the Notebook's version when the page was read.
     // room: where an ask goes. talks: each stack's {replies, unread}, by its first message. asking: the ask being written.
     Object.assign(this, { base: null, source: null, notebook: null, acts: [], undos: [], sending: null, owed: false, held: false,
-      readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, talks: new Map(), asking: null, drafts: new Map() });
+      readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, talks: new Map(), asking: null, drafts: new Map(),
+      // keyed: a key is acting (show).
+      keyed: false });
     // The cards selected together, by index, the picked card among them; and where a ⇧ selection began, with
     // the cards ⌘-clicked before it, which it keeps.
     Object.assign(this, { selected: new Set(), anchor: null });
@@ -78,7 +81,8 @@ export class DeckPage {
     // The count and the buttons stand above the cards, where a phone's keyboard never covers Done.
     host.replaceChildren(this.status, this.opening, this.bar, this.keys, this.list,
       label('deck-editor-label', 'Writing: the first line is the heading, the rest its words'), label('deck-ask-label', 'Ask an agent about this'));
-    doc.addEventListener('keydown', event => this.key(event));
+    // While a key acts, whatever it leaves picked comes into view by the keys' rule (show, reveal.mjs).
+    doc.addEventListener('keydown', event => { this.keyed = true; try { this.key(event); } finally { this.keyed = false; } });
     // A card under the pointer shows its speech bubble, and the pointer's highlights, only while the pointer is in
     // use: macOS hides the pointer while a person types, and the cards the keys scroll under it would light up one
     // by one. A move of the mouse itself, not of the page under it, puts the pointer in use, and any key but a
@@ -491,12 +495,14 @@ export class DeckPage {
     try { if (card) globalThis.sessionStorage.setItem(`deck:${this.item}`, JSON.stringify({ text: cardText(card), at: this.picked })); } catch {}
   }
   // The picked card in view; on a laptop it takes the focus when the deck has it (or nothing does).
-  // A phone has no keys for the deck, so its cards never take the focus.
+  // A phone has no keys for the deck, so its cards never take the focus. Wherever a key leaves it picked, moved,
+  // merged, put back or picked again, the card keeps room below and above it (reveal.mjs); a click leaves the page
+  // where it is.
   show(focus) {
     const row = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
     if (!row) return;
     if (this.phone) { this.list.scrollTo({ left: [...this.list.querySelectorAll('.deck-card:not([hidden])')].indexOf(row) * this.list.clientWidth }); return; }
-    row.scrollIntoView({ block: 'nearest' });
+    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });
     if (focus) row.focus({ preventScroll: true });
   }
 
@@ -548,7 +554,11 @@ export class DeckPage {
     field.setAttribute('aria-labelledby', 'deck-editor-label');
     field.addEventListener('input', () => this.fit(field));
     this.editing = { ...editing, field, input: new WritingInput({ field }) };
+    // A key that opens the card brings it into view once the box has the height it keeps, not before (paint).
+    const keyed = this.keyed;
+    this.keyed = false;
     this.paint();
+    this.keyed = keyed;
     // On a laptop the box keeps the height its card showed at, less the room around it, and grows only when what is
     // written needs more, so the text stays where it stood (aim.css reads --kept there; a phone's box has its own).
     if (editing.height) {
@@ -558,6 +568,7 @@ export class DeckPage {
     }
     const at = Math.min(editing.at ?? field.value.length, field.value.length);
     field.setSelectionRange(at, at);
+    if (keyed && !this.phone) revealSelection(field.closest('li'));
   }
   // Tab, ⇧Tab, ⌘↑ or ⌘↓ while a card is written: the card moves by the rules of a picked card, and is saved there,
   // while the writing and the cursor stay as they were; the writing is saved when the card is finished. A new card
@@ -798,7 +809,9 @@ export class DeckPage {
       editing.field.focus({ preventScroll: true });
       if (selection) editing.field.setSelectionRange(...selection);
       this.fit(editing.field);
-      editing.field.closest('li').scrollIntoView({ block: 'nearest', inline: 'center' });
+      // The card being written, moved by a key on a laptop, keeps that room too (open() reveals a card a key opens).
+      if (this.keyed && !this.phone) revealSelection(editing.field.closest('li'));
+      else editing.field.closest('li').scrollIntoView({ block: 'nearest', inline: 'center' });
     } else if (asking && asking.form.contains(focused)) {
       focused.focus({ preventScroll: true });
       if (focused === asking.field) asking.field.setSelectionRange(...asked);

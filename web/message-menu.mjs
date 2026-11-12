@@ -20,7 +20,8 @@ import { cardIn } from './fold.mjs';
 import { pageItself, writing } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
-import { entries, entryOf, navigationStops, stopAt } from './reply-stacks.mjs';
+import { entries, entryOf, navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
+import { revealSelection } from './reveal.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -269,7 +270,7 @@ export class MessageMenu {
     this.light(next.matches('.stack-toggle') ? null : next);
     const target = cardIn(next).hidden ? next.querySelector('.fold-line') : cardIn(next);
     target?.focus({ preventScroll: true });
-    next.scrollIntoView({ block: 'nearest' });
+    revealSelection(shownSelected(next));
     this.place();
   }
   // ⌘C (Ctrl-C off a Mac) with no words selected copies the lit message's

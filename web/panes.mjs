@@ -9,8 +9,9 @@
 // buttons at the top of the feed (headerKey), and ⌘Return anywhere outside
 // writing starts a new message (write).
 import { cardIn } from './fold.mjs';
-import { navigationStops, stopAt } from './reply-stacks.mjs';
+import { navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
 import { keyAction, writing, pageItself } from './pane-keys.mjs';
+import { revealSelection } from './reveal.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 // On screen: shown, inside the window, and not behind an open drawer.
@@ -54,7 +55,7 @@ function atTop(doc) {
   if (!first || stopAt(list, at, stops) !== first) return false;
   return at.matches('.stack-toggle') || at === cardIn(first) || at === first.querySelector('.fold-line');
 }
-const reach = el => { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); return true; };
+const reach = el => { el.focus({ preventScroll: true }); revealSelection(el); return true; };
 
 export const panes = {
   // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page;
@@ -66,7 +67,7 @@ export const panes = {
     const stop = feedStop(doc, options) ?? doc.getElementById('main');
     if (!stop || stop.closest('[inert]')) return false;
     stop.focus({ preventScroll: true });
-    if (stop !== doc.getElementById('main')) stop.closest('[data-id]')?.scrollIntoView({ block: 'nearest' });
+    if (stop !== doc.getElementById('main')) revealSelection(shownSelected(stop.matches('.stack-toggle') ? stop : stop.closest('[data-id]')));
     return true;
   },
   // From the pane named, one step: 'left' or 'right'. Answers whether the keys moved.

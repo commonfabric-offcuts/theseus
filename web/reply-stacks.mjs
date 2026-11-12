@@ -49,6 +49,17 @@ export function navigationStops(list) {
   return stops;
 }
 
+// What a stop shows as selected, which the keys bring into view whole
+// (reveal.mjs): a dossier's chevron, or its compact header standing for it,
+// is the whole dossier, its header and whatever of its body shows; anything
+// else, a message on its own included, is itself.
+export function shownSelected(stop) {
+  const section = stop?.closest?.('.reply-stack');
+  if (!section || section.dataset.single === 'true') return stop;
+  const head = stop.parentElement === section && (stop.classList.contains('stack-toggle') || (stop.dataset.id === section.dataset.stack && section.dataset.headOpen === 'false'));
+  return head ? section : stop;
+}
+
 // The stop among stops that a focused element in the list stands for. A
 // dossier's chevron is its own stop while the dossier is fully expanded, and
 // otherwise stands for the dossier's head entry, its compact header; anything

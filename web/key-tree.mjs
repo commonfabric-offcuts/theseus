@@ -12,6 +12,7 @@
 // takes the place back, and the focus with it when the focus was in the pane
 // and went with the old element.
 import { keyAction } from './pane-keys.mjs';
+import { revealSelection } from './reveal.mjs';
 
 const shown = el => el.isConnected && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 
@@ -95,10 +96,10 @@ export class KeyTree {
     this.refresh();
     const rows = this.list(), row = (prefer && rows.find(prefer)) ?? rows.find(each => each.el === this.current) ?? rows[0];
     if (!row) return false;
-    this.visit(row); row.el.focus({ preventScroll: true }); row.el.scrollIntoView?.({ block: 'nearest' });
+    this.visit(row); row.el.focus({ preventScroll: true }); revealSelection(row.el);
     return true;
   }
-  go(row) { if (!row) return; this.visit(row); row.el.focus({ preventScroll: true }); row.el.scrollIntoView?.({ block: 'nearest' }); }
+  go(row) { if (!row) return; this.visit(row); row.el.focus({ preventScroll: true }); revealSelection(row.el); }
   say(words) { this.status.textContent = ''; this.status.textContent = words; }
   key(event) {
     const action = keyAction(event);

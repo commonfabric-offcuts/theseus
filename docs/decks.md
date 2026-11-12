@@ -33,6 +33,14 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 
 ## Acts
 
+Whatever card a key leaves picked comes into view by the one rule for what
+the keys select (docs/interaction.md, "What the keys select comes into view"):
+one picked by ↑ ↓ ← →, moved by ⌘↑ ⌘↓, merged by ⇧⌘↑ ⇧⌘↓, moved in or out by
+Tab or ⇧Tab, put back by ⌘Z, left picked by ⌘⌫ or Escape, and a card being
+written that Return opens or ⌘↑ ⌘↓ move. A click on a card leaves the page
+where it is. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
+act a key starts reads the rule, whichever path paints the card.
+
 | act | laptop | phone |
 | --- | --- | --- |
 | pick the card above or below | ↑ ↓ | swipe |

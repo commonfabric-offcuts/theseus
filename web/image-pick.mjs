@@ -2,6 +2,7 @@
 // topic's recent images, the thumbnail on each image row, and whether the
 // image button can say "Paste image".
 import { shownTime } from './times.mjs';
+import { revealSelection } from './reveal.mjs';
 
 const node = (doc, tag, text, className) => {
   const el = doc.createElement(tag);
@@ -192,7 +193,8 @@ export class ImagePick {
     this.field.setAttribute('aria-controls', this.list.id); this.field.setAttribute('aria-expanded', 'true');
     if (shown.length) this.field.setAttribute('aria-activedescendant', `${this.list.id}-${this.active}`);
     else this.field.removeAttribute('aria-activedescendant');
-    this.list.querySelector('[aria-selected=true]')?.scrollIntoView({ block: 'nearest' });
+    // The option the keys are on, with room beyond it (reveal.mjs).
+    revealSelection(this.list.querySelector('[aria-selected=true]'));
   }
   close() {
     if (!this.query && !this.open) return;
