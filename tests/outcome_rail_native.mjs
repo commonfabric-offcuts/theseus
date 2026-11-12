@@ -1275,8 +1275,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowDown');
     const lit = await keyedAt(p);
     assert.ok(lit.startsWith('message:') && lit !== first, '↓ moves to the next message');
-    // → again: the right rail, on its first section.
-    await p.key('ArrowRight');
+    // Plain arrows take up to two stack steps before the next press leaves.
+    // Keep proving rail entry from either a standalone card or a stack.
+    const leaveFeed = async key => {
+      for (let step = 0; step < 3; step++) {
+        await p.key(key);
+        if (!(await keyedAt(p)).startsWith('message:')) return;
+      }
+      assert.fail(key + ' did not leave the feed after the stack boundary');
+    };
+    await leaveFeed('ArrowRight');
     const things = await keyedAt(p);
     assert.match(things, /^things:[a-z]+$/, '→ from the messages goes to the right rail, on a section: ' + things);
     assert.equal(await p.evaluate("Boolean(document.querySelector('#messages .lit'))"), false, 'the rail owns the highlight; the feed remembers its place without a second light');
@@ -1296,7 +1304,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     if (await sectionOpen()) { await p.key('ArrowLeft'); await until(async () => !await sectionOpen(), '← on an open section folds it'); }
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), lit, '← from the right rail comes back to the message last lit');
-    await p.key('ArrowLeft');
+    await leaveFeed('ArrowLeft');
     assert.equal(await keyedAt(p), 'topic:t1', '← from the messages comes back to the topic in the outline');
     assert.equal(await p.evaluate("Boolean(document.querySelector('#messages .lit'))"), false, 'the outline alone owns the highlight');
     // → from a topic not being read goes to the messages being read all the same, and ← comes back to the topic they are in.
@@ -1304,7 +1312,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (let n = 0; n < topics.length && await keyedAt(p) !== 'topic:rail-kbd-p2'; ++n) await p.key(topics.indexOf('topic:rail-kbd-p2') > topics.indexOf('topic:t1') ? 'ArrowDown' : 'ArrowUp');
     await p.key('ArrowRight');
     assert.match(await keyedAt(p), /^message:/, '→ from another topic goes to the messages');
-    await p.key('ArrowLeft');
+    await leaveFeed('ArrowLeft');
     assert.equal(await keyedAt(p), 'topic:t1', '← comes back to the topic being read');
     // A move in place and back: the right rail keeps its place.
     for (let n = 0; n < topics.length && await keyedAt(p) !== 'topic:rail-kbd-p2'; ++n) await p.key(topics.indexOf('topic:rail-kbd-p2') > topics.indexOf('topic:t1') ? 'ArrowDown' : 'ArrowUp');
@@ -1320,7 +1328,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => await keyedAt(p) === 'topic:t1', 'the keys stay on the topic');
     await p.key('ArrowRight');
     assert.match(await keyedAt(p), /^message:/, '→ goes to the messages again');
-    await p.key('ArrowRight');
+    await leaveFeed('ArrowRight');
     assert.equal(await keyedAt(p), 'things:' + sections[1], 'and → to the right rail, on the section it was on');
     await p.key('ArrowLeft');
     const back = await keyedAt(p);
@@ -1399,7 +1407,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const p = await open('rail-kbd-tree', '/?topic=t1');
     await settled(p, 'the topic is up');
     assert.deepEqual(await p.evaluate("(()=>{const k=document.getElementById('outline-keys');return [k.querySelector('summary').textContent,[...k.querySelectorAll('dl')].map(l=>[...l.querySelectorAll('dt')].map(d=>d.textContent)),k.querySelector('.ol-keys-part')?.textContent]})()"),
-      ['Keys', [['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], ['↑ ↓', '⌘↑ ⌘↓', '⌘→ ⌘←', '⇧⌘↑ ⇧⌘↓', '⌘Z']], 'In the messages'],
+      ['Keys', [['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], ['↑ ↓', '⌘↑ ⌘↓', '→ ←', '⇧⌘↑ ⇧⌘↓', '⌘Z']], 'In the messages'],
       'the outline lists its keys, then the messages\' keys');
     await tabToOutline(p);
     assert.equal(await keyedAt(p), 'topic:t1');

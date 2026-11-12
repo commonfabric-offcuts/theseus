@@ -561,7 +561,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(async () => await litId() === ask && await quiet(p, `!document.querySelector('.message-bar').hidden`), 'the stacked ask is lit, with its bar');
     await p.point('.message-bar [data-act=more]');
     assert.deepEqual(await until(() => quiet(p, `(l=>l&&[...l.querySelectorAll('button')].map(b=>b.textContent))(document.querySelector('.message-menu-list'))`), 'the menu opens'),
-      ['Star for me', 'Fold into earlier replies', 'Copy Link', 'Mark unread', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack⌘←', 'Open its stack⌘→',
+      ['Star for me', 'Fold into earlier replies', 'Copy Link', 'Mark unread', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack←', 'Open its stack→',
         'Join the stack above⇧⌘↑', 'Join the stack below⇧⌘↓', 'Undo⌘Z']);
     await p.key('Escape'); await until(() => quiet(p, `!document.querySelector('.message-menu-list')`), 'Escape closes it');
     // A stack whose top message is the New item and no reply under it is New: the person adds to their own question, and the coordinator answers only that.
