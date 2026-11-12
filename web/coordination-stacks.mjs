@@ -3,5 +3,6 @@
 // This is a presentation choice, never a delivery or unread decision.
 export function coordinationStack(stack, quiet) {
   const items = [stack.head, ...stack.replies], ids = new Set(items.map(item => item.id));
-  return items.every(item => quiet(item) && (!item.reply_to || ids.has(item.reply_to)));
+  return items.every(item => quiet(item) && (!item.reply_to || ids.has(item.reply_to))
+    && (!item.acts?.joined?.into || ids.has(item.acts.joined.into)));
 }
