@@ -165,6 +165,48 @@ message is hidden on purpose. On a laptop To keeps its one row of the
 topic's people and the field, in the who panel; the sheet never opens there
 (`web/compose-bar.mjs`, `wireNaming`).
 
+## Naming who a message is to
+
+Writing in either composer (the Reader's reply and the topic's composer)
+that starts with one or more @names, each naming a member of the topic, goes
+to exactly those members, in place of the default: the author a reply
+answers, or everyone with nobody named. "@auditor can you reply here?",
+written as a reply to fable's message, goes to auditor, not fable. A member
+is someone the topic's messages can be sent to: its participants and the
+outcome's team, switched on, other than the writer, named by actor id or
+name in any case (an id wins over a name; a name two members share names
+nobody). The names are read from the start: each is "@" and a word of
+letters, digits, `_`, `.` and `-`, ended by a space, the end, or one of
+`, : ; ! ?` (a `.` ending it is not part of it). The first word that names no
+member ends them, and an @word that names no member is plain text: the
+default stands, and nothing is said of it. The words stay in the message as
+written. Whether it whispers, tells or asks follows the composer's own rule
+for the names it goes to (docs/whispers.md), so one agent named in a topic
+is a whisper and two are a Tell, and in the outcome's conversation it is a
+Tell.
+
+**The line under the chip** says who it goes to as it is typed, in the
+composer's quiet words: "To auditor", "To auditor and fable", or the
+default, "To fable" for a reply to fable and "To everyone here" for the
+topic (`web/whisper-choice.mjs` `toWords`). The chip, Send's word and the
+who panel's sentence follow the same names; the who panel's chips still
+show who was named by a tap, and the name field still names them.
+
+**Core records it.** `submission.prepare`, which freezes the writing the
+page saved, records as its addressees the members its leading @names name
+(`aim_next/addressing.py`), whatever the draft named, so the message on the
+record goes where the line said. The person it is addressed to answers it in
+place, as anyone a message names (in the conversation, it is theirs to
+answer: docs/conversation.md); the members it is not addressed to are treated
+as for any message not addressed to them (docs/attention.md, "Messages
+between others"). The page reads the same rule (`web/at-names.mjs`) only to
+say it beforehand; both are held to one table of cases
+(`tests/fixtures/at_names.json`). The topic's participants come with their
+names (`topic.participants[].name`), as the team's do. Messages posted
+through `message.post`, an agent's `post --asks/--tells`, keep the
+addressees they name; messages already sent keep theirs; and a new topic's
+opening, which names its people as it is made, is unchanged.
+
 ## New message
 
 A quiet ✎ at the top of a topic opens the same composer with no message

@@ -117,6 +117,15 @@ export function chipWords(state, names, everyone = [], options = {}) {
   return `${verb} ${list(names)} · ${short}`;
 }
 
+// Who the message goes to, in the composer's quiet line under the who chip
+// (docs/reader.md, "Naming who a message is to"): "To auditor", or with
+// nobody named "To everyone here" ("To everyone in the conversation" when
+// posted elsewhere). It follows the writing as it is typed, so a leading
+// @name shows here before Send.
+export function toWords(names, place = null) {
+  return names.length ? `To ${list(names)}` : place ? `To everyone in ${place}` : 'To everyone here';
+}
+
 // The word on Send: what pressing it does. A message to nobody by name is
 // sent to the topic, so it says Send.
 export function sendWord(state, names) {
@@ -132,8 +141,9 @@ export function sendWord(state, names) {
 // lineHost: where the sentence saying who sees it goes, when not under the
 // chips (the composer's who panel puts it first).
 // place: where the writing is posted when that is not the topic being read (audienceWords).
+// to: the quiet line that says who it goes to (toWords), when the composer has one.
 export function paintChoice(row, { draft, names, kindOf, everyone, send, field, chip = null, lineHost = null, readOnly = false, answeringWhisper = false,
-  conversation = false, place = null, onChoose }) {
+  conversation = false, place = null, to = null, onChoose }) {
   if (!row.querySelector('.intent-choice')) {
     const group = node('div', undefined, 'intent-choice');
     group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'How this is sent');
@@ -174,6 +184,8 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
   field?.classList.toggle('whispering', state.choice === 'whisper');
   const word = send?.querySelector('.send-word');
   if (word) word.textContent = sendWord(state, names);
+  // Painted on every keystroke: only a change is written, so a screen reader hears it once.
+  if (to) { const words = toWords(names, place); if (to.textContent !== words) to.textContent = words; to.hidden = false; }
   if (chip) {
     chip.textContent = chipWords(state, names, everyone, { answeringWhisper, place });
     chip.classList.toggle('whispering', state.choice === 'whisper');
@@ -182,8 +194,9 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
 }
 
 // Takes the choice away, as a private note or a closed composer has none.
-export function clearChoice(row, field, send, lineHost = null) {
+export function clearChoice(row, field, send, lineHost = null, to = null) {
   row.replaceChildren(); lineHost?.replaceChildren(); row.choose = null;
+  if (to) { to.textContent = ''; to.hidden = true; }
   field?.classList.remove('whispering');
   const word = send?.querySelector('.send-word');
   if (word) word.textContent = 'Send';

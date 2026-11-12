@@ -480,11 +480,13 @@ class Conversation:
         topic = self._topic(db, actor, args.get("topic_id"))
         # Each participant's note on what they are responsible for, whole up to its bound.
         participants = []
-        for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(CAST(p.responsibility AS BLOB),1,1025) AS note_prefix,p.responsibility_revision,a.enabled,a.kind "
+        for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(CAST(p.responsibility AS BLOB),1,1025) AS note_prefix,p.responsibility_revision,a.enabled,a.kind,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix "
                               "FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?",
                               (topic["id"], LIMITS["workspace_members" if topic["kind"] == "conversation" else "topic_participants"])):
             item = dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"]))
             item["responsibility"], item["responsibility_truncated"] = _prefix(item.pop("note_prefix") or b"")
+            # The name the page matches a leading @name against, as workspace_members gives it (addressing.py).
+            item["name"], item["name_truncated"] = _prefix(item.pop("name_prefix") or b"")
             participants.append(item)
         summary = dict(db.execute("SELECT topic_id,message_count,latest_message_id FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
         waits = self._waits_by_topic(db, [topic["id"]])

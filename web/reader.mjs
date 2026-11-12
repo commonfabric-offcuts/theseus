@@ -11,6 +11,7 @@ import { paintChanges } from './page-changes.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { drawPassages, sourcePosition } from './message-format.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
+import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { ComposeBar } from './compose-bar.mjs';
 import { copyText, COPY_REFUSED } from './message-menu.mjs';
@@ -77,7 +78,7 @@ export class Reader {
     // Naming someone on a phone: the who panel's named chips and + Someone,
     // then the naming sheet (docs/reader.md).
     this.naming = { opener: this.$('recipient-open'), sheet: this.$('recipient-sheet'), field: this.$('recipient-input'),
-      back: [this.$('recipient-back'), this.$('recipient-done')], named: this.$('recipient-named'), add: name => this.addName(name), names: () => this.names() };
+      back: [this.$('recipient-back'), this.$('recipient-done')], named: this.$('recipient-named'), add: name => this.addName(name), names: () => this.own() };
     this.compose = new ComposeBar({ root: this.$('reader-composer'), field: this.field, notice: this.$('reader-notice'),
       panels: { who: this.$('who-panel'), plus: this.$('plus-panel') }, openers: { who: this.$('who-chip'), plus: this.$('plus-button') },
       // + asks the clipboard as it opens, so its first tile says Paste image when it can.
@@ -672,12 +673,12 @@ export class Reader {
     // writing names. Taking someone off declines any offer of them, and writes
     // only when the writing already names them: typing takes the offer without
     // redrawing these chips, so the press, not the drawing, decides which.
-    const named = recipientChoices(this.names(editor)).map(({ name }) => name);
+    const named = recipientChoices(this.own(editor)).map(({ name }) => name);
     const off = name => this.removeName(name, editor, presentation);
     paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [], named: [...new Set(named)],
       reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.addName(name) : off(name),
       summary: this.naming && { host: this.naming.named, opener: this.naming.opener } });
-    this.callbacks.recipientsPainted?.(this.names(editor), editor.context.topicId);
+    this.callbacks.recipientsPainted?.(this.own(editor), editor.context.topicId);
     // Who is named may have changed: what Send said goes if no longer true.
     this.compose?.settle();
   }
@@ -688,7 +689,7 @@ export class Reader {
     const editor = this.sessions?.reply;
     if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }) });
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.own(editor), this.kindOf, { conversation: this.toConversation(editor) }) });
       this.callbacks.edit(editor); this.paintRecipients(); this.paintChoice();
     }
     return true;
@@ -708,8 +709,13 @@ export class Reader {
     this.paintRecipients(); this.paintChoice();
   }
 
-  // Who the reply goes to: the author it is offered to, then whoever it names.
-  names(editor = this.sessions?.reply) { return editor ? [...(editor.offeredAddressees ?? []), ...editor.draft.addressees] : []; }
+  // Whom the reply's chips name: the author it is offered to, then whoever it names.
+  own(editor = this.sessions?.reply) { return editor ? [...(editor.offeredAddressees ?? []), ...editor.draft.addressees] : []; }
+  // Who the reply goes to: the members its leading @names name, else whom its
+  // chips name (at-names.mjs, the rule Core records it by).
+  names(editor = this.sessions?.reply) { return editor ? addressedTo(editor.draft.body, this.members(editor), this.own(editor)) : []; }
+  // Who the writing's destination can be sent to by name (app.mjs whisperPeople).
+  members(editor = this.sessions?.reply) { return this.callbacks.people?.().members?.(editor?.context?.topicId) ?? []; }
   get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
   // Writing that goes to an outcome's conversation starts as a Tell (I3).
   toConversation(editor = this.sessions?.reply) { return Boolean(this.callbacks.place?.(editor?.context?.topicId)); }
@@ -727,10 +733,10 @@ export class Reader {
   paintChoice() {
     const editor = this.sessions?.reply, row = this.$('intent-row'), place = this.mode === 'note' ? null : this.place(editor), note = this.$('destination-note');
     note.textContent = place?.note ?? ''; note.hidden = !place?.note;
-    if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply'), this.$('who-sentence')); this.paintLine(); return; }
+    if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply'), this.$('who-sentence'), this.$('writing-to')); this.paintLine(); return; }
     paintChoice(row, { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf, everyone: this.callbacks.people?.().everyone ?? [],
       send: this.$('send-reply'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly: Boolean(this.field?.readOnly), answeringWhisper: Boolean(this.source?.whisper),
-      conversation: this.toConversation(editor), place: place?.name ?? null, onChoose: choice => this.choose(choice) });
+      conversation: this.toConversation(editor), place: place?.name ?? null, to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
     this.paintLine();
   }
 
@@ -940,7 +946,8 @@ export class Reader {
     }
     // A name typed in To and not named: Send waits, and says so (compose-bar.mjs).
     if (this.compose.holdSend()) return;
-    // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
+    // The writing goes as the choice shows: a whisper, or a tell or ask that says so, to
+    // whom the line said; Core records a leading @name's members itself (addressing.py).
     editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }));
     const draft = editor.draft;
     try {

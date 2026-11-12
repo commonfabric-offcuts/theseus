@@ -78,6 +78,16 @@ the pointer's way, the keys' and the phone's.
   so. Every control is reached with Tab, and on a phone each is at least
   44px. (docs/reader.md)
 
+- **@names.** Writing in the Reader's reply or the topic's composer that
+  starts with @ and the name of someone in the topic ("@auditor can you
+  look?") goes to them alone by name, in place of the author a reply answers
+  or everyone, and a quiet line under the who chip says so as the words are
+  typed: "To auditor", or "To fable" and "To everyone here" with no @name.
+  An @word naming nobody in the topic stays words and the default stands;
+  the @names stay in the message as written. Core records whom the line
+  showed, so the person named answers it in place. (docs/reader.md, "Naming
+  who a message is to")
+
 - **Images.** Paste, Add image, Paste image when the browser can tell the
   clipboard holds one, and `#img` to pick one of the topic's recent images
   from a short list (↑ ↓ and Return, or a tap). On an iPhone or iPad, press and
@@ -234,6 +244,12 @@ page painted. Its checks, by rule:
   on the cards page; which line moves: `tests/ui_line_move.test.mjs`.
 - The saving sign's time: "reading the save status says when the writing was
   saved …".
+- @names: "reading a leading @name says who the writing goes to as it is
+  typed …" (the line in the composer and the Reader, its default, an @word
+  naming nobody) and "reading a reply to someone else's message that starts
+  with @name is recorded to that member …" (what Core then holds); the rule:
+  `tests/ui_at_names.test.mjs`, and in Core `tests/test_at_names.py`, both
+  reading `tests/fixtures/at_names.json`.
 - Escape and a press outside a pop-up: `tests/ui_links.test.mjs` and
   `tests/links_native.mjs`.
 
