@@ -390,14 +390,16 @@ class Conversation:
         if len(audience) > LIMITS["recipients"]:
             raise Refusal("TOO_MANY_RECIPIENTS", "Resolved recipients exceed the limit; nobody was sent a partial message")
         self._recipients(db, list(audience))
+        # A person's whisper counts as their Tell; an agent's only answers one (whispers.py).
+        counts = private is None or self._actor(db, actor)["kind"] == "human"
         message_id, sent_ms = "m-" + uuid.uuid4().hex, _now_ms()
         sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms,intent,private_to,about_id,go_ahead) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
-        # The author has written in this topic (TopicState._may_say); a whisper is not writing in it.
-        if private is None:
+        # The author has written in this topic (TopicState._may_say); an agent's whisper is not writing in it.
+        if counts:
             db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
                        (topic_id, actor, sequence + 1))
         # A person replying to a message has read it: their delivery of it, if
@@ -421,29 +423,36 @@ class Conversation:
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons, settled=settled)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         if private is not None:
-            # Each of the two learns of it in their own scope, readable by them alone;
-            # nothing shared about the topic changes (whispers.py).
+            # Each of the two learns of it in their own scope, readable by them alone (whispers.py).
             for member in (actor, private):
                 self._change(db, "actor", member, "whisper", topic_id, sequence)
-            return {"message_id": message_id, "topic": {"id": topic_id, "version": topic["version"]},
-                    "delivery": {"queued": len(audience), "unavailable_subscribers": []}, "whisper": True}, [
-                        {"kind": "message", "id": message_id, "version": 1}]
-        # Who wrote the latest message before this one decides whether it is now the latest by someone else (work.py).
-        db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
-                   (actor, message_id, topic_id))
+            if not counts:
+                # An agent's whisper answers a person's whisper and changes nothing shared about the topic.
+                return {"message_id": message_id, "topic": {"id": topic_id, "version": topic["version"]},
+                        "delivery": {"queued": len(audience), "unavailable_subscribers": []}, "whisper": True}, [
+                            {"kind": "message", "id": message_id, "version": 1}]
+        else:
+            # Who wrote the latest message before this one decides whether it is now the latest by someone else (work.py).
+            # A whisper never moves these: they point at the message, which nobody else can open.
+            db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
+                       (actor, message_id, topic_id))
         self._message_activity(db, topic, actor, message_id, sent_ms)
         if topic["kind"] == "conversation":
             # A conversation keeps its items, what became of each, and its waits ask by ask.
-            waited = self._conversation_record(db, actor, topic, message_id, snapshot, intent)
+            waited = self._conversation_record(db, actor, topic, message_id, snapshot, intent, private)
         else:
-            # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
-            waited = ([actor] if self._answered(db, topic_id, actor) else []) + (
+            # Writing in the topic answers what was asked of the author there (a person's whisper, what the agent it
+            # goes to asked); an ask waits on whoever it asks.
+            waited = ([actor] if self._answered(db, topic, actor, private) else []) + (
                 self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else [])
         version = self._touch_topic(db, topic)
         for member in dict.fromkeys(waited):
             self._change(db, "actor", member, "waiting", topic_id, version)
-        return {"message_id": message_id, "topic": {"id": topic_id, "version": version},
-                "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
+        result = {"message_id": message_id, "topic": {"id": topic_id, "version": version},
+                  "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}
+        if private is not None:
+            result["whisper"] = True
+        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
 
     def _message_access(self, db, actor, message_id):
         row = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()
@@ -492,7 +501,8 @@ class Conversation:
         waits = self._waits_by_topic(db, [topic["id"]])
         waiting_on, asks = waits[topic["id"]]
         # reader_may_say: whether the reader may say where it stands, so a page offers its form.
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]],
+        # The message that reopened or started it is named only to a reader who may see it (whispers.py).
+        topic = dict(whispers.redact_topic(db, actor, topic), archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]],
                      reader_may_say=self._may_say(db, topic, actor))
         # D10: the outcome's target, closed, above the conversation; None for an outcome to keep with no target and no checks.
         target = self._outcome_target_line(db, actor, topic["workspace_id"])

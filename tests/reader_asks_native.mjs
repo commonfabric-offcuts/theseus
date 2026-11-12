@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // the topic's row as waiting on the reader, with how long it has waited; the
 // reader's reply clears it; and a reply sent with Ask chosen waits on whoever
 // it names, while one sent as a Tell waits on nobody. (A reply to one agent
-// starts as a whisper, whisper_native.mjs; these choose Tell or Ask.)
+// starts as a Tell, whisper_native.mjs; these choose Tell or Ask.)
 export async function asksChecks({ check, page, until, control, view, facts, replace, shot }) {
   const row = '#topics .nav-item[data-topic-id="t1"]';
   const mark = p => p.evaluate(`(()=>{const m=document.querySelector(${JSON.stringify(row + ' .topic-state')});return m?{text:m.textContent,title:m.title,state:m.dataset.state,mine:m.classList.contains('mine')}:null})()`);
@@ -41,7 +41,7 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
     assert.equal((await choice(p)).ask, 'disabled', 'no Ask before anyone is named');
     await replace(p, 'The fourth works.');
     await addressTo(p, facts.agent);
-    assert.deepEqual(await choice(p), { whisper: 'checked', tell: '', ask: '' }, 'Ask can be chosen once someone is named');
+    assert.deepEqual(await choice(p), { whisper: '', tell: 'checked', ask: '' }, 'Ask can be chosen once someone is named, and it starts as a Tell');
     await p.point('#intent-row button[data-intent="tell"]');
     await until(async () => (await choice(p)).tell === 'checked', 'Tell chosen');
     const id = await sent(p, 0);

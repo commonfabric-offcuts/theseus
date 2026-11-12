@@ -5,6 +5,7 @@ word rules, writing the target (D8), defining and reporting checks, the owner's
 acceptance of a worse result (D31), problems found before a check (D39), and the
 target line a topic opens with (D10)."""
 
+import json
 import sqlite3
 import unittest
 
@@ -407,22 +408,28 @@ class ProblemsCase(TargetCase):
         self.rejected(self.file(), "SOURCE_REQUIRED")
         self.rejected(self.file(message_id=message, note="both"), "SOURCE_REQUIRED")
 
-    def test_a_whisper_is_never_where_a_problem_was_found(self):
-        # The whole outcome reads its problems, with who found each and when (docs/whispers.md), so a whisper is refused
-        # by its id and by its number, even to the agent in it; nothing is filed.
+    def test_a_persons_whisper_may_be_where_a_problem_was_found_and_an_agents_never(self):
+        # The whole outcome reads its problems, with who found each and when (docs/whispers.md): a person's whisper counts as
+        # their Tell, so the agent it went to may file from it; an agent's whisper is refused by its id and by its number.
         whisper = self.post("Between us: the New line jumped", actor="owner", addressees=["agent-a"], whisper=True)
-        seq, = self.sql("SELECT seq FROM messages WHERE id=?", (whisper,))[0]
-        for source in (whisper, seq):
-            self.rejected(self.file(message_id=source), "WHISPER_STAYS_PRIVATE")
-        self.assertEqual(self.sql("SELECT count(*) FROM found_problems"), [(0,)])
-        # The operator's import of problems found refuses a whisper by its number too, and imports nothing.
+        answer = self.post("It jumps on scroll too", actor="agent-a", addressees=["owner"], whisper=True, reply_to=whisper)
+        seq, = self.sql("SELECT seq FROM messages WHERE id=?", (answer,))[0]
+        whispered, = self.sql("SELECT seq FROM messages WHERE id=?", (whisper,))[0]
+        # The operator's import of problems found refuses an agent's whisper by its number too, and a person's whisper for
+        # anyone outside it, and imports nothing.
         said, = self.sql("SELECT seq FROM messages WHERE id=?", (self.post("The New line jumped on the record"),))[0]
         seed = lambda number: {"workspace_id": "w1", "problems": [{"what": "The New line jumped", "kind": "defect", "seq": number}]}
-        with self.assertRaises(Refusal) as refused:
-            self.store.import_checks(seed(seq), "agent-a")
-        self.assertEqual((refused.exception.code, self.sql("SELECT count(*) FROM found_problems")), ("WHISPER_STAYS_PRIVATE", [(0,)]))
+        for number, actor in ((seq, "agent-a"), (whispered, "agent-b")):
+            with self.assertRaises(Refusal) as refused:
+                self.store.import_checks(seed(number), actor)
+            self.assertEqual((refused.exception.code, self.sql("SELECT count(*) FROM found_problems")), ("WHISPER_STAYS_PRIVATE", [(0,)]))
         self.assertTrue(self.store.import_checks(seed(said), "agent-a")["checks_imported"])
         self.assertEqual(self.sql("SELECT count(*) FROM found_problems"), [(1,)])
+        for source in (answer, seq):
+            self.rejected(self.file(message_id=source), "WHISPER_STAYS_PRIVATE")
+        self.assertEqual(self.sql("SELECT count(*) FROM found_problems"), [(1,)])
+        problem = self.committed(self.file(message_id=whisper, what="The New line jumped, whispered"))["problem_id"]
+        self.assertEqual(self.sql("SELECT found_by,message_id FROM found_problems WHERE id=?", (problem,)), [("owner", whisper)])
 
     def test_a_cover_closes_only_with_a_proof_naming_its_test(self):
         problem = self.committed(self.file(note="seen on the phone"))["problem_id"]

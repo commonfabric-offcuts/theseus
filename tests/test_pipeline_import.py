@@ -147,13 +147,19 @@ class ImportCase(ReaderCase):
                                         target={"item_id": "page"}, expected={"item_revision": revision - 1}, actor="agent-a"))
         self.refused(self.seed(), "SEED_STALE")
 
-    def test_a_whisper_is_never_where_an_imported_item_came_from(self):
-        # The whole outcome reads the pipeline, so the import refuses a whisper by its number as item_add does.
+    def test_an_agents_whisper_is_never_where_an_imported_item_came_from_and_a_persons_is_for_its_two_people(self):
+        # The whole outcome reads the pipeline, so the import refuses an agent's whisper by its number as item_add does.
         whisper = self.committed(self.command("message.post", {"body": "Between us", "addressees": ["agent-a"], "whisper": True},
                                               {"topic_id": "t1"}))["message_id"]
+        answer = self.committed(self.command("message.post", {"body": "Agreed", "addressees": ["owner"], "whisper": True, "reply_to": whisper},
+                                             {"topic_id": "t1"}, actor="agent-a"))["message_id"]
+        seq = lambda message: self.sql("SELECT seq FROM messages WHERE id=?", (message,))[0][0]
         seed = self.seed()
-        seed["items"][0]["sources"] = [{"topic": "Topic", "seq": self.sql("SELECT seq FROM messages WHERE id=?", (whisper,))[0][0]}]
+        seed["items"][0]["sources"] = [{"topic": "Topic", "seq": seq(answer)}]
         self.refused(seed, "WHISPER_STAYS_PRIVATE")
+        seed = self.seed()
+        seed["items"][0]["sources"] = [{"topic": "Topic", "seq": seq(whisper)}]
+        self.assertEqual(self.store.import_pipeline(seed, "agent-a")["items"], 5)
 
     def test_the_operator_imports_through_the_admin_command(self):
         seed_path = Path(self.temp.name).resolve() / "seed.json"

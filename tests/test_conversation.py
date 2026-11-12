@@ -258,6 +258,26 @@ class ItemsCase(ConversationCase):
         self.assertEqual({key: items[key]["item"] is not None for key in (follow, back, reply)}, {follow: True, back: False, reply: False})
         self.assertEqual(self.sql("SELECT count(*) FROM conversation_items WHERE message_id=?", (whisper,)), [(0,)])
 
+    def test_a_coordinators_whispered_answer_settles_the_item_and_others_see_only_that_it_was_answered(self):
+        # agent-a raises an item; the coordinator, a person here, answers it by whisper to agent-a.
+        self.committed(self.command("workspace.coordinator_set", {"actor_id": "owner"}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": self.versions()[0]}))
+        raised = self.posted("Is the copy final?", actor="agent-a")
+        self.assertEqual(self.item(raised)["state"], "new")
+        elsewhere = self.posted("Between us: yes, but wait for the images.", addressees=["agent-b"], whisper=True, reply_to=raised)
+        self.assertEqual(self.item(raised)["state"], "new", "a whisper to someone other than the item's author answers nothing")
+        answer = self.posted("Yes, final.", addressees=["agent-a"], whisper=True, reply_to=raised)
+        self.assertEqual(self.item(raised)["state"], "settled")
+        self.assertEqual([(take["kind"], take["ref"], take["readable"]) for take in self.item(raised)["takes"]], [("answer", answer, True)])
+        outside = [take for take in self.item(raised, actor="agent-b")["takes"]]
+        self.assertEqual([(take["kind"], take["actor_id"], take["ref"], take["readable"]) for take in outside], [("answer", "owner", None, False)])
+        self.assertNotIn(answer, json.dumps(self.page("agent-b")))
+        self.assertNotIn(elsewhere, json.dumps(self.page("agent-a")))
+        # An answer on the record still shows its reply to everyone.
+        told = self.posted("And the images?", actor="agent-a")
+        reply = self.posted("Tomorrow.", reply_to=told)
+        self.assertEqual([(take["ref"], take["readable"]) for take in self.item(told, actor="agent-b")["takes"]], [(reply, True)])
+
     def test_every_take_and_every_wait_touches_the_conversation_for_its_open_pages(self):
         def touches():
             return self.sql("SELECT count(*) FROM changes WHERE scope_kind='topic' AND scope_id=? AND resource_kind='topic'", (self.conversation,))[0][0]
@@ -574,6 +594,21 @@ class CliCase(ConversationCase):
         self.assertIn(open_item, out)
         code, out, err = self.run_cli("topics", "w1")
         self.assertEqual(out.splitlines()[0], "conversation %s (agent-a answers; 1 new)" % self.conversation)
+
+    def test_an_answer_by_whisper_reads_in_the_cli_as_a_message_only_its_two_people_can_open(self):
+        # The coordinator, a person here, answers agent-a's item by whisper to agent-a; agent-b reads who answered and when.
+        self.committed(self.command("workspace.coordinator_set", {"actor_id": "owner"}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": self.versions()[0]}))
+        raised = self.posted("Is the copy final?", actor="agent-a")
+        answer = self.posted("Yes, final.", addressees=["agent-a"], whisper=True, reply_to=raised)
+        code, out, err = self.run_cli("conversation", "w1", actor="agent-b")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("  [answered] by a message you can't open (owner, ", out)
+        self.assertNotIn(answer, out)
+        self.assertNotIn("None", out)
+        code, out, err = self.run_cli("conversation", "w1")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("  [answered] by %s (owner, " % answer, out, "the agent it went to reads which message answered")
 
     def test_the_owner_chooses_the_coordinator_and_an_answerer_posts_part_of_an_answer(self):
         asked = self.posted("Copy and date?")

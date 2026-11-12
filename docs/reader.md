@@ -181,9 +181,8 @@ letters, digits, `_`, `.` and `-`, ended by a space, the end, or one of
 member ends them, and an @word that names no member is plain text: the
 default stands, and nothing is said of it. The words stay in the message as
 written. Whether it whispers, tells or asks follows the composer's own rule
-for the names it goes to (docs/whispers.md), so one agent named in a topic
-is a whisper and two are a Tell, and in the outcome's conversation it is a
-Tell.
+(docs/whispers.md): a Tell unless the person presses Whisper or Ask, and a
+reply to a whisper, to its one agent, a whisper.
 
 **The line under the chip** says who it goes to as it is typed, in the
 composer's quiet words: "To auditor", "To auditor and fable", or the

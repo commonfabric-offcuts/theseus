@@ -144,19 +144,27 @@ class ConversationThumbCase(ThumbAnswerCase):
         self.assertEqual(self.waits(), [], "the reply answered it")
         self.assertEqual(self.waiting_on(self.conversation), [])
 
-    def test_a_whispered_reply_is_not_a_reply_on_the_record_so_taking_the_thumb_back_puts_the_wait_back(self):
+    def test_a_whispered_reply_answers_the_ask_only_when_it_goes_to_whoever_asked(self):
         ask = self.ask("@owner to which day?", topic=self.conversation)
-        self.whisper("Is Friday too soon?", topic=self.conversation, reply_to=ask)
-        self.assertEqual(self.waits(), [(ask, "owner")], "a whisper answers no ask")
+        # A whisper to another agent, who cannot read the answer, leaves the ask waiting, and taking a 👍 back brings it back.
+        self.whisper("Is Friday too soon?", to="agent-b", topic=self.conversation, reply_to=ask)
+        self.assertEqual(self.waits(), [(ask, "owner")], "a whisper to someone else answers no ask")
         self.assertTrue(self.thumb(ask).get("answered"))
-        self.whisper("Friday it is.", topic=self.conversation, reply_to=ask)
+        self.whisper("Friday it is.", to="agent-b", topic=self.conversation, reply_to=ask)
         self.thumb(ask, on=False)
-        self.assertEqual(self.waits(), [(ask, "owner")], "only a reply on the record has answered it since")
+        self.assertEqual(self.waits(), [(ask, "owner")], "only a reply that reaches the asker has answered it since")
         self.assertEqual(self.waiting_on_me(), (1, [self.conversation]))
+        # A whisper to whoever asked is the person's reply, as a Tell is.
+        self.whisper("Friday.", topic=self.conversation, reply_to=ask)
+        self.assertEqual(self.waits(), [], "a whisper to the asker answers it")
+        self.assertEqual(self.waiting_on_me(), (0, []))
+
+    def test_taking_the_thumb_back_after_a_whispered_reply_to_whoever_asked_puts_nothing_back(self):
+        ask = self.ask("@owner to which day?", topic=self.conversation)
         self.thumb(ask)
-        self.post("Friday.", actor="owner", topic=self.conversation, reply_to=ask)
+        self.whisper("Friday.", topic=self.conversation, reply_to=ask)
         self.thumb(ask, on=False)
-        self.assertEqual(self.waits(), [], "and one on the record has")
+        self.assertEqual(self.waits(), [], "the whispered reply answered it")
 
     def test_writing_that_does_not_reply_to_the_ask_leaves_taking_the_thumb_back_to_put_it_back(self):
         ask = self.ask("@owner to which day?", topic=self.conversation)
@@ -315,15 +323,26 @@ class TopicThumbCase(ThumbAnswerCase):
         self.thumb(ask, on=False)
         self.assertEqual(self.asks(), [], "writing in the topic answered it")
 
-    def test_a_whisper_in_the_topic_is_not_writing_there_so_a_thumb_still_answers_and_taking_it_back_restores(self):
+    def test_a_whisper_to_another_agent_answers_no_ask_so_a_thumb_still_answers_and_taking_it_back_restores(self):
         ask = self.ask()
-        self.whisper("Is the copy final?")
-        self.assertEqual(self.asks(), [("owner", ask)], "a whisper answers no ask")
+        self.whisper("Is the copy final?", to="agent-b")
+        self.assertEqual(self.asks(), [("owner", ask)], "a whisper to someone else answers no ask")
         self.assertTrue(self.thumb(ask).get("answered"), "so the thumb answers it")
         self.assertEqual(self.asks(), [])
-        self.whisper("And the date?")
+        self.whisper("And the date?", to="agent-b")
         self.thumb(ask, on=False)
         self.assertEqual(self.asks(), [("owner", ask)], "and taking it back puts the wait back")
+
+    def test_a_whisper_to_whoever_asked_is_writing_that_answers_the_ask(self):
+        ask = self.ask()
+        self.whisper("Take it.")
+        self.assertEqual(self.asks(), [], "the whisper to the asker answered it")
+        again = self.ask("And the images?")
+        self.thumb(again)
+        self.whisper("Those too.")
+        self.thumb(again, on=False)
+        self.assertEqual(self.asks(), [], "taking the thumb back after a whispered answer puts nothing back")
+        self.assertNotIn(ask, [message for _, message in self.asks()])
 
     def test_only_the_asked_persons_own_writing_after_the_ask_answers_it(self):
         self.post("Before the ask.", actor="owner")

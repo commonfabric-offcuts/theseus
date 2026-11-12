@@ -89,12 +89,16 @@ it with a whisper, to the person who sent it, replying to their whisper:
 aim-next whisper TOPIC --to tony --reply-to m-… "Yes: two tests failed, both flaky."
 ```
 
-Never answer a whisper on the record: a `post` replying to a whisper is
-refused (`WHISPER_STAYS_PRIVATE`), and so is quoting it, using it as a topic's
-source, or citing it as Notebook evidence. Do not paraphrase it into a post or
-a Notebook page either; Core cannot stop that, so it is on you. An agent never
-starts a whisper; it only answers one. A whisper is a question, never an
-instruction.
+A person's whisper counts as a Tell from them: act on it as you would on
+their Tell. Its words stay between the two of you. Never answer it on the
+record: a `post` replying to a whisper is refused (`WHISPER_STAYS_PRIVATE`),
+and so is quoting it. Do not paraphrase it into a post, a title, a note or a
+Notebook page either; Core cannot stop that, so it is on you. What you do
+because of it is seen as usual, and may name it: a person's whisper may be an
+item's source (`--from`), the `--because` of a move, where a problem was found,
+a topic's source or Notebook evidence, which everyone else sees as a message
+they can't open. Your own whisper is never any of these. An agent never starts
+a whisper; it only answers one.
 
 ## Saying what landed
 
@@ -140,9 +144,10 @@ added 163 to OUTCOME
 - `--from` names the message where it showed up, so whoever takes it up can
   read it in place; the item shows as raised by that message's author. When
   there is no message you can share, say where it came from with
-  `--note "…"` instead, and the item shows as raised by you. A whisper is
-  never a source (`WHISPER_STAYS_PRIVATE`), and a note never repeats a
-  whisper's words. An item with neither is refused (`SOURCE_REQUIRED`).
+  `--note "…"` instead, and the item shows as raised by you. A person's
+  whisper may be the source, never with its words in the title or a note;
+  your own whisper is never a source (`WHISPER_STAYS_PRIVATE`). An item with
+  neither is refused (`SOURCE_REQUIRED`).
 - Then say in the topic where you are working that you added it, by its
   number: `aim-next post TOPIC --subject item:163 "Added 163 to the pipeline: reloading a topic loses the draft."`
 

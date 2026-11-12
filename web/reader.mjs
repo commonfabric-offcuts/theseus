@@ -641,13 +641,13 @@ export class Reader {
   }
 
   // The reply's one line while reading: who it answers, in the words Send
-  // will act on ("Reply to fable…", "Whisper to fable…"), or "Draft" with the
+  // will act on ("Reply to fable…", or "Whisper to fable…" answering a whisper), or "Draft" with the
   // writing's start when there is some; 👍 sits at its end while there is none.
   paintLine() {
     const editor = this.sessions?.reply, root = this.$('reader-composer');
     if (!editor || !this.editor || !root) return;
     const note = this.mode === 'note', names = this.names(editor);
-    const { choice } = choiceOf(editor.draft, names, this.kindOf, { conversation: this.toConversation(editor) });
+    const { choice } = choiceOf(editor.draft, names, this.kindOf, this.answering());
     const who = list(names), place = this.place(editor), at = place ? ` in ${place.name}` : '';
     this.field.placeholder = note ? 'Write a private note only you can see…' : !who ? `Reply${at}…`
       : choice === 'whisper' ? `Whisper to ${who}${at}…` : choice === 'ask' ? `Ask ${who}${at}…` : `Reply to ${who}${at}…`;
@@ -689,7 +689,7 @@ export class Reader {
     const editor = this.sessions?.reply;
     if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.own(editor), this.kindOf, { conversation: this.toConversation(editor) }) });
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.own(editor), this.kindOf, this.answering()) });
       this.callbacks.edit(editor); this.paintRecipients(); this.paintChoice();
     }
     return true;
@@ -717,8 +717,8 @@ export class Reader {
   // Who the writing's destination can be sent to by name (app.mjs whisperPeople).
   members(editor = this.sessions?.reply) { return this.callbacks.people?.().members?.(editor?.context?.topicId) ?? []; }
   get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
-  // Writing that goes to an outcome's conversation starts as a Tell (I3).
-  toConversation(editor = this.sessions?.reply) { return Boolean(this.callbacks.place?.(editor?.context?.topicId)); }
+  // What decides the reply's default (whisper-choice.mjs defaultChoice): a reply to a whisper starts as one.
+  answering() { return { answeringWhisper: Boolean(this.source?.whisper) }; }
   // Where the reply is posted when that is not the message's own topic, or
   // null: { name: "the conversation", note: what going there means }. The who
   // chip, its sentence, the field and the line under the chip say it.
@@ -728,15 +728,15 @@ export class Reader {
   }
 
   // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above Send.
-  // A reply to one agent starts as a whisper; a private note has no choice.
+  // A reply starts as a Tell, and a reply to a whisper as a whisper; a private note has no choice.
   // Writing posted elsewhere says where under the chip, and what that means.
   paintChoice() {
     const editor = this.sessions?.reply, row = this.$('intent-row'), place = this.mode === 'note' ? null : this.place(editor), note = this.$('destination-note');
     note.textContent = place?.note ?? ''; note.hidden = !place?.note;
     if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply'), this.$('who-sentence'), this.$('writing-to')); this.paintLine(); return; }
     paintChoice(row, { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf, everyone: this.callbacks.people?.().everyone ?? [],
-      send: this.$('send-reply'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly: Boolean(this.field?.readOnly), answeringWhisper: Boolean(this.source?.whisper),
-      conversation: this.toConversation(editor), place: place?.name ?? null, to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
+      send: this.$('send-reply'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly: Boolean(this.field?.readOnly), ...this.answering(),
+      place: place?.name ?? null, to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
     this.paintLine();
   }
 
@@ -948,7 +948,7 @@ export class Reader {
     if (this.compose.holdSend()) return;
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so, to
     // whom the line said; Core records a leading @name's members itself (addressing.py).
-    editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }));
+    editor.edit(sending(editor.draft, this.names(editor), this.kindOf, this.answering()));
     const draft = editor.draft;
     try {
       // The controller freezes A synchronously. Reflect that deliberate act

@@ -421,7 +421,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('conversation writing that To moves into an empty draft keeps the Whisper or Tell the Reader showed, and is sent as that, either way', async () => {
+  await check('conversation writing that To moves into an empty draft is the same Tell in this topic and in the conversation, and is sent as that, either way', async () => {
     const text = 'Private: I think the build is broken.', status = 'Status, please.', words = 'The build finished.';
     // A topic of its own in the outcome, so the checks after these find nothing new in t1.
     const place = 'conversation-kind';
@@ -455,18 +455,18 @@ export async function conversationChecks({ check, page, until, control, view, fa
       await openCard(p, id, words);
       await until(async () => (await reply())?.to.join() === 'true,false', 'the Reader opens on This topic');
     };
-    // A reply to one agent in this topic starts as a Whisper (D1); in the conversation the same writing would start as a Tell (I3).
+    // A reply to one agent starts as a Tell, in this topic and in the conversation alike: nothing goes private by default.
     await reopen();
     await replace(p, text);
     await until(async () => (await draft(place)).body === text, 'saved where it was written');
     const here = await reply();
-    assert.deepEqual([here.checked, here.send, here.who], [['whisper'], 'Whisper', `Only you and ${agent}`], 'the Reader shows a Whisper to the agent');
+    assert.deepEqual([here.checked, here.send, here.who], [['tell'], 'Tell', 'Everyone in this topic'], 'the Reader shows a Tell to the agent');
     const moved = await tap(1, text, 'Conversation is chosen, with the writing');
-    assert.deepEqual([moved.checked, moved.send, moved.who, moved.names, moved.notice], [['whisper'], 'Whisper', `Only you and ${agent}`, [agent], null],
-      'the moved writing keeps the Whisper the Reader showed');
+    assert.deepEqual([moved.checked, moved.send, moved.who, moved.names, moved.notice], [['tell'], 'Tell', 'Everyone in the conversation', [agent], null],
+      'the moved writing is the same Tell there');
     assert.deepEqual(await until(async () => { const d = await draft(conversation.topic_id); return d.body && d; }, 'kept in the conversation'),
-      { body: text, addressees: [agent], intent: null, whisper: true });
-    assert.deepEqual(await sentAs(), [conversation.topic_id, true, agent, null, text], 'sent to that agent alone, never on the record');
+      { body: text, addressees: [agent], intent: null, whisper: null }, 'no choice is written down for it');
+    assert.deepEqual(await sentAs(), [conversation.topic_id, false, null, 'tell', text], 'sent on the record as a Tell, as shown');
     // The other way: a Tell to one agent written in the conversation, moved into this topic's empty draft.
     await reopen();
     await tap(1, '', 'Conversation is chosen, with nothing to move');

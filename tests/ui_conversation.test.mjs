@@ -10,7 +10,7 @@ import { itemTags, paintItemTags, paintAbout, paintAsksYou, paintOnlyNew, paintE
 import { parseRoute, routeHref, routeKey } from '../web/topic-navigation.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 import { Editor, WRITING_FIELDS, noWriting, written } from '../web/editor.mjs';
-import { choiceOf, chosen, naming, sending } from '../web/whisper-choice.mjs';
+import { choiceOf, chosen, sending } from '../web/whisper-choice.mjs';
 
 const AT = Date.UTC(2026, 10, 6, 18, 0);
 const words = tags => tags.map(tag => [tag.tag, tag.parts.map(part => typeof part === 'string' ? part : part.link ?? (part.time !== undefined ? '<time>' : '')).join('')]);
@@ -22,6 +22,10 @@ test('each take is one tag under its card in the words of what became of it, and
   const part = { kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: true };
   assert.deepEqual(words(itemTags(item('new', [part]), [], 'tony')), [['New', 'part taken so far'], ['Answered', "fable's reply · <time>"]]);
   assert.deepEqual(words(itemTags(item('settled', [{ ...part, part: false, actor_id: 'tony' }]), [], 'tony')), [['Answered', 'your reply · <time>']]);
+  // An answer by whisper, read by someone outside it: who answered and when, never a link to the reply.
+  const hidden = itemTags(item('settled', [{ ...part, part: false, ref: null, readable: false }]), [], 'warp');
+  assert.deepEqual(words(hidden), [['Answered', "fable, in a message you can't open · <time>"]]);
+  assert.ok(hidden[0].parts.every(part => typeof part === 'string' || part.message === undefined), 'nothing links to it');
   const topic = { kind: 'topic', ref: 't-9', title: 'Onboarding', readable: true, actor_id: 'fable', at_ms: AT, part: false };
   assert.deepEqual(words(itemTags(item('settled', [topic]), [], 'tony')), [['Taken into a topic', 'Onboarding · fable, <time>']]);
   assert.equal(itemTags(item('settled', [topic]), [], 'tony')[0].parts[0].topic, 't-9', 'the title links to its topic');
@@ -204,8 +208,7 @@ const writingOf = editor => Object.fromEntries(WRITING_FIELDS.map(field => [fiel
 const namesOf = editor => [...editor.offeredAddressees, ...editor.draft.addressees];
 const switched = async (left, there) => {
   const kept = [], before = [writingOf(left), writingOf(there)];
-  const stayed = await switchWriting(left, there, async editor => { kept.push([editor.context.topicId, writingOf(editor)]); },
-    { kindOf, conversation: left.context.topicId === CONVERSATION });
+  const stayed = await switchWriting(left, there, async editor => { kept.push([editor.context.topicId, writingOf(editor)]); });
   return { stayed, kept, before, after: [writingOf(left), writingOf(there)] };
 };
 const QUOTE = { source_ref: { kind: 'message', id: 'm-1' }, excerpt: 'the launch' };
@@ -224,8 +227,8 @@ test("switching To into an empty draft moves the whole writing there, every fiel
     if (field === 'attachments') continue;
     const left = at('t1', { [field]: WRITTEN[field] }), there = at('w1-conversation');
     const { stayed, kept, before, after } = await switched(left, there);
-    // A name alone, with no choice made, was shown as a Whisper here (D1): it arrives as that Whisper.
-    const arrived = { ...before[0], ...(field === 'addressees' ? chosen('whisper') : {}) };
+    // A name alone, with no choice made, is a Tell in both places: it arrives as it is, with no choice written down.
+    const arrived = before[0];
     assert.deepEqual([stayed, after], [false, [noWriting(), arrived]], `${field} alone is writing, and it moves`);
     assert.deepEqual(kept, [['w1-conversation', arrived], ['t1', noWriting()]], `${field}: kept where it went before the draft it left is emptied`);
   }
@@ -270,46 +273,42 @@ test('writing with an image in any state stays where the image was chosen: attac
 
 test('an interrupted switch leaves the writing in the draft it was written in', async () => {
   const left = at('t1', { body: 'Not lost.', addressees: ['warp'], ...chosen('ask') }), there = at('w1-conversation');
-  await assert.rejects(switchWriting(left, there, async editor => { if (editor === there) throw Error('This device could not keep it.'); }, { kindOf, conversation: false }), /could not keep it/);
+  await assert.rejects(switchWriting(left, there, async editor => { if (editor === there) throw Error('This device could not keep it.'); }), /could not keep it/);
   assert.deepEqual(writingOf(left), { ...noWriting(), body: 'Not lost.', addressees: ['warp'], ...chosen('ask') });
 });
 
-test("Whisper, Tell or Ask is never mixed between drafts: onto writing it stays apart, and into an empty draft it is sent as the place it left showed it, either way", async () => {
+test("Whisper, Tell or Ask is never mixed between drafts: onto writing it stays apart, and into an empty draft it moves as it is, with the same default in both places", async () => {
   const agent = 'fixture-planning-agent';
   const one = [agent], two = [agent, 'fixture-agent'];
-  const held = { ...noWriting(), ...naming(noWriting(), one, kindOf), addressees: two };
-  assert.deepEqual([held.whisper, held.intent], [true, null], 'a second name on a default whisper holds the whisper');
   const states = { whisper: chosen('whisper'), tell: chosen('tell'), ask: chosen('ask'), 'held by a second name': { whisper: true }, none: { whisper: null, intent: null } };
-  const sends = (draft, names, options) => [choiceOf(draft, names, kindOf, options), sending(draft, names, kindOf, options)];
-  const shownIn = topicId => ({ conversation: topicId === CONVERSATION });
+  const sends = (draft, names) => [choiceOf(draft, names, kindOf), sending(draft, names, kindOf)];
   for (const [fromName, fromChoice] of Object.entries(states)) {
     for (const names of [one, two]) for (const [from, to] of [['t1', CONVERSATION], [CONVERSATION, 't1']]) {
       const writing = { ...noWriting(), body: 'Private note.', addressees: names, ...fromChoice };
       const moved = at(to);
       await switched(at(from, writing), moved);
-      // Compared across the two places: what the Reader showed where it was written, and what it sends where it arrived.
-      assert.deepEqual(sends(moved.draft, namesOf(moved), shownIn(to)), sends(writing, names, shownIn(from)),
-        `${fromName}, ${names.length} named, from ${from} into an empty draft in ${to}`);
+      assert.deepEqual(writingOf(moved), writingOf(at(to, writing)), `${fromName}, ${names.length} named, from ${from}: moved as it is, no choice written down`);
+      assert.deepEqual(sends(moved.draft, namesOf(moved)), sends(writing, names), `${fromName}, ${names.length} named, from ${from} into an empty draft in ${to}`);
       for (const [toName, toChoice] of Object.entries(states)) {
         const r = await switched(at(from, writing), at(to, { body: 'Old question.', addressees: names, ...toChoice }));
         assert.deepEqual([r.stayed, r.after], [true, r.before], `${fromName} onto ${toName}, ${names.length} named, from ${from} to ${to}`);
       }
     }
   }
-  // The defaults differ (D1, I3): one agent named and no choice made is a Whisper in a topic and a Tell in the conversation.
-  const whisperHere = at(CONVERSATION);
-  await switched(at('t1', { body: 'Private: I think the build is broken.', addressees: one }), whisperHere);
-  assert.deepEqual(sends(whisperHere.draft, namesOf(whisperHere), shownIn(CONVERSATION))[1], { whisper: true, intent: null }, 'a Whisper shown in the topic is sent as a Whisper');
-  const tellThere = at('t1');
-  await switched(at(CONVERSATION, { body: 'Status, please.', addressees: one }), tellThere);
-  assert.deepEqual(sends(tellThere.draft, namesOf(tellThere), shownIn('t1'))[1], { whisper: false, intent: 'tell' }, 'a Tell shown in the conversation is sent as a Tell');
+  // One agent named and no choice made is a Tell in a topic and in the conversation alike, so it arrives as the same Tell.
+  for (const [from, to] of [['t1', CONVERSATION], [CONVERSATION, 't1']]) {
+    const there = at(to);
+    await switched(at(from, { body: 'Status, please.', addressees: one }), there);
+    assert.deepEqual([there.draft.whisper ?? null, there.draft.intent ?? null], [null, null], `from ${from}: nothing is written down for it`);
+    assert.deepEqual(sends(there.draft, namesOf(there))[1], { whisper: false, intent: 'tell' }, `from ${from}: a Tell where it was written is sent as a Tell`);
+  }
   // Whisper chosen before a word is written, to the author the reply is offered to: it goes on to that author.
   for (const offeredThere of [true, false]) {
     const left = at('t1', chosen('whisper')); left.offerAddressees([agent]);
     const there = at(CONVERSATION); if (offeredThere) there.offerAddressees([agent]);
-    assert.deepEqual(sends(left.draft, namesOf(left), shownIn('t1'))[1], { whisper: true, intent: null }, 'the Reader shows a Whisper to the author');
-    assert.equal(await switchWriting(left, there, async () => {}, { kindOf, conversation: false }), false, 'a choice alone is writing, and it moves');
-    assert.deepEqual([namesOf(there), sends(there.draft, namesOf(there), shownIn(CONVERSATION))[1]], [[agent], { whisper: true, intent: null }],
+    assert.deepEqual(sends(left.draft, namesOf(left))[1], { whisper: true, intent: null }, 'the Reader shows a Whisper to the author');
+    assert.equal(await switchWriting(left, there, async () => {}), false, 'a choice alone is writing, and it moves');
+    assert.deepEqual([namesOf(there), sends(there.draft, namesOf(there))[1]], [[agent], { whisper: true, intent: null }],
       `still a Whisper to ${agent} where it arrived (${offeredThere ? 'offered there too' : 'not offered there'})`);
     assert.deepEqual([namesOf(left), writingOf(left)], [[agent], noWriting()], 'and the place it left offers the author again, with nothing written');
     assert.deepEqual([written(there.draft), written(left.draft)], [false, false], 'a choice moved is not writing: on both sides nothing is written, so 👍 stays beside Send');

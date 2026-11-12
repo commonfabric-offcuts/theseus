@@ -51,19 +51,30 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     if (await p.evaluate('document.querySelector("#reader").open')) await p.point('#reader-close');
     await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
   };
-  // What everyone in the topic sees of it: none of this moves for a whisper.
+  // What everyone in the topic sees of it: none of this moves for an agent's whisper. A person's whisper counts as
+  // their Tell, so the topic's version may move with its activity, but never its latest message.
   const shared = async () => { const t = (await view('topic', { topic_id: 't1' })).topic; return { version: t.version, latest: t.latest_message_id ?? t.latest_seq ?? null, waiting: t.waiting_on, asks: t.asks }; };
+  const pointsAt = ({ latest, waiting, asks }) => ({ latest, waiting, asks });
+  // Whisper is chosen by a press: nothing is a whisper by default but a reply to a whisper.
+  const chooseWhisper = async (p, row = '#intent-row') => {
+    await p.point(`${row} button[data-intent="whisper"]`);
+    await until(async () => (await choice(p, row)).whisper === 'checked', 'a press chooses Whisper');
+  };
   // The person's whisper to the agent, written through the store as the composer would, for a check that starts from one.
   const personWhispers = async (operation, body) => (await control({ method: 'agent_message', operation_id: operation, sender: 'person', body, addressees: [agent], whisper: true })).result.message_id;
 
-  await check('whispers a reply to one agent starts as a whisper, keys and pointer choose, and Send sends one only the two of them see', async () => {
+  await check('whispers a reply to one agent starts as a Tell, keys and pointer choose Whisper, and Send sends one only the two of them see', async () => {
     const p = await page('whispers-reply', null, true); await p.open(1);
     assert.deepEqual(await choice(p), { whisper: 'disabled', tell: 'checked', ask: 'disabled' }, 'naming nobody, it is a Tell and nothing is owed');
     assert.match(await line(p), /^Everyone in this topic will see this\./);
     await replace(p, 'Is the launch date firm?');
     await addressTo(p, agent);
-    assert.deepEqual(await choice(p), { whisper: 'checked', tell: '', ask: '' }, 'a reply to one agent starts as a whisper');
-    assert.match(await line(p), new RegExp(`^Only you and ${agent} will see this\\.`));
+    assert.deepEqual(await choice(p), { whisper: '', tell: 'checked', ask: '' }, 'a reply to one agent starts as a Tell; Whisper can be chosen');
+    assert.match(await line(p), /^Everyone in this topic will see this\./, 'what the person reads before Send');
+    assert.equal(await word(p), 'Tell');
+    assert.notEqual(await dashed(p, '#writing-body'), 'dashed');
+    await chooseWhisper(p);
+    assert.match(await line(p), new RegExp(`^Only you and ${agent} will see this\\. No other agent gets it; ${agent} acts on it as on a Tell\\.`));
     assert.equal(await word(p), 'Whisper');
     assert.equal(await dashed(p, '#writing-body'), 'dashed', 'the writing box has a dashed line while whispering');
     await shot(p, 'whispers-writing');
@@ -90,7 +101,7 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     const source = await view('source', { source_ref: { kind: 'message', id: whisperId } });
     assert.equal(source.whisper, true); assert.equal(source.private_to, agent);
     assert.equal(source.intent ?? null, null, 'a whisper neither asks nor tells');
-    assert.deepEqual(await shared(), before, 'nothing everyone sees of the topic moved');
+    assert.deepEqual(pointsAt(await shared()), pointsAt(before), 'the topic\'s latest message, waits and asks never point at it');
     await closeReader(p);
     const shown = await until(async () => { const c = await cardShown(p, whisperId); return c?.wait && c; }, 'the whisper card waits for its answer');
     assert.deepEqual([shown.whisper, shown.label, shown.wait, shown.line], [true, ` · whisper to ${agent}`, ' · no answer yet', 'dashed']);
@@ -99,12 +110,16 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
   });
 
-  await check('whispers the Reader starts no topic from a whisper, and still does from a message on the record', async () => {
+  await check('whispers the Reader starts a topic from a person\'s whisper, never from an agent\'s, and still does from a message on the record', async () => {
     const whisperId = await personWhispers('whispers-reader-whisper', 'Is the venue booked?');
+    const answered = await control({ method: 'agent_message', operation_id: 'whispers-reader-answer', body: 'Booked for the fourth.', reply_to: whisperId, addressees: [facts.actor], whisper: true });
     const p = await page('whispers-reader', null, true);
     await openCard(p, whisperId, 'Is the venue booked?');
-    assert.equal(await p.evaluate(`document.querySelector('#start-from-message').hidden`), true, 'a whisper stays between its two people');
+    assert.equal(await p.evaluate(`document.querySelector('#start-from-message').hidden`), false, 'a person\'s whisper counts as their Tell');
     assert.equal(await dashed(p, '#source-body'), 'dashed', 'the whisper read in the Reader carries the same line');
+    await closeReader(p);
+    await openCard(p, answered.result.message_id, 'Booked for the fourth.');
+    assert.equal(await p.evaluate(`document.querySelector('#start-from-message').hidden`), true, 'an agent\'s whisper only answers');
     await closeReader(p);
     await p.open(1);
     assert.equal(await p.evaluate(`document.querySelector('#start-from-message').hidden`), false, 'a message on the record still starts one');
@@ -127,13 +142,14 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
   });
 
-  await check('whispers a second name makes a whisper a Tell and says why; taking it away makes it a whisper again', async () => {
+  await check('whispers a second name makes a chosen whisper a Tell and says why; taking it away makes it a whisper again', async () => {
     const second = 'fixture-planning-agent';
     await control({ method: 'agent_message', operation_id: 'whispers-second-joins', body: 'Joining to plan.', sender: second, join: true, whole_topic: true });
     const p = await page('whispers-second', null, true); await p.open(1);
     await replace(p, 'Who has the launch copy?');
     await addressTo(p, agent);
-    assert.equal((await choice(p)).whisper, 'checked');
+    assert.equal((await choice(p)).tell, 'checked', 'a Tell by default');
+    await chooseWhisper(p);
     await addressTo(p, second);
     assert.deepEqual(await choice(p), { whisper: 'disabled', tell: 'checked', ask: '' }, 'two names cannot whisper');
     assert.equal(await p.evaluate(`document.querySelector('#intent-row button[data-intent="whisper"]').title`), 'A whisper goes to one agent. With more than one name, choose Tell or Ask.');
@@ -147,14 +163,17 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
   });
 
-  await check('whispers New message names nobody, then one agent, and its choice and line change', async () => {
+  await check('whispers New message names nobody, then one agent, and stays a Tell until Whisper is pressed', async () => {
     const p = await page('whispers-new', null, true);
     await p.evaluate('document.querySelector("#inline-composer").scrollIntoView({block:"center"})');
     await until(async () => (await choice(p, '#inline-intent-row')).tell === 'checked', 'New message offers its choice');
     assert.deepEqual(await choice(p, '#inline-intent-row'), { whisper: 'disabled', tell: 'checked', ask: 'disabled' });
     assert.match(await line(p, '#inline-who-sentence'), /It goes to no one by name\.$/);
     await addressTo(p, agent, '#inline-recipient-input', '#inline-recipient-chips');
-    assert.deepEqual(await choice(p, '#inline-intent-row'), { whisper: 'checked', tell: '', ask: '' });
+    assert.deepEqual(await choice(p, '#inline-intent-row'), { whisper: '', tell: 'checked', ask: '' }, 'a new message to one agent is a Tell');
+    assert.match(await line(p, '#inline-who-sentence'), /^Everyone in this topic will see this\./);
+    assert.equal(await word(p, '#inline-send'), 'Tell');
+    await chooseWhisper(p, '#inline-intent-row');
     assert.match(await line(p, '#inline-who-sentence'), new RegExp(`^Only you and ${agent} will see this\\.`));
     assert.equal(await word(p, '#inline-send'), 'Whisper');
     assert.equal(await dashed(p, '#inline-writing-body'), 'dashed');
@@ -168,7 +187,7 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await p.open(1);
     await replace(p, 'Quick one: is it firm?');
     await addressTo(p, agent);
-    assert.equal((await choice(p)).whisper, 'checked');
+    await chooseWhisper(p);
     const fit = await p.evaluate(`(()=>{const v=innerWidth,r=e=>e.getBoundingClientRect(),send=r(document.querySelector('#send-reply'));
       const out=[...document.querySelectorAll('#intent-row button, #who-sentence .audience-line, #send-reply')].filter(e=>{const b=r(e);return b.left<0||b.right>v+0.5}).map(e=>e.id||e.className||e.dataset.intent);
       return {sideways:document.scrollingElement.scrollWidth>v,dialog:document.querySelector('#reader').scrollWidth>document.querySelector('#reader').clientWidth,out,
@@ -190,6 +209,7 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await p.open(1);
     await replace(p, 'Light or dark?');
     await addressTo(p, agent);
+    await chooseWhisper(p);
     for (const scheme of ['light', 'dark']) {
       await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
       await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: ${scheme})').matches`), scheme);

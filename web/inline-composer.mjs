@@ -2,7 +2,7 @@ import { paintAddress } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, paintSaveTime } from './writing-helpers.mjs';
 import { paintImageRows } from './image-rows.mjs';
 import { WritingInput } from './writing-input.mjs';
-import { paintChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
+import { paintChoice, chosen, unnamed, sending } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { showLine } from './lines.mjs';
@@ -145,8 +145,6 @@ export class InlineComposer {
     // Who is named may have changed: what Send said goes if no longer true.
     this.bar.settle();
   }
-  // In an outcome's conversation a message starts as a Tell, even to one agent (I3).
-  get conversation() { return Boolean(this.callbacks.conversation?.()); }
   get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
   // Who the topic's messages can be sent to by name (app.mjs whisperPeople).
   members(editor = this.editor) { return this.callbacks.people?.().members?.(editor?.context?.topicId) ?? []; }
@@ -159,7 +157,7 @@ export class InlineComposer {
     if (!editor) return;
     paintChoice(this.$('intent-row'), { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf,
       everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly,
-      conversation: this.conversation, to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
+      to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
   }
   choose(choice) {
     const p = this.presentation, editor = this.editor;
@@ -173,7 +171,8 @@ export class InlineComposer {
     const p = this.presentation, editor = this.editor;
     if (!this.admits(p, editor) || this.state().readOnly) return false;
     if (!editor.draft.addressees.includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, editor.draft.addressees, this.kindOf, { conversation: this.conversation }) });
+      // A message here answers nothing, so it is a Tell by default and naming more holds nothing (whisper-choice.mjs).
+      editor.edit({ addressees: [...editor.draft.addressees, name] });
       this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
     }
     return true;
@@ -269,7 +268,7 @@ export class InlineComposer {
     if (this.bar.holdSend()) return;
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so, to
     // whom the line said; Core records a leading @name's members itself (addressing.py).
-    editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { conversation: this.conversation }));
+    editor.edit(sending(editor.draft, this.names(editor), this.kindOf));
     const draft = editor.draft;
     try {
       const sent = this.callbacks.send(editor, p);

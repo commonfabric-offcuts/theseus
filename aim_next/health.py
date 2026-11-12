@@ -55,6 +55,7 @@ import uuid
 
 from .contract import Refusal
 from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
+from .whispers import READ_BY
 
 
 # Attempts that got through: a notice in the agent's chat, an earlier one leading there, the agent
@@ -817,12 +818,13 @@ class Health:
                           "WHERE a.kind='agent' AND a.enabled=1 ORDER BY a.id LIMIT ?", (AGENT_LIMIT,)).fetchall()
         for row in rows:
             route = routes.get(row["id"])
-            # What waits, as the reader may see it: an agent's whispers count only for that agent itself.
+            # What waits, as the reader may see it: an agent's whispers count for that agent itself, and each for the
+            # person who wrote it (whispers.READ_BY).
             waiting, oldest = db.execute(
                 "SELECT count(*),min(m.sent_ms) FROM delivery_groups g INDEXED BY eligible_groups "
                 "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
                 "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0"
-                + ("" if row["id"] == actor else " AND m.private_to IS NULL"), (row["id"],)).fetchone()
+                + ("" if row["id"] == actor else " AND " + READ_BY), (row["id"],) if row["id"] == actor else (row["id"], actor)).fetchone()
             item = {"actor_id": row["id"], "name": row["name"], "route": route, "waiting": waiting, "waiting_since_ms": oldest}
             if row["scheduled"]:
                 item.update(next_due_ms=row["next_due_ms"] if waiting else None, reached_ms=row["reached_ms"])
