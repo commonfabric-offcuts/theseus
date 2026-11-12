@@ -4778,6 +4778,62 @@
     "native": "reading",
     "case": "neither the topic nor its conversation"
    }
+  },
+  {
+   "item": 40,
+   "act": "Native hosting: full permission mode enables the native sandbox and agents",
+   "break": [
+    [
+     "aim_next/codex_host.py",
+     "settings[\"sandbox\"] = \"danger-full-access\"",
+     "settings[\"sandbox\"] = \"workspace-write\""
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_routes.py"
+   }
+  },
+  {
+   "item": 42,
+   "act": "Native hosting: only the human owner may stop the seat",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "if current[\"owner_id\"] != actor or owner[\"kind\"] != \"human\":",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_controls.py"
+   }
+  },
+  {
+   "item": 42,
+   "act": "Native hosting: stopped work is excluded from scheduling",
+   "break": [
+    [
+     "aim_next/runner.py",
+     "json_extract(value,'$.desired')='stopped'",
+     "json_extract(value,'$.desired')='never-stopped'"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_controls.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "Native hosting: Stop kills an unresponsive child on an independent deadline",
+   "break": [
+    [
+     "aim_next/codex_host.py",
+     "TERM_GRACE_SECONDS = 5.0",
+     "TERM_GRACE_SECONDS = 25.0"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_controls.py"
+   }
   }
  ]
 }

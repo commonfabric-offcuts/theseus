@@ -112,9 +112,15 @@ export function healthProblems(answer, { now, feed, behind = false } = {}) {
 function agentLines(agent, now, sending) {
   const waiting = agent.waiting > 0
     ? `${count(agent.waiting)} waiting${Number.isInteger(agent.waiting_since_ms) ? ` since ${at(agent.waiting_since_ms, now)}` : ''}` : 'nothing waiting';
-  const state = agent.failing ? "can't be woken" : agent.not_answering ? 'not answering' : agent.waking ? 'being woken now'
+  const state = agent.execution ? ({idle:'idle',working:'working',waiting:'waiting for a reply',stopping:'stopping',stopped:'stopped',failed:'last turn failed',unavailable:'runtime unavailable'}[agent.execution.state] ?? 'state unavailable') : agent.failing ? "can't be woken" : agent.not_answering ? 'not answering' : agent.waking ? 'being woken now'
     : !agent.route ? 'not woken here' : agent.waiting > 0 ? 'wakes going out' : 'all caught up';
   const details = [];
+  if (agent.execution) {
+    details.push(agent.execution.desired === 'stopped' ? 'Work stays queued. Continue resumes this same agent context.' : 'This agent keeps its Codex context across deliveries and restarts.');
+    if (agent.execution.failure && !agent.failing) details.push(`Last failure: ${agent.execution.failure}.`);
+    const last = agent.execution.last_finished;
+    if (last) details.push(`Last turn ${last.status} at ${at(last.finished_ms, now)}.`);
+  }
   if (agent.failing) details.push(`${failedPhrase(agent.failing, now).replace(/^./, c => c.toUpperCase())} (${plural(agent.failing.count, 'time')}). ${why(agent.failing)}`);
   // Health's own facts only: what the scheduler then does is its own (docs/effects-runner.md).
   if (agent.not_answering) details.push(`Its last ${count(agent.not_answering.count)} wakes reached it and it has not answered since ${at(agent.not_answering.since_ms, now)}.`);
@@ -122,12 +128,12 @@ function agentLines(agent, now, sending) {
     details.push(`Woken through ${ROUTE[agent.route]}.`);
     details.push(Number.isInteger(agent.reached_ms) ? `A wake last got through at ${at(agent.reached_ms, now)}.` : 'No wake has got through yet.');
     // A next wake is said only while a runner sends them.
-    if (sending && Number.isInteger(agent.next_due_ms)) details.push(agent.next_due_ms <= now ? 'Its next wake is due now.' : `Its next wake is at ${at(agent.next_due_ms, now)}.`);
-    if (!sending && agent.waiting > 0) details.push('It is woken again once the agent runner is back.');
+    if (sending && agent.execution?.desired !== 'stopped' && Number.isInteger(agent.next_due_ms)) details.push(agent.next_due_ms <= now ? 'Its next wake is due now.' : `Its next wake is at ${at(agent.next_due_ms, now)}.`);
+    if (!sending && agent.execution?.desired !== 'stopped' && agent.waiting > 0) details.push('It is woken again once the agent runner is back.');
   } else {
     details.push('This Theseus has no route to wake it: it reads its work when it looks.');
   }
-  return { summary: `${agent.actor_id} — ${state} · ${waiting}`, details, bad: Boolean(agent.failing || agent.not_answering) };
+  return { summary: `${agent.actor_id} — ${state} · ${waiting}`, details, agent: agent.actor_id, execution:agent.execution, bad: Boolean(agent.failing || agent.not_answering) };
 }
 
 // The page's lines, from one health answer: [{group, key, label, summary, details, bad}].
@@ -181,8 +187,9 @@ export function healthLines(answer, { now, feed } = {}) {
 }
 
 export class HealthPage {
-  constructor({ host, read, feed = () => null, now = () => Date.now(), doc = host.ownerDocument }) {
-    Object.assign(this, { host, read, feed, now, doc });
+  constructor({ host, read, control = null, feed = () => null, now = () => Date.now(), doc = host.ownerDocument }) {
+    Object.assign(this, { host, read, control, feed, now, doc });
+    this.controlling = new Set(); this.controlError = null;
     this.answer = null; this.open = new Set(); this.failed = false;
     // The commit the answer is true at, and the commit the live feed named when it last came back (health-light.mjs).
     this.seq = -1; this.known = -1; this.floor = -1;
@@ -226,6 +233,7 @@ export class HealthPage {
       if (details.open) this.open.add(details.dataset.key); else this.open.delete(details.dataset.key);
     }
     const parts = [];
+    if (this.controlError) parts.push(this.el('p', this.controlError, 'notice'));
     if (this.failed) parts.push(this.el('p', this.answer ? `${this.failed} What is shown is from the last read.` : this.failed, 'notice'));
     if (!this.answer) { this.host.replaceChildren(...parts); return; }
     const now = this.now(), feed = this.feed();
@@ -247,6 +255,27 @@ export class HealthPage {
       if (line.label) summary.append(this.el('span', `${line.label}: `, 'health-label'));
       summary.append(this.el('span', line.summary));
       details.append(summary);
+      if (this.control && line.execution?.can_control) {
+        const desired = line.execution.desired === 'stopped' ? 'running' : 'stopped';
+        const button = this.el('button', desired === 'running' ? 'Continue' : 'Stop');
+        button.dataset.agentControl = line.agent;
+        button.disabled = this.controlling.has(line.agent);
+        button.onclick = async () => {
+          if (this.controlling.has(line.agent)) return;
+          this.controlling.add(line.agent); this.controlError = null; button.disabled = true;
+          try {
+            const receipt = await this.control(line.agent, desired, line.execution.execution_revision);
+            if (receipt?.status !== 'committed') throw new Error(receipt?.error?.message ?? 'The change could not be confirmed. Read the current state and try again.');
+          } catch (error) { this.controlError = error?.message ?? 'The change could not be confirmed.'; }
+          finally { this.controlling.delete(line.agent); await this.load(); }
+        };
+        details.append(button);
+      }
+      if (line.execution?.work) {
+        const work=line.execution.work, link=this.el('a',line.execution.state==='waiting'?'Open the question':'Open queued work');
+        link.href='/?'+new URLSearchParams({topic:work.topic_id,message:work.message_id});
+        const row=this.el('p');row.append(link);details.append(row);
+      }
       for (const words of line.details) details.append(this.el('p', words, 'muted'));
       lines.append(details);
     }

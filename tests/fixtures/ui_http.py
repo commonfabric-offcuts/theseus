@@ -652,6 +652,16 @@ def main():
                             answer = {"parked": agent}
                         else:
                             raise ValueError("Unknown wakes action")
+                    elif freshness and request["method"] == "hosted_setup":
+                        home = root / "hosted-controls-home"
+                        home.mkdir(mode=0o700, exist_ok=True)
+                        destination = {"kind":"codex-hosted-stdio", "protocol_version":1, "codex_home":str(home),
+                                       "thread_id":"12345678-1234-4234-8234-000000000002"}
+                        with store().runner_guard("fixture-hosted-controls") as guard:
+                            answer = store().provision_route_pin(guard, "fixture-outside-agent", destination, owner_id=actor)
+                        command("workspace.create", "hosted-controls-workspace", {"id":"hosted-workspace", "title":"Hosted controls", "team":["fixture-outside-agent"]})
+                        command("opening.save", "hosted-controls-save", {"workspace_id":"hosted-workspace", "topic_id":"hosted-topic", "title":"Queued work", "participants":["fixture-outside-agent"], "body":"Keep this job until it is handled.", "attachments":[]}, {"opening_id":"hosted-opening"}, {"opening_revision":0})
+                        command("opening.publish", "hosted-controls-publish", {}, {"opening_id":"hosted-opening"}, {"opening_revision":1})
                     elif freshness and request["method"] == "health":
                         # The fixture agent's wakes through Core's own runner acts, for
                         # the Health page (docs/health.md). "start" gives it a queue

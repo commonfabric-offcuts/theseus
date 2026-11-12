@@ -234,6 +234,7 @@ class EffectsLoop:
             raise LoopFault()
         # A diagnostic read never supplies or changes the held token/lease.
         self.due = value['next_due_ms']
+        if self.host is not None: self.host.apply_controls(value.get('hosted_controls', {}))
         self.read_needed = False
         self.reconcile_at = self.clock.monotonic()+60
         if hint: self.last_hint_read = self.clock.monotonic()
@@ -488,6 +489,8 @@ class EffectsLoop:
                 self._wait(0)
                 # A host stops its children first: interrupt live turns, close
                 # input, and wait for each exit (design §6.3).
+                if self.host is not None:
+                    self.host.advance_deadlines()
                 if self.watch.stopped and (self.host is None or self.host.stop_step(self.watch.stop_count)):
                     return self._stopped()
                 now,wall = self.clock.monotonic(),self.clock.wall_ms()
@@ -516,6 +519,8 @@ class EffectsLoop:
                     if result: return result
                     continue
                 deadlines = [self._read_at()]
+                if self.host is not None and self.host.next_deadline() is not None:
+                    deadlines.append(self.host.next_deadline())
                 if self.token is None:
                     acquire = now if self.acquire_wall is None else now+max(0,(self.acquire_wall-wall)/1000)
                     deadlines.append(max(acquire,self.gates['acquire']))
@@ -563,7 +568,9 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
         routes,hosted = broker_routes.load_route_table(routes_path,profile,selected_executable=executable)
         if hosted:
             if host_dir is None:
-                raise broker_routes.BrokerConfigError('host_dir_required')
+                default_host = profile.db_path.parent / 'hosted-runner'
+                default_host.mkdir(mode=0o700, exist_ok=True)
+                host_dir = str(default_host)
             host_log = codex_host.HostLog(host_dir,emit)
         watch = NativeWatch(profile.db_path)
         guard = store.runner_guard(runner_id)

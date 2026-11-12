@@ -23,6 +23,7 @@ The script may also set:
   mute_after_resume_once  once the first thread/resume is answered, read every
                        later line but answer no request
   ignore_term_once     the first spawned fake ignores SIGTERM
+  ignore_eof           a fake keeps running after stdin closes
   linger_on_term       the first spawned fake, on SIGTERM, waits for the FIFO
                        CODEX_HOME/term-gate the same way before it dies by that signal
   bad_resume_once      the first thread/resume answers a thread that is not an object
@@ -142,6 +143,8 @@ class Fake:
         while True:
             line = sys.stdin.readline()
             if not line:
+                while self.script.get("ignore_eof"):
+                    signal.pause()
                 return 0
             message = json.loads(line)
             self.wire({"in": message})
@@ -184,8 +187,9 @@ class Fake:
         roots = params.get("config", {}).get("sandbox_workspace_write", {}).get("writable_roots", [])
         widened = widened or self.script.get("echo_widened")
         return {"thread": self.thread(thread_id, status or {"type": "idle"}), "approvalPolicy": params.get("approvalPolicy", "on-request"),
-                "approvalsReviewer": "user", "cwd": record["cwd"], "model": "fake-model", "modelProvider": "openai",
-                "sandbox": {"type": "workspaceWrite", "writableRoots": ["/"] if widened else roots, "networkAccess": bool(widened),
+                "approvalsReviewer": "user", "cwd": record["cwd"], "model": params.get("model", "fake-model"), "modelProvider": "openai",
+                "reasoningEffort": params.get("config", {}).get("model_reasoning_effort"),
+                "sandbox": {"type": "dangerFullAccess"} if params.get("sandbox") == "danger-full-access" and not widened else {"type": "workspaceWrite", "writableRoots": ["/"] if widened else roots, "networkAccess": bool(widened),
                             "excludeSlashTmp": True, "excludeTmpdirEnvVar": True}}
 
     def once(self, key):
@@ -225,6 +229,8 @@ class Fake:
         if thread_id not in self.state["threads"]:
             return self.error(request, -32600, "thread not found: " + thread_id)
         record = self.state["threads"][thread_id]
+        if not record.get("persisted"):
+            return self.error(request, -32600, "no rollout found for thread id " + thread_id)
         if record.get("closed") == "refused":
             return self.error(request, -32600, "thread could not be resumed")
         record["resumes"] = record.get("resumes", 0) + 1
@@ -234,6 +240,12 @@ class Fake:
                                                                 widened=record.get("closed") == "widened")})
         if self.once("mute_after_resume_once"):
             self.muted = True
+
+    def on_thread_inject_items(self, request, params):
+        record = self.state["threads"][params["threadId"]]
+        record["persisted"] = True
+        self.save()
+        self.send({"id": request["id"], "result": {}})
 
     def on_thread_turns_list(self, request, params):
         if self.once("bad_turns_list_once"):

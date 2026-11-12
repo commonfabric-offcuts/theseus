@@ -179,6 +179,16 @@ symlink, at its own canonical path), in either order; anything else refuses
 with `invalid_writable_roots`. The config's destination is compared with Core's
 pin, and the returned `HostedConfig.destination` is the pin's.
 
+Version 2 adds exactly `permission_mode` (`workspace` or `full`),
+`reasoning_effort` (null, low, medium, high, xhigh), and `instructions` (the
+standing role, at most 16 KiB). Version 1 retains its restricted behavior.
+Full mode uses native `danger-full-access`, network and command access, and
+enables native agents. The selected model, effort and role are reapplied on
+resume; model and effort are checked in Codex's response when specified.
+The old two writable roots remain validated routing metadata; they do not
+restrict full mode. Provisioning exposes `--permission-mode`,
+`--reasoning-effort` and `--instructions`.
+
 ## Route map entry
 
 A hosted route's map entry names its config file directly:
@@ -187,9 +197,11 @@ file has `kind` `codex-hosted-stdio` is hosted; any other entry is a broker
 route file. Only a map with a broker entry needs the trusted broker
 executable. All homes' children of one process run one Codex executable per
 home; two configs naming different executables for one home refuse startup
-with `conflicting_codex_executable`. A map with any hosted entry needs
-`--host-dir`, a private directory (owner only) that holds the host's
-`events.jsonl` and `codex-stderr.log`.
+with `conflicting_codex_executable`. A map with a hosted entry writes `events.jsonl` and `codex-stderr.log`
+to `--host-dir`, when supplied. Otherwise it creates `hosted-runner` beside
+the bound database. This private directory must belong to the current user,
+with mode 0700 and no symlink; existing unsafe paths are refused. Normal
+deploy and supervisor restarts therefore keep the same instance-local logs.
 
 ## Provisioning (operator act)
 
@@ -206,7 +218,11 @@ refuses while a runner holds it), spawns one child, checks the handshake and
 sign-in, creates the agent's outbox (0700) if it is missing, sends
 `thread/start` with the thread settings below, and checks the echo: `cwd`,
 `approvalPolicy: never`, and a `workspaceWrite` sandbox with exactly the two
-writable roots, no network, and `/tmp` and `$TMPDIR` excluded. It then
+writable roots, no network, and `/tmp` and `$TMPDIR` excluded (or the explicit
+full mode and selected model/effort). It persists a developer setup record
+using `thread/inject_items` before pinning the id: native Codex otherwise
+forgets a newly started empty thread when its process closes. This makes no
+model call and fabricates no agent or human answer. It then
 provisions the pin, writes the config (new file, 0600), closes the child's
 input and reaps it. A refusal before `thread/start` leaves nothing behind. It prints one JSON
 line: `{"status": "provisioned", "actor_id", "thread_id", "config"}` (exit 0)
@@ -218,7 +234,7 @@ never starts a thread.
 
 ### Children
 
-One `codex app-server --listen stdio:// -c agents.enabled=false` child per
+One `codex app-server --listen stdio://` child per
 `codex_home`, spawned with no shell, in the runner's process group, with only
 `HOME`, `LANG`, `TMPDIR`, `PATH=/usr/bin:/bin:/usr/sbin:/sbin` and
 `CODEX_HOME`, stdin and stdout as pipes and stderr to the host's log. Its PID
@@ -270,6 +286,9 @@ never`, `approvalsReviewer: user`, `sandbox: workspace-write`, `config` with
 `/tmp` and `$TMPDIR` excluded) and `agents.enabled=false`,
 `developerInstructions` (`hosted_notice.developer_instructions`), and `model`
 when the config names one.
+Version 2 full mode replaces the sandbox configuration with
+`danger-full-access` and `agents.enabled=true`; its role is appended to the
+bound CLI instructions. `model_reasoning_effort` is set when selected.
 
 ### Dispatch
 
@@ -295,7 +314,8 @@ when the config names one.
    send `thread/compact/start` once first.
 5. If the thread is active with a known turn: `turn/steer` with
    `expectedTurnId`; otherwise `turn/start` with `approvalPolicy: never` and
-   the `workspaceWrite` sandbox policy. Both carry
+   the route's `workspaceWrite` or `dangerFullAccess` sandbox policy and
+   selected reasoning effort. Both carry
    `clientUserMessageId: theseus:<attempt_id>`. A refused steer falls back to
    one `turn/start` when the host has already seen that turn end, when it
    knew the turn as running only from that last-turn read (a turn the history
@@ -323,8 +343,12 @@ answer (the runner's `settled` event carries `stale: true`), never a fault.
 ### Server requests
 
 Answered at once from the same loop: command and file-change approvals
-`decline`; permissions `{permissions: {}, scope: turn}`; user input
-`{answers: {}}`; MCP elicitation `decline`; dynamic tool calls
+`decline`; permissions `{permissions: {}, scope: turn}`; native user input
+returns an explicit unsupported error saying no answer was supplied and
+directing the agent to post a Theseus ask. It never supplies empty answers.
+The agent reads its ask back, acknowledges the handled delivery separately,
+and ends the turn; the person's reply becomes a fresh delivery in the same
+saved context. MCP elicitation `decline`; dynamic tool calls
 `{contentItems: [{type: inputText, text: "not available"}], success: false}`;
 `currentTime/read` the host clock in whole seconds; anything else error
 `-32601`. Each is logged with its method (or `other`) and thread.
@@ -362,10 +386,29 @@ which re-arms through Core's backoff.
 A stop signal stops new claims. The host waits for the outstanding RPC (or the
 claim's lease), sends `turn/interrupt` for each active turn, handles the
 resulting `turn/completed`, closes each child's input and waits for each exit.
-A second stop signal sends SIGTERM to the captured child PIDs, a third
-SIGKILL. After a fault or lost ownership, `Host.close` closes every child's
-input and reaps each with the same escalation, before the guard and watch
-close.
+A stop sends SIGTERM after five seconds if a child has not exited; each TERM
+has its own five-second SIGKILL deadline. No additional delivery or signal
+is required. A second stop signal accelerates TERM, a third KILL. Fault and
+ownership-loss cleanup use the same deadlines before releasing the guard.
+Provisioning RPCs also have a 45-second deadline and bounded child cleanup.
+
+## Installed-runtime proof
+
+The 11 Nov native pilot used Codex `0.167.0-alpha.3.2`, `gpt-6.1-sol`, medium
+effort and an independently signed-in, host-owned home. Preserve the entire
+runtime package and launch `bin/codex`: copying the signed executable alone
+breaks its signature, and copying only its app bundle omits the code-mode
+and execution helpers needed for tools. Desktop upgrades must not change
+this pinned package.
+
+`tools/probe_codex_host.py` is an opt-in live probe (never part of unit CI).
+It proves shell execution, the same thread after process restart, and an
+earlier constraint surviving compaction without being repeated. A separate
+isolated Theseus pilot proved a real delivery, file task, attributed ask,
+waiting without inventing an answer, process restart, human answer and
+follow-up file task, posted/read-back replies and separate acknowledgments.
+These are native-runtime proofs, not claims of live migration or a complete
+agent control UI. Per-seat controls and live cutover remain separate work.
 
 ### Event log
 
@@ -396,3 +439,31 @@ Proof: `tests/test_codex_host.py` runs real runner processes against
 `tests/fixtures/fake_codex_app_server.py`, a scripted stand-in that speaks the
 schema's message shapes and runs the real CLI as the agent, covering design §9
 S1-S6 and the failure rows above. No test runs Codex or calls a model.
+
+## Operator controls in Theseus (42)
+
+`agent.execution` targets `{actor_id}` and takes `{desired: running|stopped}`
+with `expected.execution_revision` and the usual authority fence. Provisioning
+names one existing human owner explicitly. Only that owner can control the
+seat; an agent cannot stop peers or replace this ownership. Each act is an
+ordinary idempotent recorded command. Missing control provisioning is refused.
+
+Stop durably excludes the recipient from new wake claims without disabling
+the actor or acknowledging any deliveries. The runner interrupts the current
+turn; its independent deadline ends an unresponsive runtime. Continue reopens
+scheduling on the same immutable pinned thread. Pending work remains pending;
+Continue with no work does not spend a model turn. A real human question is
+posted through Theseus and its answer is a normal delivery in that context.
+
+Health distinguishes desired stop from an observed end: Stopping while an
+open turn remains, Stopped once the runner records its end, Working while an
+owned turn is active, and Idle or Failed otherwise. A lost runner is reported
+as unavailable rather than pretending an active turn is healthy. Controls
+and routing stay authority-bound on restart. Control records use the existing
+metadata keyspace and short transactions; no schema version competes with
+other work in flight.
+
+Health also returns a readable source reference for current work or a waiting
+question, when that viewer can read it. The link never grants additional topic
+or whisper access. A first failed dispatch reports its recorded reason without
+waiting for repeated-failure alarms.

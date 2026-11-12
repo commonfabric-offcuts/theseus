@@ -134,15 +134,20 @@ class RoutePins:
         except Refusal as error:
             raise RoutePinError(error.code, error.message) from error
 
-    def provision_route_pin(self, guard, actor_id, destination):
+    def provision_route_pin(self, guard, actor_id, destination, owner_id=None):
         """Explicit guard-held provisioning; never called by a runtime read."""
         key, expected, payload = _request(self, actor_id, destination)
 
         def action(db, now):
             self._pin_actor(db, actor_id)
             existing = _stored(db, key, expected)
+            owner_added = False
+            if owner_id is not None:
+                if destination['kind'] != HOSTED_KIND:
+                    raise RoutePinError('INVALID_ARGUMENT', 'Only a hosted seat has execution controls')
+                owner_added = self._provision_hosted_owner(db, actor_id, owner_id, now)
             if existing is not None:
-                return {"status": "existing", "pin": existing}, False
+                return {"status": "existing", "pin": existing}, owner_added
             db.execute("INSERT INTO metadata(key,value) VALUES (?,?)", (key, payload))
             return {"status": "provisioned", "pin": expected}, True
 

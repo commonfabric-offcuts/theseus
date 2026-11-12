@@ -833,6 +833,8 @@ class Health:
                     item["not_answering"] = {"count": parked["count"], "since_ms": parked["since_ms"]}
                 if row["claim_until_ms"] is not None and row["claim_until_ms"] > now:
                     item["waking"] = True
+            execution = self._hosted_status(db, row["id"], actor, runner["live"])
+            if execution is not None: item["execution"] = execution
             agents.append(item)
         latest = db.execute("SELECT * FROM releases ORDER BY number DESC LIMIT 1").fetchone()
         release = None

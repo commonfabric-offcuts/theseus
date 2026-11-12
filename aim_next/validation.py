@@ -4,6 +4,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 
 COMMANDS = {
+    "agent.execution": "_command_agent_execution",
     "workspace.create": "_command_workspace_create",
     "workspace.member_set": "_command_workspace_member_set",
     "workspace.owner_set": "_command_workspace_owner_set",
@@ -52,7 +53,7 @@ COMMANDS = {
     "message.star": "_command_message_star", "message.deal": "_command_message_deal",
     "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
 }
-EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
+EXPECTED = {"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "topic.read_through": set(),
@@ -87,7 +88,7 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "outline.order_set": {"order_revision"},
             "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "stack.place": {"place_revision"},
             "stack.name": {"name_revision"}, "stack.join": {"join_revision"}}
-REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
+REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
