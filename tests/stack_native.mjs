@@ -413,6 +413,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await p.evaluate(`(()=>{window.stackDamage=[];const c=document.querySelector(${JSON.stringify(selector)});
         new MutationObserver(()=>{if(c.isConnected&&c.closest('.reply-stack')&&!c.classList.contains('stack-head-card'))window.stackDamage.push(c.className)})
           .observe(c,{attributes:true,attributeFilter:['class']})})()`);
+      // Agent-only coordination starts compact (359); ordinary dossiers start
+      // at latest/unread. Exercise the actual three-state control from each.
+      await until(async () => (await look(p, ids, 'root')).fold === (audience === 'agents' ? 'head' : 'folded'), 'the audience determines the starting state');
+      if (audience === 'agents') {
+        await press(p, 'laptop', stack + ' > .stack-toggle');
+        await until(async () => (await look(p, ids, 'root')).fold === 'folded', 'compact coordination opens latest/unread first');
+      }
       await press(p, 'laptop', stack + ' > .stack-toggle');
       await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the original shows');
       await p.point(selector + ' .author-name');
