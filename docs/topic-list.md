@@ -87,6 +87,10 @@ the reader's own order, which every list read carries (`order`), and a topic
 they never placed goes right after the one the server lists before it
 (docs/outline-order.md).
 
+A row whose topic waits on the reader for an ask opens the topic at that
+ask's message, so the Reader shows the question (item 148,
+docs/outcome-light.md); its link says so. Any other row opens the topic.
+
 The open topic's row sits in the list its own state puts it in, in its place
 by activity, before the lists are read again. A topic that two lists hold,
 because it moved between their reads, shows once, in the list read last.

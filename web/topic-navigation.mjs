@@ -32,6 +32,8 @@ export function routeHref(route) {
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
   return params ? '?' + new URLSearchParams(params) : '/';
 }
+// A topic, opened at one of its messages when one is named.
+export const topicTarget = (id, message = null) => ({kind:'topic',id,...(message?{message}:{})});
 // A new opening in an outcome whose topic answers one message.
 export const startFrom = (workspace, message) => ({kind:'opening',workspace,opening:crypto.randomUUID(),topic:crypto.randomUUID(),from:message});
 export function parseRoute(url) {
@@ -322,15 +324,23 @@ export class TopicRail {
     return this.pages.started && this.lists.every(list => list.pages.items.length === 0) && !(this.groups?.done || this.groups?.archived);
   }
   title(id) { for (const list of this.lists) { const item = list.pages.items.find(item => item.id === id); if (item) return item.title; } return id; }
+  // The message of the question a topic waits on the reader for, as the lists last read it, or null.
+  question(id) {
+    for (const list of this.lists) {
+      const item = list.pages.items.find(item => item.id === id);
+      if (item) return (Array.isArray(item.asks) ? item.asks : []).find(ask => ask?.actor_id === this.reader && typeof ask.message_id === 'string')?.message_id ?? null;
+    }
+    return null;
+  }
   updateCurrent(topic) { for (const list of this.lists) list.pages.current = structuredClone(topic); this.paint(); }
   row(item) {
     let link = this.links.get(item.id);
     if (!link) {
       link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
-      link.href = '?topic=' + encodeURIComponent(item.id);
+      // A topic waiting on the reader opens at the question (item 148): the Reader shows it.
       link.onclick = event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault(); return this.open(item.id, this.title(item.id));
+        event.preventDefault(); return this.open(item.id, this.title(item.id), this.question(item.id));
       };
       this.links.set(item.id, link);
     }
@@ -344,6 +354,7 @@ export class TopicRail {
       paintState(link, item, this.reader);
       paintWork(link, item, this.reader);
     }
+    link.href = routeHref(topicTarget(item.id, this.question(item.id)));
     if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
     return link;

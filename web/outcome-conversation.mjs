@@ -6,6 +6,7 @@
 // decides one. New is a plain count the coordinator clears, never a light
 // (D5); only Waiting on you lights.
 import { timeNode } from './times.mjs';
+import { presses, questionTarget } from './waiting-questions.mjs';
 import { workNote } from './topic-state.mjs';
 import { WRITING_FIELDS, noWriting } from './editor.mjs';
 import { shownChoice } from './whisper-choice.mjs';
@@ -175,9 +176,13 @@ export function paintConversationRow(container, { view, title, reader, current =
   if (waitsOnReader(view, reader).length) link.append(element(doc, 'span', { className: 'topic-state mine', dataset: { state: 'waiting' }, textContent: 'Waiting on you' }));
   link.append(element(doc, 'small', { textContent: ROW_WORDS }));
   link.title = workNote(view.work, reader, waitsOnReader(view, reader).length ? 'Waiting on you' : '') || ROW_WORDS;
+  // Waiting on the reader, a press opens the oldest question there, each press after it the next (item 148).
+  const asks = waitsOnReader(view, reader).map(wait => ({ topic_id: view.topic_id, message_id: wait.ask_message_id, ms: wait.since_ms }));
   link.onclick = event => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault(); open();
+    event.preventDefault();
+    const ask = asks.length ? presses.next('conversation:' + view.topic_id, asks) : null;
+    if (ask) open(questionTarget(ask)); else open();
   };
   container.replaceChildren(link);
   return true;

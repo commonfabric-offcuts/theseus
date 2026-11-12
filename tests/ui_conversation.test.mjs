@@ -346,3 +346,21 @@ test("the conversation's heading names who answers, and its address is ?conversa
   assert.throws(() => routeKey({ kind: 'conversation', id: 'w1', extra: 'x' }));
   assert.throws(() => parseRoute(new URL('https://aim.test/?conversation=w1&topic=t-1')));
 });
+
+// Item 148: the Conversation row's Waiting on you takes the reader to the
+// question: the oldest ask waiting on them in the Conversation, at its
+// message, then each next one, round to the oldest again. A wait on someone
+// else is not theirs, and with none on them the row opens the Conversation.
+test('the Conversation row waiting on the reader opens its oldest question first, then each next one', () => {
+  const doc = miniDocument(), host = doc.createElement('div'), opened = [];
+  const wait = (id, on, ms) => ({ ask_message_id: id, on, by: 'fable', since_ms: ms, item_id: null, excerpt: id });
+  const view = { topic_id: 't-conv', unread: 0, addressed: 0, new_items: 0, work: null,
+    waits: [wait('m-new', 'tony', AT + 60000), wait('m-other', 'cynthia', AT - 60000), wait('m-old', 'tony', AT)] };
+  paintConversationRow(host, { view, title: 'Launch', reader: 'tony', href: '?conversation=w1', open: target => opened.push(target ?? 'conversation'), doc });
+  for (let n = 0; n < 3; n++) host.children[0].onclick({ button: 0, preventDefault() {} });
+  assert.deepEqual(opened, [{ kind: 'topic', id: 't-conv', message: 'm-old' }, { kind: 'topic', id: 't-conv', message: 'm-new' }, { kind: 'topic', id: 't-conv', message: 'm-old' }]);
+  opened.length = 0;
+  paintConversationRow(host, { view: { ...view, waits: [wait('m-other', 'cynthia', AT)] }, title: 'Launch', reader: 'tony', href: '?conversation=w1', open: target => opened.push(target ?? 'conversation'), doc });
+  host.children[0].onclick({ button: 0, preventDefault() {} });
+  assert.deepEqual(opened, ['conversation'], 'nothing waits on the reader, so the row opens the Conversation');
+});

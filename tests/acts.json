@@ -4800,13 +4800,143 @@
    "break": [
     [
      "web/outline-rail.mjs",
-     "...(ask.message_id ? {message:ask.message_id} : {})",
-     "...{}"
+     "await this.open(questionTarget(ask), ask.title);",
+     "await this.open({kind:'topic', id:ask.topic_id}, ask.title);"
     ]
    ],
    "check": {
     "native": "rail",
     "case": "outcome clicks toggle"
+   }
+  },
+  {
+   "item": 148,
+   "act": "Waiting on you opens the oldest question first, however the server orders them",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "return time(a) - time(b) ||",
+     "return time(b) - time(a) ||"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "Each press on Waiting on you opens the next question, round to the oldest after the newest",
+   "break": [
+    [
+     "web/waiting-questions.mjs",
+     "return ordered.find(question => compareQuestions(question, last) > 0) ?? ordered[0] ?? null;",
+     "return ordered[0] ?? null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_waiting_questions.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outline's Waiting on you goes through the presses: the oldest question, then the next",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const ask = presses.next('outcome:' + outcome.id, (answer.facts ?? []).filter(fact => fact.kind === 'ask'));",
+     "const ask = answer.facts?.find(fact => fact.kind === 'ask');"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
+   }
+  },
+  {
+   "item": 148,
+   "act": "A topic row waiting on the reader opens the topic at its question",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "return this.open(item.id, this.title(item.id), this.question(item.id));",
+     "return this.open(item.id, this.title(item.id));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_rail.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outline's topic rows pass the question on to the page",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });",
+     "open: (topicId, topicTitle) => this.open(topicTarget(topicId), topicTitle) });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome light's Waiting on you on its page opens the questions, oldest first",
+   "break": [
+    [
+     "web/outcome-light.mjs",
+     "if (light?.light !== 'waiting' || !asks.length || !open || !place) return element('span', {}, ...words);",
+     "return element('span', {}, ...words);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_light.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome's page gives its light the place its presses are kept under",
+   "break": [
+    [
+     "web/app.mjs",
+     "place:'outcome:'+route.id,",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The Conversation row waiting on the reader opens its questions, oldest first",
+   "break": [
+    [
+     "web/outcome-conversation.mjs",
+     "if (ask) open(questionTarget(ask)); else open();",
+     "open();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_conversation.test.mjs"
+   }
+  },
+  {
+   "item": 148,
+   "act": "The outcome's page opens the Conversation row's question where the row says",
+   "break": [
+    [
+     "web/app.mjs",
+     "open: (to = target) => openDestination(to, CONVERSATION_TITLE) });",
+     "open: () => openDestination(target, CONVERSATION_TITLE) });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "oldest question first"
    }
   },
   {
@@ -4822,6 +4952,21 @@
    "check": {
     "native": "rail",
     "case": "outcome clicks toggle"
+   }
+  },
+  {
+   "item": 320,
+   "act": "Return on an outcome name opens its Conversation with its topics, folding nothing",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if (event.detail === 0) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a press on an outline row puts the focus"
    }
   },
   {

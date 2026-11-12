@@ -26,6 +26,9 @@ const whenAfter = ms => !known(ms) ? [] : [' ', { ms, form: 'commaSince' }];
 // "Blocking a release", "Blocking a piece", or null.
 const blockingName = short => short?.blocking === 'release' ? 'Blocking a release' : short?.blocking === 'piece' ? 'Blocking a piece' : null;
 
+// An ask's link names the message that asks, when a message did (item 148).
+const asked = fact => typeof fact.message_id === 'string' ? { message: fact.message_id } : {};
+
 // The light's kind as the page names it on its lamp: the four, or unknown.
 export const lampKind = light => light?.light ?? 'unknown';
 
@@ -69,7 +72,7 @@ export function lastLine(answer) {
   if (answer?.lead?.kind === 'reached') return { text: [`${answer.lead.by} said it was reached`] };
   for (const fact of facts) {
     switch (fact?.kind) {
-      case 'ask': return { label: 'Asked:', by: fact.by, link: { topic: fact.topic_id, text: fact.title + (fact.title_truncated ? '…' : '') } };
+      case 'ask': return { label: 'Asked:', by: fact.by, link: { topic: fact.topic_id, ...asked(fact), text: fact.title + (fact.title_truncated ? '…' : '') } };
       case 'topic_work': return { label: 'Last:', by: fact.by, link: { topic: fact.topic_id, text: fact.title + (fact.title_truncated ? '…' : '') } };
       case 'last_activity': return { label: 'Last:', by: fact.by, link: { topic: fact.topic_id, text: fact.topic_title + (fact.title_truncated ? '…' : '') } };
       case 'item_work': case 'last_now_work': return { label: 'Last:', by: fact.by, link: { item: fact.item, text: `${fact.item}. ${fact.title}` } };
@@ -115,7 +118,7 @@ export function leadWords(lead, facts = [], outcome = '') {
 // follows it, muted, after " — "; or {text} for a fact that is a sentence.
 export function factParts(fact) {
   switch (fact?.kind) {
-    case 'ask': return { link: { topic: fact.topic_id, text: fact.title + (fact.title_truncated ? '…' : '') },
+    case 'ask': return { link: { topic: fact.topic_id, ...asked(fact), text: fact.title + (fact.title_truncated ? '…' : '') },
       detail: fact.by ? [`${fact.by} asked`, ...(known(fact.ms) ? [' ', ...time(fact.ms, 'at')] : [])] : ['waiting on your answer'] };
     case 'item_work': return { link: { item: fact.item, text: `${fact.item}. ${fact.title}` }, detail: [`${fact.by} `, ...did(fact.how, fact.ms)] };
     case 'topic_work': return { link: { topic: fact.topic_id, text: fact.title + (fact.title_truncated ? '…' : '') },
