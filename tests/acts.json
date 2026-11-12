@@ -523,8 +523,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (!event.shiftKey && at === card) { event.preventDefault(); shown[0].focus({ preventScroll: true }); }",
-     "if (false) { event.preventDefault(); shown[0].focus({ preventScroll: true }); }"
+     "if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }",
+     "if (false) { event.preventDefault(); order[0].focus({ preventScroll: true }); }"
     ]
    ],
    "check": {
@@ -2456,8 +2456,8 @@
    "break": [
     [
      "web/aim.css",
-     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;",
-     ".message-card.scroll-in-place{overflow:visible;overscroll-behavior:auto;"
+     ".message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;overscroll-behavior:auto;",
+     ".message-card.scroll-in-place{overflow-y:visible;overflow-x:hidden;overscroll-behavior:auto;"
     ]
    ],
    "check": {
@@ -2482,7 +2482,7 @@
   },
   {
    "item": 103,
-   "act": "A stack's header chevron cycles through exactly three states",
+   "act": "A stack's header chevron cycles through its states, two since item 394",
    "break": [
     [
      "web/reply-stacks.mjs",
@@ -2492,7 +2492,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
@@ -2537,7 +2537,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
@@ -2552,12 +2552,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
    "item": 283,
-   "act": "Keyboard opening steps through the same three stack states",
+   "act": "Keyboard opening steps through the same stack states as the chevron",
    "break": [
     [
      "web/stack-order.mjs",
@@ -2567,7 +2567,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
@@ -2582,7 +2582,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
@@ -2672,7 +2672,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
@@ -2844,7 +2844,7 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        for reader in [actor] if personal else self._message_readers(db, message, actor):",
+     "        for reader in [actor] if owner else self._message_readers(db, message, actor):",
      "        for reader in [actor]:"
     ]
    ],
@@ -2964,7 +2964,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
@@ -3092,8 +3092,8 @@
    "break": [
     [
      "web/aim.css",
-     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;",
-     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:contain;"
+     ".message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;overscroll-behavior:auto;",
+     ".message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;"
     ]
    ],
    "check": {
@@ -4554,8 +4554,8 @@
    "break": [
     [
      "web/aim.css",
-     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;scrollbar-gutter:stable}",
-     ".message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;scrollbar-gutter:stable}\n.message-card.scroll-in-place>:is(.message-author,.message-reply-to){position:sticky;top:0}"
+     ".message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;overscroll-behavior:auto;scrollbar-gutter:stable}",
+     ".message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;overscroll-behavior:auto;scrollbar-gutter:stable}\n.message-card.scroll-in-place>:is(.message-author,.message-reply-to){position:sticky;top:0}"
     ]
    ],
    "check": {
@@ -5373,7 +5373,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "exactly three states"
+    "case": "exactly two states"
    }
   },
   {
@@ -6495,6 +6495,348 @@
    "check": {
     "native": "rail",
     "case": "a press on an outline row puts the focus"
+   }
+  },
+  {
+   "item": 377,
+   "act": "A person's reply to a message folds it for them alone, in Core, in the same act",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if snapshot.get(\"reply_to\") else []",
+     "        folded = []"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 377,
+   "act": "A person's thumbs-up on a message folds it for them alone, in Core, in the same act",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        folded = self._fold_answered(db, actor, message[\"id\"]) if thumbed else []",
+     "        folded = []"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 377,
+   "act": "A starred message never folds by a reply or a thumbs-up",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if (self._act_value(db, message_id, \"star\", actor) or NONE[\"star\"])[\"starred\"]:\n            return []\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 377,
+   "act": "A message already folded stays folded, with no new row, on a reply or a thumbs-up",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if (self._act_value(db, message_id, \"fold\", actor) or NONE[\"fold\"])[\"folded\"]:\n            return []\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 377,
+   "act": "An agent's reply or thumbs-up folds nothing",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if self._actor(db, actor)[\"kind\"] != \"human\":\n            return []\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 377,
+   "act": "On the page a reply sent or a thumbs-up given shows the message as its folded row, the place and the keys kept, on every device",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if snapshot.get(\"reply_to\") else []",
+     "        folded = []"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks replying to a message or a thumbs-up on it folds it"
+   }
+  },
+  {
+   "item": 381,
+   "act": "A swipe folds a long message that scrolls up and down inside its card",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;",
+     ".message-card.scroll-in-place{overflow:auto;"
+    ],
+    [
+     "web/stack-feed.mjs",
+     "const SIDEWAYS_SLACK = 2;",
+     "const SIDEWAYS_SLACK = 0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a swipe folds a long message that scrolls up and down"
+   }
+  },
+  {
+   "item": 388,
+   "act": "x is the key that folds a message",
+   "break": [
+    [
+     "web/pane-keys.mjs",
+     "End: 'last', x: 'fold-message' }",
+     "End: 'last' }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outline_order.test.mjs"
+   }
+  },
+  {
+   "item": 388,
+   "act": "x folds the selected message to its row, and x again unfolds it, in Core",
+   "break": [
+    [
+     "web/pane-keys.mjs",
+     "End: 'last', x: 'fold-message' }",
+     "End: 'last' }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks x folds the selected message"
+   }
+  },
+  {
+   "item": 388,
+   "act": "x on a starred message says it stays open",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (acts.starred && !acts.folded) { this.say('Starred messages stay open'); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks x folds the selected message"
+   }
+  },
+  {
+   "item": 388,
+   "act": "x on a dossier's chevron or compact header folds nothing",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (toggle || (section && section.dataset.single !== 'true' && section.dataset.headOpen === 'false' && entry.dataset.id === section.dataset.stack)) return;",
+     "    if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks x folds the selected message"
+   }
+  },
+  {
+   "item": 390,
+   "act": "A folded message's row carries its 👍",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      if (item) this.paintFoldedThumb(card, item);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row carries its 👍"
+   }
+  },
+  {
+   "item": 390,
+   "act": "The row's 👍 shows pressed once the person gave it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "button.setAttribute('aria-pressed', String(on));",
+     "button.setAttribute('aria-pressed', 'false');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row carries its 👍"
+   }
+  },
+  {
+   "item": 390,
+   "act": "A press on the row's 👍 gives the thumbs-up without unfolding the message",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      button.onclick = event => { event.stopPropagation(); press(); };",
+     "      button.onclick = () => { press(); };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row carries its 👍"
+   }
+  },
+  {
+   "item": 390,
+   "act": "The row's 👍 is 44px each way on a phone",
+   "break": [
+    [
+     "web/stack-look.css",
+     "@media(pointer:coarse){.folded-thumb{display:inline-flex;align-items:center;justify-content:center;min-width:2.75rem;min-height:2.75rem;margin:-.6rem 0}}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row carries its 👍"
+   }
+  },
+  {
+   "item": 390,
+   "act": "Tab from a selected folded row reaches its 👍",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    const order = [folded, ...(this.bar.hidden ? [] : Object.values(this.buttons))]",
+     "    const order = [...(this.bar.hidden ? [] : Object.values(this.buttons))]"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row carries its 👍"
+   }
+  },
+  {
+   "item": 393,
+   "act": "A wheel event further down than across, right after a trackpad swipe folds a message, scrolls the page at once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (Math.abs(down) > Math.abs(across)) { this.wheelSwipe = null; return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a scroll right after two fingers fold a message"
+   }
+  },
+  {
+   "item": 394,
+   "act": "A stack has two states, latest plus unread and all messages",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "export const LEVELS = ['folded', 'open'];",
+     "export const LEVELS = ['head', 'folded', 'open'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 394,
+   "act": "The chevron, the header, → ← and ⋯ switch between the two states, never to the header alone",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "export const LEVELS = ['folded', 'open'];",
+     "export const LEVELS = ['head', 'folded', 'open'];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks use exactly two states"
+   }
+  },
+  {
+   "item": 394,
+   "act": "⋯ offers only the stack step there is from where the stack stands",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [",
+     "      ...(stack.replies.length ? ["
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks use exactly two states"
+   }
+  },
+  {
+   "item": 394,
+   "act": "A stack left at its header alone that is not agents' alone shows latest plus unread",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  return level === 'head' && !state.coordination.has(id) ? 'folded' : level;",
+     "  return level;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 394,
+   "act": "On the page a dossier left at its header shows latest plus unread once a reply brings in the person",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  return level === 'head' && !state.coordination.has(id) ? 'folded' : level;",
+     "  return level;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a dossier left at its header alone"
+   }
+  },
+  {
+   "item": 390,
+   "act": "A lit folded row's bar sits clear of its 👍, so the 👍 can be pressed",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "card.querySelector(':scope > .message-folded > .folded-thumb')]) {",
+     "null]) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   }
  ]

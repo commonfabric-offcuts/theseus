@@ -24,7 +24,7 @@
      > .stack-placed-line    the reader placed it (.stack-placed-words, .stack-unplace)
    [data-starred=true]       on any message card the reader starred
    [data-folded=true]        on any message card the reader folded, holding
-     .message-folded         its one row: .folded-author, .folded-words, .folded-cue
+     .message-folded         its one row: .folded-author, .folded-words, .folded-thumb, .folded-cue
    .stack-folded             in a head row: its first message is folded
 
    The stack is the folder's body; the head row stands above it as the tab, in
@@ -198,6 +198,11 @@
 .message-folded{display:flex;align-items:baseline;gap:.5rem;min-width:0;width:100%;color:var(--muted);font-size:.85rem;font-weight:400;white-space:nowrap}
 .folded-author{flex:none;color:var(--ink);font-weight:650}
 .folded-words{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.folded-thumb{flex:none;align-self:center;padding:0 .4rem;border-radius:1rem;line-height:1.5rem;color:var(--muted);cursor:pointer}
+.folded-thumb:hover{background:var(--stack-folder-deep);color:var(--ink)}
+.folded-thumb[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:650}
+.folded-thumb:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+@media(pointer:coarse){.folded-thumb{display:inline-flex;align-items:center;justify-content:center;min-width:2.75rem;min-height:2.75rem;margin:-.6rem 0}}
 .folded-cue{flex:none;padding:0 .45rem;border:1px solid var(--line);border-radius:1rem;font-size:.72rem;line-height:1.3rem}
 .folded-cue::before{content:'▸ ';content:'▸ ' / ''}
 .stack-folded{flex:none;color:var(--stack-meta-ink);font-style:italic}
@@ -213,8 +218,8 @@
 /* A touch screen: quiet line buttons keep full tap targets. */
 @media(pointer:coarse){:is(.stack-split,.stack-unplace){min-height:2.75rem;margin-block:-.5rem}}
 
-/* Agent-only dossiers start as one quiet row. Opening it uses the same
-   three states; the compact treatment never means a saved message fold. */
+/* Agent-only dossiers start as one quiet row. Opening it steps into the two
+   states every dossier has; the compact treatment never means a saved message fold. */
 .reply-stack[data-compact=true]:not(.only-new *){margin:.65rem 0;padding:0;border-radius:.55rem;box-shadow:none;min-height:2.75rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{position:relative;top:0;width:100%;max-width:100%;height:2.75rem;flex-wrap:nowrap;align-items:center;padding-block:.25rem;border-radius:.55rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card{height:2.75rem;scroll-margin-top:4px}

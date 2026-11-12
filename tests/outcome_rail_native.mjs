@@ -1407,7 +1407,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const p = await open('rail-kbd-tree', '/?topic=t1');
     await settled(p, 'the topic is up');
     assert.deepEqual(await p.evaluate("(()=>{const k=document.getElementById('outline-keys');return [k.querySelector('summary').textContent,[...k.querySelectorAll('dl')].map(l=>[...l.querySelectorAll('dt')].map(d=>d.textContent)),k.querySelector('.ol-keys-part')?.textContent]})()"),
-      ['Keys', [['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], ['↑ ↓', '⌘↑ ⌘↓', '→ ←', '⇧⌘↑ ⇧⌘↓', '⌘Z']], 'In the messages'],
+      ['Keys', [['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], ['↑ ↓', '⌘↑ ⌘↓', '→ ←', '⇧⌘↑ ⇧⌘↓', 'x', '⌘Z']], 'In the messages'],
       'the outline lists its keys, then the messages\' keys');
     await tabToOutline(p);
     assert.equal(await keyedAt(p), 'topic:t1');

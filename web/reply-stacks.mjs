@@ -81,8 +81,8 @@ export function topOf(list, entry) {
   return at;
 }
 
-// What the page keeps for a list's stacks: each stack's level ('head',
-// 'folded', 'open'), replies kept in view once kept, folded messages opened
+// What the page keeps for a list's stacks: each stack's level ('folded',
+// 'open', or 'head' for a quiet agent dossier not yet opened), replies kept in view once kept, folded messages opened
 // for this view (peeked), the stack being renamed, the stacks as last drawn,
 // and the messages last drawn as their folded row (folded).
 export function stackState(list) {
@@ -93,7 +93,13 @@ export function stackState(list) {
 
 // Agent-only dossiers begin as one quiet title row; a person's explicit
 // expansion always wins. A new human-directed reply gets the normal partial view.
-export const levelOf = (state, id) => state.levels.get(id) ?? (state.coordination.has(id) ? 'head' : 'folded');
+// The header alone is only ever an agent-only dossier's (item 394): any other
+// stack left there (one that stopped being agent-only, say, after ⌘Z took it
+// back to its row) shows latest plus unread.
+export function levelOf(state, id) {
+  const level = state.levels.get(id) ?? 'head';
+  return level === 'head' && !state.coordination.has(id) ? 'folded' : level;
+}
 
 // An explicit choice starts a fresh partial view. Replies that were unread
 // when drawn stay put while read, until the person changes the stack state.
@@ -346,7 +352,7 @@ function paintStack(section, stack, byId, context) {
   p.toggle.dataset.state = level;
   Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(coordination && level === 'head' && state.renaming !== stack.id) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
-  p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; close stack' }[level]}: ${shown.name}`);
+  p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; show latest and unread replies' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
   const rows = single ? [] : rowsOf(stack, { level, kept, unread, peeked: item => state.peeked.has(item.id) });

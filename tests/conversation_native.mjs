@@ -128,8 +128,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await waiting(true);
     assert.deepEqual(await waits(), [person], 'Core: the ask waits on the reader');
     // The bar's 👍, pressed as a person presses it: the pointer rests on the ask's card, then clicks the bar's 👍.
+    // A 👍 given folds the ask for the reader (item 377, docs/reply-stacks.md): then its one-line row lights the same way.
     const thumb = async on => {
-      const words = `#messages .message-card[data-id="${ask}"] > .message-preview`;
+      const card = `#messages .message-card[data-id="${ask}"]`;
+      const folded = await quiet(p, `document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`);
+      const words = folded ? `${card} > .message-folded > .folded-author` : `${card} > .message-preview`;
       await p.evaluate(`document.querySelector(${JSON.stringify(words)}).scrollIntoView({block:'center'})`);
       await p.point(words, 'move');
       await until(() => quiet(p, `(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=thumb]')))(document.querySelector('.message-bar'))`), 'the ask lights, with its bar');
@@ -139,6 +142,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     };
     await thumb(true);
     assert.deepEqual(await waits(), [], 'Core: the 👍 answered the ask, and the waits agents read say so');
+    await until(() => quiet(p, `document.querySelector('#messages .message-card[data-id="${ask}"]')?.dataset.folded === 'true'`), 'the 👍 folds the ask to its row for the reader');
     await waiting(false);
     assert.deepEqual((await tags(p, item)).tags, ['Answered'], 'the item stays Answered');
     await shot(p, 'conversation-thumb-answered');
@@ -557,11 +561,12 @@ export async function conversationChecks({ check, page, until, control, view, fa
       'Return opens the lit stacked ask in the Reader, ready to reply');
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
     // The bar's ⋯ on a stacked reply opens its menu: the message's acts, then its stack's, each naming its keys.
+    // Its stack is fully open, so of its two states the menu offers the other one, Fold (item 394).
     await focusOn(ask);
     await until(async () => await litId() === ask && await quiet(p, `!document.querySelector('.message-bar').hidden`), 'the stacked ask is lit, with its bar');
     await p.point('.message-bar [data-act=more]');
     assert.deepEqual(await until(() => quiet(p, `(l=>l&&[...l.querySelectorAll('button')].map(b=>b.textContent))(document.querySelector('.message-menu-list'))`), 'the menu opens'),
-      ['Star for me', 'Fold', 'Copy Link', 'Mark unread', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack←', 'Open its stack→',
+      ['Star for me', 'Fold', 'Copy Link', 'Mark unread', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack←',
         'Join the stack above⇧⌘↑', 'Join the stack below⇧⌘↓', 'Undo⌘Z']);
     await p.key('Escape'); await until(() => quiet(p, `!document.querySelector('.message-menu-list')`), 'Escape closes it');
     // A stack whose top message is the New item and no reply under it is New: the person adds to their own question, and the coordinator answers only that.
@@ -610,7 +615,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     // Only new changes a filter, not the stack's reading state. Choosing the
     // state afresh releases the held replies and restores latest plus unread.
     const parkingToggle = `#messages .reply-stack[data-stack="${parking}"] > .stack-toggle`;
-    for (const level of ['open', 'head', 'folded']) {
+    for (const level of ['open', 'folded']) {
       await p.evaluate(`document.querySelector(${JSON.stringify(parkingToggle)}).scrollIntoView({block:'center'})`);
       await p.point(parkingToggle);
       await until(() => quiet(p, `document.querySelector(${JSON.stringify(parkingToggle)}).parentElement.dataset.fold===${JSON.stringify(level)}`), 'choose the stack state: ' + level);

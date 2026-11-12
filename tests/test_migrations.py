@@ -1453,6 +1453,11 @@ class Schema17Case(MigrationCase):
         asked = post("agent-a", "asked")
         post("agent-a", "waiting")
         post("owner", "answer", reply_to=asked)
+        # The owner's reply folded the ask for them (item 377), an act no version before 35 holds, so the
+        # step back would refuse; this check is of the horizons, so the fold is taken out first, as an
+        # instance from before replies folded what they answer would never have had it.
+        self.assertEqual(self.sql("SELECT kind,message_id,owner FROM message_acts"), [("fold", asked, "owner")])
+        self.sql("DELETE FROM message_acts")
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))

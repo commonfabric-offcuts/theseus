@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -252,16 +252,28 @@ test('the Reader steps down the page as shown: down a stack to newer replies, th
   assert.deepEqual(ids(readingOrder(stacksOf(items))), ['m1', 'm3', 'm4', 'm2']);
 });
 
-test('keyboard folding has exactly three states, with no separate original-message state', () => {
-  let state = { level: 'head' };
+test('a stack has two states a person steps between, latest plus unread and every message; the header alone is only where an agent dossier begins', () => {
+  let state = { level: 'folded' };
   const steps = [];
-  for (let next = foldStep(state, 'open', { onHead: true }); next; next = foldStep(state, 'open', { onHead: true })) { state = next; steps.push({ ...state }); }
-  assert.deepEqual(steps, [{ level: 'folded' }, { level: 'open' }]);
+  for (let next = foldStep(state, 'open'); next; next = foldStep(state, 'open')) { state = next; steps.push({ ...state }); }
+  assert.deepEqual(steps, [{ level: 'open' }], '→ from latest plus unread shows every message, then goes nowhere further');
   const back = [];
-  for (let next = foldStep(state, 'fold', { onHead: true }); next; next = foldStep(state, 'fold', { onHead: true })) { state = next; back.push({ ...state }); }
-  assert.deepEqual(back, [{ level: 'folded' }, { level: 'head' }]);
-  assert.deepEqual(foldStep({ level: 'head' }, 'open'), { level: 'folded' }, 'on a reply: the same states');
+  for (let next = foldStep(state, 'fold'); next; next = foldStep(state, 'fold')) { state = next; back.push({ ...state }); }
+  assert.deepEqual(back, [{ level: 'folded' }], '← goes back to latest plus unread and stops there, never to the header alone');
+  assert.deepEqual(LEVELS, ['folded', 'open']);
+  assert.deepEqual(foldStep({ level: 'head' }, 'open'), { level: 'folded' }, 'an agent dossier\'s header alone opens to latest plus unread');
+  assert.equal(foldStep({ level: 'head' }, 'fold'), null, 'and has nothing to fold to');
   assert.equal(foldStep({ level: 'folded', headOpen: false }, 'open', { replies: false }), null, 'a message with no replies has nothing to open');
+});
+
+test('a stack left at its header alone shows latest plus unread unless it is an agent dossier', async () => {
+  const { levelOf } = await import('../web/reply-stacks.mjs');
+  const state = { levels: new Map([['m1', 'head'], ['m2', 'head'], ['m3', 'open']]), coordination: new Set(['m2', 'm4']) };
+  assert.equal(levelOf(state, 'm1'), 'folded', 'a stack that stopped being agent-only, left at its header, shows latest plus unread');
+  assert.equal(levelOf(state, 'm2'), 'head', 'an agent dossier taken back to its header stays there');
+  assert.equal(levelOf(state, 'm3'), 'open');
+  assert.equal(levelOf(state, 'm4'), 'head', 'an agent dossier begins as its header alone');
+  assert.equal(levelOf(state, 'm5'), 'folded', 'any other stack begins at latest plus unread');
 });
 
 test('an acts answer read before an act the page has since heard of puts back nothing; a later one, from another device, shows', async () => {

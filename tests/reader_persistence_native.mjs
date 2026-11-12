@@ -288,6 +288,13 @@ try {
           await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
           // A stack's first message opens from its words: a press on its head's row shows or hides them.
           const heads = await evaluate(`Boolean(document.querySelector('#messages .stack-head-card[data-id="${facts.sources[index].id}"]'))`);
+          // A person's reply or thumbs-up folds what it answers for them (docs/reply-stacks.md, item 377): a press on
+          // its row shows it whole again, then a press on it opens it.
+          const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
+          if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
+            await point(heads ? `${card} > .stack-head` : `${card} > .message-folded > .folded-author`);
+            await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message shows whole');
+          }
           await point(heads ? `#messages .message-card[data-id="${facts.sources[index].id}"] > .message-preview` : `#messages [data-id="${facts.sources[index].id}"]`);
           await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
           await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
@@ -1581,6 +1588,8 @@ try {
 
     await check('actual IDB write failure blocks reader close and preserves editable writing', async () => {
       const p = await page('quota', null, true); await p.open(0);
+      // Opening may unfold the source first (a reply of the person's folded it, item 377): that act is before the failure.
+      const opened = p.calls.length;
       await p.evaluate(`(()=>{const transaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Fixture quota failure','QuotaExceededError');return transaction.apply(this,args)}})()`);
       await replace(p, 'Keep unjournaled text in this page');
       await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible IDB failure');
@@ -1589,7 +1598,7 @@ try {
       assert.equal(await field(p), 'Keep unjournaled text in this page');
       await p.point('#writing-body'); await p.send('Input.insertText', { text: ' still editable' });
       assert.ok((await field(p)).includes('still editable'));
-      assert.equal(p.calls.filter(call => call.payload?.kind).length, 0, 'an unjournaled act never dispatches');
+      assert.equal(p.calls.slice(opened).filter(call => call.payload?.kind).length, 0, 'an unjournaled act never dispatches');
       await shot(p, 'idb-failure'); assert.deepEqual(p.errors, []);
     });
   }

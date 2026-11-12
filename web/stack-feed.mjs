@@ -19,15 +19,19 @@ import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf
 import { moveOf, joinShown, foldStep, laterActs } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
+import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 
 const FIELD = { 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
-const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo'];
+const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
 
 // Whether a touch began on something between it and the list that scrolls
 // sideways (a wide table, a block of code): a sideways drag there scrolls it.
+// A long message scrolling up and down in its card is not (item 381), nor is
+// a box a rounding pixel or two wider than it shows.
+const SIDEWAYS_SLACK = 2;
 function scrollsSideways(target, list) {
   for (let at = target; at && at !== list; at = at.parentElement) {
-    if (at.scrollWidth > at.clientWidth && /^(auto|scroll)$/.test(at.ownerDocument.defaultView.getComputedStyle(at).overflowX)) return true;
+    if (at.scrollWidth - at.clientWidth > SIDEWAYS_SLACK && /^(auto|scroll)$/.test(at.ownerDocument.defaultView.getComputedStyle(at).overflowX)) return true;
   }
   return false;
 }
@@ -71,9 +75,10 @@ export class StackFeed {
   // the reader's stars moved (the right rail's Starred). status(error): says a failure.
   // hold(paint): repaints keeping the page where the person is. press: the
   // press held down on the page (press-hold.mjs).
+  // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {},
-    hold = paint => paint(), press, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, hold, press, clock, doc });
+    hold = paint => paint(), press, thumb = null, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, hold, press, thumb, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
@@ -123,6 +128,32 @@ export class StackFeed {
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
     } }));
+    for (const entry of entries(this.list)) {
+      const card = cardIn(entry), item = this.messages().get(card.dataset.id);
+      if (item) this.paintFoldedThumb(card, item);
+    }
+  }
+  // A 👍 on a folded message's row (item 390), before "Folded": the same
+  // thumbs-up as the bar's 👍, pressed once given, with the count once anyone
+  // has. A press gives or takes it back and unfolds nothing. It is a part of
+  // the card (a button), answering its own press and keys, as the reply arrow is.
+  // None on the reader's own message, which takes no thumbs-up from them.
+  paintFoldedThumb(card, item) {
+    const row = card.querySelector(':scope > .message-folded');
+    let button = row?.querySelector(':scope > .folded-thumb') ?? null;
+    if (!row || !this.thumb || !mayThumb(item, this.viewer)) { button?.remove(); return; }
+    if (!button) {
+      button = this.doc.createElement('span'); button.className = 'folded-thumb'; button.setAttribute('role', 'button'); button.tabIndex = -1;
+      const press = () => { const shown = this.messages().get(button.dataset.id); if (shown) this.thumb(shown, !thumbed(shown, this.viewer)); };
+      button.onclick = event => { event.stopPropagation(); press(); };
+      button.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); press(); } };
+      row.insertBefore(button, row.querySelector(':scope > .folded-cue'));
+    }
+    const on = thumbed(item, this.viewer), count = reactionsOf(item).thumbs.length, words = on ? 'Remove thumbs up' : 'Thumbs up';
+    const shown = count ? `👍 ${count}` : '👍';
+    button.dataset.id = item.id;
+    if (button.textContent !== shown) button.textContent = shown;
+    button.setAttribute('aria-pressed', String(on)); button.setAttribute('aria-label', count ? `${words} (${count})` : words); button.title = words;
   }
   paintCoordination(count = this.coordinationCount ?? 0) {
     this.coordinationCount = count;
@@ -316,7 +347,7 @@ export class StackFeed {
     };
     apply(next);
     this.remember(() => apply(now));
-    this.say({ open: 'Original message and every reply shown', folded: 'Latest and unread replies shown', head: 'Stack closed' }[next.level]);
+    this.say({ open: 'Original message and every reply shown', folded: 'Latest and unread replies shown' }[next.level]);
     return true;
   }
   // Folds a message to its one-line row (on true) or unfolds it, for the
@@ -354,16 +385,21 @@ export class StackFeed {
   // still kept from the browser while it goes across. A scroll further down
   // than across, a swipe that began on something scrolling sideways and the
   // wheel with Ctrl or ⌘ (zoom) are left to the browser.
+  // Each event is judged on its own too (item 393): one that goes further down
+  // than across ends the swipe and is the browser's, so a scroll begun in the
+  // swipe's momentum, after it folded a message or before, scrolls at once.
   wheeled(event) {
     if (event.ctrlKey || event.metaKey) return;
+    const [unitX, unitY] = event.deltaMode === 1 ? [16, 16] : event.deltaMode === 2 ? [this.list.clientWidth, this.doc.defaultView.innerHeight] : [1, 1];
+    const across = event.deltaX * unitX, down = event.deltaY * unitY;
+    if (Math.abs(down) > Math.abs(across)) { this.wheelSwipe = null; return; }
     let swipe = this.wheelSwipe;
     if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {
       const entry = scrollsSideways(event.target, this.list) ? null : entryOf(this.list, event.target);
       swipe = this.wheelSwipe = { x: 0, y: 0, item: entry && this.messages().get(entry.dataset.id), done: false };
     }
     swipe.last = event.timeStamp;
-    const [unitX, unitY] = event.deltaMode === 1 ? [16, 16] : event.deltaMode === 2 ? [this.list.clientWidth, this.doc.defaultView.innerHeight] : [1, 1];
-    swipe.x += event.deltaX * unitX; swipe.y += event.deltaY * unitY;
+    swipe.x += across; swipe.y += down;
     if (!swipe.item || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;
     event.preventDefault();
     if (swipe.done || Math.abs(swipe.x) < SWIPE_ACROSS) return;
@@ -384,10 +420,25 @@ export class StackFeed {
       if (this.fold(entry, action === 'right' ? 'open' : 'fold')) event.preventDefault();
       return;
     }
+    if (action === 'fold-message') return this.foldKey(event, entry, toggle);
     event.preventDefault();
     if (action === 'undo') return this.undo();
     if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));
     if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));
+  }
+  // x on a message (item 388): folds it to its row, as Fold in ⋯ does
+  // (setFold), and x again unfolds it; the keys stay on its row, and ⌘Z puts
+  // it back. A starred message stays open, which is said. On a dossier as a
+  // whole (its chevron, or its compact header) x does nothing yet.
+  foldKey(event, entry, toggle) {
+    const section = entry.closest('.reply-stack');
+    if (toggle || (section && section.dataset.single !== 'true' && section.dataset.headOpen === 'false' && entry.dataset.id === section.dataset.stack)) return;
+    const item = this.messages().get(entry.dataset.id);
+    if (!item) return;
+    event.preventDefault();
+    const acts = this.actsOf(item.id, item);
+    if (acts.starred && !acts.folded) { this.say('Starred messages stay open'); return; }
+    this.setFold(item, !acts.folded);
   }
   // What ⋯ offers for the stack a message is in, with the keys that do the
   // same; on a phone, the stack's moves and joins sit behind "Move or join…".
@@ -411,8 +462,8 @@ export class StackFeed {
     const moves = [
       { label: 'Move its stack up', keys: '⌘↑', act: () => this.move(entry, 'up') },
       { label: 'Move its stack down', keys: '⌘↓', act: () => this.move(entry, 'down') },
-      ...(stack.replies.length ? [{ label: 'Fold its stack', keys: '←', act: () => this.fold(entry, 'fold') },
-        { label: 'Open its stack', keys: '→', act: () => this.fold(entry, 'open') }] : []),
+      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', act: () => this.fold(entry, 'fold') }] : []),
+      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'open') ? [{ label: 'Open its stack', keys: '→', act: () => this.fold(entry, 'open') }] : []),
       { label: 'Join the stack above', keys: '⇧⌘↑', act: () => this.join(entry, 'up') },
       { label: 'Join the stack below', keys: '⇧⌘↓', act: () => this.join(entry, 'down') },
       ...(stack.placed !== null ? [{ label: 'Let new replies move it', act: () => this.unplace(stack) }] : []),
