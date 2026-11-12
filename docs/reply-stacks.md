@@ -389,3 +389,10 @@ from a known agent and explicitly addressed only to known agents. Room posts,
 messages to the reader, direct replies to the reader, unknown people, missing
 ancestry and any mixed joined dossier stay visible. Further agent-only replies
 stay quiet; a human or room-directed reply brings the dossier back immediately.
+
+## Approved card-stack study
+
+The researched implementation of the softer, overlapping message-card treatment
+is in [Dossier message cards: implementation handoff](dossier-cards-implementation.md).
+That document records Tony’s approved v4 reference, integration points and checks.
+It is planned work; the behavior above describes the existing implementation.
