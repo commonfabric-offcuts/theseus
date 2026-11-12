@@ -4872,8 +4872,8 @@
    "break": [
     [
      "web/notebook-images.mjs",
-     "if(valid())this.associate(e);",
-     "e.removed=false; if(valid())this.associate(e);"
+     "if(valid())this.associate(e);\n      w.notify();",
+     "e.removed=false; if(valid())this.associate(e);\n      w.notify();"
     ]
    ],
    "check": {
