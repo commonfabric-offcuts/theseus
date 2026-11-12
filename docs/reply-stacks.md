@@ -18,7 +18,7 @@ The code:
   card's node.
 - `web/stack-feed.mjs`: what the person does to a stack and its messages. It
   shows the act at once, sends it to Core in order, and holds ⌘Z, the keys,
-  the ⋯ items and the swipe.
+  the ⋯ items, the phone's swipe and the trackpad's.
 - `web/stack-look.css`: how a stack looks, and nothing else does.
 
 ## What Core records
@@ -247,6 +247,23 @@ something scrolling sideways, such as a wide table or a block of code,
 scrolls it instead. A right-click (a long press on Android) opens the same
 menu.
 
+On a laptop, two fingers on the trackpad do the same: swiped right over a
+message they fold it to its row, and swiped left over its row they unfold
+it. The browser hears a two-finger swipe as wheel events. One swipe is a
+run of them less than 250 ms apart by the events' own times; once it has
+gone 80 pixels across, and further across than down, it folds or unfolds
+the message under where it began, once, and the rest of it, its momentum
+included, does nothing more. With macOS's natural scrolling, the default,
+fingers moving right scroll the page's content left, a negative deltaX:
+that is "swiped right" (`swipeFolds` in `web/stack-feed.mjs` is the one
+place that says so; with natural scrolling turned off the two ways change
+places). While a swipe over a message goes further across than down, the
+page keeps its events from the browser, and with the pointer over the
+messages a sideways overscroll does nothing, so the browser never goes back
+or forward a page. A scroll that goes further down than across, a swipe
+over something that scrolls sideways, and the wheel with Ctrl or ⌘ held
+(zoom) are the browser's, as they were.
+
 A card that a join, a move or a new reply carries to another place keeps
 where it was scrolled: a table scrolled sideways, or a long message scrolled
 in its card, stays as it was, and the page keeps its place.
@@ -328,6 +345,7 @@ the stacks draw nothing.
 | a join makes one stack: every message oldest first under the head, a new reply at the bottom, a join of a join, Split back out | `tests/ui_stack_order.test.mjs`; in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a join makes one stack …" |
 | on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
 | a fold: in a fully open stack, through every state, a reload and another device, unfolded by a press and ⌘Z, a link, Starred and the first message | `tests/stack_native.mjs`, "reading stacks a message folded in a fully open stack …"; on a phone, swiped right, swiped left and tapped, "reading stacks on a phone a message swiped right …" (Chrome only: Safari's engine in the harness has no finger drag) |
+| the trackpad: two fingers right fold a reply once, momentum and all, and left unfold it after a reload; a scroll, a swipe on a wide table and a starred message fold nothing; the page goes nowhere | `tests/stack_native.mjs`, "reading stacks on a laptop two fingers swiped right on the trackpad …", in Chrome and Safari's engine |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |

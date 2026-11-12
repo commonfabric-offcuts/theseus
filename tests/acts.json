@@ -5245,6 +5245,111 @@
     "native": "reading",
     "case": "stacks a join makes one stack"
    }
+  },
+  {
+   "item": 356,
+   "act": "On a laptop two fingers swiped right on the trackpad fold a message, and swiped left over its row unfold it: with macOS's natural scrolling, fingers moving right are a negative deltaX",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const swipeFolds = across => across < 0;",
+     "const swipeFolds = across => across > 0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
+  },
+  {
+   "item": 356,
+   "act": "One trackpad swipe folds or unfolds once: neither its momentum nor fingers coming back before they lift change anything more",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (swipe.done || Math.abs(swipe.x) < SWIPE_ACROSS) return;",
+     "    if (Math.abs(swipe.x) < SWIPE_ACROSS) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
+  },
+  {
+   "item": 356,
+   "act": "While a trackpad swipe over a message goes across, the page keeps its events from the browser, so the browser goes back or forward no page",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    event.preventDefault();\n    if (swipe.done",
+     "    if (swipe.done"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
+  },
+  {
+   "item": 356,
+   "act": "With the pointer over the messages a sideways overscroll goes back or forward no page",
+   "break": [
+    [
+     "web/aim.css",
+     "html:has(#messages:hover){overscroll-behavior-x:none}",
+     "html:has(#messages:hover){}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
+  },
+  {
+   "item": 356,
+   "act": "A scroll further down than across stays the browser's: it scrolls the page, and the page neither keeps it nor folds anything",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (!swipe.item || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;",
+     "if (!swipe.item) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
+  },
+  {
+   "item": 356,
+   "act": "Two fingers across a wide table scroll it and fold nothing",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      const entry = scrollsSideways(event.target, this.list) ? null : entryOf(this.list, event.target);",
+     "      const entry = entryOf(this.list, event.target);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
+  },
+  {
+   "item": 356,
+   "act": "The wheel with Ctrl held zooms and folds nothing",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (event.ctrlKey || event.metaKey) return;",
+     "    if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks on a laptop two fingers swiped right on the trackpad"
+   }
   }
  ]
 }
