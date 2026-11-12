@@ -1,6 +1,7 @@
 # Theseus: people and agents making useful things happen
 
-Proposal, 12 November 2026. This branch is not the active operating policy.
+Revised with Tony's direction, 12 November 2026. Rollout is scoped by the
+working charter; this branch alone does not replace active agents' briefs.
 
 Theseus turns human intention into useful, trustworthy results. People and
 agents share context, combine different strengths, and act together. Agents

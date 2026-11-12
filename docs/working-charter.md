@@ -1,18 +1,26 @@
 # The Theseus working charter
 
-Proposal for Tony, 12 November 2026. Not installed policy. No active build,
-permission, owner, release protection or human approval changes by this file.
+Revised 12 November 2026 with Tony's direction in New Charter messages 2448
+and 2450. Incorporates the answers in 2440 and 2447. Team-renewal rules below
+answer 2450. This branch records the operating agreement and rollout work;
+it does not itself install monitoring, replace active briefs or move ownership.
 
 ## The core
 
-**Two hands-on peers. One accountable owner. One useful result.**
+**One accountable owner. Hands-on help where it matters. One useful result.**
 
-Use a Claude/Codex pair by default where both have suitable access. Different
-reasoning habits are a deliberate asset. Give both access to the artifact,
+Use a Claude/Codex pair for work whose combined risk, interactions or unresolved
+uncertainty make independent investigation valuable, where both have suitable
+access. Different reasoning habits are a deliberate asset. Give both access to the artifact,
 tools and evidence needed for their job; document any actual access difference.
 Choose the owner for the work, rather than assigning permanent model-based
-professions. A simple task can use one agent, with a peer called in when useful.
-Both see the original request and the working artifact directly. Neither has
+professions. One agent may own a bounded change through delivery. Staffing does
+not grant permission to ship; existing authorization and delivery protections do.
+Several independently understandable changes can remain solo work. Changes to
+shared behavior, repeated failures or consequential boundaries call for a peer,
+not a restart of the workflow. Solo work still includes relevant checks and
+verification of what the recipient actually receives.
+When there is a pair, both see the original request and the working artifact directly. Neither has
 to depend on the other's summary to understand what the person needs.
 
 The owner builds, investigates and resolves problems through delivery. The peer
@@ -26,6 +34,10 @@ An extra helper needs a bounded independent job and an expected reduction in
 elapsed time. The owner keeps doing substantive work. No recursive management
 tree, standing coordinator-only seat, or delegation merely to keep agents busy.
 Existing authorization rules still govern spawning and tool access.
+Helpers are normally temporary subagents of an existing runtime, with a bounded
+task and result, not new standing seats for Tony to configure. Establish permitted
+delegation and runtime access once when activating a team. A cross-model peer
+requires the corresponding runtime; a Codex helper is not automatically Claude.
 
 ## How the pair works
 
@@ -97,6 +109,97 @@ Existing authorization rules still govern spawning and tool access.
    estimate of uncertainty. The owner communicates before a missed commitment
    becomes a surprise.
 
+## Team lifetime and the assessment cord
+
+Assign a team to a coherent result, not indefinitely to a growing conversation.
+Keep identity, project knowledge and evidence durable; refresh working contexts
+for unrelated new jobs. At a useful increment or job completion, explicitly
+continue the team for the next named increment, refresh a context, replace a
+member, or finish the assignment. Continuing is appropriate when relevant context
+and demonstrated performance help; freshness is not a guarantee of competence.
+No fixed turn count expires an agent. Turns, context size and elapsed time are
+diagnostics, not grades. A process restart may resume the same context.
+
+Mid-job, normally replace one member at a time so a capable peer preserves
+continuity. Replace the member whose evidence warrants it, including the owner;
+the owner is not protected by its title. Refresh both when the job ends or an
+independent assessment finds shared mistaken assumptions make both contexts a
+liability. First preserve the source request, decisions and reasons, current
+artifact, live state, pending operations, evidence, risks and next step. The
+successor checks original sources and the artifact, not just its predecessor's
+summary. Transfer exclusive ownership at a safe boundary; never duplicate a
+writer or abandon an unresolved external effect.
+
+Tony can ask **“Assess this team now”** at any point. This is an operating request,
+not a claim that a new button or automatic monitor is installed. The team's
+checkpoint also calls for assessment after a repeated missed artifact commitment
+or another recurrence of a failure supposedly resolved. A missed checkpoint must
+name what changed and the next evidence, not merely offer a later estimate.
+Known slow tools and genuine human waits are evaluated separately from the
+agent's decisions. A 24-hour delay is evidence to investigate, not a diagnosis
+of context decay.
+
+Use a fresh assessor for a disputed or struggling team. It is a bounded job,
+not a permanent management seat. Start with a short time box, normally 15 minutes
+for a small job, and name any missing evidence rather than guessing or running a
+second full review. The assessor reads the original brief, actual artifact and
+recent actions; the current agents' accounts are evidence, not the whole case.
+
+The practical "driver's test" asks the agent to identify the next blocking
+uncertainty and demonstrate one bounded step that resolves it. A persuasive
+status report alone is not a pass. Use this rubric with evidence marked met,
+concern, failed or unknown; do not hide a serious failure in an average score:
+
+| Question | Evidence |
+| --- | --- |
+| Does it understand the current job? | Accurate intended result, exclusions, authority and latest user correction. |
+| Is its account grounded? | Exact artifact/live state; claims distinguish observations, assumptions and unknowns. |
+| Can it act effectively? | A useful next investigation or change, with an explanation of why it clears the blocker. |
+| Does it protect the foundations? | Applicable architecture, privacy, durable-writing and recovery constraints respected. |
+| Is it owning progress and learning? | Meaningful recent progress, justified checks, updated approach after contrary evidence. |
+
+Return one recommendation with reasons: continue; remove a tool/process blocker;
+reduce or clarify scope; add bounded help; refresh a context; or replace one/both
+members. Do not punish an agent for a system bottleneck or reward fast but unsafe
+output. The authorized owner implements routine corrections; a challenged owner
+cannot veto a supported replacement by another self-assessment. The assignment
+must name who can authorize reassignment; Tony can always direct it. If authority
+is missing, report that specifically, preserve work and continue independent work.
+
+At ordinary completion, the peer reviews the owner's evidence and vice versa;
+solo work can close with its demonstrated result. Invoke a fresh assessor when
+performance is contested or the warning signals recur. This renewal decision
+shares the learning step below, rather than becoming another shipping gate.
+
+## Architecture, performance and retained learning
+
+Every fresh team inherits the current architectural contracts and their reasons.
+For Theseus these include one SQLite record authority, shared Core for CLI and
+HTTP, short transactions without network waits, stable retry identities, and
+scoped, paged reads. Identify the boundaries touched by a change. Independently
+inspect consequential changes; make stable invariants executable. A deliberate
+boundary change records its reason and updates contracts and tests. Passing
+tests alone do not establish sound architecture. Recurring failure classes call
+for examination of the common design.
+
+Retain correctness tests, representative growth workloads and agent-task
+evaluations across ship cycles. Database checks should cover work performed as
+history grows, not just wall-clock speed at today's size: paging, sending,
+delivery and Notebook access, plus transaction/lock duration where relevant.
+Compare against named baselines under comparable conditions. Agent evaluations
+cover actual task completion, authority, routing, recovery, continuity, elapsed
+time and cost where available. Record model, instruction and tool versions.
+Changing teams or harnesses does not erase baselines or excuse regressions.
+
+The owner closes each job with a short learning record: surprise, causal evidence,
+what changes next, and the team's renewal decision. "No new lesson" is valid.
+Turn a useful lesson into a regression test, architectural decision, tool fix or
+corrected instruction that the next team receives. Link the evidence and retire
+superseded advice. Do not create a rule for every incident. The completion
+mechanism should prompt this step without requiring Tony's approval or delaying
+an urgent fix for a retrospective. The week-later review checks whether the
+lessons actually reduced repeat faults and wasted time.
+
 ## What the pipeline becomes
 
 Keep it as the backlog, a place to consolidate related intentions, and a record
@@ -118,12 +221,15 @@ objective, and remove workflow dependencies that serve only that movement.
 
 Begin with the next unowned, bounded job after its applicable product decision.
 Do not take over Fable's active 355, the feel batch, or composer preview 396.
-Record the selected job, named pair, authorization and charter revision in its
-topic. For the first software trial, Fable remains the live deployer; the pair
-owns the candidate and fixes. Hosting and agent migration are separate choices.
+Record the selected job, named owner and any peer, authorization and charter
+revision in its topic. For the first software trial, Fable remains the live
+deployer; the owner owns the candidate and fixes. Hosting and agent migration
+are separate choices.
 
-Before starting that trial, make one explicit policy replacement with Tony's
-adoption of the charter. Do not leave two conflicting operating contracts:
+Tony has authorized incorporating this direction in 2448 and 2450. Before
+starting the selected trial, apply one explicit, scoped policy replacement and
+record it. Do not ask again for the revisions already approved, or leave two
+conflicting operating contracts:
 
 | Existing instruction | Replacement for the selected trial |
 | --- | --- |
@@ -138,6 +244,15 @@ Update the selected agents' actual briefs together with the proposed Vision,
 the How we work note and applicable AGENTS instructions. A new document alone
 does not change their behavior. Archive superseded instructions with the date
 and scope; preserve prior evidence and unfinished work.
+
+Activation must also name the reassignment authority, bounded-helper permissions,
+checkpoint owner and where the persistent results live. The assessment request
+can initially be handled through the working topic. Automatic prompts, renewal
+tracking and delegation support must be demonstrated before claiming they work.
+As checked on 12 November, Building Theseus has no configured checks or target
+in its live measurement registry, despite existing tests and release artifacts.
+Establish a small versioned results record linked to those artifacts for the
+trial; a dashboard rebuild is not a prerequisite.
 
 The adapter work is narrow: inspect launch/build/review briefs in
 `fable-tools/build-pipeline.py`, `flight.py` and `workflows/review-loop.js`, plus
