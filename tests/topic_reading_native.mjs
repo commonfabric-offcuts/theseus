@@ -330,9 +330,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const ids = await seed(topic, [['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }],
         ...Array.from({ length: 6 }, (_, i) => ['after' + i, { sender: 'aim-core', join: i === 0, addressees: [facts.actor], body: 'A short message ' + i + '.' }])]);
       const p = await open('reading-long-' + device, device, topic, ids.long);
-      const preview = card(ids.long) + ' > .message-preview';
+      const preview = card(ids.long);
       const state = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(preview)}),s=getComputedStyle(e),b=e.getBoundingClientRect();
-        return {inPlace:e.classList.contains('scroll-in-place'),top:e.scrollTop,more:e.scrollHeight-e.clientHeight,overflow:s.overflowY,height:b.height,window:innerHeight,pageY:scrollY}})()`);
+        return {inPlace:e.classList.contains('scroll-in-place'),top:e.scrollTop,more:e.scrollHeight-e.clientHeight,overflow:s.overflowY,height:b.height,window:innerHeight,pageY:scrollY,
+          authorBottom:e.querySelector('.message-author').getBoundingClientRect().bottom-b.top,excerpt:e.querySelector('.message-preview').getBoundingClientRect().height}})()`);
       await centre(p, card(ids.long));
       const before = await state();
       assert.equal(before.inPlace, false, device + ': cut off, until it lights');
@@ -341,14 +342,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const box = await state();
       assert.equal(box.overflow, 'auto', device + ': the box scrolls');
       assert.ok(Math.abs(box.height - before.height) <= 1, `${device}: the box keeps the excerpt's height (${before.height} → ${box.height})`);
-      if (device === 'phone') assert.ok(box.height <= box.window * 0.6 + 1, `phone: the box is no taller than 60% of the window (${box.height} of ${box.window})`);
+      if (device === 'phone') assert.ok(before.excerpt <= box.window * 0.6 + 1, `phone: the excerpt is no taller than 60% of the window (${before.excerpt} of ${box.window})`);
       const wheel = async deltaY => { const [x, y] = await within(p, preview); await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY }); };
       const drag = async (yDistance, speed) => { const [x, y] = await within(p, preview); await p.send('Input.synthesizeScrollGesture', { x, y, yDistance, gestureSourceType: 'touch', speed }); };
       if (device === 'laptop') {
         await wheel(240);
         await until(async () => (await state()).top > 0, 'laptop: the wheel scrolls the box');
         assert.equal((await state()).pageY, box.pageY, 'laptop: and not the page');
-        // At its bottom edge the same wheel carries on with the page, and the box's fade says nothing more is below.
+        assert.ok((await state()).authorBottom < 0, 'laptop: the author and timestamp scroll out of the card');
+        await shot(p, 'reading-long-headers-away-' + device);
+        // At its bottom edge the same wheel carries on with the page.
         const more = () => p.evaluate(`document.querySelector(${JSON.stringify(preview)}).dataset.more`);
         await until(async () => await more() === 'both', 'laptop: part way down, more is hidden both ways (the box hears its own scroll)');
         await wheel(box.more + 400);
@@ -363,6 +366,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await drag(-240, 1200);
         await until(async () => (await state()).top > 0, 'phone: a finger drag inside scrolls the box');
         assert.equal((await state()).pageY, box.pageY, 'phone: and not the page');
+        assert.ok((await state()).authorBottom < 0, 'phone: the author and timestamp scroll out of the card');
         // Beside the card, above it or below it, where the page shows.
         const at = await p.box(card(ids.long)), outsideY = at.y > 60 ? at.y / 2 : Math.min(at.y + at.height + (at.viewportHeight - at.y - at.height) / 2, at.viewportHeight - 10);
         assert.ok(outsideY < at.y || outsideY > at.y + at.height, 'phone: a point outside the card');

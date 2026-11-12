@@ -523,10 +523,8 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .reaction-count:hover,.reaction-choice:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
 .reaction-count.mine,.reaction-choice.mine{border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor;font-weight:650}
 .reaction-said{opacity:.8}
-.message-preview.scroll-in-place{display:block;overflow:auto;overscroll-behavior:auto;scrollbar-gutter:stable;padding-right:.25rem}
-.message-preview.scroll-in-place[data-more=below]{mask-image:linear-gradient(to bottom,#000 calc(100% - 2rem),transparent)}
-.message-preview.scroll-in-place[data-more=above]{mask-image:linear-gradient(to top,#000 calc(100% - 2rem),transparent)}
-.message-preview.scroll-in-place[data-more=both]{mask-image:linear-gradient(to bottom,transparent,#000 2rem,#000 calc(100% - 2rem),transparent)}
+.message-card.scroll-in-place{overflow:auto;overscroll-behavior:auto;scrollbar-gutter:stable}
+.message-preview.scroll-in-place{display:block}
 #thumb-source{flex-shrink:0;min-width:2.75rem}
 #thumb-source[aria-pressed=true]{background:var(--soft);font-weight:700}
 .guide-open{min-height:1.6rem;padding:0 .55rem;border-radius:.45rem;color:var(--muted);font-size:.8rem}

@@ -40,9 +40,12 @@ the pointer's way, the keys' and the phone's.
   pop-up ⌘C is theirs; with nothing lit it does nothing of the page's. Nothing
   is said when it copies, as in the Reader; a refusal says how else to copy.
 - **A cut-off message** (the first 1,024 bytes are shown) reads on in place:
-  once the pointer rests on it, the keys light it or a finger taps it, its words
-  become a box of the same height that scrolls under the wheel, trackpad or a
-  finger, and not the page. Where a finger scrolls, the excerpt is never taller
+  once the pointer rests on it, the keys light it or a finger taps it, the whole
+  card scrolls under the wheel, trackpad or a finger, keeping its height. The
+  author, timestamp and reply context scroll away with the words, in standalone
+  messages and stack messages alike. The card's border and dossier title stay
+  in place. At either end, scrolling carries on with the page. Where a finger
+  scrolls, the excerpt is never taller
   than 60% of the window, so a drag outside the lit message still scrolls the
   page. (`web/card-scroll.mjs`)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's

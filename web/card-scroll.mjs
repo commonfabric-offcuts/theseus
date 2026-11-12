@@ -2,18 +2,19 @@
 //
 // A card shows at most the first 1,024 bytes of a message (item.preview). When
 // the pointer comes to rest on such a card, the keyboard lights it or a finger
-// taps it, the whole message is read from its source and the card's words
-// become a box of the same height that scrolls under the wheel, the trackpad
+// taps it, the whole message is read from its source and the whole card
+// becomes a box of the same height that scrolls under the wheel, the trackpad
 // or a finger, so the rest reads without opening the Reader and nothing around
 // the card moves. At the box's top or bottom edge the same scroll carries on
 // with the page, both ways (the browser's own scroll chaining: the box never
-// holds it, aim.css), and the box's edge fades while more is hidden that way
-// (data-more: 'above', 'below', 'both' or 'none'). Where a finger scrolls, the
-// excerpt is never taller than most of the window, so the page still scrolls
+// holds it, aim.css). Author, time and reply context scroll with the words;
+// the card's border and the dossier's separate title stay in place.
+// Where a finger scrolls, the excerpt is never taller than most of the
+// window, so the page still scrolls
 // beside the card. Opening it still shows it whole.
 import { formatWords } from './message-format.mjs';
 
-export const SCROLL_CUE = 'Scroll here for the rest · Open to read it whole';
+export const SCROLL_CUE = 'Open to read it whole';
 
 // Which ways a scrolling box has more hidden.
 export function edges(box) {
@@ -37,18 +38,20 @@ export class CardScroll {
   async expand(card, item) {
     if (!item?.preview || card.dataset.whole === 'shown' || this.loading.has(card)) return false;
     const preview = card.querySelector(':scope > .message-preview');
-    if (!preview) return false;
+    if (!preview?.getBoundingClientRect().height) return false;
     this.loading.add(card);
     try {
       const body = await this.whole(item.id);
-      if (!card.isConnected) return false;
-      // The box keeps the height the excerpt had, so the list holds still.
-      const height = Math.max(preview.getBoundingClientRect().height, 96);
-      preview.style.maxHeight = `${Math.ceil(height)}px`;
+      if (!card.isConnected || !preview.getBoundingClientRect().height) return false;
+      // Measure only while the message is shown, never a closed stack's zero-
+      // height root. Keep the whole card's size, including its header and cue.
+      const height = card.getBoundingClientRect().height;
+      card.style.maxHeight = `${Math.ceil(height)}px`;
       formatWords(preview, body);
       preview.classList.add('scroll-in-place');
-      edges(preview);
-      preview.addEventListener('scroll', () => edges(preview), { passive: true });
+      card.classList.add('scroll-in-place');
+      edges(card);
+      card.addEventListener('scroll', () => edges(card), { passive: true });
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (cue) cue.textContent = SCROLL_CUE;
       card.dataset.whole = 'shown';

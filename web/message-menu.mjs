@@ -162,12 +162,14 @@ export class MessageMenu {
     this.host.dataset.lastMessage = entry.dataset.id;
     entry.classList.add('lit'); cardIn(entry).classList.add('lit');
     this.paintBar();
-    const item = this.item(entry.dataset.id);
-    if (item?.preview && !cardIn(entry).hidden) this.expand(cardIn(entry), item);
   }
   paintBar() {
     const item = this.lit && this.item(this.lit.dataset.id);
     if (!item || this.tabOnly()) { this.bar.hidden = true; return; }
+    // Also runs when a selected stack opens: its header alone has no message
+    // viewport to measure until the original card becomes visible.
+    const card = cardIn(this.lit);
+    if (item.preview && !card.hidden) this.expand(card, item);
     const { thumb, yes, no } = this.buttons;
     thumb.hidden = !mayThumb(item, this.viewer);
     thumb.setAttribute('aria-pressed', String(thumbed(item, this.viewer)));
