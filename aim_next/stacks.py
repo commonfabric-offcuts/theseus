@@ -240,16 +240,43 @@ class Stacks:
         if (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value:
             return dict(result, **value, **{expected_name: current, "changed": False}), []
         revision = current + 1
-        cursor = db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (kind, message["id"], message["topic_id"], message["seq"], owner, actor,
-                             json.dumps(value, separators=(",", ":"), ensure_ascii=False), _now_ms(), revision))
-        version = cursor.lastrowid
-        for reader in [actor] if personal else self._message_readers(db, message, actor):
-            self._change(db, "actor", reader, "acts", message["topic_id"], version)
+        version = self._record_act(db, kind, message, owner, actor, value, revision)
         return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
 
+    def _record_act(self, db, kind, message, owner, actor, value, revision):
+        """Records an act as its next row and tells who hears of it: a personal act its reader, a shared one
+        everyone who reads the message. Returns the row's id, the version the change is announced at."""
+        version = db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,?)",
+                             (kind, message["id"], message["topic_id"], message["seq"], owner, actor,
+                              json.dumps(value, separators=(",", ":"), ensure_ascii=False), _now_ms(), revision)).lastrowid
+        for reader in [actor] if owner else self._message_readers(db, message, actor):
+            self._change(db, "actor", reader, "acts", message["topic_id"], version)
+        return version
+
     _command_message_star = _command_message_deal = _command_message_fold = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_act
+
+    def _fold_answered(self, db, actor, message_id):
+        """A person who replies to a message (its reply_to names it) or gives it a thumbs-up has dealt with it: it
+        folds for them, as their own message.fold would, in the same transaction as the reply or the thumb, so
+        every page, device and the CLI agree (item 377). Their fold only. A starred message never folds this way,
+        one already folded stays, an agent's reply or thumb folds nothing, and a message read only because it was
+        sent to them by name (no topic they read) has no acts. Returns what it affected."""
+        if self._actor(db, actor)["kind"] != "human":
+            return []
+        message = db.execute("SELECT id,topic_id,seq,author_id,private_to FROM messages WHERE id=?", (message_id,)).fetchone()
+        if not (message and visible(message, actor)):
+            return []
+        try:
+            self._topic(db, actor, message["topic_id"])
+        except Refusal:
+            return []
+        if (self._act_value(db, message_id, "star", actor) or NONE["star"])["starred"]:
+            return []
+        if (self._act_value(db, message_id, "fold", actor) or NONE["fold"])["folded"]:
+            return []
+        version = self._record_act(db, "fold", message, actor, actor, {"folded": True}, self._act_revision(db, message_id, "fold", actor) + 1)
+        return [{"kind": "acts", "id": message["topic_id"], "version": version}]
 
     def _view_message_acts(self, db, actor, args):
         """The acts as they stand for the reader on one topic's messages, newest message first, paged by sequence:

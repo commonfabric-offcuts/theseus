@@ -189,6 +189,93 @@ class FoldCase(StackCase):
         self.assertEqual(self.acts(plain)["folded"], False)
 
 
+class AnsweredFoldCase(StackCase):
+    """A person's reply to a message, or their thumbs-up on it, folds it for them in Core, as their Fold would (item 377)."""
+
+    def thumb(self, message, on=True, revision=0, actor="owner"):
+        return self.command("message.thumb", {"thumbed": on}, target={"message_id": message}, expected={"thumb_revision": revision}, actor=actor)
+
+    def folded(self, message, actor="owner"):
+        acts = self.acts(message, actor=actor)
+        return acts["folded"], acts["fold_revision"]
+
+    def test_a_reply_folds_the_message_it_answers_for_the_person_alone_in_the_same_act(self):
+        self.participation("other-reader", True)
+        message, other = self.post("Can you look?"), self.post("Something else")
+        receipt = self.command("message.post", {"body": "Looked", "reply_to": message}, target={"topic_id": "t1"}, actor="owner", op="reply-once")
+        reply = self.committed(receipt)["message_id"]
+        self.assertEqual(self.folded(message), (True, 1), "the message replied to reads folded for the person who replied")
+        self.assertEqual(self.rows("fold"), [(message, "owner", "owner", '{"folded":true}', 1)], "one fold row, theirs, made by them")
+        self.assertIn({"kind": "acts", "id": "t1", "version": self.sql("SELECT max(id) FROM message_acts")[0][0]}, receipt["affected"],
+                      "the reply's own answer says the person's acts changed")
+        self.assertEqual(self.told(), [("actor", "owner")], "only the person who replied is told")
+        self.assertEqual((self.folded(message, "other-reader"), self.folded(message, "agent-a")), ((False, 0), (False, 0)), "nobody else's view changes")
+        self.assertEqual((self.folded(other), self.folded(reply)), ((False, 0), (False, 0)), "nor does any other message fold, the reply included")
+        self.assertEqual(self.command("message.post", {"body": "Looked", "reply_to": message}, target={"topic_id": "t1"}, actor="owner", op="reply-once"),
+                         receipt, "the same reply sent again is answered with what it recorded")
+        self.assertEqual(len(self.rows("fold")), 1, "and folds nothing twice")
+
+    def test_a_reply_sent_from_the_page_folds_too(self):
+        # The page sends a reply as a saved draft, prepared and sent (message.send), the same publish as message.post.
+        message = self.post("Can you look?")
+        draft = {"source_ref": {"kind": "message", "id": message}, "topic_id": "t1", "generation": "gA", "body": "Looked",
+                 "attachments": [], "quotes": [], "addressees": [], "reply_to": message}
+        self.committed(self.command("draft.save", draft, target={"draft_id": "reply-draft"}, expected={"draft_revision": 0}))
+        self.committed(self.prepare("reply-draft", "t1", submission="reply-draft", send_op="reply-draft-send"))
+        sent = self.committed(self.command("message.send", {"submission_id": "reply-draft"}, target={"topic_id": "t1"}, op="reply-draft-send"))
+        self.assertEqual(self.sql("SELECT reply_to FROM messages WHERE id=?", (sent["message_id"],)), [(message,)])
+        self.assertEqual(self.folded(message), (True, 1))
+
+    def test_a_thumbs_up_folds_its_message_and_taking_it_back_unfolds_nothing(self):
+        message, other = self.post("Shipped the copy"), self.post("Next")
+        self.committed(self.thumb(message))
+        self.assertEqual(self.folded(message), (True, 1), "a thumbs-up folds the message for its giver")
+        self.assertEqual((self.folded(message, "agent-a"), self.folded(other)), ((False, 0), (False, 0)))
+        self.committed(self.thumb(message, on=False, revision=1))
+        self.assertEqual(self.folded(message), (True, 1), "taking the thumbs-up back leaves it folded")
+        self.assertEqual(len(self.rows("fold")), 1)
+
+    def test_a_starred_message_never_folds_this_way_and_a_folded_one_stays_as_it_is(self):
+        starred, folded = self.post("Keep this"), self.post("Already out of the way")
+        self.committed(self.star(starred))
+        self.committed(self.command("message.post", {"body": "On it", "reply_to": starred}, target={"topic_id": "t1"}, actor="owner"))
+        self.committed(self.thumb(starred))
+        self.assertEqual(self.folded(starred), (False, 0), "a star keeps a message in view: neither a reply nor a thumbs-up folds it")
+        self.committed(self.fold(folded))
+        self.committed(self.command("message.post", {"body": "Yes", "reply_to": folded}, target={"topic_id": "t1"}, actor="owner"))
+        self.committed(self.thumb(folded))
+        self.assertEqual(self.folded(folded), (True, 1), "one already folded stays at its revision, with no new row")
+        self.assertEqual(len(self.rows("fold")), 1)
+
+    def test_a_message_unfolded_later_folds_again_on_the_next_reply_or_thumbs_up(self):
+        message = self.post("Two questions")
+        self.committed(self.command("message.post", {"body": "First", "reply_to": message}, target={"topic_id": "t1"}, actor="owner"))
+        self.committed(self.fold(message, on=False, revision=1))
+        self.assertEqual(self.folded(message), (False, 2))
+        self.committed(self.command("message.post", {"body": "Second", "reply_to": message}, target={"topic_id": "t1"}, actor="owner"))
+        self.assertEqual(self.folded(message), (True, 3), "the next reply folds it again")
+        self.committed(self.fold(message, on=False, revision=3))
+        self.committed(self.thumb(message))
+        self.assertEqual(self.folded(message), (True, 5), "and so does the next thumbs-up")
+
+    def test_replying_to_your_own_message_folds_it_too(self):
+        mine = self.post("My plan", actor="owner")
+        self.committed(self.command("message.post", {"body": "And one more thing", "reply_to": mine}, target={"topic_id": "t1"}, actor="owner"))
+        self.assertEqual(self.folded(mine), (True, 1))
+
+    def test_an_agents_reply_or_thumbs_up_folds_nothing(self):
+        mine = self.post("For the agent", actor="owner")
+        self.committed(self.command("message.post", {"body": "Done", "reply_to": mine}, target={"topic_id": "t1"}, actor="agent-a"))
+        self.committed(self.thumb(mine, actor="agent-a"))
+        self.assertEqual((self.folded(mine, "agent-a"), self.folded(mine)), ((False, 0), (False, 0)), "an agent folds nothing by replying or a thumbs-up")
+        self.assertEqual(self.rows("fold"), [])
+
+    def test_an_answer_to_a_go_ahead_ask_is_a_reply_and_folds_the_ask(self):
+        ask = self.post("May I ship the copy?", addressees=["owner"], intent="ask", go_ahead=True)
+        self.committed(self.command("message.answer", {"answer": "yes"}, target={"message_id": ask}, expected={"answer_revision": 0}))
+        self.assertEqual(self.folded(ask), (True, 1))
+
+
 class PersonalCase(StackCase):
     def test_a_stack_dealt_with_and_its_place_are_the_readers_own(self):
         message = self.post()

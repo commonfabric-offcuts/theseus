@@ -26,8 +26,8 @@ export function pageItself(at, doc) {
 // 'first', 'last', 'left', 'right' (plain), 'open' and 'fold' (⌘→ ⌘←),
 // 'open-all' and 'fold-all' (⇧⌘→ ⇧⌘←), 'move-up' and 'move-down' (⌘↑ ⌘↓),
 // 'undo' (⌘Z), 'write' (⌘Return: a new message in the place the keys are on;
-// in writing it stays Send), and 'join-up' and 'join-down' (⇧⌘↑ ⇧⌘↓), which
-// only the messages' reply stacks act on (stack-feed.mjs). Return is left to
+// in writing it stays Send), 'join-up' and 'join-down' (⇧⌘↑ ⇧⌘↓), and
+// 'fold-message' (x), which only the messages' reply stacks act on (stack-feed.mjs). Return is left to
 // what is focused, which opens it. ⌘ is the Command key, on a Mac and on an
 // iPad's keyboard alike; Control and Option with an arrow mean nothing here.
 export function keyAction(event) {
@@ -35,7 +35,7 @@ export function keyAction(event) {
   const command = Boolean(event.metaKey);
   if (event.shiftKey) return command ? { ArrowRight: 'open-all', ArrowLeft: 'fold-all', ArrowUp: 'join-up', ArrowDown: 'join-down' }[event.key] ?? null : null;
   if (command) return { ArrowUp: 'move-up', ArrowDown: 'move-down', ArrowRight: 'open', ArrowLeft: 'fold', z: 'undo', Z: 'undo', Enter: 'write' }[event.key] ?? null;
-  return { ArrowUp: 'up', ArrowDown: 'down', ArrowRight: 'right', ArrowLeft: 'left', Home: 'first', End: 'last' }[event.key] ?? null;
+  return { ArrowUp: 'up', ArrowDown: 'down', ArrowRight: 'right', ArrowLeft: 'left', Home: 'first', End: 'last', x: 'fold-message' }[event.key] ?? null;
 }
 
 // The keys, in plain words, as the outline's legend and the guide list them.
@@ -53,7 +53,8 @@ export const KEY_WORDS = [
 export const MESSAGE_KEY_WORDS = [
   ['↑ ↓', 'move the light from message to message, down a stack to its newer replies and on to the stack below'],
   ['⌘↑ ⌘↓', 'move the message\'s stack up or down; your order is yours, kept wherever you sign in'],
-  ['→ ←', 'open or fold a stack a step at a time; past fully open or closed, move to the right or left siderail'],
+  ['→ ←', 'show a stack\'s every message, or only its latest and unread; past either, move to the right or left siderail'],
   ['⇧⌘↑ ⇧⌘↓', 'join the stack to the one above or below, for everyone here; Split back out in ⋯ takes it out again'],
+  ['x', 'folds the message to one line, for you alone, and x again unfolds it; a starred message stays open'],
   ['⌘Z', 'puts back your last move, fold, rename or join'],
 ];

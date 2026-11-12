@@ -12,11 +12,11 @@ docs/interaction.md has the keys.
 
 Up and Down visit each dossier header as well as its visible messages. In
 the fully expanded state the header is a separate stop before the original
-message; in the other states the compact header already serves as that stop.
+message; at latest plus unread the compact header already serves as that stop.
 Down from the page header enters the first dossier header. The dossier owns
 the strong outline there, and message actions appear only on message stops.
 A chevron that holds the focus without being a stop (Tab or a click onto it,
-or Return or Space that just closed the dossier) stands for the dossier's
+or Return or Space that just folded the dossier) stands for the dossier's
 compact header, so Up and Down move on from that dossier.
 
 The code:
@@ -125,14 +125,21 @@ their acts.
   When no number fits between two places, the two stacks trade keys. A
   placed stack says "Placed here by you", and "Let new replies move it"
   takes the place away.
-- **Folding.** A stack has exactly three states, shared by its chevron,
-  keyboard commands, header and menu:
-  - Head (↑): the header only, with no message body or reply line.
+- **Folding.** A stack has exactly two states, shared by its chevron,
+  keyboard commands, header and menu (item 394 took away the header-only
+  state, now that a swipe moves a dossier out of the way):
   - Folded (→): the latest reply plus unread replies, each shown once.
     The original message is not shown here. Stars and joins do not force
     additional read messages into this view; a join the reader makes opens
     the stack it went into instead (see Doing it).
   - Open (↓): the original message and every reply.
+
+  A stack whose replies are all read shows its latest reply alone when
+  folded. A quiet agent dossier (below, 359) still begins as its header
+  alone; its first step opens it to latest plus unread, and only ⌘Z right
+  after takes it back there. A stack left at its header that is no longer
+  agents' alone (a reply to the person arrived, say) shows latest plus
+  unread (`levelOf`).
 
   Replies that were unread when drawn stay in view while being read, so
   reading them does not make them vanish. Explicitly changing state, or
@@ -143,25 +150,50 @@ their acts.
 - **Folded messages.** A message the reader folded stays folded for them, on
   every device and after a reload, until they unfold it; nobody else's view
   changes. Wherever its stack shows it, at every state, fully open included,
-  and on its own, it is one row: who wrote it, its first words, and
-  "Folded". A fold never shows or hides a message; the stack's state alone
+  and on its own, it is one row: who wrote it, its first words, a 👍, and
+  "Folded". The 👍 is the message's thumbs-up, as its bar's: pressed once
+  given, with the count once anyone has, and a press gives or takes it back
+  without unfolding the message (none on the reader's own message). It is a
+  button named "Thumbs up" or "Remove thumbs up" (with the count), with that
+  tooltip; on a laptop Tab from the selected row reaches it (Safari's
+  Option-Tab is left to the browser, as for the bar's buttons), and on a phone
+  it is 44 pixels square. A fold never shows or hides a message; the stack's state alone
   does that, and changing the state leaves every fold as it was. A press on
   the row unfolds it (one tap on a phone, where a tap on a card otherwise
   lights it first). A star keeps a message in view: a starred message is
   never folded, ⋯ offers it no Fold, and starring a folded message unfolds
-  it. A stack's first message folds into its head row, which already
+  it.
+- **Dealt with, folded (item 377).** A person's reply to a message (its
+  `reply_to` names the message, ✅ or 🚫 on a go-ahead ask included, and
+  their reply to their own message too), or their thumbs-up on it, folds it
+  for them, as their Fold would: Core records their own `message.fold` in
+  the same transaction as the reply or the thumb (`Stacks._fold_answered`),
+  so every page, device and the CLI agree. Nobody else's view changes, and
+  an agent's reply or thumb folds nothing. A starred message never folds
+  this way, and one already folded stays as it is (no new row). Taking the
+  thumb back unfolds nothing; a message unfolded later folds again on the
+  person's next reply or thumbs-up. On the page the row shows where the
+  message was, the feed keeps its place and the keys stay where they were;
+  a Reader open on the message keeps showing it whole, and closing it
+  leaves the keys on the folded row. ⌘Z does not take back a fold a reply
+  or a thumbs-up made: ⌘Z puts back the page's own acts (a move, a step, a
+  Fold), and sending a reply or giving a 👍 is not one of them, so the fold
+  goes with what caused it. A press on the row, x, or Unfold in ⋯ unfolds
+  it.
+- **First messages.** A stack's first message folds into its head row, which already
   says who began the stack and its first line: the row adds "Folded", the
   full message stays hidden even with the stack fully open, and no second
-  row doubles the tab. A press on that head row unfolds it and opens the
-  stack. A link, search or the rail's Starred that lands on a folded
+  row doubles the tab. A press on that head row, or x on it, unfolds it and
+  opens the stack, so x on it again folds it. A link, search or the rail's Starred that lands on a folded
   message opens it whole for that view without unfolding it; changing its
   stack's state folds it to its row again.
-- **Expand and collapse.** One chevron beside the title cycles ↑ → ↓ → ↑.
+- **Expand and collapse.** One chevron beside the title switches between
+  latest plus unread (→) and every message (↓).
   It is a button reachable by Tab and operable by Return or
   Space, with `aria-expanded` and a label naming the stack. The header already
   gives the reply and new counts; no repeated count or fold bar sits between
   the messages. Its accessible label describes the current state and next
-  action; `aria-expanded` is false only in the header-only state.
+  action; `aria-expanded` is false only on a quiet agent dossier's header alone.
 - **The head.** The first message is one compact row: its short name, ✎,
   who began the stack, "New" when the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. On a phone the
@@ -195,7 +227,8 @@ their acts.
   still replies to it, and the bar comes back once its whole message shows.
   In a stack the bar stays below the head row's bottom edge while that row
   is in the window; where that leaves no room above a card's reply arrow, the
-  bar sits under the card rather than over its words and answers. Once the
+  bar sits under the card rather than over its words and answers. It never
+  covers a folded row's 👍 either: it sits above the row, or under it. Once the
   row has gone above the window, the bar scrolls away with its card, as any
   message's bar does. A lit reply that its stack folds away loses its light
   and its bar, so no message bar is left over the stack's chevron.
@@ -206,10 +239,10 @@ their acts.
 - **Reading order.** The Reader's ↑ and ↓ follow the page from top to
   bottom (`readingOrder`). They go down a stack through its replies to its
   newest, then on to the stack below.
-- **Fold steps.** → steps from header only to latest plus unread to all
-  messages. ← goes back the same way, whether the keys are on the header
-  or a reply or the chevron. Another → when fully open moves to the right
-  siderail; another ← when closed moves to the left siderail. A hidden rail
+- **Fold steps.** → steps from latest plus unread to all messages, and ←
+  goes back, whether the keys are on the header or a reply or the chevron.
+  Another → when fully open moves to the right siderail; another ← at
+  latest plus unread moves to the left siderail. A hidden rail
   stays hidden. Each stack step can be undone with ⌘Z.
 
 Each viewer has their own order and folds, because they come from that
@@ -225,9 +258,10 @@ On a message (its card focused, never in writing), these keys work:
 | Keys | Act |
 | --- | --- |
 | ⌘↑ ⌘↓ | move its stack up or down, for you alone |
-| → ← | open or fold its stack a step, then move to the siderail at that end |
+| → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
-| ⌘Z | undo the last of these, or the last Fold or Unfold |
+| x | fold it to its row, for you alone, or unfold it; a starred message stays open, and on a dossier as a whole x does nothing yet, unless its first message is folded: then its head row is that message, and x unfolds it and opens the dossier |
+| ⌘Z | undo the last of these, or the last Fold or Unfold (not a fold a reply or a 👍 made) |
 
 The keys come from the shared key map (`web/pane-keys.mjs`), so the
 outline and the messages read one set of keys. What ↑ ↓ and these acts leave
@@ -244,7 +278,8 @@ The ⋯ menu offers:
 - Rename (on a head)
 - Show or Hide the full message
 - Split back out (on a joined stack's first message)
-- every move above, each naming its keys
+- every move above, each naming its keys; of Fold its stack (←) and Open its
+  stack (→), only the step there is from where the stack stands
 
 A join makes the two stacks one: after it every message of both reads as
 one run under the head, oldest first, and a new reply to any of them lands
@@ -260,7 +295,11 @@ On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
 folds to its row, in any state of its stack, fully open included, and its
 row swiped to the left, or tapped, unfolds it. A drag that starts on
 something scrolling sideways, such as a wide table or a block of code,
-scrolls it instead. A right-click (a long press on Android) opens the same
+scrolls it instead. A long message that scrolls up and down inside its card
+(item 381) is not such a thing: its card scrolls only up and down, and a
+box a rounding pixel or two wider than it shows (`SIDEWAYS_SLACK`) does not
+count, so a swipe over it folds it, by a finger on a phone and by two
+fingers on a trackpad alike. A right-click (a long press on Android) opens the same
 menu.
 
 On a laptop, two fingers on the trackpad do the same: swiped right over a
@@ -278,7 +317,10 @@ page keeps its events from the browser, and with the pointer over the
 messages a sideways overscroll does nothing, so the browser never goes back
 or forward a page. A scroll that goes further down than across, a swipe
 over something that scrolls sideways, and the wheel with Ctrl or ⌘ held
-(zoom) are the browser's, as they were.
+(zoom) are the browser's, as they were. Each event is judged on its own as
+well (item 393): one that goes further down than across ends the swipe and
+is the browser's, so a scroll begun right after a swipe folded a message,
+still inside its 250 ms, scrolls the page at once.
 
 A card that a join, a move or a new reply carries to another place keeps
 where it was scrolled: a table scrolled sideways, or a long message scrolled
@@ -317,7 +359,7 @@ the semantic colour tokens of `web/aim.css` and only the names that
 - `.reply-stack`: a stack. It carries these attributes:
   - `data-stack`: its head's id
   - `data-seq`
-  - `data-fold`: head, folded or open
+  - `data-fold`: folded or open, or head for a quiet agent dossier not yet opened
   - `data-head-open`, `data-placed`, `data-single`, `data-renaming`
 - Inside the stack:
   - the head's entry, with its card marked `.stack-head-card` and holding
@@ -332,7 +374,8 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
 - `[data-starred=true]` on any card the reader starred.
 - `[data-folded=true]` on any card the reader folded, holding its one row,
-  `.message-folded` (`.folded-author`, `.folded-words`, `.folded-cue`);
+  `.message-folded` (`.folded-author`, `.folded-words`, `.folded-thumb`,
+  the row's 👍, and `.folded-cue`);
   `.stack-folded` in a head row whose first message is folded.
 
 Another look replaces that one file. Nothing in the drawing code chooses a
@@ -364,6 +407,13 @@ the stacks draw nothing.
 | on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
 | a fold: in a fully open stack, through every state, a reload and another device, unfolded by a press and ⌘Z, a link, Starred and the first message | `tests/stack_native.mjs`, "reading stacks a message folded in a fully open stack …"; on a phone, swiped right, swiped left and tapped, "reading stacks on a phone a message swiped right …" (Chrome only: Safari's engine in the harness has no finger drag) |
 | the trackpad: two fingers right fold a reply once, momentum and all, and left unfold it after a reload; a scroll, a swipe on a wide table and a starred message fold nothing; the page goes nowhere | `tests/stack_native.mjs`, "reading stacks on a laptop two fingers swiped right on the trackpad …", in Chrome and Safari's engine |
+| a reply or a thumbs-up folds the message for the person alone, in Core: a page's reply, an answer, their own message, a thumb taken back, a starred or already folded message, an agent | `tests/test_stacks.py` (`AnsweredFoldCase`) |
+| on the page: the row where the message was, the place and the keys kept, the Reader whole, ⌘Z, another reader and another device | `tests/stack_native.mjs`, "reading stacks replying to a message or a thumbs-up on it folds it …", in Chrome and Safari's engine |
+| a swipe folds a long message that scrolls up and down in its card | `tests/stack_native.mjs`, "reading stacks a swipe folds a long message …" (a finger on a phone in Chrome only) |
+| a scroll right after a trackpad swipe folded a message | `tests/stack_native.mjs`, "reading stacks a scroll right after two fingers fold a message …" |
+| x folds and unfolds the selected message; a starred one, a dossier and writing | `tests/ui_outline_order.test.mjs` (the key map); `tests/stack_native.mjs`, "reading stacks x folds the selected message …" |
+| the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
+| two states, by the chevron, the header, → ← and ⋯; a stack left at its header | `tests/ui_stack_order.test.mjs` (`LEVELS`, `foldStep`, `levelOf`); `tests/stack_native.mjs`, "reading stacks use exactly two states …" and "reading stacks a dossier left at its header alone …" |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
@@ -382,7 +432,8 @@ Not yet:
 
 A dossier entirely between known agents starts as one quiet title row, with
 its reply count. The same up/right/down control still opens latest/unread and
-then all messages. Explicitly opening it stays open as new agent replies arrive.
+then all messages, and goes on between those two; only ⌘Z right after
+opening takes it back to its row. Explicitly opening it stays open as new agent replies arrive.
 This presentation is not the reader's saved message fold or saved placement.
 
 Show agent coordination above either feed is on initially; turning it off

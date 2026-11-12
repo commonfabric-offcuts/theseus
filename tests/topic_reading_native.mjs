@@ -133,14 +133,32 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   };
   // Lights a card as the person does: the pointer rests on it, or a finger taps it; on its words,
   // or, for a stack's head shown as one row, on that row, which lights with no bar (docs/reply-stacks.md).
+  // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row,
+  // with its bar, under the pointer; on a phone a tap on that row unfolds it, so it is unfolded first (unfoldRow).
   const light = async (p, device, id) => {
     await centre(p, card(id));
+    if (await foldedRow(p, id)) {
+      if (device === 'phone') await unfoldRow(p, device, id);
+      else {
+        await p.point(card(id) + ' > .message-folded > .folded-author', 'move');
+        await until(async () => (await lit(p)).includes(id) && await bar(p) !== null, `${device}: ${id} lights on its folded row, with its bar`);
+        return;
+      }
+    }
     const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
     // The left edge now belongs to the separate reply chevron. Light the
     // head on its author text, which still opens the head's own message.
     const target = row ? card(id) + ' > .stack-head > .stack-who' : words(id);
     if (device === 'phone') await tap(p, target); else await p.point(target, 'move');
     await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === row, `${device}: ${id} lights, ${row ? 'with no bar on a head shown as one row' : 'with its bar'}`);
+  };
+  // Whether a message shows as its folded row, and a press on that row, which shows it whole again (docs/reply-stacks.md).
+  const foldedRow = (p, id) => p.evaluate(`(c=>c?.dataset.folded==='true'&&Boolean(c.querySelector(':scope > .message-folded')?.getClientRects().length))(document.querySelector(${JSON.stringify(card(id))}))`);
+  const unfoldRow = async (p, device, id) => {
+    // On its "Folded", which keeps its width however long the author's name runs.
+    const row = card(id) + ' > .message-folded > .folded-cue';
+    await centre(p, row); await press(p, device, row);
+    await until(async () => !await foldedRow(p, id) && await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`), `${device}: a press on ${id}'s row shows it whole`);
   };
   // The pointer leaves the messages for a spot where no message, bar or control is.
   const away = async p => {
@@ -154,7 +172,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   const openReader = async (p, device, id, starts) => {
     await p.evaluate('document.activeElement?.blur()');
     if (device === 'laptop') { await light(p, device, id); await p.key('Enter'); }
-    else { await centre(p, card(id)); await tap(p, words(id)); await until(async () => (await lit(p)).includes(id), 'phone: the message lights'); await tap(p, words(id)); }
+    else {
+      // A first tap lights it, unless it is lit already (a tap on its folded row that showed it whole lights it too); the next opens it.
+      await centre(p, card(id));
+      if (!(await lit(p)).includes(id)) { await tap(p, words(id)); await until(async () => (await lit(p)).includes(id), 'phone: the message lights'); }
+      await tap(p, words(id));
+    }
     await until(async () => (await readerOn(p))?.startsWith(starts), `${device}: the Reader opens on "${starts}"`);
   };
   // The Reader opened to be read: a click on the lit message, or a phone's second tap. The cursor is never put
@@ -195,6 +218,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       };
       const viaBar = () => press(p, device, `${BAR} [data-act=thumb]`);
       await thumb(true, viaBar);
+      // A thumbs-up folds the message for the person (docs/reply-stacks.md, item 377); a press on its row shows it whole again.
+      await until(() => foldedRow(p, ids.plain), device + ': the thumbs-up folds the message to its row');
+      await unfoldRow(p, device, ids.plain);
+      if (device === 'phone' && !(await lit(p)).includes(ids.plain)) await light(p, device, ids.plain);
       assert.match((await count()).text, /^👍 1/, device + ': the card counts one');
       // Where a pointer hovers, the count says how many and its title names who; on a phone the lit card's count names who.
       assert.equal((await count()).who, device === 'phone', device + ': names shown on the count only where nothing hovers');
@@ -206,6 +233,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         const sizes = await p.evaluate(`[...document.querySelectorAll('${BAR} button')].filter(b=>!b.hidden).map(b=>{const r=b.getBoundingClientRect();return [b.dataset.act,Math.round(r.width),Math.round(r.height)]})`);
         assert.ok(sizes.length === 3 && sizes.every(([, width, height]) => width >= 44 && height >= 44), `phone: the bar's buttons are 44px or more (${JSON.stringify(sizes)})`);
         // On a phone a tap on the count names who, as hover does; it does not take the thumbs-up back.
+        await until(() => foldedRow(p, ids.plain), 'phone: given again, the thumbs-up folds the message again');
+        await unfoldRow(p, device, ids.plain);
         const [taps, sent] = await p.evaluate('[window.taps, window.sent.length]');
         await tap(p, line + ' > .reaction-count');
         await until(() => p.evaluate(`window.taps === ${taps + 1}`), 'phone: the tap on the count is heard');
@@ -216,6 +245,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await thumb(false, viaBar);
       } else {
         // A click on the card's own count takes it back, and the Reader stays shut.
+        await until(() => foldedRow(p, ids.plain), 'laptop: given again, the thumbs-up folds the message again');
+        await unfoldRow(p, device, ids.plain);
         await thumb(false, () => p.point(line + ' > .reaction-count'));
         assert.equal(await readerOn(p), null, 'laptop: the count acts, and opens nothing');
       }
@@ -248,9 +279,15 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const mine = () => p.evaluate(`document.querySelector(${JSON.stringify(choices + ' .mine')})?.dataset.react ?? null`);
       // The page shows each reply Core holds; a card moved under a resting pointer takes the light,
       // so the pointer comes to rest on the ask again (a finger's tap lights only when the ask is not lit: a second tap is a press).
+      // An answer is a reply, so it folds the ask for the person (docs/reply-stacks.md, item 377): heading its stack, the ask is
+      // its head row, and a press on that row shows it whole again.
       const relight = async () => {
         const said = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.reply_to === ids.ask && item.author_id === facts.actor).map(item => item.id);
         await until(() => p.evaluate(`${JSON.stringify(said)}.every(id => document.querySelector('#messages [data-id="' + id + '"]'))`), device + ': the page shows each reply');
+        await until(async () => (await view('message_acts', { topic_id: topic })).items.some(item => item.message_id === ids.ask && item.acts.folded), device + ': the answer folds the ask, in Core');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.ask) + ' > .stack-head > .stack-folded')})?.getClientRects().length)`), device + ': the ask shows as its folded head row');
+        await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on its folded head row shows the ask whole');
         if (device !== 'phone' || !(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
       };
       await until(async () => await mine() === 'yes', device + ': the card shows ✅ as the answer');
@@ -688,6 +725,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await until(() => q.evaluate(`document.querySelector(${JSON.stringify(card(id))}).getClientRects().length > 0`), `${device}: the stack's line opens the reply`);
       };
       await unfold(p, ids.root, ids.answered);
+      // The person's reply folded it for them (docs/reply-stacks.md, item 377): a press on its row shows it whole, arrow and all.
+      await unfoldRow(p, device, ids.answered);
       const arrow = card(ids.answered) + ' .replied-mark';
       const said = () => p.evaluate(`(()=>{const a=document.querySelector(${JSON.stringify(arrow)}),w=a.querySelector('.replied-words');return {words:w.textContent,shown:Number(getComputedStyle(w).opacity),reply:a.dataset.reply}})()`);
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.other))}).querySelector('.replied-mark')`), null, device + ': no arrow on a message not replied to');
@@ -724,6 +763,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         ['also', { sender: 'person', reply_to: 'long', addressees: ['fixture-notebook-agent'], body: 'My reply to the long name.' }]]);
       const q = await open('reading-replied-long-' + device, device, topic + '-long', far.first);
       await unfold(q, far.first, far.long);
+      await unfoldRow(q, device, far.long);
       await light(q, device, far.long);
       const covers = await q.evaluate(`(()=>{const b=document.querySelector('${BAR}').getBoundingClientRect(),m=document.querySelector(${JSON.stringify(card(far.long) + ' .replied-mark')}).getBoundingClientRect();
         return b.right>m.left&&b.left<m.right&&b.bottom>m.top&&b.top<m.bottom})()`);
@@ -1007,6 +1047,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await press(p, device, '#thumb-source');
       await until(async () => await thumbsBy(ids.theirs, facts.actor) === 1, `${device}: Core holds the thumbs-up`);
       await until(async () => await readerOn(p) === null, `${device}: the 👍 closes the Reader`);
+      // The thumbs-up folded the message for the person (docs/reply-stacks.md, item 377); a press on its row shows it whole.
+      await until(() => foldedRow(p, ids.theirs), `${device}: the thumbs-up folds the message to its row`);
+      await unfoldRow(p, device, ids.theirs);
       await readerByClick(p, device, ids.theirs, 'A message to thumb up');
       await until(async () => (await button())?.pressed === 'true', `${device}: opened again, the Reader's 👍 shows it on`);
       assert.equal((await button()).text, '👍 1', device + ': and counts it');
@@ -1078,6 +1121,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await press(p, device, '#thumb-source');
       await until(async () => await thumbsBy(ids.theirs, facts.actor) === 1, device + ': Core holds the quiet line\'s thumbs-up');
       await until(async () => await readerOn(p) === null, device + ': the quiet line\'s 👍 closes the Reader, as Send does');
+      // The thumbs-up folded the message for the person (docs/reply-stacks.md, item 377); a press on its row shows it whole.
+      await until(() => foldedRow(p, ids.theirs), device + ': the thumbs-up folds the message to its row');
+      await unfoldRow(p, device, ids.theirs);
       // Opened again the same way, it shows given; taken back on the quiet line, the Reader stays.
       await readerByClick(p, device, ids.theirs, 'A message to answer');
       await until(async () => (await reader()).thumb === 'true', device + ': opened again, 👍 shows given');
@@ -1111,6 +1157,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await press(p, device, '#thumb-source');
       await until(async () => await thumbsBy(ids.theirs, facts.actor) === 1, device + ': Core holds the thumbs-up');
       await until(async () => await readerOn(p) === null, device + ': the 👍 closes the Reader, as Send does');
+      await until(() => foldedRow(p, ids.theirs), device + ': given again, the thumbs-up folds the message again');
+      await unfoldRow(p, device, ids.theirs);
       // Opened again, the reply holds what it held, and the 👍 shows given.
       await openReader(p, device, ids.theirs, 'A message to answer');
       await until(async () => (await reader()).thumb === 'true', device + ': opened again, 👍 shows given');
@@ -1361,8 +1409,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [true, true, true, true], device + ': every reply shows');
       assert.equal((await stack()).expanded, 'true', device + ': and the line folds them again');
       await press(p, device, line);
-      await until(async () => (await stack())?.fold === 'head', device + ': a second press closes the stack');
-      assert.deepEqual((await stack()).replies.map(([, shown]) => shown), [false, false, false, false], device + ': closed shows no replies');
+      await until(async () => (await stack())?.fold === 'folded', device + ': a second press folds the stack back to its newest and unread replies (two states, item 394)');
+      const back = (await stack()).replies.map(([, shown]) => shown);
+      assert.deepEqual([back[0], back[1], back[3]], [false, false, true], device + ': the newest shows again (with any reply still unread), the older read replies folded');
+      assert.equal((await stack()).expanded, 'true', device + ': and the line is never a header alone');
       assert.equal(await readerOn(p), null, device + ': the line opens no message');
       assert.deepEqual(p.errors, []);
       await p.close();

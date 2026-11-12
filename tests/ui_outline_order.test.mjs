@@ -170,10 +170,15 @@ test('each key means one thing in the panes: arrows move, ⌘ arrows open, fold 
   assert.deepEqual(KEY_WORDS.map(([keys]) => keys), ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', '⌘↑ ⌘↓', '⌘Z'], 'the legend names every key');
   assert.ok(KEY_WORDS.length >= 5 && KEY_WORDS.every(([keys, words]) => keys && /^[a-z]/.test(words) && !/\b[tw]-[0-9a-f]{6}/.test(words)), 'the legend is plain words');
   // Under "In the messages", the stack keys, each one the key map gives a message.
-  assert.deepEqual(MESSAGE_KEY_WORDS.map(([keys]) => keys), ['↑ ↓', '⌘↑ ⌘↓', '→ ←', '⇧⌘↑ ⇧⌘↓', '⌘Z'], 'the messages\' legend names every stack key');
+  assert.deepEqual(MESSAGE_KEY_WORDS.map(([keys]) => keys), ['↑ ↓', '⌘↑ ⌘↓', '→ ←', '⇧⌘↑ ⇧⌘↓', 'x', '⌘Z'], 'the messages\' legend names every stack key');
   const withCommand = (key, more = {}) => keyAction({ key, metaKey: true, ...more });
   assert.deepEqual([withCommand('ArrowUp'), withCommand('ArrowDown'), keyAction(press('ArrowRight')), keyAction(press('ArrowLeft')), withCommand('ArrowUp', { shiftKey: true }), withCommand('ArrowDown', { shiftKey: true }), withCommand('z')],
     ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo'], 'and the key map gives each its act');
+  // x folds the selected message (item 388): plain x only, never in writing, never with a modifier.
+  assert.equal(keyAction(press('x')), 'fold-message');
+  assert.deepEqual([['X', { shiftKey: true }], ['x', { metaKey: true }], ['x', { ctrlKey: true }], ['x', { altKey: true }], ['x', { isComposing: true }]].map(([key, more]) => keyAction(press(key, more))),
+    [null, null, null, null, null], 'x with a modifier, or composing, means nothing here');
+  for (const selector of ['input', 'textarea', '[contenteditable="true"]', '.composer', 'dialog']) assert.equal(keyAction({ key: 'x', target: target(selector) }), null, `x types in ${selector}`);
   assert.ok(MESSAGE_KEY_WORDS.every(([, words]) => /^[a-z]/.test(words) && !/\bm-[0-9a-f]{6}/.test(words)), 'in plain words');
 });
 
