@@ -2006,22 +2006,22 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   await f.initialize();
   const team = f.get('team-people');
   assert.equal(f.get('outcome-team').hidden, false);
-  assert.deepEqual(walk(team).filter(node => node.textContent === '×').map(node => node['aria-label']), ['Remove ally']);
+  assert.deepEqual(walk(team).filter(node => node.textContent === '×').map(node => node['aria-label']), ['Remove Ally']);
   await add(team, 'tony');
   await drain();
   // Someone's message elsewhere in the outcome moves its revision on.
   f.pickers.workspace.version += 1;
-  await removeButton(team, 'ally').onclick();
+  await removeButton(team, 'Ally').onclick();
   await drain();
   assert.deepEqual(sentOf(f, 'workspace.member_set', 'workspace_revision'),
     [[5, { actor_id: 'tony', present: true }], [6, { actor_id: 'ally', present: false }], [7, { actor_id: 'ally', present: false }]]);
   assert.deepEqual(f.pickers.members.map(row => row.actor_id), ['fixture-person', 'tony']);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'tony'], 'the panel shows the reread team');
+  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony'], 'the panel shows the reread team');
 
   // A team that cannot be read keeps the chips it had and says so.
   f.pickers.membersRefused = true;
   await commit(f.live, 2);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'tony']);
+  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony']);
   assert.match(walk(team).find(node => node.className === 'notice').textContent, /^The team could not be read/);
 
   // Someone else's commit: the page rereads the outcome, so its revision and team stay current.
@@ -3433,7 +3433,7 @@ test('an outcome\'s team says wakes are paused on each agent with work while no 
   wakesApi(f, () => [{ actor_id: 'ally', waiting: 4, why: 'wakes_paused' }]);
   await f.initialize();
   await drain();
-  assert.deepEqual(chipWords(f.get('team-people')), ['fixture-person', 'ally · wakes paused · 4 waiting']);
+  assert.deepEqual(chipWords(f.get('team-people')), ['Fixture', 'Ally · wakes paused · 4 waiting']);
 });
 
 test('while wakes are not going out, the page says so once, and the words go when a commit shows them going out again', async () => {

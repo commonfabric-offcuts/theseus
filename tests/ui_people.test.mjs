@@ -82,18 +82,77 @@ test('names become options valued by id, labelled by name and kind, each id once
 });
 
 const people = list => list.map(actor_id => ({ actor_id }));
-const chips = host => host.filter(node => node.className === 'chip').map(chip => chip.textContent);
+const chips = host => host.filter(node => node.className === 'chip').map(chip => chip.children[0].textContent);
 const removable = host => host.filter(node => node.tag === 'button' && node.textContent === '×').map(node => node.attributes['aria-label']);
 const field = host => host.find(node => node.tag === 'input');
 const opener = host => host.find(node => node.tag === 'button' && node.textContent === '+ Add');
 const row = host => host.find(node => node.className === 'people-add');
 // The names offered to add, as tapped: each a chip button in the open row.
 const offered = host => row(host).filter(node => node.tag === 'button').map(node => node.textContent);
-const offer = (host, id) => row(host).find(node => node.tag === 'button' && node.textContent === id);
+const offer = (host, id) => row(host).find(node => node.tag === 'button' && node.dataset.id === id);
 const enter = (host, more = {}) => field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...more });
 const sameNodes = (a, b) => a.length === b.length && a.every((node, index) => node === b[index]);
 
 const notice = host => { const node = host.find(node => node.className === 'notice'); return node.hidden ? null : node.textContent; };
+
+test('a renamed agent is offered by its current name and both click and Return add its unchanged identity', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [];
+  let candidates = [{ id: 'codex-worker', name: 'codex-worker' }];
+  const panel = new PeoplePanel({ host, label: 'Add', candidates: () => candidates,
+    add: async id => { sent.push(id); return { status: 'committed' }; } });
+  panel.paint([], true); panel.toggle(true);
+  const button = panel.choices.children[0]; button.focus();
+  candidates = [{ id: 'codex-worker', name: 'codex' }]; panel.paint();
+  assert.equal(panel.choices.children[0], button, 'a rename keeps the pressed/focused button');
+  assert.equal(document.activeElement, button);
+  assert.equal(button.textContent, 'codex');
+  await button.onclick();
+  field(host).value = ' @CoDeX '; enter(host); await new Promise(setImmediate);
+  assert.deepEqual(sent, ['codex-worker', 'codex-worker']);
+});
+
+test('duplicate display names are distinguished, Return refuses ambiguity, and an exact ID still resolves', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [];
+  const panel = new PeoplePanel({ host, label: 'Add', candidates: () => [
+    { id: 'one', name: 'Codex' }, { id: 'two', name: 'codex' }],
+    add: async id => { sent.push(id); return { status: 'committed' }; } });
+  panel.paint([], true); panel.toggle(true);
+  assert.deepEqual(offered(host), ['Codex (one)', 'codex (two)']);
+  field(host).value = 'codex'; enter(host); await new Promise(setImmediate);
+  assert.deepEqual(sent, []);
+  assert.match(notice(host), /More than one/);
+  assert.equal(field(host).value, 'codex');
+  field(host).value = 'two'; enter(host); await new Promise(setImmediate);
+  assert.deepEqual(sent, ['two']);
+});
+
+test('member name changes keep the remove button and still remove the original identity', async t => {
+  dom(t);
+  const host = new Element('div'), removed = [];
+  const panel = new PeoplePanel({ host, label: 'Add', remove: async id => { removed.push(id); return { status: 'committed' }; } });
+  panel.paint([{ actor_id: 'codex-worker', name: 'codex-worker' }], true);
+  const chip = panel.pills.get('codex-worker').chip, out = chip.out; out.focus();
+  panel.paint([{ actor_id: 'codex-worker', name: 'codex' }], true);
+  assert.equal(panel.pills.get('codex-worker').chip, chip);
+  assert.equal(chip.out, out); assert.equal(document.activeElement, out);
+  assert.equal(chip.children[0].textContent, 'codex');
+  assert.equal(out.getAttribute('aria-label'), 'Remove codex');
+  await out.onclick(); assert.deepEqual(removed, ['codex-worker']);
+});
+
+test('an exact actor ID wins over another actor display name', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [];
+  const panel = new PeoplePanel({ host, label: 'Add', candidates: () => [
+    { id: 'codex', name: 'Another agent' }, { id: 'codex-worker', name: 'codex' }],
+    add: async id => { sent.push(id); return { status: 'committed' }; } });
+  panel.paint([], true); panel.toggle(true);
+  field(host).value = 'codex'; enter(host); await new Promise(setImmediate);
+  await offer(host, 'codex-worker').onclick();
+  assert.deepEqual(sent, ['codex', 'codex-worker'], 'typed ID and clicked choice each retain their identity');
+});
 
 test('only a reader who may change the people gets remove buttons and "+ Add", and fixed people keep no button', t => {
   dom(t);
@@ -123,10 +182,10 @@ test('"+ Add" offers the people not yet in as names tapped once, narrowed by the
   assert.equal(opened.length, 0, 'nothing is read before the row opens');
   opener(host).onclick();
   assert.equal(opened.length, 1, 'opening reads who can be added');
-  assert.deepEqual(offered(host), ['fable', 'aim-core'], 'everyone not here, each once');
+  assert.deepEqual(offered(host), ['Fable', 'AIM Core'], 'everyone not here, each once');
   assert.deepEqual([offer(host, 'fable').attributes['aria-pressed'], offer(host, 'fable').title], ['false', 'Fable']);
   field(host).value = 'core'; field(host).oninput();
-  assert.deepEqual(offered(host), ['aim-core'], 'the filter matches a name as well as an id');
+  assert.deepEqual(offered(host), ['AIM Core'], 'the filter matches a name as well as an id');
   field(host).value = ' @AIM-core'; field(host).oninput();
   enter(host);
   await new Promise(setImmediate);
@@ -171,12 +230,12 @@ test('a repaint that offers the same names keeps their buttons, so a tap across 
   assert.deepEqual([offer(host, 'fable'), offered(host)], [pressed, ['fable', 'ally', 'aim-core']], 'a name still offered keeps its button');
   candidates = [{ id: 'aim-core' }, { id: 'fable', name: 'Fable' }];
   panel.paint();
-  assert.deepEqual([offer(host, 'fable'), pressed.title, offered(host)], [pressed, 'Fable', ['aim-core', 'fable']],
+  assert.deepEqual([offer(host, 'fable'), pressed.title, offered(host)], [pressed, 'Fable', ['aim-core', 'Fable']],
     'in its new place, with its new name, and whoever is no longer offered is gone');
   field(host).value = 'nobody'; field(host).oninput();
   assert.deepEqual([offered(host), row(host).find(node => node.className === 'muted')?.textContent], [[], 'No one by that name yet. Return adds it as typed.']);
   field(host).value = ''; field(host).oninput();
-  assert.deepEqual([offered(host), row(host).find(node => node.className === 'muted')], [['aim-core', 'fable'], undefined], 'the note goes when names are offered again');
+  assert.deepEqual([offered(host), row(host).find(node => node.className === 'muted')], [['aim-core', 'Fable'], undefined], 'the note goes when names are offered again');
 });
 
 // What Return adds is what the person typed: the person with that id, or the
@@ -192,7 +251,7 @@ test('Return in "+ Add" adds the typed id, never the one name the filter leaves,
   await new Promise(setImmediate);
   assert.deepEqual(sent, [], 'nobody typed or tapped anyone');
   field(host).value = 'dan'; field(host).oninput();
-  assert.deepEqual(offered(host), ['jordan'], 'Jordan is the one name the filter leaves');
+  assert.deepEqual(offered(host), ['Jordan'], 'Jordan is the one name the filter leaves');
   enter(host);
   await new Promise(setImmediate);
   assert.deepEqual(sent, ['dan'], 'the id typed, not Jordan');

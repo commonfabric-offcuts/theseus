@@ -862,7 +862,8 @@ export class Reader {
       : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : '';
     this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
-    this.$('reader-origin').replaceChildren([source.author, provenance].filter(Boolean).join(' · '), ...sent);
+    const author = this.callbacks?.actorName?.(source.author) ?? source.author;
+    this.$('reader-origin').replaceChildren([author, provenance].filter(Boolean).join(' · '), ...sent);
     this.paintTone(source);
   }
   // The page the source is read on: an agent's message wears its color, as

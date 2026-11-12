@@ -139,5 +139,10 @@ test('the origin line names the author, a Notebook page and its revision, and wh
   assert.equal(origin.text, 'tony · 5:44 AM Thu Nov 5', 'from before yesterday: dated');
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'memory', id: 'n1', revision: 3 } });
   assert.equal(origin.text, 'tony · Notebook · revision 3');
+  reader.callbacks = { actorName: id => id === 'codex-worker' ? 'codex' : id };
+  const source = { author: 'codex-worker', source_ref: { kind: 'message', id: 'm2' } };
+  reader.paintOrigin(source);
+  assert.equal(origin.text, 'codex');
+  assert.equal(source.author, 'codex-worker', 'the visible name does not rewrite attribution');
   assert.ok(whispering.every(([name, on]) => name === 'whispering' && on === false), 'none of these is a whisper, so none wears its line');
 });

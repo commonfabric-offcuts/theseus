@@ -8,6 +8,16 @@ import { checkedView } from './freshness.mjs';
 
 const PAGE = 100;
 
+// Names are presentation; membership and addressing still use the stable ID.
+const actorName = person => person.name || person.id || person.actor_id;
+const actorId = person => person.id ?? person.actor_id;
+const folded = value => String(value ?? '').toLowerCase();
+function distinctName(person, people) {
+  const name = actorName(person), id = actorId(person);
+  return people.some(other => other && actorId(other) !== id && folded(actorName(other)) === folded(name))
+    ? `${name} (${id})` : name;
+}
+
 // Every enabled person and agent, up to pages * PAGE of them; more says the
 // directory went on past what was read.
 export async function readDirectory(api, instanceId, { pages = 10 } = {}) {
@@ -246,7 +256,14 @@ export class PeoplePanel {
     // typed while the add was out is the person's next one.
     const go = () => {
       const typed = this.input.value, words = typed.trim().replace(/^@/, '');
-      const id = this.candidates().find(person => person?.id?.toLowerCase() === words.toLowerCase())?.id ?? words;
+      const candidates = this.candidates().filter(person => person?.id);
+      const exact = candidates.find(person => folded(person.id) === folded(words));
+      const names = candidates.filter(person => folded(actorName(person)) === folded(words));
+      if (!exact && new Set(names.map(person => person.id)).size > 1) {
+        this.error = 'More than one person has that name. Choose their button or type their ID.';
+        this.paint(); return;
+      }
+      const id = exact?.id ?? names[0]?.id ?? words;
       if (id) return this.submit(() => this.add(id), () => { if (this.input.value === typed) this.input.value = ''; this.paintChoices(); });
     };
     this.input.oninput = () => this.paintChoices();
@@ -284,12 +301,14 @@ export class PeoplePanel {
     const chips = addable.map(person => {
       let chip = was.get(person.id);
       if (!chip) {
-        chip = element('button', { type: 'button', className: 'choice-chip', textContent: person.id });
+        chip = element('button', { type: 'button', className: 'choice-chip' });
         chip.dataset.id = person.id; chip.setAttribute('aria-pressed', 'false');
         chip.onclick = () => this.submit(() => this.add(person.id), () => this.paintChoices(), () => {
           const next = [...this.choices.children][0]; (next ?? this.input).focus();
         });
       }
+      const label = distinctName(person, this.candidates());
+      if (chip.textContent !== label) chip.textContent = label;
       chip.title = person.name && person.name !== person.id ? person.name : ''; chip.disabled = this.busy;
       return chip;
     });
@@ -308,7 +327,7 @@ export class PeoplePanel {
     // What each chip shows. A name may be a control of its own (named), such as
     // an agent's color; the light says whether this agent's wakes are getting
     // through, when they are not.
-    const shown = people.map(person => ({ id: person.actor_id, named: this.named(person),
+    const shown = people.map(person => ({ id: person.actor_id, label: distinctName(person, people), named: this.named(person, distinctName(person, people)),
       className: this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip',
       light: this.light(person), removable: manage && !fixed.has(person.actor_id) }));
     this.paintChips(shown);
@@ -331,12 +350,13 @@ export class PeoplePanel {
     const heldName = [...this.namers].find(([, name]) => name === at)?.[0];
     const was = this.pills;
     this.pills = new Map(); this.removers = new Map(); this.namers = new Map();
-    const pills = shown.map(({ id, named, className, light, removable }) => {
+    const pills = shown.map(({ id, label, named, className, light, removable }) => {
       const key = JSON.stringify([className, light, removable]);
       let pill = was.get(id);
       if (pill?.key !== key || pill.named !== named) pill = { key, named, chip: this.drawPill(id, named, className, light, removable) };
+      if (!named && pill.chip.nameNode.textContent !== label) pill.chip.nameNode.textContent = label;
       pill.out = pill.chip.out;
-      if (pill.out) { pill.out.disabled = this.busy; this.removers.set(id, pill.out); }
+      if (pill.out) { pill.out.setAttribute('aria-label', `Remove ${label}`); pill.out.disabled = this.busy; this.removers.set(id, pill.out); }
       if (named) this.namers.set(id, named);
       this.pills.set(id, pill);
       return pill.chip;
@@ -348,9 +368,9 @@ export class PeoplePanel {
   }
 
   drawPill(id, named, className, light, removable) {
-    const chip = named ? element('span', { className }, named)
-      : this.pill ? element('span', { className }, element('span', { className: 'pill-name', textContent: id }))
-      : element('span', { className, textContent: id });
+    const nameNode = named ?? element('span', { ...(this.pill ? { className: 'pill-name' } : {}), textContent: id });
+    const chip = element('span', { className }, nameNode);
+    chip.nameNode = nameNode;
     if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));
     if (removable) {
       const out = element('button', { type: 'button', textContent: '×', ...(this.pill ? { className: 'pill-remove' } : {}) });
@@ -369,7 +389,7 @@ export class PeoplePanel {
     try { people = this.read ? await this.read() : null; } catch { people = null; }
     if (Array.isArray(people)) this.people = people;
     if (refusal) return refusal;
-    return people ? `The change was not confirmed. Here now: ${listWords(people.map(person => person.actor_id))}.`
+    return people ? `The change was not confirmed. Here now: ${listWords(people.map(actorName))}.`
       : 'The change was not confirmed, and reading who is here again failed too.';
   }
 

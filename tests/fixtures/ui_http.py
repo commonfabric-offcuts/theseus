@@ -569,6 +569,14 @@ def main():
                     elif freshness and request["method"] == "navigation_workspaces":
                         answer = [command("workspace.create", "navigation-workspace-" + item["id"], item)
                                   for item in request["workspaces"]]
+                    elif freshness and request["method"] == "actor_name":
+                        # Fixture-only operator rename: the production picker must
+                        # keep membership IDs while reading the registered name.
+                        with sqlite3.connect(str(path)) as db:
+                            changed = db.execute("UPDATE actors SET name=? WHERE id=?",
+                                                 (request["name"], request["actor_id"]))
+                            assert changed.rowcount == 1
+                        answer = {"id": request["actor_id"], "name": request["name"]}
                     elif freshness and request["method"] == "light_outcome":
                         # Item 86's light: an outcome ("outcome", its id) of the person's with the fixture agent on
                         # its team, made through real commands. With "topic", the agent opens a

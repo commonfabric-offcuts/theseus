@@ -325,6 +325,55 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
+  await check('header renamed agent shows its current name in team and topic pickers while click and Return retain its identity', async () => {
+    const id = 'fixture-outside-agent', name = 'codex';
+    const made = await control({ method: 'agent_topic', operation_id: 'header-renamed-team', title: 'Current names', body: 'Keep the same agent.', coordinator: true });
+    await control({ method: 'actor_name', actor_id: id, name });
+    try {
+      const p = await page('header-renamed-team', null, true, { url: `${facts.origin}/?workspace=${made.workspace_id}` });
+      const chip = `#team-people .people-chips [data-id="${id}"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector('#team-people .add-chip'))`), 'team management appears');
+      await p.evaluate(`document.querySelector('#team-people .add-chip').scrollIntoView({block:'center'})`);
+      await p.point('#team-people .add-chip');
+      await p.send('Input.insertText', { text: name });
+      await until(() => p.evaluate(`document.querySelector('${chip}')?.textContent === 'codex'`), 'the current name is offered');
+      await p.point(chip);
+      const inTeam = async () => (await view('workspace_members', { workspace_id: made.workspace_id })).items.some(m => m.actor_id === id && m.name === name);
+      await until(inTeam, 'click adds the original actor, with its current name');
+      await until(() => p.evaluate(`Boolean(document.querySelector('#team-people [aria-label="Remove codex"]'))`), 'team pill also uses the current name');
+      await shot(p, 'header-renamed-team');
+      await p.point('#team-people [aria-label="Remove codex"]');
+      await until(async () => !await inTeam(), 'remove uses the same actor');
+      await p.point('#team-people .people-add input');
+      await p.key('a', 4);
+      await p.send('Input.insertText', { text: 'CoDeX' });
+      await p.key('Enter');
+      await until(inTeam, 'Return resolves the current name to that same actor');
+
+      const q = await page('header-renamed-topic', null, true, { url: `${facts.origin}/?topic=${made.topic_id}` });
+      await until(() => q.evaluate(`Boolean(document.querySelector('#participants .add-chip'))`), 'topic management appears');
+      await q.evaluate(`document.querySelector('#participants').scrollIntoView({block:'center'})`);
+      await q.point('#participants .add-chip');
+      await q.send('Input.insertText', { text: name });
+      await until(() => q.evaluate(`document.querySelector('#participants [data-id="${id}"]')?.textContent === 'codex'`), 'topic picker offers current name');
+      await q.key('Enter');
+      await until(async () => (await view('topic', { topic_id: made.topic_id })).participants.some(m => m.actor_id === id && m.active), 'topic joins original actor');
+      await until(() => q.evaluate(`Boolean(document.querySelector('#participants [aria-label="Remove codex"]')) && [...document.querySelectorAll('#participants .pill-name')].some(b => b.textContent === 'codex')`), 'the topic color/name button also uses current name');
+      await shot(q, 'header-renamed-topic');
+      const message = (await control({ method: 'agent_message', operation_id: 'header-renamed-message', sender: id, topic_id: made.topic_id, whole_topic: true, body: 'Same agent, current name.' })).result.message_id;
+      const card = `#messages .message-card[data-id="${message}"]`;
+      await until(() => q.evaluate(`document.querySelector('${card} .author-name')?.textContent === 'codex'`), 'the new message badge uses current name');
+      assert.equal((await view('source', { source_ref: { kind: 'message', id: message } })).author, id, 'the message remains attributed to its original actor');
+      await q.evaluate(`document.querySelector('${card}').scrollIntoView({block:'center'})`);
+      await q.point(`${card} .message-preview`);
+      await until(() => q.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-origin').textContent.startsWith('codex')`), 'the Reader also uses current name');
+      await shot(q, 'header-renamed-reader');
+      assert.deepEqual([...p.errors, ...q.errors], []);
+    } finally {
+      await control({ method: 'actor_name', actor_id: id, name: id });
+    }
+  });
+
   await check('header a tap on a chip saves at once, and while it waits each person is a chip whose tap is saved, the focus staying on it', async () => {
     await setState('header-chips-active', { state: 'active', note: 'Kept across taps' });
     const p = await page('header-chips', null, true);
