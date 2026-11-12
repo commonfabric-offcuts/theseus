@@ -1,7 +1,7 @@
 import { DeckPage } from './deck-page.mjs';
-import { applyAct, deckBody, parseDeck } from './deck.mjs';
+import { applyAct, deckBody, parseDeck, cardText, textCard, findCard } from './deck.mjs';
 import { WritingInput } from './writing-input.mjs';
-import { NotebookWriting, notebookStore } from './notebook-writing.mjs';
+import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-writing.mjs';
 import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 
@@ -44,10 +44,12 @@ export class NotebookPage extends DeckPage {
         this.unavailable=error.message;
         this.store={get:async()=>null,put:async()=>{},close:()=>{}};
       }
-      this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>this.writingChanged()});
+      this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>this.writingChanged(),
+        reconcile:(base,mine,theirs)=>this.mergeIncoming(base,mine,theirs),localActive:()=>Boolean(this.editing&&this.editing.field.value!==this.editing.startedValue)});
       if(this.unavailable)this.writing.readOnly=true;
       await this.writing.open();
       globalThis.addEventListener('pagehide',()=>{this.writing.close();this.writing.serial.finally(()=>this.store.close());});
+      globalThis.addEventListener('pageshow',event=>{if(event.persisted)globalThis.location.reload();});
     } else {
       if(this.writing.running){
         if(!this.refreshOwed){this.refreshOwed=true;this.writing.running.finally(()=>{this.refreshOwed=false;if(!this.writing.closed)this.load().catch(error=>{this.writing.error=error.message;this.writingChanged();});});}
@@ -69,17 +71,43 @@ export class NotebookPage extends DeckPage {
     }
     await this.loadTalks(); this.writingChanged(); return Boolean(this.writing.base);
   }
+  mergeIncoming(base,mine,theirs) {
+    if(this.mode!=='cards')return null;
+    const e=this.editing;
+    if(e&&!e.fresh&&e.field.value!==e.startedValue) {
+      const before=parseDeck(base.body),after=parseDeck(theirs.body);
+      let at=findCard(before,e.text,e.near);
+      if(at<0)at=findCard(before,cardText(textCard(this.editorWords(e))),e.near);
+      if(at<0)at=e.near;
+      if(!before.cards[at]||findCard(after,cardText(before.cards[at]),at)<0)return null;
+    }
+    const merged=mergeCardContent(base,mine,theirs);
+    if(merged&&e&&!mergeCardContent({...mine,body:this.previewBody()},{...mine,body:deckBody(this.deck)},merged))return null;
+    return merged;
+  }
+  editorWords(e) {
+    const written=e.field.value;
+    return e.stacks?.length&&/\S/.test(written)?`${written.trimEnd()}\n\n${e.stacks.join('\n')}`:written;
+  }
   sync(force=false) {
     const w=this.writing;
     if(!w?.base)return;
     this.source=w.base.source; this.base={revision:w.base.revision,body:w.base.content.body}; this.readOnly=w.readOnly;
     this.header.title.textContent=w.value.title;
-    if(force || (!this.editing && deckBody(this.deck)!==w.value.body)) {
-      this.deck=parseDeck(w.value.body); this.acts=[];
+    if(!w.conflict && (force || deckBody(this.deck)!==w.value.body)) {
+      const e=this.editing;
+      const unpreview=e?mergeCardContent({...w.value,body:this.previewBody()},{...w.value,body:deckBody(this.deck)},w.value):null;
+      const deck=parseDeck(unpreview?.body??w.value.body);
+      if(e&&!e.fresh&&findCard(deck,e.text,e.near)<0&&!w.hasLocal)this.finish({discard:true});
+      this.deck=deck; this.acts=[];
       this.picked=Math.min(this.picked,Math.max(0,this.deck.cards.length-1));
       this.paint();
     }
-    if(this.text.value!==w.value.body && (force || this.doc.activeElement!==this.text))this.text.value=w.value.body;
+    if(this.text.value!==w.value.body&&!w.conflict) {
+      const focused=this.doc.activeElement===this.text,selection=[this.text.selectionStart,this.text.selectionEnd];
+      this.text.value=w.value.body;
+      if(focused)this.text.setSelectionRange(...selection.map(at=>Math.min(at,this.text.value.length)));
+    }
     this.text.readOnly=this.readOnly;
   }
   // Include the unfinished card without altering its textarea or native undo
@@ -102,12 +130,14 @@ export class NotebookPage extends DeckPage {
     super.open(editing);
     if(!this.editing)return;
     this.writing.active=true;
+    this.editing.startedValue=this.editing.field.value;
     this.editing.field.addEventListener('input',()=>this.save());
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
-  finish() {
-    this.cardImages?.close();
-    super.finish();
+  finish({discard=false} = {}) {
+    this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
+    if(discard){this.editing=null;this.paint();this.show(true);}
+    else super.finish();
     if(this.writing)this.writing.active=false;
   }
   moveWriting(act) { super.moveWriting(act); this.save(); }
@@ -152,7 +182,8 @@ export class NotebookPage extends DeckPage {
       const mine=this.node('button','','Save my version'), saved=this.node('button','','Use saved version');
       mine.type=saved.type='button';
       mine.onclick=async()=>{await w.resolve(true);this.sync();};
-      saved.onclick=async()=>{this.editing=null;await w.resolve(false);this.sync(true);};
+      saved.onclick=async()=>{this.finish({discard:true});this.textImages?.close();await w.resolve(false);this.sync(true);};
+      mine.hidden=!w.hasLocal;
       this.conflictPanel.replaceChildren(title,words,latest,mine,saved);
     }
     if(!changed)this.conflictRevision=null;

@@ -17,12 +17,16 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   await check('notebook a competing revision is reviewed without replacing active writing and a second tab cannot take its journal', async () => {
     const item='notebook-writing-conflict';
     assert.equal((await control({method:'outcome_reference',operation_id:item,item_id:item,title:'Concurrent notes',body:'Original writing.'})).status,'committed');
-    const p=await page(item,null,true,{url:`${facts.origin}/?cards=${item}&view=text`});
+    const p=await page(item,null,true,{url:`${facts.origin}/?cards=${item}&view=text`,beforeNavigate:async q=>{
+      await q.send('Page.addScriptToEvaluateOnNewDocument',{source:`const originalFetch=fetch.bind(globalThis);let firstSave=true;globalThis.fetch=async(...args)=>{let kind;try{kind=JSON.parse(args[1]?.body).kind}catch{}if(kind==='memory.revise'&&firstSave){firstSave=false;await new Promise(done=>globalThis.releaseNotebookSave=done);}return originalFetch(...args);};`});
+    }});
     await until(()=>p.evaluate("document.body.dataset.ready==='true' && document.querySelector('#notebook-text')?.value==='Original writing.'"),'Notebook opens');
-    await p.point('#notebook-text');
+    await p.point('#notebook-text');await p.key('a',4);await p.send('Input.insertText',{text:'My unconfirmed writing.'});
+    await until(()=>p.evaluate("Boolean(globalThis.releaseNotebookSave)"),'the first save is held at the transport boundary');
     assert.equal((await control({method:'memory_revise',operation_id:item+'-remote',item_id:item,expected_revision:1,title:'Concurrent notes',body:'The agent added this.'})).status,'committed');
+    await p.evaluate('globalThis.releaseNotebookSave()');
     await until(()=>p.evaluate("!document.querySelector('.notebook-conflict').hidden"),'remote change is offered for review');
-    assert.equal(await p.evaluate("document.querySelector('#notebook-text').value"),'Original writing.','active field is not replaced');
+    assert.equal(await p.evaluate("document.querySelector('#notebook-text').value"),'My unconfirmed writing.','active field is not replaced');
     assert.equal(await p.evaluate("document.querySelector('.notebook-latest').textContent"),'The agent added this.');
     await p.key('a',4);await p.send('Input.insertText',{text:'My reviewed version.'});
     const q=await page(item+'-other-tab',null,true,{url:`${facts.origin}/?cards=${item}&view=text`});
@@ -38,6 +42,35 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'writing fits on a phone');
     await shot(p,'notebook-writing-phone');
     assert.deepEqual(p.errors,[]);assert.deepEqual(q.errors,[]);await p.close();
+  });
+  await check('notebook recovery stores image bytes once and removes confirmed journals, including a cached-page return', async () => {
+    const item='notebook-journal-storage';
+    assert.equal((await control({method:'outcome_reference',operation_id:item,item_id:item,title:'Recovery storage',body:'Words.'})).status,'committed');
+    const p=await page(item,null,true,{url:`${facts.origin}/?cards=${item}&view=text`,beforeNavigate:async q=>{
+      await q.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+        globalThis.imagePuts=0;globalThis.inlineBytePuts=0;
+        const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,...args){if(this.name==='images')imagePuts++;if(this.name==='writing'&&value?.images?.some(i=>i.bytes))inlineBytePuts++;return put.call(this,value,...args);};
+        const originalFetch=fetch.bind(globalThis);let firstUpload=true;globalThis.fetch=async(...args)=>{if(String(args[0]).includes('/api/media/upload')&&firstUpload){firstUpload=false;await new Promise(done=>globalThis.releaseNotebookUpload=done);}return originalFetch(...args);};
+      `});
+    }});
+    await until(()=>p.evaluate("document.body.dataset.ready==='true'"),'writing page opens');
+    const bytes=(await readFile(new URL('fixtures/media/one.png',import.meta.url))).toString('base64');
+    await p.point('#notebook-text');
+    await p.evaluate(`(()=>{const d=new DataTransfer();d.items.add(new File([Uint8Array.from(atob(${JSON.stringify(bytes)}),c=>c.charCodeAt(0))],'kept.png',{type:'image/png'}));document.querySelector('#notebook-text').dispatchEvent(new ClipboardEvent('paste',{clipboardData:d,bubbles:true,cancelable:true}));})()`);
+    await until(()=>p.evaluate('Boolean(globalThis.releaseNotebookUpload)'),'image upload is held');
+    for(const text of [' One.',' Two.',' Three.'])await p.send('Input.insertText',{text});
+    await until(async()=>(await view('memory_current',{item_id:item})).body.includes('Three.'),'words save while the image waits');
+    assert.deepEqual(await p.evaluate('({bytes:imagePuts,inline:inlineBytePuts})'),{bytes:1,inline:0},'typing never rewrites the bytes or embeds them in the writing record');
+    await p.evaluate('globalThis.releaseNotebookUpload()');
+    await until(async()=>(await view('memory_current',{item_id:item})).attachments.length===1,'image is associated and confirmed');
+    const held=()=>p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('theseus-notebook-writing-v1',2);r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,tx=db.transaction('writing','readonly'),q=tx.objectStore('writing').getAll();q.onsuccess=()=>resolve(q.result.filter(v=>v.binding.item_id===${JSON.stringify(item)}).length);tx.oncomplete=()=>db.close();};})`);
+    await until(async()=>await held()===0,'confirmed journal is deleted');
+    const before=await p.evaluate('performance.timeOrigin');
+    await p.evaluate("dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))");
+    await until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true'&&performance.timeOrigin!==${before}`)}catch{return false;}},'a cached-page restore reloads a live writer');
+    await p.point('#notebook-text');await p.send('Input.insertText',{text:' Still saving.'});
+    await until(async()=>(await view('memory_current',{item_id:item})).body.includes('Still saving.'),'writing after the restored-page event still saves');
+    assert.deepEqual(p.errors,[]);await p.close();
   });
   await check('notebook images paste and img picker save verified page attachments in Text and Cards', async () => {
     const item='notebook-writing-images';
@@ -374,6 +407,45 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   const writing = (p, want, words) => until(async () => JSON.stringify(await box(p)) === JSON.stringify(want), words)
     .catch(async error => { assert.deepEqual(await box(p), want, words); throw error; });
   const cursor = (p, at) => p.evaluate(`(()=>{document.querySelector('#deck-page .deck-writing textarea').setSelectionRange(${at},${at});return true})()`);
+
+  // Review probes for 302 (warp): two checks to put before the first "while a card is written" case in tests/notebook_pages_native.mjs.
+  const panel = p => p.evaluate("Boolean(document.querySelector('.notebook-conflict') && !document.querySelector('.notebook-conflict').hidden)");
+  await check('notebook probe 302: while a card is written, an agent’s change to another card shows on the cards and asks nothing', async () => {
+    const id = 'probe302-merge', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    await p.key('Enter', 4);
+    await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), 'Plan opens for writing');
+    await p.send('Input.insertText', { text: ' Soon.' });
+    // 302 saves the unfinished card; before 302 it waits for Escape. Either way nothing is left unsaved by the page's own choice.
+    await until(async () => (await view('memory_current', { item_id: id })).body.includes('Soon.'), 'autosave', 4000).catch(() => {});
+    const now = await view('memory_current', { item_id: id });
+    const agent = await control({ method: 'memory_revise', operation_id: `${id}-agent`, item_id: id, expected_revision: now.source_ref.revision, title: 'Cards', body: now.body.replace('None yet.', 'Two risks.') });
+    assert.equal(agent.status, 'committed', JSON.stringify(agent));
+    await until(async () => await panel(p) || await p.evaluate("[...document.querySelectorAll('#deck-page .deck-words')].some(n=>n.textContent.includes('Two risks.'))"), 'the page hears of the agent’s change');
+    assert.equal(await panel(p), false, 'a choice between whole versions is asked for, though only another card changed');
+    await p.key('Escape');
+    await saved(id, '## Plan\n\nShip it. Soon.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nTwo risks.\n', 'finishing Plan keeps the agent’s change to Risks and the writing on Plan');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+  await check('notebook probe 302: after Use saved version, a later change elsewhere shows on the cards without asking again', async () => {
+    const id = 'probe302-use-saved', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
+    await p.key('Enter', 4);
+    await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), 'Plan opens for writing');
+    await p.send('Input.insertText', { text: ' Soon.' });
+    await saved(id, body.replace('Ship it.', 'Ship it. Soon.'), 'the unfinished card autosaves');
+    let now = await view('memory_current', { item_id: id });
+    assert.equal((await control({ method: 'memory_revise', operation_id: `${id}-agent-1`, item_id: id, expected_revision: now.source_ref.revision, title: 'Cards', body: now.body.replace('Ship it. Soon.', 'Changed by the agent.') })).status, 'committed');
+    await until(() => panel(p), 'the change asks for a choice while Plan is written');
+    await p.point('.notebook-conflict button:nth-of-type(2)');
+    await until(async () => !(await panel(p)) && !(await p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))")), 'Use saved version closes the panel and the writing box');
+    now = await view('memory_current', { item_id: id });
+    assert.equal((await control({ method: 'memory_revise', operation_id: `${id}-agent-2`, item_id: id, expected_revision: now.source_ref.revision, title: 'Cards', body: now.body.replace('Dan reviews.', 'Dan approves.') })).status, 'committed');
+    await until(async () => await panel(p) || await p.evaluate("[...document.querySelectorAll('#deck-page .deck-words')].some(n=>n.textContent.includes('Dan approves.'))"), 'the page hears of the later change');
+    assert.equal(await panel(p), false, 'with no card being written, the later change asks for a choice again');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
 
   await check('notebook while a card is written, Tab puts it under the card above and shift-Tab takes it out, keeping the writing and the cursor', async () => {
     const id = 'notebook-cards-tab', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);

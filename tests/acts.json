@@ -4909,6 +4909,64 @@
     "native": "reading",
     "case": "move the keys from a dossier whose chevron"
    }
+  },
+  {
+   "item": 302,
+   "act": "A definite unrecorded Notebook refusal clears the frozen envelope and keeps local writing",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "      if (receipt.status === 'committed') {",
+     "      if (receipt.recorded !== true) throw Error('Uncertain refusal');\n      if (receipt.status === 'committed') {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "A confirmed Notebook page leaves no stale recovery record",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "    const snapshot = this.snapshot();",
+     "    const snapshot = this.snapshot() ?? {v:1,binding:this.binding,base:this.base,value:this.value,pending:null,conflict:null,images:[]};"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Cards accept another cards change while the current card stays open",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(this.mode!=='cards')return null;",
+     "    return null;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "probe 302: while a card"
+   }
+  },
+  {
+   "item": 302,
+   "act": "Typing during a Notebook image upload never writes its bytes again",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "if(image.bytes&&!bytesKept.has(image.id))",
+     "if(image.bytes)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook recovery stores image bytes once"
+   }
   }
  ]
 }

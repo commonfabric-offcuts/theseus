@@ -21,12 +21,21 @@ typed since. Reloading resumes an uncertain request before starting another.
 One tab at a time owns this page's device journal; another tab may read it.
 Separate devices use Core's existing revision comparison.
 
-If another writer changes the page first, neither version is discarded or
-silently overwritten. The editor keeps the local writing and offers the
-latest saved page beside it. After reviewing, the person can save their
-version against that exact latest revision or use the saved version. A
-permission refusal also keeps the unsaved writing. Storage failure prevents
-claiming a device copy or discarding the in-memory writing.
+Cards merge changes to different cards while the current box stays open; the
+person can keep writing while an agent changes another card. Changes to the
+same card on both sides, or overlapping Text changes, retain both versions for
+an explicit choice. Focusing an unchanged field never creates a conflict or
+allows stale words to overwrite a newer revision. Choosing the saved version
+ends card writing and its image picker cleanly.
+
+A definite rejected save drops its request, whether Core recorded the refusal
+or not, and retains the writing. Only an uncertain transport/receipt or a
+retryable response retains the exact request. Permission and authority refusals
+make writing read-only. Storage failure prevents claiming a device copy or
+discarding in-memory writing. Confirmed pages have no recovery record. Pending
+image bytes are immutable, stored once separately from the changing journal;
+confirmation removes their local copy. A browser back-forward-cache return
+reloads before writing resumes, reacquiring the journal's ownership.
 
 No Core command, schema, actor or Notebook ownership rule changes. Revisions
 remain immutable; the device journal only retains unconfirmed work.

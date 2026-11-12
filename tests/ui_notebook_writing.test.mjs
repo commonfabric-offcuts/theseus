@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NotebookWriting } from '../web/notebook-writing.mjs';
+import { NotebookWriting, mergeCardContent } from '../web/notebook-writing.mjs';
 
 const copy = structuredClone;
 function fixture(t) {
@@ -74,10 +74,33 @@ test('storage failure prevents a request leaving and preserves words for a later
   f.storageFails(false); await c.flush(); assert.equal(f.source().body,'Do not lose this');
 });
 
-test('a save refusal keeps writing and an active editor is not replaced by a background refresh', async t=>{
-  const f=fixture(t), c=await f.make(); c.active=true; f.revise({body:'Changed remotely'}); await c.refresh();
-  assert.equal(c.value.body,'## First\n\nOriginal words\n'); assert.equal(c.conflict.content.body,'Changed remotely');
-  await c.resolve(true);
-  f.api.command=async e=>({instance_id:'i1',operation_id:e.operation_id,kind:e.kind,recorded:true,status:'rejected',error:{code:'FORBIDDEN',message:'No longer a member'}});
-  await c.flush(); assert.equal(c.readOnly,true); assert.equal(c.value.body,'## First\n\nOriginal words\n'); assert.match(c.error,/No longer/);
+test('a definite refusal clears the envelope but keeps writing and refuses further writes after authority change', async t=>{
+  const f=fixture(t), c=await f.make(); c.edit({body:'My retained words'});
+  f.api.command=async e=>({instance_id:'i1',operation_id:e.operation_id,kind:e.kind,recorded:false,status:'rejected',error:{code:'AUTHORITY_CHANGED',message:'Authority changed'}});
+  await c.flush(); assert.equal(c.pending,null);assert.equal(c.readOnly,true);assert.equal(c.value.body,'My retained words');
+  const next=await f.make();assert.equal(next.pending,null);assert.equal(next.readOnly,true);assert.equal(next.value.body,'My retained words');
+});
+test('a refusal without a record does not poison future valid requests', async t=>{
+  const f=fixture(t), c=await f.make(), command=f.api.command;
+  let refused;
+  f.api.command=async e=>{refused=e;return {instance_id:'i1',operation_id:e.operation_id,kind:e.kind,recorded:false,status:'rejected',error:{code:'INVALID_ARGUMENT',message:'Invalid request'}};};
+  c.edit({body:'First'});await c.flush();assert.equal(c.pending,null);assert.equal(c.readOnly,false);
+  f.api.command=command;c.edit({body:'Corrected'});await c.flush();
+  assert.notEqual(f.calls.at(-1).operation_id,refused.operation_id);assert.equal(f.source().body,'Corrected');
+});
+test('focus without local writing accepts the latest words and cannot write the old words back', async t=>{
+  const f=fixture(t),c=await f.make();c.active=true;f.revise({body:'Changed remotely'});await c.refresh();
+  assert.equal(c.value.body,'Changed remotely');assert.equal(c.conflict,null);await c.resolve(true);await c.flush();
+  assert.equal(f.calls.length,0);assert.equal(f.source().body,'Changed remotely');assert.equal(f.held(),null);
+});
+test('confirmed writing deletes its recovery record while newer unsaved words retain one',async t=>{
+  const f=fixture(t),c=await f.make();assert.equal(f.held(),null);
+  c.edit({body:'Saved words'});await c.serial;assert.ok(f.held());await c.flush();assert.equal(f.held(),null);
+});
+test('Cards merge different card edits, preserve exact words, and require a choice for the same card',()=>{
+  const base={title:'Page',body:'Opening\n\n## A\n\nOne\n\n## B\n\nTwo\n',attachments:[],references:[]};
+  const mine={...base,body:base.body.replace('One','Mine')},theirs={...base,body:base.body.replace('Two','Theirs')};
+  assert.equal(mergeCardContent(base,mine,theirs).body,base.body.replace('One','Mine').replace('Two','Theirs'));
+  assert.equal(mergeCardContent(base,mine,{...base,body:base.body.replace('One','Conflict')}),null);
+  assert.equal(mergeCardContent(base,{...base,body:base.body+'\n## C\n\nNew\n'},theirs).body,theirs.body+'\n## C\n\nNew\n');
 });

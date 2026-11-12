@@ -140,13 +140,13 @@ not save or normalize the words. The exact request and newer local writing
 survive a lost response and reload. A second tab may read while the first
 holds its device journal.
 
-A conflicting saved revision is shown beside the preserved local writing.
-The person explicitly chooses which version to continue with; unfinished
-card text is never silently dropped or re-added as another card. This
-replaces the former card-act-only automatic rebase, because Text and an
-unfinished Card now use the same saving stream. A permission refusal keeps
-local writing visible and makes the page read-only. Background reads still
-check the Notebook version before reading the page body again.
+Changes to different cards merge while the current card stays open, including
+when an agent answers the card's bubble by editing elsewhere in the deck.
+Changes to the same card on both sides, or overlapping Text writing, show both
+versions and ask which to continue with. Untouched writing accepts a newer
+revision without a question. A permission refusal preserves local writing and
+makes the page read-only. Background reads still check the Notebook version
+before reading the page body again.
 
 ## Asking about a card
 
