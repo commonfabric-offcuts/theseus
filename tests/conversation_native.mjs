@@ -605,13 +605,39 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await shot(p, 'conversation-stack-only-new');
     await pressOnlyNew();
     await until(async () => (await tags(p, item))?.shown, 'everything shows again');
+    assert.deepEqual([(await tags(p, cloakroom)).shown, (await tags(p, quietRoom)).shown], [true, true],
+      'leaving Only new preserves my replies that arrived while this page was open, as item 357 requires');
+    // Only new changes a filter, not the stack's reading state. Choosing the
+    // state afresh releases the held replies and restores latest plus unread.
+    const parkingToggle = `#messages .reply-stack[data-stack="${parking}"] > .stack-toggle`;
+    for (const level of ['open', 'head', 'folded']) {
+      await p.evaluate(`document.querySelector(${JSON.stringify(parkingToggle)}).scrollIntoView({block:'center'})`);
+      await p.point(parkingToggle);
+      await until(() => quiet(p, `document.querySelector(${JSON.stringify(parkingToggle)}).parentElement.dataset.fold===${JSON.stringify(level)}`), 'choose the stack state: ' + level);
+    }
     assert.deepEqual([(await tags(p, cloakroom)).shown, (await tags(p, quietRoom)).shown], [false, true],
-      'leaving Only new restores latest plus unread for the partial stack');
+      'an explicit stack-state choice releases my earlier read reply; the latest remains');
     // Answered while the page is open, the stacked item's tag turns in place, and the answer joins its stack.
     const caterer = await answer('conversation-stack-caterer', 'The caterer is booked.', { reply_to: followUp });
     await until(async () => (await tags(p, followUp))?.tags[0] === 'Answered', 'the stacked item turns Answered without a reload');
     assert.deepEqual((await until(async () => { const s = await stack(p); return s?.replies.at(-1)[0] === caterer && s; }, 'the answer joins the stack')).replies.at(-1),
       [caterer, true], 'the answer is the stack\'s newest reply, in view');
+    // A fresh own reply is held beside its answer, then released by a real
+    // tab return while the dossier is off screen, as on ordinary topic pages.
+    const held = await post('conversation-stack-held-return', 'Can I leave my coat there?', { reply_to: quietRoom });
+    const newest = await answer('conversation-stack-held-answer', 'Yes, coats can stay there.', { reply_to: held });
+    await settles(async () => [(await tags(p, held))?.shown, (await tags(p, newest))?.shown], [true, true],
+      'my newly sent reply stays beside its answer before leaving the page');
+    const elsewhere = await open('conversation-stack-away', '/?conversation=w1', desk('light'));
+    await until(() => p.evaluate("document.visibilityState==='hidden'"), 'another tab hides the conversation');
+    await p.evaluate('scrollTo(0,document.documentElement.scrollHeight)');
+    assert.equal(await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(card(held))}).closest('.reply-stack').getBoundingClientRect();return b.bottom<=0||b.top>=innerHeight})()`), true,
+      'the held reply\'s dossier is off screen');
+    await p.send('Page.bringToFront');
+    await until(() => p.evaluate("document.visibilityState==='visible'"), 'the conversation is shown again');
+    await settles(async () => [(await tags(p, held))?.shown, (await tags(p, newest))?.shown], [false, true],
+      'returning with the dossier off screen releases my held reply and keeps the latest');
+    assert.deepEqual(elsewhere.errors, []); await elsewhere.close();
     assert.deepEqual(p.errors, []); await p.close();
     const dark = await open('conversation-stacks-dark', '/?conversation=w1', desk('dark'));
     await until(async () => (await stack(dark))?.head === item && (await tags(dark, followUp))?.tags.length, 'dark: the stack and its tags');

@@ -146,7 +146,9 @@ their acts.
   coming back to the page (the tab shown again) while that stack is off
   screen, exactly as for unread replies kept in view; a stack on screen
   when you come back keeps it. A later visit starts without it. The
-  latest/unread state then shows its usual selection again.
+  latest/unread state then shows its usual selection again. Switching Only
+  new on and off changes a filter, not this reading snapshot: your newly
+  arrived replies remain in view when the filter is switched off.
 - **Stable presses.** Anything that arrives while a press is held—a new
   message, a stack repaint, reactions or the New line—waits until the press
   ends, then shows at once (`web/press-hold.mjs`). The header and people
