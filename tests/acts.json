@@ -4778,6 +4778,21 @@
     "native": "reading",
     "case": "neither the topic nor its conversation"
    }
+  },
+  {
+   "item": 358,
+   "act": "Up and Down visit the header of a fully expanded dossier before its original message",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (toggle?.getClientRects().length) stops.push(toggle);",
+     "if (false && toggle?.getClientRects().length) stops.push(toggle);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "fully expanded dossiers keep"
+   }
   }
  ]
 }

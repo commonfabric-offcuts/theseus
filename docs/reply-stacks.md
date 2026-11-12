@@ -9,6 +9,12 @@ and folds what it shows, and the one layer that decides how a stack looks.
 docs/topic-reading.md says how a card reads inside a stack, and
 docs/interaction.md has the keys.
 
+Up and Down visit each dossier header as well as its visible messages. In
+the fully expanded state the header is a separate stop before the original
+message; in the other states the compact header already serves as that stop.
+Down from the page header enters the first dossier header. The dossier owns
+the strong outline there, and message actions appear only on message stops.
+
 The code:
 
 - `aim_next/stacks.py`: Core's records, commands and views.

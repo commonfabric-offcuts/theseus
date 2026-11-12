@@ -75,6 +75,34 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, `.message-menu-list button:nth-of-type(${at + 1})`);
   };
 
+  await check('reading stacks fully expanded dossiers keep their own keyboard stop in both directions', async () => {
+    const topic = 'stack-open-header-stop';
+    const ids = await seed(topic, [
+      ['older', { sender: other, join: true, addressees: [facts.actor], body: 'Older dossier' }],
+      ['olderReply', { sender: other, reply_to: 'older', addressees: [facts.actor], body: 'Older reply' }],
+      ['newer', { sender: other, addressees: [facts.actor], body: 'Newer dossier' }],
+      ['newerReply', { sender: other, reply_to: 'newer', addressees: [facts.actor], body: 'Newer reply' }],
+    ]);
+    const p = await open(topic, 'laptop', topic, ids.newer);
+    for (const id of [ids.older, ids.newer]) await press(p, 'laptop', `.reply-stack[data-stack="${id}"] > .stack-toggle`);
+    const focused = () => p.evaluate(`(()=>{const at=document.activeElement;return at.matches('.stack-toggle')?'stack:'+at.closest('.reply-stack').dataset.stack:at.closest('[data-id]')?.dataset.id??null})()`);
+    await keyTo(p, ids.newerReply);
+    await p.key('ArrowDown');
+    assert.equal(await focused(), 'stack:' + ids.older, 'Down reaches the neighboring dossier before its original message');
+    assert.equal(await p.evaluate("document.querySelector('.message-bar').hidden"), true, 'a dossier has no message toolbar');
+    await p.key('ArrowDown'); assert.equal(await focused(), ids.older);
+    await p.key('ArrowDown'); assert.equal(await focused(), ids.olderReply);
+    for (const expected of [ids.older, 'stack:' + ids.older, ids.newerReply, ids.newer, 'stack:' + ids.newer]) {
+      await p.key('ArrowUp'); assert.equal(await focused(), expected, 'Up traverses every message and dossier');
+    }
+    await p.key('ArrowUp');
+    assert.equal(await p.evaluate("Boolean(document.activeElement.closest('.topic-header'))"), true, 'Up from the first dossier reaches the page header');
+    await p.key('ArrowDown'); assert.equal(await focused(), 'stack:' + ids.newer);
+    await p.key('ArrowDown'); assert.equal(await focused(), ids.newer);
+    await shot(p, 'stack-expanded-header-keyboard');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('reading stacks long message headers scroll away inside their cards without moving the dossier tab', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-scrolling-headers-' + device;
@@ -142,7 +170,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await keyTo(p, ids.two);
       await p.evaluate("document.getElementById('new-message').focus()");
       await p.key('ArrowDown');
-      assert.equal(await focusedOn(p), ids.root, 'Down from the header starts at the first stack, not a remembered reply');
+      assert.equal(await p.evaluate("document.activeElement.matches('.stack-toggle') ? document.activeElement.closest('.reply-stack').dataset.stack : null"), ids.root, 'Down from the page header starts at the first open dossier, not its original message or a remembered reply');
       await keyTo(p, ids.two);
       await p.key('ArrowLeft'); await state('folded');
       assert.equal(await focusedOn(p), ids.two, 'a still-visible reply retains the keys');

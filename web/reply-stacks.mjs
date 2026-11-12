@@ -27,6 +27,23 @@ const headRows = new WeakMap();
 // then its replies, folded ones included.
 export const entries = list => [...list.querySelectorAll(ENTRIES)];
 
+// An open dossier has two distinct stops: its header control, then its
+// original message. Folded dossiers already use the head entry as their
+// header. Hidden messages and controls never enter the arrow-key order.
+export function navigationStops(list) {
+  const stops = [];
+  for (const entry of entries(list)) {
+    if (!entry.getClientRects().length) continue;
+    const section = entry.closest('.reply-stack');
+    if (section?.dataset.stack === entry.dataset.id && section.dataset.headOpen === 'true') {
+      const toggle = section.querySelector(':scope > .stack-toggle');
+      if (toggle?.getClientRects().length) stops.push(toggle);
+    }
+    stops.push(entry);
+  }
+  return stops;
+}
+
 // The message entry a target is in, on its own or in a stack: the card, or
 // the fold holding it. Null for anything else in the list, a stack's lines included.
 export function entryOf(list, target) {

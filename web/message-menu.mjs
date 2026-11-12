@@ -20,7 +20,7 @@ import { cardIn } from './fold.mjs';
 import { pageItself, writing } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
-import { entries, entryOf } from './reply-stacks.mjs';
+import { entries, entryOf, navigationStops } from './reply-stacks.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -144,7 +144,7 @@ export class MessageMenu {
   ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list')); }
   // The entries on show, in the page's order; a stack's folded replies are not.
   entries() {
-    return entries(this.host).filter(entry => entry.getClientRects().length);
+    return navigationStops(this.host);
   }
   // Whether the bar's ⋯ menu is open.
   menuOpen() { return this.buttons.more.getAttribute('aria-expanded') === 'true'; }
@@ -256,10 +256,11 @@ export class MessageMenu {
     const entries = this.entries();
     if (!entries.length) return;
     event.preventDefault();
-    const index = entries.indexOf(this.lit ?? entries.find(entry => entry.dataset.id === this.host.dataset.lastMessage));
+    const selected = at?.matches?.('.stack-toggle') ? at : this.lit ?? entries.find(entry => entry.dataset.id === this.host.dataset.lastMessage);
+    const index = entries.indexOf(selected);
     const inView = entries.find(entry => entry.getBoundingClientRect().bottom > 0);
     const next = index < 0 ? inView ?? entries[0] : entries[Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
-    this.light(next);
+    this.light(next.matches('.stack-toggle') ? null : next);
     const target = cardIn(next).hidden ? next.querySelector('.fold-line') : cardIn(next);
     target?.focus({ preventScroll: true });
     next.scrollIntoView({ block: 'nearest' });
