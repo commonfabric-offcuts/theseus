@@ -75,6 +75,58 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, `.message-menu-list button:nth-of-type(${at + 1})`);
   };
 
+  await check('reading stacks plain arrows change the stack before leaving for a siderail, and leave writing alone', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-plain-arrows-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'A stack for the arrow keys.' }],
+        ['one', { sender: other, reply_to: 'root', body: 'An earlier reply.', read: true }],
+        ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The latest reply.' }]]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: topic + '-star', args: { starred: true } });
+      const p = await open(topic, device, topic, ids.root);
+      if (device === 'laptop') await until(() => p.evaluate("Boolean(document.querySelector('#things .things-sec[data-key=starred]:not([hidden])'))"), 'the desktop right rail has a Starred section');
+      const state = async level => becomes(async () => (await look(p, ids, 'root')).fold, level, device + ': ' + level);
+      const inPane = pane => p.evaluate(`Boolean(document.activeElement.closest(${JSON.stringify(pane)}))`);
+      await keyTo(p, ids.root);
+      await p.key('ArrowLeft'); await state('head');
+      assert.equal(await inPane('#messages'), true, 'the closing press stays in the stack');
+      await p.key('ArrowLeft');
+      assert.equal(await inPane(device === 'laptop' ? '#outline' : '#messages'), true, 'another Left leaves only when the outline is on screen');
+      if (device === 'laptop') await p.key('ArrowRight');
+      assert.equal(await focusedOn(p), ids.root, 'returning keeps the same stack');
+      await p.key('ArrowRight'); await state('folded');
+      await p.key('ArrowRight'); await state('open');
+      await shot(p, 'plain-arrows-open-' + device);
+      assert.equal(await inPane('#messages'), true, 'the opening press stays in the stack');
+      await p.key('ArrowRight');
+      assert.equal(await inPane(device === 'laptop' ? '#things' : '#messages'), true, device + ': another Right leaves only when the right rail is on screen');
+      await keyTo(p, ids.two);
+      await p.evaluate("document.getElementById('new-message').focus()");
+      await p.key('ArrowDown');
+      assert.equal(await focusedOn(p), ids.root, 'Down from the header starts at the first stack, not a remembered reply');
+      await keyTo(p, ids.two);
+      await p.key('ArrowLeft'); await state('folded');
+      assert.equal(await focusedOn(p), ids.two, 'a still-visible reply retains the keys');
+      await p.key('ArrowLeft'); await state('head');
+      assert.equal(await focusedOn(p), ids.root, 'closing a reply returns the keys to its header');
+      // The chevron itself has the same arrows as a message, with no second pane move.
+      for (let step = 0; step < 12 && !await p.evaluate("document.activeElement.matches('.stack-toggle')"); step++) await p.key('Tab');
+      assert.equal(await p.evaluate("document.activeElement.matches('.stack-toggle')"), true, 'Tab reaches the chevron');
+      await p.key('ArrowRight'); await state('folded');
+      assert.equal(await inPane('#messages'), true, 'the chevron opens in place');
+      await p.key('z', 4); await state('head');
+      // A real cursor keeps plain arrows, even with a stack selected beforehand.
+      await p.key('Enter', 4);
+      await until(() => p.evaluate("document.activeElement?.id === 'inline-writing-body'"), 'new message writing has the cursor');
+      await p.send('Input.insertText', { text: 'Keep this writing' });
+      await p.key('ArrowLeft'); await p.key('ArrowRight');
+      await state('head');
+      assert.equal(await p.evaluate("document.activeElement?.id"), 'inline-writing-body', 'writing keeps the cursor');
+      assert.equal(await p.evaluate("document.activeElement.value"), 'Keep this writing', 'writing stays intact');
+      assert.equal(await readerOn(p), null, 'no Reader opened');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('reading stacks use exactly three states: header, latest plus unread, and all messages', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-chat-' + device;
@@ -127,14 +179,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(async()=> (await look(p,ids,'root')).fold==='folded','header returns to partial');
       assert.equal((await look(p,ids,'root')).full,false,'header never leaves an original-only state');
       if(device==='laptop') {
-        await keyTo(p,ids.root); await p.key('ArrowLeft',4);
+        await keyTo(p,ids.root); await p.key('ArrowLeft');
         await assertState('head',[],false);
-        await p.key('ArrowRight',4);
+        await p.key('ArrowRight');
         await until(async()=> (await look(p,ids,'root')).fold==='folded','first keyboard step is partial');
         assert.equal((await look(p,ids,'root')).full,false);
-        await p.key('ArrowRight',4);
+        await p.key('ArrowRight');
         await assertState('open',['one','two','three','four','five','six'],true);
-        await p.key('ArrowLeft',4);
+        await p.key('ArrowLeft');
         await until(async()=> (await look(p,ids,'root')).fold==='folded','one step back hides original and older read replies together');
         assert.equal((await look(p,ids,'root')).full,false);
       }
@@ -194,6 +246,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const ids=await seed(topic,[['root',{sender:other,join:true,addressees:[facts.actor],body:'One selected thing at a time.',read:true}],
         ['one',{sender:other,reply_to:'root',addressees:[facts.actor],body:'An unread reply with its own quiet cue.'}],
         ['two',{sender:facts.actor,reply_to:'root',addressees:[other],body:'My latest reply has a quiet border too.'}]]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: topic + '-star', args: { starred: true } });
       const p=await open(topic,device,topic,ids.root);
       await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
       const strong=()=>p.evaluate(`(()=>{const probe=document.createElement('i');probe.style.color='var(--focus)';document.body.append(probe);const color=getComputedStyle(probe).color;probe.remove();
@@ -216,8 +269,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(strong,[ids.two],'returning to a message takes the stack ring away');
       if (device === 'laptop') {
         await keyTo(p, ids.root);
-        await p.key('ArrowLeft');
-        assert.equal(await p.evaluate("Boolean(document.activeElement.closest('#outline'))"), true, 'Left moves into the outline');
+        await p.key('ArrowLeft'); await p.key('ArrowLeft'); await p.key('ArrowLeft');
+        assert.equal(await p.evaluate("Boolean(document.activeElement.closest('#outline'))"), true, 'Left closes the stack, then moves into the outline');
         await becomes(strong, [], 'the outline leaves no strong feed ring');
         await light(p, device, ids.root);
         await becomes(strong, ['stack:' + ids.root], 'hover takes the only ring while rail DOM focus stays put');
@@ -228,6 +281,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await p.key('ArrowRight');
         assert.equal(await focusedOn(p), ids.root, 'the feed remembers its place without a persistent highlight');
         await becomes(strong, ['stack:' + ids.root], 'returning to the feed restores its selection');
+        await p.key('ArrowRight'); await p.key('ArrowRight');
         await away(p);
         await becomes(strong, [], 'moving the pointer off the feed leaves no stale stack ring');
         await p.key('ArrowDown');
@@ -236,7 +290,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await p.evaluate("Boolean(document.activeElement.closest('#things'))"), true, 'Right moves into the other rail');
         await becomes(strong, [], 'the right rail also owns the highlight alone');
         await light(p, device, ids.root);
-        await becomes(strong, ['stack:' + ids.root], 'pointer selection takes over from the right rail too');
+        await becomes(strong, [ids.root], 'pointer selection takes over from the right rail too');
         assert.equal(await p.evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'none', 'the right rail has no stale focus ring');
         await p.key('ArrowDown');
         await becomes(strong, [], 'right rail keys take the light back');
@@ -315,7 +369,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.ok((await starsOf(facts.actor)).includes(ids.one), 'the reader\'s stars list it');
     // An explicit closed state hides messages, including stars.
     await keyTo(p, ids.root);
-    await p.key('ArrowLeft', 4); await p.key('ArrowLeft', 4);
+    await p.key('ArrowLeft'); await p.key('ArrowLeft');
     await becomes(async () => (await look(p, ids, 'root')).rows, [], 'closed hides the starred reply too');
     assert.match(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(card(ids.one) + ' > .message-author')}),'::after').content`), /★/, 'the starred reply shows its star after its author');
     // The rail's Starred: this topic's star, and a press lands on it.
@@ -494,7 +548,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.key('ArrowUp', 12);
     await becomes(() => stacks(p, ids), ['top'], '⇧⌘↑ joins the older stack into the one above');
     assert.match(await said(p), /Joined to the stack above/, 'a screen reader hears the join');
-    await keyTo(p,ids.top); await p.key('ArrowRight',4);
+    await keyTo(p,ids.top); await p.key('ArrowRight');
     await becomes(async () => (await look(p, ids, 'top')).rows, ['topReply', 'join: Joined from its own stack by You', 'old', 'oldReply'],
       'its messages come after the replies, its first message in view with a join line, and its reply, in view before, still in view');
     // The joined stack's first message heads nothing now: its head row goes, and it reads as a card.
@@ -884,7 +938,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await p.evaluate("document.querySelector('#messages').dataset.lastMessage"), ids.a, 'the feed remembers A without highlighting it');
     await until(() => p.evaluate(`document.activeElement?.id === 'inline-writing-body'`), 'the cursor is in the topic\'s writing');
     await p.send('Input.insertText', { text: 'Writing a reply' });
-    for (const [key, modifiers] of [['ArrowUp', 4], ['ArrowDown', 4], ['ArrowUp', 12], ['ArrowLeft', 4], ['z', 4]]) await p.key(key, modifiers);
+    for (const [key, modifiers] of [['ArrowUp', 4], ['ArrowDown', 4], ['ArrowUp', 12], ['ArrowLeft', 4], ['ArrowLeft', 0], ['ArrowRight', 0], ['z', 4]]) await p.key(key, modifiers);
     assert.deepEqual(await stacks(p, ids), ['b', 'a'], 'no stack moved or joined');
     assert.equal(await actsOf(topic, ids.a), null, 'and nothing was recorded');
     assert.equal(await p.evaluate(`document.activeElement?.id`), 'inline-writing-body', 'the writing keeps the cursor');

@@ -121,8 +121,10 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
 - **Between the panes.** → on a topic, on an open outcome, or on a row that
   opens nothing moves into the messages, onto the message last lit there, else the oldest one not read (just above the New
   line), else the first in view; ↑ and ↓ then move the light, and Return
-  opens the Reader. → from the messages goes to the right rail and ← back to
-  the outline, on the row of the place being read. In the right rail ↑ and ↓
+  opens the Reader. On a stack, → opens and ← folds it through its three
+  states first. Another → when fully open goes to the right rail; another ←
+  when closed goes to the outline. On a message without replies they go
+  straight to those rails. The outline lands on the row of the place being read. In the right rail ↑ and ↓
   move between its sections and their rows, and → and ← open and fold as in
   the outline: → opens a folded section or goes to its first row, ← folds an
   open one and goes from a row to its section, and ← on a folded section
@@ -137,8 +139,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   message, and the others drawn there, such as "Pipeline & pages" below
   1181px), with the keys' ring on the one they are on. ← and → move along
   them; ← past the first goes to the outline and → past the last to the
-  right rail, as from the messages. ↓ goes back to the message the keys
-  left, and Return or Space presses the button. Coming up again finds the
+  right rail, as from the messages. ↓ selects the first visible card or
+  stack in the feed, and Return or Space presses the button. Coming up again finds the
   button the keys were last on. The pointer is unchanged.
 - **⌘Return** starts a new message in the place the keys are on, in the box
   the ✎ opens, with the cursor in it: on a topic's row in the outline, that
@@ -156,8 +158,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   already being read, or a move the guard refuses) lands the same way, on
   the page's heading; Return on such a row keeps the keys on it.
 - **The messages.** On a message (its card holding the keys), ⌘↑ and ⌘↓
-  move its reply stack up or down in the reader's own order, ⌘→ and ⌘←
-  open and fold it a step (a head first shows its whole message), ⇧⌘↑ and
+  move its reply stack up or down in the reader's own order, → and ←
+  open and fold it a step (closed, latest plus unread, then all messages), ⇧⌘↑ and
   ⇧⌘↓ join it to the stack above or below for everyone, and ⌘Z puts the
   last of these back (docs/reply-stacks.md). The keys stay on the message
   that moved, and a screen reader hears what happened.
@@ -216,7 +218,7 @@ page painted. Its checks, by rule:
   read fill …", "reading the reply arrow says "You replied at" …" and
   "reading replies gather into a stack …"; every act on a reply stack (the
   head's row, rename, Star and the rail's Starred, ⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓ and Split
-  back out, ⌘→ ⌘← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
+  back out, → ← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
   and swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
   (docs/reply-stacks.md).
 - ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",

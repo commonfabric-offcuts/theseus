@@ -149,10 +149,11 @@ their acts.
 - **Reading order.** The Reader's ↑ and ↓ follow the page from top to
   bottom (`readingOrder`). They go down a stack through its replies to its
   newest, then on to the stack below.
-- **Fold steps.** ⌘→ steps from header only to latest plus unread to all
-  messages. ⌘← goes back the same way, whether the keys are on the header
-  or a reply. Each step can be
-  undone with ⌘Z.
+- **Fold steps.** → steps from header only to latest plus unread to all
+  messages. ← goes back the same way, whether the keys are on the header
+  or a reply or the chevron. Another → when fully open moves to the right
+  siderail; another ← when closed moves to the left siderail. A hidden rail
+  stays hidden. Each stack step can be undone with ⌘Z.
 
 Each viewer has their own order and folds, because they come from that
 viewer's places and the page's own state. Names and joins are the topic's,
@@ -166,7 +167,7 @@ On a message (its card focused, never in writing), these keys work:
 | Keys | Act |
 | --- | --- |
 | ⌘↑ ⌘↓ | move its stack up or down, for you alone |
-| ⌘→ ⌘← | open or fold its stack a step |
+| → ← | open or fold its stack a step, then move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
 | ⌘Z | undo the last of these |
 

@@ -19,7 +19,7 @@ import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
 
 const FIELD = { 'message.star': 'star', 'message.deal': 'deal', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
-const FEED_ACTIONS = ['move-up', 'move-down', 'open', 'fold', 'join-up', 'join-down', 'undo'];
+const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo'];
 
 // Whether a touch began on something between it and the list that scrolls
 // sideways (a wide table, a block of code): a sideways drag there scrolls it.
@@ -65,7 +65,9 @@ export class StackFeed {
     this.said = doc.createElement('div');
     this.said.className = 'sr-only'; this.said.setAttribute('aria-live', 'polite'); this.said.id = 'stack-said';
     doc.body.append(this.said);
-    doc.addEventListener('keydown', event => this.key(event));
+    // Take a stack step before the document's pane navigation sees the key.
+    // At either end the event bubbles untouched, so the next press leaves.
+    list.addEventListener('keydown', event => this.key(event));
     // A reply swiped to the right on a phone folds into the earlier replies;
     // a drag on something that scrolls sideways scrolls it instead.
     list.addEventListener('touchstart', event => {
@@ -242,14 +244,15 @@ export class StackFeed {
     this.arrange(); this.focusOn(item.id);
     this.say('Split back out into its own stack, for everyone here');
   }
-  // ⌘→ and ⌘← on a message: a step of its stack's fold.
+  // → and ← on a message: a step of its stack's fold. False at either end
+  // lets the pane navigation take the same key to the adjacent siderail.
   fold(entry, way) {
     const found = stackOf(this.list, entry);
     if (!found?.section || !found.stack.replies.length) return false;
     const { stack } = found, state = this.state;
     const now = { level: state.levels.get(stack.id) ?? 'folded' };
     const next = foldStep(now, way);
-    if (!next) { this.say(way === 'open' ? 'Open as far as it goes' : 'Folded as far as it goes'); return true; }
+    if (!next) return false;
     const apply = to => {
       setLevel(state, stack, to.level);
       this.arrange(); this.focusOn(entry.dataset.id);
@@ -275,18 +278,24 @@ export class StackFeed {
     if (!found || found.head || !item || found.stack.joins.has(item.id) || this.actsOf(item.id).starred) return;
     this.foldOne(item);
   }
-  // The stack keys, on a message only, never in writing: ⌘← and ⌘→ are the
-  // browser's back and forward everywhere else.
+  // Stack keys on a message or its chevron, never in writing. Plain arrows
+  // open/fold first; the pane's document listener handles the boundary.
   key(event) {
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]')) return;
-    const at = this.doc.activeElement, entry = at && this.list.contains(at) ? entryOf(this.list, at) : null;
-    if (!entry || !(at === cardIn(entry) || at.classList?.contains('fold-line'))) return;
+    const at = this.doc.activeElement;
+    if (!at || !this.list.contains(at)) return;
+    const toggle = at.classList?.contains('stack-toggle');
+    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);
+    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;
+    if (action === 'right' || action === 'left') {
+      if (this.fold(entry, action === 'right' ? 'open' : 'fold')) event.preventDefault();
+      return;
+    }
     event.preventDefault();
     if (action === 'undo') return this.undo();
     if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));
     if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));
-    if (!this.fold(entry, action)) this.say('No replies to open or fold');
   }
   // What ⋯ offers for the stack a message is in, with the keys that do the
   // same; on a phone, the stack's moves and joins sit behind "Move or join…".
@@ -310,8 +319,8 @@ export class StackFeed {
     const moves = [
       { label: 'Move its stack up', keys: '⌘↑', act: () => this.move(entry, 'up') },
       { label: 'Move its stack down', keys: '⌘↓', act: () => this.move(entry, 'down') },
-      ...(stack.replies.length ? [{ label: 'Fold its stack', keys: '⌘←', act: () => this.fold(entry, 'fold') },
-        { label: 'Open its stack', keys: '⌘→', act: () => this.fold(entry, 'open') }] : []),
+      ...(stack.replies.length ? [{ label: 'Fold its stack', keys: '←', act: () => this.fold(entry, 'fold') },
+        { label: 'Open its stack', keys: '→', act: () => this.fold(entry, 'open') }] : []),
       { label: 'Join the stack above', keys: '⇧⌘↑', act: () => this.join(entry, 'up') },
       { label: 'Join the stack below', keys: '⇧⌘↓', act: () => this.join(entry, 'down') },
       ...(stack.placed !== null ? [{ label: 'Let new replies move it', act: () => this.unplace(stack) }] : []),

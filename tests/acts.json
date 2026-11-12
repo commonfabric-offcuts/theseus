@@ -2288,17 +2288,17 @@
   },
   {
    "item": 290,
-   "act": "↓ from the header's buttons goes back to the message the keys left",
+   "act": "↓ from the header's buttons selects the first visible card or stack, rather than a remembered reply",
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'down') return panes.feed(doc);\n",
-     ""
+     "  if (action === 'down') return panes.feed(doc, { first: true });",
+     "  if (action === 'down') return panes.feed(doc);"
     ]
    ],
    "check": {
-    "native": "rail",
-    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
+    "native": "reading",
+    "case": "plain arrows change the stack"
    }
   },
   {
@@ -2913,17 +2913,22 @@
   },
   {
    "item": 283,
-   "act": "The stack keys are inert in writing, even with a message lit (both guards: the shared keys' and the feed's own)",
+   "act": "The stack keys are inert in writing, even with a message lit (list routing, shared keys and focused-entry guards)",
    "break": [
     [
      "web/stack-feed.mjs",
-     "    const at = this.doc.activeElement, entry = at && this.list.contains(at) ? entryOf(this.list, at) : null;\n    if (!entry || !(at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
-     "    const at = this.list.querySelector('[data-id].lit'), entry = at ? entryOf(this.list, at) : null;\n    if (!entry) return;"
+     "    const at = this.doc.activeElement;\n    if (!at || !this.list.contains(at)) return;\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
+     "    const entry = this.entryFor(this.list.dataset.lastMessage);\n    if (!entry) return;"
     ],
     [
      "web/pane-keys.mjs",
      "event.altKey || event.ctrlKey || writing(event.target)) return null;",
      "event.altKey || event.ctrlKey) return null;"
+    ],
+    [
+     "web/stack-feed.mjs",
+     "    list.addEventListener('keydown', event => this.key(event));",
+     "    doc.addEventListener('keydown', event => this.key(event));"
     ]
    ],
    "check": {

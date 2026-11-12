@@ -53,7 +53,7 @@ export const KEY_WORDS = [
 export const MESSAGE_KEY_WORDS = [
   ['↑ ↓', 'move the light from message to message, down a stack to its newer replies and on to the stack below'],
   ['⌘↑ ⌘↓', 'move the message\'s stack up or down; your order is yours, kept wherever you sign in'],
-  ['⌘→ ⌘←', 'open a stack a step at a time, or fold it; on its first message, show or hide the whole message first'],
+  ['→ ←', 'open or fold a stack a step at a time; past fully open or closed, move to the right or left siderail'],
   ['⇧⌘↑ ⇧⌘↓', 'join the stack to the one above or below, for everyone here; Split back out in ⋯ takes it out again'],
   ['⌘Z', 'puts back your last move, fold, rename or join'],
 ];

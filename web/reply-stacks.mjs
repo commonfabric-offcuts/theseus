@@ -191,7 +191,10 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
     if (title) span.title = title; return span;
   };
   const name = act('rename', 'stack-name', head.name, head.typed ? `Named by ${nameOf(head.typed.by)} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees');
-  const pen = act('rename', 'stack-pen', '✎', 'Rename'); pen.setAttribute('aria-hidden', 'true');
+  const pen = act('rename', 'stack-pen', '', 'Rename'); pen.setAttribute('aria-hidden', 'true');
+  // Use the same pencil and direction as the page's New message control.
+  const pencil = doc.getElementById('new-message')?.querySelector('svg')?.cloneNode(true);
+  if (pencil) pen.append(pencil);
   const meta = element(doc, 'span', 'stack-meta', `${head.count} ${replies(head.count)}`);
   if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
   if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));

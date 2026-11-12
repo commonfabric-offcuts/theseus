@@ -23,11 +23,11 @@ export function onScreen(el) {
 // The message the keys land on in the feed: the one last lit there, else the
 // oldest one not read yet (just above the New line), else the first in view;
 // its card, or its folded line.
-export function feedStop(doc) {
+export function feedStop(doc, { first = false } = {}) {
   const list = doc.getElementById('messages');
   if (!list || !shown(list)) return null;
   const all = entries(list).filter(shown);
-  let entry = all.find(each => each.classList.contains('lit'));
+  let entry = first ? all[0] : all.find(each => each.classList.contains('lit'));
   entry ??= all.find(each => each.dataset.id === list.dataset.lastMessage);
   if (!entry) {
     const above = list.querySelector(':scope > [data-line="new"]:not(.new-line-read)')?.previousElementSibling;
@@ -61,8 +61,8 @@ export const panes = {
   outline: null, things: null, write: null,
   // The header's button the keys were last on, so coming back up finds it.
   button: null,
-  feed(doc) {
-    const stop = feedStop(doc) ?? doc.getElementById('main');
+  feed(doc, options) {
+    const stop = feedStop(doc, options) ?? doc.getElementById('main');
     if (!stop || stop.closest('[inert]')) return false;
     stop.focus({ preventScroll: true });
     if (stop !== doc.getElementById('main')) stop.closest('[data-id]')?.scrollIntoView({ block: 'nearest' });
@@ -90,10 +90,10 @@ export function inFeed(doc) {
 
 // The keys on the header's buttons: ← and → along them, and past either end
 // on to the outline or the right rail as from the messages; ↓ back to the
-// message the keys left. Return and Space are the button's own. Answers
+// first message. Return and Space are the button's own. Answers
 // whether the keys moved.
 function headerKey(action, buttons, at, doc) {
-  if (action === 'down') return panes.feed(doc);
+  if (action === 'down') return panes.feed(doc, { first: true });
   if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);
   if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);
   return false;
