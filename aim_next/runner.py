@@ -256,11 +256,17 @@ class Runner:
             return {"status": "renewed", "lease_until_ms": until}, True
         return self._effect(guard, action)
 
+    def _execution_allowed(self, db):
+        # Use the same bound parser as dispatch, including malformed JSON. A
+        # single invalid record cannot fault the scheduler for other routes.
+        db.create_function("hosted_execution_allowed", 2, self._hosted_execution_allowed)
+        return "NOT EXISTS (SELECT 1 FROM metadata WHERE key='hosted_control.v1:'||recipient_schedule.recipient_id AND NOT hosted_execution_allowed(value,recipient_schedule.recipient_id))"
+
     def _next_due(self, db, routed=None):
         if routed is None:
-            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " AND " + self._execution_allowed(db) + " ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
         else:
-            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " AND " + self._execution_allowed(db) + " ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
         return row[0] if row else None
 
     def claim_wakes(self, guard, runner_token, recipients, limit=1, lease_ms=20000):
@@ -278,7 +284,7 @@ class Runner:
                 raise RunnerError("LEASE_TOO_SHORT", "Renew the singleton before claiming this full lease", retryable=True)
             # Each routed recipient is one primary-key probe; people and agents
             # without a route are never read, claimed or attempted here.
-            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
+            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING + " AND " + self._execution_allowed(db) + " ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
             claims = []
             for row in rows:
                 if row["claim_token"] is not None and row["claim_until_ms"] > now:
@@ -493,6 +499,7 @@ class Runner:
         self._turn_settled(db, thread_id, turn_id, status, error_code, now)
         rearmed = False
         for recipient in sorted({row["recipient_id"] for row in rows}):
+            self._record_hosted_completion(db, recipient, thread_id, status, now)
             schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
             clean = status == "completed" and not unseen
             if clean:
@@ -759,7 +766,8 @@ class Runner:
                     state = self._runner_state(db)
                     result = {"instance_id": self.instance_id, "state": state["state"],
                               "version": state["version"], "lease_until_ms": state["lease_until_ms"],
-                              "next_due_ms": self._next_due(db, routed)}
+                              "next_due_ms": self._next_due(db, routed),
+                              "hosted_controls": {agent: self._hosted_control_read(db, agent) for agent in json.loads(routed)}}
                     if state["reason_code"] is not None:
                         result["reason_code"] = state["reason_code"]
                     return result

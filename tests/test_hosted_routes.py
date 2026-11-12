@@ -81,6 +81,15 @@ class HostedRouteCase(unittest.TestCase):
             self.store.read_route_pin("agent-a", dict(self.destination, thread_id=OTHER_THREAD))
         self.assertEqual(raised.exception.code, "ROUTE_PIN_MISMATCH")
 
+    def test_an_explicit_owner_added_to_an_existing_pin_is_committed(self):
+        self.store.register_actor('owner', 'human', 'Owner')
+        with self.store.runner_guard('add-owner') as guard:
+            self.store.provision_route_pin(guard, 'agent-a', self.destination, owner_id='owner')
+        health = self.store.view('owner', 'health', {})
+        state = next(a['execution'] for a in health['agents'] if a['actor_id']=='agent-a')
+        self.assertTrue(state['can_control'])
+        self.assertEqual(state['desired'], 'running')
+
     def test_an_actor_holds_one_pin_so_it_is_either_queued_or_hosted(self):
         before = self.db.read_bytes()
         with self.assertRaises(RoutePinError) as raised:
@@ -117,6 +126,36 @@ class HostedRouteCase(unittest.TestCase):
                       [data, None]):
             with self.subTest(roots=roots):
                 self.refused("invalid_writable_roots", writable_roots=roots)
+
+    def test_full_permissions_and_role_are_explicit_and_reapplied_on_resume(self):
+        self.save(dict(self.value, v=2, permission_mode='full', reasoning_effort='high', instructions='Check the blue ledger.'))
+        config = broker_routes.load_hosted_config(self.config)
+        settings = codex_host.thread_settings(config)
+        self.assertEqual(settings['sandbox'], 'danger-full-access')
+        self.assertEqual(settings['approvalPolicy'], 'never')
+        self.assertEqual(settings['config']['model_reasoning_effort'], 'high')
+        self.assertTrue(settings['config']['agents']['enabled'])
+        self.assertIn('Check the blue ledger.', settings['developerInstructions'])
+        self.assertEqual(codex_host.sandbox_policy(config), {'type': 'dangerFullAccess'})
+        echoed = dict(cwd=config.cwd, approvalPolicy='never', sandbox={'type': 'dangerFullAccess'})
+        self.assertTrue(codex_host.settings_applied(echoed, config.cwd, config.writable_roots, config.permission_mode))
+        self.assertFalse(codex_host.settings_applied(echoed, config.cwd, config.writable_roots))
+        echoed['sandbox'] = {'type': 'readOnly'}
+        self.assertFalse(codex_host.settings_applied(echoed, config.cwd, config.writable_roots, config.permission_mode))
+
+    def test_v1_routes_stay_restricted_and_v2_rejects_unknown_capabilities(self):
+        config = broker_routes.load_hosted_config(self.config)
+        self.assertEqual(config.permission_mode, 'workspace')
+        self.assertEqual(codex_host.thread_settings(config)['sandbox'], 'workspace-write')
+        for field, value, reason in [('permission_mode', 'anything', 'invalid_permission_mode'),
+                                     ('reasoning_effort', 'whatever', 'invalid_reasoning_effort'),
+                                     ('instructions', 'x' * 16385, 'invalid_instructions')]:
+            selected = dict(self.value, v=2, permission_mode='full', reasoning_effort='high', instructions='')
+            selected[field] = value
+            self.save(selected)
+            with self.assertRaises(broker_routes.BrokerConfigError) as raised:
+                broker_routes.load_hosted_config(self.config)
+            self.assertEqual(raised.exception.args[0], reason)
 
     def test_the_outbox_must_already_exist_as_a_directory(self):
         os.rmdir(str(self.outbox))

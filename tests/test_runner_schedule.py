@@ -100,7 +100,8 @@ class ScheduleCase(runner_tests.RunnerCase):
             "SELECT state,version,lease_until_ms,reason_code FROM runner_state WHERE id=1")[0]
         due = self.sql("SELECT min(next_due_ms) FROM recipient_schedule WHERE enabled=1 AND pending_count>0")[0][0]
         result = dict(instance_id="test-instance", state=state, version=version,
-                      lease_until_ms=lease, next_due_ms=due)
+                      lease_until_ms=lease, next_due_ms=due,
+                      hosted_controls={"agent-a": None, "agent-b": None, "owner": None})
         if reason is not None:
             result["reason_code"] = reason
         return result

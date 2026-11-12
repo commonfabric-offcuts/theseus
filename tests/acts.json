@@ -5830,6 +5830,137 @@
     "native": "reading",
     "case": "move the keys from a dossier whose chevron"
    }
+  },
+  {
+   "item": 40,
+   "act": "Native hosting: full permission mode enables the native sandbox and agents",
+   "break": [
+    [
+     "aim_next/codex_host.py",
+     "settings[\"sandbox\"] = \"danger-full-access\"",
+     "settings[\"sandbox\"] = \"workspace-write\""
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_routes.py"
+   }
+  },
+  {
+   "item": 42,
+   "act": "Native hosting: only the human owner may stop the seat",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "if current[\"owner_id\"] != actor or owner[\"kind\"] != \"human\":",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_controls.py"
+   }
+  },
+  {
+   "item": 42,
+   "act": "Native hosting: stopped work is excluded from scheduling",
+   "break": [
+    [
+     "aim_next/runner.py",
+     "AND NOT hosted_execution_allowed(value,recipient_schedule.recipient_id)",
+     "AND 0"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_controls.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "Native hosting: Stop kills an unresponsive child on an independent deadline",
+   "break": [
+    [
+     "aim_next/codex_host.py",
+     "TERM_GRACE_SECONDS = 5.0",
+     "TERM_GRACE_SECONDS = 25.0"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_controls.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "A Stop after claiming work is rechecked before the native turn request",
+   "break": [
+    [
+     "aim_next/codex_host.py",
+     "if work.thread.control_stopped:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "Provisioning requires a human owner, not another agent",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "owner[\"kind\"] != \"human\" or",
+     "False or"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "A malformed control record stops only its own hosted seat",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "return {\"desired\":\"stopped\", \"fault\":error.code}",
+     "raise"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "A misbound or invalid control never becomes schedulable work",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "return 0\n",
+     "return 1\n"
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
+  },
+  {
+   "item": 43,
+   "act": "Hosted waiting state and work links use only messages the viewer can read",
+   "break": [
+    [
+     "aim_next/hosted_control.py",
+     "m.author_id=:agent AND \" + READABLE_WORK + ",
+     "m.author_id=:agent AND \" + \"1\" + "
+    ],
+    [
+     "aim_next/hosted_control.py",
+     "g.pending_count>0 AND \" + READABLE_WORK + ",
+     "g.pending_count>0 AND \" + \"1\" + "
+    ]
+   ],
+   "check": {
+    "python": "test_hosted_review_fixes.py"
+   }
   }
  ]
 }

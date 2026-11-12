@@ -42,10 +42,22 @@ class HostedConfig:
     cwd: str
     model: object
     writable_roots: tuple
+    permission_mode: str = "workspace"
+    reasoning_effort: object = None
+    instructions: str = ""
 
 
 HOSTED_FIELDS = frozenset(('v','kind','actor_id','profile','cli','codex_executable','codex_home',
                            'thread_id','cwd','model','writable_roots'))
+HOSTED_V2_FIELDS = HOSTED_FIELDS | {'permission_mode', 'reasoning_effort', 'instructions'}
+
+
+def hosted_options(permission_mode, reasoning_effort, instructions):
+    _require(permission_mode in ('workspace', 'full'), 'invalid_permission_mode')
+    _require(reasoning_effort is None or reasoning_effort in ('low', 'medium', 'high', 'xhigh'), 'invalid_reasoning_effort')
+    _require(isinstance(instructions, str) and len(instructions.encode('utf-8')) <= 16384 and '\x00' not in instructions,
+             'invalid_instructions')
+    return permission_mode, reasoning_effort, instructions
 
 
 def _require(value, code='invalid_broker_config'):
@@ -197,8 +209,10 @@ def load_hosted_config(path, *, expected_binding=None):
     Core/Profile exceptions propagate with their typing, as for load_config.
     """
     path,value = _private(path)
-    _require(set(value)==HOSTED_FIELDS and type(value['v']) is int and value['v']==1
+    _require(type(value.get('v')) is int and
+             ((value['v']==1 and set(value)==HOSTED_FIELDS) or (value['v']==2 and set(value)==HOSTED_V2_FIELDS))
              and value['kind']==HOSTED_KIND)
+    options = hosted_options(value.get('permission_mode', 'workspace'), value.get('reasoning_effort'), value.get('instructions', ''))
     _require(adapter._identity(value['actor_id']),'invalid_actor')
     selected_profile = _path(value['profile'])
     try:
@@ -225,7 +239,7 @@ def load_hosted_config(path, *, expected_binding=None):
              and set(supplied)==set(roots),'invalid_writable_roots')
     hosted_outbox(roots[1])
     pin = profile.store().read_route_pin(profile.actor_id,destination)
-    return HostedConfig(path,selected_profile,profile,cli,executable,dict(pin['destination']),cwd,model,roots)
+    return HostedConfig(path,selected_profile,profile,cli,executable,dict(pin['destination']),cwd,model,roots,*options)
 
 
 def _route(path, selected_executable):

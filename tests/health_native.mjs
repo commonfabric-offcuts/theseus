@@ -22,6 +22,51 @@ export async function healthChecks({ check, page, until, control, view, facts, s
   const line = (shown, key) => shown.lines.find(item => item.key === key);
   const failingWhy = "the helper that puts a wake in the Codex app's queue failed (it exited with an error)";
 
+  await check('health hosted Stop and Continue preserve pending work across reloads', async () => {
+    await control({method:'hosted_setup'});
+    try {
+    const agent='fixture-outside-agent';
+    for (const [size,mobile] of [['laptop',false],['phone',true]]) {
+    const p=await healthPage('health-hosted-controls-'+size,{beforeNavigate:async q=>{
+      await q.send('Emulation.setDeviceMetricsOverride',{width:mobile?390:1440,height:900,deviceScaleFactor:1,mobile});
+      if(mobile) await q.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+    }});
+    const activate=async selector=>{
+      await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+      if(!mobile)return p.point(selector);
+      const b=await p.box(selector),x=b.x+b.width/2,y=b.y+b.height/2;
+      await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+      await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    };
+    const summary=`details[data-key="agent:${agent}"] summary`;
+    const button=`[data-agent-control="${agent}"]`;
+    await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(summary)}))`),'hosted seat is shown');
+    await activate(summary);
+    const before=(await view('health',{})).agents.find(a=>a.actor_id===agent);
+    assert.equal(before.execution.desired,'running');
+    assert.equal(before.execution.can_control,true);
+    assert.equal(before.waiting,1);
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(button)}).textContent`),'Stop');
+    await activate(button);
+    await until(async()=> (await view('health',{})).agents.find(a=>a.actor_id===agent).execution.desired==='stopped','Stop commits');
+    await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(button)})?.textContent==='Continue'`),'Continue replaces Stop');
+    await p.send('Page.reload');await ready(p);
+    await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(summary)})?.textContent.includes('stopped')`),'reload retains Stop');
+    await activate(summary);
+    const stopped=(await view('health',{})).agents.find(a=>a.actor_id===agent);
+    assert.equal(stopped.waiting,1,'Stop did not acknowledge the work');
+    assert.equal(stopped.execution.execution_revision,before.execution.execution_revision+1);
+    await shot(p,'health-hosted-stopped-'+size);
+    await activate(button);
+    await until(async()=> (await view('health',{})).agents.find(a=>a.actor_id===agent).execution.desired==='running','Continue commits');
+    await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(button)})?.textContent==='Stop'`),'Stop returns');
+    assert.equal((await view('health',{})).agents.find(a=>a.actor_id===agent).waiting,1,'Continue retains unresolved work');
+    assert.deepEqual(p.errors,[]);
+    await p.close();
+    }
+    } finally { assert.equal((await control({method:'hosted_cleanup'})).restored,true); }
+  });
+
   await check('health the page says the runner and every agent from the view, and the link is quiet while nothing is red', async () => {
     assert.deepEqual(await control({ method: 'health', action: 'start' }), { route: 'provisioned', runner: 'acquired' });
     await control({ method: 'agent_message', operation_id: 'health-person-asks', body: 'Over to you.', topic_id: 't1', sender: 'person', addressees: [agent] });

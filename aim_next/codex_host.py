@@ -36,6 +36,8 @@ MAX_MESSAGE = 8 * 1024 * 1024
 # reading, so nothing more can reach it and it is ended by its captured PID.
 MAX_OUTBOX = 2 * MAX_MESSAGE
 READ_BLOCK = 65536
+STOP_GRACE_SECONDS = 5.0
+TERM_GRACE_SECONDS = 5.0
 SPAWN_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Choices that wait on a live probe (design §10). Each is the conservative
@@ -43,8 +45,8 @@ SPAWN_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 # P15: which methods need experimentalApi. On until shown unnecessary, so
 # turn/steer, additionalContext and thread/turns/list are not refused.
 EXPERIMENTAL_API = True
-# P14: whether this override turns subagents off.
-SPAWN_OVERRIDES = ("-c", "agents.enabled=false")
+# Capability policy belongs to each pinned route, not the shared child.
+SPAWN_OVERRIDES = ()
 # P2: whether developerInstructions persist across an app-server restart.
 RESEND_INSTRUCTIONS_ON_RESUME = True
 # P4: the error text of a steer refused because no turn is active or the id is
@@ -75,11 +77,10 @@ ANSWERS = {
     "item/commandExecution/requestApproval": ("decline", {"decision": "decline"}),
     "item/fileChange/requestApproval": ("decline", {"decision": "decline"}),
     "item/permissions/requestApproval": ("grant_nothing", {"permissions": {}, "scope": "turn"}),
-    "item/tool/requestUserInput": ("no_answers", {"answers": {}}),
     "mcpServer/elicitation/request": ("decline", {"action": "decline", "content": None}),
     "item/tool/call": ("not_available", {"contentItems": [{"type": "inputText", "text": "not available"}], "success": False}),
 }
-KNOWN_REQUESTS = frozenset(ANSWERS) | {"currentTime/read", "account/chatgptAuthTokens/refresh", "attestation/generate",
+KNOWN_REQUESTS = frozenset(ANSWERS) | {"item/tool/requestUserInput", "currentTime/read", "account/chatgptAuthTokens/refresh", "attestation/generate",
                                        "applyPatchApproval", "execCommandApproval"}
 UNSUPPORTED = {"code": -32601, "message": "not supported by theseus host"}
 TOKEN_FIELDS = (("inputTokens", "input_tokens"), ("cachedInputTokens", "cached_input_tokens"),
@@ -109,6 +110,10 @@ class ProtocolError(Exception):
 def answer(request):
     """(label, response) for one server request; every request gets exactly one response."""
     method = request["method"]
+    if method == "item/tool/requestUserInput":
+        return "ask_in_theseus", {"id": request["id"], "error": {
+            "code": -32601,
+            "message": "No answer was supplied. Ask the person in Theseus using your bound CLI: post TOPIC --asks PERSON --reply-to MESSAGE -. Read the post back, acknowledge the handled delivery separately, and finish this turn. Their reply arrives as a new delivery in this same saved thread. Never assume consent or an answer."}}
     if method in ANSWERS:
         label, result = ANSWERS[method]
         return label, {"id": request["id"], "result": result}
@@ -141,7 +146,8 @@ def _refuses_pin(error):
     data = error.get("data")
     message = error.get("message")
     return ((isinstance(data, dict) and data.get("type") == "modelProviderMismatch")
-            or (isinstance(message, str) and "not found" in message.lower()))
+            or (isinstance(message, str) and ("not found" in message.lower()
+                or message.lower().startswith("no rollout found for thread id "))))
 
 
 def _thread_status(status):
@@ -243,6 +249,7 @@ class Child:
         # Set once NOTE_EXIT is being handled: its end of output is the exit's, not a fault.
         self.exiting = False
         self.signals = set()
+        self.kill_at = None
         self.backlogged = False
 
     @property
@@ -409,12 +416,21 @@ def thread_settings(config):
                                                        "exclude_slash_tmp": True, "exclude_tmpdir_env_var": True},
                            "agents": {"enabled": False}},
                 "developerInstructions": hosted_notice.developer_instructions(config.profile.actor_id, config.cli, config.profile_path)}
+    if getattr(config, "permission_mode", "workspace") == "full":
+        settings["sandbox"] = "danger-full-access"
+        settings["config"] = {"agents": {"enabled": True}}
+    effort = getattr(config, "reasoning_effort", None)
+    if effort is not None:
+        settings["config"]["model_reasoning_effort"] = effort
+    instructions = getattr(config, "instructions", "")
+    if instructions:
+        settings["developerInstructions"] += "\n\nStanding role:\n" + instructions
     if config.model is not None:
         settings["model"] = config.model
     return settings
 
 
-def settings_applied(result, cwd, roots):
+def settings_applied(result, cwd, roots, permission_mode="workspace", model=None, effort=None):
     """Whether a thread/start or thread/resume answer echoes exactly the settings sent (design §3.3-3.4).
 
     P2/P6 settle whether Codex adds writable roots of its own (such as cwd) to
@@ -422,9 +438,13 @@ def settings_applied(result, cwd, roots):
     """
     if type(result) is not dict:
         return False
+    if model is not None and result.get("model") != model or effort is not None and result.get("reasoningEffort") != effort:
+        return False
     sandbox = result.get("sandbox")
     if type(sandbox) is not dict:
         return False
+    if permission_mode == "full":
+        return result.get("approvalPolicy") == "never" and result.get("cwd") == cwd and sandbox.get("type") == "dangerFullAccess"
     echoed = sandbox.get("writableRoots")
     return (result.get("approvalPolicy") == "never" and result.get("cwd") == cwd and sandbox.get("type") == "workspaceWrite"
             and type(echoed) is list and all(isinstance(root, str) for root in echoed) and set(echoed) == set(roots)
@@ -433,6 +453,8 @@ def settings_applied(result, cwd, roots):
 
 
 def sandbox_policy(config):
+    if getattr(config, "permission_mode", "workspace") == "full":
+        return {"type": "dangerFullAccess"}
     return {"type": "workspaceWrite", "writableRoots": list(config.writable_roots), "networkAccess": False,
             "excludeSlashTmp": True, "excludeTmpdirEnvVar": True}
 
@@ -458,6 +480,8 @@ class HostedThread:
         self.early_ends, self.early_seen = {}, set()
         # Consecutive turns that ended contextWindowExceeded (design §6.1).
         self.context_failures = 0
+        self.control_stopped = False
+        self.control_stop_at = None
 
 
 class Dispatch:
@@ -492,6 +516,7 @@ class Host:
         self.current = None
         self.stopping = False
         self.inputs_closed = False
+        self.stop_started = None
 
     # Startup and dispatch --------------------------------------------------
 
@@ -543,7 +568,64 @@ class Host:
 
     def _end_child(self, child):
         self._fail_child(child, "stalled")
+        self._terminate(child)
+
+    def _terminate(self, child):
         child.signal(signal.SIGTERM)
+        if child.kill_at is None and signal.SIGKILL not in child.signals:
+            child.kill_at = self.monotonic() + TERM_GRACE_SECONDS
+
+    def apply_controls(self, controls):
+        for thread in self.threads.values():
+            value = controls.get(thread.actor)
+            stopped = value is not None and value['desired'] == 'stopped'
+            if stopped != thread.control_stopped:
+                thread.control_stopped = stopped
+                thread.control_stop_at = self.monotonic() if stopped else None
+                self.log.write('control', thread=thread.id, desired='stopped' if stopped else 'running')
+            if stopped:
+                self._interrupt_controlled(thread)
+
+    def _interrupt_controlled(self, thread):
+        child = self.children.get(thread.home)
+        turn = thread.active_turn
+        if child is not None and child.state == 'ready' and turn is not None and turn not in thread.interrupted:
+            thread.interrupted.add(turn)
+            self.log.write('interrupt', thread=thread.id, turn=turn)
+            child.request('turn/interrupt', {'threadId':thread.id, 'turnId':turn},
+                          lambda result, error: None)
+
+    def _control_busy(self, thread):
+        return thread.active_turn is not None or thread.attaching or (self.current is not None and self.current.thread is thread)
+
+    def next_deadline(self):
+        deadlines = [child.kill_at for child in self.children.values() if child.kill_at is not None]
+        deadlines.extend(thread.control_stop_at + STOP_GRACE_SECONDS for thread in self.threads.values()
+                         if thread.control_stop_at is not None and self._control_busy(thread)
+                         and thread.home in self.children and signal.SIGTERM not in self.children[thread.home].signals)
+        if self.stop_started is not None and any(signal.SIGTERM not in child.signals for child in self.children.values()):
+            deadlines.append(self.stop_started + STOP_GRACE_SECONDS)
+        return min(deadlines) if deadlines else None
+
+    def advance_deadlines(self):
+        now = self.monotonic()
+        for thread in self.threads.values():
+            if not thread.control_stopped: continue
+            self._interrupt_controlled(thread)
+            child = self.children.get(thread.home)
+            if child is not None and self._control_busy(thread) and now >= thread.control_stop_at + STOP_GRACE_SECONDS and signal.SIGTERM not in child.signals:
+                # One home shares one process. Record every affected turn lost;
+                # other seats' pending work can then resume in its successor.
+                self._end_child(child)
+        for child in list(self.children.values()):
+            if signal.SIGTERM in child.signals and signal.SIGKILL not in child.signals and child.kill_at is None:
+                self._terminate(child)
+            if self.stop_started is not None and now >= self.stop_started + STOP_GRACE_SECONDS and signal.SIGTERM not in child.signals:
+                self._terminate(child)
+            if child.kill_at is not None and now >= child.kill_at:
+                self.log.write("child_killed", pid=child.pid)
+                child.signal(signal.SIGKILL)
+                child.kill_at = None
 
     def stale(self, attempt_id, thread_id):
         self.threads[thread_id].uncertain = True
@@ -626,6 +708,12 @@ class Host:
         return last
 
     def _send(self, work):
+        controls = self.core('hosted_controls', [work.thread.actor]).get('controls')
+        if controls is None:
+            raise HostFault('runner_lease_lost')
+        self.apply_controls({**{t.actor: {'desired':'stopped' if t.control_stopped else 'running'} for t in self.threads.values()}, **controls})
+        if work.thread.control_stopped:
+            return self._settle(work, 'busy', None, 'operator_stopped')
         thread, config, notice = work.thread, work.thread.config, work.notice
         params = {"threadId": thread.id, "input": notice["input"], "clientUserMessageId": work.client_id}
         if notice["additionalContext"] is not None:
@@ -637,6 +725,8 @@ class Host:
         else:
             # Sent on every start, so nothing depends on overrides persisting (P2).
             params.update(approvalPolicy="never", sandboxPolicy=sandbox_policy(config))
+            if config.reasoning_effort is not None:
+                params["effort"] = config.reasoning_effort
             self._request(work, "turn/start", params, lambda result, error: self._started(work, result, error))
 
     def _handed(self, work, turn_id, mode):
@@ -817,7 +907,8 @@ class Host:
             # Never a replacement thread: the pin names exactly one.
             self.log.write("resume_refused", thread=thread.id)
             raise HostFault("route_binding_changed")
-        if not settings_applied(result, thread.config.cwd, thread.config.writable_roots):
+        if not settings_applied(result, thread.config.cwd, thread.config.writable_roots, thread.config.permission_mode,
+                                thread.config.model, thread.config.reasoning_effort):
             # A thread whose sandbox or policy is not what was sent is never used.
             self.log.write("resume_settings_refused", thread=thread.id)
             return self._attach_failed(thread, "settings_not_applied")
@@ -911,7 +1002,7 @@ class Host:
                 # Output ended while the process may live on: nothing it is asked
                 # can be answered, so it is closed and terminated by its captured PID.
                 self._fail_child(child, "output_closed")
-                child.signal(signal.SIGTERM)
+                self._terminate(child)
             self._close_output(child)
 
     def on_exit(self, pid):
@@ -926,7 +1017,7 @@ class Host:
             self._settle(self.current, "error", None, "protocol_error")
         self._fail_child(child, "broken")
         self._close_output(child)
-        child.signal(signal.SIGTERM)
+        self._terminate(child)
 
     def _close_output(self, child):
         if self.by_fd.pop(child.out, None) is not None:
@@ -1061,13 +1152,15 @@ class Host:
     def stop_step(self, stop_count):
         """One step of a graceful stop (design §6.3); True once every child has exited."""
         self.stopping = True
+        if self.stop_started is None:
+            self.stop_started = self.monotonic()
         live = list(self.children.values())
         if stop_count >= 3:
             for child in live:
                 child.signal(signal.SIGKILL)
         elif stop_count >= 2:
             for child in live:
-                child.signal(signal.SIGTERM)
+                self._terminate(child)
         if self.current is not None:
             return False
         active = [thread for thread in self.threads.values() if thread.active_turn is not None
@@ -1092,16 +1185,13 @@ class Host:
             thread.active_turn = None
 
     def close(self):
-        """Last resort after a fault or lost ownership: close every child's input and reap it, with no timer.
-
-        Each further stop signal escalates: the second sends SIGTERM to the
-        captured PIDs, the third SIGKILL. Returns whether every exit was
-        recorded in Core (a paused runner still records).
-        """
+        """Close and reap owned children, escalating on deadlines without another delivery or signal."""
         if not self.children:
             return True
         queue = select.kqueue()
         recorded = True
+        if self.stop_started is None:
+            self.stop_started = self.monotonic()
         try:
             queue.control([select.kevent(number, filter=select.KQ_FILTER_SIGNAL, flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE)
                            for number in (signal.SIGINT, signal.SIGTERM)], 0, 0)
@@ -1127,11 +1217,18 @@ class Host:
                 exited = []
                 if not self.children:
                     break
-                for event in queue.control(None, 16, None):
+                self.advance_deadlines()
+                deadline = self.next_deadline()
+                timeout = None if deadline is None else max(0, deadline - self.monotonic())
+                for event in queue.control(None, 16, timeout):
                     if event.filter == select.KQ_FILTER_SIGNAL:
                         signals += max(1, event.data)
                         for child in self.children.values():
-                            child.signal(signal.SIGKILL if signals >= 3 else signal.SIGTERM)
+                            if signals >= 3:
+                                child.signal(signal.SIGKILL)
+                                child.kill_at = None
+                            else:
+                                self._terminate(child)
                     elif event.filter == select.KQ_FILTER_PROC and event.ident in self.by_pid:
                         if self.by_pid[event.ident] not in exited:
                             exited.append(self.by_pid[event.ident])
@@ -1184,9 +1281,9 @@ class _Sync:
         self.queue.control([select.kevent(child.input, filter=select.KQ_FILTER_WRITE,
                                           flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE if on else select.KQ_EV_DELETE)], 0, 0)
 
-    def _step(self):
+    def _step(self, timeout=None):
         """Wait for one batch of events, write what the input takes, and read what arrived."""
-        for event in self.queue.control(None, 4, None):
+        for event in self.queue.control(None, 4, timeout):
             if event.filter == select.KQ_FILTER_PROC:
                 self.exited = True
             elif event.filter == select.KQ_FILTER_WRITE:
@@ -1201,10 +1298,14 @@ class _Sync:
     def call(self, method, params):
         box = []
         self.child.request(method, params, lambda result, error: box.append((result, error)))
+        deadline = time.monotonic() + 45
         while not box:
             if not self.reading:
                 raise ProvisionError("child_exited")
-            for message in self._step():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProvisionError("request_timed_out")
+            for message in self._step(remaining):
                 kind = _kind(message)
                 if kind == "request":
                     self.child.send(answer(message)[1])
@@ -1217,16 +1318,23 @@ class _Sync:
     def close(self):
         """Close input and wait for the child's exit event; it is then reaped."""
         self.child.close_input()
+        deadline = time.monotonic() + STOP_GRACE_SECONDS
         while not self.exited:
-            self._step()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.child.signal(signal.SIGKILL if signal.SIGTERM in self.child.signals else signal.SIGTERM)
+                deadline = time.monotonic() + TERM_GRACE_SECONDS
+            self._step(max(0, deadline - time.monotonic()))
         self.queue.close()
         self.child.popen.stdout.close()
         return self.child.popen.wait()
 
 
-def provision(*, runner_profile, runner_id, actor_profile, codex_executable, codex_home, cli, cwd, model, config_path):
+def provision(*, runner_profile, runner_id, actor_profile, codex_executable, codex_home, cli, cwd, model, config_path,
+              permission_mode="workspace", reasoning_effort=None, instructions="", owner_id=None):
     """Start a thread for one agent, pin it and write its hosted route config; an operator act, never runtime."""
     runner = load_profile(runner_profile)
+    broker_routes.hosted_options(permission_mode, reasoning_effort, instructions)
     actor = load_profile(actor_profile)
     if (actor.binding != runner.binding or actor.db_path != runner.db_path or actor.instance_id != runner.instance_id):
         raise broker_routes.BrokerBindingError()
@@ -1274,21 +1382,33 @@ def provision(*, runner_profile, runner_id, actor_profile, codex_executable, cod
                 except OSError as failure:
                     raise broker_routes.BrokerConfigError("invalid_writable_roots") from failure
             settings = _ProvisionSettings(actor, profile_path, cli, cwd, model, roots)
+            settings.permission_mode, settings.reasoning_effort, settings.instructions = permission_mode, reasoning_effort, instructions
             params = dict(thread_settings(settings), ephemeral=False, serviceName="theseus")
             result, error = sync.call("thread/start", params)
             if error is not None or type(result) is not dict or type(result.get("thread")) is not dict:
                 raise ProvisionError("thread_start_failed")
             thread_id = result["thread"].get("id")
-            if not isinstance(thread_id, str) or not settings_applied(result, cwd, roots):
+            if not isinstance(thread_id, str) or not settings_applied(result, cwd, roots, permission_mode, model, reasoning_effort):
                 raise ProvisionError("thread_settings_not_applied", thread_id if isinstance(thread_id, str) else None)
+            # Native Codex keeps an empty thread in memory only. Persist an
+            # explicit setup record before pinning its id, without a model
+            # turn or fabricated agent answer. A fresh app-server can then
+            # resume this same thread before its first work delivery.
+            result, error = sync.call("thread/inject_items", {"threadId": thread_id, "items": [{
+                "type": "message", "role": "developer", "content": [{"type": "input_text", "text":
+                    "Theseus provisioned this standing agent. This is a setup record, not a work request or a human answer. Await Theseus deliveries."}]}]})
+            if error is not None or result != {}:
+                raise ProvisionError("thread_persistence_failed", thread_id)
             destination = {"kind": HOSTED_KIND, "protocol_version": 1, "codex_home": home, "thread_id": thread_id}
             try:
-                store.provision_route_pin(guard, actor.actor_id, destination)
+                store.provision_route_pin(guard, actor.actor_id, destination, owner_id=owner_id or runner.actor_id)
             except Exception as failure:
                 raise ProvisionError(getattr(failure, "code", None) or "pin_refused", thread_id) from failure
             value = {"v": 1, "kind": HOSTED_KIND, "actor_id": actor.actor_id, "profile": profile_path, "cli": cli,
                      "codex_executable": executable, "codex_home": home, "thread_id": thread_id, "cwd": cwd,
                      "model": model, "writable_roots": list(roots)}
+            if permission_mode != "workspace" or reasoning_effort is not None or instructions:
+                value.update(v=2, permission_mode=permission_mode, reasoning_effort=reasoning_effort, instructions=instructions)
             payload = (json.dumps(value, indent=1) + "\n").encode("utf-8")
             try:
                 fd = os.open(str(target), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -1316,11 +1436,16 @@ def provision_main(argv):
     for name in ("--profile", "--runner-id", "--actor-profile", "--codex-executable", "--codex-home", "--cli", "--cwd", "--config"):
         parser.add_argument(name, required=True)
     parser.add_argument("--model")
+    parser.add_argument("--owner", help="Human owner of Stop/Continue; defaults to the runner profile actor")
+    parser.add_argument("--permission-mode", choices=("workspace", "full"), default="workspace")
+    parser.add_argument("--reasoning-effort", choices=("low", "medium", "high", "xhigh"))
+    parser.add_argument("--instructions", default="", help="Standing role instructions preserved on every resume")
     args = parser.parse_args(argv)
     try:
         result = provision(runner_profile=args.profile, runner_id=args.runner_id, actor_profile=args.actor_profile,
                            codex_executable=args.codex_executable, codex_home=args.codex_home, cli=args.cli, cwd=args.cwd,
-                           model=args.model, config_path=args.config)
+                           model=args.model, config_path=args.config, permission_mode=args.permission_mode,
+                           reasoning_effort=args.reasoning_effort, instructions=args.instructions, owner_id=args.owner)
     except ProvisionError as error:
         result = {"status": "refused", "reason": error.reason}
         if error.thread_id is not None:

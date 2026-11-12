@@ -2366,6 +2366,8 @@ async function initializeHealthPage() {
   $('health-link').setAttribute('aria-current','page');
   $('topic-title').textContent='Health';$('topic-description').textContent='Read live from Theseus; it follows every change.';
   const page=new HealthPage({host:$('health-page'),feed:()=>live?.state??null,
+    control:(actor_id,desired,revision)=>api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),
+      kind:'agent.execution',target:{actor_id},args:{desired},expected:{execution_revision:revision,authority:{authority_id:bootstrap.authority.authority_id,authority_epoch:bootstrap.authority.authority_epoch}}}),
     read:async()=>checkedView(await api.view('health',{},{readClass:'foreground'}),bootstrap.instance_id)});
   $('health-page').hidden=false;
   live?.listen(event=>page.heard(event));

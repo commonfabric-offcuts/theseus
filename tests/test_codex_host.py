@@ -47,7 +47,8 @@ class Runner:
         with open(str(case.root / "runner-stderr.log"), "ab") as stderr:
             self.process = subprocess.Popen(
                 ["/usr/bin/python3", "-I", str(ROOT / "bin" / "aim-next-runner"), "--profile", str(case.lead_profile),
-                 "--runner-id", "host-fixture", "--routes", str(case.map), "--host-dir", str(case.host_dir), *extra],
+                 "--runner-id", "host-fixture", "--routes", str(case.map),
+                 *([] if getattr(case, "default_host_dir", False) else ["--host-dir", str(case.host_dir)]), *extra],
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=stderr)
         self.pid = self.process.pid
         self.buffer = b""
@@ -357,7 +358,7 @@ class HostedProofCase(HostCase):
         self.assertEqual(children, spawned[1:], "every child after provisioning is recorded at spawn")
         for entry in self.wire():
             if "spawn" in entry:
-                self.assertEqual(entry["argv"], ["app-server", "--listen", "stdio://", "-c", "agents.enabled=false"])
+                self.assertEqual(entry["argv"], ["app-server", "--listen", "stdio://"])
                 self.assertEqual(entry["path"], "/usr/bin:/bin:/usr/sbin:/sbin")
         # The event log holds fixed fields only: no message bodies or reply text.
         log = (self.host_dir / "events.jsonl").read_text()
@@ -581,6 +582,25 @@ class RefusedChildCase(HostCase):
 
 
 class ResumeRefusalCase(HostCase):
+    def test_a_missing_rollout_refuses_the_pin_and_preserves_work_without_replacement(self):
+        self.open_topic("Keep this queued request when the pinned rollout is missing")
+        state = self.fake_state()
+        state["threads"][self.thread]["persisted"] = False
+        (self.home / "fake-state.json").write_text(json.dumps(state))
+        runner = Runner(self)
+        self.addCleanup(runner.cleanup)
+        code, final = runner.finish()
+        self.assertEqual((code, final["status"], final.get("reason")), (2, "paused", "route_binding_changed"))
+        self.assertTrue(any(event.get("event") == "host_resume_refused" for event in runner.events))
+        self.assertEqual(self.sql("SELECT state,reason_code FROM runner_state"), [("paused", "route_binding_changed")])
+        self.assertEqual(len(self.pending()), 1)
+        self.assertEqual(set(self.fake_state()["threads"]), {self.thread})
+        methods = [entry["in"].get("method") for entry in self.wire() if "in" in entry]
+        self.assertEqual(methods.count("thread/start"), 1, "only original provisioning may create a thread")
+        self.assertEqual(methods.count("turn/start"), 0, "missing context must not start a model turn")
+        self.assertEqual(self.turns_rows(), [])
+        self.assertEqual(self.sql("SELECT exited_ms IS NOT NULL,cleanup FROM hosted_children"), [(1, "confirmed")])
+
     def test_a_pinned_thread_the_child_does_not_know_pauses_the_runner(self):
         state = self.fake_state()
         state["threads"] = {}
@@ -839,7 +859,7 @@ class InputStallCase(HostCase):
                          "the expired claim's turn/start never reached a child")
         self.stopped_cleanly(runner)
 
-    def test_a_child_that_ignores_its_term_for_a_lease_is_killed_and_the_work_goes_to_its_successor(self):
+    def test_a_child_that_ignores_term_is_killed_on_its_deadline_before_another_claim_expires(self):
         self.gated()
         script = dict(self.script, ignore_term_once=True, turns=self.turns)
         (self.home / "fake-script.json").write_text(json.dumps(script))
@@ -848,15 +868,14 @@ class InputStallCase(HostCase):
         first = runner.event("host_dispatch_abandoned")
         stalled = runner.event("host_input_stalled")
         runner.event("host_attach_waits", pid=stalled["pid"])
-        # The waiting claim's own lease ends with the child still alive.
-        second = runner.event("host_dispatch_abandoned")
+        # TERM has its own deadline: no further work or claim expiry is needed.
         runner.event("host_child_killed", pid=stalled["pid"])
         exit_event = runner.event("host_child_exit", pid=stalled["pid"])
         self.assertEqual(exit_event["status"], -signal.SIGKILL)
         handed = runner.event("host_dispatch", outcome="handed", mode="start")
         runner.event("host_turn_end", status="completed")
         self.assertEqual(self.sql("SELECT attempt_id,outcome FROM wake_results ORDER BY finished_ms"),
-                         [(first["attempt"], "expired"), (second["attempt"], "expired"), (handed["attempt"], "handed")])
+                         [(first["attempt"], "expired"), (handed["attempt"], "handed")])
         self.stopped_cleanly(runner)
 
     def test_a_claim_that_arrives_while_the_ended_child_is_still_exiting_goes_to_its_successor(self):
@@ -1365,11 +1384,14 @@ class FramingCase(unittest.TestCase):
         self.assertEqual(watched, [True, False], "unwatched before its descriptor closed")
 
     def test_answers_follow_the_design_table(self):
+        label, response = codex_host.answer({"id": 9, "method": "item/tool/requestUserInput", "params": {}})
+        self.assertEqual(label, "ask_in_theseus")
+        self.assertNotIn("result", response, "no empty result may pretend a person answered")
+        self.assertIn("post TOPIC --asks PERSON", response["error"]["message"])
         expected = {
             "item/commandExecution/requestApproval": {"decision": "decline"},
             "item/fileChange/requestApproval": {"decision": "decline"},
             "item/permissions/requestApproval": {"permissions": {}, "scope": "turn"},
-            "item/tool/requestUserInput": {"answers": {}},
             "mcpServer/elicitation/request": {"action": "decline", "content": None},
             "item/tool/call": {"contentItems": [{"type": "inputText", "text": "not available"}], "success": False},
         }
