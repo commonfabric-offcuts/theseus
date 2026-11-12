@@ -40,7 +40,7 @@ import math
 
 from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
-from .whispers import visible
+from .whispers import VISIBLE, visible
 
 
 def _act_table(kinds):
@@ -54,7 +54,10 @@ def _act_table(kinds):
 ACT_INDEXES = ["CREATE INDEX topic_acts ON message_acts(topic_id,seq)", "CREATE INDEX reader_stars ON message_acts(owner,kind,id)"]
 # Version 35's table, which the stacks' step makes; version 37 adds the fold.
 ACT_SCHEMA = [_act_table(("star", "deal", "place", "name", "join"))] + ACT_INDEXES
-ACT_FRESH = [_act_table(("star", "deal", "fold", "place", "name", "join"))] + ACT_INDEXES
+FOLD_SCHEMA = [_act_table(("star", "deal", "fold", "place", "name", "join"))] + ACT_INDEXES
+ASIDE_INDEXES = ["CREATE INDEX stack_replies ON messages(reply_to,topic_id)",
+                 "CREATE INDEX stack_joins ON message_acts(json_extract(value,'$.into')) WHERE kind='join'"]
+ACT_FRESH = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside"))] + ACT_INDEXES + ASIDE_INDEXES
 ACT_DOWN = ("DROP INDEX reader_stars", "DROP INDEX topic_acts", "DROP TABLE message_acts")
 # Any row: dropping one would restart its revisions, and a late request could then undo a newer act.
 ACT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts)"
@@ -75,16 +78,20 @@ def _rebuilt(table):
 
 
 # Version 37 lets the table hold a fold. SQLite changes a CHECK only by building the table again.
-FOLD_UP = _rebuilt(ACT_FRESH[0])
+FOLD_UP = _rebuilt(FOLD_SCHEMA[0])
 FOLD_DOWN = _rebuilt(ACT_SCHEMA[0])
 # Any fold, even one taken back: version 36 cannot hold its rows, and dropping them would restart its revisions.
 FOLD_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='fold')"
 
-PERSONAL = {"star", "deal", "fold", "place"}
+ASIDE_UP = _rebuilt(ACT_FRESH[0]) + ASIDE_INDEXES
+ASIDE_DOWN = ["DROP INDEX stack_replies"] + _rebuilt(FOLD_SCHEMA[0])
+ASIDE_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='aside')"
+
+PERSONAL = {"star", "deal", "fold", "place", "aside"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
          "message.fold": ("fold", "fold_revision"), "stack.place": ("place", "place_revision"), "stack.name": ("name", "name_revision"),
-         "stack.join": ("join", "join_revision")}
+         "stack.join": ("join", "join_revision"), "stack.aside": ("aside", "aside_revision")}
 # A short name is one line of at most this many characters; the page ends a long one in "…".
 NAME_CHARS = 200
 # A place is a number to sort by; this bound keeps it exact as JSON in every client.
@@ -92,8 +99,8 @@ PLACE_BOUND = 1e15
 # The longest chain of joins and replies a join is checked through for a loop.
 JOIN_DEPTH = 10000
 # What an act stands at before anyone has made it.
-NONE = {"star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None}}
-EMPTY = {"starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
+NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None}}
+EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
          "placed": None, "place_revision": 0,
          "name": None, "name_revision": 0, "joined": None, "join_revision": 0}
 
@@ -106,6 +113,11 @@ def _flag(args, name, words):
 
 def _value(kind, args):
     """The act's stored value, from its command's args, or a refusal saying what it takes."""
+    if kind == "aside":
+        through = args.get("through", False) if set(args) == {"through"} else False
+        if through is not None and (isinstance(through, bool) or not isinstance(through, int) or through < 1):
+            raise Refusal("INVALID_ARGUMENT", "Name the last observed message sequence, or none to bring the dossier back")
+        return {"through": through}
     if kind == "star":
         return _flag(args, "starred", "Name one message and whether it is starred")
     if kind == "deal":
@@ -136,6 +148,8 @@ def _value(kind, args):
 def _shown(kind, row):
     """An act's row as a reader reads it, in the item's `acts` fields."""
     value = json.loads(row["value"])
+    if kind == "aside":
+        return {"aside": value["through"]}
     if kind == "star":
         return {"starred": value["starred"]}
     if kind == "deal":
@@ -172,6 +186,95 @@ def act_fields(db, actor, items):
     found = current_acts(db, actor, [item["id"] for item in items])
     for item in items:
         item["acts"] = found.get(item["id"], dict(EMPTY))
+    positions = stack_positions(db, actor, items)
+    for item in items:
+        item["stack_position"] = positions[item["id"]]
+
+
+class StackRoots:
+    def __init__(self, db, actor):
+        self.db, self.actor, self.roots = db, actor, {}
+
+    def root(self, mid):
+        path, seen, at = [], set(), mid
+        for _ in range(JOIN_DEPTH):
+            if at in self.roots:
+                at = self.roots[at]
+                break
+            if at in seen:
+                raise Refusal("STACK_CHANGED", "This dossier has a cyclic join; read it again")
+            path.append(at); seen.add(at)
+            row = self.db.execute("SELECT m.id,m.topic_id,m.reply_to,(SELECT json_extract(a.value,'$.into') FROM message_acts a WHERE a.message_id=m.id AND a.kind='join' AND a.owner='' ORDER BY revision DESC LIMIT 1) AS joined FROM messages m WHERE m.id=?", (at,)).fetchone()
+            parent = row["joined"] or row["reply_to"]
+            if not parent:
+                break
+            above = self.db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (parent,)).fetchone()
+            if not above or above["topic_id"] != row["topic_id"] or not visible(above, self.actor):
+                break
+            at = parent
+        else:
+            raise Refusal("STACK_CHANGED", "This dossier's ancestry is too deep")
+        for seen in path:
+            self.roots[seen] = at
+        return at
+
+
+def _dossier(db, actor, root):
+    """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None.
+    Both recursive arms seek indexed children of the current member. The join
+    arm accepts only the latest act; a nonempty join overrides reply ancestry."""
+    row = db.execute("""
+        WITH RECURSIVE members(id) AS (
+          SELECT :root
+          UNION
+          SELECT m.id FROM members p JOIN messages m ON m.reply_to=p.id
+          JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
+          WHERE """ + VISIBLE + """
+            AND coalesce((SELECT json_extract(a.value,'$.into') FROM message_acts a
+              WHERE a.message_id=m.id AND a.kind='join' AND a.owner='' ORDER BY revision DESC LIMIT 1),'')=''
+          UNION
+          SELECT m.id FROM members p JOIN message_acts a ON json_extract(a.value,'$.into')=p.id AND a.kind='join'
+          JOIN messages m ON m.id=a.message_id JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
+          WHERE a.owner='' AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='join' AND b.owner='')
+            AND """ + VISIBLE + """
+        ) SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id
+        """, {"root": root, "actor": actor}).fetchone()
+    return row[0], row[1]
+
+
+def _seen_seq(db, actor, topic):
+    """The newest sequence in the topic the reader can see: a whisper they are outside never moves it."""
+    row = db.execute("SELECT m.seq FROM messages m INDEXED BY topic_messages WHERE m.topic_id=:topic AND " + VISIBLE +
+                     " ORDER BY m.seq DESC LIMIT 1", {"topic": topic, "actor": actor}).fetchone()
+    return row[0] if row else 0
+
+
+def _seen_acts(db, actor, topic):
+    """The newest act in the topic the reader hears of: their own and the topic's, on messages they can see."""
+    return db.execute("SELECT coalesce(max(a.id),0) FROM message_acts a INDEXED BY topic_acts JOIN messages m ON m.id=a.message_id "
+                      "WHERE a.topic_id=:topic AND a.owner IN ('',:actor) AND " + VISIBLE, {"topic": topic, "actor": actor}).fetchone()[0]
+
+
+def stack_positions(db, actor, items):
+    """{message id: its dossier's position for the reader}. `at` is the snapshot it was read at: for a dossier put
+    aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
+    newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
+    the dossier, so a page of earlier messages reads the same however the topic grows."""
+    roots, acts_at, positions, result = StackRoots(db, actor), {}, {}, {}
+    for item in items:
+        topic = item["topic_id"]
+        if topic not in acts_at:
+            acts_at[topic] = _seen_acts(db, actor, topic)
+        root = roots.root(item["id"])
+        if root not in positions:
+            acts = current_acts(db, actor, [root]).get(root, EMPTY)
+            through = acts["aside"]
+            latest, others = _dossier(db, actor, root) if through is not None else (0, None)
+            positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
+                               "below": through is not None and (others is None or others <= through),
+                               "at": {"messages": latest, "acts": acts_at[topic]}}
+        result[item["id"]] = positions[root]
+    return result
 
 
 class Stacks:
@@ -221,6 +324,11 @@ class Stacks:
         kind, expected_name = KINDS[envelope["kind"]]
         message, topic = self._acted_message(db, actor, envelope["target"])
         value = _value(kind, envelope["args"])
+        if kind == "aside":
+            if StackRoots(db, actor).root(message["id"]) != message["id"]:
+                raise Refusal("STACK_CHANGED", "This dossier was joined since it was read; read it again")
+            if value["through"] is not None and value["through"] > _seen_seq(db, actor, message["topic_id"]):
+                raise Refusal("INVALID_ARGUMENT", "The observed sequence is ahead of this topic")
         personal = kind in PERSONAL
         if not personal:
             # A reached outcome's topics are kept to read: its stacks keep their names and joins.
@@ -249,7 +357,22 @@ class Stacks:
         return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
 
-    _command_message_star = _command_message_deal = _command_message_fold = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_act
+    _command_message_star = _command_message_deal = _command_message_fold = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_aside = _command_stack_act
+
+    def _view_stack_positions(self, db, actor, args):
+        topic = self._topic(db, actor, args.get("topic_id"))
+        ids = args.get("message_ids")
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 100 or any(not isinstance(mid, str) for mid in ids):
+            raise Refusal("INVALID_ARGUMENT", "Name one to 100 message ids")
+        rows = []
+        for mid in dict.fromkeys(ids):
+            row, _ = self._acted_message(db, actor, {"message_id": mid})
+            if row["topic_id"] != topic["id"]:
+                raise Refusal("INVALID_ARGUMENT", "Messages must be in the named topic")
+            rows.append(row)
+        found = stack_positions(db, actor, rows)
+        return {"instance_id": self.instance_id, "topic_id": topic["id"],
+                "items": [{"message_id": row["id"], "stack_position": found[row["id"]]} for row in rows]}
 
     def _view_message_acts(self, db, actor, args):
         """The acts as they stand for the reader on one topic's messages, newest message first, paged by sequence:
@@ -263,8 +386,7 @@ class Stacks:
                           "WHERE a.topic_id=:topic AND a.seq<:cursor AND a.owner IN ('',:actor) AND (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor) "
                           "ORDER BY a.seq DESC LIMIT :limit", {"topic": topic["id"], "cursor": cursor, "actor": actor, "limit": limit + 1}).fetchall()
         found = current_acts(db, actor, [row["id"] for row in rows[:limit]])
-        version = db.execute("SELECT coalesce(max(id),0) FROM message_acts WHERE topic_id=? AND owner IN ('',?)", (topic["id"], actor)).fetchone()[0]
-        return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": version}, rows, limit,
+        return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": _seen_acts(db, actor, topic["id"])}, rows, limit,
                              lambda row: {"message_id": row["id"], "seq": row["seq"], "acts": found.get(row["id"], dict(EMPTY))}, "seq")
 
     def _view_stars(self, db, actor, args):

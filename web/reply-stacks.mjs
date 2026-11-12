@@ -17,7 +17,7 @@
 // it is one row, who wrote it and its first words, with a cue that it is
 // folded; a stack's folded first message is its head row alone.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf } from './stack-order.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { shownTime } from './times.mjs';
 
@@ -132,7 +132,8 @@ export function reveal(entry, { full = false } = {}) {
   let changed = false;
   if (section && entry.hidden) { state.levels.set(id, 'open'); changed = true; }
   if (section && full && own === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
-  if (state.folded.has(own)) { state.peeked.add(own); changed = true; }
+  const stack = state.stacks.find(each => each.id === own || each.replies.some(item => item.id === own));
+  if (state.folded.has(own) || stack && positionOf(stack)?.below) { state.peeked.add(own); changed = true; }
   if (changed) state.again();
   return entry;
 }
@@ -386,16 +387,28 @@ export function arrangeStacks(list, messages, options = {}) {
   const stacks = ordered(gather(loaded, { viewer }));
   state.stacks = stacks;
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
-  const top = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
+  const top = [], aside = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
   for (const stack of stacks) {
     const head = byId.get(stack.id);
-    if (!stack.replies.length && stack.placed === null) { head.hidden = false; top.push(head); continue; }
+    const below = positionOf(stack)?.below && ![stack.head, ...stack.replies].some(item => state.peeked.has(item.id));
+    const destination = below ? aside : top;
+    if (!stack.replies.length && stack.placed === null) { head.hidden = false; destination.push(head); continue; }
     live.add(stack.id);
     if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
     const section = state.sections.get(stack.id);
     paintStack(section, stack, byId, context);
-    top.push(section);
+    destination.push(section);
   }
+  state.belowCount = aside.length;
+  if (aside.length && !state.more) {
+    state.more = element(doc, 'button', 'stack-more'); state.more.type = 'button';
+    state.more.onclick = () => { state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
+  }
+  if (aside.length) {
+    state.more.textContent = `${state.moreOpen ? 'Hide' : 'More'} messages · ${aside.length} put aside`;
+    state.more.setAttribute('aria-expanded', String(Boolean(state.moreOpen)));
+    top.push(state.more, ...aside);
+  } else state.more?.remove();
   // Entries the page has that Core's messages do not name stay where they are.
   reconcile(list, top, node => !node.dataset.line && (!node.dataset.id || messages.has(node.dataset.id)));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
@@ -408,5 +421,6 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id) && !heads.has(id), { nameOf, doc });
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
+  for (const node of top) if (node !== state.more) node.hidden = aside.includes(node) && !state.moreOpen;
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
 }

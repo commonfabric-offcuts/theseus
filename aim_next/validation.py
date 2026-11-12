@@ -51,7 +51,7 @@ COMMANDS = {
     "outcome.reach": "_command_outcome_reach",
     "outline.order_set": "_command_outline_order_set",
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
-    "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
+    "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
 }
 EXPECTED = {"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -86,7 +86,7 @@ EXPECTED = {"agent.execution": {"execution_revision"}, "workspace.create": {"wor
             "outcome.kind_set": {"workspace_revision"},
             "outcome.reach": {"workspace_revision"},
             "outline.order_set": {"order_revision"},
-            "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "stack.place": {"place_revision"},
+            "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "stack.aside": {"aside_revision"}, "stack.place": {"place_revision"},
             "stack.name": {"name_revision"}, "stack.join": {"join_revision"}}
 REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
@@ -99,7 +99,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "message.thumb": "thumb_revision", "message.answer": "answer_revision",
                      "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision",
                      "outline.order_set": "order_revision",
-                     "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "stack.place": "place_revision",
+                     "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "stack.aside": "aside_revision", "stack.place": "place_revision",
                      "stack.name": "name_revision", "stack.join": "join_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
@@ -132,7 +132,7 @@ VIEWS = {
     "outcome_checks": {"workspace_id"},
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
-    "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"cursor", "limit"},
+    "stack_positions": {"topic_id", "message_ids"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"cursor", "limit"},
 }
 
 

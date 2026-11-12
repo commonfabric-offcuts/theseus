@@ -685,7 +685,9 @@ function placeLine() {
 // load older messages; More messages, doing much the same, is hidden. A faded
 // line promises nothing, so More comes back.
 function paintMoreMessages() {
-  $('more-messages').hidden = views.olderCursor === null ||
+  const aside = stackFeed?.state.belowCount;
+  $('more-messages').textContent = aside ? 'Earlier messages' : 'More messages';
+  $('more-messages').hidden = Boolean(aside && !stackFeed.state.moreOpen) || views.olderCursor === null ||
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read'));
 }
 function paintViews(kind) {
@@ -801,6 +803,7 @@ function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current, send: envelope => api.command(envelope),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : id),
+    refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages,
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)) });
   return stackFeed;
 }

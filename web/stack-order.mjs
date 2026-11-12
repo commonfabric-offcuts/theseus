@@ -19,7 +19,7 @@
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -234,4 +234,20 @@ export function foldStep({ level }, way, { replies: has = true } = {}) {
   const at = LEVELS.indexOf(level);
   const next = at + (way === 'open' ? 1 : -1);
   return has && at >= 0 && next >= 0 && next < LEVELS.length ? { level: LEVELS[next] } : null;
+}
+
+// A position is read at a snapshot: the newest act in the topic the reader
+// hears of, then the newest message they can see in the dossier. Acts only
+// grow, and while they stand still a dossier only gains messages, so the later
+// read has more acts, or as many and more messages. A split may leave the
+// dossier fewer messages, but the split is a later act. An old page cannot
+// undo a newer join, personal move, split or arriving reply.
+export function laterPosition(known, answer) {
+  if (!answer) return known;
+  if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages)) return known;
+  return answer;
+}
+export function positionOf(stack) {
+  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(Boolean)
+    .reduce((known, next) => laterPosition(known, next), null);
 }
