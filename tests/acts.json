@@ -2546,8 +2546,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "      replies.push(...within.get(segment).sort(bySeq));",
-     "      replies.push(...within.get(segment).sort((a, b) => bySeq(b, a)));"
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
     ]
    ],
    "check": {
@@ -3196,8 +3196,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "      replies.push(...within.get(segment).sort(bySeq));",
-     "      replies.push(...within.get(segment).sort((a, b) => b.seq - a.seq));"
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
     ]
    ],
    "check": {
@@ -4981,6 +4981,49 @@
    "check": {
     "native": "reading",
     "case": "stacks on a phone a message swiped right in a fully open stack"
+   }
+  },
+  {
+   "item": 361,
+   "act": "After a join every message of both stacks reads as one run under the head, oldest first, and a new reply to any of them lands at the bottom",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 361,
+   "act": "A joined stack's first message keeps its join line wherever the one run puts it, a join of a join included",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 361,
+   "act": "On the page a join makes one stack: both stacks' messages oldest first under the head, a new reply to the joined stack's message at the bottom, the keys and the phone reading the same",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
+     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a join makes one stack"
    }
   }
  ]

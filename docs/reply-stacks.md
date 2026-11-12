@@ -91,10 +91,17 @@ their acts.
   that one is loaded. Otherwise it is the message it answers, when loaded.
   Otherwise it heads its own stack. A loop, which joins made by different
   people can form, is cut at its newest message.
-- **Inside a stack.** The replies run oldest first, by sequence. A joined
-  stack's messages follow, as one run, in the order the joins were made, its
-  first message preceded by a line: "Joined from its own stack by …, time"
-  with Split back out.
+- **Inside a stack.** The head stays first. Every other message in the
+  stack runs oldest first, by sequence, as one run: the head's replies, each
+  joined stack's messages, the replies to those, and stacks joined to a
+  joined stack. A join makes two stacks one, so a new reply to any message
+  in it lands at the bottom. A joined stack's first message keeps a line
+  just before it, wherever it falls: "Joined from its own stack by …, time"
+  with Split back out. The latest reply in latest plus unread, the New
+  line, what counts as new, the Reader's ↑ and ↓ and the phone all read
+  this one run. A join changes no message, only the display, so Split back
+  out puts both stacks back exactly as they were. A stack's key is unchanged:
+  its newest message, whichever stack it came from.
 - **The stacks.** Each stack sorts by its key, newest first. The key is the
   reader's place if they set one, or else the newest message's sequence. A
   new stack therefore lands on top, and a new reply lifts its stack unless
@@ -206,6 +213,11 @@ The ⋯ menu offers:
 - Split back out (on a joined stack's first message)
 - every move above, each naming its keys
 
+A join makes the two stacks one: after it every message of both reads as
+one run under the head, oldest first, and a new reply to any of them lands
+at the bottom. The joined stack's first message keeps its "Joined from its
+own stack" line, with Split back out there and in ⋯.
+
 The right rail's Starred lists the reader's stars, this place's first and
 then Elsewhere. A press lands on the message, opening its stack if it is
 folded, and Unstar beside each takes the star off.
@@ -282,6 +294,7 @@ the stacks draw nothing.
 | Core's acts | `tests/test_stacks.py` (a fold: `FoldCase`) |
 | the migrations | `tests/test_migrations.py` (`StacksStepCase`; the fold's step, `FoldStepCase`) |
 | the display order | `tests/ui_stack_order.test.mjs` |
+| a join makes one stack: every message oldest first under the head, a new reply at the bottom, a join of a join, Split back out | `tests/ui_stack_order.test.mjs`; in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a join makes one stack …" |
 | on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
 | a fold: in a fully open stack, through every state, a reload and another device, unfolded by a press and ⌘Z, a link, Starred and the first message | `tests/stack_native.mjs`, "reading stacks a message folded in a fully open stack …"; on a phone, swiped right, swiped left and tapped, "reading stacks on a phone a message swiped right …" (Chrome only: Safari's engine in the harness has no finger drag) |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
