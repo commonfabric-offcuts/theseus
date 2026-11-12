@@ -797,6 +797,19 @@ function displayActor(id) {
   const known = [...views?.participants ?? [], ...outcomeMembers ?? [], ...directoryPeople];
   return known.find(person => (person.actor_id ?? person.id) === id && person.name)?.name || id;
 }
+// Where someone chooses a recipient, equal display names must remain distinguishable.
+function actorLabel(id) {
+  const known = [...views?.participants ?? [], ...outcomeMembers ?? [], ...directoryPeople], names = new Map();
+  for (const person of known) {
+    const key = person.actor_id ?? person.id;
+    if (person.name && !names.has(key)) names.set(key, person.name);
+  }
+  const name = names.get(id) || id;
+  return known.some(person => {
+    const other = person.actor_id ?? person.id;
+    return other !== id && (names.get(other) || other).toLowerCase() === name.toLowerCase();
+  }) ? `${name} (${id})` : name;
+}
 // Replies gather under the message they answer on every topic page, the
 // conversation's included (reply-stacks.mjs). A folded stack keeps in view a
 // reply the person has not read and, in the conversation, one whose card asks
@@ -1641,6 +1654,7 @@ async function initialize() {
   const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
     images: topicImages, imageBytes,
+    actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     reach: recipientReach, addressable: addressPeople,
     uploads: editor => registry.sessionFor(editor).uploads,
@@ -1656,6 +1670,7 @@ async function initialize() {
   reader = new Reader({
     images: topicImages, imageBytes,
     actorName: displayActor,
+    actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
     closing: p => registry?.isClosing(p),
@@ -1978,6 +1993,8 @@ function refreshDirectory() {
       if (item) paintCardAuthor(card.querySelector('.message-author'), item);
     }
     if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintOrigin(reader.source);
+    if (reader?.sessions) { reader.paintRecipients(); reader.paintChoice(); }
+    if (inline?.editor) { inline.paintRecipients(); inline.paintChoice(); }
   })
     .catch(() => {}).finally(() => { directoryRead = null; });
   return directoryRead;
@@ -2083,6 +2100,7 @@ function answeredBy(composer, audience, names, on) {
   const team = (outcomeMembers ?? []).filter(person => person.enabled !== false).map(person => person.actor_id);
   // The names wait for the conversation's view, which says who the coordinator is.
   const shown = on && here?.view ? paintAnswerers(choices, { coordinator: here.view.coordinator?.actor_id, members: team, names, reader: bootstrap.actor,
+    nameOf: actorLabel,
     toggle: (id, add) => add ? composer.addName(id) : composer.removeName(id) }) : [];
   if (!shown.length) choices.replaceChildren();
   // A team member named here shows as their pressed chip, not twice.

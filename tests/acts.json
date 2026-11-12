@@ -4667,8 +4667,8 @@
    "break": [
     [
      "web/whisper-choice.mjs",
-     "  if (to) { const words = toWords(names, place);",
-     "  if (false) { const words = toWords(names, place);"
+     "  if (to) { const words = toWords(shownNames, place);",
+     "  if (false) { const words = toWords(shownNames, place);"
     ]
    ],
    "check": {

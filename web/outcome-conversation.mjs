@@ -266,13 +266,13 @@ export function answererChoices({ coordinator, members, names, reader }) {
 // and refuses quietly when the writing cannot change now.
 // A chip that held focus hands it to the same person's new chip. Returns the
 // ids shown, whose plain recipient chips the row then leaves out.
-export function paintAnswerers(host, { coordinator, members, names, reader, toggle, doc = document }) {
+export function paintAnswerers(host, { coordinator, members, names, reader, toggle, doc = document, nameOf = id => id }) {
   const held = doc.activeElement?.parentElement === host ? doc.activeElement.dataset.answerer : undefined;
   const choices = answererChoices({ coordinator, members, names, reader });
   host.replaceChildren(...choices.map(({ id, pressed, fallback }) => {
-    const button = element(doc, 'button', { type: 'button', className: 'choice-chip', textContent: id, dataset: { answerer: id } });
+    const button = element(doc, 'button', { type: 'button', className: 'choice-chip', textContent: nameOf(id), dataset: { answerer: id } });
     button.setAttribute('aria-pressed', String(pressed));
-    if (fallback) button.title = `${id} answers when you name nobody`;
+    if (fallback) button.title = `${nameOf(id)} answers when you name nobody`;
     button.onclick = () => { if (!fallback) toggle(id, !pressed); };
     return button;
   }));

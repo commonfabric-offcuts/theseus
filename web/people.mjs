@@ -71,17 +71,17 @@ const element = (tag, props = {}, ...children) => {
 // the topic, and add, given to a reader who may change its participants,
 // offers to make them one, which also sends them every later message. answer
 // is reach(name), when the caller has already asked.
-export function markReach(chip, name, reach, answer = reach?.(name)) {
+export function markReach(chip, name, reach, answer = reach?.(name), nameOf = id => id) {
   if (!answer || answer.reachable) return;
   chip.classList.add('unreachable');
   if (answer.disabled) {
     chip.append(element('span', { className: 'reach', textContent: ' · switched off' }));
-    chip.title = `${name} is switched off, so a message to them is refused.`;
+    chip.title = `${nameOf(name)} is switched off, so a message to them is refused.`;
     return;
   }
   chip.append(element('span', { className: 'reach', textContent: ' · not in this topic' }));
-  chip.title = answer.add ? `A message to ${name} is refused until they are in this topic.`
-    : `A message to ${name} is refused until they are in this topic. Its creator or the outcome's owner can add them.`;
+  chip.title = answer.add ? `A message to ${nameOf(name)} is refused until they are in this topic.`
+    : `A message to ${nameOf(name)} is refused until they are in this topic. Its creator or the outcome's owner can add them.`;
   if (!answer.add) return;
   const add = element('button', { type: 'button', textContent: 'Add to topic (gets all its messages)' });
   const said = element('span', { className: 'reach-notice', hidden: true });
@@ -99,7 +99,7 @@ export function markReach(chip, name, reach, answer = reach?.(name)) {
     let receipt;
     try { receipt = await answer.add(); } catch (error) { receipt = { error }; }
     offer.out = false;
-    offer.notice = receipt?.status === 'committed' ? '' : ` · ${receipt?.error?.message ?? `Adding ${name} was not confirmed.`}`;
+    offer.notice = receipt?.status === 'committed' ? '' : ` · ${receipt?.error?.message ?? `Adding ${nameOf(name)} was not confirmed.`}`;
     offer.paint(); offer.leave();
   };
   chip.append(add, said);
@@ -160,7 +160,7 @@ function placeChips(host, chips) {
 // phone (docs/reader.md): everyone named, each with only a ×, and opener
 // (+ Someone) for the rest. It never lists anyone not named, so it is the
 // same size however big the team.
-export function paintAddress(host, field, { people, named, toggle, remove, reach, summary = null }) {
+export function paintAddress(host, field, { people, named, toggle, remove, reach, summary = null, nameOf = id => id }) {
   const at = document.activeElement, holder = [...host.children].find(chip => chip === at || [...chip.children ?? []].includes(at));
   const held = holder ? { name: holder.dataset.name, inner: holder !== at ? at.textContent : null } : null;
   const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
@@ -173,6 +173,7 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
   const offered = people.filter((id, index) => people.indexOf(id) === index);
   const chips = offered.map(id => {
     const chip = kept(id, 'choice', () => element('button', { type: 'button', className: 'choice-chip', textContent: id }));
+    if (chip.textContent !== nameOf(id)) chip.textContent = nameOf(id);
     chip.setAttribute('aria-pressed', named.includes(id) ? 'true' : 'false');
     chip.onclick = () => toggle(id, !named.includes(id));
     return chip;
@@ -182,15 +183,20 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
     const answer = reach?.(name); answers.set(name, answer);
     const key = JSON.stringify(['named', answer ? [answer.reachable === true, answer.disabled === true, Boolean(answer.add), answer.scope ?? null] : null]);
     const chip = kept(name, key, () => {
-      const fresh = element('span', { className: 'chip', textContent: name }), out = element('button', { type: 'button', textContent: '×' });
-      out.setAttribute('aria-label', `Remove ${name}`); fresh.out = out;
-      fresh.append(out); markReach(fresh, name, reach, answer); return fresh;
+      const fresh = element('span', { className: 'chip' }), out = element('button', { type: 'button', textContent: '×' });
+      fresh.nameNode = element('span', { textContent: nameOf(name) }); fresh.out = out;
+      fresh.append(fresh.nameNode, out); markReach(fresh, name, reach, answer, nameOf); return fresh;
     });
+    chip.nameNode.textContent = nameOf(name);
+    chip.out.setAttribute('aria-label', `Remove ${nameOf(name)}`);
+    if (answer && !answer.reachable) chip.title = answer.disabled
+      ? `${nameOf(name)} is switched off, so a message to them is refused.`
+      : `A message to ${nameOf(name)} is refused until they are in this topic.${answer.add ? '' : " Its creator or the outcome's owner can add them."}`;
     chip.out.onclick = () => remove(name);
     chips.push(chip);
   }
   placeChips(host, chips);
-  if (summary) paintNamed(summary, named, remove, answers);
+  if (summary) paintNamed(summary, named, remove, answers, nameOf);
   if (!held) return;
   const next = chips.find(chip => chip.dataset.name === held.name);
   // The same button on the new chip (its words say which), or the chip itself.
@@ -202,19 +208,21 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
 // (its offer to add them is in the naming sheet). A chip is kept while it
 // shows the same, so a press held across a repaint still clicks, and a ×
 // that held the focus as its chip went hands it to opener.
-function paintNamed({ host, opener }, named, remove, answers) {
+function paintNamed({ host, opener }, named, remove, answers, nameOf) {
   const held = [...host.children].some(chip => chip.contains(document.activeElement));
   const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
   const chips = [...new Set(named)].map(name => {
     const answer = answers.get(name), away = Boolean(answer && !answer.reachable);
     let chip = was.get(name);
     if (chip?.away !== away) {
-      chip = element('span', { className: away ? 'chip unreachable' : 'chip', textContent: name });
+      chip = element('span', { className: away ? 'chip unreachable' : 'chip' });
+      chip.nameNode = element('span', { textContent: nameOf(name) });
       const out = element('button', { type: 'button', textContent: '×' });
-      out.setAttribute('aria-label', `Remove ${name}`);
-      if (away) chip.title = `${name} is not in this topic, so a message to them is refused. + Someone says more.`;
-      chip.append(out); Object.assign(chip, { out, away }); chip.dataset.name = name;
+      chip.append(chip.nameNode, out); Object.assign(chip, { out, away }); chip.dataset.name = name;
     }
+    chip.nameNode.textContent = nameOf(name);
+    chip.out.setAttribute('aria-label', `Remove ${nameOf(name)}`);
+    if (away) chip.title = `${nameOf(name)} is not in this topic, so a message to them is refused. + Someone says more.`;
     chip.out.onclick = () => remove(name);
     return chip;
   });

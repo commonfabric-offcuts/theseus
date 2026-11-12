@@ -367,7 +367,19 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       await q.evaluate(`document.querySelector('${card}').scrollIntoView({block:'center'})`);
       await q.point(`${card} .message-preview`);
       await until(() => q.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-origin').textContent.startsWith('codex')`), 'the Reader also uses current name');
+      await until(() => q.evaluate(`document.querySelector('#recipient-chips [data-name="${id}"]')?.textContent === 'codex'`), 'reply recipient choice uses current name');
+      assert.equal(await q.evaluate(`document.querySelector('#who-chip').textContent`), 'Tell codex · everyone here');
+      assert.equal(await q.evaluate(`document.querySelector('#writing-to').textContent`), 'To codex');
+      assert.ok((await q.evaluate(`document.querySelector('#writing-body').placeholder`)).startsWith('Reply to codex'));
       await shot(q, 'header-renamed-reader');
+      const body = 'Reply addressed to the same renamed agent.';
+      await q.point('#writing-body');
+      await q.send('Input.insertText', { text: body });
+      await until(() => q.evaluate(`document.querySelector('#writing-body').value === ${JSON.stringify(body)}`), 'reply is written');
+      await q.point('#send-reply');
+      const sent = await until(async () => (await view('topic_messages', { topic_id: made.topic_id, direction: 'before', limit: 20 })).items.find(item => item.body === body), 'Core records the reply');
+      assert.deepEqual(sent.addressees, [id], 'display names never replace canonical recipients');
+      assert.equal(sent.reply_to, message, 'the renamed author keeps the same reply thread');
       assert.deepEqual([...p.errors, ...q.errors], []);
     } finally {
       await control({ method: 'actor_name', actor_id: id, name: id });

@@ -1983,7 +1983,7 @@ test('a team read on focus that fails keeps the team the page had; one refused f
   const offered = () => f.get('addressable-names').children.map(option => option.value);
   const mark = name => {
     nameIn(f, 'inline-recipient-input', name);
-    return f.get('inline-recipient-chips').children.find(node => node.textContent === name).className;
+    return f.get('inline-recipient-chips').children.find(node => node.dataset.name === name).className;
   };
   assert.deepEqual([offered(), mark('stranger')], [['fixture-person', 'ally', 'fable'], 'chip unreachable']);
   // A busy server sheds the background read just as the person starts naming.
@@ -2165,7 +2165,7 @@ test('addressing someone outside the topic offers its manager to add them, and t
   await f.initialize();
   showComposer(f);
   const address = name => { nameIn(f, 'inline-recipient-input', name); };
-  const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
+  const chip = name => f.get('inline-recipient-chips').children.find(node => node.dataset.name === name);
   address('ally'); address('stranger'); address('fable');
   assert.equal(chip('ally').className, 'chip', 'an outcome member can be sent to');
   assert.deepEqual([chip('fable').className, chip('fable')['aria-pressed']], ['choice-chip', 'true'], 'a participant is a name tapped once, lit when named');
@@ -2192,7 +2192,7 @@ test('a switched-off participant or teammate is marked so, with no add offer, an
   await f.initialize();
   showComposer(f);
   const address = name => { nameIn(f, 'inline-recipient-input', name); };
-  const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
+  const chip = name => f.get('inline-recipient-chips').children.find(node => node.dataset.name === name);
   address('idle'); address('gone'); address('stranger');
   for (const name of ['idle', 'gone']) {
     assert.equal(chip(name).className, 'chip unreachable', `${name} cannot receive`);
@@ -2230,11 +2230,11 @@ test('a reader who cannot change the participants is told who could, and a team 
   await f.initialize();
   showComposer(f);
   nameIn(f, 'inline-recipient-input', 'stranger');
-  const chip = f.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger');
+  const chip = f.get('inline-recipient-chips').children.find(node => node.dataset.name === 'stranger');
   assert.equal(chip.className, 'chip unreachable');
   assert.equal(walk(chip).some(node => node.textContent?.startsWith('Add to topic')), false);
   nameIn(f, 'inline-recipient-input', 'tony');
-  assert.equal(f.get('inline-recipient-chips').children.find(node => node.textContent === 'tony').className, 'chip',
+  assert.equal(f.get('inline-recipient-chips').children.find(node => node.dataset.name === 'tony').className, 'chip',
     'the topic\'s owner can always be sent to, participant or not');
 
   const hidden = fixture();
@@ -2244,7 +2244,7 @@ test('a reader who cannot change the participants is told who could, and a team 
   await hidden.initialize();
   showComposer(hidden);
   nameIn(hidden, 'inline-recipient-input', 'stranger');
-  assert.equal(hidden.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger').className, 'chip');
+  assert.equal(hidden.get('inline-recipient-chips').children.find(node => node.dataset.name === 'stranger').className, 'chip');
 });
 
 test('a card in the topic log says when its message was sent, and a message from before times were kept says nothing', async () => {

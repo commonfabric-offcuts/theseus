@@ -464,6 +464,32 @@ test('Address is the topic\'s people as names tapped once, lit while named; anyo
   assert.deepEqual(host.children, [], 'nobody in the topic and nobody named: no chips');
 });
 
+test('recipient choices and named summaries repaint current names without changing their identity or held controls', t => {
+  dom(t);
+  const host = new Element('div'), field = new Element('input'), summary = { host: new Element('div'), opener: new Element('button') };
+  const toggled = [], removed = []; let current = 'codex';
+  const nameOf = id => id === 'codex-worker' ? current : id;
+  const paint = people => paintAddress(host, field, { people, named: ['codex-worker'], nameOf, summary,
+    reach: () => ({ reachable: true }), toggle: (id, on) => toggled.push([id, on]), remove: id => removed.push(id) });
+  paint(['codex-worker']);
+  const choice = host.children[0], compact = summary.host.children[0], out = compact.out;
+  assert.equal(choice.textContent, 'codex');
+  assert.equal(out.getAttribute('aria-label'), 'Remove codex');
+  out.focus(); current = 'Codex renamed'; paint(['codex-worker']);
+  assert.equal(host.children[0], choice); assert.equal(summary.host.children[0].out, out);
+  assert.equal(document.activeElement, out); assert.equal(choice.textContent, current);
+  assert.equal(out.getAttribute('aria-label'), `Remove ${current}`);
+  choice.onclick(); out.onclick();
+  assert.deepEqual(toggled, [['codex-worker', false]]); assert.deepEqual(removed, ['codex-worker']);
+  paint([]);
+  const outside = host.children[0], outsideOut = outside.out;
+  assert.equal(outside.nameNode.textContent, current);
+  outsideOut.focus(); current = 'codex'; paint([]);
+  assert.equal(host.children[0], outside); assert.equal(document.activeElement, outsideOut);
+  assert.equal(outside.nameNode.textContent, current); outsideOut.onclick();
+  assert.deepEqual(removed, ['codex-worker', 'codex-worker']);
+});
+
 // The Reader and the composer repaint Address after every commit in the topic.
 // A press held on a name while that runs must still click, so a name whose
 // chip would look the same keeps it.

@@ -648,7 +648,7 @@ export class Reader {
     if (!editor || !this.editor || !root) return;
     const note = this.mode === 'note', names = this.names(editor);
     const { choice } = choiceOf(editor.draft, names, this.kindOf, this.answering());
-    const who = list(names), place = this.place(editor), at = place ? ` in ${place.name}` : '';
+    const who = list(names.map(id => this.callbacks.actorLabel?.(id) ?? id)), place = this.place(editor), at = place ? ` in ${place.name}` : '';
     this.field.placeholder = note ? 'Write a private note only you can see…' : !who ? `Reply${at}…`
       : choice === 'whisper' ? `Whisper to ${who}${at}…` : choice === 'ask' ? `Ask ${who}${at}…` : `Reply to ${who}${at}…`;
     const writing = written(this.editor.draft);
@@ -676,6 +676,7 @@ export class Reader {
     const named = recipientChoices(this.own(editor)).map(({ name }) => name);
     const off = name => this.removeName(name, editor, presentation);
     paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [], named: [...new Set(named)],
+      nameOf: this.callbacks.actorLabel,
       reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.addName(name) : off(name),
       summary: this.naming && { host: this.naming.named, opener: this.naming.opener } });
     this.callbacks.recipientsPainted?.(this.own(editor), editor.context.topicId);
@@ -735,6 +736,7 @@ export class Reader {
     note.textContent = place?.note ?? ''; note.hidden = !place?.note;
     if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply'), this.$('who-sentence'), this.$('writing-to')); this.paintLine(); return; }
     paintChoice(row, { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf, everyone: this.callbacks.people?.().everyone ?? [],
+      nameOf: this.callbacks.actorLabel,
       send: this.$('send-reply'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly: Boolean(this.field?.readOnly), ...this.answering(),
       place: place?.name ?? null, to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
     this.paintLine();
