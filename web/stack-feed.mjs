@@ -180,17 +180,17 @@ export class StackFeed {
   // Messages arrived: the stacks are drawn with them in, then the reader's own
   // reply arriving in a stack deals with the stack up to it, as does their
   // thumbs-up on a reply (thumbed). The page's first messages are none of these.
+  // Such a reply also stays in view beside what answers it (it is never
+  // unread, so nothing else keeps it), from the first draw it is in, until a
+  // change of the stack's state or coming back lets go of it.
   arrived(items) {
-    this.arrange();
     const newest = items.reduce((most, item) => Math.max(most, item.seq), 0);
-    if (this.newestSeen === null) { this.newestSeen = newest; return; }
-    for (const item of items) if (item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || this.actsOf(item.id).joined)) {
-      // Own replies are never unread. Keep one sent in this view beside its
-      // answer until an explicit state change or return clears retention.
-      this.state.kept.add(item.id);
-      this.deal(item);
-    }
-    this.newestSeen = Math.max(this.newestSeen, newest);
+    const mine = this.newestSeen === null ? []
+      : items.filter(item => item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || this.actsOf(item.id).joined));
+    for (const item of mine) this.state.kept.add(item.id);
+    this.arrange();
+    this.newestSeen = Math.max(this.newestSeen ?? newest, newest);
+    for (const item of mine) this.deal(item);
   }
   thumbed(item) { if (stackOf(this.list, this.entryFor(item.id))?.head === false) this.deal(item); }
   // Coming back to the page: what was kept in view only while in front of the
