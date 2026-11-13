@@ -251,13 +251,15 @@
 .reply-stack:not(.only-new *) .message-card[data-folded=true]>.message-folded,
 .reply-stack:not(.only-new *) .message-fold[data-talk=agents]>.fold-line{opacity:1;transition:none}
 .reply-stack:not(.only-new *) .message-folded{color:var(--stack-folded-ink);align-items:center}
-/* A saved fold or this reader's thumb gets the same material as a read
-   message, even before the feed's read marker catches up. Other people's
-   thumbs do not change it; the reader's own cards keep their black. */
-.message-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):not(.own-message):not(.agent-card){--muted:var(--stack-read-ink);background:var(--read-card)}
-.message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)){background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}
-.message-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):not(.own-message):not(.agent-card):hover{background:var(--read-hover)}
-.message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):hover{background:var(--agent-hover)}
+/* In a dossier, a saved fold gets the same material as a read message, even
+   before the feed's read marker catches up. Nothing else does: a thumbs-up,
+   the reader's own or anyone's, and a fold outside a dossier (a placed
+   single message too) keep the feed's read state. The reader's own cards
+   keep their black. */
+.reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card){--muted:var(--stack-read-ink);background:var(--read-card)}
+.reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}
+.reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card):hover{background:var(--read-hover)}
+.reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]:hover{background:var(--agent-hover)}
 
 /* A narrow column (a phone): a shorter tab, a little less folder round the sheets. */
 @media(max-width:760px){

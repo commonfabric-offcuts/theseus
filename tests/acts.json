@@ -8164,17 +8164,87 @@
   },
   {
    "item": 429,
-   "act": "A saved fold uses read material before its read marker catches up",
+   "act": "A saved fold in a dossier uses read material before its read marker catches up",
    "break": [
     [
      "web/stack-look.css",
-     ".message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)){background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}",
-     ".message-card.agent-card:has(>.message-reactions>.reaction-count.mine){background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}"
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=none]{"
     ]
    ],
    "check": {
     "native": "reading",
     "case": "reading dossier look gives a saved fold"
+   }
+  },
+  {
+   "item": 429,
+   "act": "The reader's own thumbs-up leaves a card's unread material, in a dossier or out",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)){"
+    ],
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card){",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):not(.own-message):not(.agent-card){"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A fold outside a dossier keeps the feed's read state",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".message-card.agent-card[data-folded=true]{"
+    ],
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card){",
+     ".message-card[data-folded=true]:not(.own-message):not(.agent-card){"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A placed single message is no dossier: its fold keeps the feed's read state",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack:not(.only-new *) .message-card.agent-card[data-folded=true]{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "At latest and unread, hidden replies take no overlap and separate no visible faces",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (entry.hidden) continue;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look at latest and unread"
    }
   }
  ]

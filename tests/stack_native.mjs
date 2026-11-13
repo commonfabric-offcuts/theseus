@@ -166,6 +166,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         ['singlePlain', { sender: other, addressees: [facts.actor], body: 'A single agent message nobody touched.' }],
         ['humanSingleFold', { sender: human, addressees: [facts.actor], body: 'A single person\'s message the reader folded.' }],
         ['humanSinglePlain', { sender: human, addressees: [facts.actor], body: 'A single person\'s message nobody touched.' }],
+        ['placedFold', { sender: other, addressees: [facts.actor], body: 'A placed single message the reader folded.' }],
+        ['placedPlain', { sender: other, addressees: [facts.actor], body: 'A placed single message nobody touched.' }],
       ]);
       const thumbed = [ids.agentThumb, ids.humanThumb, ids.singleThumb];
       // A star keeps a thumbed card whole (a thumbs-up folds it otherwise), as the reviewer's steps do.
@@ -173,11 +175,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: id, operation_id: `${topic}-${id}-star`, args: { starred: true } });
         await control({ method: 'agent_thumb', sender: facts.actor, message_id: id, operation_id: `${topic}-${id}-thumb` });
       }
-      for (const id of [ids.singleFold, ids.humanSingleFold]) await dossierFold(topic, id);
+      for (const id of [ids.singleFold, ids.humanSingleFold, ids.placedFold]) await dossierFold(topic, id);
+      // A placed single is a stack section of one message, still no dossier.
+      for (const [id, key] of [[ids.placedFold, 1], [ids.placedPlain, 2]]) {
+        await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: id, operation_id: `${topic}-${id}-place`, args: { key } });
+      }
       await control({ method: 'mark', operation_id: topic + '-mark', message_ids: thumbed, marked: true });
       const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;'); await dossierOpen(p, device, ids.root);
-      const pairs = [['agentThumb', 'agentPlain', true], ['humanThumb', 'humanPlain', true], ['singleThumb', 'singlePlain', false],
-        ['singleFold', 'singlePlain', false], ['humanSingleFold', 'humanSinglePlain', false]];
+      const pairs = [['agentThumb', 'agentPlain', 'dossier'], ['humanThumb', 'humanPlain', 'dossier'], ['singleThumb', 'singlePlain', 'feed'],
+        ['singleFold', 'singlePlain', 'feed'], ['humanSingleFold', 'humanSinglePlain', 'feed'], ['placedFold', 'placedPlain', 'placed']];
       await until(() => p.evaluate(`${JSON.stringify(thumbed)}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-reactions > .reaction-count.mine'))`),
         `${device}: the reader's own thumbs-up shows on each thumbed card`);
       await away(p);
@@ -185,12 +191,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await dossierTheme(p, theme);
         const material = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
           pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
-          face=id=>{const e=c(id);return {stack:Boolean(e.closest('.reply-stack:not([data-single=true])')),read:e.hasAttribute('data-read'),folded:e.dataset.folded==='true',
+          face=id=>{const e=c(id),s=e.closest('.reply-stack');return {where:!s?'feed':s.dataset.single==='true'?'placed':'dossier',read:e.hasAttribute('data-read'),folded:e.dataset.folded==='true',
             unreadPill:Boolean(e.querySelector('.unread-mark')),mine:Boolean(e.querySelector(':scope > .message-reactions > .reaction-count.mine')),fill:pixel(getComputedStyle(e).backgroundColor)}};
           return Object.fromEntries(Object.keys(ids).map(name=>[name,face(ids[name])]))})()`);
-        for (const [touched, plain, stacked] of pairs) {
+        for (const [touched, plain, where] of pairs) {
           const t = material[touched], u = material[plain];
-          assert.deepEqual([t.stack, u.stack], [stacked, stacked], `${device} ${theme}: ${touched} and ${plain} are ${stacked ? 'inside' : 'outside'} a dossier: ${JSON.stringify(material)}`);
+          assert.deepEqual([t.where, u.where], [where, where], `${device} ${theme}: ${touched} and ${plain} are both in the ${where}: ${JSON.stringify(material)}`);
           assert.deepEqual([t.read, u.read], [false, false], `${device} ${theme}: ${touched} and ${plain} are both unread`);
           if (touched.endsWith('Thumb')) assert.deepEqual([t.mine, t.folded, t.unreadPill], [true, false, true], `${device} ${theme}: ${touched} holds the reader's thumbs-up, whole, marked unread`);
           else assert.equal(t.folded, true, `${device} ${theme}: ${touched} is a saved fold`);
