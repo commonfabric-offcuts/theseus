@@ -44,8 +44,10 @@ export class StackMotion {
       const card = cardIn(entry), section = entry.closest('.reply-stack');
       if (!section || !visible(entry, this.win) || !visible(card, this.win)) continue;
       const style = this.win.getComputedStyle(card);
+      const header = card.querySelector(card.dataset.folded === 'true' ? ':scope > .message-folded .folded-author' : ':scope > .message-author');
+      const headerInset = header ? rect(header).top - rect(card).top - (parseFloat(style.borderTopWidth) || 0) : parseFloat(style.paddingTop);
       faces.set(entry.dataset.id, { entry, card, section, box: rect(card), folded: card.dataset.folded === 'true',
-        pad: parseFloat(style.paddingTop), displays: new Map([...card.children].map(child => [child, this.win.getComputedStyle(child).display])) });
+        headerInset, scrollTop: card.scrollTop, pad: parseFloat(style.paddingTop), displays: new Map([...card.children].map(child => [child, this.win.getComputedStyle(child).display])) });
     }
     const sections = new Map([...this.list.querySelectorAll('.reply-stack')].filter(node => visible(node, this.win))
       .map(node => [node, { top: rect(node).top, floor: rect(node.querySelector('.stack-replies')).height }]));
@@ -73,7 +75,7 @@ export class StackMotion {
     for (const [id, old] of before.faces) {
       const entry = current.get(id), card = entry && cardIn(entry), folded = card?.dataset.folded === 'true';
       if (!entry || !card || entry.parentElement?.className !== 'stack-replies' || !visible(entry, this.win) || folded === old.folded ||
-          entry.closest('.reply-stack') !== old.section || !belowAnchor(rect(entry).top, before.anchor === entry ? null : before.anchorBox)) continue;
+          entry.closest('.reply-stack') !== old.section || old.scrollTop > 0 || !belowAnchor(rect(entry).top, before.anchor === entry ? null : before.anchorBox)) continue;
       for (const effect of [...this.active]) if (effect.faces.some(face => face.card === card)) effect.finish();
       this.fold(entry, old, folded);
     }
@@ -133,8 +135,8 @@ export class StackMotion {
   }
   fold(entry, old, folded) {
     const card = cardIn(entry), target = rect(card).height, style = this.win.getComputedStyle(card), naturalPad = parseFloat(style.paddingTop);
-    const author = card.querySelector(':scope > .message-author'), authorHeight = author ? rect(author).height || 20 : 20;
-    const compactPad = Math.max(0, (folded ? target : old.box.height) - (parseFloat(style.paddingBottom) || 0) - authorHeight) / 2;
+    const rowAuthor = card.querySelector(':scope > .message-folded .folded-author');
+    const compactPad = folded && rowAuthor ? rect(rowAuthor).top - rect(card).top - (parseFloat(style.borderTopWidth) || 0) : old.headerInset;
     const effect = this.effect([entry], folded ? 'fold' : 'unfold');
     if (folded) {
       // Paint the existing original header/body through the shrinking clip.

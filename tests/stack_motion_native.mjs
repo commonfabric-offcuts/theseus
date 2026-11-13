@@ -10,7 +10,7 @@ for(const c of document.querySelectorAll('#messages .message-card[data-stack-mot
  const authors=[...c.querySelectorAll(':scope>.message-author,:scope>.message-folded')].filter(n=>getComputedStyle(n).display!=='none'&&getComputedStyle(n).visibility!=='hidden');
  window.motionFrames.push({clock:window.motionClock,id:c.dataset.id,kind:c.dataset.stackMotion,top:b.top,bottom:b.bottom,height:b.height,
  opacity:+getComputedStyle(e).opacity,transform:getComputedStyle(e).transform,edge:b.bottom-(q?.top||0),floor:q?.height,
- authors:authors.length,authorOpacity:a?+getComputedStyle(a).opacity:1,sectionBottom:s?.getBoundingClientRect().bottom,
+ authors:authors.length,authorOffset:a?a.getBoundingClientRect().top-b.top:null,authorOpacity:a?+getComputedStyle(a).opacity:1,sectionBottom:s?.getBoundingClientRect().bottom,
  priorTop:prior?.getBoundingClientRect().top,animations:e.getAnimations().length+c.getAnimations().length});}
  };const tick=()=>{setTimeout(sample,0);requestAnimationFrame(tick)};requestAnimationFrame(tick)});`;
 
@@ -86,10 +86,12 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     await atWidths('unfold',async ctx=>{
       const {p,ids,width,device}=ctx; await folded(ctx);
       const before=(await p.box(card(ids.one))).height;
+      const headerOffset=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.one))});return c.querySelector('.folded-author').getBoundingClientRect().top-c.getBoundingClientRect().top})()`);
       await centre(p,card(ids.one)); await press(p,device,card(ids.one)); await settled(p);
       const samples=await frames(p,ids.one,'unfold'), after=(await p.box(card(ids.one))).height;
       assert.ok(samples.length>2&&samples.some(f=>f.height>before+2&&f.height<after-2),'unfold has intermediate heights');
       assert.ok(samples.every(f=>f.authors===1&&f.authorOpacity===1),'unfold keeps one solid header');
+      assert.ok(Math.abs(samples[0].authorOffset-headerOffset)<3,'the original author resumes at the folded author inset');
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).dataset.folded`),'false');
       observations['motion-unfold-'+width]=samples; await shot(p,'motion-unfold-'+width);
     });
