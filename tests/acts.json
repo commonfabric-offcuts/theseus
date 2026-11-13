@@ -8656,6 +8656,34 @@
    "check": {
     "python": "test_checkpoints.py"
    }
+  },
+  {
+   "item": 405,
+   "act": "Unrecorded store failures leave completed assessments resumable",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "confirmed = receipt.get('recorded') is True or failure.get('code') == 'INVALID_ARGUMENT'",
+     "confirmed = True"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Unusable native final output ends durably without another model turn",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "except DispatchError as error:\n        if str(error) not in ('report_too_large'",
+     "except DispatchError as error:\n        raise\n        if str(error) not in ('report_too_large'"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
   }
  ]
 }

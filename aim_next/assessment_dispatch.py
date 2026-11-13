@@ -72,8 +72,13 @@ class Core:
                                      'authority_epoch':self.profile.authority_epoch}}}
         receipt = self.store.command(self.profile.actor_id,envelope)
         if receipt.get('status') != 'committed':
-            error = ReportRefused if action == 'finish' and receipt.get('status') == 'rejected' else DispatchError
-            raise error(receipt.get('error',{}).get('code','unconfirmed_command'))
+            failure = receipt.get('error',{})
+            # A store fault can say rejected without recording a command outcome.
+            # Invalid arguments are a definite validation refusal even when unrecorded.
+            confirmed = receipt.get('recorded') is True or failure.get('code') == 'INVALID_ARGUMENT'
+            error = ReportRefused if (action == 'finish' and receipt.get('status') == 'rejected'
+                                     and confirmed and not failure.get('retryable')) else DispatchError
+            raise error(failure.get('code','unconfirmed_command'))
         return receipt['result']
 
     def readback(self, record):

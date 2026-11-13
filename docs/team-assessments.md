@@ -131,19 +131,29 @@ and exposes due reminders to the coordinator. It is not a background scheduler.
 
 `assessment.abandon` targets an unreported request and takes a nonempty `reason`.
 The assigned assessor may record an unusable native result; the named operator or
-requester may abandon only while still organizing the outcome. The terminal
-record retains its thread, runtime and reason. It rejects later attach/finish,
+requester may abandon only while still organizing the outcome. The assessor may
+also decline a request before attaching a native thread, recording its reason.
+The terminal record retains its thread, runtime and reason. It rejects later attach/finish,
 never changes a route or stops a running agent, and never posts a report. An
 identical reason is idempotent; a changed reason is refused. The same assignment
 can then be explicitly requested again with a fresh request and fresh thread.
+This new request needs a new operation id. Retrying the original operation id
+reads its original receipt and still returns the abandoned request id.
 Reported assessments cannot be abandoned. This also gives the operator a way out
 when the recorded runtime or native history is no longer available.
 
-The dispatcher abandons a completed report only on a confirmed Core rejection or
-unusable final JSON. An uncertain transport/store failure remains resumable and
-must reconcile first. It returns the terminal reason on retry without another
-model turn. Message citation ids must be distinct ids of public messages in the
+The dispatcher abandons a completed report only on a recorded Core rejection,
+a definite invalid-argument refusal, or unusable final JSON. An uncertain
+transport/store failure, including an unrecorded `INTERNAL_ERROR` receipt,
+remains resumable and must reconcile first. It returns the terminal reason on
+retry without another model turn. Message citation ids must be distinct ids of public messages in the
 named topic; artifact paths and commit ids belong in the report body.
+
+The CLI exits 0 for a reported result and 2 for an abandoned result, printing
+either result to stdout. It exits 1 for unfinished work, printing the reason to
+stderr. A native-history protocol fault such as `repeated_item_cursor` stays
+unfinished: retry after recovery or explicitly abandon it; it does not prove
+the completed report itself is invalid.
 
 A report is a public record in its original topic, with pending deliveries only
 for its requester/operator. Other participants receive settled deliveries; the

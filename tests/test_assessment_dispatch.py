@@ -154,6 +154,22 @@ class DispatchCase(unittest.TestCase):
         self.assertEqual(self.count('turn/start'),1)
         self.assertEqual(self.sql('SELECT count(*) FROM messages WHERE author_id=?',('agent-b',)),[(1,)])
 
+    def test_internal_store_error_keeps_completed_turn_resumable(self):
+        self.sql("CREATE TRIGGER reject_report BEFORE INSERT ON messages WHEN NEW.author_id='agent-b' "
+                 "BEGIN SELECT RAISE(ABORT,'simulated report storage fault'); END")
+        with self.assertRaisesRegex(DispatchError,'INTERNAL_ERROR'):
+            self.run_assessment()
+        record = self.core.record(self.identity)
+        self.assertEqual(record['state'],'attached')
+        self.assertEqual(self.sql('SELECT count(*) FROM messages WHERE author_id=?',('agent-b',)),[(0,)])
+        self.sql('DROP TRIGGER reject_report')
+        result = self.run_assessment()
+        self.assertEqual(result['status'],'reported')
+        self.assertEqual(result['thread_id'],record['thread_id'])
+        self.assertEqual(self.count('thread/start'),1)
+        self.assertEqual(self.count('turn/start'),1)
+        self.assertEqual(self.sql('SELECT count(*) FROM messages WHERE author_id=?',('agent-b',)),[(1,)])
+
     def test_lock_excludes_second_driver_and_survives_parent_close_while_child_runs(self):
         with request_lock(self.profile,self.identity) as fd:
             with self.assertRaisesRegex(DispatchError,'already_running'):
@@ -296,3 +312,34 @@ class DispatchCase(unittest.TestCase):
                 with self.assertRaisesRegex(DispatchError,'settings_not_applied'): self.run_assessment()
                 self.assertIsNone(self.core.record(self.identity)['thread_id'])
                 self.assertEqual(self.count('turn/start'),0)
+
+    def test_unusable_native_final_output_is_terminal(self):
+        for label, raw in [('invalid_json','not json'), ('invalid_shape','{}'),
+                           ('too_large','x'*100001), ('missing',None)]:
+            with self.subTest(label=label):
+                self.identity=self.ok(self.request(op=label,assignment=label))['assessment_id']
+                self.native=Native(self.source); original=self.native.call
+                def unusable(method,params):
+                    result=original(method,params)
+                    if method=='thread/items/list':
+                        if raw is None: result['data']=[]
+                        else: result['data'][0]['item']['text']=raw
+                    return result
+                self.native.call=unusable
+                try: result=self.run_assessment()
+                except DispatchError as error: self.fail('Unusable final output stayed unfinished: '+str(error))
+                self.assertEqual(result['status'],'abandoned')
+                self.assertEqual(self.run_assessment(),result)
+                self.assertEqual(self.count('turn/start'),1)
+
+    def test_repeated_history_cursor_stays_resumable(self):
+        original=self.native.call
+        def broken_page(method,params):
+            result=original(method,params)
+            return {'data':[],'nextCursor':'again'} if method=='thread/items/list' else result
+        self.native.call=broken_page
+        with self.assertRaisesRegex(DispatchError,'repeated_item_cursor'): self.run_assessment()
+        self.assertEqual(self.core.record(self.identity)['state'],'attached')
+        self.native.call=original
+        self.assertEqual(self.run_assessment()['status'],'reported')
+        self.assertEqual(self.count('turn/start'),1)
