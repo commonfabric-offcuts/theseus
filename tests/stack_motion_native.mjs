@@ -218,6 +218,51 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     });
   });
 
+  // At the page's end the window cannot yet scroll to where a reply still
+  // moving lands: its folder is shorter in flight. The keys still reveal it as
+  // the still page would, the reveal's room below it and no more.
+  const long = width => 'A long live reply.\n\n'+'The boundary follows this moving edge. '.repeat(width>=1280?32:width<=320?20:24);
+  const atEnd = async (ctx, kind, start) => {
+    const {p,ids}=ctx;
+    await keyTo(p,ids.two);
+    const end=await p.evaluate('(scrollTo(0,document.scrollingElement.scrollHeight),{y:scrollY,max:document.scrollingElement.scrollHeight-innerHeight})');
+    assert.ok(end.max>0&&Math.abs(end.y-end.max)<1,`the page stands at its end: ${JSON.stringify(end)}`);
+    await p.evaluate('window.motionFrames=[]');
+    const id=await start();
+    await p.evaluate(`new Promise(done=>{const look=()=>{const c=document.querySelector(${JSON.stringify(card(id))}),e=c?.closest('.stack-replies > [data-id]'),o=e&&+getComputedStyle(e).opacity;
+      if(c?.dataset.stackMotion===${JSON.stringify(kind)}&&(${JSON.stringify(kind)}!=='arrival'||o>.02&&o<.6))done();else requestAnimationFrame(look)};look()})`);
+    const before=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return {height:c.getBoundingClientRect().height,y:scrollY}})()`);
+    await p.key('ArrowDown');
+    const keyed=await p.evaluate(`[document.querySelector(${JSON.stringify(card(id))}).dataset.stackMotion??null,window.motionClock,document.querySelector('#messages .message-card.lit')?.dataset.id??null,scrollY]`);
+    assert.deepEqual([keyed[0],keyed[2]],[kind,id],`ArrowDown lit the reply while it was still moving (${kind})`);
+    await settled(p);
+    await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    const box=await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect(),s=getComputedStyle(document.documentElement);
+      const top=parseFloat(s.scrollPaddingTop)||0,bottom=innerHeight-(parseFloat(s.scrollPaddingBottom)||0),h=bottom-top;
+      return {top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight,want:bottom-Math.min(h*.1,h-r.height),y:scrollY,
+        rootStyle:document.documentElement.getAttribute('style')}})()`);
+    assert.ok(box.height<box.screen,`the reply fits the screen: ${JSON.stringify(box)}`);
+    assert.ok(box.top>=0&&Math.abs(box.bottom-box.want)<=1.5,`the lit reply lands whole with the reveal's room below it, as the still page shows it: ${JSON.stringify({before,keyed:keyed[3],...box})}`);
+    assert.equal(box.y,keyed[3],'the page scrolled once, at the key, and stayed while it landed');
+    assert.equal(box.rootStyle,null,'nothing the motion held on the page outlives it');
+    assert.ok((await frames(p,id,kind)).some(f=>f.clock>keyed[1]&&(kind==='arrival'?f.transform!=='none':f.height<before.height+(box.height-before.height)*.9)),'the keys do not cut its motion short');
+  };
+  await check('reading dossier motion the keys onto a long reply arriving at the page end reveal it as the still page does at 320 375 390 and laptop', async()=>{
+    await atWidths('keys-end',async ctx=>atEnd(ctx,'arrival',async()=>
+      (await control({method:'agent_message',operation_id:ctx.topic+'-long',topic_id:ctx.topic,source:'topic',sender:'aim-core',reply_to:ctx.ids.root,addressees:[facts.actor],body:long(ctx.width)})).result.message_id));
+  });
+  await check('reading dossier motion the keys onto a long reply unfolding at the page end reveal it as the still page does at 320 375 390 and laptop', async()=>{
+    await atWidths('keys-end-unfold',async ctx=>{
+      const {p,topic,ids}=ctx;
+      const id=(await control({method:'agent_message',operation_id:topic+'-long',topic_id:topic,source:'topic',sender:'aim-core',reply_to:ids.root,addressees:[facts.actor],body:long(ctx.width)})).result.message_id;
+      await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}))`),'the long reply is drawn'); await settled(p);
+      const fold=on=>control({method:'stack_act',sender:facts.actor,kind:'message.fold',message_id:id,operation_id:`${topic}-fold-${on}`,args:{folded:on}});
+      await fold(true);
+      await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.folded==='true'`),'the fold from another device reaches the page'); await settled(p);
+      await atEnd(ctx,'unfold',async()=>(await fold(false),id));
+    });
+  });
+
   // What the person is writing below a dossier stays where it is: a reply
   // arriving above it lands in its natural place, with no travel.
   const holds = async (ctx, opener, field) => {
