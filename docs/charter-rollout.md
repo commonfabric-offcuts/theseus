@@ -3,7 +3,7 @@
 Owner: auditor. Source: Tony's New Charter topic,
 `t-314359e63ef84d59ace7349c3a167221`, especially 2448, 2450, 2453 and 2455.
 Implementation tracking: Building Theseus item **405**, created and read back.
-Snapshot: 12 November 2026, 22:34 Pacific. Update this record when evidence
+Snapshot: 13 November 2026, 00:18 Pacific. Update this record when evidence
 changes; a plan or candidate is not installed behavior. The governing request
 is Tony's New Charter #2693, followed by #2700: ship the agreed remaining batch,
 then message editing, then marking outcomes done. Tony's absence is not a new
@@ -17,27 +17,30 @@ Fable retains live deployment ownership. Last verified live: release 68,
 - Already live: keyboard selection margin 379; reply threading 402; Notebook
   cards in the composer 396; message folding 377/381/388/390/393/394; small
   controls 376/382/384/385/386/387/389; agent-name fix 415.
-- The static dossier look, 429, is Codex's candidate `5fa5f8ac` in independent
-  review. Fable confirmed in #2706 that once approved it ships alone on live
-  68 if the preceding release remains held. Codex owns it through live
-  verification, then takes starred messages in latest mode (413), then motion
-  (412), in separately verified increments.
-- Release 69, 355 plus 421/422, has three new unresolved native failures:
-  the trackpad case in both engines and the Notebook sheet's background-scroll
-  case in Chrome. Fable reports the other 17 failures have identical observed
-  values on the prior releases. Investigation is narrowed to the next open
-  question; it is not permission to call the three failures pre-existing.
-- Notebook write access/Draft work 371/383/391 is approved and undergoing
-  integration, including its migration renumbering. It is not yet live.
-- 403 (keyboard passes the coordination filter) and 411 (quoting preserves
-  place) remain in Build/Review. Fable owns 398–400 next: scrolling controls
-  and composer size, including the responsive width and feed-card scrollbar
-  requests captured in this stack.
-- Auditor has implemented 401/406 at `68b1b09` on
+- The static dossier look, 429, passed independent round-2 review at 00:00,
+  head `a934be83`. Fable is checking separate release-429, squash `85d4155`,
+  on live 68. Its visual follow-ups are item 430, not extra release blockers.
+  Codex owns it through live verification, then takes starred messages in latest
+  mode (413), then motion (412), in separately verified increments.
+- The earlier release-69 train (355 and 421/422) ended without shipping so 429
+  could go first. Its evidence remains intact. The trackpad and Notebook drag
+  failures are fixed in test setup; both engines' relevant cases pass. The new
+  broker failure is reproduced on live 68 with the same `codex_no_answer` trace
+  before queue/add, so it can be separately recorded as existing; its underlying
+  cause remains unresolved (item 432). The click-to-select scenario's unexpected
+  folded state has not been demonstrated on live 68. Fable is capturing that
+  transition in a bounded diagnostic; passing reruns alone do not establish cause.
+- Notebook write access/Draft work 371/383/391 is approved and integrated in a
+  candidate, including migration renumbering. It is not yet live.
+- 403 (keyboard passes the coordination filter) is approved and waits to combine.
+  411 (quoting preserves place) is in its fix round. Fable owns 398–400 next:
+  scrolling controls and composer size, including the responsive width and
+  feed-card scrollbar requests captured in this stack.
+- Auditor handed off 401/406 at `e9c4d0c8` on
   `auditor/show-full-own-thumb-build`: Show full message for one feed card,
-  and the composer's own thumbs-up state. Ten focused unit checks, a failing
-  and restored source-race mutation, six ledger checks and handoff-check pass.
-  Browser evidence is queued, so this is not a completed handoff or shipment.
+  and the composer's own thumbs-up state. Focused Chrome and WebKit checks,
+  source-failure retry, unit checks and mutation evidence pass. Independent review
+  is running in Fable's own branch; the auditor's candidate is frozen.
 - Message editing (228) follows this agreed batch, then completing outcomes
   (404), per Tony #2700 and Fable's confirmation #2706.
 
@@ -96,9 +99,30 @@ their specific evidence is linked; a Markdown rule does not implement a dispatch
 - This establishes a usable local procedure and limited behavioral evidence. It
   does not establish real-team performance, a deployed Theseus trigger, automatic
   checkpoint monitoring, or installation in the hosted worker's separate home.
-- At the 13:44 status check, steps 2-4 have not advanced. Item 405 remains Next;
-  there is no dispatcher implementation in progress. Keep that gap explicit:
-  responding to deliveries and recording plans are not implementation progress.
+- The first request-to-report implementation is complete and pushed at
+  `1cdcf88f` on `auditor/assessment-dispatch`, with 21 focused tests and nine
+  caught mutations. A real installed-Codex functional pilot on a wholly fictional
+  isolated assignment read the complete bound sources through a read-only native
+  tool, inspected the artifact, and posted/read back one report. Repeating the
+  invocation returned the same report. Evidence lives in
+  `auditor/2026-11-12/assessment-405/pilot1/pilot2-evidence.json`. The first pilot's
+  source-lock failure remains recorded; it led to the narrow read-tool transport.
+  No production team was graded. Fable's independent review of this candidate is
+  running on `fable/integrate-405`.
+- The checkpoint successor is complete and pushed at `455cd765` on
+  `auditor/assessment-checkpoints`, based on the frozen first-path candidate.
+  It records adopted artifact/due policies, attributed observations, known waits,
+  consecutive misses and recurring faults; it atomically requests one assessment
+  at the adopted boundary and requires operator renewal for the next increment.
+  Due prompts are repeat-safe and do not declare failure. Twelve focused tests,
+  the 21 request/dispatch regressions and ten caught mutations pass. Contract:
+  `docs/assessment-checkpoints.md`; evidence: `auditor/2026-11-13/assessment-checkpoints`.
+  Handoff #2727 is read back. This does not install a background scheduler.
+- Remaining acceptance: the specifically requested real-team assessment and actual
+  adoption in the coordinator's checkpoint loop. These remain under 405. Pipeline
+  state permits only one piece per item; Fable confirmed in #2726 that after the
+  first path ships, 405 returns to Now in the same release bookkeeping with the
+  remaining work named. A shipped first part must not be reported as complete 405.
 
 ## Put the new charter into practice
 
