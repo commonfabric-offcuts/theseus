@@ -3160,7 +3160,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind, { ...provenance, live: false })); return; }\n",
      ""
     ]
    ],
@@ -3175,7 +3175,7 @@
    "break": [
     [
      "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => paintViews(kind, { ...provenance, live: false }))",
      "pressHold.after(kind, () => {})"
     ]
    ],
