@@ -35,7 +35,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     return found.items.find(item => item.message_id === id)?.acts ?? null;
   };
   const starsOf = async reader => (reader === facts.actor ? await view('stars', {}) : (await control({ method: 'acts_as', reader, topic_id: 'none' })).stars).items.map(star => star.message_id);
-  // The keys on a message, reached as a person reaches it: ↓ from the top of the page until its card holds the focus.
+  // The keys on a message, reached as a person reaches it: ↑ or ↓ until its card holds the focus. From a control in
+  // the list between the cards (More, where Move below More leaves the keys) the keys step from where it is.
   const keyTo = async (p, id) => {
     // From the bar or a menu the keys come back to the page first, as Esc or a press on the page brings them.
     await p.evaluate(`(()=>{if(!document.querySelector('#messages').contains(document.activeElement))document.activeElement?.blur()})()`);
@@ -43,7 +44,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // A dossier's chevron is a stop before its head, so it is placed as the dossier itself.
       const way = await p.evaluate(`(()=>{const here=document.activeElement,to=document.querySelector(${JSON.stringify(card(id))});
         const at=here?.matches?.('#messages .reply-stack > .stack-toggle')?here.parentElement:here?.closest?.('#messages [data-id]');
-        if(at?.dataset.id===${JSON.stringify(id)})return 'there';if(!at)return 'ArrowDown';return at.compareDocumentPosition(to)&Node.DOCUMENT_POSITION_FOLLOWING?'ArrowDown':'ArrowUp'})()`);
+        const from=at??(here&&here!==document.body&&document.querySelector('#messages').contains(here)?here:null);
+        if(at?.dataset.id===${JSON.stringify(id)})return 'there';if(!from)return 'ArrowDown';return from.compareDocumentPosition(to)&Node.DOCUMENT_POSITION_FOLLOWING?'ArrowDown':'ArrowUp'})()`);
       if (way === 'there') return;
       await p.key(way);
     }
@@ -113,6 +115,189 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(async () => (await state()).visible, true, 'a human-addressed reply brings the dossier back');
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(target)}).dataset.coordination`), '', 'mixed stack is not classified as agent-only');
       await shot(p, 'coordination-returned-' + device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 403: Show agent coordination sits in the row of filters over the feed, between the header's buttons and the
+  // messages. The keys go onto it and off again as on any of the buttons at the top of the feed, with it on and with it
+  // off: ↑ and ↓ go from row to row, so they pass through it both ways and never stay on it.
+  await check('reading coordination the keys go on from Show agent coordination: ↑ goes on up to the header\'s buttons, ↓ reaches the top of the feed and ↑ comes back, on and off, skipping no message, and Return, Space, a press and the pointer still work', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-coordination-keys-' + device;
+      const ids = await seed(topic, [
+        ['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Ready for this topic.' }],
+        ['plain', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A message for you.' }],
+        ['root', { sender: 'aim-core', addressees: ['aim-ux'], body: 'Agents only, between us.' }],
+        ['reply', { sender: 'aim-ux', addressees: ['aim-core'], reply_to: 'root', body: 'Checked between us.' }],
+      ]);
+      const p = await open(topic, device, topic, ids.plain);
+      const filter = '#agent-coordination-show button', dossier = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      const names = Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]));
+      // Where the keys are: the chip, a dossier's chevron, a message by its seeded name, or another control by its id.
+      const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';
+        if(e?.matches?.('.stack-toggle'))return 'chevron:'+(n[e.closest('.reply-stack').dataset.stack]??'?');
+        const m=e?.closest?.('#messages [data-id]');if(m)return n[m.dataset.id]??'another message';return e?.id||e?.tagName||'none'})()`);
+      const shownDossier = () => p.evaluate(`(s=>Boolean(s?.getClientRects().length))(document.querySelector(${JSON.stringify(dossier)}))`);
+      const pressed = () => p.evaluate(`document.querySelector(${JSON.stringify(filter)}).getAttribute('aria-pressed')`);
+      await until(async () => await shownDossier() && await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(filter)})?.checkVisibility())`),
+        `${device}: the agents' dossier shows, and Show agent coordination over the feed`);
+      const inHeader = () => p.evaluate(`Boolean(document.querySelector('#main > .topic-header')?.contains(document.activeElement))`);
+      // The keys reach the chip as a person's do: up from the top of the feed to the header's buttons, along them to
+      // New message, and Tab on.
+      await keyTo(p, ids.root);
+      assert.equal(await keyed(), 'root', `${device}: the agents' dossier is at the top of the feed`);
+      for (let n = 0; n < 8 && await keyed() !== 'new-message'; n++) await p.key(await inHeader() ? 'ArrowRight' : 'ArrowUp');
+      assert.equal(await keyed(), 'new-message', `${device}: the keys are on New message, among the header's buttons`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'new-message', `${device}: ↑ on the header's buttons, the top row, moves nothing`);
+      await p.key('Tab');
+      assert.equal(await keyed(), 'chip', `${device}: Tab from New message reaches Show agent coordination`);
+      await shot(p, 'coordination-keys-' + device);
+      // Up from the chip: the header's buttons, at New message, the one the keys were last on there; never the chip again.
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'new-message', `${device}: ↑ from Show agent coordination goes up to New message, the header's button the keys were last on`);
+      await p.key('ArrowDown');
+      assert.equal(await keyed(), 'chip', `${device}: ↓ from New message comes down to the row of filters, onto the chip`);
+      await p.key('ArrowDown');
+      assert.equal(await keyed(), 'root', `${device}: and ↓ from it into the feed`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'chip', `${device}: ↑ from the top of the feed reaches the row of filters just above it`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'new-message', `${device}: and ↑ again the header's buttons, at New message`);
+      await p.key('ArrowDown');
+      assert.equal(await keyed(), 'chip', `${device}: ↓ from New message comes back down to the chip`);
+      // On: ↓ goes on to the top of the feed, and ↑ comes back; the keys never stay on the chip.
+      await p.key('ArrowDown');
+      assert.equal(await keyed(), 'root', `${device}: ↓ from Show agent coordination moves the keys on to the dossier at the top of the feed`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'chip', `${device}: ↑ from the top of the feed comes back to Show agent coordination, the button the keys left`);
+      await p.key('ArrowDown'); await p.key('ArrowDown');
+      assert.equal(await keyed(), 'plain', `${device}: and ↓ goes on down the feed, skipping no message`);
+      await p.key('ArrowUp'); await p.key('ArrowUp');
+      assert.equal(await keyed(), 'chip', `${device}: and ↑ back up to the chip`);
+      // Off by Return, the keys still on it: ↓ goes to the first message shown, never the hidden dossier, and ↑ comes back.
+      await p.key('Enter');
+      await becomes(pressed, 'false', `${device}: Return on Show agent coordination turns it off`);
+      assert.equal(await shownDossier(), false, `${device}: and the agents' dossier is hidden`);
+      assert.equal(await keyed(), 'chip', `${device}: the keys stay on it`);
+      await p.key('ArrowDown');
+      assert.equal(await keyed(), 'plain', `${device}: ↓ from it, turned off, goes to the first message shown, past the hidden dossier`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'chip', `${device}: ↑ comes back to it`);
+      await p.key(' ');
+      await becomes(pressed, 'true', `${device}: Space turns it on again`);
+      await until(shownDossier, `${device}: the dossier shows again`);
+      await p.key('ArrowDown');
+      assert.equal(await keyed(), 'root', `${device}: ↓ goes to the dossier again`);
+      // A press still turns it off and on; after it ↓ moves the keys into the feed, onto no hidden message. Chrome
+      // leaves a pressed button the focus, Safari's engine does not, so the keys go on from the chip or from where they were.
+      await centre(p, filter); await press(p, device, filter);
+      await becomes(pressed, 'false', `${device}: a press turns it off`);
+      await p.key('ArrowDown');
+      const after = await keyed();
+      assert.ok(!['chip', 'root', 'reply'].includes(after) && await p.evaluate(`document.getElementById('messages').contains(document.activeElement)`),
+        `${device}: after the press ↓ moves the keys into the feed, onto a message shown, not ${after}`);
+      await centre(p, filter); await press(p, device, filter);
+      await becomes(pressed, 'true', `${device}: a second press turns it on`);
+      await until(shownDossier, `${device}: the dossier shows once more`);
+      // A click or a tap in a message, or the pointer moving onto it, still gives it the keys' place (items 386 and 387),
+      // and from there ↑ goes up the feed and on to the chip the keys were last on.
+      await centre(p, words(ids.plain));
+      if (device === 'phone') await tap(p, words(ids.plain)); else await p.point(words(ids.plain), 'move');
+      await until(async () => await keyed() === 'plain', `${device}: the ${device === 'phone' ? 'tap' : 'pointer moving'} on a message gives it the keys' place`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'root', `${device}: ↑ goes from there to the dossier above`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'chip', `${device}: and on to Show agent coordination`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'new-message', `${device}: and on up past it to New message, never staying on the chip`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 403: the row of filters over the feed is a row of its own under the header's buttons. ← and → move along it,
+  // "Read it" among them, and past either end go on to the outline and the right rail as from the messages, where those
+  // are on screen; the header's buttons end at their own row, so → from New message goes to the right rail, not on to a
+  // filter. No arrow presses a filter.
+  await check('reading coordination ← and → move along the filters\' row, Read it among them, and past either end to the outline and the right rail; ↑ and ↓ go between it and the header\'s buttons, and no arrow presses one', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-coordination-row-' + device, laptop = device === 'laptop';
+      const ids = await seed(topic, [
+        ['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Ready for this topic.' }],
+        ['plain', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A message for you.' }],
+        ['root', { sender: 'aim-core', addressees: ['aim-ux'], body: 'Agents only, between us.' }],
+        ['reply', { sender: 'aim-ux', addressees: ['aim-core'], reply_to: 'root', body: 'Checked between us.' }],
+      ]);
+      await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [ids.plain], marked: true });
+      const p = await open(topic, device, topic, ids.plain);
+      const filter = '#agent-coordination-show button';
+      const names = Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]));
+      // Where the keys are: Read it, the chip, the outline, the right rail, one of the header's buttons, a message by its
+      // seeded name, or another control by its id.
+      const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';
+        if(e?.id==='read-mark')return 'read-it';if(e?.closest?.('#outline'))return 'outline';if(e?.closest?.('#things'))return 'things';
+        if(e?.closest?.('#main > .topic-header'))return 'header:'+(e.id||e.textContent.trim());
+        if(e?.matches?.('.stack-toggle'))return 'chevron:'+(n[e.closest('.reply-stack').dataset.stack]??'?');
+        const m=e?.closest?.('#messages [data-id]');if(m)return n[m.dataset.id]??'another message';return e?.id||e?.tagName||'none'})()`);
+      const marked = () => p.evaluate(`!document.getElementById('topic-marks').hidden`);
+      await until(async () => await marked() && await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(filter)})?.checkVisibility())`),
+        `${device}: Read it and Show agent coordination show over the feed`);
+      // The right rail takes the keys at the laptop width once it has loaded, and not on a phone, where it is behind a
+      // button. → from a plain message finds it as a person would (→ never leaves a dossier's root, so the root cannot
+      // tell); past the row's last button the keys go there too, else nowhere.
+      if (laptop) await until(() => p.evaluate(`Boolean(document.querySelector('#things .things-sec:not([hidden]) > summary')?.checkVisibility())`),
+        'laptop: the right rail has loaded');
+      await keyTo(p, ids.plain);
+      await p.key('ArrowRight');
+      const rail = await keyed() === 'things';
+      assert.equal(rail, laptop, `${device}: → from a message ${laptop ? 'reaches the right rail' : 'moves nothing, the right rail being behind a button'}`);
+      if (rail) { await p.key('ArrowLeft'); if (await keyed() === 'things') await p.key('ArrowLeft'); }
+      assert.equal(await p.evaluate(`document.getElementById('messages').contains(document.activeElement)`), true, `${device}: the keys are in the feed`);
+      await keyTo(p, ids.root);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'read-it', `${device}: ↑ from the top of the feed reaches the row of filters, at its first, Read it`);
+      await p.key('ArrowRight');
+      assert.equal(await keyed(), 'chip', `${device}: → from Read it goes along the row to Show agent coordination`);
+      await p.key('ArrowLeft');
+      assert.equal(await keyed(), 'read-it', `${device}: ← from the chip comes back to Read it`);
+      await p.key('ArrowLeft');
+      if (laptop) {
+        assert.equal(await keyed(), 'outline', 'laptop: ← past Read it, the row\'s first, goes to the outline');
+        await p.key('ArrowRight');
+        assert.equal(await p.evaluate(`document.getElementById('messages').contains(document.activeElement)`), true, 'laptop: → from the outline comes back into the feed');
+        await keyTo(p, ids.root); await p.key('ArrowUp');
+        assert.equal(await keyed(), 'read-it', 'laptop: ↑ from there finds Read it again, the filter the keys were last on');
+      } else assert.equal(await keyed(), 'read-it', 'phone: ← past Read it moves nothing, the outline being behind ☰');
+      await p.key('ArrowRight'); await p.key('ArrowRight');
+      if (rail) {
+        assert.equal(await keyed(), 'things', `${device}: → past the chip, the row's last, goes to the right rail`);
+        await p.key('ArrowLeft');
+        if (await keyed() === 'things') await p.key('ArrowLeft');
+        assert.equal(await p.evaluate(`document.getElementById('messages').contains(document.activeElement)`), true, `${device}: ← from the right rail comes back into the feed`);
+        await keyTo(p, ids.root); await p.key('ArrowUp');
+        assert.equal(await keyed(), 'chip', `${device}: ↑ from there finds the chip, the filter the keys were last on`);
+      } else assert.equal(await keyed(), 'chip', `${device}: → past the chip, the row's last, moves nothing where the right rail takes no keys`);
+      // Up and down between the two rows, each finding the button the keys were last on in it.
+      await p.key('ArrowLeft');
+      assert.equal(await keyed(), 'read-it', `${device}: ← to Read it`);
+      await p.key('ArrowUp');
+      assert.match(await keyed(), /^header:/, `${device}: ↑ from Read it goes up to the header's buttons`);
+      for (let n = 0; n < 6 && await keyed() !== 'header:new-message'; n++) await p.key('ArrowRight');
+      assert.equal(await keyed(), 'header:new-message', `${device}: → along the header's buttons reaches New message`);
+      await p.key('ArrowDown');
+      assert.equal(await keyed(), 'read-it', `${device}: ↓ from New message comes down to Read it, the filter the keys were last on`);
+      await p.key('ArrowUp');
+      assert.equal(await keyed(), 'header:new-message', `${device}: ↑ goes back up to New message`);
+      // The header's buttons end at their own row: → from New message goes on to the right rail, never to a filter.
+      await p.key('ArrowRight');
+      assert.equal(await keyed(), rail ? 'things' : 'header:new-message',
+        `${device}: → from New message, the header's last, goes ${rail ? 'to the right rail' : 'nowhere, the right rail taking no keys'}, not on to a filter`);
+      // No arrow pressed a filter: no Reader opened, the mark is still there, and the agents' dossier still shows.
+      assert.equal(await readerOn(p), null, `${device}: no arrow on Read it opened the Reader`);
+      assert.equal(await marked(), true, `${device}: and the mark is still there`);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(filter)}).getAttribute('aria-pressed')`), 'true', `${device}: and Show agent coordination is still on`);
+      await control({ method: 'mark', operation_id: topic + '-clear', message_ids: [ids.plain], marked: false });
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
@@ -274,6 +459,147 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.key('ArrowUp');
     assert.equal(await atPageHeader(), true, 'Up from the first dossier\'s folded chevron reaches the page header');
     assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('reading stacks below More persists across devices and only another persons new reply brings it back', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-aside-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join:true, addressees:[facts.actor], body:'Put this dossier aside.' }],
+        ['one', { sender:other, reply_to:'root', addressees:[facts.actor], body:'An older unread reply.' }],
+        ['two', { sender:other, reply_to:'one', addressees:[facts.actor], body:'The newest reply.' }]]);
+      const p = await open('stack-aside-' + device, device, topic, ids.root);
+      const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      const below = async () => (await view('stack_positions', {topic_id:topic,message_ids:[ids.root]})).items[0].stack_position.below;
+      const visible = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+      await menuOf(p, device, ids.two);
+      if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More');
+      await until(below, 'Core kept the move');
+      await becomes(visible, false, 'the dossier disappears below More');
+      assert.equal((await actsOf(topic, ids.root, other))?.aside ?? null, null, 'the other reader has no move');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`), true, 'More exists with no older page');
+      if (device === 'laptop') {
+        await p.key('z', 4);
+        await until(async () => !await below(), 'Command-Z undoes the whole-dossier move');
+        await becomes(visible, true, 'Undo brings it back');
+        await menuOf(p, device, ids.two); await choose(p, device, 'Move below More');
+        await until(below, 'moved aside again');
+      }
+      await shot(p, 'stack-aside-' + device);
+      const otherTab = await open('stack-aside-reload-' + device, device, topic, ids.root);
+      await until(() => otherTab.evaluate(`Boolean(document.querySelector('#messages .stack-more'))`), 'another document reads More from Core');
+      assert.equal(await otherTab.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`), false, 'the dossier remains put aside on another device');
+      await otherTab.close(); await p.send('Page.bringToFront');
+      const own = (await control({method:'agent_message',operation_id:topic+'-own',topic_id:topic,source:'topic',sender:facts.actor,reply_to:ids.two,body:'My reply does not revive it.'})).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(own))}))`), 'the own reply reaches the loaded page');
+      assert.equal(await below(), true); assert.equal(await visible(), false);
+      await press(p, device, '#messages .stack-more');
+      await becomes(visible, true, 'More opens its dossiers');
+      await menuOf(p, device, own); if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Bring back above More');
+      await until(async () => !await below(), 'Bring back clears the personal move');
+      await menuOf(p, device, own); if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More'); await until(below, 'put aside before someone answers');
+      // More was explicitly opened; close it again without changing the durable act.
+      if (await p.evaluate(`document.querySelector('.stack-more')?.getAttribute('aria-expanded')==='true'`)) await press(p, device, '.stack-more');
+      const answer = (await control({method:'agent_message',operation_id:topic+'-answer',topic_id:topic,source:'topic',sender:other,reply_to:own,addressees:[facts.actor],body:'Here is the new answer.'})).result.message_id;
+      await until(async () => !await below(), 'another persons new reply brings it back in Core');
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(answer))})?.getClientRects().length)`), 'the live page brings the dossier back with the answer');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading stacks below More handles an unloaded root and an exact link without clearing the saved choice', async () => {
+    const topic='stack-aside-partial';
+    const ids=await seed(topic,[['root',{sender:other,join:true,addressees:[facts.actor],body:'The old dossier root.',read:true}],
+      ...Array.from({length:35},(_,i)=>['r'+i,{sender:other,reply_to:i?'r'+(i-1):'root',addressees:[facts.actor],body:'Reply '+i,read:true}])]);
+    const p=await open(topic,'laptop',topic,ids.r34);
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`),false,'the canonical root is outside the loaded page');
+    const position=async()=>(await view('stack_positions',{topic_id:topic,message_ids:[ids.root]})).items[0].stack_position;
+    const below=async()=>(await position()).below;
+    // Command-Z at once, while the move may still be on its way to Core: the undo follows the
+    // move's own answer, though the page holds no message for the root it acts on.
+    await menuOf(p,'laptop',ids.r34); await choose(p,'laptop','Move below More');
+    await p.key('z',4);
+    await until(async()=>(await position()).aside_revision===2,'Command-Z right after the move reaches Core as a second act');
+    assert.equal(await below(),false,'the undo brought the dossier back');
+    await becomes(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r34))})?.getClientRects().length)`),true,'the loaded fragment shows again');
+    await menuOf(p,'laptop',ids.r34); await choose(p,'laptop','Move below More');
+    await until(below,'the unloaded canonical root holds the move');
+    await becomes(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r34))})?.getClientRects().length)`),false,'the loaded fragment is hidden too');
+    const linking=(await control({method:'agent_message',operation_id:topic+'-link',topic_id:topic,source:'topic',sender:other,addressees:[facts.actor],
+      body:`See ${facts.origin}/?topic=${topic}&message=${ids.r0} for the older message. Latest: ${facts.origin}/?topic=${topic}&message=${ids.r34}`,read:true})).result.message_id;
+    await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(linking)+' a.words-link')}))`),'the separate linking message arrives');
+    await centre(p,card(linking)+' a.words-link'); await p.point(card(linking)+' a.words-link');
+    await until(async()=>(await readerOn(p))?.startsWith('Reply 0'),'the exact unloaded target opens in the Reader');
+    assert.equal(await below(),true,'following a link clears no durable choice');
+    await closeReader(p,'laptop');
+    const latestLink=card(linking)+' a.words-link[href*="message='+ids.r34+'"]';
+    await centre(p,latestLink); await p.point(latestLink);
+    await until(async()=>(await readerOn(p))?.startsWith('Reply 34'),'the loaded exact target opens too');
+    await closeReader(p,'laptop');
+    await becomes(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r34))})?.getClientRects().length)`),true,'the loaded linked message is revealed on the page');
+    const q=await open(topic+'-again','laptop',topic,ids.r34);
+    await becomes(()=>q.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r34))})?.getClientRects().length)`),false,'a new visit still has the dossier below More');
+    assert.equal(await below(),true); assert.deepEqual(p.errors,[]); assert.deepEqual(q.errors,[]);
+    await q.close(); await p.close();
+  });
+
+  if (engine === 'chrome') await check('reading stacks below More uses a real swipe on chrome and the last visible message but folds other messages', async () => {
+    const topic = 'stack-aside-swipe';
+    const ids = await seed(topic, [['root', {sender:other,join:true,addressees:[facts.actor],body:'A dossier to swipe.'}],
+      ['one', {sender:other,reply_to:'root',addressees:[facts.actor],body:'First visible reply.'}],
+      ['two', {sender:other,reply_to:'root',addressees:[facts.actor],body:'Last visible reply.'}]]);
+    const p = await open('stack-aside-swipe', 'phone', topic, ids.root);
+    const drag = async selector => {
+      await centre(p, selector); const b=await p.box(selector), y=b.y+b.height/2, t=Date.now()/1000;
+      await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+30,y}],timestamp:t});
+      for (const part of [1,2,3,4]) await p.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:b.x+30+35*part,y}],timestamp:t+part*.08});
+      await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[],timestamp:t+.6});
+    };
+    await drag(card(ids.one));
+    await until(async () => (await actsOf(topic,ids.one))?.folded, 'a non-last message folds');
+    assert.equal((await actsOf(topic,ids.root))?.aside??null,null);
+    await drag(card(ids.two));
+    await until(async () => (await actsOf(topic,ids.root))?.aside>0, 'the last visible message puts the dossier aside');
+    assert.equal((await actsOf(topic,ids.two))?.folded??false,false,'the last message itself is not folded');
+    await press(p,'phone','.stack-more');
+    await menuOf(p,'phone',ids.two); await choose(p,'phone','Move or join…'); await choose(p,'phone','Bring back above More');
+    await until(async () => (await actsOf(topic,ids.root))?.aside===null,'brought back');
+    await drag(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`);
+    await until(async () => (await actsOf(topic,ids.root))?.aside>0, 'the dossier header puts the whole dossier aside too');
+    assert.deepEqual(p.errors,[]); await shot(p,'stack-aside-swipe'); await p.close();
+  });
+
+  if (engine === 'chrome') await check('reading stacks below More takes an agent coordination row by a swipe, and Show agent coordination hides it there too', async () => {
+    const topic = 'stack-aside-coordination';
+    const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Ready.' }],
+      ['root', { sender: 'aim-core', join: true, addressees: ['aim-ux'], body: 'Agents only, to put aside.' }],
+      ['reply', { sender: 'aim-ux', reply_to: 'root', addressees: ['aim-core'], body: 'Agents only, answered.' }]]);
+    const p = await open(topic, 'phone', topic, ids.root);
+    const section = `#messages .reply-stack[data-stack="${ids.root}"]`, filter = '#agent-coordination-show button';
+    const state = () => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(section)}),m=document.querySelector('#messages .stack-more');
+      return {compact:s?.dataset.compact,visible:Boolean(s?.getClientRects().length),more:m?.isConnected&&m.getClientRects().length?m.textContent:null}})()`);
+    await until(async () => (await state()).compact === 'true', 'the agent-only dossier is its quiet row');
+    await centre(p, section + ' .stack-head'); const b = await p.box(section + ' .stack-head'), y = b.y + b.height / 2, t = Date.now() / 1000;
+    await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + 60, y }], timestamp: t });
+    for (const part of [1, 2, 3, 4]) await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: b.x + 60 + 35 * part, y }], timestamp: t + part * .08 });
+    await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t + .6 });
+    await until(async () => (await actsOf(topic, ids.root))?.aside > 0, 'a swipe on the quiet row puts the whole dossier aside');
+    assert.equal((await actsOf(topic, ids.reply))?.folded ?? false, false, 'no message of it is folded');
+    await becomes(async () => (await state()).visible, false, 'the row goes below More');
+    assert.match((await state()).more, /1 put aside/, 'More counts it');
+    await press(p, 'phone', '#messages .stack-more');
+    await becomes(async () => (await state()).visible, true, 'More shows it');
+    assert.equal((await state()).compact, 'true', 'below More it is still the quiet row');
+    await centre(p, filter); await press(p, 'phone', filter);
+    await becomes(async () => (await state()).visible, false, 'Show agent coordination off hides it below More too');
+    assert.equal((await state()).more, null, 'More counts only what it would show, so it goes');
+    await centre(p, filter); await press(p, 'phone', filter);
+    await becomes(async () => (await state()).visible, true, 'turned back on, it is below More again');
+    assert.match((await state()).more, /1 put aside/, 'More counts it again');
+    assert.ok((await actsOf(topic, ids.root))?.aside > 0, 'the filter changed nothing in Core');
+    assert.deepEqual(p.errors, []); await shot(p, 'stack-aside-coordination'); await p.close();
   });
 
   await check('reading stacks long message headers scroll away inside their cards without moving the dossier tab', async () => {
@@ -880,6 +1206,577 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await shot(p, 'stack-join');
     assert.deepEqual(p.errors, []);
     await p.close();
+  });
+
+  // A dossier below More sits apart: a move or a join steps over it to the stack shown beside the one acted on,
+  // and More is a boundary neither crosses. Seeded C (with a reply), B and A, newest first; B put below More.
+  // The topic's opening, the reader's own and the oldest, stays the last stack above More, out of shown().
+  const besideMore = async topic => {
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }],
+      ['c1', { sender: other, reply_to: 'c', addressees: [facts.actor], body: 'A reply to C.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    // What shows down the page: each stack by its head's name, and More.
+    const shown = () => p.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length)
+      .map(e=>e.classList.contains('stack-more')?'More':(${JSON.stringify(names)})[e.dataset.id??e.dataset.stack]).filter(Boolean)`);
+    await becomes(shown, ['c', 'b', 'a'], 'newest on top');
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Move below More');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds B below More');
+    await becomes(shown, ['c', 'a', 'More'], 'B is below More, out of sight');
+    return { ids, p, shown };
+  };
+  const joinedInto = async (topic, id) => (await actsOf(topic, id, other))?.joined?.into ?? null;
+
+  await check('reading stacks ⇧⌘↑ ⇧⌘↓ join a stack to the one shown beside it, never into a dossier below More', async () => {
+    const topic = 'stack-aside-joins';
+    const { ids, p, shown } = await besideMore(topic);
+    await keyTo(p, ids.a);
+    await p.key('ArrowUp', 12);
+    await until(async () => await joinedInto(topic, ids.a) === ids.c, '⇧⌘↑ joins A into C, the stack shown above it, not B below More');
+    await becomes(shown, ['c', 'More'], 'A is in C, above More');
+    assert.equal(await focusedOn(p), ids.a, 'the keys stay on A');
+    await p.key('z', 4);
+    await until(async () => await joinedInto(topic, ids.a) === null, '⌘Z splits A out again');
+    await becomes(shown, ['c', 'a', 'More'], 'A is its own stack again');
+    await keyTo(p, ids.c);
+    await p.key('ArrowDown', 12);
+    await until(async () => await joinedInto(topic, ids.c) === ids.a, '⇧⌘↓ joins C into A, the stack shown below it, not B below More');
+    await becomes(shown, ['a', 'More'], 'C is in A, above More');
+    assert.equal(await focusedOn(p), ids.c, 'the keys stay on C');
+    await p.key('z', 4);
+    await until(async () => await joinedInto(topic, ids.c) === null, '⌘Z splits C out again');
+    // More opened, B is shown below it, and joins nothing above it.
+    await press(p, 'laptop', '#messages .stack-more');
+    await becomes(shown, ['c', 'a', 'More', 'b'], 'More shows B');
+    await keyTo(p, ids.b);
+    await p.key('ArrowUp', 12);
+    await until(async () => /No stack above to join/.test(await said(p)), 'B, first below More, has no stack above to join');
+    assert.equal(await joinedInto(topic, ids.b), null, 'B joined nothing');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks ⌘↑ ⌘↓ move a stack past the one shown beside it, stepping over a dossier below More', async () => {
+    const topic = 'stack-aside-moves';
+    const { ids, p, shown } = await besideMore(topic);
+    await keyTo(p, ids.a);
+    await p.key('ArrowUp', 4);
+    await becomes(shown, ['a', 'c', 'More'], '⌘↑ moves A above C, the stack shown above it');
+    assert.equal(await focusedOn(p), ids.a, 'the keys stay on A');
+    await keyTo(p, ids.c);
+    await p.key('ArrowUp', 4);
+    await becomes(shown, ['c', 'a', 'More'], '⌘↑ moves C back above A');
+    await p.key('ArrowDown', 4);
+    await becomes(shown, ['a', 'c', 'More'], '⌘↓ moves C below A, still above More');
+    await press(p, 'laptop', '#messages .stack-more');
+    await becomes(shown, ['a', 'c', 'More', 'b'], 'More shows B');
+    await keyTo(p, ids.b);
+    await p.key('ArrowUp', 4);
+    await until(async () => /Already at the top/.test(await said(p)), 'B, first below More, moves no further up');
+    await becomes(shown, ['a', 'c', 'More', 'b'], 'and nothing moved');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // The Reader's ↑ (above) and ↓ (below) read the same page order as the stack keys (reply-stacks.mjs,
+  // shownStacks): by the header's buttons on a laptop, by ↑ Previous · ↓ Next at the end of the message on a phone.
+  const stepButton = (device, where) => device === 'phone' ? `.reader-end .end-step:${where === 'above' ? 'first' : 'last'}-child`
+    : where === 'above' ? '#next-message' : '#previous-message';
+  const readerStep = async (p, device, where, starts, message) => {
+    const button = stepButton(device, where);
+    if (device === 'phone') await p.evaluate(`document.querySelector(${JSON.stringify(button)}).scrollIntoView({block:'center'})`);
+    await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(button)}).disabled`), `${device}: ${message}: its button can be pressed`);
+    await press(p, device, button);
+    await becomes(async () => (await readerOn(p))?.slice(0, starts.length) ?? null, starts, `${device}: ${message}`);
+  };
+  // At an end of what the page shows, that way's button cannot be pressed, once the page has said which the
+  // Reader's neighbours are (the other way's button can).
+  const readerEnd = async (p, device, where, message) => {
+    const other = stepButton(device, where === 'above' ? 'below' : 'above');
+    if (device === 'phone') await p.evaluate(`document.querySelector('.reader-end').scrollIntoView({block:'center'})`);
+    await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(other)}).disabled`), `${device}: the Reader knows its neighbours`);
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(stepButton(device, where))}).disabled`), true, `${device}: ${message}`);
+  };
+
+  await check('reading stacks shown order: the Reader\'s ↑ and ↓ step over a dossier below More to the message shown beside it, and reach it once More is open', async () => {
+    const topic = 'stack-aside-reader';
+    const { ids, p, shown } = await besideMore(topic);
+    await openReader(p, 'laptop', ids.a, 'Stack A.');
+    await readerStep(p, 'laptop', 'above', 'A reply to C.', '↑ from A is C\'s reply, shown above it, not B below More');
+    await readerStep(p, 'laptop', 'below', 'Stack A.', '↓ from C\'s reply is A, shown below it, not B below More');
+    await closeReader(p, 'laptop');
+    await becomes(shown, ['c', 'a', 'More'], 'stepping brought nothing out from below More');
+    // More open: B shows below it, after every stack above More, and the Reader goes on to it there.
+    await press(p, 'laptop', '#messages .stack-more');
+    await becomes(shown, ['c', 'a', 'More', 'b'], 'More shows B');
+    await openReader(p, 'laptop', ids.a, 'Stack A.');
+    // Below A is the topic's opening, the last stack above More; below that, B, the first below it.
+    await until(() => p.evaluate(`!document.querySelector('#previous-message').disabled`), 'laptop: ↓ from A can be pressed');
+    await p.point('#previous-message');
+    await until(async () => !(await readerOn(p))?.startsWith('Stack A.'), 'laptop: ↓ goes on from A');
+    assert.notEqual((await readerOn(p))?.startsWith('Stack B'), true, 'laptop: ↓ from A is the opening, still above More, not B');
+    await readerStep(p, 'laptop', 'below', 'Stack B, put aside.', '↓ from the last stack above More, with More open, is B below it');
+    await closeReader(p, 'laptop');
+    assert.ok((await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'B is still below More in Core');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks shown order: the Reader stops at the ends of what the page shows, never going on into a dossier below More, on a laptop and a phone', async () => {
+    // A, X, C, Y, oldest first; X and Y put below More. Core's neighbours of C are Y above it and X below it,
+    // both loaded and put aside: not beyond what the page loaded, so neither stands in at an end.
+    const topic = 'stack-aside-reader-ends';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['x', { sender: other, addressees: [facts.actor], body: 'Stack X, put aside.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }],
+      ['y', { sender: other, addressees: [facts.actor], body: 'Stack Y, put aside.', read: true }]]);
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    // What shows down the page, the topic's opening (the person's own) included.
+    const shown = q => q.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length)
+      .map(e=>e.classList.contains('stack-more')?'More':(${JSON.stringify(names)})[e.dataset.id??e.dataset.stack]??(e.querySelector?.('.own-message')||e.classList.contains('own-message')?'opening':null)).filter(Boolean)`);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    await becomes(() => shown(p), ['y', 'c', 'x', 'a', 'opening'], 'newest on top');
+    for (const id of [ids.y, ids.x]) {
+      await menuOf(p, 'laptop', id); await choose(p, 'laptop', 'Move below More');
+      await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position.below, 'Core holds it below More');
+    }
+    await becomes(() => shown(p), ['c', 'a', 'opening', 'More'], 'X and Y are below More');
+    await openReader(p, 'laptop', ids.c, 'Stack C.');
+    await readerEnd(p, 'laptop', 'above', '↑ from C, the top of what shows, goes nowhere: not on to Y below More');
+    await closeReader(p, 'laptop');
+    // C moved to the bottom, past the opening: ↓ from it goes nowhere, not on to X below More.
+    await keyTo(p, ids.c);
+    await p.key('ArrowDown', 4); await becomes(() => shown(p), ['a', 'c', 'opening', 'More'], '⌘↓ moves C below A');
+    await p.key('ArrowDown', 4); await becomes(() => shown(p), ['a', 'opening', 'c', 'More'], '⌘↓ again moves C below the opening');
+    await openReader(p, 'laptop', ids.c, 'Stack C.');
+    await readerEnd(p, 'laptop', 'below', '↓ from C, the bottom of what shows, goes nowhere: not on to X below More');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // On a phone, ↑ Previous · ↓ Next step by the same rule. Core's neighbour of A above it is X, of C below it
+    // X too: both put aside, so A's ↑ Previous and C's ↓ Next go nowhere.
+    const q = await open(topic + '-phone', 'phone', topic, ids.a);
+    await becomes(() => shown(q), ['a', 'opening', 'c', 'More'], 'phone: C where it was placed, X and Y below More');
+    await openReader(q, 'phone', ids.a, 'Stack A.');
+    await readerEnd(q, 'phone', 'above', '↑ Previous from A, the top of what shows, goes nowhere: not on to X below More');
+    await closeReader(q, 'phone');
+    await openReader(q, 'phone', ids.c, 'Stack C.');
+    await readerEnd(q, 'phone', 'below', '↓ Next from C, the bottom of what shows, goes nowhere: not on to X below More');
+    await closeReader(q, 'phone');
+    assert.deepEqual(q.errors, []);
+    await q.close();
+  });
+
+  // Further down, the card in view at the top stays where it was as the page redraws (docs/attention.md).
+  // Here that card's dossier is put below More on another device, so the page stops drawing it.
+  await check('reading stacks below More: when the first card in view goes below a closed More from another device, the cards under it do not jump past where it was', async () => {
+    const topic = 'below-more-anchor';
+    const said = [];
+    for (let n = 0; n < 20; n++) said.push(['g' + n, { sender: 'aim-ux', join: n === 0, addressees: [facts.actor], body: `Older ${n}: a message long enough to take a line or two on the page, said to the person.`, read: true }]);
+    for (let n = 0; n < 8; n++) said.push(['f' + n, { sender: 'aim-ux', addressees: [facts.actor], body: `Filler ${n}: a message long enough to take a line or two on the page, said to the person.`, read: true }]);
+    said.push(['x', { sender: other, join: true, addressees: [facts.actor], body: 'The message that goes aside.\n' + Array.from({ length: 30 }, (_, n) => `Line ${n} of a tall message.`).join('\n'), read: true }]);
+    for (let n = 8; n < 16; n++) said.push(['f' + n, { sender: 'aim-ux', addressees: [facts.actor], body: `Filler ${n}: a message long enough to take a line or two on the page, said to the person.`, read: true }]);
+    const ids = await seed(topic, said);
+    const p = await open(topic, 'laptop', topic, ids.f15);
+    const x = entry(ids.x);
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(x)})?.getClientRects().length)`), 'x is drawn');
+    // x, a tall card, the first card in view, its top well above the window's; f7, drawn under it, in view.
+    await p.evaluate(`(e=>{e.scrollIntoView({block:'start'});scrollBy(0,Math.round(e.getBoundingClientRect().height/2))})(document.querySelector(${JSON.stringify(x)}))`);
+    await twoFrames(p);
+    const at = () => p.evaluate(`({scroll:scrollY,x:(e=>e.getClientRects().length?e.getBoundingClientRect().top:null)(document.querySelector(${JSON.stringify(x)})),
+      xHeight:document.querySelector(${JSON.stringify(x)}).getBoundingClientRect().height,
+      f7:document.querySelector(${JSON.stringify(entry(ids.f7))}).getBoundingClientRect().top,
+      first:[...document.querySelectorAll('#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]')].find(e=>{const b=e.getBoundingClientRect();return b.bottom>0&&b.top<innerHeight})?.dataset.id})`);
+    const before = await at();
+    assert.ok(before.first === ids.x && before.x < -100 && before.f7 > 0 && before.f7 < 900, `x the first card in view, its top well above the window's; f7 under it in view (${JSON.stringify(before)})`);
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.x, operation_id: topic + '-aside', args: { through: (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+    await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(x)}).getClientRects().length`), 'x goes below the closed More');
+    await twoFrames(p);
+    const after = await at();
+    // Where f7 may go: held where it was, or up into the place x left, at most to where x's top was. Not further.
+    assert.ok(after.f7 >= before.x - 1, `f7 does not jump past where x was (${JSON.stringify({ before, after })})`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('reading stacks shown order: with Show agent coordination off, a join and the Reader\'s ↑ step over the hidden agent coordination to the stack shown', async () => {
+    const topic = 'stack-hidden-coordination-steps';
+    const ids = await seed(topic, [['a', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['k', { sender: other, join: true, addressees: ['aim-ux'], body: 'Agents only.', read: true }],
+      ['k1', { sender: 'aim-ux', reply_to: 'k', addressees: [other], body: 'Agents only, answered.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    const shown = () => p.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length)
+      .map(e=>(${JSON.stringify(names)})[e.dataset.id??e.dataset.stack]).filter(Boolean)`);
+    await becomes(shown, ['c', 'k', 'a'], 'the agent coordination shows between C and A');
+    const filter = '#agent-coordination-show button';
+    await centre(p, filter); await p.point(filter);
+    await becomes(shown, ['c', 'a'], 'Show agent coordination off hides it');
+    await keyTo(p, ids.a);
+    await p.key('ArrowUp', 12);
+    await until(async () => (await actsOf(topic, ids.a, other))?.joined?.into === ids.c, '⇧⌘↑ joins A into C, the stack shown above it, not the hidden agent coordination');
+    await p.key('z', 4);
+    await until(async () => !(await actsOf(topic, ids.a, other))?.joined?.into, '⌘Z splits A out again');
+    await becomes(shown, ['c', 'a'], 'A is its own stack again, the agent coordination still hidden');
+    await openReader(p, 'laptop', ids.a, 'Stack A.');
+    await readerStep(p, 'laptop', 'above', 'Stack C.', '↑ from A is C, shown above it, not the hidden agent coordination');
+    await closeReader(p, 'laptop');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(filter)}).getAttribute('aria-pressed')`), 'false', 'the agent coordination stays hidden');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Every way the Reader comes to be open on a message, the one open hidden or not: it steps only to a message
+  // shown or not loaded (stack-order.mjs, stepTarget). These cases began as an independent review's.
+  const pageShown = (q, ids) => {
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    return q.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length)
+      .map(e=>e.classList.contains('stack-more')?'More':(${JSON.stringify(names)})[e.dataset.id??e.dataset.stack]??(e.querySelector?.('.own-message')||e.classList.contains('own-message')?'opening':null)).filter(Boolean)`);
+  };
+  const putAsideBy = async (q, device, topic, id) => {
+    await menuOf(q, device, id);
+    if (device === 'phone') await choose(q, device, 'Move or join…');
+    await choose(q, device, 'Move below More');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position.below, 'Core holds it below More');
+  };
+  const stepsOffered = q => q.evaluate(`({above:!document.querySelector('#next-message').disabled,below:!document.querySelector('#previous-message').disabled})`);
+
+  await check('reading stacks shown order: Read it on a message below a closed More: the Reader never steps on into another dossier put aside', async () => {
+    const wrongSteps = [];
+    for (const device of Object.keys(DEVICES)) {
+      // A, X, Y, C oldest first; X and Y put below More. Core's neighbour of X above it is Y, put aside.
+      const topic = 'shown-order-readit-' + device;
+      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+        ['x', { sender: other, addressees: [facts.actor], body: 'Stack X, put aside.', read: true }],
+        ['y', { sender: other, addressees: [facts.actor], body: 'Stack Y, put aside.', read: true }],
+        ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
+      const p = await open(topic, device, topic, ids.a);
+      await becomes(() => pageShown(p, ids), ['c', 'y', 'x', 'a', 'opening'], device + ': newest on top');
+      // X marked unread, as the Reader's Mark unread leaves it.
+      await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [ids.x], marked: true });
+      await until(() => p.evaluate(`!document.querySelector('#topic-marks').hidden`), device + ': the page says one message is marked unread');
+      for (const id of [ids.y, ids.x]) await putAsideBy(p, device, topic, id);
+      await becomes(() => pageShown(p, ids), ['c', 'a', 'opening', 'More'], device + ': X and Y are below More');
+      await centre(p, '#read-mark'); await press(p, device, '#read-mark');
+      await until(async () => (await readerOn(p))?.startsWith('Stack X'), device + ': Read it opens X in the Reader');
+      await until(async () => { const b = await stepsOffered(p); return b.above || b.below; }, device + ': the Reader knows its neighbours');
+      const buttons = await stepsOffered(p);
+      observations.push({ name: 'shown order read-it', engine, device, shownWhileOpen: await pageShown(p, ids), buttons });
+      if (buttons.above) {
+        if (device === 'phone') await p.evaluate(`document.querySelector('.reader-end').scrollIntoView({block:'center'})`);
+        await press(p, device, stepButton(device, 'above'));
+        await until(async () => !(await readerOn(p))?.startsWith('Stack X'), `${device}: ↑ went somewhere`);
+      }
+      const landed = await readerOn(p);
+      observations.push({ name: 'shown order read-it landed', engine, device, landed: landed?.slice(0, 30), shownAfter: await pageShown(p, ids) });
+      if (landed?.startsWith('Stack Y')) wrongSteps.push(`${device}: ↑ from X (opened by Read it, below a closed More) opened Y, put aside; buttons ${JSON.stringify(buttons)}`);
+      await closeReader(p, device);
+      await p.close();
+    }
+    assert.deepEqual(wrongSteps, []);
+  });
+
+  await check('reading stacks shown order: second device puts the Reader\'s message below More, then a new message: ↓ never opens a dossier put aside', async () => {
+    const wrong = [];
+    for (const device of Object.keys(DEVICES)) {
+      // A, Y, C oldest first; Y below More. The Reader is on C on one device; the other puts C below More.
+      const topic = 'shown-order-second-device-' + device;
+      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+        ['y', { sender: other, addressees: [facts.actor], body: 'Stack Y, put aside.', read: true }],
+        ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
+      const p = await open(topic, device, topic, ids.a);
+      await becomes(() => pageShown(p, ids), ['c', 'y', 'a', 'opening'], device + ': newest on top');
+      await putAsideBy(p, device, topic, ids.y);
+      await becomes(() => pageShown(p, ids), ['c', 'a', 'opening', 'More'], device + ': Y below More');
+      await openReader(p, device, ids.c, 'Stack C.');
+      await until(async () => (await stepsOffered(p)).below, device + ': the Reader knows its neighbours');
+      const q = await open(topic + '-other', 'laptop', topic, ids.a);
+      await becomes(() => pageShown(q, ids), ['c', 'a', 'opening', 'More'], 'the other device shows the same');
+      await putAsideBy(q, 'laptop', topic, ids.c);
+      await q.close(); await p.send('Page.bringToFront');
+      await becomes(() => pageShown(p, ids), ['a', 'opening', 'More'], device + ': the first device hears C went below More');
+      const n = (await control({ method: 'agent_message', operation_id: topic + '-n', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor], body: 'Stack N, new.', read: true })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${n}"]'))`), device + ': N reaches the page');
+      await until(async () => (await stepsOffered(p)).above, device + ': the Reader reads its neighbours again (N above C in Core)');
+      const buttons = await stepsOffered(p);
+      if (buttons.below) {
+        if (device === 'phone') await p.evaluate(`document.querySelector('.reader-end').scrollIntoView({block:'center'})`);
+        await press(p, device, stepButton(device, 'below'));
+        await until(async () => !(await readerOn(p))?.startsWith('Stack C.'), device + ': ↓ went somewhere');
+      }
+      const landed = await readerOn(p);
+      observations.push({ name: 'shown order second device', engine, device, buttons, landed: landed?.slice(0, 30), shown: await pageShown(p, { ...ids, n }) });
+      if (landed?.startsWith('Stack Y')) wrong.push(`${device}: ↓ from C (put below More on another device) opened Y, below a closed More`);
+      await closeReader(p, device);
+      await p.close();
+    }
+    assert.deepEqual(wrong, []);
+  });
+
+  // A topic longer than the page loads (30 messages): Core's neighbour at the bottom of what shows is one the page
+  // has not loaded, and the page may still know it is not on show. These cases began as an independent review's.
+  const fillers = count => Array.from({ length: count }, (_, n) => [`f${n}`, { sender: other, addressees: [facts.actor], body: `Filler ${n}.`, read: true }]);
+  await check('reading stacks shown order: at the bottom of a long topic, ↓ never opens the unloaded first message of a dossier the page holds below a closed More', async () => {
+    const wrong = [];
+    for (const device of Object.keys(DEVICES)) {
+      // R, older than anything loaded; fillers F0..F28; R1, a reply to R, loaded and heading its own stack.
+      const topic = 'shown-order-unloaded-root-' + device;
+      const ids = await seed(topic, [['r', { sender: other, join: true, addressees: [facts.actor], body: 'Root R, older than the page.', read: true }],
+        ...fillers(29), ['r1', { sender: other, addressees: [facts.actor], reply_to: 'r', body: 'Reply R1.', read: true }]]);
+      const p = await open(topic, device, topic, ids.r1);
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.f0}"]'))`), device + ': F0 is the oldest loaded');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.r}"]'))`), false, device + ': R is not loaded');
+      await putAsideBy(p, device, topic, ids.r1);
+      await until(() => p.evaluate(`!document.querySelector('#messages [data-id="${ids.r1}"]').getClientRects().length`), device + ': R1 is below a closed More');
+      await openReader(p, device, ids.f0, 'Filler 0.');
+      await until(async () => (await stepsOffered(p)).above, device + ': the Reader knows its neighbours');
+      const buttons = await stepsOffered(p);
+      if (buttons.below) {
+        if (device === 'phone') await p.evaluate(`document.querySelector('.reader-end').scrollIntoView({block:'center'})`);
+        await press(p, device, stepButton(device, 'below'));
+        await until(async () => !(await readerOn(p))?.startsWith('Filler 0.'), device + ': ↓ went somewhere');
+      }
+      const landed = await readerOn(p);
+      if (landed?.startsWith('Root R')) wrong.push(`${device}: ↓ from F0 opened R, the root of the dossier below a closed More`);
+      await closeReader(p, device);
+      await p.close();
+    }
+    assert.deepEqual(wrong, []);
+  });
+
+  await check('reading stacks shown order: at the bottom of a long topic, ↓ never opens an unloaded message Core holds below a closed More', async () => {
+    const wrong = [];
+    for (const device of Object.keys(DEVICES)) {
+      // R and its reply R1, both older than anything loaded, put below More on another device; fillers F0..F29.
+      const topic = 'shown-order-unloaded-aside-' + device;
+      const ids = await seed(topic, [['r', { sender: other, join: true, addressees: [facts.actor], body: 'Root R, put aside.', read: true }],
+        ['r1', { sender: other, addressees: [facts.actor], reply_to: 'r', body: 'Reply R1, put aside.', read: true }], ...fillers(30)]);
+      const newest = (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.r, operation_id: topic + '-aside', args: { through: newest } });
+      await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.r1] })).items[0].stack_position.below, device + ': Core holds R\'s dossier below More');
+      const p = await open(topic, device, topic, ids.f29);
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.f0}"]'))`), device + ': F0 is the oldest loaded');
+      await openReader(p, device, ids.f0, 'Filler 0.');
+      await until(async () => (await stepsOffered(p)).above, device + ': the Reader knows its neighbours');
+      const buttons = await stepsOffered(p);
+      if (buttons.below) {
+        if (device === 'phone') await p.evaluate(`document.querySelector('.reader-end').scrollIntoView({block:'center'})`);
+        await press(p, device, stepButton(device, 'below'));
+        await until(async () => !(await readerOn(p))?.startsWith('Filler 0.'), device + ': ↓ went somewhere');
+        const landed = await readerOn(p);
+        if (/^(Root R|Reply R1)/.test(landed ?? '')) wrong.push(`${device}: ↓ from F0 opened ${landed.slice(0, 20)}, which Core holds below a closed More`);
+      }
+      await closeReader(p, device);
+      await p.close();
+    }
+    assert.deepEqual(wrong, []);
+  });
+
+  await check('reading stacks shown order: More opened, a dossier brought back across it, More closed: the Reader steps the page as shown', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      // A, X, C, Y oldest first; X and Y below More, then X brought back.
+      const topic = 'shown-order-across-' + device;
+      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+        ['x', { sender: other, addressees: [facts.actor], body: 'Stack X, put aside.', read: true }],
+        ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }],
+        ['y', { sender: other, addressees: [facts.actor], body: 'Stack Y, put aside.', read: true }]]);
+      const p = await open(topic, device, topic, ids.a);
+      for (const id of [ids.y, ids.x]) await putAsideBy(p, device, topic, id);
+      await becomes(() => pageShown(p, ids), ['c', 'a', 'opening', 'More'], device + ': X and Y below More');
+      await press(p, device, '#messages .stack-more');
+      await becomes(() => pageShown(p, ids), ['c', 'a', 'opening', 'More', 'y', 'x'], device + ': More open');
+      await menuOf(p, device, ids.x); if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Bring back above More');
+      await until(async () => !(await view('stack_positions', { topic_id: topic, message_ids: [ids.x] })).items[0].stack_position.below, device + ': X back in Core');
+      await becomes(() => pageShown(p, ids), ['c', 'x', 'a', 'opening', 'More', 'y'], device + ': X above More, More still open');
+      await press(p, device, '#messages .stack-more');
+      await becomes(() => pageShown(p, ids), ['c', 'x', 'a', 'opening', 'More'], device + ': More closed');
+      await openReader(p, device, ids.x, 'Stack X');
+      await readerStep(p, device, 'above', 'Stack C.', '↑ from X is C');
+      await readerEnd(p, device, 'above', '↑ from C goes nowhere: Y is below a closed More');
+      await readerStep(p, device, 'below', 'Stack X', '↓ from C is X');
+      await readerStep(p, device, 'below', 'Stack A.', '↓ from X is A');
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading stacks shown order: Undo of Move below More, then the Reader steps through the dossier again; a link to a put-aside dossier still works', async () => {
+    const topic = 'shown-order-undo';
+    const { ids, p, shown } = await besideMore(topic);
+    // ⌘Z brings B back: the Reader goes through it again.
+    await keyTo(p, ids.a);
+    await p.key('z', 4);
+    await until(async () => !(await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'Undo brings B back in Core');
+    await becomes(shown, ['c', 'b', 'a'], 'B back above');
+    await openReader(p, 'laptop', ids.a, 'Stack A.');
+    await readerStep(p, 'laptop', 'above', 'Stack B', '↑ from A is B again after Undo');
+    await readerStep(p, 'laptop', 'above', 'A reply to C.', '↑ from B is C\'s reply');
+    await readerStep(p, 'laptop', 'above', 'Stack C.', '↑ from C\'s reply is C, order within the dossier kept');
+    await closeReader(p, 'laptop');
+    // Put aside again, then a link to B: it opens, and the Reader steps from it along the page.
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Move below More');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'B below More again');
+    await becomes(shown, ['c', 'a', 'More'], 'B below More');
+    const linking = (await control({ method: 'agent_message', operation_id: topic + '-link', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
+      body: `See ${facts.origin}/?topic=${topic}&message=${ids.b} please.`, read: true })).result.message_id;
+    const link = card(linking) + ' a.words-link';
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)}))`), 'the link arrives');
+    await centre(p, link); await p.point(link);
+    await until(async () => (await readerOn(p))?.startsWith('Stack B'), 'the link to B, put aside, opens it');
+    observations.push({ name: 'shown order link', engine, shownWithLink: await shown() });
+    await readerStep(p, 'laptop', 'below', 'Stack A.', '↓ from B, revealed for the link where it sits, is A');
+    assert.ok((await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'the link cleared no choice');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks shown order: the Reader keeps the order within a dossier, folded replies included, beside one put aside', async () => {
+    const topic = 'shown-order-folded';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }],
+      ['c1', { sender: other, reply_to: 'c', addressees: [facts.actor], body: 'First reply to C.', read: true }],
+      ['c2', { sender: other, reply_to: 'c', addressees: [facts.actor], body: 'Second reply to C.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    await putAsideBy(p, 'laptop', topic, ids.b);
+    await becomes(() => pageShown(p, ids), ['c', 'a', 'opening', 'More'], 'B below More');
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.c1, operation_id: topic + '-fold', args: { folded: true } });
+    await until(async () => (await actsOf(topic, ids.c1))?.folded === true, 'C\'s first reply is folded');
+    await openReader(p, 'laptop', ids.a, 'Stack A.');
+    await readerStep(p, 'laptop', 'above', 'Second reply to C.', '↑ from A is C\'s newest reply');
+    await readerStep(p, 'laptop', 'above', 'First reply to C.', '↑ again is C\'s first reply');
+    await readerStep(p, 'laptop', 'above', 'Stack C.', '↑ again is C');
+    await readerEnd(p, 'laptop', 'above', '↑ from C, the top, goes nowhere');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks shown order: while the Reader is open, another device putting a dossier aside or bringing it back changes what ↑ offers at once', async () => {
+    // A, C, Y oldest first. The Reader is on C, with Y above it; another device puts Y below More, then brings it back.
+    const topic = 'shown-order-redrawn';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }],
+      ['y', { sender: other, addressees: [facts.actor], body: 'Stack Y, put aside.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    await becomes(() => pageShown(p, ids), ['y', 'c', 'a', 'opening'], 'newest on top');
+    await openReader(p, 'laptop', ids.c, 'Stack C.');
+    await until(async () => (await stepsOffered(p)).above, 'laptop: ↑ from C is offered, Y above it');
+    const q = await open(topic + '-other', 'laptop', topic, ids.a);
+    await putAsideBy(q, 'laptop', topic, ids.y);
+    await p.send('Page.bringToFront');
+    await becomes(() => pageShown(p, ids), ['c', 'a', 'opening', 'More'], 'the Reader\'s page hears Y went below More');
+    await becomes(async () => (await stepsOffered(p)).above, false, '↑ from C is no longer offered: Y went below More on another device');
+    await q.send('Page.bringToFront');
+    await press(q, 'laptop', '#messages .stack-more');
+    await menuOf(q, 'laptop', ids.y); await choose(q, 'laptop', 'Bring back above More');
+    await until(async () => !(await view('stack_positions', { topic_id: topic, message_ids: [ids.y] })).items[0].stack_position.below, 'Core holds Y above More again');
+    await q.close(); await p.send('Page.bringToFront');
+    await becomes(() => pageShown(p, ids), ['y', 'c', 'a', 'opening'], 'the Reader\'s page hears Y came back');
+    await readerStep(p, 'laptop', 'above', 'Stack Y', '↑ from C is offered again, and opens Y');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks shown order: the New line beside a dossier put below a closed More takes the first place shown after it', async () => {
+    // A read; B, C and C's reply new. B, the oldest new, is put below More: the line goes under C, above A,
+    // not below the More button.
+    const topic = 'shown-order-new-line';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.' }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.' }],
+      ['c1', { sender: other, reply_to: 'c', addressees: [facts.actor], body: 'A reply to C.' }]]);
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    const lined = q => q.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length)
+      .map(e=>e.dataset.line?'New':e.classList.contains('stack-more')?'More':(${JSON.stringify(names)})[e.dataset.id??e.dataset.stack]??(e.classList.contains('own-message')||e.querySelector?.('.own-message')?'opening':null)).filter(Boolean)`);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    await becomes(() => lined(p), ['c', 'b', 'New', 'a', 'opening'], 'the line under B, the oldest new');
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Move below More');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds B below More');
+    await becomes(() => lined(p), ['c', 'New', 'a', 'opening', 'More'], 'with B below More, the line sits under C, the first place shown after B');
+    await p.close();
+    const q = await open(topic + '-again', 'laptop', topic, ids.a);
+    await becomes(() => lined(q), ['c', 'New', 'a', 'opening', 'More'], 'opened again, the same');
+    assert.deepEqual(q.errors, []);
+    await q.close();
+  });
+
+  // The New line is placed again each time the stacks are drawn: a line placed while More was open does not stay
+  // below More once it closes. This case began as an independent review's.
+  await check('reading stacks shown order: after More opens, an act arrives and More closes, the New line is not left below the closed More', async () => {
+    const topic = 'new-line-more-closes';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.' }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.' }],
+      ['c1', { sender: other, reply_to: 'c', addressees: [facts.actor], body: 'A reply to C.' }]]);
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    const lined = q => q.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length)
+      .map(e=>e.dataset.line?'New':e.classList.contains('stack-more')?'More':(${JSON.stringify(names)})[e.dataset.id??e.dataset.stack]??(e.classList.contains('own-message')||e.querySelector?.('.own-message')?'opening':null)).filter(Boolean)`);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    await becomes(() => lined(p), ['c', 'b', 'New', 'a', 'opening'], 'the line under B, the oldest new');
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Move below More');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds B below More');
+    await becomes(() => lined(p), ['c', 'New', 'a', 'opening', 'More'], 'with B below More, the line sits under C');
+    await press(p, 'laptop', '#messages .stack-more');
+    await until(async () => (await lined(p)).includes('b'), 'More opens: B shows');
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.a, operation_id: topic + '-star', args: { starred: true } });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).dataset.starred==='true'`), 'the star reaches the page');
+    const open_ = await lined(p);
+    await press(p, 'laptop', '#messages .stack-more');
+    await until(async () => !(await lined(p)).includes('b'), 'More closes: B goes');
+    const closed = await lined(p);
+    assert.deepEqual(closed, ['c', 'New', 'a', 'opening', 'More'], `with More closed again the line is not below More (More open after the star: ${JSON.stringify(open_)})`);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // rv355r7 (independent review): the New line is placed again on every draw, including More's own press, which draws
+  // the stacks again outside keepListAnchor (state.again). The line moving from above the window to below More must not
+  // move what the person sees: More stays under the pointer, opened and closed again.
+  await check('reading stacks shown order: opening and closing More moves the New line but not what the reader sees', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'rv7-line-jump-' + device;
+      const said = [['a0', { sender: other, join: true, addressees: [facts.actor], body: 'Read 0, an older message.' }]];
+      for (let n = 1; n < 22; n++) said.push(['a' + n, { sender: other, addressees: [facts.actor], body: `Read ${n}, an older message.`, ...(n === 21 ? { read: true } : {}) }]);
+      said.push(['b', { sender: other, addressees: [facts.actor], body: 'Stack B, the oldest new, put aside.' }],
+        ['c', { sender: other, addressees: [facts.actor], body: 'Stack C, new.' }],
+        ['d', { sender: other, addressees: [facts.actor], body: 'Stack D, new.' }]);
+      const ids = await seed(topic, said);
+      const p = await open(topic, device, topic, ids.d);
+      const lineAt = () => p.evaluate(`(()=>{const l=document.querySelector('#messages > [data-line]');if(!l||!l.getClientRects().length)return null;const prev=l.previousElementSibling;return prev?.dataset.id??prev?.dataset.stack??prev?.className??null})()`);
+      await until(async () => (await lineAt()) === ids.b, `${device}: the line under B, the oldest new`);
+      // B goes below More as another device puts it there (the menu's own move is checked elsewhere).
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.b, operation_id: topic + '-aside',
+        args: { through: (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+      await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds B below More');
+      await until(async () => (await lineAt()) === ids.c, `${device}: with B below a closed More, the line sits under C`);
+      // More at the bottom of the window, the line well above it.
+      await p.evaluate(`document.querySelector('#messages .stack-more').scrollIntoView({block:'end'}),scrollBy(0,40)`);
+      await twoFrames(p); await away(p);
+      const where = () => p.evaluate(`(()=>{const m=document.querySelector('#messages .stack-more').getBoundingClientRect(),l=document.querySelector('#messages > [data-line]')?.getBoundingClientRect();
+        return {more:Math.round(m.top),line:l?Math.round(l.top):null,scroll:Math.round(scrollY)}})()`);
+      const before = await where();
+      assert.ok(before.line !== null && before.line < 0 && before.more > 0 && before.more < (await p.evaluate('innerHeight')), `${device}: More in the window, the line above it (${JSON.stringify(before)})`);
+      await press(p, device, '#messages .stack-more');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).getClientRects().length>0`), `${device}: More opens: B shows`);
+      await twoFrames(p);
+      const opened = await where();
+      assert.equal(await lineAt(), ids.b, `${device}: with More open the line goes under B`);
+      assert.ok(Math.abs(opened.more - before.more) <= 1, `${device}: opening More leaves More where it was under the pointer (before ${JSON.stringify(before)}, after ${JSON.stringify(opened)})`);
+      await press(p, device, '#messages .stack-more');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).getClientRects().length===0`), `${device}: More closes: B goes`);
+      await twoFrames(p);
+      const closed = await where();
+      assert.equal(await lineAt(), ids.c, `${device}: with More closed again the line is back under C`);
+      assert.ok(Math.abs(closed.more - opened.more) <= 1, `${device}: closing More leaves More where it was under the pointer (open ${JSON.stringify(opened)}, closed ${JSON.stringify(closed)})`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
   });
 
   // Item 354, Tony's case: ⇧⌘↑ on an older stack whose replies were all read, into the newer message on its
@@ -1841,13 +2738,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await readerOn(p), null, 'phone: the tap opened no Reader');
     // A starred message is not folded: a swipe right on it writes nothing and leaves it whole. Acts go to Core in
     // order, so once a later swipe's fold is in Core, any fold the starred one had sent would be there before it.
-    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.three, operation_id: topic + '-star-three', args: { starred: true } });
-    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.three))})?.dataset.starred === 'true'`), 'phone: three shows starred');
-    await drag(card(ids.three), 20, 160);
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: topic + '-star-one', args: { starred: true } });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))})?.dataset.starred === 'true'`), 'phone: three shows starred');
+    await drag(card(ids.one), 20, 160);
     await drag(card(ids.two), 20, 160);
     await until(async () => await foldOf(topic, ids.two), 'phone: the later swipe on two lands in Core');
-    assert.equal(await foldOf(topic, ids.three), false, 'phone: the starred message swiped right is not folded in Core');
-    assert.deepEqual(await folded(p, ids.three), { row: false, words: null, whole: true }, 'phone: and its card is whole');
+    assert.equal(await foldOf(topic, ids.one), false, 'phone: the starred message swiped right is not folded in Core');
+    assert.deepEqual(await folded(p, ids.one), { row: false, words: null, whole: true }, 'phone: and its card is whole');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -1905,6 +2802,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, unread.' }],
       ['wide', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A wide table, unread:\n\n' + table }],
       ['kept', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply kept, starred.' }],
+      ['last', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Last reply for the dossier swipe.' }],
       ...[1, 2, 3, 4, 5].map(n => ['tall' + n, { sender: other, addressees: [facts.actor], body: `Message ${n} on its own.\n${tall}`, read: true }])]);
     await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.kept, operation_id: topic + '-star', args: { starred: true } });
     // Every wheel event the window hears, after the feed has had it: its deltas and whether the page took it from the browser.
@@ -1914,7 +2812,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const fullyOpen = async () => {
       const toggle = `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`;
       if ((await look(p, ids, 'root')).fold !== 'open') { await centre(p, toggle); await press(p, 'laptop', toggle); }
-      await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'wide', 'kept'], 'the stack fully open, every reply in view');
+      await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'wide', 'kept', 'last'], 'the stack fully open, every reply in view');
     };
     await fullyOpen();
     const where = await p.evaluate('JSON.stringify([location.href, history.length])');
@@ -1996,7 +2894,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => await left() === 200, 'the table scrolled sideways');
     const sideways = await fingers(wrap, RIGHT);
     await until(async () => await left() < 200, 'the swipe scrolls the table back');
-    assert.deepEqual([(await folded(p, ids.wide)).whole, (await look(p, ids, 'root')).rows], [true, ['one', 'wide', 'kept']], 'a swipe on the table folds nothing');
+    assert.deepEqual([(await folded(p, ids.wide)).whole, (await look(p, ids, 'root')).rows], [true, ['one', 'wide', 'kept', 'last']], 'a swipe on the table folds nothing');
     assert.ok(sideways.every(w => !w.prevented), `the page left every event over the table to the browser: ${JSON.stringify(sideways)}`);
     // A starred message is not folded.
     await reload();
@@ -2011,6 +2909,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal((await folded(p, ids.one)).whole, true, 'two fingers right with Ctrl held fold nothing');
       assert.equal(await folds(), 0, 'and send no fold');
     }
+    await reload();
+    await fingers(card(ids.last), RIGHT);
+    await until(async () => (await actsOf(topic,ids.root))?.aside>0,'a trackpad swipe on the last visible message puts the dossier aside');
+    await becomes(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.last))})?.getClientRects().length)`),false,'the whole dossier is below More');
+    await p.key('z',4);
+    await until(async () => (await actsOf(topic,ids.root))?.aside===null,'Command-Z brings the trackpad-moved dossier back');
+    await reload();
+    await fingers(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`,RIGHT);
+    await until(async () => (await actsOf(topic,ids.root))?.aside>0,'a trackpad swipe on the header moves its dossier too');
     assert.equal(await p.evaluate('JSON.stringify([location.href, history.length])'), where, 'the page went nowhere through it all');
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -2321,9 +3228,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const tall = Array.from({ length: 8 }, (_, i) => `Line ${i} of a message that makes the page taller than the window.`).join('\n');
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.' }],
       ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, unread.' }],
+      // A later reply, so reply one is not the dossier's last visible message, which a swipe right moves below More (355).
+      ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two, unread, the dossier\'s last.' }],
       ...[1, 2, 3, 4, 5].map(n => ['tall' + n, { sender: other, addressees: [facts.actor], body: `Message ${n} on its own.\n${tall}`, read: true }])]);
     const p = await open(topic, 'laptop', topic, ids.root, HEARD_WHEELS);
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['one'], 'the unread reply in view');
+    // The tall messages' read reads the whole topic, the replies too, so at latest plus unread reply one is folded
+    // away. The dossier fully open shows both, as the trackpad case above opens it.
+    const toggle = `#messages .reply-stack[data-stack="${ids.root}"] .stack-toggle`;
+    await centre(p, toggle); await press(p, 'laptop', toggle);
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one', 'two'], 'the dossier fully open, both replies in view');
     // The stack's head sits above the reply that folds, so only a scroll moves it.
     const top = () => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).getBoundingClientRect().top`);
     await centre(p, card(ids.one));
@@ -2808,6 +3721,212 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const p = await open(topic, 'laptop', topic, ids.plain);
     const empty = await row(p);
     assert.deepEqual([empty.marks, empty.chip, empty.row], [null, null, null], `with nothing to show, the row takes no room: ${JSON.stringify(empty)}`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Where the keys are after Move below More hands them to More, ↑ and ↓ step from More's place. Just above More
+  // is the topic's opening, the last stack shown above it (besideMore).
+  for (const way of ['ArrowUp', 'ArrowDown']) await check(`reading stacks below More: after Move below More hands the focus to More, ${way === 'ArrowUp' ? '↑ lights the stack shown just above More' : '↓ lights nothing above More'}`, async () => {
+    const topic = 'below-more-keys-' + way.toLowerCase();
+    const { ids, p, shown } = await besideMore(topic);
+    await becomes(shown, ['c', 'a', 'More'], 'B below More');
+    assert.equal(await p.evaluate(`document.activeElement?.classList.contains('stack-more')`), true, 'Move below More hands the focus to More');
+    await away(p);
+    await p.key(way);
+    await twoFrames(p);
+    const opening = await p.evaluate(`[...document.querySelectorAll('#messages > [data-id]')].find(e=>e.classList.contains('own-message')||e.querySelector('.own-message'))?.dataset.id`);
+    const names = { ...Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key])), [opening]: 'opening' };
+    const now = await p.evaluate(`(e=>({lit:[...document.querySelectorAll('#messages .lit[data-id]')].map(x=>x.dataset.id),focus:e?.closest?.('[data-id]')?.dataset.id??e?.className??null}))(document.activeElement)`);
+    const litNames = now.lit.map(id => names[id] ?? id);
+    if (way === 'ArrowUp') assert.deepEqual(litNames, ['opening'], `↑ from More lights the topic's opening, the stack shown just above More (lit ${JSON.stringify(litNames)}, focus ${JSON.stringify(names[now.focus] ?? now.focus)})`);
+    else assert.deepEqual(litNames.filter(name => ['a', 'c', 'c1', 'opening'].includes(name)), [], `↓ from More, the last thing drawn, lights nothing above More (lit ${JSON.stringify(litNames)}, focus ${JSON.stringify(names[now.focus] ?? now.focus)})`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A dossier put below a closed More and drawn where it sits for a link; → on its reply.
+  await check('reading stacks below More: → on a reply of a dossier put below a closed More, drawn where it sits for a link, keeps the dossier drawn and the keys on it', async () => {
+    const topic = 'below-more-peek';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
+      ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const section = `#messages .reply-stack[data-stack="${ids.b}"]`;
+    const drawn = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+    await becomes(drawn, true, 'B is drawn');
+    await menuOf(p, 'laptop', ids.b1); await choose(p, 'laptop', 'Move below More');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds B below More');
+    await becomes(drawn, false, 'B is below a closed More');
+    const linking = (await control({ method: 'agent_message', operation_id: topic + '-link', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
+      body: `See ${facts.origin}/?topic=${topic}&message=${ids.b1} please.`, read: true })).result.message_id;
+    const link = card(linking) + ' a.words-link';
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)}))`), 'the link arrives');
+    await centre(p, link); await p.point(link);
+    await until(async () => (await readerOn(p))?.startsWith('A reply to B'), 'the link opens B1 in the Reader');
+    await closeReader(p, 'laptop');
+    await becomes(drawn, true, 'the link draws B where it sits');
+    await away(p);
+    await keyTo(p, ids.b1);
+    const before = await p.evaluate(`document.querySelector(${JSON.stringify(section)}).dataset.fold`);
+    await p.key('ArrowRight');
+    await twoFrames(p);
+    const after = await p.evaluate(`(e=>({focus:{drawn:Boolean(e&&e!==document.body&&e.getClientRects().length),on:e?.closest?.('[data-id]')?.dataset.id??null,tag:e?.tagName??null},
+      fold:document.querySelector(${JSON.stringify(section)}).dataset.fold,lit:[...document.querySelectorAll('#messages .lit[data-id]')].map(x=>x.dataset.id),said:document.getElementById('stack-said')?.textContent??null}))(document.activeElement)`);
+    const below = (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below;
+    assert.equal(await drawn(), true, `→ on B1 (fold ${before} → ${after.fold}, said ${JSON.stringify(after.said)}) keeps B drawn where the link drew it (Core below ${below}; ${JSON.stringify(after)})`);
+    assert.equal(after.focus.drawn, true, `after → the keys are on something drawn (${JSON.stringify(after)})`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // The same dossier drawn for a link; ⋯ Fold on the reply the link opened.
+  await check('reading stacks below More: ⋯ Fold on the reply a link drew in a dossier put below a closed More folds it where it is drawn, the keys on it', async () => {
+    const topic = 'below-more-peekfold';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
+      ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const section = `#messages .reply-stack[data-stack="${ids.b}"]`;
+    const drawn = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+    await becomes(drawn, true, 'B is drawn');
+    await menuOf(p, 'laptop', ids.b1); await choose(p, 'laptop', 'Move below More');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds B below More');
+    await becomes(drawn, false, 'B is below a closed More');
+    const linking = (await control({ method: 'agent_message', operation_id: topic + '-link', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
+      body: `See ${facts.origin}/?topic=${topic}&message=${ids.b1} please.`, read: true })).result.message_id;
+    const link = card(linking) + ' a.words-link';
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)}))`), 'the link arrives');
+    await centre(p, link); await p.point(link);
+    await until(async () => (await readerOn(p))?.startsWith('A reply to B'), 'the link opens B1 in the Reader');
+    await closeReader(p, 'laptop');
+    await becomes(drawn, true, 'the link draws B where it sits');
+    await menuOf(p, 'laptop', ids.b1); await choose(p, 'laptop', 'Fold');
+    await until(async () => (await actsOf(topic, ids.b1))?.folded === true, 'Core holds B1 folded');
+    await twoFrames(p);
+    const after = await p.evaluate(`(e=>({focus:{drawn:Boolean(e&&e!==document.body&&e.getClientRects().length),on:e?.closest?.('[data-id]')?.dataset.id??null,tag:e?.tagName??null,cls:e?.className??null},
+      lit:[...document.querySelectorAll('#messages .lit[data-id]')].map(x=>x.dataset.id),said:document.getElementById('stack-said')?.textContent??null}))(document.activeElement)`);
+    assert.equal(await drawn(), true, `⋯ Fold on B1 folds it where the link drew it, B still drawn (${JSON.stringify(after)})`);
+    assert.equal(after.focus.drawn && after.focus.on === ids.b1, true, `after ⋯ Fold the keys are on B1, drawn (${JSON.stringify(after)})`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A dossier B, with a reply B1, put below a closed More from another of the person's devices (or with mine, from
+  // this page's ⋯); then a link to B1 arrives, and with follow the person opens it and closes the Reader, so B is
+  // drawn where it sits for the link.
+  // On a phone the link is tapped on its own first line: at 390 wide it wraps, and the middle of its box is the
+  // paragraph between its lines.
+  const linkedAside = async (topic, device, { follow = true, mine = false } = {}) => {
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
+      ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }],
+      ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
+    const p = await open(topic, device, topic, ids.a);
+    const section = `#messages .reply-stack[data-stack="${ids.b}"]`;
+    const drawn = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+    const newest = async () => (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+    const below = async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below;
+    // An act of the person's on another device: the fixture's stack_act, sent as them.
+    let n = 0;
+    const elsewhere = (kind, id, args) => control({ method: 'stack_act', sender: facts.actor, kind, message_id: id, operation_id: `${topic}-elsewhere-${n++}`, args });
+    const more = () => p.evaluate(`(m=>m?{text:m.textContent,shown:m.getClientRects().length>0}:null)(document.querySelector('#messages .stack-more'))`);
+    await becomes(drawn, true, 'B is drawn');
+    if (mine) { await menuOf(p, device, ids.b1); await choose(p, device, 'Move below More'); }
+    else await elsewhere('stack.aside', ids.b, { through: await newest() });
+    await until(below, 'Core holds B below More');
+    await becomes(drawn, false, 'B is below a closed More');
+    const linking = (await control({ method: 'agent_message', operation_id: topic + '-link', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
+      body: `See ${facts.origin}/?topic=${topic}&message=${ids.b1} please.`, read: true })).result.message_id;
+    const link = card(linking) + ' a.words-link';
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)}))`), 'the link arrives');
+    if (follow) {
+      await centre(p, link);
+      if (device === 'phone') await tap(p, link, 'first'); else await p.point(link);
+      await until(async () => (await readerOn(p))?.startsWith('A reply to B'), 'the link opens B1 in the Reader');
+      await closeReader(p, device);
+      await becomes(drawn, true, 'the link draws B where it sits');
+    }
+    return { ids, p, section, drawn, newest, below, elsewhere, more };
+  };
+
+  // Where the link drew B is this page's own view of the place Core held when the link was followed. Another
+  // device's Bring back, then Move below More, is a later place, and B goes below the closed More as it does
+  // with no link followed (the control).
+  for (const device of ['laptop', 'phone']) for (const follow of [true, false]) await check(`reading stacks below More: on a ${device}, ${follow ? 'a dossier a link drew where it sits' : 'with no link followed (the control), a dossier'} goes below a closed More when another device brings it back and moves it below More again`, async () => {
+    const topic = `below-more-elsewhere-${device}-${follow ? 'link' : 'control'}`;
+    const { p, drawn, newest, below, elsewhere, more, ids } = await linkedAside(topic, device, { follow });
+    await elsewhere('stack.aside', ids.b, { through: null });
+    await until(async () => !(await below()), 'Core holds B brought back');
+    await becomes(drawn, true, 'B, brought back on another device, is drawn above More');
+    await elsewhere('stack.aside', ids.b, { through: await newest() });
+    await until(below, 'Core holds B below More again');
+    const got = await until(async () => !(await drawn()), 'B goes below the closed More after the second move on another device').then(() => 'below', () => 'still drawn');
+    assert.equal(got, 'below', `after another device Brought back B and moved it below More again, this page still draws B where the link drew it (More: ${JSON.stringify(await more())})`);
+    assert.equal((await more())?.shown, true, `More shows, closed, with B below it (${JSON.stringify(await more())})`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // The same link followed again after another device's Bring back and Move below More draws B where it sits
+  // again: the link's place is the one Core holds when it is followed, which the earlier following does not keep.
+  for (const device of ['laptop', 'phone']) await check(`reading stacks below More: on a ${device}, the link followed again after another device's Bring back and Move below More draws B where it sits again`, async () => {
+    const topic = `below-more-again-${device}`;
+    const { p, drawn, newest, below, elsewhere, ids } = await linkedAside(topic, device);
+    await elsewhere('stack.aside', ids.b, { through: null });
+    await until(async () => !(await below()), 'Core holds B brought back');
+    await becomes(drawn, true, 'B, brought back on another device, is drawn');
+    await elsewhere('stack.aside', ids.b, { through: await newest() });
+    await until(below, 'Core holds B below More again');
+    await becomes(drawn, false, 'B goes below the closed More');
+    const link = '#messages a.words-link';
+    await centre(p, link);
+    if (device === 'phone') await tap(p, link, 'first'); else await p.point(link);
+    await until(async () => (await readerOn(p))?.startsWith('A reply to B'), 'the link opens B1 in the Reader again');
+    await closeReader(p, device);
+    await becomes(drawn, true, 'the link followed again draws B where it sits');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Nothing moves B's place: the keys' →, ⋯ Fold on B1, and the page reading the topic's acts and messages again
+  // (another device's star on C, a new message), all with the page left open. B stays drawn where the link drew it.
+  await check('reading stacks below More: a dossier a link drew where it sits stays drawn there through →, ⋯ Fold and the page reading the topic again, while nothing moves it', async () => {
+    const topic = 'below-more-stays';
+    const { p, drawn, below, elsewhere, ids, section } = await linkedAside(topic, 'laptop');
+    await away(p);
+    await keyTo(p, ids.b1);
+    await p.key('ArrowRight');
+    await twoFrames(p);
+    assert.equal(await drawn(), true, `→ on B1 keeps B drawn where the link drew it (fold ${await p.evaluate(`document.querySelector(${JSON.stringify(section)}).dataset.fold`)})`);
+    await menuOf(p, 'laptop', ids.b1); await choose(p, 'laptop', 'Fold');
+    await until(async () => (await actsOf(topic, ids.b1))?.folded === true, 'Core holds B1 folded');
+    await twoFrames(p);
+    assert.equal(await drawn(), true, '⋯ Fold on B1 keeps B drawn where the link drew it');
+    await elsewhere('message.star', ids.c, { starred: true });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.c))})?.dataset.starred === 'true'`), 'the page reads the star made on another device');
+    const arriving = (await control({ method: 'agent_message', operation_id: topic + '-later', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
+      body: 'Something else, later.', read: true })).result.message_id;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(arriving))}))`), 'the page reads the new message');
+    await twoFrames(p);
+    assert.equal(await below(), true, 'Core still holds B below More');
+    assert.equal(await drawn(), true, 'after the page read the topic again, B is still drawn where the link drew it');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // The person's own Move below More, here, on B drawn where it sits for a link: two fingers swiped right over its
+  // last reply. Core finds B's place unchanged (the same through as the Move below More this page made, so the
+  // same revision); B still goes below the closed More, at once and after Core answers.
+  await check('reading stacks below More: two fingers swiped right over a dossier a link drew where it sits move it below the closed More, though Core finds its place unchanged', async () => {
+    const topic = 'below-more-swipe-again';
+    const { p, drawn, below, ids, more } = await linkedAside(topic, 'laptop', { mine: true });
+    const revision = async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.aside_revision;
+    const was = await revision();
+    await centre(p, card(ids.b1));
+    const b = await p.box(card(ids.b1)), x = b.x + b.width / 2, y = b.y + Math.min(b.height / 2, 20);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    for (const deltaX of [-30, -30, -30, -30, -18, -10, -5, -2, -1]) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY: 0 });
+    await until(async () => await said(p) === 'Moved below More, for you only', 'the swipe moves B below More');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    await twoFrames(p);
+    assert.deepEqual([await below(), await revision()], [true, was], 'Core holds B below More, at the place it held');
+    assert.equal(await drawn(), false, `after the swipe and Core's answer, B is below the closed More (More: ${JSON.stringify(await more())})`);
     assert.deepEqual(p.errors, []); await p.close();
   });
 }

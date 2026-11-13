@@ -23,12 +23,7 @@ export class NotebookPage extends DeckPage {
     const label=this.node('label','sr-only','Notebook writing'); label.htmlFor=textId;
     this.text=this.node('textarea','notebook-text'); this.text.id=textId; this.text.rows=18; this.text.setAttribute('autocomplete','off');
     this.textInput=new WritingInput({field:this.text});
-    this.text.addEventListener('input',()=>{
-      if(!this.writing || !this.textSeen)return;
-      const body=this.text.value,seen=this.textSeen;
-      this.writing.edit({body},seen,'text');
-      this.textSeen={revision:seen.revision,content:{...seen.content,body}};
-    });
+    this.text.addEventListener('input',()=>this.textEdited());
     this.text.addEventListener('focus',()=>{if(this.writing)this.writing.active=true;});
     this.text.addEventListener('blur',()=>{if(this.writing)this.writing.active=false;});
     this.textPanel.append(label,this.text);
@@ -107,6 +102,10 @@ export class NotebookPage extends DeckPage {
   sync(force=false) {
     const w=this.writing;
     if(!w?.base)return;
+    // Words already in a box whose input has not reached the writing yet go to it first: a read's answer can be
+    // taken between one input listener and the next, and the page drawn from the writing then keeps them.
+    if(this.editing)this.save();
+    this.textEdited();
     this.source=w.base.source; this.base={revision:w.base.revision,body:w.base.content.body}; this.readOnly=w.readOnly;
     this.header.title.textContent=w.value.title;
     const drawKept=force || !this.cardsSeen || !this.textSeen;
@@ -139,6 +138,12 @@ export class NotebookPage extends DeckPage {
     const act=e.fresh?{kind:'add',after:e.after,text:to,depth:e.depth,near:e.near}:{kind:'edit',text:e.text,to,near:e.near};
     const done=applyAct(this.deck,act);
     return done?deckBody(done.deck):deckBody(this.deck);
+  }
+  textEdited() {
+    if(!this.writing || !this.textSeen)return;
+    const body=this.text.value,seen=this.textSeen;
+    this.writing.edit({body},seen,'text');
+    this.textSeen={revision:seen.revision,content:{...seen.content,body}};
   }
   save() {
     if(!this.writing || !this.cardsSeen)return;

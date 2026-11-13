@@ -19,7 +19,7 @@
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -203,6 +203,104 @@ export function moveOf(stacks, index, way) {
   return [{ id: stacks[index].id, key: near }, { id: next.id, key: mine }];
 }
 
+// The stacks in the order the page shows them, top to bottom, More messages a
+// boundary: those drawn above More in their order, then those drawn below it
+// in theirs. view.below(stack): drawn below More; view.hidden(stack): drawn
+// but not on show (below More while it is closed, or agent coordination while
+// Show agent coordination is off), and left out. Every step from a stack to
+// the one beside it (a move, a join, the Reader's ↑ and ↓) reads this, never
+// the stacks in their own order, which still hold the ones put aside.
+export function shownOrder(stacks, view) {
+  return [...stacks.filter(each => !view.below(each)), ...stacks.filter(each => view.below(each))].filter(each => !view.hidden(each));
+}
+
+// Whether a stack is drawn below More: Core holds it put aside, and no
+// message of it is drawn where it sits for this view. here(item): the place
+// (placeOf) Core held for the dossier when a link, search or Starred drew item
+// where it sits, or nothing. That holds only while Core still holds the
+// dossier at that place: a later Move below More or Bring back, from any
+// device, is another place, and the dossier is drawn as Core now holds it.
+export function drawnBelow(stack, here = () => null) {
+  const position = positionOf(stack);
+  if (!position?.below) return false;
+  const place = placeOf(position);
+  return ![stack.head, ...stack.replies].some(item => here(item) === place);
+}
+
+// A dossier's place as Core holds it for the reader (positionOf): its first
+// message and the revision of their stack.aside act on it, which each Move
+// below More and Bring back that changes it raises, made on any device. Acts
+// on other messages and new messages leave it the same place.
+export const placeOf = position => (position ? `${position.root_id}:${position.aside_revision ?? 0}` : null);
+
+// The page as stepping reads it: all, every message the page has where it
+// sits, top to bottom, those not on show included (readingOrder of the stacks
+// above More, then below it); order, those of them on show (view.hidden), and
+// with view.only (the Conversation's Only new) just the messages it draws;
+// shown, their ids; loaded, the ids of all; hiddenRoots, the dossier (Core's
+// root_id) of each stack drawn but not on show; asideShown, whether a dossier
+// put below More is on show (More open, or Only new).
+export function pageOf(stacks, view) {
+  const all = readingOrder(shownOrder(stacks, { below: view.below, hidden: () => false }));
+  const hiddenRoots = new Set(stacks.filter(stack => view.hidden(stack)).flatMap(stack => [stack.id, positionOf(stack)?.root_id ?? stack.id]));
+  const order = readingOrder(shownOrder(stacks, view)).filter(item => !view.only || view.only(item));
+  return { all, order, shown: new Set(order.map(item => item.id)), loaded: new Set(all.map(item => item.id)),
+    hiddenRoots, asideShown: Boolean(view.asideShown), only: view.only ?? null };
+}
+
+// The one exit for every step from a message or a stack to one beside it: the
+// Reader's ↑ and ↓ and their keys, a phone's ↑ Previous and ↓ Next, a move
+// and a join. A candidate ({ id, position? }, a message or a stack by its
+// first message) leaves when the page shows it. One the page has loaded and
+// does not show never does. One it has not loaded (Core's neighbour beyond
+// what the page loaded) leaves unless the page knows it is not on show: its
+// dossier is one the page holds hidden, or Core's position for it
+// (topic_messages' stack_position) puts it below More while More is closed,
+// or Only new is on and the page does not know it as New.
+// Null for none.
+export function stepTarget(candidate, page) {
+  if (!candidate) return null;
+  if (page.shown.has(candidate.id)) return candidate;
+  if (page.loaded.has(candidate.id)) return null;
+  const position = candidate.position ?? null;
+  if (page.hiddenRoots.has(position?.root_id ?? candidate.id) || (position?.below && !page.asideShown)) return null;
+  if (page.only && !page.only(candidate)) return null;
+  return candidate;
+}
+
+// The Reader's neighbours of current (its source_ref), from Core's (core:
+// { next, previous }, next the one above) and the page: from where current
+// sits on the page, on show or not (opened by Read it or a link, put aside on
+// another device while open, not drawn by Only new), the nearest message on
+// show that way, and beyond either end of what shows only a message the page
+// has not loaded. With current not loaded here, Core's neighbours are the
+// candidates. Every one leaves through stepTarget. page null: current is
+// another topic's, which this page's view does not hold, and Core's
+// neighbours step as they are.
+export function readerSteps(current, core, page) {
+  const ref = item => item ? { kind: 'message', id: item.id } : null;
+  if (!page) return { next: ref(core?.next), previous: ref(core?.previous) };
+  const at = current?.kind === 'message' ? page.all.findIndex(item => item.id === current.id) : -1;
+  const onShow = item => page.shown.has(item.id), beyond = other => other && !page.loaded.has(other.id) ? other : null;
+  const next = at < 0 ? core?.next : page.all.slice(0, at).findLast(onShow) ?? beyond(core?.next);
+  const previous = at < 0 ? core?.previous : page.all.slice(at + 1).find(onShow) ?? beyond(core?.previous);
+  // A source ref is { kind, id } alone: Core's position only decides the step.
+  return { next: ref(stepTarget(next ?? null, page)), previous: ref(stepTarget(previous ?? null, page)) };
+}
+
+// The stacks a move or a join of the stack at index steps among: those on its
+// side of More, in order, each with a message the page shows (pageOf), with
+// its index among them. More is a boundary, so a stack never moves or joins
+// past it into a dossier the reader put aside, nor out of one, nor into a
+// stack not on show.
+export function sideOf(stacks, index, view) {
+  const stack = stacks[index];
+  if (!stack) throw Error(`No stack at ${index}.`);
+  const page = pageOf(stacks, view), onShow = each => [each.head, ...each.replies].some(item => page.shown.has(item.id));
+  const among = stacks.filter(each => each === stack || (view.below(each) === view.below(stack) && onShow(each)));
+  return { stacks: among, index: among.indexOf(stack) };
+}
+
 // The stack a join of the stack at index goes into: its neighbour that way.
 export function joinOf(stacks, index, way) {
   return stacks[index + (way === 'up' ? -1 : 1)] ?? null;
@@ -223,9 +321,9 @@ export function joinShown(stacks, index, way, acted) {
   return { act: { id: from.id, into: into.id }, open: into.id, level: 'open', select: acted };
 }
 
-// Every loaded message in the order the page shows them, top to bottom: each
-// stack's head, then its replies, folded ones included. The Reader's ↑ and ↓
-// step along it, as the eye goes down the page.
+// Every message of stacks, top to bottom: each stack's head, then its
+// replies, folded ones included. Of the stacks as shown (shownOrder), it is
+// the order the Reader's ↑ and ↓ step along, as the eye goes down the page.
 export function readingOrder(stacks) {
   return stacks.flatMap(stack => [stack.head, ...stack.replies]);
 }
@@ -237,4 +335,20 @@ export function foldStep({ level }, way, { replies: has = true } = {}) {
   const at = level === 'head' ? -1 : LEVELS.indexOf(level);
   const next = at + (way === 'open' ? 1 : -1);
   return has && next >= 0 && next < LEVELS.length ? { level: LEVELS[next] } : null;
+}
+
+// A position is read at a snapshot: the newest act in the topic the reader
+// hears of, then the newest message they can see in the dossier. Acts only
+// grow, and while they stand still a dossier only gains messages, so the later
+// read has more acts, or as many and more messages. A split may leave the
+// dossier fewer messages, but the split is a later act. An old page cannot
+// undo a newer join, personal move, split or arriving reply.
+export function laterPosition(known, answer) {
+  if (!answer) return known;
+  if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages)) return known;
+  return answer;
+}
+export function positionOf(stack) {
+  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(Boolean)
+    .reduce((known, next) => laterPosition(known, next), null);
 }

@@ -1,9 +1,14 @@
 import { checkedView, RevisionTargets } from './freshness.mjs';
 import { oldestUnreadOf } from './unanswered.mjs';
 import { learnReactions, reactionsOf } from './reactions.mjs';
-import { laterActs } from './stack-order.mjs';
+import { laterActs, laterPosition } from './stack-order.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
+// What places a dossier for the reader (docs/dossier-below-more.md): its first
+// message, through, below and the revision of the act that set them. A
+// position's snapshot (at) says only when it was read.
+const PLACING = ['root_id', 'through', 'below', 'aside_revision'];
+const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
 const behind = () => Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });
 // A bounded cache of what this topic has actually loaded. Feed position and
@@ -103,8 +108,10 @@ export class TopicViews {
     for (const item of answer.items) {
       const known = this.messages.get(item.id);
       if (known?.acts) item.acts = laterActs(known.acts, item.acts);
+      item.stack_position = laterPosition(known?.stack_position, item.stack_position);
       this.messages.set(item.id, item); this.runs.set(item.id, run);
     }
+    this.learnPositions(answer.items.map(item => ({ message_id: item.id, stack_position: item.stack_position })));
     // A message of the reader's own arriving is a reply, from this page or
     // another: an act, as below. The repaint of the messages places the line.
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
@@ -222,8 +229,48 @@ export class TopicViews {
     }
     // A message the answers never named has had no act made.
     if (alone && !alone.acts) { alone.acts = {}; changed = true; }
-    if (changed) this.paint('acts');
+    // What was learned is drawn even when reading the places after it fails
+    // (superseded, or deferred behind the page's own reads): the next read
+    // learns nothing new, so it would draw nothing.
+    try { await this.readPositions(read, current); }
+    finally { if (changed) this.paint('acts'); }
     return true;
+  }
+  // Keeps the later of each read position, for every loaded message of its
+  // dossier. True when what places a dossier changed (samePlace): every act in
+  // the topic raises a position's snapshot (at), and that alone draws nothing.
+  learnPositions(rows) {
+    let changed = false;
+    for (const row of rows) {
+      if (!row.stack_position) continue;
+      const item = this.messages.get(row.message_id);
+      if (!item) continue;
+      const position = laterPosition(item.stack_position, row.stack_position);
+      if (!samePlace(position, item.stack_position)) changed = true;
+      item.stack_position = position;
+      for (const other of this.messages.values()) {
+        if (other.stack_position?.root_id !== position.root_id) continue;
+        const next = laterPosition(other.stack_position, position);
+        if (!samePlace(next, other.stack_position)) changed = true;
+        other.stack_position = next;
+      }
+    }
+    return changed;
+  }
+  async readPositions(read, current = () => true) {
+    // A cached pre-355 Core has no position contract; its ordinary act reads
+    // remain usable until the page is reloaded onto the new release.
+    if (![...this.messages.values()].some(item => item.stack_position)) return;
+    const ids = [...this.messages.keys()]; let changed = false;
+    // A page learned before a later one fails is drawn, as in readActs.
+    try {
+      for (let start = 0; start < ids.length; start += 100) {
+        const answer = checkedView(await read('stack_positions', { topic_id: this.topicId, message_ids: ids.slice(start, start + 100) }), this.instanceId);
+        if (!current()) return;
+        if (answer.topic_id !== this.topicId || !Array.isArray(answer.items)) throw invalid('The dossier positions belong to another topic.');
+        changed = this.learnPositions(answer.items) || changed;
+      }
+    } finally { if (changed) this.paint('acts'); }
   }
   runOf(id) { return this.runs.get(id); }
   validMemory(item) {

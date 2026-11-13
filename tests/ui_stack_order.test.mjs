@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -90,6 +90,42 @@ test('a move places the stack just past its neighbour, refuses at either end, an
   const e = Number.EPSILON;
   const near = ordered(gather([message(1, { acts: { placed: 1 } }), message(2, { acts: { placed: 1 + e } }), message(3, { acts: { placed: 1 + 2 * e } })]));
   assert.deepEqual(moveOf(near, 2, 'up'), [{ id: 'm1', key: 1 + e }, { id: 'm2', key: 1 }]);
+});
+
+test('a move or a join steps among the stacks on its own side of More: over a dossier below More, never into or out of one', () => {
+  // m4, m3, m2, m1 newest first; m3 and m1 drawn below More.
+  const stacks = stacksOf([message(1), message(2), message(3), message(4)]), below = stack => stack.id === 'm3' || stack.id === 'm1';
+  const side = index => sideOf(stacks, index, { below, hidden: () => false });
+  assert.deepEqual([ids(side(2).stacks), side(2).index], [['m4', 'm2'], 1], 'm2 steps among the stacks above More');
+  assert.deepEqual([ids(side(1).stacks), side(1).index], [['m3', 'm1'], 0], 'm3 among those below it');
+  const join = (index, way) => { const { stacks: among, index: at } = side(index); return joinShown(among, at, way, stacks[index].id)?.act ?? null; };
+  assert.deepEqual(join(2, 'up'), { id: 'm2', into: 'm4' }, 'm2 joins m4, shown above it, not m3 below More');
+  assert.deepEqual(join(0, 'down'), { id: 'm4', into: 'm2' }, 'm4 joins m2, shown below it');
+  assert.equal(join(2, 'down'), null, 'm2, last above More, has nothing below to join');
+  assert.equal(join(1, 'up'), null, 'm3, first below More, has nothing above to join');
+  assert.deepEqual(join(1, 'down'), { id: 'm3', into: 'm1' }, 'below More, a dossier joins the one below it there');
+  const { stacks: among, index: at } = side(2);
+  assert.deepEqual(moveOf(among, at, 'up'), [{ id: 'm2', key: 5 }], 'm2 moves above m4, past the dossier below More');
+  assert.equal(moveOf(among, at, 'down'), null, 'and no further down than More');
+  // With nothing below More, every stack is on one side.
+  assert.deepEqual(ids(sideOf(stacks, 2, { below: () => false, hidden: () => false }).stacks), ids(stacks));
+  assert.throws(() => sideOf(stacks, 4, { below, hidden: () => false }), /No stack at 4/);
+  // A stack drawn but not on show (agent coordination hidden) is stepped over too, unless it is the one acting.
+  const hidden = stack => stack.id === 'm4';
+  assert.deepEqual(ids(sideOf(stacks, 2, { below, hidden }).stacks), ['m2'], 'm2 steps over hidden m4: nothing above it to join or pass');
+  assert.deepEqual(ids(sideOf(stacks, 0, { below, hidden }).stacks), ['m4', 'm2'], 'the hidden stack acting keeps its own place');
+});
+
+test('the stacks as shown: those above More in order, then those below it, leaving out the ones not on show', () => {
+  // m4, m3, m2, m1 newest first; m3 and m1 drawn below More.
+  const stacks = stacksOf([message(1), message(2), message(3), message(4)]), below = stack => stack.id === 'm3' || stack.id === 'm1';
+  assert.deepEqual(ids(shownOrder(stacks, { below, hidden: () => false })), ['m4', 'm2', 'm3', 'm1'], 'More open: below More comes after every stack above it');
+  assert.deepEqual(ids(shownOrder(stacks, { below, hidden: below })), ['m4', 'm2'], 'More closed: the dossiers put aside are not shown');
+  assert.deepEqual(ids(shownOrder(stacks, { below, hidden: stack => stack.id === 'm2' })), ['m4', 'm3', 'm1'], 'a hidden stack above More is left out');
+  assert.deepEqual(ids(shownOrder(stacks, { below: () => false, hidden: () => false })), ids(stacks), 'with nothing aside or hidden it is the stacks in their order');
+  // The Reader steps along each shown stack's messages, folded replies included.
+  const withReply = stacksOf([message(1), message(2, { reply_to: 'm1', acts: { folded: true } }), message(3)]);
+  assert.deepEqual(ids(readingOrder(shownOrder(withReply, { below: stack => stack.id === 'm3', hidden: stack => stack.id === 'm3' }))), ['m1', 'm2']);
 });
 
 test('a join reads as one stack: the head first, then every other message oldest first, a joined stack\'s first message keeping its line', () => {

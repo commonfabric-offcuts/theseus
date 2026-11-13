@@ -26,8 +26,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   const scrolled = p => p.evaluate('scrollY');
   // A page's smooth scroll from a key or a wheel runs on after it starts: wait until two frames agree.
   const rested = async p => { let last = await scrolled(p); for (;;) { await settle(p); const now = await scrolled(p); if (now === last) return now; last = now; } };
+  // Core's page holds these words; a failure says what Core's page held instead.
   const saved = (id, part, said) => until(async () => (await view('memory_current', { item_id: id })).body.includes(part), said)
-    .catch(async error => { assert.match((await view('memory_current', { item_id: id })).body, new RegExp(part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), said); throw error; });
+    .catch(async error => { const body = (await view('memory_current', { item_id: id })).body; assert.ok(body.includes(part), `${said}: Core's page reads ${JSON.stringify(body)}`); throw error; });
   const outcomePage = async (id, title, body) => {
     const answer = await control({ method: 'outcome_reference', operation_id: `${id}-create`, item_id: id, title, body });
     assert.equal(answer.status, 'committed', JSON.stringify(answer));
@@ -99,6 +100,71 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await p.send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
   };
   const cardsBody = '## Plan\n\nShip it.\n\n### Steps\n\nOne, two.\n\n## Notes\n\nDan reviews.\n';
+  // The page's saving, as it went (items 421, 422): before the app starts, its fetch is wrapped so every memory.revise
+  // the page sends (operation, expected revision, body) is kept with its receipt (status, revision, refusal), every
+  // memory_current it reads with the revision and body it got, and every change of the saving sign's words; and the
+  // card box's cursor and focus at each focus, input, redraw and cursor set, with the cards' words then.
+  const TRAIL = `(()=>{const trail=[];Object.defineProperty(window,'__notebookTrail',{value:trail});
+    const own=window.fetch.bind(window),t0=performance.now(),at=()=>Math.round(performance.now()-t0),reads=[];
+    // A read of the page held, its answer read in full, until a card box's or the Text box's next input: let go in that
+    // input's first listener, the page takes the answer before the box's own listeners run. After a save: the first
+    // read once a save commits.
+    window.__notebookReadsToInput=0;window.__notebookReadAfterSave=false;
+    document.addEventListener('input',e=>{if(e.target?.classList?.contains('deck-editor')||e.target?.classList?.contains('notebook-text'))reads.splice(0).forEach(go=>go());},true);
+    window.fetch=async(input,init)=>{
+      let ask=null;try{ask=typeof init?.body==='string'?JSON.parse(init.body):null;}catch{}
+      const url=String(input?.url??input),revise=url.endsWith('/api/command')&&ask?.kind==='memory.revise',read=url.endsWith('/api/view')&&ask?.name==='memory_current';
+      if(!revise&&!read)return own(input,init);
+      const entry=revise?{kind:'revise',at:at(),operation:ask.operation_id,expected:ask.expected?.item_revision,body:ask.args?.body}:{kind:'read',at:at()};
+      trail.push(entry);
+      const toInput=read&&window.__notebookReadsToInput>0;if(toInput)window.__notebookReadsToInput--;
+      try{let response=await own(input,init);
+        if(toInput){
+          const text=await response.text(),{status,statusText}=response,headers=[...response.headers];
+          entry.held=at();await new Promise(go=>reads.push(go));entry.released=at();
+          response=new Response(text,{status,statusText,headers});response.json=async()=>JSON.parse(text);}
+        if(revise&&window.__notebookReadAfterSave){const r=await response.clone().json();if(r.status==='committed'){window.__notebookReadAfterSave=false;window.__notebookReadsToInput=1;}}
+        response.clone().json().then(r=>{entry.answered=at();
+          if(revise)Object.assign(entry,{status:r.status,revision:r.result?.revision??null,code:r.error?.code??null});
+          else Object.assign(entry,{revision:r.source_ref?.revision??null,body:r.body??null,code:r.error?.code??null});},()=>{entry.answered='unreadable';});
+        return response;}
+      catch(error){entry.thrown=String(error?.message??error);throw error;}};
+    const box=e=>e?.classList?.contains('deck-editor');
+    const cursor=(why,e)=>trail.push({kind:'cursor',at:at(),why,sel:[e.selectionStart,e.selectionEnd],len:e.value.length,shown:Boolean(e.getClientRects().length),focused:document.activeElement===e,
+      active:(a=>a&&a.tagName+(a.id?'#'+a.id:'')+(a.className&&typeof a.className==='string'?'.'+a.className.split(' ')[0]:''))(document.activeElement),
+      deck:[...(e.closest('.deck-page')?.querySelectorAll('.deck-card .deck-words')??[])].map(w=>w.textContent)});
+    const range=HTMLTextAreaElement.prototype.setSelectionRange;
+    HTMLTextAreaElement.prototype.setSelectionRange=function(...args){const r=range.apply(this,args);if(box(this))cursor('set '+args.slice(0,2).join(','),this);return r;};
+    for(const type of ['focusin','focusout','input'])document.addEventListener(type,e=>{if(box(e.target))cursor(type,e.target);},true);
+    new MutationObserver(records=>{for(const r of records)for(const n of r.addedNodes){const e=n.querySelector?.('.deck-editor');if(e)cursor('drawn',e);}}).observe(document,{subtree:true,childList:true});
+    let said=null;new MutationObserver(()=>{const s=document.querySelector('#new-message-sheet .notebook-sheet-status .deck-status')?.textContent??null;
+      if(s!==said){said=s;trail.push({kind:'sign',at:at(),words:s});}}).observe(document,{subtree:true,childList:true,characterData:true});})()`;
+  const traced = setup => ({ beforeNavigate: async q => { await setup.beforeNavigate(q); await q.send('Page.addScriptToEvaluateOnNewDocument', { source: TRAIL }); } });
+  // At each step: the card box's words, the saving sign, the cards shown, whether the page asks for a choice, what the
+  // page sent and read since the last step, and Core's page as it stands. A failure carries every step taken.
+  const tracer = (id, steps = []) => {
+    const taken = new WeakMap();
+    const step = async (p, name) => {
+      const seen = taken.get(p) ?? 0;
+      const page = await p.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(SHEET)}),pg=d.querySelector('.notebook-sheet-page:not([hidden])'),f=pg?.querySelector('.deck-writing textarea');
+        return {open:d.open,box:f?f.value:null,at:f?[f.selectionStart,f.selectionEnd]:null,sign:d.querySelector('.notebook-sheet-status .deck-status')?.textContent??null,
+          cards:[...(pg?.querySelectorAll('.deck-card:not([hidden]) .deck-title')??[])].map(e=>e.textContent),
+          choice:Boolean(pg&&pg.querySelector('.notebook-conflict')&&!pg.querySelector('.notebook-conflict').hidden),
+          trail:(window.__notebookTrail??[]).slice(${seen}),traced:(window.__notebookTrail??[]).length}})()`).catch(error => ({ unreadable: error.message }));
+      if (page.traced !== undefined) taken.set(p, page.traced);
+      delete page.traced;
+      const core = await view('memory_current', { item_id: id });
+      steps.push({ step: name, page, core: { revision: core.source_ref?.revision ?? null, body: core.body ?? null } });
+    };
+    const kept = async (p, action) => {
+      try { return await action(); }
+      catch (error) {
+        await step(p, 'on failure').catch(() => {});
+        throw new Error(`${error.message}\nSteps (items 421, 422): ${JSON.stringify(steps)}`, { cause: error });
+      }
+    };
+    return { step, kept, steps };
+  };
 
   await check('notebook in the composer: a page opened from the outline, the topic\'s Notebook, the right rail and the outcome\'s page comes up in the New message sheet over the feed, with its title, Text and Cards, Full page and ✕, at a laptop\'s width and a phone\'s', async () => {
     const plan = await outcomePage('sheet-entry-plan', 'Sheet plan', cardsBody);
@@ -179,7 +245,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
 
   await check('notebook in the composer: a card being written survives ✕, a press outside and Escape, which first finishes it; the feed comes back where it was, the focus on what opened the page, and the box is open again on reopening', async () => {
     const id = await topicPage('Sheet kept', cardsBody);
-    const p = await page('notebook-sheet-close', null, true, laptop);
+    const { step, kept } = tracer(id);
+    const p = await page('notebook-sheet-close', null, true, traced(laptop));
+    await kept(p, async () => {
     await listed(p, card(id), 'the topic\'s Notebook lists its page');
     await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
     const at = await scrolled(p);
@@ -193,16 +261,20 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     const reopen = async () => { await p.point(card(id)); await waitFor(p, s => s.open && s.title === 'Sheet kept' && !s.reader, { open: true, title: 'Sheet kept', reader: false }, 'the page opens again in the sheet'); };
     await reopen();
     await writeIn(p, 'Notes', ' Kept by ✕.');
+    await step(p, 'written, before ✕');
     // While a card is written the short keys line is the writing's, its long words in the tooltip.
     assert.deepEqual(await p.evaluate(`(()=>{const l=document.querySelector(${JSON.stringify(PAGE + ' .deck-keys>span:not([style*="hidden"])')});return [l.textContent,l.title.startsWith('Escape')]})()`),
       ['Escape done · ⌘Return next card', true], 'the keys line says what the keys do while a card is written');
     await p.point(`${SHEET} .notebook-sheet-close`);
     await back('✕');
+    await step(p, 'after ✕');
     await reopen();
+    await step(p, 'reopened after ✕');
     await waitFor(p, s => s.box?.focused && s.box.words === 'Notes\nDan reviews. Kept by ✕.' && s.box.at[0] === s.box.words.length,
       { box: { words: 'Notes\nDan reviews. Kept by ✕.', focused: true } }, 'after ✕ the card is open again to write, the cursor where it was');
     await saved(id, 'Dan reviews. Kept by ✕.', 'the unfinished card saved as it was written');
     await p.send('Input.insertText', { text: ' And outside.' });
+    await step(p, 'written, before the press outside');
     // A press on the backdrop, beside the sheet.
     const side = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(SHEET)}).getBoundingClientRect();return {x:Math.max(4,r.left/2),y:r.top+r.height/2}})()`);
     assert.ok(side.x < (await p.box(SHEET)).x, 'the press is outside the sheet');
@@ -210,42 +282,55 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...side, button: 'left', clickCount: 1 });
     await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...side, button: 'left', clickCount: 1 });
     await back('a press outside');
+    await step(p, 'after the press outside');
     await reopen();
-    await waitFor(p, s => s.box?.focused && s.box.words === 'Notes\nDan reviews. Kept by ✕. And outside.', { box: { words: 'Notes\nDan reviews. Kept by ✕. And outside.', focused: true } },
-      'after a press outside the card is open again to write');
+    await step(p, 'reopened after the press outside');
+    const outsideWords = 'Notes\nDan reviews. Kept by ✕. And outside.', end = [outsideWords.length, outsideWords.length];
+    await waitFor(p, s => s.box?.focused && s.box.words === outsideWords && s.box.at.join() === end.join(), { box: { words: outsideWords, at: end, focused: true } },
+      'after a press outside the card is open again to write, the cursor where it was');
     // Escape: the first finishes the card, the second closes.
     await p.send('Input.insertText', { text: ' Done by Escape.' });
+    await step(p, 'written, before the first Escape');
     await p.key('Escape');
+    await step(p, 'after the first Escape');
     await waitFor(p, s => s.open && !s.box, { open: true, box: null }, 'the first Escape finishes the card and leaves the sheet open');
     await saved(id, 'And outside. Done by Escape.', 'the finished card is saved');
     await p.key('Escape');
     await back('the second Escape');
+    await step(p, 'after the second Escape');
     await reopen();
+    await step(p, 'reopened after the second Escape');
     assert.equal((await state(p)).box, null, 'a card finished stays finished');
     await p.point(`${SHEET} .notebook-sheet-close`);
     await closed(p);
     assert.deepEqual(p.errors, []);
+    });
     await p.close();
     // On a phone, by touch: a card written, ✕, and open again on reopening.
-    const q = await page('notebook-sheet-close-phone', null, true, phone);
+    const q = await page('notebook-sheet-close-phone', null, true, traced(phone));
+    await kept(q, async () => {
     await listed(q, card(id), 'the topic\'s Notebook lists its page');
     await q.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
     const phoneAt = await scrolled(q);
     await tap(q, card(id));
+    await step(q, 'opened on a phone');
     await opened(q, 'Sheet kept', ['Plan', 'Steps', 'Notes']);
     await tap(q, `${PAGE} .deck-bar button:first-of-type`);
     await waitFor(q, s => s.box?.focused, { box: { focused: true } }, 'Edit opens the card in view to write');
     const written = (await state(q)).box.words;
     await q.send('Input.insertText', { text: ' Phone.' });
+    await step(q, 'written on a phone, before ✕');
     await tap(q, `${SHEET} .notebook-sheet-close`);
     await closed(q);
     await settle(q);
     assert.equal(await scrolled(q), phoneAt, 'the feed is where it was read');
     await tap(q, card(id));
+    await step(q, 'reopened on a phone');
     await waitFor(q, s => s.open && s.box?.words === written + ' Phone.', { open: true, box: { words: written + ' Phone.' } }, 'on a phone the card is open again to write');
     await tap(q, `${SHEET} .notebook-sheet-close`);
     await closed(q);
     assert.deepEqual(q.errors, []);
+    });
     await q.close();
   });
 
@@ -318,8 +403,12 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     // Without the sheet a finger drawn down the feed moves it: what follows measures a real drag.
     const start = await rested(p);
     assert.ok(start > 0, 'the feed is scrolled down to the topic\'s Notebook');
+    // The finger's scroll runs on after it lifts, to the page's scrollend, and can still take a last pixel well after
+    // two frames agree: the feed's place is read once it has ended, so that pixel cannot land as the page opens.
+    await p.evaluate(`(()=>{window.fingerScrolled=new Promise(r=>addEventListener('scrollend',r,{once:true}));return true})()`);
     await drag({ x: 195, y: 300 }, 0, 150);
     assert.ok((await scrolled(p)) < start, 'a finger drag moves the feed while nothing is open over it');
+    await p.evaluate('window.fingerScrolled.then(()=>true)');
     await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center',behavior:'instant'})`);
     const at = await rested(p);
     await tap(p, card(id));
@@ -606,6 +695,151 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await p.key('Escape'); await p.key('Escape');
     await closed(p);
     assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Item 422: the page read again after a save of its own (the commit followed while the sheet shows) is taken
+  // between one listener of a key's input and the next, before the box's own listener gives the words to the
+  // writing. Held in the page, so this order comes every time: the read's answer waits for the box's next input.
+  await check('notebook in the composer: words typed into a card as the page is read again stay in the card being written, and Escape saves the card once, with them', async () => {
+    const id = await topicPage('Sheet read at input', cardsBody);
+    const { step, kept } = tracer(id);
+    const p = await page('notebook-sheet-read-at-input', null, true, traced(laptop));
+    await kept(p, async () => {
+      await listed(p, card(id), 'the topic\'s Notebook lists its page');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
+      await p.point(card(id));
+      await opened(p, 'Sheet read at input', ['Plan', 'Steps', 'Notes']);
+      const trail = () => p.evaluate('window.__notebookTrail.map(t=>({...t,body:undefined}))');
+      const from = (await trail()).length;
+      // The page's next read waits for the box's next input.
+      await p.evaluate('window.__notebookReadAfterSave=true');
+      await writeIn(p, 'Notes', ' Kept.');
+      await until(async () => { const t = (await trail()).slice(from), at = t.findIndex(e => e.kind === 'revise' && e.status === 'committed');
+        return at >= 0 && t.slice(at).some(e => e.kind === 'read' && e.held !== undefined && e.released === undefined); }, 'the card saves, and the page\'s read after the save waits');
+      await step(p, 'saved, the read waiting');
+      await p.send('Input.insertText', { text: ' And.' });
+      await until(async () => (await trail()).slice(from).every(e => e.kind !== 'read' || e.answered !== undefined), 'the read is answered as the words go in');
+      await settle(p);
+      await step(p, 'the read taken as the words went in');
+      const words = 'Notes\nDan reviews. Kept. And.';
+      assert.deepEqual((await state(p)).box, { words, at: [words.length, words.length], focused: true }, 'the card is still being written, with every word typed');
+      await saved(id, '## Notes\n\nDan reviews. Kept. And.\n', 'the words typed as the page was read again save as the card is written');
+      await p.send('Input.insertText', { text: ' Done.' });
+      await p.key('Escape');
+      await waitFor(p, s => s.open && !s.box, { open: true, box: null }, 'Escape finishes the card');
+      await step(p, 'after Escape');
+      await saved(id, '## Notes\n\nDan reviews. Kept. And. Done.\n', 'the words typed before Escape are in Core after it');
+      // Written once: one Notes card, saved once, and nothing said of a card changed elsewhere.
+      assert.deepEqual((await state(p)).cards, ['Plan', 'Steps', 'Notes'], 'the card written is one card');
+      assert.equal(((await view('memory_current', { item_id: id })).body.match(/^## Notes$/gm) ?? []).length, 1, 'Core holds the card once');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(SHEET + ' .notebook-sheet-status')}).textContent.includes('changed elsewhere')`), false, 'nothing says the card changed elsewhere');
+      assert.deepEqual(p.errors, []);
+    });
+    await p.close();
+  });
+
+  // Item 422, the Text view: the same read, taken between one listener of the Text box's input and the next, before
+  // the box's own listener gives the words to the writing. The Text box is drawn from the writing as the page is read
+  // again, so it keeps them only if they reach the writing first.
+  await check('notebook in the composer: words typed into Text as the page is read again stay in Text, and are saved once, with them', async () => {
+    const id = await topicPage('Sheet text read at input', cardsBody);
+    const { step, kept } = tracer(id);
+    const p = await page('notebook-sheet-text-read-at-input', null, true, traced(laptop));
+    const text = p => p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(PAGE + ' .notebook-text')});return f?{words:f.value,at:[f.selectionStart,f.selectionEnd],focused:document.activeElement===f}:null})()`);
+    await kept(p, async () => {
+      await listed(p, card(id), 'the topic\'s Notebook lists its page');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
+      await p.point(card(id));
+      await opened(p, 'Sheet text read at input', ['Plan', 'Steps', 'Notes']);
+      await p.point(`${SHEET} .notebook-sheet-views button:first-child`);
+      await until(async () => { const t = await text(p); return t?.focused && t.words === cardsBody; }, 'Text shows the page\'s words, ready to write');
+      assert.deepEqual(await text(p), { words: cardsBody, at: [cardsBody.length, cardsBody.length], focused: true }, 'Text opens with the cursor after the page\'s words');
+      const trail = () => p.evaluate('window.__notebookTrail.map(t=>({...t,body:undefined}))');
+      const from = (await trail()).length;
+      // The page's next read waits for the Text box's next input.
+      await p.evaluate('window.__notebookReadAfterSave=true');
+      await p.send('Input.insertText', { text: 'Kept.' });
+      await until(async () => { const t = (await trail()).slice(from), at = t.findIndex(e => e.kind === 'revise' && e.status === 'committed');
+        return at >= 0 && t.slice(at).some(e => e.kind === 'read' && e.held !== undefined && e.released === undefined); }, 'the words save, and the page\'s read after the save waits');
+      await step(p, 'saved, the read waiting');
+      await p.send('Input.insertText', { text: ' And.' });
+      await until(async () => (await trail()).slice(from).every(e => e.kind !== 'read' || e.answered !== undefined), 'the read is answered as the words go in');
+      await settle(p);
+      await step(p, 'the read taken as the words went in');
+      const words = cardsBody + 'Kept. And.';
+      assert.deepEqual(await text(p), { words, at: [words.length, words.length], focused: true }, 'Text keeps every word typed, the cursor after them');
+      await saved(id, 'Dan reviews.\nKept. And.', 'the words typed as the page was read again save');
+      await p.send('Input.insertText', { text: ' Done.' });
+      await saved(id, 'Dan reviews.\nKept. And. Done.', 'the words typed after them save after them');
+      await step(p, 'after the last words');
+      // Written once: the words once in Core, and no choice between two versions.
+      assert.equal(((await view('memory_current', { item_id: id })).body.match(/Kept\./g) ?? []).length, 1, 'Core holds the words once');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(PAGE + ' .notebook-conflict:not([hidden])')}))`), false, 'the page asks for no choice');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(SHEET + ' .notebook-sheet-status')}).textContent.includes('changed elsewhere')`), false, 'nothing says the page changed elsewhere');
+      assert.deepEqual(p.errors, []);
+    });
+    await p.close();
+  });
+
+  // Item 421: the page is read again (a commit of its own save, followed while the sheet shows) and the read's answer
+  // comes while a press outside the sheet is down, so the deck is drawn again with the focus away from the box. Held
+  // at the server, so this order comes every time: the read waits until the press is down.
+  await check('notebook in the composer: a card being written keeps its cursor where it was when the page is read again while the sheet is closed, so words typed after reopening go where the cursor was and Escape saves them there', async () => {
+    const id = await topicPage('Sheet read late', cardsBody);
+    const { step, kept } = tracer(id);
+    const p = await page('notebook-sheet-read-late', null, true, traced(laptop));
+    const hold = `read-late-${id}`;
+    let armed = false;
+    await kept(p, async () => {
+      try {
+        await listed(p, card(id), 'the topic\'s Notebook lists its page');
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
+        await p.point(card(id));
+        await opened(p, 'Sheet read late', ['Plan', 'Steps', 'Notes']);
+        const trail = () => p.evaluate('window.__notebookTrail.map(t=>({...t,body:undefined}))');
+        await writeIn(p, 'Notes', ' Kept.');
+        await saved(id, 'Dan reviews. Kept.', 'the card being written saves as it is written');
+        await until(async () => { const t = await trail(), at = t.findLastIndex(e => e.kind === 'revise' && e.status === 'committed');
+          return at >= 0 && t.slice(at).some(e => e.kind === 'read' && e.answered !== undefined) && t.every(e => e.kind !== 'read' || e.answered !== undefined); }, 'the page is read again after the save');
+        await step(p, 'written and saved');
+        // The next read of the page waits at the server; nothing here reads it while it waits.
+        await control({ method: 'read_hold', hold_id: hold, name: 'memory_current', phase: 'callback', count: 1 });
+        armed = true;
+        const sent = (await trail()).length;
+        await p.send('Input.insertText', { text: ' And outside.' });
+        // Its save commits, and the commit has the page read again, which waits.
+        await until(async () => (await trail()).slice(sent).some(t => t.kind === 'revise' && t.status === 'committed'), 'the words written save');
+        await until(async () => { const t = await trail(); const at = t.slice(sent).findIndex(e => e.kind === 'revise'); return t.slice(sent + at).some(e => e.kind === 'read' && e.answered === undefined); }, 'the page is read again after its save, and the read waits');
+        const side = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(SHEET)}).getBoundingClientRect();return {x:Math.max(4,r.left/2),y:r.top+r.height/2}})()`);
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...side });
+        await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...side, button: 'left', clickCount: 1 });
+        // The read comes back while the press is down.
+        await control({ method: 'read_release', hold_id: hold });
+        armed = false;
+        await until(async () => (await trail()).slice(sent).every(t => t.kind !== 'read' || t.answered !== undefined), 'the page\'s read comes back while the press is down');
+        await settle(p);
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...side, button: 'left', clickCount: 1 });
+        await closed(p);
+        await step(p, 'read again while closed');
+        await p.point(card(id));
+        await step(p, 'reopened');
+        const words = 'Notes\nDan reviews. Kept. And outside.';
+        await waitFor(p, s => s.open && s.box?.focused && s.box.words === words && s.box.at[0] === words.length && s.box.at[1] === words.length,
+          { open: true, box: { words, at: [words.length, words.length], focused: true } }, 'reopened, the card is open to write with the cursor where it was, at the end of what was written');
+        await p.send('Input.insertText', { text: ' Done by Escape.' });
+        await p.key('Escape');
+        await waitFor(p, s => s.open && !s.box, { open: true, box: null }, 'Escape finishes the card');
+        await step(p, 'after Escape');
+        await saved(id, '## Notes\n\nDan reviews. Kept. And outside. Done by Escape.\n', 'the words typed before Escape are in Core after it, where the cursor was');
+        // Written once: one Notes card, saved once.
+        assert.deepEqual((await state(p)).cards, ['Plan', 'Steps', 'Notes'], 'the card written is one card');
+        assert.equal(((await view('memory_current', { item_id: id })).body.match(/^## Notes$/gm) ?? []).length, 1, 'Core holds the card once');
+        assert.deepEqual(p.errors, []);
+      } finally {
+        if (armed) { await control({ method: 'read_cancel', hold_id: hold }).catch(() => {}); await control({ method: 'read_release', hold_id: hold }); }
+      }
+    });
     await p.close();
   });
 }

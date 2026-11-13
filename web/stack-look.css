@@ -227,6 +227,9 @@
 /* A touch screen: quiet line buttons keep full tap targets. */
 @media(pointer:coarse){:is(.stack-split,.stack-unplace){min-height:2.75rem;margin-block:-.5rem}}
 
+.stack-more { display:block; width:100%; margin:1.4rem 0; padding:.75rem; color:var(--muted); background:transparent; border:0; border-top:1px solid var(--line); text-align:left; }
+.stack-more[hidden] { display:none; }
+
 /* Agent-only dossiers start as one quiet row. Opening it steps into the two
    states every dossier has; the compact treatment never means a saved message fold. */
 .reply-stack[data-compact=true]:not(.only-new *){margin:.65rem 0;padding:0;border-radius:.55rem;box-shadow:none;min-height:2.75rem;background:transparent}

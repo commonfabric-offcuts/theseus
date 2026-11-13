@@ -17,7 +17,7 @@
 // it is one row, who wrote it and its first words, with a cue that it is
 // folded; a stack's folded first message is its head row alone.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown } from './stack-order.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
@@ -38,6 +38,7 @@ export const entries = list => [...list.querySelectorAll(ENTRIES)];
 export function navigationStops(list) {
   const stops = [];
   for (const entry of entries(list)) {
+    // What the page draws is what the keys reach: a card laid out is a stop.
     if (!entry.getClientRects().length) continue;
     const section = entry.closest('.reply-stack');
     if (section?.dataset.stack === entry.dataset.id && section.dataset.headOpen === 'true') {
@@ -93,12 +94,16 @@ export function topOf(list, entry) {
 }
 
 // What the page keeps for a list's stacks: each stack's level ('folded',
-// 'open', or 'head' for a quiet agent dossier not yet opened), replies kept in view once kept, folded messages opened
-// for this view (peeked), the stack being renamed, the stacks as last drawn,
-// and the messages last drawn as their folded row (folded).
+// 'open', or 'head' for a quiet agent dossier not yet opened), replies kept in
+// view once kept, folded messages opened for this view (peeked), messages a
+// link, search or Starred drew where their dossier sits though it is put below
+// More, each with the place Core held the dossier at then (here;
+// stack-order.mjs, drawnBelow), the stack being renamed, the stacks as last
+// drawn, the messages last drawn as their folded row (folded), and the stacks
+// last drawn below More messages, by id (below).
 export function stackState(list) {
-  if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), renaming: null,
-    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, viewer: null, again: () => {} });
+  if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
+    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {} });
   return states.get(list);
 }
 
@@ -115,12 +120,45 @@ export function levelOf(state, id) {
 // An explicit choice starts a fresh partial view. Replies that were unread
 // when drawn stay put while read, until the person changes the stack state.
 // A message opened for that view folds to its row again; the reader's folds
-// themselves are theirs in Core, and no state choice changes them.
+// themselves are theirs in Core, and no state choice changes them. A dossier
+// a link drew where it sits stays drawn there (here).
 export function setLevel(state, stack, level) {
   state.levels.set(stack.id, level);
   state.peeked.delete(stack.id);
   for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); }
 }
+
+// How the page shows its stacks as last drawn (stack-order.mjs, shownOrder):
+// which it drew below More messages, and which it drew but does not show (below
+// More while it is closed, agent coordination while Show agent coordination is
+// off). The stacks themselves stay in their own order for finding a message or
+// revealing one (stackOf, reveal), so a link or search still reaches a dossier
+// put aside. The Conversation's Only new (state.only, the messages it draws)
+// is its own view: More's button goes, every New item shows wherever it sits,
+// put aside or not, and hidden agent coordination stays hidden (aim.css,
+// stack-look.css).
+export function shownView(state) {
+  const only = state.only ?? null, asideShown = Boolean(state.moreOpen || only);
+  return { below: stack => state.below.has(stack.id), only, asideShown,
+    hidden: stack => (state.below.has(stack.id) && !asideShown) || (!state.showCoordination && state.coordination.has(stack.id)) };
+}
+export const shownStacks = state => shownOrder(state.stacks, shownView(state));
+// Whether the page draws message id, by its one view: its stack on show
+// (shownView, which a dossier a link drew where it sits is), and in it, under
+// Only new, the New items alone, else its head and the replies its level
+// shows. Every decision about what is drawn asks this (the keys' focus, the
+// card a redraw holds), never the DOM. A message no stack holds (one Core's
+// messages do not name) is drawn as Only new draws it.
+export function drawn(list, id) {
+  const state = stackState(list), view = shownView(state);
+  const stack = state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
+  if (stack && view.hidden(stack)) return false;
+  const item = !stack ? { id } : stack.id === id ? stack.head : stack.replies.find(each => each.id === id);
+  if (view.only) return Boolean(view.only(item));
+  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id) });
+}
+// The page as stepping reads it (stack-order.mjs, pageOf and stepTarget).
+export const stackPage = state => pageOf(state.stacks, shownView(state));
 
 // The stack an entry is in, as last drawn: { stack, section (null for a
 // message on its own), head: whether the entry is its head, index }.
@@ -134,18 +172,27 @@ export function stackOf(list, entry) {
 
 // Where the New line goes for message seq: under the lowest stack holding
 // anything new since it (stack-order.mjs, lineUnder), so the line never cuts a
-// stack in two. The seq itself when no loaded stack holds it.
+// stack in two. The seq itself when no loaded stack holds it. When that stack
+// is not on show (below a closed More), the line takes the first place shown
+// after it, under the nearest stack shown above it, rather than sitting below
+// More; with none shown above it there is no line.
 export function lineSeq(list, seq) {
   const state = states.get(list);
   if (!seq || !state) return seq;
   const at = lineUnder(state.stacks, seq, state.viewer);
-  return at === null ? seq : state.stacks[at].newest;
+  if (at === null) return seq;
+  const view = shownView(state);
+  if (!view.hidden(state.stacks[at])) return state.stacks[at].newest;
+  const above = state.stacks.slice(0, at).findLast(stack => !view.below(stack) && !view.hidden(stack));
+  return above ? above.newest : null;
 }
 
 // Opens the stack that folds entry away, so the entry can be shown or take
 // the focus; full: a head shows its full message too. A message the reader
 // folded opens from its row for this view (a link, search, Starred), and its
-// fold stays theirs in Core: nothing is written.
+// fold stays theirs in Core: nothing is written; one in a dossier put below
+// More is drawn where the dossier sits (here) while Core holds the dossier at
+// the place it held then, until a Move below More or Bring back on any device.
 export function reveal(entry, { full = false } = {}) {
   const feed = entry?.closest?.('#messages');
   if (feed && states.has(feed)) {
@@ -162,7 +209,9 @@ export function reveal(entry, { full = false } = {}) {
   if (section && levelOf(state, id) === 'head') { state.levels.set(id, 'open'); changed = true; }
   if (section && entry.hidden) { state.levels.set(id, 'open'); changed = true; }
   if (section && full && own === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
+  const stack = state.stacks.find(each => each.id === own || each.replies.some(item => item.id === own));
   if (state.folded.has(own)) { state.peeked.add(own); changed = true; }
+  if (stack && positionOf(stack)?.below) { state.here.set(own, placeOf(positionOf(stack))); changed = true; }
   if (changed) state.again();
   return entry;
 }
@@ -381,7 +430,8 @@ function paintStack(section, stack, byId, context) {
     }
     // Folded runs need no repeated count or control between the messages:
     // the header already gives the count, and its chevron opens every run.
-    for (const item of row.items ?? []) { const entry = byId.get(item.id); entry.hidden = true; desired.push(entry); }
+    // Only new draws a New item wherever it sits, a folded one included.
+    for (const item of row.items ?? []) { const entry = byId.get(item.id); entry.hidden = !state.only?.(item); desired.push(entry); }
   }
   const used = new Set(desired);
   for (const [key, node] of p.lines) if (!used.has(node)) { node.remove(); p.lines.delete(key); }
@@ -421,17 +471,35 @@ export function arrangeStacks(list, messages, options = {}) {
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
   list.dataset.showCoordination = String(state.showCoordination);
   state.on?.coordinationCount?.(state.coordination.size);
-  const top = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
+  const top = [], aside = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
+  state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
     head.dataset.coordination = state.coordination.has(stack.id) ? 'agents' : '';
-    if (!stack.replies.length && stack.placed === null) { head.hidden = false; top.push(head); continue; }
+    // An agent coordination dossier moves below More like any other.
+    const below = drawnBelow(stack, item => state.here.get(item.id));
+    if (below) state.below.add(stack.id);
+    const destination = below ? aside : top;
+    if (!stack.replies.length && stack.placed === null) { head.hidden = false; destination.push(head); continue; }
     live.add(stack.id);
     if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
     const section = state.sections.get(stack.id);
     paintStack(section, stack, byId, context);
-    top.push(section);
+    destination.push(section);
   }
+  // More counts the dossiers it would show: with Show agent coordination off,
+  // agent coordination put aside stays hidden below More too and is not counted.
+  const shownAside = aside.filter(node => state.showCoordination || node.dataset.coordination !== 'agents').length;
+  state.belowCount = shownAside;
+  if (shownAside && !state.more) {
+    state.more = element(doc, 'button', 'stack-more'); state.more.type = 'button';
+    state.more.onclick = () => { state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
+  }
+  if (shownAside) {
+    state.more.textContent = `${state.moreOpen ? 'Hide' : 'More'} messages · ${shownAside} put aside`;
+    state.more.setAttribute('aria-expanded', String(Boolean(state.moreOpen)));
+    top.push(state.more, ...aside);
+  } else { state.more?.remove(); top.push(...aside); }
   // Entries the page has that Core's messages do not name stay where they are.
   reconcile(list, top, node => !node.dataset.line && (!node.dataset.id || messages.has(node.dataset.id)));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
@@ -444,5 +512,10 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id) && !heads.has(id), { nameOf, doc });
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
+  // What is hidden here is what shownView says is hidden: below a closed More,
+  // unless Only new draws the New items there.
+  const { asideShown } = shownView(state);
+  for (const node of top) if (node !== state.more) node.hidden = aside.includes(node) && !asideShown;
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
+  state.on?.arranged?.();
 }

@@ -606,7 +606,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(async () => await litId() === ask && await quiet(p, `!document.querySelector('.message-bar').hidden`), 'the stacked ask is lit, with its bar');
     await p.point('.message-bar [data-act=more]');
     assert.deepEqual(await until(() => quiet(p, `(l=>l&&[...l.querySelectorAll('button')].map(b=>b.textContent))(document.querySelector('.message-menu-list'))`), 'the menu opens'),
-      ['Star for me', 'Fold', 'Copy Link', 'Mark unread', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack←',
+      ['Star for me', 'Fold', 'Copy Link', 'Mark unread', 'Move below More', 'Move its stack up⌘↑', 'Move its stack down⌘↓', 'Fold its stack←',
         'Join the stack above⇧⌘↑', 'Join the stack below⇧⌘↓', 'Undo⌘Z']);
     await p.key('Escape'); await until(() => quiet(p, `!document.querySelector('.message-menu-list')`), 'Escape closes it');
     // A stack whose top message is the New item and no reply under it is New: the person adds to their own question, and the coordinator answers only that.
@@ -751,5 +751,681 @@ export async function conversationChecks({ check, page, until, control, view, fa
       assert.deepEqual(p.errors, []); await p.close();
     }
     assert.notEqual(backgrounds[0], backgrounds[1], `the words follow the theme (${backgrounds})`);
+  });
+
+  // Only new is its own view (reply-stacks.mjs, shownView): every New item shows, one put below More among them, so the
+  // keys and the Reader's ↓ reach it, and neither ever lands on a settled message Only new hides. Item 355; this case
+  // began as an independent review's.
+  await check('conversation Only new: the keys and the Reader\'s ↓ reach a New item put below More, and never a settled one it hides', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const p = await open('conversation-only-new-aside', '/?conversation=w1', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    const a = await post('conversation-aside-a', 'Aside check: the first question.');
+    const b = await post('conversation-aside-b', 'Aside check: the question put aside.');
+    const c = await post('conversation-aside-c', 'Aside check: the last question.');
+    for (const id of [a, b, c]) await until(async () => (await tags(p, id))?.tags[0] === WAITING, 'the new card ' + id);
+    const litId = () => quiet(p, `document.querySelector('#messages .lit[data-id]')?.dataset.id??null`);
+    const focusOn = async id => {
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: DESK.height - 4 });
+      await p.evaluate(`(document.activeElement?.blur(),document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'}),document.querySelector(${JSON.stringify(card(id))}).focus(),true)`);
+      await until(async () => await litId() === id, `${id} lights`);
+    };
+    await focusOn(b);
+    await p.point('.message-bar [data-act=more]');
+    await until(() => quiet(p, `Boolean(document.querySelector('.message-menu-list'))`), 'the menu opens');
+    await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].find(e=>e.textContent==='Move below More').click()`);
+    await until(async () => (await view('stack_positions', { topic_id: conversation.topic_id, message_ids: [b] })).items[0].stack_position.below, 'Core holds b below More');
+    await until(async () => !(await tags(p, b))?.shown, 'b goes below a closed More');
+    await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`);
+    await p.point('#conversation-show button');
+    await until(async () => (await chip(p)).pressed === 'true', 'Only new is pressed');
+    await until(async () => (await tags(p, b))?.shown, 'Only new shows b, put aside');
+    // What Only new draws, top to bottom: the cards laid out.
+    const drawn = await p.evaluate(`[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.getClientRects().length&&e.matches('[data-item]')).map(e=>e.dataset.id)`);
+    // ↓ from a, key by key: every card lit is one Only new draws, and b is reached.
+    await focusOn(a);
+    const keyed = [a];
+    for (let n = 0; n < 60 && keyed.at(-1) !== b; n++) {
+      await p.key('ArrowDown');
+      const before = keyed.at(-1);
+      const now = await until(async () => { const id = await litId(); return id && id !== before && id; }, '↓ moves the light').catch(() => before);
+      if (now === before) break;
+      keyed.push(now);
+    }
+    assert.deepEqual(keyed.filter(id => !drawn.includes(id)), [], 'every card ↓ lights is one Only new draws');
+    assert.equal(keyed.at(-1), b, `keys: ↓ from a reaches b, put aside and shown (lit ${JSON.stringify(keyed)})`);
+    // The Reader from a, ↓ by ↓: every message it opens is one Only new draws, and it reaches b.
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(a))}).scrollIntoView({block:'center'})`);
+    await p.point(card(a));
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('the first question')`), 'the Reader shows a');
+    const opened = [];
+    for (let n = 0; n < 60; n++) {
+      if (await quiet(p, `document.querySelector('#source-body').textContent.includes('put aside')`)) break;
+      await until(() => quiet(p, `!document.querySelector('#previous-message').disabled`), `the Reader offers ↓ (opened ${opened.length})`);
+      const was = await p.evaluate(`document.querySelector('#source-body').textContent`);
+      await p.point('#previous-message');
+      await until(() => quiet(p, `document.querySelector('#source-body').textContent !== ${JSON.stringify(was)}`), 'the Reader moved');
+      opened.push(await p.evaluate(`document.querySelector('#source-body').textContent.slice(0, 60)`));
+    }
+    assert.ok(await quiet(p, `document.querySelector('#source-body').textContent.includes('put aside')`), `the Reader's ↓ from a reaches b (${JSON.stringify(opened)})`);
+    const settledOpened = [];
+    for (const words of opened) if (!(await p.evaluate(`[...document.querySelectorAll('#messages [data-id]')].some(e=>e.getClientRects().length&&e.textContent.includes(${JSON.stringify(words.slice(0, 40))}))`))) settledOpened.push(words);
+    assert.deepEqual(settledOpened, [], 'the Reader opened only messages Only new draws');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A New item heading a dossier put below a closed More: Only new draws it, and the Reader's ↓ steps to it.
+  // A message Only new leaves out is never opened on the way (the case above checks that). Item 355; this case and the
+  // next began as an independent review's.
+  const readerReaches = async (p, from, words) => {
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(from))}).scrollIntoView({block:'center'})`);
+    await p.point(card(from));
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('the first question')`), 'the Reader shows a');
+    const opened = [];
+    for (let n = 0; n < 60 && !(await quiet(p, `document.querySelector('#source-body').textContent.includes(${JSON.stringify(words)})`)); n++) {
+      await until(() => quiet(p, `!document.querySelector('#previous-message').disabled`), `the Reader offers ↓ (opened ${JSON.stringify(opened)})`);
+      const was = await p.evaluate(`document.querySelector('#source-body').textContent`);
+      await p.point('#previous-message');
+      await until(() => quiet(p, `document.querySelector('#source-body').textContent !== ${JSON.stringify(was)}`), 'the Reader moved');
+      opened.push(await p.evaluate(`document.querySelector('#source-body').textContent.slice(0, 50)`));
+    }
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    return opened;
+  };
+  await check('conversation Only new: a New item heading a dossier put below a closed More is drawn, and the Reader steps to it', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const p = await open('rv-only-new-dossier', '/?conversation=w1', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    const a = await post('rv-dossier-a', 'Dossier check: the first question.');
+    const b = await post('rv-dossier-b', 'Dossier check: the head put aside.');
+    const b2 = await post('rv-dossier-b2', 'Dossier check: a reply under the head.', { reply_to: b });
+    const c = await post('rv-dossier-c', 'Dossier check: the last question.');
+    for (const id of [a, b, b2, c]) await until(async () => (await tags(p, id))?.tags[0] === WAITING, 'the new card ' + id);
+    await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(b))})?.closest('.reply-stack'))`), 'b heads a dossier');
+    await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: b, operation_id: 'rv-dossier-aside', args: { through: (await view('topic_messages', { topic_id: conversation.topic_id, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+    await until(async () => (await view('stack_positions', { topic_id: conversation.topic_id, message_ids: [b] })).items[0].stack_position.below, 'Core holds b below More');
+    await until(async () => !(await tags(p, b))?.shown, 'b goes below a closed More');
+    await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`);
+    await p.point('#conversation-show button');
+    await until(async () => (await chip(p)).pressed === 'true', 'Only new is pressed');
+    await until(() => quiet(p, `document.querySelector('#messages').classList.contains('only-new')`), 'the list is Only new');
+    await until(async () => (await tags(p, c))?.shown && (await tags(p, a))?.shown, 'a and c draw');
+    assert.deepEqual([Boolean((await tags(p, b))?.shown), Boolean((await tags(p, b2))?.shown)], [true, true],
+      'Only new draws every New item, the dossier put below More included');
+    const opened = await readerReaches(p, a, 'head put aside');
+    assert.ok(opened.at(-1)?.includes('head put aside'), `the Reader's ↓ from a reaches b (${JSON.stringify(opened)})`);
+    await p.point('#conversation-show button');
+    await until(async () => (await chip(p)).pressed !== 'true', 'Only new is off again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // An act redraws the stacks without repainting the Conversation page: a New item put below a closed More stays drawn.
+  await check('conversation Only new: after an act arrives, a New item put below a closed More stays drawn, and the Reader steps to it', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const p = await open('rv-only-new-act', '/?conversation=w1', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    const a = await post('rv-act-a', 'Act check: the first question.');
+    const b = await post('rv-act-b', 'Act check: the single one put aside.');
+    const c = await post('rv-act-c', 'Act check: the last question.');
+    for (const id of [a, b, c]) await until(async () => (await tags(p, id))?.tags[0] === WAITING, 'the new card ' + id);
+    await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: b, operation_id: 'rv-act-aside', args: { through: (await view('topic_messages', { topic_id: conversation.topic_id, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+    await until(async () => (await view('stack_positions', { topic_id: conversation.topic_id, message_ids: [b] })).items[0].stack_position.below, 'Core holds b below More');
+    await until(async () => !(await tags(p, b))?.shown, 'b goes below a closed More');
+    await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`);
+    await p.point('#conversation-show button');
+    await until(async () => (await chip(p)).pressed === 'true', 'Only new is pressed');
+    await until(async () => (await tags(p, b))?.shown, 'Only new shows b, put aside');
+    await control({ method: 'stack_act', sender: person, kind: 'message.star', message_id: c, operation_id: 'rv-act-star', args: { starred: true } });
+    await until(() => quiet(p, `[...document.querySelectorAll(${JSON.stringify(`${card(c)}, ${card(c)} .message-card`)})].some(e => e.dataset.starred === 'true')`), 'the star reaches the page');
+    assert.equal(Boolean((await tags(p, b))?.shown), true, 'after the star, Only new still draws b, put aside');
+    const opened = await readerReaches(p, a, 'single one put aside');
+    assert.ok(opened.at(-1)?.includes('single one put aside'), `after the star, the Reader's ↓ from a reaches b (${JSON.stringify(opened)})`);
+    await p.point('#conversation-show button');
+    await until(async () => (await chip(p)).pressed !== 'true', 'Only new is off again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A New reply in a closed dossier is a folded row; Only new draws it, before and after an act redraws the stacks.
+  await check('conversation Only new: a New reply folded in a closed dossier is drawn, and stays drawn after an act', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const p = await open('only-new-folded', '/?conversation=w1', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    const root = await post('only-new-folded-root', 'Folded check: the question.');
+    const reply = await post('only-new-folded-reply', 'Folded check: the reply inside.', { reply_to: root });
+    const later = await post('only-new-folded-later', 'Folded check: the latest reply.', { reply_to: root });
+    for (const id of [root, reply, later]) await until(async () => (await tags(p, id))?.tags[0] === WAITING, 'the new card ' + id);
+    // A person's dossier steps between two levels (item 394): latest plus unread ('folded') and every message ('open').
+    // The reply is the reader's own, so read, and not the latest: the person opens the dossier, then closes it, and
+    // closed it folds the reply away.
+    const toggle = `.reply-stack[data-stack="${root}"] > .stack-toggle`;
+    const fold = () => quiet(p, `document.querySelector('.reply-stack[data-stack="${root}"]')?.dataset.fold ?? null`);
+    const step = async to => {
+      for (let n = 0; n < 2 && await fold() !== to; n++) {
+        const was = await fold();
+        await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).scrollIntoView({block:'center'})`);
+        await p.point(toggle);
+        await until(async () => await fold() !== was, 'the dossier changes level');
+      }
+    };
+    await step('open');
+    assert.equal(await fold(), 'open', 'the dossier is open');
+    await until(async () => (await tags(p, reply))?.shown, 'open, the dossier shows the reply');
+    await step('folded');
+    assert.equal(await fold(), 'folded', 'the dossier is closed');
+    await until(async () => !(await tags(p, reply))?.shown, 'the reply is folded away');
+    assert.equal(Boolean((await tags(p, later))?.shown), true, 'closed, the dossier still shows its latest reply');
+    await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`);
+    await p.point('#conversation-show button');
+    await until(async () => (await chip(p)).pressed === 'true', 'Only new is pressed');
+    await until(async () => (await tags(p, reply))?.shown, 'Only new draws the folded New reply');
+    await control({ method: 'stack_act', sender: person, kind: 'message.star', message_id: root, operation_id: 'only-new-folded-star', args: { starred: true } });
+    await until(() => quiet(p, `[...document.querySelectorAll(${JSON.stringify(`${card(root)}, ${card(root)} .message-card`)})].some(e => e.dataset.starred === 'true')`), 'the star reaches the page');
+    assert.equal(Boolean((await tags(p, reply))?.shown), true, 'after the star, Only new still draws the folded New reply');
+    await p.point('#conversation-show button');
+    await until(async () => (await chip(p)).pressed !== 'true', 'Only new is off again');
+    await until(async () => !(await tags(p, reply))?.shown, 'with Only new off, the closed dossier folds the reply away again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Each case below works in a conversation of its own, so what earlier checks left in w1
+  // (unread answers, New items) does not decide where the New line goes or whether older messages remain.
+  const ownConversation = async id => {
+    await control({ method: 'navigation_workspaces', workspaces: [{ id, title: 'Review ' + id, team: [agent, other], coordinator: agent }] });
+    return (await view('conversation', { workspace_id: id })).conversation.topic_id;
+  };
+  const say = async (topicId, operation, body, args = {}) => (await control({ method: 'agent_message', operation_id: operation, topic_id: topicId,
+    whole_topic: !args.reply_to, sender: other, body, ...args })).result.message_id;
+  const toggleOnlyNew = async (p, on) => {
+    await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`);
+    await p.point('#conversation-show button');
+    await until(async () => ((await chip(p)).pressed === 'true') === on, on ? 'Only new is pressed' : 'Only new is off');
+  };
+
+  // shownView says a dossier put aside is on show under Only new; lineSeq reads it when placeLine runs (an act, a
+  // message), and turning Only new off redraws the stacks without placing the line again.
+  await check('conversation Only new: a line placed while Only new is on is not left below the closed More once it is off', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv6line');
+    const ids = {};
+    ids.a = await say(topicId, 'rv6line-a', 'Line check: A, read.', { read: true });
+    ids.b = await say(topicId, 'rv6line-b', 'Line check: B, the oldest new, put aside.');
+    ids.c = await say(topicId, 'rv6line-c', 'Line check: C.');
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    const lined = q => q.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length)
+      .map(e=>e.dataset.line?'New':e.classList.contains('stack-more')?'More':(${JSON.stringify(names)})[e.dataset.id??e.dataset.stack]??null).filter(Boolean)`);
+    const p = await open('rv6line', '/?conversation=rv6line', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    await until(async () => JSON.stringify(await lined(p)) === JSON.stringify(['c', 'b', 'New', 'a']), `the line under B, the oldest new (${JSON.stringify(await lined(p))})`);
+    await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: ids.b, operation_id: 'rv6line-aside', args: { through: (await view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+    await until(async () => (await view('stack_positions', { topic_id: topicId, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds B below More');
+    await until(async () => JSON.stringify(await lined(p)) === JSON.stringify(['c', 'New', 'a', 'More']), `with B below More the line sits under C (${JSON.stringify(await lined(p))})`);
+    await toggleOnlyNew(p, true);
+    await control({ method: 'stack_act', sender: person, kind: 'message.star', message_id: ids.a, operation_id: 'rv6line-star', args: { starred: true } });
+    await until(() => quiet(p, `[...document.querySelectorAll(${JSON.stringify(`${card(ids.a)}, ${card(ids.a)} .message-card`)})].some(e => e.dataset.starred === 'true')`), 'the star reaches the page');
+    await toggleOnlyNew(p, false);
+    await until(async () => !(await lined(p)).includes('b'), 'B is below the closed More again');
+    assert.deepEqual(await lined(p), ['c', 'New', 'a', 'More'], 'with Only new off and More closed, the New line is not below More');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Only new draws a dossier put aside (shownView's asideShown) and hides More's button; More messages (Earlier
+  // messages), which loads older messages, still follows More's own open state (paintMoreMessages).
+  await check('conversation Only new: with a dossier put aside, older messages can still be loaded under Only new', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv6older');
+    const ids = [];
+    for (let n = 0; n < 34; n++) ids.push(await say(topicId, `rv6older-${n}`, `Older check: message ${n}.`, { read: n === 33 }));
+    const p = await open('rv6older', '/?conversation=rv6older', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(ids[33]))}))`), 'the newest is drawn');
+    const more = () => quiet(p, `(m=>({hidden:m.hidden,shown:m.getClientRects().length>0,text:m.textContent}))(document.querySelector('#more-messages'))`);
+    await until(async () => (await more()).shown, 'More messages loads older messages');
+    await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: ids[32], operation_id: 'rv6older-aside', args: { through: (await view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+    await until(async () => (await view('stack_positions', { topic_id: topicId, message_ids: [ids[32]] })).items[0].stack_position.below, 'Core holds 32 below More');
+    await until(async () => !(await tags(p, ids[32]))?.shown, '32 goes below a closed More');
+    await toggleOnlyNew(p, true);
+    await until(async () => (await tags(p, ids[32]))?.shown, 'Only new draws 32, put aside');
+    const loader = await more();
+    const moreButton = await quiet(p, `Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`);
+    assert.ok(loader.shown || moreButton, `under Only new, with 32 put aside and drawn, something loads older messages (#more-messages ${JSON.stringify(loader)}, More's button shown ${moreButton})`);
+    await toggleOnlyNew(p, false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Under Only new More is not drawn (aim.css hides everything but New items), so moving a New message below More
+  // leaves focus on the message, which Only new still draws, rather than on a More nobody can see (stack-feed.mjs, setAside).
+  await check('conversation Only new: moving a New message below More keeps focus on it, More being hidden', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('r7focus');
+    const ids = {};
+    ids.a = await say(topicId, 'r7focus-a', 'Focus check: the first question.');
+    ids.b = await say(topicId, 'r7focus-b', 'Focus check: the question put aside.');
+    ids.c = await say(topicId, 'r7focus-c', 'Focus check: the last question.');
+    const p = await open('r7focus', '/?conversation=r7focus', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    for (const id of Object.values(ids)) await until(async () => (await tags(p, id))?.tags[0] === WAITING, 'the new card ' + id);
+    await toggleOnlyNew(p, true);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: DESK.height - 4 });
+    await p.evaluate(`(document.activeElement?.blur(),document.querySelector(${JSON.stringify(card(ids.b))}).scrollIntoView({block:'center'}),document.querySelector(${JSON.stringify(card(ids.b))}).focus(),true)`);
+    await until(() => quiet(p, `document.querySelector('#messages .lit[data-id]')?.dataset.id===${JSON.stringify(ids.b)}`), 'b lights');
+    await p.point('.message-bar [data-act=more]');
+    await until(() => quiet(p, `Boolean(document.querySelector('.message-menu-list'))`), 'the menu opens');
+    await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].find(e=>e.textContent==='Move below More').click()`);
+    await until(async () => (await view('stack_positions', { topic_id: topicId, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds b below More');
+    await until(async () => (await tags(p, ids.b))?.shown, 'Only new still draws b, put aside');
+    const focus = () => p.evaluate(`(e=>({tag:e?.tagName??null,cls:e?.className??null,drawn:Boolean(e&&e!==document.body&&e.getClientRects().length),
+      on:e?.closest('[data-id]')?.dataset.id??e?.closest('[data-stack]')?.dataset.stack??null}))(document.activeElement)`);
+    const at = await focus();
+    assert.equal(at.drawn && at.on === ids.b, true, `focus stays on b, which Only new draws, though More is hidden (focus is on ${JSON.stringify(at)})`);
+    await toggleOnlyNew(p, false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Agent coordination hidden by Show agent coordination stays hidden under Only new: the keys never light it and the
+  // Reader's ↓ never opens it, even with New items in it.
+  await check('conversation Only new: agent coordination hidden by its chip is neither drawn nor stepped to under Only new', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv6coord');
+    const ids = {};
+    ids.a = await say(topicId, 'rv6coord-a', 'Coord check: the first question.', { read: true });
+    ids.d = await say(topicId, 'rv6coord-d', 'Coord check: between agents.', { post_args: { addressees: [agent], intent: 'tell' } });
+    ids.c = await say(topicId, 'rv6coord-c', 'Coord check: the last question.');
+    const p = await open('rv6coord', '/?conversation=rv6coord', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(ids.c))}))&&Boolean(document.querySelector(${JSON.stringify(card(ids.d))}))`), 'drawn');
+    const coordination = await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.d))}).closest('[data-coordination]')?.dataset.coordination ?? null`);
+    assert.equal(coordination, 'agents', 'd heads agent coordination');
+    await until(() => quiet(p, `Boolean(document.querySelector('#agent-coordination-show button')?.getClientRects().length)`), 'the coordination chip shows');
+    if (await p.evaluate(`document.querySelector('#messages').dataset.showCoordination`) === 'true') {
+      await p.point('#agent-coordination-show button');
+      await until(() => quiet(p, `document.querySelector('#messages').dataset.showCoordination==='false'`), 'agent coordination hidden');
+    }
+    // The Only new chip shows once the conversation's read counts its New items.
+    await until(async () => !(await chip(p)).hidden, 'the Only new chip shows');
+    await toggleOnlyNew(p, true);
+    const drawn = await p.evaluate(`[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.getClientRects().length).map(e=>e.dataset.id)`);
+    assert.equal((await tags(p, ids.d))?.tags[0], WAITING, 'd is a New item');
+    assert.equal(drawn.includes(ids.d), false, 'Only new does not draw hidden agent coordination');
+    // Reader from a, ↑ (newer, toward c) to the end: never d.
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).scrollIntoView({block:'center'})`);
+    await p.point(card(ids.a));
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('the first question')`), 'the Reader shows a');
+    const opened = [];
+    for (let n = 0; n < 10; n++) {
+      // ↓ is briefly disabled while neighbours load: wait for the source to settle, then for ↓ or a stable end.
+      await until(() => quiet(p, `document.querySelector('#reader').open`), 'reader');
+      const offered = await until(async () => (await quiet(p, `!document.querySelector('#next-message').disabled`)) ? 'yes' : null, 'the Reader offers ↑').catch(() => 'no');
+      if (offered === 'no') break;
+      const was = await p.evaluate(`document.querySelector('#source-body').textContent`);
+      await p.point('#next-message');
+      await until(() => quiet(p, `document.querySelector('#source-body').textContent !== ${JSON.stringify(was)}`), 'the Reader moved');
+      opened.push(await p.evaluate(`document.querySelector('#source-body').textContent.slice(0, 50)`));
+      if (opened.at(-1).includes('the last question')) break;
+    }
+    assert.deepEqual(opened.filter(words => words.includes('between agents')), [], `the Reader's ↑ never opens hidden agent coordination (${JSON.stringify(opened)})`);
+    const state = await p.evaluate(`({drawn:[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.getClientRects().length).map(e=>e.dataset.id),
+      up:document.querySelector('#next-message').disabled,down:document.querySelector('#previous-message').disabled,body:document.querySelector('#source-body').textContent.slice(0,40),
+      items:[...document.querySelectorAll('#messages [data-id]')].map(e=>[e.dataset.id,e.dataset.item??null,e.dataset.coordination??null])})`);
+    assert.ok(opened.at(-1)?.includes('the last question'), `the Reader reaches c (${JSON.stringify(opened)}; ids ${JSON.stringify(ids)}; ${JSON.stringify(state)})`);
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    await toggleOnlyNew(p, false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // rv355r7 (independent review): what loads older messages, as the page shows it under Only new. The New line's
+  // "More new below" (a button, [data-line=older]) is hidden under Only new (aim.css), and paintMoreMessages hides
+  // More messages / Earlier messages whenever that line is in the list, drawn or not.
+  const loaders = p => quiet(p, `({line:(l=>l?{shown:l.getClientRects().length>0,faded:l.classList.contains('new-line-read')}:null)(document.querySelector('#messages > [data-line=older]')),
+    more:(m=>({hidden:m.hidden,shown:m.getClientRects().length>0,text:m.textContent}))(document.querySelector('#more-messages'))})`);
+  const canLoadOlder = state => Boolean(state?.line?.shown || state?.more?.shown);
+  for (const aside of [false, true]) {
+    await check(`conversation Only new: with the oldest new message not loaded${aside ? ' and a dossier put aside' : ''}, older messages can still be loaded under Only new`, async () => {
+      const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+      const name = aside ? 'rv7olderaside' : 'rv7older';
+      const topicId = await ownConversation(name);
+      const ids = [];
+      for (let n = 0; n < 34; n++) ids.push(await say(topicId, `${name}-${n}`, `Unloaded new check: message ${n}.`));
+      const p = await open(name, `/?conversation=${name}`, { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+      await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(ids[33]))}))`), 'the newest is drawn');
+      assert.equal(await quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(ids[0]))}))`), false, 'the oldest new message is not loaded');
+      await until(async () => canLoadOlder(await loaders(p)), `with Only new off, something loads older messages (${JSON.stringify(await loaders(p))})`);
+      if (aside) {
+        await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: ids[32], operation_id: name + '-aside', args: { through: (await view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+        await until(async () => (await view('stack_positions', { topic_id: topicId, message_ids: [ids[32]] })).items[0].stack_position.below, 'Core holds 32 below More');
+        await until(async () => !(await tags(p, ids[32]))?.shown, '32 goes below a closed More');
+      }
+      await until(async () => !(await chip(p)).hidden, 'the Only new chip shows');
+      await toggleOnlyNew(p, true);
+      if (aside) await until(async () => (await tags(p, ids[32]))?.shown, 'Only new draws 32, put aside');
+      const state = await loaders(p);
+      const moreButton = await quiet(p, `Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`);
+      assert.ok(canLoadOlder(state) || moreButton, `under Only new, with message 0 (New) not loaded, something on the page loads older messages (${JSON.stringify(state)}, More's button shown ${moreButton})`);
+      await toggleOnlyNew(p, false);
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+
+  // rv355r7: ⌘Z after Move below More under Only new brings the message back, and the keys stay on it.
+  await check('conversation Only new: Command-Z after moving a New message below More brings it back with the focus on it', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv7undo');
+    const ids = {};
+    ids.a = await say(topicId, 'rv7undo-a', 'Undo check: the first question.');
+    ids.b = await say(topicId, 'rv7undo-b', 'Undo check: the question put aside.');
+    ids.c = await say(topicId, 'rv7undo-c', 'Undo check: the last question.');
+    const p = await open('rv7undo', '/?conversation=rv7undo', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    for (const id of Object.values(ids)) await until(async () => (await tags(p, id))?.tags[0] === WAITING, 'the new card ' + id);
+    await toggleOnlyNew(p, true);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: DESK.height - 4 });
+    await p.evaluate(`(document.activeElement?.blur(),document.querySelector(${JSON.stringify(card(ids.b))}).scrollIntoView({block:'center'}),document.querySelector(${JSON.stringify(card(ids.b))}).focus(),true)`);
+    await until(() => quiet(p, `document.querySelector('#messages .lit[data-id]')?.dataset.id===${JSON.stringify(ids.b)}`), 'b lights');
+    await p.point('.message-bar [data-act=more]');
+    await until(() => quiet(p, `Boolean(document.querySelector('.message-menu-list'))`), 'the menu opens');
+    await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].find(e=>e.textContent==='Move below More').click()`);
+    await until(async () => (await view('stack_positions', { topic_id: topicId, message_ids: [ids.b] })).items[0].stack_position.below, 'Core holds b below More');
+    const focus = () => p.evaluate(`(e=>({drawn:Boolean(e&&e!==document.body&&e.getClientRects().length),on:e?.closest('[data-id]')?.dataset.id??null,cls:e?.className??null}))(document.activeElement)`);
+    await p.key('z', 4);
+    await until(async () => !(await view('stack_positions', { topic_id: topicId, message_ids: [ids.b] })).items[0].stack_position.below, `⌘Z brings b back in Core (focus was ${JSON.stringify(await focus())})`);
+    const at = await focus();
+    assert.equal(at.drawn && at.on === ids.b, true, `after ⌘Z the focus is on b (${JSON.stringify(at)})`);
+    await toggleOnlyNew(p, false);
+    await until(async () => (await tags(p, ids.b))?.shown, 'with Only new off b shows where it was');
+    assert.equal(await quiet(p, `Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`), false, 'nothing is below More');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // rv355r7: with More open, Move below More: where does focus go, and can the keys go on from there.
+  await check('conversation Move below More: moving a message below More while More is open leaves the focus on something drawn', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv7open');
+    const ids = {};
+    ids.a = await say(topicId, 'rv7open-a', 'Open check: the first question.');
+    ids.b = await say(topicId, 'rv7open-b', 'Open check: already put aside.');
+    ids.c = await say(topicId, 'rv7open-c', 'Open check: put aside second.');
+    ids.d = await say(topicId, 'rv7open-d', 'Open check: the last question.');
+    const p = await open('rv7open', '/?conversation=rv7open', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    for (const id of Object.values(ids)) await until(async () => (await tags(p, id))?.shown, 'drawn ' + id);
+    await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: ids.b, operation_id: 'rv7open-aside', args: { through: (await view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+    await until(async () => !(await tags(p, ids.b))?.shown, 'b goes below a closed More');
+    await p.evaluate(`document.querySelector('#messages .stack-more').scrollIntoView({block:'center'})`);
+    await p.point('#messages .stack-more');
+    await until(async () => (await tags(p, ids.b))?.shown, 'More opens: b shows');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: DESK.height - 4 });
+    await p.evaluate(`(document.activeElement?.blur(),document.querySelector(${JSON.stringify(card(ids.c))}).scrollIntoView({block:'center'}),document.querySelector(${JSON.stringify(card(ids.c))}).focus(),true)`);
+    await until(() => quiet(p, `document.querySelector('#messages .lit[data-id]')?.dataset.id===${JSON.stringify(ids.c)}`), 'c lights');
+    await p.point('.message-bar [data-act=more]');
+    await until(() => quiet(p, `Boolean(document.querySelector('.message-menu-list'))`), 'the menu opens');
+    await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].find(e=>e.textContent==='Move below More').click()`);
+    await until(async () => (await view('stack_positions', { topic_id: topicId, message_ids: [ids.c] })).items[0].stack_position.below, 'Core holds c below More');
+    const at = await p.evaluate(`(e=>({drawn:Boolean(e&&e!==document.body&&e.getClientRects().length),on:e?.closest('[data-id]')?.dataset.id??null,more:e?.classList?.contains('stack-more')??false,text:e?.textContent?.slice(0,60)??null}))(document.activeElement)`);
+    assert.equal(at.drawn, true, `focus is on something drawn (${JSON.stringify(at)})`);
+    const order = await p.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length).map(e=>e.classList.contains('stack-more')?'More':e.dataset.line?'line':(${JSON.stringify(Object.fromEntries(Object.entries(ids).map(([k, v]) => [v, k])))})[e.dataset.id??e.dataset.stack]??null).filter(Boolean)`);
+    // Observed at 9632359: focus goes to More ("Hide messages · 2 put aside") while c is still drawn below it.
+    assert.ok(order.includes('c'), `c is still drawn below the open More (${JSON.stringify(order)}; focus ${JSON.stringify(at)})`);
+    await p.key('z', 4);
+    await until(async () => !(await view('stack_positions', { topic_id: topicId, message_ids: [ids.c] })).items[0].stack_position.below, 'Command-Z brings c back');
+    const back = await p.evaluate(`(e=>({drawn:Boolean(e&&e!==document.body&&e.getClientRects().length),on:e?.closest('[data-id]')?.dataset.id??null}))(document.activeElement)`);
+    assert.equal(back.drawn && back.on === ids.c, true, `after ⌘Z focus on c (${JSON.stringify(back)})`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // rv355r7: Earlier messages, pressed under Only new with a dossier put aside, loads the older messages and Only new
+  // draws the New ones among them; with nothing older left, it goes; Only new off, More closed hides the aside again.
+  await check('conversation Only new: pressing Earlier messages under Only new loads older New messages and draws them', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv7earlier');
+    const ids = [];
+    for (let n = 0; n < 40; n++) ids.push(await say(topicId, `rv7earlier-${n}`, `Earlier check: message ${n}.`, { read: n === 39 }));
+    const p = await open('rv7earlier', '/?conversation=rv7earlier', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(ids[39]))}))`), 'the newest is drawn');
+    await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: ids[38], operation_id: 'rv7earlier-aside', args: { through: (await view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+    await until(async () => !(await tags(p, ids[38]))?.shown, '38 goes below a closed More');
+    await until(async () => !(await chip(p)).hidden, 'the Only new chip shows');
+    await toggleOnlyNew(p, true);
+    await until(async () => (await tags(p, ids[38]))?.shown, 'Only new draws 38');
+    const loader = () => quiet(p, `(m=>({shown:m.getClientRects().length>0,text:m.textContent}))(document.querySelector('#more-messages'))`);
+    await until(async () => (await loader()).shown, 'Earlier messages shows under Only new');
+    assert.equal(await quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(ids[0]))}))`), false, 'message 0 is not loaded yet');
+    await p.evaluate(`document.querySelector('#more-messages').scrollIntoView({block:'center'})`);
+    await p.point('#more-messages');
+    await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(ids[0]))}))`), 'Earlier messages loads message 0');
+    await until(async () => (await tags(p, ids[0]))?.shown, `Only new draws message 0, a New item (${JSON.stringify(await tags(p, ids[0]))})`);
+    const drawn = await p.evaluate(`[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.getClientRects().length).map(e=>e.dataset.id)`);
+    const missing = ids.filter(id => !drawn.includes(id));
+    assert.deepEqual(missing, [], 'under Only new every New message loaded is drawn, the one put aside among them');
+    await until(async () => !(await loader()).shown, `with nothing older left, Earlier messages goes (${JSON.stringify(await loader())})`);
+    await toggleOnlyNew(p, false);
+    await until(async () => !(await tags(p, ids[38]))?.shown, 'Only new off: 38 is below the closed More again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+  // rv355r8b (independent review): the doc says under Only new the dossier keeps focus after Move below More. Here the
+  // dossier's head was read (Only new does not draw it) and its reply is New (drawn); Move below More from the reply's ⋯.
+  await check('conversation Only new: under Only new, Move below More from a New reply whose head Only new does not draw leaves focus on something drawn', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv8bfocus');
+    const ids = {};
+    ids.a = await say(topicId, 'rv8bfocus-a', 'Focus check: the first question.');
+    const msg = async (operation, sender, body, args = {}) => (await control({ method: 'agent_message', operation_id: operation, topic_id: topicId, whole_topic: !args.reply_to, sender, body, ...args })).result.message_id;
+    ids.root = await msg('rv8bfocus-root', 'person', 'Focus check: the head, to be answered.');
+    ids.ans = await msg('rv8bfocus-ans', agent, 'Focus check: the answer.', { reply_to: ids.root });
+    ids.reply = await msg('rv8bfocus-reply', 'person', 'Focus check: the New reply.', { reply_to: ids.ans });
+    ids.c = await say(topicId, 'rv8bfocus-c', 'Focus check: the last question.');
+    const p = await open('rv8bfocus', '/?conversation=rv8bfocus', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    await until(async () => (await tags(p, ids.reply))?.tags[0] === WAITING && (await tags(p, ids.root))?.tags[0] !== WAITING, 'the reply is New, the head settled').catch(async e => { throw Error(e.message + ' ' + JSON.stringify([await tags(p, ids.reply), await tags(p, ids.root)])); });
+    const rootState = await tags(p, ids.root);
+    await until(async () => !(await chip(p)).hidden, 'the Only new chip shows');
+    await toggleOnlyNew(p, true);
+    await until(async () => (await tags(p, ids.reply))?.shown, 'Only new draws the New reply');
+    const headShown = Boolean((await tags(p, ids.root))?.shown);
+    assert.equal(headShown, false, `Only new does not draw the read head (${JSON.stringify(await tags(p, ids.root))})`);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: DESK.height - 4 });
+    await p.evaluate(`(document.activeElement?.blur(),document.querySelector(${JSON.stringify(card(ids.reply))}).scrollIntoView({block:'center'}),document.querySelector(${JSON.stringify(card(ids.reply))}).focus(),true)`);
+    await until(() => quiet(p, `document.querySelector('#messages .lit[data-id]')?.dataset.id===${JSON.stringify(ids.reply)}`), 'the reply lights');
+    await p.point('.message-bar [data-act=more]');
+    await until(() => quiet(p, `Boolean(document.querySelector('.message-menu-list'))`), 'the menu opens');
+    const labels = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].map(e=>e.textContent)`);
+    assert.ok(labels.includes('Move below More'), `the reply's ⋯ offers Move below More (${JSON.stringify(labels)})`);
+    await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].find(e=>e.textContent==='Move below More').click()`);
+    await until(async () => (await view('stack_positions', { topic_id: topicId, message_ids: [ids.root] })).items[0].stack_position.below, 'Core holds the dossier below More');
+    await until(() => quiet(p, `!document.querySelector('.message-menu-list')`), 'the menu closes');
+    const focus = () => p.evaluate(`(e=>({drawn:Boolean(e&&e!==document.body&&e.getClientRects().length),on:e?.closest('[data-id]')?.dataset.id??null,tag:e?.tagName??null,cls:e?.className??null,act:e?.dataset?.act??null,label:e?.getAttribute?.('aria-label')??null,text:e?.textContent?.slice(0,40)??null,bar:e?.closest('.message-bar')?{shown:Boolean(e.closest('.message-bar').getClientRects().length),hidden:e.closest('.message-bar').hidden}:null,lit:document.querySelector('#messages .lit[data-id]')?.dataset.id??null,headFocusable:(h=>h?{rects:h.getClientRects().length}:null)(document.querySelector(${JSON.stringify(card(ids.root))}))}))(document.activeElement)`);
+    const at = await focus();
+    assert.equal(at.drawn, true, `after Move below More under Only new, focus is on something drawn (head shown ${headShown}, root ${JSON.stringify(rootState)}; focus ${JSON.stringify(at)})`);
+    // ⌘Z, from wherever the move left the keys: the dossier comes back, and the keys are on it.
+    await p.key('z', 4);
+    const undone = await until(async () => !(await view('stack_positions', { topic_id: topicId, message_ids: [ids.root] })).items[0].stack_position.below, 'Command-Z brings the dossier back').then(() => true, () => false);
+    const back = await focus();
+    assert.ok(undone, `⌘Z after the move brings the dossier back (focus was ${JSON.stringify(at)})`);
+    assert.ok(back.drawn && [ids.reply, ids.root].includes(back.on), `after ⌘Z the keys are on the dossier (${JSON.stringify(back)})`);
+    assert.ok([ids.reply, ids.root].includes(at.on), `the dossier keeps focus (${JSON.stringify(at)})`);
+    await toggleOnlyNew(p, false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+  // rv355r8b (independent review): the two loaders of older messages, across Only new on and off, page by page. Off, an
+  // unfaded "More new below" line is the one loader and More messages / Earlier messages hides; on, the line is not drawn
+  // and the button loads; nothing older left, the button goes; off again, the line returns as the one loader.
+  const rv8 = p => quiet(p, `({line:(l=>l?{kind:l.dataset.line,shown:l.getClientRects().length>0,faded:l.classList.contains('new-line-read')}:null)(document.querySelector('#messages > [data-line]')),
+    more:(m=>({hidden:m.hidden,shown:m.getClientRects().length>0,text:m.textContent}))(document.querySelector('#more-messages')),
+    loaded:document.querySelectorAll('#messages [data-id]').length})`);
+  const lineLoads = s => Boolean(s?.line && s.line.kind === 'older' && s.line.shown && !s.line.faded);
+  for (const [label, metrics, aside] of [['desk', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, false],
+    ['desk', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, true], ['phone', PHONE, true]]) {
+    await check(`conversation Only new loader: ${label}${aside ? ', a dossier put aside' : ''}: one loader of older messages at a time, Only new on and off, page by page`, async () => {
+      const name = `rv8b${label}${aside ? 'aside' : ''}`, N = 70;
+      const topicId = await ownConversation(name);
+      const ids = [];
+      for (let n = 0; n < N; n++) ids.push(await say(topicId, `${name}-${n}`, `Loader check: message ${n}.`));
+      const p = await open(name, `/?conversation=${name}`, { beforeNavigate: async q => {
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      const has = id => quiet(p, `Boolean(document.querySelector(${JSON.stringify(card(id))}))`);
+      await until(() => has(ids[N - 1]), 'the newest is drawn');
+      assert.equal(await has(ids[0]), false, 'the oldest (New) is not loaded');
+      await until(async () => lineLoads(await rv8(p)), `Only new off: the line "More new below" shows unfaded (${JSON.stringify(await rv8(p))})`);
+      assert.equal((await rv8(p)).more.shown, false, `Only new off: the button hides while the line loads (${JSON.stringify(await rv8(p))})`);
+      if (aside) {
+        await control({ method: 'stack_act', sender: person, kind: 'stack.aside', message_id: ids[N - 2], operation_id: name + '-aside', args: { through: (await view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 1 })).items[0].seq } });
+        await until(async () => !(await tags(p, ids[N - 2]))?.shown, 'the dossier goes below a closed More');
+        const s = await rv8(p);
+        assert.ok(lineLoads(s) && !s.more.shown, `aside, More closed, Only new off: the line alone loads (${JSON.stringify(s)})`);
+      }
+      await until(async () => !(await chip(p)).hidden, 'the Only new chip shows');
+      await toggleOnlyNew(p, true);
+      await until(async () => (await rv8(p)).more.shown, `Only new on: the button shows (${JSON.stringify(await rv8(p))})`);
+      let s = await rv8(p);
+      assert.equal(s.line?.shown ?? false, false, 'Only new on: the line is not drawn');
+      assert.equal(s.more.text, aside ? 'Earlier messages' : 'More messages', 'its words');
+      const before = s.loaded;
+      await p.evaluate(`document.querySelector('#more-messages').scrollIntoView({block:'center'})`);
+      await p.point('#more-messages');
+      await until(async () => (await rv8(p)).loaded > before, 'the press loads older messages');
+      if (!(await has(ids[0]))) {
+        await until(async () => (await rv8(p)).more.shown, `Only new on, more older left: the button stays (${JSON.stringify(await rv8(p))})`);
+        await toggleOnlyNew(p, false);
+        await until(async () => { const t = await rv8(p); return lineLoads(t) !== t.more.shown; }, `Only new off with older left: exactly one loader (${JSON.stringify(await rv8(p))})`);
+        s = await rv8(p);
+        assert.ok(!(lineLoads(s) && s.more.shown), `never both (${JSON.stringify(s)})`);
+        if (lineLoads(s)) assert.equal(s.more.shown, false, 'the line back unfaded: the button hides again');
+        await toggleOnlyNew(p, true);
+        for (let i = 0; i < 5 && !(await has(ids[0])); i++) {
+          await until(async () => (await rv8(p)).more.shown, `Only new on: the button shows to load more (${JSON.stringify(await rv8(p))})`);
+          const at = (await rv8(p)).loaded;
+          await p.evaluate(`document.querySelector('#more-messages').scrollIntoView({block:'center'})`);
+          await p.point('#more-messages');
+          await until(async () => (await rv8(p)).loaded > at, 'the press loads older messages');
+        }
+      }
+      assert.equal(await has(ids[0]), true, 'the oldest is loaded at last');
+      await until(async () => !(await rv8(p)).more.shown, `nothing older left: the button goes (${JSON.stringify(await rv8(p))})`);
+      await until(async () => (await tags(p, ids[0]))?.shown, 'Only new draws message 0');
+      await toggleOnlyNew(p, false);
+      s = await rv8(p);
+      assert.equal(s.more.shown, false, `Only new off, nothing older: no button (${JSON.stringify(s)})`);
+      assert.notEqual(s.line?.kind, 'older', `no "More new below" line with nothing older (${JSON.stringify(s)})`);
+      if (aside) await until(async () => !(await tags(p, ids[N - 2]))?.shown, 'Only new off: the dossier is below the closed More again');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+  {
+  // The Reader under Only new, which is this page's own view (reply-stacks.mjs, shownView): from a message it does
+  // not draw, ↑ and ↓ step to the nearest message it draws; another topic's message steps as it would without it.
+  const swMsg = async (topicId, operation, sender, body, args = {}) => (await control({ method: 'agent_message', operation_id: operation, topic_id: topicId,
+    whole_topic: !args.reply_to, sender, body, ...args })).result.message_id;
+  const swDesk = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+  await check('conversation Only new: the Reader opened by a link on a settled message offers ↑ to the New message drawn above it', async () => {
+    const topicId = await ownConversation('onlynew-link');
+    const ids = {};
+    ids.n0 = await say(topicId, 'onlynew-link-n0', 'Link sweep: the oldest New question.');
+    ids.t = await swMsg(topicId, 'onlynew-link-t', 'person', 'Link sweep: settled T.');
+    ids.ta = await swMsg(topicId, 'onlynew-link-ta', agent, 'Link sweep: the answer to T.', { reply_to: ids.t, addressees: [person] });
+    ids.s = await swMsg(topicId, 'onlynew-link-s', 'person', 'Link sweep: settled S, linked.');
+    ids.sa = await swMsg(topicId, 'onlynew-link-sa', agent, 'Link sweep: the answer to S.', { reply_to: ids.s, addressees: [person] });
+    ids.n1 = await say(topicId, 'onlynew-link-n1', `Link sweep: N1, see ${facts.origin}/?topic=${topicId}&message=${ids.s} please.`);
+    const p = await open('onlynew-link', '/?conversation=onlynew-link', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', swDesk) });
+    await until(async () => (await tags(p, ids.s))?.tags[0] === 'Answered' && (await tags(p, ids.t))?.tags[0] === 'Answered' && (await tags(p, ids.n1))?.tags[0] === WAITING && (await tags(p, ids.n0))?.tags[0] === WAITING, 'T and S settled, N0 and N1 New');
+    await until(async () => !(await chip(p)).hidden, 'the Only new chip shows');
+    await toggleOnlyNew(p, true);
+    await until(async () => !(await tags(p, ids.s))?.shown && (await tags(p, ids.n1))?.shown && (await tags(p, ids.n0))?.shown, 'Only new draws N1 and N0, not S');
+    const drawn = await p.evaluate(`[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.getClientRects().length).map(e=>e.dataset.id)`);
+    const link = `${card(ids.n1)} a.words-link`;
+    await until(() => quiet(p, `Boolean(document.querySelector(${JSON.stringify(link)}))`), 'N1 carries the link');
+    await p.evaluate(`document.querySelector(${JSON.stringify(link)}).scrollIntoView({block:'center'})`);
+    await p.point(link);
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('settled S')`), 'the link opens S in the Reader');
+    const seq = (await view('source', { source_ref: { kind: 'message', id: ids.s } })).seq;
+    const core = {};
+    for (const [way, direction] of [['next', 'after'], ['previous', 'before']]) core[way] = (await view('topic_messages', { topic_id: topicId, cursor: seq, audience: 'reader', direction, limit: 1 })).items[0]?.id ?? null;
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    const up = await until(() => quiet(p, `!document.querySelector('#next-message').disabled`), 'the Reader offers ↑').then(() => true, () => false);
+    const down = await quiet(p, `!document.querySelector('#previous-message').disabled`);
+    const state = `drawn under Only new ${JSON.stringify(drawn.map(id => names[id] ?? id))}; Core's neighbours of S: next ${names[core.next] ?? core.next}, previous ${names[core.previous] ?? core.previous}; ↑ offered ${up}, ↓ offered ${down}`;
+    assert.ok(up, `with N1 drawn above where S sits, the Reader on S (opened by N1's link) offers ↑ (${state})`);
+    await p.point('#next-message');
+    await until(() => quiet(p, `document.querySelector('#source-body').textContent.includes('Link sweep: N1')`), `↑ from S opens N1 (${state})`);
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+  await check('conversation Only new: the Reader on another topic\'s message, opened from an About link, offers the same ↑ and ↓ with Only new on as off', async () => {
+    // A message sent to the conversation about t1's message carries an About link back to it; the link opens t1's
+    // message in the Reader here. Only new is the Conversation's view of its own items, not of t1's messages.
+    const t = await open('onlynew-about-t1', '/?topic=t1');
+    await t.open(1);
+    await until(() => quiet(t, `document.querySelectorAll('#reply-destination button').length === 2`), 'two chips under To');
+    await replace(t, 'About sweep: a decision about this message.');
+    await t.point('#reply-destination button[data-destination]:not([aria-pressed="true"])');
+    await until(() => quiet(t, `document.querySelectorAll('#reply-destination button')[1]?.getAttribute('aria-pressed') === 'true'`), 'the conversation is chosen');
+    const sentId = await sent(t, t.calls.length);
+    assert.deepEqual(t.errors, []); await t.close();
+    const p = await open('onlynew-about', '/?conversation=w1', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', swDesk) });
+    const about = `${card(sentId)} .about-line .item-link`;
+    await until(async () => (await tags(p, sentId))?.tags[0] === WAITING && await quiet(p, `Boolean(document.querySelector(${JSON.stringify(about)}))`), 'the sent message is New and carries its About link');
+    const sourceWords = (await view('source', { source_ref: facts.sources[1] })).body.slice(0, 30);
+    const offered = async label => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(about)}).scrollIntoView({block:'center'})`);
+      await p.point(about);
+      await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(sourceWords)})`), `${label}: the About link opens t1's message in the Reader`);
+      const either = () => quiet(p, `!document.querySelector('#next-message').disabled || !document.querySelector('#previous-message').disabled`);
+      await until(either, `${label}: the Reader offers a step`).catch(() => null);
+      const state = await p.evaluate(`({up:!document.querySelector('#next-message').disabled,down:!document.querySelector('#previous-message').disabled})`);
+      await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+      return state;
+    };
+    const off = await offered('Only new off');
+    assert.ok(off.up || off.down, `Only new off: the Reader on t1's message offers a step (${JSON.stringify(off)})`);
+    await toggleOnlyNew(p, true);
+    await until(async () => (await tags(p, sentId))?.shown, 'Only new draws the sent message');
+    const on = await offered('Only new on');
+    assert.deepEqual(on, off, `the Reader on t1's message offers the same steps with Only new on (${JSON.stringify(on)}) as off (${JSON.stringify(off)})`);
+    await toggleOnlyNew(p, false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+  }
+  // Item 403: Only new sits in the row over the feed, between the header's buttons and the messages. The keys go onto it
+  // and off again as on any of the buttons at the top of the feed, with it on and with it off.
+  await check('conversation the keys go on from Only new: ↓ reaches the top of the feed and ↑ comes back, ↑ goes on up to the header\'s buttons and ↓ back, on and off, skipping no message, and Return and Space still press it', async () => {
+    // Two items, so the feed holds a second message for ↓ to go on to whatever ran before.
+    await post('conversation-keys-older', 'An item for the keys.');
+    const fresh = await post('conversation-keys-new', 'A new item for the keys.');
+    const p = await open('conversation-keys', '/?conversation=w1');
+    await until(async () => (await tags(p, fresh))?.tags[0] === WAITING, 'the new card');
+    await until(async () => !(await chip(p)).hidden, 'Only new shows');
+    const only = '#conversation-show button';
+    // Where the keys are: Only new, a dossier's chevron, a message, or another control by its id.
+    const keyed = () => p.evaluate(`(()=>{const e=document.activeElement;if(e?.matches?.(${JSON.stringify(only)}))return 'only-new';
+      if(e?.matches?.('#messages .stack-toggle'))return 'stack:'+e.closest('.reply-stack').dataset.stack;
+      const m=e?.closest?.('#messages [data-id]');return m?'message:'+m.dataset.id:e?.id||e?.tagName||'none'})()`);
+    // The feed's first stops as the keys step through them, top down: each message shown, a dossier's chevron
+    // just before its head while that head shows whole (reply-stacks.mjs, navigationStops).
+    const stops = () => p.evaluate(`(()=>{const out=[];for(const e of document.querySelectorAll('#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]')){
+      if(!e.getClientRects().length)continue;const s=e.closest('.reply-stack'),t=s?.querySelector(':scope > .stack-toggle');
+      if(s?.dataset.stack===e.dataset.id&&s.dataset.headOpen==='true'&&t?.getClientRects().length)out.push('stack:'+s.dataset.stack);out.push('message:'+e.dataset.id)}return out.slice(0,2)})()`);
+    // A click on Only new turns it on, and Chrome leaves it the focus.
+    await p.evaluate(`document.querySelector('#conversation-show').scrollIntoView({block:'center'})`);
+    await p.point(only);
+    await until(async () => (await chip(p)).pressed === 'true', 'a click turns Only new on');
+    assert.equal(await keyed(), 'only-new', 'the keys are on Only new');
+    const [first] = await stops();
+    assert.ok(first, 'the feed shows a message under Only new');
+    await p.key('ArrowDown');
+    assert.equal(await keyed(), first, '↓ from Only new moves the keys on to the top of the feed');
+    await p.key('ArrowUp');
+    assert.equal(await keyed(), 'only-new', '↑ from the top of the feed comes back to Only new, the button the keys left');
+    // Only new is a row of its own under the header's buttons: ↑ from it goes up to them, never staying on it.
+    await p.key('ArrowUp');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector('#main > .topic-header')?.contains(document.activeElement))`), true,
+      `↑ from Only new goes up to the header's buttons, not ${await keyed()}`);
+    await p.key('ArrowDown');
+    assert.equal(await keyed(), 'only-new', '↓ from the header\'s buttons comes back down to Only new');
+    // Off by Return, the keys still on it: ↓ and ↓ again go down the feed as it now shows, skipping no message.
+    await p.key('Enter');
+    await until(async () => (await chip(p)).pressed === 'false', 'Return on Only new turns it off');
+    assert.equal(await keyed(), 'only-new', 'the keys stay on it');
+    const all = await stops();
+    assert.equal(all.length, 2, `the whole feed shows at least two stops: ${all}`);
+    await p.key('ArrowDown');
+    assert.equal(await keyed(), all[0], '↓ from it, turned off, goes to the top of the whole feed');
+    await p.key('ArrowDown');
+    assert.equal(await keyed(), all[1], 'and the next ↓ to the next, skipping nothing');
+    await p.key('ArrowUp'); await p.key('ArrowUp');
+    assert.equal(await keyed(), 'only-new', 'and ↑ back up to Only new');
+    await p.key(' ');
+    await until(async () => (await chip(p)).pressed === 'true', 'Space turns it on again');
+    await p.key(' ');
+    await until(async () => (await chip(p)).pressed === 'false', 'and off');
+    assert.deepEqual(p.errors, []); await p.close();
   });
 }

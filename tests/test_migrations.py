@@ -99,6 +99,8 @@ SCHEMA_BEFORE_BLOCKS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % 
 # file name.
 BEFORE_FOLD, FOLD_VERSION = BLOCKS_VERSION, str(int(BLOCKS_VERSION) + 1)
 SCHEMA_BEFORE_FOLD = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_FOLD)).read_text().splitlines()
+# Version 37 layout from approved 356 (a75954a), carried unchanged in 7e2aaae.
+SCHEMA_37 = (Path(__file__).parent / "fixtures" / "schema_37.sql").read_text().splitlines()
 OLD_ACTS = ("CREATE TABLE message_acts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "kind TEXT NOT NULL CHECK(kind IN ('star','deal','place','name','join')), "
             "message_id TEXT NOT NULL REFERENCES messages(id), topic_id TEXT NOT NULL REFERENCES topics(id), seq INTEGER NOT NULL, "
@@ -123,6 +125,7 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        db.execute("DROP INDEX IF EXISTS stack_replies")
         # The fold's version lets message_acts hold a fold: before it, the table names five kinds.
         db.execute("DROP TABLE message_acts")
         db.execute(OLD_ACTS)
@@ -1882,7 +1885,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_ORDER, SCHEMA_BEFORE_ORDER),
                      (BEFORE_STACKS, SCHEMA_BEFORE_STACKS),
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
-                     (BEFORE_FOLD, SCHEMA_BEFORE_FOLD))
+                     (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3311,7 +3314,7 @@ class FoldStepCase(MigrationCase):
 
     def test_the_step_follows_the_blocks_and_the_head_is_its_version(self):
         self.assertIn((BEFORE_FOLD, FOLD_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, FOLD_VERSION)
+        self.assertIn((FOLD_VERSION, "38"), [step[:2] for step in migrations.STEPS])
 
     def test_before_the_step_a_fold_cannot_be_kept(self):
         message = self.acted()
@@ -3323,7 +3326,7 @@ class FoldStepCase(MigrationCase):
         message = self.acted()
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_FOLD,
-                                          "schema_version": FOLD_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         self.assertEqual(everything(self.path), stored, "every row is kept, sqlite_sequence's place for the acts included")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
@@ -3353,7 +3356,7 @@ class FoldStepCase(MigrationCase):
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST", "an unfolded message still holds its fold's rows")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], FOLD_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.

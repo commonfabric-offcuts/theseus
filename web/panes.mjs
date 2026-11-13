@@ -40,12 +40,19 @@ export function feedStop(doc, { first = false } = {}) {
   return card.hidden ? entry.querySelector('.fold-line') : card;
 }
 
-// The buttons at the top of the feed, in their order, those shown: the topic's
-// or the Conversation's header, with Topic settings, New message and the rest
-// drawn there.
-export function headerButtons(doc) {
-  const header = doc.querySelector('#main > .topic-header');
-  return header ? [...header.querySelectorAll('button, a[href]')].filter(el => !el.disabled && shown(el) && !el.closest('[inert]')) : [];
+// The buttons at the top of the feed, in rows top down, each row's in their
+// order, those shown: the topic's or the Conversation's header, with Topic
+// settings, New message and the rest drawn there; then the row of view filters
+// just over the messages ("Read it", Only new, Show agent coordination). A row
+// with none shown is left out. The filters were once nobody's, so the keys on
+// one, reached by Tab or a click, moved nothing (item 403); as a row of these
+// the keys leave them like any other: ↑ and ↓ go from row to row.
+export function headerRows(doc) {
+  const usable = el => !el.disabled && shown(el) && !el.closest('[inert]');
+  return [['#main > .topic-header', 'button, a[href]'], ['#main > .feed-filters', 'button']].map(([row, each]) => {
+    const host = doc.querySelector(row);
+    return { host, buttons: host ? [...host.querySelectorAll(each)].filter(usable) : [] };
+  }).filter(row => row.buttons.length);
 }
 // Whether the keys are on the first message of the feed, the one at its top.
 function atTop(doc) {
@@ -61,8 +68,9 @@ export const panes = {
   // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page;
   // write(target, title), a new message in the place named, or in the page's own (in-place-navigation.mjs).
   outline: null, things: null, write: null,
-  // The header's button the keys were last on, so coming back up finds it.
-  button: null,
+  // The button the keys were last on in each row of the buttons at the top of
+  // the feed, by the row's element, so coming back to the row finds it.
+  button: new WeakMap(),
   feed(doc, options) {
     const stop = feedStop(doc, options) ?? doc.getElementById('main');
     if (!stop || stop.closest('[inert]')) return false;
@@ -90,11 +98,19 @@ export function inFeed(doc) {
   return Boolean(doc.getElementById('messages')?.contains(at));
 }
 
-// The keys on the header's buttons: ← and → along them, and past either end
-// on to the outline or the right rail as from the messages; ↓ back to the
-// first message. Return and Space are the button's own. Answers
-// whether the keys moved.
-function headerKey(action, buttons, at, doc) {
+// The button the keys land on in a row they come to: the one they were last on
+// there, else its first.
+const landing = row => { const last = panes.button.get(row.host); return row.buttons.includes(last) ? last : row.buttons[0]; };
+
+// The keys on the buttons at the top of the feed, in row r: ← and → along its
+// buttons, and past either end on to the outline or the right rail as from the
+// messages; ↑ to the row above, nothing on the top one; ↓ to the row below, and
+// from the last on to the first message. Return and Space are the button's own.
+// Answers whether the keys moved.
+function headerKey(action, rows, r, doc) {
+  const buttons = rows[r].buttons, at = buttons.indexOf(doc.activeElement);
+  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));
+  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));
   if (action === 'down') return panes.feed(doc, { first: true });
   if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);
   if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);
@@ -102,7 +118,7 @@ function headerKey(action, buttons, at, doc) {
 }
 
 // The feed's keys: → and ← to the right rail and back to the outline, ↑ from
-// the message at its top onto the header's buttons, and on those headerKey;
+// the message at its top onto the row of buttons just above it, and on those headerKey;
 // ⌘Return, from anywhere outside writing, a new message in this page's place.
 // Nothing in writing or while a pop-up is open; the feed's ⌘ arrows stay its own.
 export function feedKey(event, doc) {
@@ -111,11 +127,11 @@ export function feedKey(event, doc) {
   let moved = false;
   if (action === 'write') moved = Boolean(panes.write?.(null));
   else {
-    const buttons = headerButtons(doc), at = buttons.indexOf(doc.activeElement);
-    if (at >= 0) { panes.button = buttons[at]; moved = headerKey(action, buttons, at, doc); }
+    const rows = headerRows(doc), r = rows.findIndex(row => row.buttons.includes(doc.activeElement));
+    if (r >= 0) { panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc); }
     else if (!inFeed(doc)) return false;
     else if (action === 'left' || action === 'right') moved = panes.step('feed', action, doc);
-    else if (action === 'up' && buttons.length && atTop(doc)) moved = reach(buttons.includes(panes.button) ? panes.button : buttons[0]);
+    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));
   }
   if (!moved) return false;
   event.preventDefault();

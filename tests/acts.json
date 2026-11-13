@@ -2228,11 +2228,11 @@
   },
   {
    "item": 290,
-   "act": "↑ on the message at the top of the feed moves the keys onto the header's buttons, with a ring",
+   "act": "↑ on the message at the top of the feed moves the keys onto the row of buttons just above it (the header's, with no filter shown), with a ring",
    "break": [
     [
      "web/panes.mjs",
-     "    else if (action === 'up' && buttons.length && atTop(doc)) moved = reach(buttons.includes(panes.button) ? panes.button : buttons[0]);\n",
+     "    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));\n",
      ""
     ]
    ],
@@ -2738,7 +2738,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    const at = this.doc.activeElement;\n    if (!at || !this.list.contains(at)) return;\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
+     "    const at = this.doc.activeElement;\n    if (!at || !this.list.contains(at)) return;\n    if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
      "    const entry = this.entryFor(this.list.dataset.lastMessage);\n    if (!entry) return;"
     ],
     [
@@ -2778,7 +2778,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  return { next: ref(order[at - 1]) ?? off(core.next), previous: ref(order[at + 1]) ?? off(core.previous) };",
+     "  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages'))) : null);",
      "  return core;"
     ]
    ],
@@ -3324,7 +3324,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (at < 0 || !core) return core;\n",
+     "  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages'))) : null);\n",
      "  return core;\n"
     ]
    ],
@@ -3339,7 +3339,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (at < 0 || !core) return core;\n",
+     "  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages'))) : null);\n",
      "  return core;\n"
     ]
    ],
@@ -5172,8 +5172,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\"}",
-     "PERSONAL = {\"deal\", \"fold\", \"place\"}"
+     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\", \"aside\"}",
+     "PERSONAL = {\"deal\", \"fold\", \"place\", \"aside\"}"
     ]
    ],
    "check": {
@@ -5230,8 +5230,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\"}",
-     "PERSONAL = {\"star\", \"deal\", \"place\"}"
+     "PERSONAL = {\"star\", \"deal\", \"fold\", \"place\", \"aside\"}",
+     "PERSONAL = {\"star\", \"deal\", \"place\", \"aside\"}"
     ]
    ],
    "check": {
@@ -5359,8 +5359,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (state.folded.has(own)) { state.peeked.add(own); changed = true; }\n",
-     ""
+     "if (state.folded.has(own)) { state.peeked.add(own)",
+     "if (false) { state.peeked.add(own)"
     ]
    ],
    "check": {
@@ -5404,8 +5404,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.setFold(item, across > 0, { focus: false });",
-     "    this.setFold(item, true, { focus: false });"
+     "    this.swipeAct(start.target, across > 0);",
+     "    this.swipeAct(start.target, true);"
     ]
    ],
    "check": {
@@ -5494,8 +5494,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "if (!swipe.item || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;",
-     "if (!swipe.item) return;"
+     "if (!swipe.valid || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;",
+     "if (!swipe.valid) return;"
     ]
    ],
    "check": {
@@ -5509,8 +5509,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "      const entry = scrollsSideways(event.target, this.list) ? null : entryOf(this.list, event.target);",
-     "      const entry = entryOf(this.list, event.target);"
+     "      const target = scrollsSideways(event.target, this.list) ? null : event.target;",
+     "      const target = event.target;"
     ]
    ],
    "check": {
@@ -5753,6 +5753,150 @@
    }
   },
   {
+   "item": 355,
+   "act": "A reader own reply never revives a dossier put below More",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "max(CASE WHEN m.author_id<>:actor THEN m.seq END)",
+     "max(m.seq)"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A partial page uses the canonical dossier root outside its loaded messages",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "root = roots.root(item[\"id\"])",
+     "root = item[\"id\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "An aside record cannot be dropped by a schema downgrade",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ASIDE_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='aside')\"",
+     "ASIDE_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A dossier put aside is actually below More in the browser",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const destination = below ? aside : top;",
+     "const destination = top;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More persists"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A swipe on the last visible message moves its whole dossier",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "chrome || displayed.at(-1) === entry",
+     "chrome"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More uses a real swipe"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A link reveals a loaded message below More without clearing its personal choice",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (stack && positionOf(stack)?.below) { state.here.set(own",
+     "if (false) { state.here.set(own"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More handles"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A whisper someone is outside never moves the dossier positions or the act version they read",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"WHERE a.topic_id=:topic AND a.owner IN ('',:actor) AND \" + VISIBLE, {\"topic\": topic, \"actor\": actor}",
+     "\"WHERE a.topic_id=:topic AND a.owner IN ('',:actor)\", {\"topic\": topic, \"actor\": actor}"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A dossier's position reads the same however much else the topic grows",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"at\": {\"messages\": latest,",
+     "\"at\": {\"messages\": _seen_seq(db, actor, topic),"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A split read later wins over the joined dossier's position though it holds fewer messages",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages",
+     "answer.at.acts < known.at.acts || answer.at.messages < known.at.messages"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Command-Z right after a move on a dossier whose root is not loaded undoes the move",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const item = this.messages().get(root) ?? this.standIns.get(root);",
+     "const item = this.messages().get(root) ?? { ...this.standIns.get(root), acts: {} };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More handles"
+   }
+  },
+  {
    "item": 359,
    "act": "One human or room-directed message keeps the whole joined dossier visible",
    "break": [
@@ -5764,6 +5908,21 @@
    ],
    "check": {
     "node": "tests/ui_coordination_stacks.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "With Show agent coordination off, More counts only the dossiers it would show",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "state.showCoordination || node.dataset.coordination !== 'agents'",
+     "true"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "below More takes an agent coordination row"
    }
   },
   {
@@ -6285,6 +6444,616 @@
    "check": {
     "native": "rail",
     "case": "a press on an outline row puts the focus"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A join from the keys goes into the stack shown beside it, stepping over a dossier below More",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const side = this.sideOf(found), shows = joinShown(side.stacks, side.index, way, entry.dataset.id);",
+     "const shows = joinShown(this.state.stacks, found.index, way, entry.dataset.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "join a stack to the one shown beside it"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A move from the keys goes past the stack shown beside it, stepping over a dossier below More",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const side = this.sideOf(found), changes = moveOf(side.stacks, side.index, way);",
+     "const changes = moveOf(this.state.stacks, found.index, way);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "move a stack past the one shown beside it"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The page knows which stacks it drew below More, so moves and joins keep to their side",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (below) state.below.add(stack.id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "join a stack to the one shown beside it"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A move or a join steps only among the stacks on its own side of More",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "each === stack || (view.below(each) === view.below(stack) && onShow(each))",
+     "each === stack || onShow(each)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "An unloaded neighbour whose dossier the page holds hidden (its first message older than the page, a reply loaded below a closed More) is refused",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "page.hiddenRoots.has(position?.root_id ?? candidate.id) || ",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "at the bottom of a long topic, ↓ never opens the unloaded first message of a dossier the page holds below a closed More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "An unloaded neighbour Core places below More is refused while More is closed",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     " || (position?.below && !page.asideShown)",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "at the bottom of a long topic, ↓ never opens an unloaded message Core holds below a closed More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The Reader's neighbours keep Core's position for them, so the one exit can read it",
+   "break": [
+    [
+     "web/app-session.mjs",
+     ", position: page.items[0].stack_position ?? null",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "at the bottom of a long topic, ↓ never opens an unloaded message Core holds below a closed More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Under Only new the Reader's ↓ steps along the New items it draws, one put below More included",
+   "break": [
+    [
+     "web/app.mjs",
+     "  stackState($('messages')).only = here.onlyNew ? item => conversationItem(item.id)?.item?.state === 'new' : null;\n",
+     "  stackState($('messages')).only = null;\n"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "Only new: the keys and the Reader's ↓ reach a New item put below More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The keys reach every card the page draws, a New item put below More and shown by Only new included",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (!entry.getClientRects().length) continue;",
+     "    const page = states.has(list) ? stackPage(states.get(list)) : null;\n    if (!entry.getClientRects().length || (page && !pageOfShown(page, entry))) continue;"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "export const entries = list =>",
+     "const pageOfShown = (page, entry) => page.shown.has(entry.dataset.id) || !page.loaded.has(entry.dataset.id);\nexport const entries = list =>"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "Only new: the keys and the Reader's ↓ reach a New item put below More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The Reader's ↑ and ↓ step over a dossier below a closed More to the message shown beside it, and reach it below More once More is open",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "export const stackPage = state => pageOf(state.stacks, shownView(state));",
+     "export const stackPage = state => pageOf(state.stacks, { below: () => false, hidden: () => false });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shown order: the Reader's ↑ and ↓ step over a dossier below More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "At an end of what the page shows, Core's neighbour stands in only when the page has not loaded it, never one shown elsewhere on the page or put aside",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "beyond = other => other && !page.loaded.has(other.id) ? other : null;",
+     "beyond = other => other;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reader_steps.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "With Show agent coordination off, a join and the Reader's ↑ step over the hidden agent coordination to the stack shown",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     " || (!state.showCoordination && state.coordination.has(stack.id))",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shown order: with Show agent coordination off"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The stacks as shown put those below More after every stack above it and leave out the ones not on show",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "return [...stacks.filter(each => !view.below(each)), ...stacks.filter(each => view.below(each))].filter(each => !view.hidden(each));",
+     "return stacks.filter(each => !view.hidden(each));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The Reader open on a message the page does not show (Read it below a closed More, or put aside on another device) steps only to a message shown or not loaded",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return { next: ref(stepTarget(next ?? null, page)), previous: ref(stepTarget(previous ?? null, page)) };",
+     "  if (at < 0) return core;\n  return { next: ref(stepTarget(next ?? null, page)), previous: ref(stepTarget(previous ?? null, page)) };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shown order: Read it on a message below a closed More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Every step beside a message or stack leaves through one exit that never lets out a message the page has loaded and does not show",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (page.loaded.has(candidate.id)) return null;",
+     "  if (page.loaded.has(candidate.id)) return candidate;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reader_steps.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "While the Reader is open, each redraw of the page's stacks works its ↑ and ↓ out again, so another device's move changes what they offer at once",
+   "break": [
+    [
+     "web/app.mjs",
+     "arranged: stacksRedrawn,",
+     "arranged: () => {},"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shown order: while the Reader is open, another device"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The New line beside a dossier below a closed More takes the first place shown after it, not a place below More",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!view.hidden(state.stacks[at])) return state.stacks[at].newest;",
+     "  return state.stacks[at].newest;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shown order: the New line beside a dossier"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Under Only new, a folded New reply in a closed dossier is drawn, and stays drawn when an act redraws the stacks",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "entry.hidden = !state.only?.(item); desired.push(entry); }",
+     "entry.hidden = true; desired.push(entry); }"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: a New reply folded in a closed dossier"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Under Only new, a New item below a closed More is drawn, a dossier put aside included, and stays drawn when an act redraws the stacks",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "node.hidden = aside.includes(node) && !asideShown;",
+     "node.hidden = aside.includes(node) && !state.moreOpen;"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: a New item heading a dossier put below a closed More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Under Only new, a step beyond what the page loaded goes on only to a message the page knows as New",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (page.only && !page.only(candidate)) return null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reader_steps.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Each time the stacks are drawn again, the New line is placed again, so it is never left below a closed More",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (views) placeLine();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: a line placed while Only new is on"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Earlier messages shows wherever the dossiers put aside are on show, under Only new included",
+   "break": [
+    [
+     "web/app.mjs",
+     "Boolean(aside && !view.asideShown)",
+     "Boolean(aside && !stackFeed.state.moreOpen)"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: with a dossier put aside, older messages can still be loaded"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Moving a message below More hands focus to More only where the page draws More; under Only new the message keeps it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus",
+     "if (below) this.state.more?.focus"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: moving a New message below More keeps focus on it"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Under Only new, which does not draw the New line, More messages or Earlier messages loads older messages even while the line says more new ones lie below",
+   "break": [
+    [
+     "web/app.mjs",
+     "views.olderCursor === null || (!view?.only &&",
+     "views.olderCursor === null || (true &&"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: with the oldest new message not loaded and a dossier put aside"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The keys go to what the page's one view draws: under Only new, Move below More from a New reply whose head is not drawn leaves focus on the reply, so Command-Z can undo it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (view.only) return Boolean(view.only(item));",
+     "if (view.only) return true;"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: under Only new, Move below More from a New reply whose head"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The Reader on another topic's message, opened from an About link, steps as Core has it: this page's Only new and More are not its view",
+   "break": [
+    [
+     "web/app.mjs",
+     "here ? stackPage(stackState($('messages'))) : null",
+     "stackPage(stackState($('messages')))"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: the Reader on another topic's message"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The Reader on a message the page does not draw steps from where it sits to the nearest message drawn, over loaded ones not drawn",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "page.all.findIndex(item => item.id === current.id)",
+     "page.order.findIndex(item => item.id === current.id)"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation Only new: the Reader opened by a link on a settled message"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A repaint that stops drawing the card it holds holds the next card drawn below it, so the cards under it do not jump",
+   "break": [
+    [
+     "web/app.mjs",
+     "held.find(node => node.isConnected && drawn(list, node.dataset.id))",
+     "held.find(node => node.isConnected)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks below More: when the first card in view goes below a closed More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "↑ and ↓ from More, where Move below More leaves the keys, go to the card drawn just above it and to nothing below a closed More",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "const between = inList && at !== this.host && !entry && !at.closest('.stack-toggle');",
+     "const between = false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks below More: after Move below More hands the focus to More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "→ on a reply of a dossier a link drew where it sits, though put below a closed More, keeps the dossier drawn there and the keys on it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  state.peeked.delete(stack.id);\n  for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); }",
+     "  state.peeked.delete(stack.id); state.here.delete(stack.id);\n  for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); state.here.delete(item.id); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks below More: → on a reply of a dossier put below a closed More"
+   }
+  },
+  {
+   "item": 355,
+   "act": "⋯ Fold on the reply a link drew in a dossier put below a closed More folds it where it is drawn, the keys on it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.state.peeked.delete(item.id);\n    this.act('message.fold', item, { folded: on });",
+     "    this.state.peeked.delete(item.id); this.state.here.delete(item.id);\n    this.act('message.fold', item, { folded: on });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks below More: ⋯ Fold on the reply a link drew"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A dossier a link drew where it sits goes below a closed More when another device brings it back and moves it below More again",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "some(item => here(item) === place)",
+     "some(item => here(item))"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier a link drew where it sits goes below a closed More when another device brings it back"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A dossier a link drew where it sits stays drawn there through →, ⋯ Fold and the page reading the topic again, while nothing moves it",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "`${position.root_id}:${position.aside_revision ?? 0}`",
+     "`${position.root_id}:${position.at?.acts}`"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stays drawn there through →, ⋯ Fold and the page reading the topic again"
+   }
+  },
+  {
+   "item": 355,
+   "act": "The person's own Move below More on a dossier a link drew where it sits puts it below More, though Core finds its place unchanged",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "{ this.state.peeked.delete(each.id); this.state.here.delete(each.id); }",
+     "{ this.state.peeked.delete(each.id); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "two fingers swiped right over a dossier a link drew where it sits"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A link's place for a dossier holds while Core holds the dossier there, and goes by at a later Move below More, Bring back or join",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "some(item => here(item) === place)",
+     "some(item => here(item))"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reader_steps.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A position read again at a later snapshot of the same place moves no dossier and draws no stack again",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);",
+     "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A position read again whose first message, through, below or aside revision changed draws the stacks again",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision'];",
+     "const PLACING = ['root_id'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A phone's tap that a repaint held through the press lands under keeps the light on the message it landed in",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "const at = event.composedPath().find(node => node.nodeType === 1 && node.isConnected) ?? null;",
+     "const at = event.target?.nodeType === 1 ? event.target : event.target?.parentElement;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "one-row head keeps the ask lit with its ✅ bar"
+   }
+  },
+  {
+   "item": 355,
+   "act": "A link followed again after another device's Bring back and Move below More draws the dossier where it sits again",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (stack && positionOf(stack)?.below) { state.here.set(own, placeOf(positionOf(stack))); changed = true; }",
+     "if (stack && positionOf(stack)?.below && !state.here.has(own)) { state.here.set(own, placeOf(positionOf(stack))); changed = true; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the link followed again after another device's Bring back"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Acts read again are drawn though reading the places after them fails, so a later read that learns nothing new does not leave them undrawn",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "    try { await this.readPositions(read, current); }\n    finally { if (changed) this.paint('acts'); }",
+     "    await this.readPositions(read, current);\n    if (changed) this.paint('acts');"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 355,
+   "act": "Places learned from one page of positions are drawn though a later page fails",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "    } finally { if (changed) this.paint('acts'); }\n  }\n  runOf(id)",
+     "    } catch (error) { throw error; }\n    if (changed) this.paint('acts');\n  }\n  runOf(id)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
    }
   },
   {
@@ -8095,6 +8864,201 @@
    "check": {
     "native": "reading",
     "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
+   }
+  },
+  {
+   "item": 421,
+   "act": "A redraw of the page leaves the focus, and so the card box's cursor, where the person put it: a press outside the sheet as the page is read again does not move the cursor to the box's start",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "const refocus = editing && (!editing.field.isConnected || this.list.contains(this.doc.activeElement));",
+     "const refocus = editing;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "keeps its cursor where it was when the page is read again"
+   }
+  },
+  {
+   "item": 422,
+   "act": "Words typed into a card box as the page is read again go to the writing before the page is drawn again, so the card is saved once, with them",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(this.editing)this.save();\n    this.textEdited();\n",
+     "    this.textEdited();\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "words typed into a card as the page is read again"
+   }
+  },
+  {
+   "item": 422,
+   "act": "Words typed into Text as the page is read again go to the writing before Text is drawn again from it, so Text keeps them and they are saved once",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(this.editing)this.save();\n    this.textEdited();\n",
+     "    if(this.editing)this.save();\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "words typed into Text as the page is read again"
+   }
+  },
+  {
+   "item": 403,
+   "act": "Show agent coordination, in the row of filters over the feed, is one of the buttons at the top of the feed: ↓ from it goes on to the first dossier or message shown, on or off, and ↑ from there comes back to it",
+   "break": [
+    [
+     "web/panes.mjs",
+     ", ['#main > .feed-filters', 'button']]",
+     "]"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination the keys go on from Show agent coordination"
+   }
+  },
+  {
+   "item": 403,
+   "act": "Only new, in the row of filters over a Conversation's feed, is one of the buttons at the top of the feed: ↓ from it goes on to the first message shown, on or off, and ↑ from there comes back to it",
+   "break": [
+    [
+     "web/panes.mjs",
+     ", ['#main > .feed-filters', 'button']]",
+     "]"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation the keys go on from Only new"
+   }
+  },
+  {
+   "item": 403,
+   "act": "↑ from the row of filters goes on up to the header's buttons, at the one the keys were last on there, so the keys never stay on a filter going up",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination the keys go on from Show agent coordination"
+   }
+  },
+  {
+   "item": 403,
+   "act": "↑ from Only new goes on up to the Conversation's header buttons, never staying on it",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation the keys go on from Only new"
+   }
+  },
+  {
+   "item": 403,
+   "act": "↓ from the header's buttons comes down to the row of filters when one shows, at the filter the keys were last on there",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination the keys go on from Show agent coordination"
+   }
+  },
+  {
+   "item": 403,
+   "act": "Coming to a row of the buttons at the top of the feed finds the button the keys were last on in it, else its first",
+   "break": [
+    [
+     "web/panes.mjs",
+     "return row.buttons.includes(last) ? last : row.buttons[0];",
+     "return row.buttons[0];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination the keys go on from Show agent coordination"
+   }
+  },
+  {
+   "item": 403,
+   "act": "← and → move along the row of filters, and past its ends on to the outline and the right rail; the header's buttons end at their own row, so → from New message goes to the right rail, not on to a filter",
+   "break": [
+    [
+     "web/panes.mjs",
+     "const buttons = rows[r].buttons, at",
+     "const buttons = rows.flatMap(row => row.buttons), at"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination ← and → move along the filters' row"
+   }
+  },
+  {
+   "item": 403,
+   "act": "→ past the last of the row of filters, Show agent coordination, goes on to the right rail where it takes the keys, as from the messages",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);\n",
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : false;\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination ← and → move along the filters' row"
+   }
+  },
+  {
+   "item": 403,
+   "act": "← moves back along a row of the buttons at the top of the feed, from Show agent coordination to Read it",
+   "break": [
+    [
+     "web/panes.mjs",
+     "  if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination ← and → move along the filters' row"
+   }
+  },
+  {
+   "item": 403,
+   "act": "\"Read it\" is one of the row of filters: the arrows go on from it as from Show agent coordination",
+   "break": [
+    [
+     "web/panes.mjs",
+     "['#main > .feed-filters', 'button']",
+     "['#main > .feed-filters', 'button:not(#read-mark)']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading coordination ← and → move along the filters' row"
    }
   }
  ]

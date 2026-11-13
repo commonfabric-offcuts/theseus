@@ -85,9 +85,13 @@ export class MessageMenu {
     host.addEventListener('click', event => this.claim(event.target), true);
     // A tap anywhere but a message, its bar, its menu or a pop-up lets the light go. A
     // finger lifted after a scroll ends in pointercancel, so scrolling keeps it.
+    // Where the tap landed is read from the path the release was sent along: a
+    // repaint held through the press runs as the finger lifts (press-hold.mjs),
+    // before this hears it, and can replace the element it landed on, which no
+    // longer says which message it was in. Its nearest part still drawn does.
     doc.addEventListener('pointerup', event => {
       if (event.pointerType !== 'touch' || !this.lit) return;
-      const at = event.target?.nodeType === 1 ? event.target : event.target?.parentElement;
+      const at = event.composedPath().find(node => node.nodeType === 1 && node.isConnected) ?? null;
       if (!this.entryOf(at) && !this.bar.contains(at) && !at?.closest?.('dialog, .message-menu-list')) this.light(null);
     });
     doc.addEventListener('focusin', event => {
@@ -303,7 +307,14 @@ export class MessageMenu {
       ?? this.lit ?? entries.find(entry => entry.dataset.id === this.host.dataset.lastMessage);
     const index = entries.indexOf(selected);
     const inView = entries.find(entry => entry.getBoundingClientRect().bottom > 0);
-    const next = index < 0 ? inView ?? entries[0] : entries[Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+    // Focus on the list's own control between the stops (More messages, a
+    // stack's line) is where the keys are: ↑ the stop drawn just above it, ↓
+    // the one just below, none past either end.
+    const between = inList && at !== this.host && !entry && !at.closest('.stack-toggle');
+    const after = stop => Boolean(at.compareDocumentPosition(stop) & at.DOCUMENT_POSITION_FOLLOWING);
+    const next = between ? (event.key === 'ArrowDown' ? entries.find(after) : entries.findLast(stop => !after(stop)))
+      : index < 0 ? inView ?? entries[0] : entries[Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+    if (!next) return;
     // A dossier's header shows no message toolbar (focusin also clears the
     // light when focus lands on the chevron).
     this.light(next.matches('.stack-toggle') ? null : next);

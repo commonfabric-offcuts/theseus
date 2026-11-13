@@ -564,7 +564,9 @@ test('stepping uses reader eligibility and enables the final neighbor even witho
   const f = await fixture(t), p = await f.open(0);
   assert.equal(typeof f.registry.neighbors, 'function', 'bounded neighbor lookup must be implemented');
   const neighbors = await f.registry.neighbors(p);
-  assert.equal(neighbors.previous, null); assert.deepEqual(neighbors.next, f.facts.sources[1]);
+  // A neighbour is its source ref, with Core's position for it (whether it sits below More) for the Reader's one exit.
+  assert.equal(neighbors.previous, null); assert.deepEqual({ kind: neighbors.next.kind, id: neighbors.next.id }, f.facts.sources[1]);
+  assert.equal(neighbors.next.position?.below, false, 'Core\'s position for the neighbour comes with it');
   const reads = f.calls.filter(call => call.name === 'topic_messages');
   assert.equal(reads.length, 2);
   assert.ok(reads.every(call => call.args.audience === 'reader' && call.args.limit === 1 && call.args.cursor === p.source.seq));
@@ -584,7 +586,7 @@ test('freshness neighbors read sequentially and discard an older answer after a 
   assert.deepEqual(calls, ['before'], 'a background pair occupies only one read at a time');
   const current = await f.registry.neighbors(p);
   release.resolve(); assert.equal(await old, null);
-  assert.deepEqual(current.next, f.facts.sources[1]);
+  assert.deepEqual({ kind: current.next.kind, id: current.next.id }, f.facts.sources[1]);
   assert.equal(f.registry.current, p); assert.deepEqual(f.shown, [p]);
 });
 

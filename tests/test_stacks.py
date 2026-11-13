@@ -405,7 +405,7 @@ class ReadCase(StackCase):
                            (kind, message, "t1", seq, "owner" if kind in ("star", "place", "fold") else "", "owner", json.dumps(value), 1))
         shown = self.acts(message)
         self.assertEqual((shown["starred"], shown["placed"], shown["folded"], shown["name"]["text"], shown["joined"]), (True, 4, True, "Later", None))
-        self.assertEqual(set(shown), {"starred", "star_revision", "dealt", "deal_revision", "folded", "fold_revision", "placed", "place_revision",
+        self.assertEqual(set(shown), {"aside", "aside_revision", "starred", "star_revision", "dealt", "deal_revision", "folded", "fold_revision", "placed", "place_revision",
                                       "name", "name_revision", "joined", "join_revision"})
         # And the next act is fenced on it as on any other.
         self.committed(self.name(message, "Typed", revision=1))

@@ -76,7 +76,10 @@ the picked one, after its children, or with ⌥Return right above it, at its
 depth.
 
 While a card is being written, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it by the same
-rules; what is written, and the cursor, stay where they were. Both the move
+rules; what is written, and the cursor, stay where they were. The page drawn
+again (a read of it, a move) gives the box the focus back only where the box or
+the cards had it, so a press outside the sheet as the page is read again leaves
+the box's cursor where it was for the next opening. Both the move
 and unfinished writing autosave through the shared Notebook writer (302,
 notebook-writing.md). A new card with words also saves before Done; an empty
 new card changes only where it will go. The box keeps these keys even with nowhere to go, as

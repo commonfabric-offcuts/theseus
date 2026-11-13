@@ -225,7 +225,10 @@ their acts.
 - **Stable presses.** Anything that arrives while a press is held—a new
   message, a stack repaint, reactions or the New line—waits until the press
   ends, then shows at once (`web/press-hold.mjs`). The header and people
-  repaint in place.
+  repaint in place. A finger's tap that a waiting repaint lands under keeps
+  the light where the tap landed: the message it was in is read from the
+  path the release was sent along, so the tap is not taken for one outside
+  the messages.
 - **The bar.** A head showing only its row has no message bar; Return
   still replies to it, and the bar comes back once its whole message shows.
   In a stack the bar stays below the head row's bottom edge while that row
@@ -430,6 +433,8 @@ the stacks draw nothing.
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
 | two states, by the chevron, the header, → ← and ⋯; a stack left at its header | `tests/ui_stack_order.test.mjs` (`LEVELS`, `foldStep`, `levelOf`); `tests/stack_native.mjs`, "reading stacks use exactly two states …" and "reading stacks a dossier left at its header alone …" |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
+| a phone's tap on a go-ahead ask's one-row head keeps the ask lit with its bar while the page hears of a star made on another device, on a message it has not loaded (which draws nothing again) and on one it shows (whose repaint lands under the finger) | `tests/ui_stack_position.test.mjs`; in Chrome and Safari's engine, `tests/topic_reading_native.mjs`, "reading a phone's tap on a go-ahead ask's one-row head …" (Safari's engine in the harness taps whole, so there the star is read just before the tap) |
+| a link followed again after another device's Bring back and Move below More | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks below More: on a laptop/phone, the link followed again …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
 | the star in a message's header: an outline while lit, filled once starred, for the reader alone, opening nothing | `tests/stack_native.mjs`, "reading stacks a star in a message's header …", in Chrome and Safari's engine |
 | Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
@@ -446,6 +451,70 @@ Not yet:
   in the stack under it.
 - Archive, Make it a heading, Edit and Lift out come with the next piece.
 
+## Put a dossier aside
+
+A right swipe on its header or last visible message moves the dossier below
+More messages for you, on every device. Other messages keep their individual
+fold gesture. The menu offers Move below More and Bring back above More;
+Command-Z undoes a move. Existing unread messages and your own replies leave
+it there; a newer visible reply from someone else brings it back. Links can
+show its messages without clearing your choice. More is a boundary for the
+stack keys and their menu items: ⌘↑ ⌘↓ move a stack past, and ⇧⌘↑ ⇧⌘↓ join
+it to, the stack shown beside it on its own side of More (`sideOf`), so a
+stack above More steps over a dossier put aside, and none moves or joins
+across More into or out of one. The Reader's ↑ and ↓ (and a phone's
+↑ Previous · ↓ Next) read the same page order (`shownOrder`): they step over a
+dossier below a closed More, reach it below More once More is open, and stop
+at the end of what the page shows rather than going on into one put aside.
+Agent coordination hidden by Show agent coordination is passed over the same
+way. Every such step leaves through one exit (`stepTarget`): a message the
+page shows, never one it has loaded and does not show, however the Reader came
+to be open (Read it on a message below More, a link, search, Starred, another
+pane, a move on another device). Core's neighbour beyond what the page loaded
+leaves too, unless the page knows it is not on show: it belongs to a dossier
+the page holds hidden (a reply loaded below a closed More whose first message
+is older than the page), or Core's position for it puts it below More while
+More is closed. The Conversation's Only new is its own view: it draws just the
+New items, wherever they sit (put below More, or a reply folded in a closed
+dossier), and the Reader's ↑ and ↓ step along those; beyond what the page
+loaded, a step goes on only to a message the page knows as New. The stacks
+hide what that one view hides each time they are drawn, so an act or a
+reaction that redraws them keeps the same messages drawn. Whether a message
+is drawn is one rule (`drawn`, from that view and the stack's level); the
+keys' focus and the card a repaint holds ask it, never the DOM. The keys reach
+every card the page draws, and ↑ and ↓ from More (or another control between
+cards) go to the card drawn just above or below it. A repaint holds the card
+in view; when it stops drawing that card (put below More on another device),
+it holds the next card drawn below it instead. The Reader on a message the
+page does not draw (Read it below a closed More, a link to one Only new does
+not draw) steps from where that message sits to the nearest one drawn each
+way. On another topic's message, opened from an About link, it steps as Core
+has it: this page's More and Only new are not its view. A dossier below More
+that a link, search or Starred drew where it sits stays there through →, ←,
+Fold and the page reading the topic again, while Core holds it at the place it
+held then (`drawnBelow`, by `placeOf`: the dossier and the revision of its
+Move below More). A Move below More or Bring back made on another device is a
+new place only when it changes Core's value, which raises that revision; the
+dossier is then drawn as Core holds it, and a link followed again draws it
+where it sits again. One that finds the place unchanged leaves it drawn where
+it is. One made here ends it at once, and also when Core finds the place
+unchanged. The page draws the stacks again for the positions it reads only
+when what places a dossier changed (its first message, through, below and
+aside revision): every act in the topic raises the snapshot a position is
+read at, and that alone draws nothing. Each time the page's stacks are drawn again (More opened
+or closed, Only new turned on or off, an act or a reaction, a move on another
+device) everything placed by what the page shows is placed again: the Reader's
+↑ and ↓ while it is open, the New line, and Earlier messages. The New line,
+when the oldest new message is in a dossier below a closed More, takes the
+first place shown after it. Earlier messages shows wherever the dossiers put
+aside are on show, under Only new as with More open; under Only new it shows
+even while the New line says more new messages lie below, since Only new does
+not draw that line. Moving a dossier below More hands focus to More when the
+page draws More (with More open too); under Only new, which hides More, the
+dossier keeps focus, on the first of its messages Only new draws. Wherever the
+keys are put on a message the page does not draw, they go to the first message
+of its stack that it does. See [the Core contract and checks](dossier-below-more.md).
+
 ## Agent coordination (359)
 
 A dossier entirely between known agents starts as one quiet title row, with
@@ -457,10 +526,20 @@ This presentation is not the reader's saved message fold or saved placement.
 Show agent coordination above either feed is on initially; turning it off
 hides these rows (including standalone agent coordination). It is a page-local
 view, changes no unread or delivery records, and can always be turned back on.
-A message link reveals its target even with this filter off.
+A message link reveals its target even with this filter off. The keys
+reach Show agent coordination in the row of filters, one of the rows of
+buttons at the top of the feed (docs/interaction.md): ↓ from it goes to the
+first dossier or message the feed shows, on or off, ↑ from there comes back
+to it, and ↑ from it goes on up to the header's buttons (item 403).
 
 Classification uses addressing, not inferred intent: every message must be
 from a known agent and explicitly addressed only to known agents. Room posts,
 messages to the reader, direct replies to the reader, unknown people, missing
 ancestry and any mixed joined dossier stay visible. Further agent-only replies
 stay quiet; a human or room-directed reply brings the dossier back immediately.
+
+An agent coordination row is a dossier too: a right swipe on its row, or the
+menu, moves it below More messages like any other dossier ([Put a dossier
+aside](#put-a-dossier-aside)), and it keeps its quiet row
+there. With Show agent coordination off, agent coordination below More is
+hidden as well and More counts only the dossiers it would show.

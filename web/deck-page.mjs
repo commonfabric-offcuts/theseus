@@ -824,6 +824,10 @@ export class DeckPage {
       });
       return row;
     });
+    // The box takes the focus as it opens, and back from the redraw where it or the cards had it, its cursor where it
+    // was; never from wherever else the person has put it, a press outside the sheet among them (WebKit gives a box
+    // the focus as its cursor is set, so the cursor is left as the move kept it). Read before the box moves.
+    const refocus = editing && (!editing.field.isConnected || this.list.contains(this.doc.activeElement));
     if (editing) {
       const holder = this.node('li', 'deck-card deck-writing');
       const at = editing.fresh ? (editing.after === null ? 0 : findCard(this.deck, editing.after, editing.near) + 1) : findCard(this.deck, editing.text, editing.near);
@@ -857,8 +861,10 @@ export class DeckPage {
     this.editButton.textContent = editing ? 'Done' : 'Edit';
     this.mark();
     if (editing) {
-      editing.field.focus({ preventScroll: true });
-      if (selection) editing.field.setSelectionRange(...selection);
+      if (refocus) {
+        editing.field.focus({ preventScroll: true });
+        if (selection) editing.field.setSelectionRange(...selection);
+      }
       this.fit(editing.field);
       // The card being written, moved by a key on a laptop, keeps that room too (open() reveals a card a key opens).
       if (this.keyed && !this.phone) revealSelection(editing.field.closest('li'));

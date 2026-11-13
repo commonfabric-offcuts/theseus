@@ -186,14 +186,23 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   place the outline keeps its place and the messages' is the new page's.
   Escape in the Reader gives the focus back to the message, so the arrows
   work again.
-- **The buttons at the top of the feed.** ↑ on the message at the top of
-  the feed moves the keys onto the header's buttons (Topic settings, New
-  message, and the others drawn there, such as "Pipeline & pages" below
-  1181px), with the keys' ring on the one they are on. ← and → move along
-  them; ← past the first goes to the outline and → past the last to the
-  right rail, as from the messages. ↓ selects the first visible card or
-  stack in the feed, and Return or Space presses the button. Coming up again finds the
-  button the keys were last on. The pointer is unchanged. The button the keys
+- **The buttons at the top of the feed.** These are two rows: the
+  header's buttons (Topic settings, New message, and the others drawn there,
+  such as "Pipeline & pages" below 1181px), and under them the view filters
+  in the row just over the messages ("Read it", Only new, Show agent
+  coordination), when any of those shows. ↑ on the message at the top of the
+  feed moves the keys onto the row just above it, the filters' when they
+  show, else the header's, with the keys' ring on the button they are on.
+  ↑ from the filters goes on up to the header's buttons, and ↑ there, the
+  top row, moves nothing; ↓ goes back down a row, and from the filters (or
+  the header's buttons, with no filter shown) selects the first visible card
+  or stack in the feed (with a filter on, the first it shows). Coming to a
+  row finds the button the keys were last on in it, else its first. ← and →
+  move along a row; ← past its first goes to the outline and → past its
+  last to the right rail, as from the messages, so → from New message goes
+  to the right rail, not on to a filter. Tab or a click puts the keys on a
+  filter as on any button, Return or Space presses the button, and no arrow
+  does. The pointer is unchanged. The button the keys
   reach, and the message → or ↓ bring them back to, comes into view by the
   rule above.
 - **⌘Return** starts a new message in the place the keys are on, in the box
@@ -218,6 +227,11 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   ⇧⌘↓ join it to the stack above or below for everyone, and ⌘Z puts the
   last of these back (docs/reply-stacks.md). The keys stay on the message
   that moved, and a screen reader hears what happened.
+- **Put a dossier aside.** Swipe its header or last visible message right,
+  on a phone or with two fingers on a trackpad, to move it below More messages
+  for you on every device. The menu offers Move below More and Bring back
+  above More; ⌘Z undoes it. Your own replies leave it there; a new reply from
+  someone else brings it back. Other messages still swipe to fold individually.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
   line's start and end, ⌘↑ and ⌘↓ the writing's, and no stack moves. A pane not on screen (the
@@ -331,6 +345,11 @@ puts the focus on the page reached, …", and "rail a press on the row of the
 page being read leaves no ring: …"; the steps the arrows take: "rail → on an
 open outcome goes into the messages, …" and "rail in the right rail → and ←
 open and fold a section without ⌘: …"; the header's buttons: "rail ↑ from
-the top message reaches the buttons at the top of the feed, …"; ⌘Return:
+the top message reaches the buttons at the top of the feed, …", and the
+filters' row under them: "reading coordination the keys go on from Show agent
+coordination: …" and "reading coordination ← and → move along the filters'
+row, Read it among them, …" (`native-reading`, `native-webkit-reading`, at
+both widths) and "conversation the keys go on from Only new: …"
+(`native-conversation`); ⌘Return:
 "rail ⌘Return starts a new message in the place the keys are on: …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.

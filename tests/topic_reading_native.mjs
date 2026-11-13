@@ -101,15 +101,18 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     if (undone !== want) { await p.evaluate(`document.querySelector(${JSON.stringify(field)}).select()`); await p.send('Input.insertText', { text: want }); }
   };
   const centre = (p, selector) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
-  // A finger's tap where the target shows, failing by name when something else is there. The point is
-  // measured and hit-tested in one look at the page, once the target has held its place across two
+  // A finger's tap where the target shows, failing by name when something else is there: at its corner, its
+  // centre, or the centre of its first line ('first'), for a link that wraps, whose box's centre is between its lines.
+  // The point is measured and hit-tested in one look at the page, once the target has held its place across two
   // animation frames, as a person aims at a still target: a row filled in above the feed (the outline
   // rail at phone width) moves the cards with no scroll, and a point measured before that lands on
   // whatever moved under it. A page not shown draws no frames, and is measured as it stands.
-  const tap = async (p, selector, at = 'corner') => {
+  // during: what happens while the finger is down, before it lifts. WebKit's touchscreen only taps whole
+  // (webkit_native.mjs), so there it happens just before the tap.
+  const tap = async (p, selector, at = 'corner', during = null) => {
     const aim = await until(() => p.evaluate(`new Promise(done=>{const t=document.querySelector(${JSON.stringify(selector)}),
-      rect=()=>{if(!t)return null;const b=t.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),
-      look=()=>{const b=rect();if(!b)return {b};const x=${at === 'centre'}?b.x+b.width/2:b.x+Math.min(12,b.width/2),y=${at === 'centre'}?b.y+b.height/2:b.y+Math.min(12,b.height/2),
+      rect=()=>{const b=t&&(${at === 'first'}?t.getClientRects()[0]:t.getBoundingClientRect());return b?{x:b.x,y:b.y,width:b.width,height:b.height}:null},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),
+      look=()=>{const b=rect();if(!b)return {b};const x=${at === 'corner'}?b.x+Math.min(12,b.width/2):b.x+b.width/2,y=${at === 'corner'}?b.y+Math.min(12,b.height/2):b.y+b.height/2,
         h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
       if(document.hidden)return done(look());
       const first=rect();requestAnimationFrame(()=>{const second=rect();requestAnimationFrame(()=>done(same(first,second)&&same(second,rect())?look():null))})})`),
@@ -119,6 +122,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.ok(aim.inside, `${selector} is inside the window before a tap`);
     assert.equal(aim.hit, '', `${selector} is covered by ${aim.hit} where it would be tapped`);
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    if (during) await during();
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
   // Where a wheel or a finger's drag starts on a target: on the part of it the window shows, at most 120px
@@ -320,6 +324,54 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await relight();
       await until(async () => (await bar(p))?.no === 'true' && (await bar(p))?.yes === 'false', device + ': the bar shows 🚫');
       assert.equal(await readerOn(p), null, device + ': still nothing opened');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // A finger held on a go-ahead ask's one-row head while the page hears of an act on another device of the
+  // person's (item 355, B5): a star on a message this page has not loaded moves no dossier and draws no stack
+  // again; a star on one it shows does, and that repaint, waiting for the finger to lift (press-hold.mjs), runs
+  // as it lifts and replaces the head's row under it. Either way the tap opens the head and the ask keeps its
+  // light and its bar, ✅ pressed. A pointer's release lets no light go, so this is the phone's. In WebKit the
+  // star is read just before the tap (tap, during).
+  await check('reading a phone\'s tap on a go-ahead ask\'s one-row head keeps the ask lit with its ✅ bar while the page hears of a star made on another device', async () => {
+    const device = 'phone';
+    for (const starred of ['unloaded', 'shown']) {
+      const topic = 'reading-ask-held-' + starred;
+      // 31 earlier messages, one more than the page first loads, so the oldest is not loaded.
+      const earlier = Array.from({ length: 31 }, (_, i) => ['e' + i, { sender: 'aim-ux', ...(i === 0 ? { join: true } : {}), body: `Earlier message ${i + 1}.`, read: true }]);
+      const ids = await seed(topic, [...earlier, ['ask', { sender: 'aim-core', join: true, whole_topic: true, body: 'May I deploy release 32 now?',
+        post_args: { addressees: [facts.actor], intent: 'ask', go_ahead: true } }]]);
+      const p = await open('reading-ask-held-' + starred, device, topic, ids.ask);
+      const target = starred === 'unloaded' ? ids.e0 : ids.e30;
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(target))}))`), starred === 'shown', `phone: the starred message is ${starred === 'shown' ? '' : 'not '}loaded`);
+      const choices = card(ids.ask) + ' > .message-reactions';
+      await light(p, device, ids.ask);
+      await press(p, device, `${BAR} [data-act=yes]`);
+      await until(async () => (await reactions(ids.ask)).answers.some(a => a.actor_id === facts.actor && a.answer === 'yes'), 'phone: Core holds ✅');
+      const reply = await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 5 })).items
+        .find(item => item.reply_to === ids.ask && item.author_id === facts.actor)?.id, 'phone: the agent is told by a reply');
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${reply}"]'))`), 'phone: the page shows the reply');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length === 0`), 'phone: the ask folds into its stack\'s one-row head');
+      if (!(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'phone: the page has read all it heard of');
+      // The finger down on the head; the star on another device; the page reads the topic's acts and the dossiers'
+      // places again; then the finger lifts.
+      await centre(p, card(ids.ask));
+      await tap(p, card(ids.ask) + ' > .stack-head > .stack-who', 'corner', async () => {
+        await p.evaluate(`(window.watched = false, window.watchFor = ${JSON.stringify({ read: 'stack_positions', words: ids.ask })})`);
+        await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: target, operation_id: topic + '-star', args: { starred: true } });
+        await until(() => p.evaluate('window.watched === true && window.fetchesOut === 0'), 'phone: the page reads the dossiers\' places after the star');
+        await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      });
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), 'phone: the tap on the head shows the ask whole');
+      if (starred === 'shown') await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(target))})?.dataset.starred === 'true'`), 'phone: the page shows the star');
+      await until(async () => (await lit(p)).includes(ids.ask) && (await bar(p))?.yes === 'true' && (await bar(p))?.no === 'false',
+        `phone, a star on a message ${starred === 'shown' ? 'the page shows' : 'not loaded'}: the ask stays lit and its bar shows ✅`).catch(async error => {
+        throw Object.assign(error, { message: `${error.message} (lit ${JSON.stringify(await lit(p))}, bar ${JSON.stringify(await bar(p))})` });
+      });
+      assert.equal(await readerOn(p), null, 'phone: the tap opens nothing');
       assert.deepEqual(p.errors, []);
       await p.close();
     }

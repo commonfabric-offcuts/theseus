@@ -145,7 +145,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
   const items = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
   // A message's menu also offers its stack's acts (docs/reply-stacks.md),
   // which stack_native.mjs checks; here the menu is checked without them.
-  const STACK_ITEMS = /^(Star for me|Unstar|Rename|(Show|Hide) the full message|Fold|Unfold|Split back out|Move or join…|Move its stack (up|down)|Join the stack (above|below))/;
+  const STACK_ITEMS = /^(Star for me|Unstar|Rename|(Show|Hide) the full message|Fold|Unfold|Split back out|Move or join…|Move below More|Bring back above More|Move its stack (up|down)|Join the stack (above|below))/;
   const own = labels => labels.filter(label => !STACK_ITEMS.test(label));
   // A menu that lists something else fails naming what it listed.
   const menuOpen = async (p, want) => {

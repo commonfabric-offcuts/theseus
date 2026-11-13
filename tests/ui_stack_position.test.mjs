@@ -1,0 +1,93 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { laterPosition, positionOf } from '../web/stack-order.mjs';
+import { TopicViews } from '../web/topic-views.mjs';
+const position = (messages, acts, extra = {}) => ({ root_id:'root', through:4, aside_revision:1, below:true, at:{messages,acts}, ...extra });
+test('an old page cannot hide a revived dossier or undo a newer join', () => {
+  const revived = position(8,2,{below:false});
+  assert.equal(laterPosition(revived, position(7,2)), revived);
+  const joined = position(8,3,{root_id:'new-root',below:false});
+  assert.equal(laterPosition(joined, position(9,2)), joined);
+  assert.equal(laterPosition(joined, position(8,4,{through:8})).below, true);
+});
+test('a split read later wins though it leaves the dossier fewer messages, and an older read never does', () => {
+  // `at.messages` is the dossier's newest message, so a split that takes replies away lowers it in a later act.
+  const joined = position(9,3,{below:false});
+  const split = position(5,4,{below:true});
+  assert.equal(laterPosition(joined, split), split);
+  assert.equal(laterPosition(split, joined), split);
+  assert.equal(positionOf({head:{stack_position:joined},replies:[{stack_position:split}]}), split);
+});
+test('a new reply updates every loaded fragment of its dossier but no unrelated one', () => {
+  const views = new TopicViews({ instanceId:'i', topicId:'t' });
+  views.messages.set('a',{id:'a',stack_position:position(4,1)});
+  views.messages.set('b',{id:'b',stack_position:position(4,1)});
+  views.messages.set('c',{id:'c',stack_position:position(4,1,{root_id:'other'})});
+  views.learnPositions([{message_id:'b',stack_position:position(5,1,{below:false})}]);
+  assert.equal(views.messages.get('a').stack_position.below,false);
+  assert.equal(views.messages.get('c').stack_position.below,true);
+  views.learnPositions([{message_id:'a',stack_position:position(4,1)}]);
+  assert.equal(views.messages.get('a').stack_position.below,false);
+  assert.equal(positionOf({head:views.messages.get('a'),replies:[views.messages.get('b')]}).below,false);
+});
+test('an act that moves nothing about where a dossier sits reports no position change and draws nothing again; a move still does', async () => {
+  // Each act in the topic raises at.acts in every position Core answers. The page keeps the later read, but only
+  // what places a dossier is a change: its first message, through, below and aside revision. A full repaint for
+  // a later snapshot of the same place lands under a finger held on the page and replaces what it pressed.
+  const painted = [];
+  const views = new TopicViews({ instanceId:'i', topicId:'t', paint: kind => painted.push(kind) });
+  for (const id of ['a', 'b']) views.messages.set(id, { id, seq: id === 'a' ? 1 : 2, acts: {}, stack_position: position(4,1) });
+  views.messages.set('c', { id:'c', seq:3, acts:{}, stack_position: position(0,1,{root_id:'other',below:false,through:null,aside_revision:0}) });
+  let answer = null;
+  const read = async (name, args) => name === 'message_acts' ? { instance_id:'i', topic_id:'t', version: 9, next_cursor: null, items: [] }
+    : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: answer(message_id) })) };
+  // An act elsewhere in the topic, on no loaded message: every position is read again at a later snapshot.
+  answer = id => id === 'c' ? position(0,9,{root_id:'other',below:false,through:null,aside_revision:0}) : position(4,9);
+  await views.readActs(9, read, () => true);
+  assert.deepEqual(painted, [], 'an act that moves no dossier draws no stack again');
+  assert.deepEqual(views.messages.get('a').stack_position.at, { messages: 4, acts: 9 }, 'the later read is still kept');
+  assert.equal(views.learnPositions([{ message_id:'a', stack_position: position(4,10) }]), false, 'a later snapshot of the same place is no change');
+  assert.deepEqual(views.messages.get('b').stack_position.at, { messages: 4, acts: 10 }, 'and it reaches every loaded message of the dossier');
+  // The negative: each thing that places a dossier, changed by a later read, is a change.
+  for (const [what, moved] of [['below', { below:false }], ['aside revision', { aside_revision:2 }], ['through', { through:6 }], ['first message', { root_id:'joined' }]]) {
+    const other = new TopicViews({ instanceId:'i', topicId:'t' });
+    other.messages.set('a', { id:'a', stack_position: position(4,9) });
+    assert.equal(other.learnPositions([{ message_id:'a', stack_position: position(4,10,moved) }]), true, `a changed ${what} is a change`);
+  }
+  const fresh = new TopicViews({ instanceId:'i', topicId:'t' });
+  fresh.messages.set('a', { id:'a' });
+  assert.equal(fresh.learnPositions([{ message_id:'a', stack_position: position(4,1) }]), true, 'a first position is a change');
+  // Bring back on another device: the page draws the stacks again.
+  answer = id => id === 'c' ? position(0,11,{root_id:'other',below:false,through:null,aside_revision:0}) : position(4,11,{below:false,through:null,aside_revision:2});
+  await views.readActs(9, read, () => true);
+  assert.deepEqual(painted, ['acts'], 'Bring back on another device draws the stacks again');
+});
+test('acts read again are drawn though reading the places after them fails, and places learned before a failing page are drawn too', async () => {
+  // A freshness read can fail after the acts are learned (superseded, or deferred behind the page's own reads); the
+  // next read then finds nothing new, so what the failed one learned must be drawn by it.
+  const painted = [];
+  const views = new TopicViews({ instanceId:'i', topicId:'t', paint: kind => painted.push(kind) });
+  views.messages.set('a', { id:'a', seq:1, acts:{ folded:false, fold_revision:1 }, stack_position: position(4,1) });
+  const superseded = () => Object.assign(Error('Freshness read was superseded.'), { code: 'CLEANUP_DEFERRED' });
+  const read = async name => {
+    if (name === 'message_acts') return { instance_id:'i', topic_id:'t', version: 2, next_cursor: null, items: [{ message_id:'a', seq:1, acts:{ folded:true, fold_revision:2 } }] };
+    throw superseded();
+  };
+  await assert.rejects(views.readActs(2, read, () => true), /superseded/, 'the failure still reaches the freshness loop');
+  assert.equal(views.messages.get('a').acts.folded, true, 'the fold is learned');
+  assert.deepEqual(painted, ['acts'], 'and drawn, though reading the places failed');
+  // The negative: read again with nothing new, it draws nothing.
+  await views.readActs(2, async name => name === 'message_acts' ? { instance_id:'i', topic_id:'t', version: 2, next_cursor: null, items: [{ message_id:'a', seq:1, acts:{ folded:true, fold_revision:2 } }] }
+    : { instance_id:'i', topic_id:'t', items: [{ message_id:'a', stack_position: position(4,3) }] }, () => true);
+  assert.deepEqual(painted, ['acts'], 'a read that learns nothing new draws nothing');
+  // 101 loaded messages take two pages of places: the first moves a dossier, the second fails.
+  const many = new TopicViews({ instanceId:'i', topicId:'t', paint: kind => painted.push(kind) });
+  for (let i = 0; i <= 100; i++) many.messages.set('m' + i, { id:'m' + i, seq:i + 1, stack_position: position(4,1,{ root_id:'m' + i }) });
+  let pages = 0;
+  await assert.rejects(many.readPositions(async (name, args) => {
+    if (pages++) throw superseded();
+    return { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4,2,{ root_id:message_id, below:false }) })) };
+  }), /superseded/);
+  assert.equal(many.messages.get('m0').stack_position.below, false, 'the first page\'s places are learned');
+  assert.deepEqual(painted, ['acts', 'acts'], 'and drawn, though the second page failed');
+});

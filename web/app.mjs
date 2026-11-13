@@ -58,10 +58,10 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
-import { readingOrder } from './stack-order.mjs';
+import { readerSteps } from './stack-order.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
@@ -500,22 +500,37 @@ async function present(presentation) {
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
-    registry.current.neighbors = onPage(presentation, neighbors);
-    $('previous-message').disabled = !registry.current.neighbors.previous; $('next-message').disabled = !registry.current.neighbors.next;
+    takeNeighbors(registry.current, neighbors);
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error); });
   sourceAttachments(presentation);
 }
 // The Reader's ↑ and ↓ follow the page as shown (stack-order.mjs,
-// readingOrder): ↑ the message above, ↓ the one below, down a stack to its
-// newer replies and on to the stack below. Where the page shows nothing that
-// way (the end of what it loaded, a message it does not show), Core's
-// neighbour in the topic stands in. next is the one above, previous below.
+// readerSteps): ↑ the message above, ↓ the one below, down a stack to its
+// newer replies and on to the stack below, over a dossier put below a closed
+// More. next is the one above, previous below. Every neighbour leaves through
+// its one exit (stepTarget): shown on the page, or not loaded by it. Another
+// topic's message (opened from an About link) is no part of this page's view.
 function onPage(presentation, core) {
-  const id = presentation?.source?.source_ref?.id, order = readingOrder(stackState($('messages')).stacks);
-  const at = presentation?.source?.source_ref?.kind === 'message' ? order.findIndex(item => item.id === id) : -1;
-  if (at < 0 || !core) return core;
-  const ref = item => item ? { kind: 'message', id: item.id } : null, off = other => other && !order.some(item => item.id === other.id) ? other : null;
-  return { next: ref(order[at - 1]) ?? off(core.next), previous: ref(order[at + 1]) ?? off(core.previous) };
+  const here = presentation?.source?.topic_id === topic?.id;
+  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages'))) : null);
+}
+// Core's word on the Reader's neighbours is kept with what it shows (core),
+// and what ↑ and ↓ may step to is worked out from it and the page as shown
+// now: when the neighbours are read, and each time the page's stacks are
+// drawn again while the Reader is open (another device put one aside, More
+// opened), so the buttons never offer a message the page no longer shows.
+function takeNeighbors(presentation, core) {
+  presentation.core = core;
+  presentation.neighbors = onPage(presentation, core);
+  $('previous-message').disabled = !presentation.neighbors.previous; $('next-message').disabled = !presentation.neighbors.next;
+}
+// Everything placed by what the page shows is placed again each time the
+// stacks are drawn (More opened or closed, Only new, an act, another device):
+// the Reader's ↑ and ↓, the New line and Earlier messages.
+function stacksRedrawn() {
+  const presentation = registry?.current;
+  if ($('reader').open && presentation?.core && registry.isSourceCurrent(presentation)) takeNeighbors(presentation, presentation.core);
+  if (views) placeLine();
 }
 // A Notebook page shown in the Reader is read once the person can see it, as
 // a message is (noteRead): in a visible, focused page. One shown in the
@@ -649,18 +664,24 @@ async function openSource(ref, opener, act = null) {
 // A repaint leaves in place what the person is at: the inline writing, a
 // field on the page they are typing in, or else the first card in view. A
 // button, checkbox or other control keeps no place: More would hold itself still and scroll past what
-// it loaded. At the top of the topic, where its newest card shows from its
-// top edge, nothing is held: what arrives comes into view above that card,
-// with the New line under it, instead of landing out of sight.
+// it loaded. At the top of the topic, where its newest card drawn shows from
+// its top edge, nothing is held: what arrives comes into view above that
+// card, with the New line under it, instead of landing out of sight. A card
+// held is one the page draws (drawn, the page's one view) before and after
+// the repaint: when the repaint stops drawing it (put below More on another
+// device), the card drawn next below it is held instead.
 function keepListAnchor(paint) {
-  const at = document.activeElement;
+  const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
   const anchor = writing ? inline.field : field ? at : listAnchor();
-  const top = anchor?.getBoundingClientRect().top;
-  const atTop = !writing && !field && anchor && anchor === document.querySelector(MESSAGE_ENTRIES) && top >= 0;
+  const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
+  const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
+  const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
+  const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
   paint();
-  if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
+  const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
+  if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
@@ -685,10 +706,13 @@ function placeLine() {
 }
 // While the New line says more new messages lie below, it is the one way to
 // load older messages; More messages, doing much the same, is hidden. A faded
-// line promises nothing, so More comes back.
+// line promises nothing, so More comes back, and so does a line Only new does
+// not draw (it draws New items alone).
 function paintMoreMessages() {
-  $('more-messages').hidden = views.olderCursor === null ||
-    [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read'));
+  const view = stackFeed ? shownView(stackFeed.state) : null, aside = stackFeed?.state.belowCount;
+  $('more-messages').textContent = aside ? 'Earlier messages' : 'More messages';
+  $('more-messages').hidden = Boolean(aside && !view.asideShown) || views.olderCursor === null || (!view?.only &&
+    [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
@@ -698,7 +722,7 @@ function paintViews(kind) {
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
-  if (kind === 'acts') { keepListAnchor(() => { stackMessages(); placeLine(); menu?.paint(); }); return; }
+  if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
@@ -822,6 +846,7 @@ function feedOf() {
     authority: () => registry.runtime.current, send: envelope => api.command(envelope),
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
+    refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
   return stackFeed;
@@ -1491,11 +1516,10 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key !== 'neighbors') return views.refresh(key, version, read, current);
       const p = registry.current;
       if (!p || p.source.source_ref.kind !== 'message') return true;
-      p.neighbors = null;
+      p.neighbors = null; p.core = null;
       const result = await registry.neighbors(p, { read });
       if (!current() || !registry.isSourceCurrent(p) || !result) return true;
-      registry.current.neighbors = onPage(p, result);
-      $('previous-message').disabled = !registry.current.neighbors.previous; $('next-message').disabled = !registry.current.neighbors.next; return true;
+      takeNeighbors(registry.current, result); return true;
     } });
   registry.cleanup.foregroundListeners.add(() => freshness.interrupt());
   // Each new commit asks for a pass; while the stream is down the timer resumes.
@@ -1737,7 +1761,7 @@ async function initialize() {
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
     close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error); return false; }),
     step: async direction => {
-      const presentation = registry.current, neighbors = onPage(presentation, presentation.neighbors ?? await registry.neighbors(presentation));
+      const presentation = registry.current, neighbors = onPage(presentation, presentation.core ?? await registry.neighbors(presentation));
       if (!registry.isCurrent(presentation)) return;
       const ref = direction < 0 ? neighbors?.previous : neighbors?.next;
       if (ref) await openSource(ref, presentation.opener);
@@ -2108,6 +2132,8 @@ function paintConversationPage() {
   // The coordinator is known once the view is read: the writing box's "Answered by" row names them.
   if (inline?.editor) answeredBy(inline, $('inline-composer').querySelector('.audience'), inline.editor.draft.addressees, true);
   $('messages').classList.toggle('only-new', here.onlyNew);
+  // Only new draws just the New items (aim.css): the Reader's ↑ and ↓ step along those (reply-stacks.mjs, shownView).
+  stackState($('messages')).only = here.onlyNew ? item => conversationItem(item.id)?.item?.state === 'new' : null;
   const empty = !views?.messages?.size;
   $('conversation-empty').hidden = !empty;
   if (empty) paintEmpty($('conversation-empty'), { view });
@@ -2115,10 +2141,8 @@ function paintConversationPage() {
   if (views?.messages) stackMessages();
   for (const entry of entries($('messages'))) {
     const card = cardIn(entry), id = card?.dataset?.id, item = id ? conversationItem(id) : null;
+    entry.dataset.item = item?.item?.state ?? 'none';
     if (!item) continue;
-    entry.dataset.item = item.item?.state ?? 'none';
-    // Only new is its own view: a read New item can be folded in the stack.
-    if (here.onlyNew && entry.dataset.item === 'new') entry.hidden = false;
     paintAbout(card, item, bootstrap.actor, openLinked);
     paintItemTags(card, item, view.waits, bootstrap.actor, openLinked);
     const author = card.querySelector('.message-author');

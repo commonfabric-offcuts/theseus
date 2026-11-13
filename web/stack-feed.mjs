@@ -15,14 +15,14 @@
 // stack is folded is the page's own; a message folded to its row is the
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
-import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, laterActs } from './stack-order.mjs';
+import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
+import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 
-const FIELD = { 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
+const FIELD = { 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
 
 // Whether a touch began on something between it and the list that scrolls
@@ -52,6 +52,7 @@ const swipeFolds = across => across < 0;
 // The acts a commit's result says, as the message's acts read.
 function learned(kind, result, viewer, now) {
   const field = FIELD[kind], revision = { [`${field}_revision`]: result[`${field}_revision`] };
+  if (kind === 'stack.aside') return { aside: result.through, ...revision };
   if (kind === 'message.star') return { starred: result.starred, ...revision };
   if (kind === 'message.deal') return { dealt: result.dealt, ...revision };
   if (kind === 'message.fold') return { folded: result.folded, ...revision };
@@ -61,6 +62,7 @@ function learned(kind, result, viewer, now) {
 }
 // What an act shows at once, before Core answers.
 function shownAct(kind, args, viewer, now) {
+  if (kind === 'stack.aside') return { aside: args.through };
   if (kind === 'message.star') return { starred: args.starred };
   if (kind === 'message.deal') return { dealt: args.dealt };
   if (kind === 'message.fold') return { folded: args.folded };
@@ -79,9 +81,12 @@ export class StackFeed {
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {},
-    hold = paint => paint(), press, thumb = null, redrawn = () => {}, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, hold, press, thumb, redrawn, clock, doc });
+    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
+    // A stand-in for each dossier root the page has not loaded, kept so each act
+    // on it learns the revision the act before it left, as a loaded message does.
+    this.standIns = new Map();
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
     this.pending = new Map(); this.drawn = new Map();
@@ -120,21 +125,27 @@ export class StackFeed {
       if (!item) return item;
       const acts = this.actsOf(id);
       this.drawn.set(id, JSON.stringify(acts));
-      return this.pending.has(id) ? { ...item, acts } : item;
+      let stack_position = item.stack_position;
+      for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
+        if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null };
+      }
+      return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position } : item;
     } };
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
-      rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
+      more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
+      arranged: () => this.arranged(),
     } }));
     for (const entry of entries(this.list)) {
       const card = cardIn(entry), item = this.messages().get(card.dataset.id);
       if (item) { this.paintStar(card.querySelector(':scope > .message-author'), item); this.paintFoldedThumb(card, item); }
     }
     this.redrawn();
+    this.moreChanged();
   }
   // A 👍 on a folded message's row (item 390), before "Folded": the same
   // thumbs-up as the bar's 👍, pressed once given, with the count once anyone
@@ -218,12 +229,15 @@ export class StackFeed {
     return sent;
   }
   // Draws the stacks again when a message's acts as shown are no longer what
-  // they were last drawn with; an answer landing under a press held down waits
-  // for it to end, so nothing moves under the pointer. One the page has not
-  // loaded (the Reader's, opened alone) is shown only by what else shows its acts.
+  // they were last drawn with, or when an act on a dossier's unloaded root
+  // settles, as its loaded replies show where it is; an answer landing under a
+  // press held down waits for it to end, so nothing moves under the pointer.
+  // One the page has not loaded (the Reader's, opened alone) is shown too by
+  // what else shows its acts.
   settled(id) {
     if (!this.messages().has(id)) this.redrawn();
-    else if (this.drawn.get(id) !== JSON.stringify(this.actsOf(id))) this.press.after('stacks', () => this.arrange());
+    const changed = this.messages().has(id) ? this.drawn.get(id) !== JSON.stringify(this.actsOf(id)) : this.standIns.has(id);
+    if (changed) this.press.after('stacks', () => this.arrange());
   }
   async send(kind, item, args) {
     const field = FIELD[kind], { authority_id, authority_epoch } = this.authority();
@@ -240,17 +254,21 @@ export class StackFeed {
     const answer = learned(kind, receipt.result, this.viewer, this.clock());
     for (const each of new Set([item, current])) each.acts = laterActs(each.acts, answer);
     if (kind === 'message.star') this.starsChanged();
+    if (kind === 'stack.aside') await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
   entryFor(id) { return entries(this.list).find(entry => entry.dataset.id === id) ?? null; }
-  // Puts the keys on a message, or on its stack's head when the stack folds it
-  // away, and scrolls it into view with room beyond it (reveal.mjs). above: something
-  // over it to bring into view with it where both fit (a join line).
+  // Puts the keys on a message, and scrolls it into view with room beyond it
+  // (reveal.mjs). Where the page's one view does not draw it (drawn: its stack
+  // folds it away, or Only new draws other messages of its stack), the keys go
+  // to the first message of its stack the view draws, and nowhere when it draws
+  // none (below a closed More). above: something over it to bring into view
+  // with it where both fit (a join line).
   focusOn(id, { above = null } = {}) {
-    const entry = this.entryFor(id);
-    if (!entry) return;
-    const target = entry.hidden ? this.entryFor(stackOf(this.list, entry)?.stack.id) : entry;
+    const found = stackOf(this.list, this.entryFor(id));
+    const target = [id, found?.stack.id, ...(found?.stack.replies ?? []).map(item => item.id)]
+      .map(each => each && drawn(this.list, each) && this.entryFor(each)).find(Boolean);
     if (!target) return;
     const card = cardIn(target), stop = card.hidden ? target.querySelector?.('.fold-line') ?? card : card;
     stop.focus({ preventScroll: true });
@@ -313,10 +331,15 @@ export class StackFeed {
     this.arrange(); this.focusOn(stack.id);
     this.say(name ? `Renamed ${name}, for everyone here` : 'Named by its first line again, for everyone here');
   }
+  // The stacks a move or a join of found's stack steps among: those shown on
+  // its side of More messages (sideOf, shownView).
+  sideOf(found) {
+    return sideOf(this.state.stacks, found.index, shownView(this.state));
+  }
   move(entry, way) {
     const found = stackOf(this.list, entry);
     if (!found) return;
-    const stacks = this.state.stacks, changes = moveOf(stacks, found.index, way);
+    const side = this.sideOf(found), changes = moveOf(side.stacks, side.index, way);
     if (!changes) { this.say(way === 'up' ? 'Already at the top' : 'Already at the bottom'); return; }
     const heads = changes.map(change => this.messages().get(change.id));
     const before = heads.map(item => this.actsOf(item.id).placed ?? null);
@@ -338,7 +361,7 @@ export class StackFeed {
   join(entry, way) {
     const found = stackOf(this.list, entry);
     if (!found) return;
-    const shows = joinShown(this.state.stacks, found.index, way, entry.dataset.id);
+    const side = this.sideOf(found), shows = joinShown(side.stacks, side.index, way, entry.dataset.id);
     if (!shows) { this.say(way === 'up' ? 'No stack above to join' : 'No stack below to join'); return; }
     const state = this.state, was = state.levels.get(shows.open);
     const item = this.messages().get(shows.act.id), before = this.actsOf(item.id).joined?.into ?? null;
@@ -399,14 +422,54 @@ export class StackFeed {
     const item = this.messages().get(id);
     if (item) this.setFold(item, false);
   }
+  setAside(stack, below, { undoable = true, restoreThrough } = {}) {
+    const root = positionOf(stack)?.root_id;
+    const current = this.state.stacks.find(each => positionOf(each)?.root_id === root) ?? stack;
+    const position = positionOf(current);
+    if (!position) return false;
+    if (!this.messages().has(root) && !this.standIns.has(root)) this.standIns.set(root, { id: root, acts: {} });
+    const item = this.messages().get(root) ?? this.standIns.get(root);
+    item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision });
+    // Below More through the newest message of the dossier the page has seen.
+    const through = restoreThrough !== undefined ? restoreThrough : below ? [...this.messages().values()]
+      .reduce((newest, each) => (each.stack_position?.root_id === root ? Math.max(newest, each.seq) : newest), position.at.messages) : null;
+    // The person's own move here ends what a link drew where it sits at once,
+    // before Core answers, and also when Core finds the place unchanged (the
+    // same through keeps its revision, so drawnBelow's place would hold).
+    for (const each of this.messages().values()) if (each.stack_position?.root_id === root) { this.state.peeked.delete(each.id); this.state.here.delete(each.id); }
+    this.act('stack.aside', item, { through });
+    if (undoable) this.remember(() => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through }));
+    this.arrange();
+    // Focus goes to More where the page's one view draws it (Only new does
+    // not); there the dossier keeps it, on the first message the view draws.
+    if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
+    else this.focusOn(stack.id);
+    this.say(below ? 'Moved below More, for you only' : 'Brought back');
+    return true;
+  }
+  gestureTarget(target) {
+    const entry = entryOf(this.list, target);
+    const section = target?.closest?.('.reply-stack');
+    const found = stackOf(this.list, entry ?? (section && this.entryFor(section.dataset.stack)));
+    if (!found) return null;
+    const displayed = [this.entryFor(found.stack.id), ...found.stack.replies.map(item => this.entryFor(item.id))]
+      .filter(node => node && !node.hidden && node.getClientRects().length);
+    const chrome = !entry || target.closest('.stack-head') || target.closest('.stack-toggle');
+    return { found, item: entry && this.messages().get(entry.dataset.id), whole: Boolean(found.section && (chrome || displayed.at(-1) === entry)) };
+  }
+  swipeAct(target, folds) {
+    const gesture = this.gestureTarget(target);
+    if (!gesture) return false;
+    if (gesture.whole && folds) return this.setAside(gesture.found.stack, true);
+    if (gesture.whole && !folds && positionOf(gesture.found.stack)?.below) return this.setAside(gesture.found.stack, false);
+    return gesture.item && this.setFold(gesture.item, folds, { focus: false });
+  }
   swiped(event) {
     const start = this.swipe, touch = event.changedTouches?.[0];
     this.swipe = null;
     const across = touch && start ? touch.clientX - start.x : 0;
     if (!start || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;
-    const entry = entryOf(this.list, start.target), item = entry && this.messages().get(entry.dataset.id);
-    if (!item) return;
-    this.setFold(item, across > 0, { focus: false });
+    this.swipeAct(start.target, across > 0);
   }
   // A wheel event on the list: part of a trackpad swipe, or a scroll the
   // browser keeps. The message is the one under the swipe's first event, and
@@ -424,16 +487,16 @@ export class StackFeed {
     if (Math.abs(down) > Math.abs(across)) { this.wheelSwipe = null; return; }
     let swipe = this.wheelSwipe;
     if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {
-      const entry = scrollsSideways(event.target, this.list) ? null : entryOf(this.list, event.target);
-      swipe = this.wheelSwipe = { x: 0, y: 0, item: entry && this.messages().get(entry.dataset.id), done: false };
+      const target = scrollsSideways(event.target, this.list) ? null : event.target;
+      swipe = this.wheelSwipe = { x: 0, y: 0, target, valid: target && this.gestureTarget(target), done: false };
     }
     swipe.last = event.timeStamp;
     swipe.x += across; swipe.y += down;
-    if (!swipe.item || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;
+    if (!swipe.valid || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;
     event.preventDefault();
     if (swipe.done || Math.abs(swipe.x) < SWIPE_ACROSS) return;
     swipe.done = true;
-    this.setFold(swipe.item, swipeFolds(swipe.x), { focus: false });
+    this.swipeAct(swipe.target, swipeFolds(swipe.x));
   }
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
@@ -443,6 +506,7 @@ export class StackFeed {
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]')) return;
     const at = this.doc.activeElement;
     if (!at || !this.list.contains(at)) return;
+    if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }
     const toggle = at.classList?.contains('stack-toggle');
     const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);
     if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;
@@ -511,6 +575,7 @@ export class StackFeed {
     else if (!starred) items.push({ label: 'Fold', act: () => this.setFold(item, true) });
     if (stack.joins.has(item.id)) items.push({ label: 'Split back out', act: () => this.split(item) });
     const moves = [
+      ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back above More' : 'Move below More', act: () => this.setAside(stack, !positionOf(stack).below) }] : []),
       { label: 'Move its stack up', keys: '⌘↑', act: () => this.move(entry, 'up') },
       { label: 'Move its stack down', keys: '⌘↓', act: () => this.move(entry, 'down') },
       ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', act: () => this.fold(entry, 'fold') }] : []),

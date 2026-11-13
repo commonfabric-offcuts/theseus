@@ -448,7 +448,9 @@ export class EditorRegistry {
     const refs = reads.map(page => {
       this.validatePage(page);
       if (page.items.length > 1 || page.items.some(item => item.topic_id !== source.topic_id || typeof item.id !== 'string')) throw Error('The neighboring source identity could not be confirmed.');
-      return page.items.length ? { kind: 'message', id: page.items[0].id } : null;
+      // Core's position for it says whether it sits below More, which the Reader's
+      // one exit reads (stack-order.mjs, stepTarget) when the page has not loaded it.
+      return page.items.length ? { kind: 'message', id: page.items[0].id, position: page.items[0].stack_position ?? null } : null;
     });
     return { previous: refs[0], next: refs[1] };
   }

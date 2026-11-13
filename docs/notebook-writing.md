@@ -31,7 +31,10 @@ An edit carries the revision and content its visible surface was computed
 from. The writer applies it against that snapshot, not whichever revision
 arrived most recently: a stale Cards edit merges disjoint card changes, while
 overlapping Cards or Text edits keep both versions for a choice. Slow device
-writes, redraws and revision-conflict reloads cannot remove this fence.
+writes, redraws and revision-conflict reloads cannot remove this fence. Words
+already in a box when a read of the page is taken in, between one of a key's
+input listeners and the next, go to the writer before the page is drawn again,
+so the card being written keeps them and is saved once.
 Changed/settled compares content fields, never object key order. Merging
 preserves untouched card bytes and separators. A permission refusal pauses
 writing only for the current opening; Try again rechecks access, Discard my
