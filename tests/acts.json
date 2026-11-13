@@ -9488,6 +9488,156 @@
     "native": "reading",
     "case": "reading coordination ← and → move along the filters' row"
    }
+  },
+  {
+   "item": 400,
+   "act": "The Reader is as tall as the window",
+   "break": [
+    [
+     "web/aim.css",
+     "--widest:72rem;width:min(var(--widest),calc(100vw - 3rem));height:calc(100dvh - 3rem);",
+     "--widest:72rem;width:min(var(--widest),calc(100vw - 3rem));height:min(54rem,calc(100dvh - 3rem));"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, an image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "The Reader and the New message sheet grow with the window's width up to 72rem",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog{--reading-share:52fr;--writing-share:48fr;--widest:72rem;",
+     "dialog{--reading-share:52fr;--writing-share:48fr;--widest:54rem;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size very wide 2560×1440, an image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Side by side, the Reader grows wider still, up to 100rem",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog[data-layout=wide]{--widest:100rem}",
+     "dialog[data-layout=wide]{--widest:74rem}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size very wide 2560×1440, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the New message sheet is as tall as what shows of the window",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);",
+     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:auto;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the New message sheet is as tall as what shows above the keyboard",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);",
+     "dialog.composer-home[open]{width:100%;max-width:100%;height:auto;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the composer's field takes the height the rest leaves",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;",
+     "dialog.composer-home[open] .inline-composer textarea{--fit:none;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "A draft held at the page's end fills the sheet when ✎ takes it up, not the height it grew to",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    this.bar.fit();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, a long draft"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the sheet's who panel opens inside the sheet, under its head",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;",
+     "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the sheet's + panel opens over the field's foot, inside the sheet",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Stacked, where the Reader is short (a small phone with the keyboard up), the field gives way, so the reply's head, its image and Send stay on the screen",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:not([data-layout=wide]) .writing-pane>.field-box{align-self:stretch;display:flex;flex-direction:column;justify-content:center}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, an image"
+   }
   }
  ]
 }

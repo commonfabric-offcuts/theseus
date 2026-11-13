@@ -99,6 +99,8 @@ export class InlineComposer {
   pop() {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
     this.sheet.showModal();
+    // The sheet gives the field its height (aim.css): the height it grew to at the page's end goes.
+    this.bar.fit();
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
   }

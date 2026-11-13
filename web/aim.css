@@ -3,8 +3,9 @@
 main:focus,main h1:focus{outline:none}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,article:focus-visible,[role=separator]:focus-visible{outline:2px solid var(--focus);outline-offset:3px}/* The Reader puts focus on the message itself, so the message wears no ring for that; a keyboard user who Tabs onto it sees the ring, as on any other stop. */#source-body:focus-visible:not([data-tabbed]){outline:none}a{color:var(--accent);text-underline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:1.5rem;font-weight:650;letter-spacing:-.025em}h2{font-size:1.05rem}h3{font-size:1rem}button[hidden],[hidden]{display:none!important}.muted{color:var(--muted);font-size:.85rem}.eyebrow{color:var(--muted);font-size:.8rem;margin-bottom:.3rem}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .brand{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;margin-bottom:1.1rem;min-width:0}.brand #instance-label{overflow-wrap:anywhere;max-width:100%}.wordmark{display:flex;align-items:center;gap:.5rem;color:var(--ink);font-size:1.3rem;font-weight:750;text-decoration:none;letter-spacing:-.06em}.presence-dot{width:.5rem;height:.5rem;border-radius:100%;background:var(--accent)}#instance-label{font-size:.85rem;color:var(--muted)}.workspace-layout{display:grid;grid-template-columns:17rem minmax(0,1fr);min-height:100dvh}.rail{border-right:1px solid var(--line);padding:1.3rem 1rem}.rail-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem;gap:.6rem}.rail-heading h1,.rail-heading h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.rail-heading:not(:first-child){margin-top:2rem}.rail button{font-size:.85rem}/* A row holds what it places, such as its words for screen readers, inside the rail that scrolls it. */.nav-item{position:relative;display:block;width:100%;text-align:left;margin:.3rem 0;border-color:transparent;white-space:normal}.nav-item[aria-current=true]{background:var(--soft);color:var(--accent);font-weight:600}main{padding:2rem clamp(1rem,4vw,4rem);max-width:75rem;width:100%}.topic-header{margin-bottom:1rem}.participants{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.5rem}.chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);border-radius:1.2rem;padding:.18rem .6rem;font-size:.8rem;background:var(--panel)}.chip button{min-height:2rem;border:0;padding:0 .35rem;background:transparent}.message-card{display:block;text-align:left;width:100%;white-space:normal;padding:1rem 1.15rem;margin-bottom:.75rem;border-radius:.75rem}.message-card .message-author{display:block;font-size:.8rem;font-weight:650;margin-bottom:.4rem}.message-preview{white-space:pre-wrap;font-weight:400;overflow-wrap:anywhere}.section-heading{display:flex;justify-content:space-between;align-items:center;margin:2rem 0 .8rem}#memory-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(15rem,100%),1fr));gap:.7rem}.memory-card{display:flex;flex-direction:column;justify-content:flex-start;padding:1rem;text-align:left;white-space:normal}.memory-card strong{display:block;margin-bottom:.4rem}.notice{padding:.6rem .8rem;background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent);border-radius:.5rem;font-size:.88rem;overflow-wrap:anywhere}#app-status,#wakes-status{margin:1rem 1.5rem}.empty{color:var(--muted);font-size:.9rem;padding:1rem 0}
-dialog{--reading-share:52fr;--writing-share:48fr;width:min(54rem,calc(100vw - 3rem));height:min(54rem,calc(100dvh - 3rem));max-height:calc(100dvh - 3rem);padding:0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #10202030;overflow:hidden}
-dialog[data-layout=wide]{width:min(74rem,calc(100vw - 3rem))}
+/* The Reader, and the New message sheet below, are as tall as the window and grow with its width up to --widest, further side by side (item 400, docs/reader.md "Size"). */
+dialog{--reading-share:52fr;--writing-share:48fr;--widest:72rem;width:min(var(--widest),calc(100vw - 3rem));height:calc(100dvh - 3rem);max-height:calc(100dvh - 3rem);padding:0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #10202030;overflow:hidden}
+dialog[data-layout=wide]{--widest:100rem}
 dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .reader-header{grid-area:header;display:flex;align-items:center;gap:.25rem;padding:.4rem .6rem .4rem .4rem;border-bottom:1px solid var(--line);min-height:3.75rem}
 .reader-heading{flex:1;min-width:0}.reader-heading h2{overflow-wrap:anywhere}/* The heading is the topic's name, and a press on it goes back to the topic. */.reader-topic{min-height:0;padding:0;border:0;border-radius:.25rem;background:none;font-weight:inherit;text-align:left;white-space:normal;overflow-wrap:anywhere}.reader-topic:hover{background:none;text-decoration:underline;text-underline-offset:3px}
@@ -812,8 +813,10 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .image-choice[data-open]>button[data-method]{display:inline-block}
 .image-choice[data-open]>button[data-method=remove]{position:static;width:auto;height:auto;min-height:2.25rem;padding:.15rem .6rem;border-radius:.5rem;font-size:.78rem}
 .image-choice[data-open]>button[data-method=remove]::before{content:none}
-/* Laptop, stacked: the reply is as tall as its writing, the field four lines at most. */
-#reader:not([data-layout=wide]) .writing-pane{padding-left:1rem;padding-right:1rem}
+/* Stacked: the reply is as tall as its writing, the field four lines at most on a laptop, and the message has the rest. Where the Reader is shorter than both (a small phone with the keyboard up), the field gives way, down to one line, so the reply's head, its images and Send stay on the screen (item 400). */
+#reader:not([data-layout=wide]) .writing-pane{flex:0 1 auto;grid-template-rows:auto auto auto auto auto minmax(2.5rem,auto);padding-left:1rem;padding-right:1rem}
+#reader:not([data-layout=wide]) .writing-pane>.field-box{align-self:stretch;display:flex;flex-direction:column;justify-content:center}
+#reader:not([data-layout=wide]) .writing-pane textarea{flex:0 1 auto}
 /* Laptop, side by side: the column carries the head, the field filling it, the hint under it on a line of its own however narrow the column, then + · 👍 · Send. Its who panel opens inside the column. */
 #reader[data-layout=wide] .writing-pane{height:100%;grid-template-rows:auto auto auto auto auto minmax(0,1fr) auto auto;grid-template-areas:"title title title title" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "field field field field" "hint hint hint hint" "plus . review act";align-content:stretch;padding:1rem;border-top:0;background:var(--paper)}
 #reader[data-layout=wide] .composer>.compose-head{grid-area:head;margin-bottom:.6rem}
@@ -879,6 +882,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   .composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}
   .plus-button,.composer>#thumb-source{width:2.75rem;height:2.75rem}
   .composer[data-compose=line] textarea{height:2.75rem}
+  #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:auto auto auto auto auto minmax(2.75rem,auto)}
   .reader-header>button,#reader-stepping>button,#reader-star{min-width:2.75rem;min-height:2.75rem}
   .taller-field{width:2.75rem;height:2.75rem;top:0}
   .image-strip{padding:1rem 1rem 0 0}
@@ -892,9 +896,15 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 main:has(#inline-composer[hidden]) #new-message{display:none}
 dialog.composer-home:not([open]){display:block;position:static;width:auto;height:auto;max-height:none;margin:2rem 0 0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;animation:none}
 .composer-home:not([open]) .inline-composer{border:1px solid var(--line);border-radius:.9rem;background:var(--paper)}
-dialog.composer-home[open]{top:auto;bottom:1.5rem;width:min(54rem,calc(100vw - 3rem));height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);overflow:visible}
+dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);max-height:calc(var(--vv-height,100dvh) - 3rem);overflow:visible}
 dialog.composer-home[open] .inline-composer{border:0;border-radius:1rem}
-@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}}
+/* Alone in the sheet the composer is the sheet's height, and its field takes what the head, a panel and the images leave, then scrolls; ⤢ has nothing to add there. On a laptop the who panel opens in the composer, under the head, and + over the field's foot, as side by side, since a popover above the sheet would be off the screen. */
+dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:auto auto auto auto auto minmax(0,1fr);align-content:stretch}
+dialog.composer-home[open] .inline-composer>.field-box{align-self:stretch}
+dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;max-height:none;padding-right:.9rem}
+dialog.composer-home[open] .inline-composer .taller-field{display:none}
+@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;grid-area:panel;width:auto;max-width:none;max-height:none;margin-bottom:.6rem;box-shadow:none}dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}}
+@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);max-height:calc(var(--vv-height,100dvh) - .75rem);margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}}
 .composer>.sheet-close{grid-area:title;justify-self:end;width:2.5rem;height:2.5rem;min-height:0;padding:0;border-color:transparent;background:transparent;color:var(--ink)}
 .composer-home:not([open]) .sheet-close{display:none}
 /* A new message has no message above it to keep in view: its field grows further. */
@@ -955,7 +965,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
 /* A Notebook page in the composer over the feed (notebook-sheet.mjs): the New message sheet, tall, its head one line on a laptop (title, Text / Cards, the saving sign, Full page, ✕), the page below it the one place that scrolls; on a phone the head takes two lines (three on the narrowest, the saving sign below the chips; what needs the person takes a line of its own below the rest at every width) and a card fills what is left, swiped through as on the full page. */
-dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - 3rem);overflow:hidden}
+dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
 .notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:"title views status full close";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
 .notebook-sheet-title{grid-area:title;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -986,7 +996,6 @@ dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - 3
 .notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
 @media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-status .deck-status>button{min-height:2.75rem}.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}}
 @media(max-width:760px){
-  dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - .75rem)}
   /* The head wraps as its parts fit whole: the title with ↗ and ✕, then Text, Cards and Draft with the saving sign beside them or, on a screen too narrow for both, on a line of its own below them. The sign's basis is fixed rather than its words', so the head keeps its lines while the words change; the time of the last save shows only while the sign has room for it beside its words. */
   .notebook-sheet-head{display:flex;flex-wrap:wrap;padding:.3rem .35rem .45rem 1rem}
   .notebook-sheet-title{flex:1 1 calc(100% - 6.6rem)}.notebook-sheet-views{flex:none}

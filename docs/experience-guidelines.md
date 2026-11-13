@@ -18,11 +18,16 @@ run's results can be searched for it.
 
 The Reader keeps room to read the message and room to write a useful reply.
 Guidance on the page stays compact and folds away. On a phone with the keyboard
-up, the message still shows enough to read while writing.
+up, the message still shows enough to read while writing. The Reader and the
+New message sheet are as tall as the window and grow with its width up to a
+maximum, and on a phone never reach past the screen.
 
 - `tests/reader_native.mjs` (`native-reader`): "default stacks, wide keeps
   writing full height, layout switch preserves typing", "divider click is inert,
   native drag changes proportions and preserves typing".
+- `tests/reader_compose_native.mjs` (`native-compose`): the "size …" cases, at
+  320, 375 and 390 points, a laptop and a window wider than the maximum
+  ([reader.md](reader.md), "Size").
 - `tests/reader_native.mjs` (`native-reader-finished`): "finished the save
   status is one line whatever it says: …".
 - Gap: no check measures how much of a phone screen the message keeps while the
