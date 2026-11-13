@@ -8334,6 +8334,34 @@
    "check": {
     "python": "test_checkpoints.py"
    }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint source evidence stays public and in its original topic",
+   "break": [
+    [
+     "aim_next/checkpoints.py",
+     "evidence = self._assessment_sources(db, (actor,record['assessor_id'],record['requested_by']),\n                                            record['topic_id'], args['evidence_message_ids'])",
+     "evidence = args['evidence_message_ids']"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint recurring faults remain visible across a met artifact",
+   "break": [
+    [
+     "aim_next/checkpoints.py",
+     "recurrence = (int(previous[0]) if previous else 0) + 1",
+     "recurrence = 0"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
   }
  ]
 }
