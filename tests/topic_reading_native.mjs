@@ -18,6 +18,7 @@
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
+import { scrollbarChecks } from './scrollbars_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 const entry = id => `#messages [data-id="${id}"]`;
@@ -65,8 +66,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     return ids;
   };
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
-  const open = async (name, device, topic, first, init = '') => {
-    const metrics = DEVICES[device];
+  const open = async (name, device, topic, first, init = '', metrics = DEVICES[device]) => {
     const p = await page(name, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
       if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
@@ -1651,6 +1651,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await scrollbarChecks({ check, until, control, shot, facts, observations, engine },
+    { seed, open, centre, press, light, openReader, card, within });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
 }

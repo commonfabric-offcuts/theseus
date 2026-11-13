@@ -109,6 +109,13 @@ they are most likely to take. Everything else waits behind a ⋯ or a +, or
 appears once the person starts the act it belongs to. A word, a glyph or a small
 mark in a line beats a boxed button. Marks on a card sit in the card's own line.
 
+Scroll bars show while their area scrolls, then fade without moving or resizing
+the content. `tests/scrollbars_native.mjs` (`native-reading`,
+`native-webkit-reading`), "reading scrollbars …": rail, feed card, Reader,
+writing, horizontal code and page at 320, 375, 390 and 1280px. Each holds idle,
+native scrolling and settled states, plus a non-overflow negative. See
+[scrollbars.md](scrollbars.md) for the touch-evidence limit.
+
 - `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
   no page has a header bar or Refresh; …".
 - Gap: a page check that counts the boxed controls showing before the person
