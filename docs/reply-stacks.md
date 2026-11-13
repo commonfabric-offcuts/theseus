@@ -619,8 +619,12 @@ stays put; motion that would move that anchor is skipped. The anchor is the
 one a repaint holds (the inline writing, a field on the page being typed in,
 else the first card in view), so a reply arriving above the People field or a
 new message with the caret in it lands in place. The keys moving to a reply
-still arriving bring it into view where it lands, not where it is in flight,
-and it keeps travelling there. A primary press
+still arriving or unfolding bring it into view where it lands, not where it
+is in flight, and it keeps moving there. While anything moves, the page keeps
+the length it will have once it lands, as empty room below everything: a
+folder is shorter in flight, and at the page's end the window could not yet
+scroll as far as the still page would. The room goes when the motion does.
+A primary press
 pauses running geometry until release/cancel. Superseding acts, resize, hidden
 pages and navigation cancel temporary geometry and restore natural layout.
 After a hidden visit, catch-up stays static until a pointer or key resumes

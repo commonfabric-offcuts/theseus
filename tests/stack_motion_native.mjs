@@ -229,8 +229,12 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     assert.ok(end.max>0&&Math.abs(end.y-end.max)<1,`the page stands at its end: ${JSON.stringify(end)}`);
     await p.evaluate('window.motionFrames=[]');
     const id=await start();
-    await p.evaluate(`new Promise(done=>{const look=()=>{const c=document.querySelector(${JSON.stringify(card(id))}),e=c?.closest('.stack-replies > [data-id]'),o=e&&+getComputedStyle(e).opacity;
-      if(c?.dataset.stackMotion===${JSON.stringify(kind)}&&(${JSON.stringify(kind)}!=='arrival'||o>.02&&o<.6))done();else requestAnimationFrame(look)};look()})`);
+    // The key goes on the page's own frame that shows it early in its motion;
+    // a reply drawn still (or already landed) ends the wait, and the check says so.
+    const early=await p.evaluate(`new Promise(done=>{const look=()=>{const c=document.querySelector(${JSON.stringify(card(id))}),e=c?.closest('.stack-replies > [data-id]'),o=e&&+getComputedStyle(e).opacity;
+      if(c&&c.dataset.stackMotion!==${JSON.stringify(kind)})done({still:c.dataset.stackMotion??null,opacity:o});
+      else if(c&&(${JSON.stringify(kind)}!=='arrival'||o>.02&&o<.6))done(true);else requestAnimationFrame(look)};look()})`);
+    assert.equal(early,true,`the reply is early in its ${kind} when the key goes`);
     const before=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return {height:c.getBoundingClientRect().height,y:scrollY}})()`);
     await p.key('ArrowDown');
     const keyed=await p.evaluate(`[document.querySelector(${JSON.stringify(card(id))}).dataset.stackMotion??null,window.motionClock,document.querySelector('#messages .message-card.lit')?.dataset.id??null,scrollY]`);
@@ -240,11 +244,11 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     const box=await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect(),s=getComputedStyle(document.documentElement);
       const top=parseFloat(s.scrollPaddingTop)||0,bottom=innerHeight-(parseFloat(s.scrollPaddingBottom)||0),h=bottom-top;
       return {top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight,want:bottom-Math.min(h*.1,h-r.height),y:scrollY,
-        rootStyle:document.documentElement.getAttribute('style')}})()`);
+        rootStyle:document.documentElement.style.minHeight}})()`);
     assert.ok(box.height<box.screen,`the reply fits the screen: ${JSON.stringify(box)}`);
     assert.ok(box.top>=0&&Math.abs(box.bottom-box.want)<=1.5,`the lit reply lands whole with the reveal's room below it, as the still page shows it: ${JSON.stringify({before,keyed:keyed[3],...box})}`);
     assert.equal(box.y,keyed[3],'the page scrolled once, at the key, and stayed while it landed');
-    assert.equal(box.rootStyle,null,'nothing the motion held on the page outlives it');
+    assert.equal(box.rootStyle,'','nothing the motion held on the page outlives it');
     assert.ok((await frames(p,id,kind)).some(f=>f.clock>keyed[1]&&(kind==='arrival'?f.transform!=='none':f.height<before.height+(box.height-before.height)*.9)),'the keys do not cut its motion short');
   };
   await check('reading dossier motion the keys onto a long reply arriving at the page end reveal it as the still page does at 320 375 390 and laptop', async()=>{

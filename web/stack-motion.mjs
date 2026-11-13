@@ -38,7 +38,7 @@ export function arrivalPose(progress, above) {
 export class StackMotion {
   constructor({ list, anchor = () => null, reading = () => {}, moved = () => {}, win = list.ownerDocument.defaultView }) {
     Object.assign(this, { list, anchor, reading, moved, win, doc: list.ownerDocument });
-    this.handled = new Set(); this.next = []; this.active = new Set(); this.paused = false; this.disposed = false; this.awaitingAttention = false; this.staged = null;
+    this.handled = new Set(); this.next = []; this.active = new Set(); this.paused = false; this.disposed = false; this.awaitingAttention = false; this.staged = null; this.reserved = null;
     this.off = [];
     const on = (host, name, fn, options) => { host.addEventListener(name, fn, options); this.off.push(() => host.removeEventListener(name, fn, options)); };
     on(this.doc, 'pointerdown', e => { if (e.isPrimary && e.button === 0) { this.awaitingAttention = false; this.pause(); } }, true);
@@ -58,6 +58,18 @@ export class StackMotion {
   landed(read) {
     const undo = [...this.active].map(effect => effect.land());
     try { return read(); } finally { for (const restore of undo.reverse()) restore(); }
+  }
+  // While a face moves, the page keeps the length it has once every running
+  // effect lands: a folder is shorter in flight, and the window must already
+  // scroll to where the keys or a repaint's anchor put what will land there.
+  // The room is empty, below everything, and goes when the motion does.
+  reserve() {
+    const root = this.doc.documentElement;
+    if (this.reserved) { put(root, 'min-height', ...this.reserved); this.reserved = null; }
+    if (!this.active.size) return;
+    const length = this.landed(() => root.scrollHeight);
+    this.reserved = [root.style.getPropertyValue('min-height'), root.style.getPropertyPriority('min-height')];
+    root.style.setProperty('min-height', length + 'px');
   }
   arrivals(provenance) { this.next = arrivalIds(provenance, this.handled); }
   // The app stages before inserting loose entries: their temporary placement
@@ -90,6 +102,7 @@ export class StackMotion {
     // act, membership or visibility supersedes it and releases its own styles.
     for (const effect of [...this.active]) if (effect.faces.some(({ entry, card, parent, folded }) =>
       !entry.isConnected || entry.parentElement !== parent || !visible(entry, this.win) || (card.dataset.folded === 'true') !== folded)) effect.finish();
+    if (this.reserved) this.reserve(); // The repaint may have changed where running effects land.
     if (!this.allowed()) return;
     const current = new Map(entries(this.list).map(entry => [entry.dataset.id, entry]));
     const batches = new Map(), staticSections = new Set();
@@ -143,11 +156,11 @@ export class StackMotion {
         for (const animation of animations) animation.cancel();
         for (const undo of cleanups.reverse()) undo();
         for (const { entry, card } of faces) { delete card.dataset.stackMotion; delete entry.dataset.stackMotion; this.reading(entry, false); }
-        this.active.delete(effect); this.moved();
+        this.active.delete(effect); this.reserve(); this.moved();
       },
     };
     for (const { entry, card } of faces) { entry.dataset.stackMotion = kind; card.dataset.stackMotion = kind; this.reading(entry, true); }
-    this.active.add(effect);
+    this.active.add(effect); this.reserve();
     return effect;
   }
   run(effect, node, keyframes, options) {
