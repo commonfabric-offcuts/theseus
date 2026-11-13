@@ -10467,6 +10467,20 @@
     "native": "reading",
     "case": "reading dossier motion arrival follows the moving lower edge"
    }
+  },
+  {
+   "item": 412,
+   "act": "Motion below the reading anchor may grow; motion above held words or writing is skipped",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "return !anchorBox || top >= anchorBox.bottom - 1;",
+     "return true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_motion.test.mjs"
+   }
   }
  ]
 }

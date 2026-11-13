@@ -15,7 +15,7 @@ for(const c of document.querySelectorAll('#messages .message-card[data-stack-mot
  };const tick=()=>{setTimeout(sample,0);requestAnimationFrame(tick)};requestAnimationFrame(tick)});`;
 
 export async function motionChecks({ check, until, view, control, shot, facts, observations }, h) {
-  const { seed, open, centre, press, card, DEVICES, menuOf, choose } = h;
+  const { seed, open, centre, press, card, DEVICES, menuOf, choose, away } = h;
   const widths = [320,375,390,1280];
   const atWidths = async (label, run) => {
     for (const width of widths) {
@@ -76,9 +76,16 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).style.overflowY`),'auto','the card keeps its original scroll axis');
       assert.ok(samples.length>2&&samples.some(f=>f.height>final.height+2&&f.height<before-2),'fold has intermediate clipped heights');
       assert.ok(samples.every(f=>f.authors===1&&f.authorOpacity===1),'one solid author, no fading duplicate');
-      const surface=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.one))}),n=c.parentElement.querySelector(${JSON.stringify(card(ids.two))}),b=c.getBoundingClientRect(),z=n.getBoundingClientRect();return {folded:c.dataset.folded,exposed:z.top-b.top,words:getComputedStyle(c.querySelector('.folded-words')).opacity,hit:c.contains(document.elementFromPoint(b.left+b.width/2,b.top+22))}})()`);
+      await centre(p,card(ids.one)); await away(p);
+      const surface=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.one))}),n=c.parentElement.querySelector(${JSON.stringify(card(ids.two))}),b=c.getBoundingClientRect(),z=n.getBoundingClientRect();return {folded:c.dataset.folded,exposed:z.top-b.top,words:getComputedStyle(c.querySelector('.folded-words')).opacity,hit:c.contains(document.elementFromPoint(b.left+6,b.top+22))}})()`);
       assert.equal(surface.folded,'true'); assert.equal(surface.words,'1');
-      if(width<760){assert.ok(surface.exposed>=43.9,'44px phone strip remains exposed');assert.equal(surface.hit,true);}
+      if(width<760){assert.ok(surface.exposed>=43.9,'44px phone strip remains exposed');assert.equal(surface.hit,true,'the exposed strip itself receives the tap');
+        const thumb=card(ids.one)+' > .message-folded > .folded-thumb';
+        const state=await p.evaluate(`document.querySelector(${JSON.stringify(thumb)}).getAttribute('aria-pressed')`);
+        await press(p,ctx.device,thumb);
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(thumb)}).getAttribute('aria-pressed')!==${JSON.stringify(state)}`),'the folded thumb receives a native tap');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).dataset.folded`),'true','thumb does not unfold the card');
+      }
       observations.push({name:'motion-fold-'+width,surface,samples}); await shot(p,'motion-fold-'+width);
     });
   });
@@ -127,6 +134,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       await p.send('Emulation.setDeviceMetricsOverride',{...DEVICES[ctx.device],width:ctx.width+1});
       await settled(p);
       assert.deepEqual(await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),r=c.closest('.stack-replies');return [c.style.transform,c.style.opacity,r.style.height,c.getAnimations().length]})()`),['','','',0]);
+      await centre(p,card(id)); // Bring the next slot on screen; off-screen arrivals correctly stay static.
       const next=await add(ctx,'successor'); await until(async()=>(await frames(p,next,'arrival')).length>2,'successor can animate after cancellation'); await settled(p);
     });
   });
