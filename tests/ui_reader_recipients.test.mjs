@@ -49,7 +49,7 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
     // How the reply is sent has its own checks (ui_whisper.test.mjs).
     paintChoice() {},
   });
-  const chip = name => chips.children.find(node => node.textContent === name);
+  const chip = name => chips.children.find(node => node.dataset.name === name);
   const offer = () => chip('stranger').children.find(node => node.textContent.startsWith('Add to topic'));
   const said = () => chip('stranger').children.find(node => node.className === 'reach-notice');
   reader.paintRecipients();
@@ -68,8 +68,8 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
   reader.paintRecipients();
   assert.equal(document.activeElement, input, 'with the offer gone, focus goes to the recipient field, not the page');
 
-  chip('fable').children[0].focus();
-  chip('fable').children[0].onclick();
+  chip('fable').out.focus();
+  chip('fable').out.onclick();
   assert.deepEqual([editor.draft.addressees, document.activeElement], [['stranger'], input], 'a removed recipient hands focus to the field');
   document.activeElement = null;
   reader.paintRecipients();
@@ -139,5 +139,10 @@ test('the origin line names the author, a Notebook page and its revision, and wh
   assert.equal(origin.text, 'tony · 5:44 AM Thu Nov 5', 'from before yesterday: dated');
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'memory', id: 'n1', revision: 3 } });
   assert.equal(origin.text, 'tony · Notebook · revision 3');
+  reader.callbacks = { actorName: id => id === 'codex-worker' ? 'codex' : id };
+  const source = { author: 'codex-worker', source_ref: { kind: 'message', id: 'm2' } };
+  reader.paintOrigin(source);
+  assert.equal(origin.text, 'codex');
+  assert.equal(source.author, 'codex-worker', 'the visible name does not rewrite attribution');
   assert.ok(whispering.every(([name, on]) => name === 'whispering' && on === false), 'none of these is a whisper, so none wears its line');
 });

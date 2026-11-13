@@ -792,6 +792,24 @@ function paintViews(kind) {
 const messageEntries = new Map(), memoryCards = new Map();
 // The color the reader sees an agent in: their choice, or the agent's own.
 const agentShown = id => colors?.color(id) ?? agentColor(id);
+// Only the label changes; all record lookup, color and routing keep the ID.
+function displayActor(id) {
+  const known = [...views?.participants ?? [], ...outcomeMembers ?? [], ...directoryPeople];
+  return known.find(person => (person.actor_id ?? person.id) === id && person.name)?.name || id;
+}
+// Where someone chooses a recipient, equal display names must remain distinguishable.
+function actorLabel(id) {
+  const known = [...views?.participants ?? [], ...outcomeMembers ?? [], ...directoryPeople], names = new Map();
+  for (const person of known) {
+    const key = person.actor_id ?? person.id;
+    if (person.name && !names.has(key)) names.set(key, person.name);
+  }
+  const name = names.get(id) || id;
+  return known.some(person => {
+    const other = person.actor_id ?? person.id;
+    return other !== id && (names.get(other) || other).toLowerCase() === name.toLowerCase();
+  }) ? `${name} (${id})` : name;
+}
 // Replies gather under the message they answer on every topic page, the
 // conversation's included (reply-stacks.mjs). A folded stack keeps in view a
 // reply the person has not read and, in the conversation, one whose card asks
@@ -802,7 +820,7 @@ function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current, send: envelope => api.command(envelope),
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
-    keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : id),
+    keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)) });
   return stackFeed;
 }
@@ -865,15 +883,17 @@ async function pickColor(agent, anchor, back = anchor) {
 // agent keeps one name button across repaints, so a choice that repaints the
 // participants leaves the picker's opener on the page to take the focus back.
 const participantNames = new Map();
-function participantName(person) {
+function participantName(person, label = person.name || person.actor_id) {
   if (person.kind !== 'agent' || person.actor_id === bootstrap.actor) return null;
   let name = participantNames.get(person.actor_id);
   if (!name) {
-    name = node('button', person.actor_id); name.type = 'button';
-    name.setAttribute('aria-haspopup', 'dialog'); name.title = `Change ${person.actor_id}'s color`;
+    name = node('button'); name.type = 'button';
+    name.setAttribute('aria-haspopup', 'dialog');
     name.onclick = () => run(() => pickColor(person.actor_id, name));
     participantNames.set(person.actor_id, name);
   }
+  if (name.textContent !== label) name.textContent = label;
+  name.title = `Change ${label}'s color`;
   name.className = 'pill-name';
   return name;
 }
@@ -897,7 +917,7 @@ function paintHeader(current) {
 }
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
-  paintAuthor(author, item.author_id, Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
+  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
 }
@@ -1634,6 +1654,7 @@ async function initialize() {
   const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
     images: topicImages, imageBytes,
+    actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     reach: recipientReach, addressable: addressPeople,
     uploads: editor => registry.sessionFor(editor).uploads,
@@ -1648,6 +1669,8 @@ async function initialize() {
   });
   reader = new Reader({
     images: topicImages, imageBytes,
+    actorName: displayActor,
+    actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
     closing: p => registry?.isClosing(p),
@@ -1963,6 +1986,15 @@ function refreshDirectory() {
     fillNames($('directory-names'), items);
     directoryPeople = items.map(item => ({ id: item.id, name: item.name, kind: item.kind }));
     teamPanel?.paintChoices(); participantsPanel?.paintChoices();
+    // The background directory may arrive after a card. Update labels in
+    // place, without reloading content or rearranging what is being read.
+    if (views) for (const entry of entries($('messages'))) {
+      const card = cardIn(entry), item = views.messages.get(card.dataset.id);
+      if (item) paintCardAuthor(card.querySelector('.message-author'), item);
+    }
+    if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintOrigin(reader.source);
+    if (reader?.sessions) { reader.paintRecipients(); reader.paintChoice(); }
+    if (inline?.editor) { inline.paintRecipients(); inline.paintChoice(); }
   })
     .catch(() => {}).finally(() => { directoryRead = null; });
   return directoryRead;
@@ -2068,6 +2100,7 @@ function answeredBy(composer, audience, names, on) {
   const team = (outcomeMembers ?? []).filter(person => person.enabled !== false).map(person => person.actor_id);
   // The names wait for the conversation's view, which says who the coordinator is.
   const shown = on && here?.view ? paintAnswerers(choices, { coordinator: here.view.coordinator?.actor_id, members: team, names, reader: bootstrap.actor,
+    nameOf: actorLabel,
     toggle: (id, add) => add ? composer.addName(id) : composer.removeName(id) }) : [];
   if (!shown.length) choices.replaceChildren();
   // A team member named here shows as their pressed chip, not twice.

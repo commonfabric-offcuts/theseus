@@ -139,6 +139,7 @@ export class InlineComposer {
     const p = this.presentation, editor = this.editor;
     const off = name => this.removeName(name, p, editor);
     paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [],
+      nameOf: this.callbacks.actorLabel,
       named: recipientChoices(editor.draft.addressees).map(({ name }) => name), reach: this.callbacks.reach, remove: off,
       toggle: (name, on) => on ? this.addName(name) : off(name), summary: { host: this.naming.named, opener: this.naming.opener } });
     this.callbacks.recipientsPainted?.(editor.draft.addressees);
@@ -156,6 +157,7 @@ export class InlineComposer {
     const editor = this.editor;
     if (!editor) return;
     paintChoice(this.$('intent-row'), { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf,
+      nameOf: this.callbacks.actorLabel,
       everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly,
       to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
   }

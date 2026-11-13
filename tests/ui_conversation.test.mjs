@@ -334,6 +334,16 @@ test('Answered by offers the coordinator first, then the team; with nobody named
   assert.deepEqual(toggled, [['warp', true], ['warp', false]]);
 });
 
+test('conversation answerer labels use current names and still toggle the canonical recipient', () => {
+  const doc = miniDocument(), host = doc.createElement('span'), toggled = [];
+  const shown = paintAnswerers(host, { coordinator: 'codex-worker', members: ['warp'], names: [], reader: 'tony', doc,
+    nameOf: id => id === 'codex-worker' ? 'codex' : 'Warp', toggle: (id, on) => toggled.push([id, on]) });
+  assert.deepEqual(shown, ['codex-worker', 'warp']);
+  assert.equal(host.children[0].textContent, 'codex');
+  assert.equal(host.children[0].title, 'codex answers when you name nobody');
+  host.children[1].onclick(); assert.deepEqual(toggled, [['warp', true]]);
+});
+
 test("the conversation's heading names who answers, and its address is ?conversation=OUTCOME", () => {
   assert.equal(subtitle('fable'), 'Ask where things stand, or raise a friction or a request. fable answers here; others answer only when you name them.');
   assert.equal(subtitle(null), `Ask where things stand, or raise a friction or a request. ${NOBODY_ANSWERS}`);
