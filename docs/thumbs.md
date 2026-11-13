@@ -33,7 +33,13 @@ Reader): in the same act they settle the actor's own pending delivery of it
 and clear the actor's mark on it (docs/attention.md: unread is a pending
 delivery or a mark), with the next mark revision and a `mark` change, as
 `message.mark` clearing it would. They change no topic state or order; a
-thumbs-up changes a wait only when it answers an ask (below). A thumb's
+thumbs-up changes a wait only when it answers an ask (below). A person's
+thumbs-up given also folds the message for them, as their reply to it does
+(docs/reply-stacks.md, "Folded messages"): Core records their own
+`message.fold` in the same act, unless the message is starred for them or
+already folded. Taking the thumb back unfolds nothing, and an agent's thumb
+folds nothing. On the page a folded message's row keeps its 👍, the same
+thumbs-up as the bar's. A thumb's
 result says whether it read the message (`settled`: it was unread for the
 actor, by a pending delivery or a mark, and is read now; false for a thumb
 taken back, one that changed nothing, and one on a message already read).

@@ -452,7 +452,9 @@ class Conversation:
                   "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}
         if private is not None:
             result["whisper"] = True
-        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
+        # A person's reply folds the message it answers for them (Stacks._fold_answered).
+        folded = self._fold_answered(db, actor, snapshot["reply_to"]) if snapshot.get("reply_to") else []
+        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + folded
 
     def _message_access(self, db, actor, message_id):
         row = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()

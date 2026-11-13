@@ -184,8 +184,14 @@ export async function formChecks({ check, page, until, control, view, facts, sho
     await p.close();
     const n = await page('forms-notebook', null, true);
     await until(() => quiet(n, `Boolean(document.querySelector('#memory-items .memory-card'))`), 'the Notebook card is drawn');
+    // A Notebook page as it stands opens in the composer over the feed; at a revision, in the Reader.
+    const item = await n.evaluate(`document.querySelector('#memory-items .memory-card').dataset.id`);
     await press(n, '#memory-items .memory-card');
-    await until(() => quiet(n, `document.querySelector('#reader').open`), 'the Reader opens on the Notebook page');
+    await until(() => quiet(n, `document.querySelector('#new-message-sheet.notebook-mode')?.open && Boolean(document.querySelector('#new-message-sheet .notebook-sheet-page:not([hidden])')) && document.querySelector('#notebook-sheet-title').textContent.trim() !== ''`), 'the composer opens on the Notebook page');
+    await audit(n, 'Notebook page in the composer');
+    const revision = (await view('memory_current', { item_id: item })).source_ref.revision;
+    await go(n, `/?topic=t1&page=${encodeURIComponent(item)}&revision=${revision}`);
+    await until(() => quiet(n, `document.querySelector('#reader').open`), 'the Reader opens on the Notebook page at its revision');
     await audit(n, 'Reader on a Notebook page');
     await n.close();
   });

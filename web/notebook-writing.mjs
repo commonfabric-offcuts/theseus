@@ -142,7 +142,8 @@ export class NotebookWriting {
             receipt.result.source_ref.revision !== receipt.result.revision) throw Error('The saved revision does not match this page.');
         const source = { ...this.base.source, ...copy(sent.args), source_ref: copy(receipt.result.source_ref),
           attachments: sent.args.attachments.map(ref => this.base.source.attachments.find(a => a.id === ref.id) ?? ref) };
-        this.base = { revision: receipt.result.revision, content: copy(sent.args), source };
+        // own: the person's own revision, which Core counts as read by them (notebook-sheet.mjs reads the others).
+        this.base = { revision: receipt.result.revision, content: copy(sent.args), source, own: true };
         this.pending = null; this.error = null; this.dirtySince=null;
         await this.persist(); this.notify();
         return receipt;

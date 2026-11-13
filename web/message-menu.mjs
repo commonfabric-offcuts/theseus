@@ -190,7 +190,8 @@ export class MessageMenu {
   }
   // Over the lit card's top end corner, inside the window while any of the
   // card is, and scrolled away with it. Where that would cover the reply arrow
-  // beside the card's time, it sits above the arrow's line, or else below it.
+  // beside the card's time, or the 👍 on a folded message's row (item 390),
+  // it sits above that line, or else below it.
   // In a reply stack it stays below the tab's bottom edge while the tab is in
   // the window, so it never crosses where the tab meets the stack; once the tab
   // has gone above the window it scrolls away with the card as any bar does.
@@ -208,9 +209,12 @@ export class MessageMenu {
     const floor = Math.max(4, tab?.height ? tab.bottom + 2 : 4);
     let top = Math.min(Math.max(4, box.top - height / 2), box.bottom - height);
     if (floor > 4) top = Math.max(floor, top);
-    const mark = cardIn(this.lit).querySelector(':scope > .message-author .replied-mark')?.getBoundingClientRect();
-    if (mark?.width && mark.right > left && mark.left < left + width && mark.bottom > top && mark.top < top + height) {
-      top = mark.top - height - 2 >= floor ? mark.top - height - 2 : floor > 4 ? box.bottom + 2 : mark.bottom + 2;
+    const card = cardIn(this.lit);
+    for (const kept of [card.querySelector(':scope > .message-author .replied-mark'), card.querySelector(':scope > .message-folded > .folded-thumb')]) {
+      const mark = kept?.getBoundingClientRect();
+      if (mark?.width && mark.right > left && mark.left < left + width && mark.bottom > top && mark.top < top + height) {
+        top = mark.top - height - 2 >= floor ? mark.top - height - 2 : floor > 4 ? box.bottom + 2 : mark.bottom + 2;
+      }
     }
     this.bar.style.left = `${left}px`;
     this.bar.style.top = `${top}px`;
@@ -293,13 +297,21 @@ export class MessageMenu {
   // Tab from the lit card goes to the bar's first button, as the card's own ⋯
   // once followed it; Tab from the bar's last goes on from the card, by the
   // browser's own order, and Shift-Tab from its first comes back to the card.
+  // Tab from the lit message goes through the 👍 on its folded row
+  // (StackFeed.paintFoldedThumb), then its bar's buttons, ⋯ last, then on
+  // from the message; Shift-Tab comes back the same way.
   tab(event) {
-    if (!this.lit?.isConnected || this.bar.hidden) return;
+    if (!this.lit?.isConnected) return;
     const card = cardIn(this.lit), at = this.doc.activeElement;
-    const shown = Object.values(this.buttons).filter(button => !button.hidden);
-    if (!event.shiftKey && at === card) { event.preventDefault(); shown[0].focus({ preventScroll: true }); }
-    else if (!event.shiftKey && at === shown.at(-1)) card.focus({ preventScroll: true });
-    else if (event.shiftKey && at === shown[0]) { event.preventDefault(); card.focus({ preventScroll: true }); }
+    const folded = card.querySelector(':scope > .message-folded > .folded-thumb');
+    const order = [folded, ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
+    if (!order.length) return;
+    const index = order.indexOf(at);
+    if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }
+    else if (!event.shiftKey && index === order.length - 1) card.focus({ preventScroll: true });
+    else if (!event.shiftKey && index >= 0) { event.preventDefault(); order[index + 1].focus({ preventScroll: true }); }
+    else if (event.shiftKey && index === 0) { event.preventDefault(); card.focus({ preventScroll: true }); }
+    else if (event.shiftKey && index > 0) { event.preventDefault(); order[index - 1].focus({ preventScroll: true }); }
   }
 }
 

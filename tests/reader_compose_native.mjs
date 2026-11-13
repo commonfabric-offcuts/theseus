@@ -78,7 +78,7 @@ const KEYBOARD = 380;
 const results = [], measured = [], shots = [], contexts = new Set();
 let browser, engine;
 
-async function page(shape, scheme = 'light') {
+async function page(shape, scheme = 'light', path = '/?topic=t1') {
   const options = SHAPES[shape];
   const context = await browser.newContext({ ...options, colorScheme: scheme });
   contexts.add(context);
@@ -88,7 +88,7 @@ async function page(shape, scheme = 'light') {
   const p = await context.newPage();
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));
-  await p.goto(facts.origin + '/?topic=t1');
+  await p.goto(facts.origin + path);
   // A busy machine can take a while over the first load.
   await until(p, () => document.body?.dataset.ready === 'true', 'application bootstrap', undefined, 30000);
   // The clipboard is the machine's: each case starts with text on it, not an image.
@@ -1297,9 +1297,9 @@ async function runAnswering() {
   }
 
   await check('phone: on the outcome\'s conversation page, Answered by with a big team: the naming sheet keeps the field above the keyboard, and the last of them can be scrolled to and tapped', async () => {
-    const p = await page('phone'), at = NAMING['New message sheet'];
-    await p.goto(facts.origin + '/?conversation=w1');
-    await until(p, () => document.body?.dataset.ready === 'true', 'the conversation page', undefined, 30000);
+    // Opened on the conversation page itself: a topic page left while its reads are still out has them
+    // cancelled, and Safari's engine reports each as an error of the page left behind.
+    const p = await page('phone', 'light', '/?conversation=w1'), at = NAMING['New message sheet'];
     await until(p, n => document.querySelectorAll('#inline-composer .answerer-chips > button').length >= n, 'Answered by, the team', ANSWERING.length, 15000);
     await p.locator(at.field).scrollIntoViewIfNeeded();
     await press(p, at.field);

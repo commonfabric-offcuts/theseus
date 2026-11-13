@@ -103,9 +103,11 @@ export function ordered(stacks) {
   return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || b.lifted - a.lifted);
 }
 
-// The only three stack states: header alone, latest plus unread replies,
-// original message plus every reply. The original has no independent state.
-export const LEVELS = ['head', 'folded', 'open'];
+// The two stack states a person steps between (item 394): latest plus unread
+// replies, and original message plus every reply. The original has no
+// independent state. 'head', the header alone, is only how a quiet agent
+// dossier begins (docs/reply-stacks.md, 359), never a step back to.
+export const LEVELS = ['folded', 'open'];
 
 // Whether a reply shows at the stack's level. kept(item) holds replies that
 // were unread when this partial view drew them. A fold never decides this:
@@ -228,10 +230,11 @@ export function readingOrder(stacks) {
   return stacks.flatMap(stack => [stack.head, ...stack.replies]);
 }
 
-// The next of the same three states for ⌘→ or ⌘←, independent of which
-// message has focus. Null when there is no further step that way.
+// The next of the two states for → or ←, independent of which message has
+// focus; a quiet agent dossier's header alone stands before the first. Null
+// when there is no further step that way.
 export function foldStep({ level }, way, { replies: has = true } = {}) {
-  const at = LEVELS.indexOf(level);
+  const at = level === 'head' ? -1 : LEVELS.indexOf(level);
   const next = at + (way === 'open' ? 1 : -1);
-  return has && at >= 0 && next >= 0 && next < LEVELS.length ? { level: LEVELS[next] } : null;
+  return has && next >= 0 && next < LEVELS.length ? { level: LEVELS[next] } : null;
 }

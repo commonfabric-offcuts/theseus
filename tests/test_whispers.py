@@ -856,7 +856,8 @@ MESSAGE_READS = {
                            "the step back's check for Theseus's notices, which are never whispers; and the upgrade's "
                            "reads of when an agent wrote, its own acts, of which only a time is kept, as live keeps any act", 5),
     "aim_next/stacks.py": ("a message acted on, and a join's message, checked by visible() before anything is recorded; a reply's parent "
-                           "id, read only to refuse a join that would loop, never shown; and the acts and stars views, under the whisper rule", 6),
+                           "id, read only to refuse a join that would loop, never shown; the message a person's reply or thumbs-up "
+                           "folds for them, checked by visible() before the fold is recorded; and the acts and stars views, under the whisper rule", 7),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "

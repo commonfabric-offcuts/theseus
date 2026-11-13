@@ -73,6 +73,11 @@ the pointer's way, the keys' and the phone's.
   composer on its own, with no message above it and the cursor in the field;
   Escape, ✕ or a press outside puts it back at the page's end with the writing
   kept. (docs/reader.md)
+- **A Notebook page** opens in that sheet, over the feed, from wherever it is
+  listed or linked as it stands; ✕, Escape (a second one while a card is
+  written) or a press outside closes it, keeping a card half written, and puts
+  the feed and the focus back. While it shows the keys and the wheel are its
+  own and never move the feed. (docs/decks.md, "Where it opens")
 - **👍** means read and understood, never "do it"; pressing it again takes it
   back. It marks that message read at once, even one marked unread, and only
   that one: its card, the counts and the New line follow, here and on every
@@ -155,9 +160,9 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
 - **Between the panes.** → on a topic, on an open outcome, or on a row that
   opens nothing moves into the messages, onto the message last lit there, else the oldest one not read (just above the New
   line), else the first in view; ↑ and ↓ then move the light, and Return
-  opens the Reader. On a stack, → opens and ← folds it through its three
-  states first. Another → when fully open goes to the right rail; another ←
-  when closed goes to the outline. On a message without replies they go
+  opens the Reader. On a stack, → opens it to every message and ← folds it
+  to latest plus unread first. Another → when fully open goes to the right
+  rail; another ← at latest plus unread goes to the outline. On a message without replies they go
   straight to those rails. The outline lands on the row of the place being read. In the right rail ↑ and ↓
   move between its sections and their rows, and → and ← open and fold as in
   the outline: → opens a folded section or goes to its first row, ← folds an
@@ -195,7 +200,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   the page's heading; Return on such a row keeps the keys on it.
 - **The messages.** On a message (its card holding the keys), ⌘↑ and ⌘↓
   move its reply stack up or down in the reader's own order, → and ←
-  open and fold it a step (closed, latest plus unread, then all messages), ⇧⌘↑ and
+  switch it between its two states (latest plus unread, and all messages), x
+  folds the message to its row for the reader alone (x again unfolds it), ⇧⌘↑ and
   ⇧⌘↓ join it to the stack above or below for everyone, and ⌘Z puts the
   last of these back (docs/reply-stacks.md). The keys stay on the message
   that moved, and a screen reader hears what happened.

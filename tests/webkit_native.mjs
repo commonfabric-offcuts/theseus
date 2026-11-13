@@ -81,7 +81,7 @@ const control = data => new Promise((resolve, reject) => {
 });
 
 const results = [], observations = [], hashes = {};
-for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs',
+for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','web/notebook-sheet.mjs',
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
@@ -277,6 +277,13 @@ try {
         }
         await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
         await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
+        // A person's reply or thumbs-up folds what it answers for them (docs/reply-stacks.md, item 377): a press on
+        // its row shows it whole again, then a press on it opens it.
+        const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
+        if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
+          await point(`${card} > .message-folded > .folded-author`);
+          await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message shows whole');
+        }
         await point(`#messages [data-id="${facts.sources[index].id}"]`);
         await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
         await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');

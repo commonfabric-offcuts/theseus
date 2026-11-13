@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { notebookSheetChecks } from './notebook_sheet_native.mjs';
 
 // Notebook pages in the real browser against the real server: an outcome's
 // pages sit in the sidebar after its topics; a page the reader has read and
@@ -7,8 +8,8 @@ import { readFile } from 'node:fs/promises';
 // reload; opening it shows what changed since, as marked words, and puts the
 // light out; a page in the topic's own Notebook wears the same light; at 390 wide, in light and in dark, the pages are in the
 // rail "☰ Topics" opens over the topic, nothing leaves the screen and the changed words stay readable; on the outcome's own page the pages
-// follow the topics and open in place; and a page's link opens the page, as
-// it stands or at a revision, in the Reader or in place, from the address bar
+// follow the topics; a page opens in the composer over the feed (item 396), and what changed shows there; and a page's link opens the page as
+// it stands in the composer, or at a revision in the Reader or in place, from the address bar
 // or from a message's words, and the Reader's ⋯ copies it. On the cards page,
 // a card being written moves with Tab and ⇧Tab, and goes on into the card
 // beside with ↑ and ↓, each act read back from the page as saved, while the
@@ -172,9 +173,14 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       const a=e.getBoundingClientRect();requestAnimationFrame(()=>{const b=e.getBoundingClientRect();resolve(a.top===b.top&&a.bottom===b.bottom&&b.top>=0&&b.bottom<=innerHeight);});
     })`),'Notebook row stays in view across an animation frame');
     await p.point(row);
-    await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.length > 0"), 'the Reader shows the page');
+    await sheetShows(p, 'Release plan');
   };
-  const closeReader = async p => { await p.point('#reader-close'); await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes'); };
+  // A page opens in the composer over the feed (item 396), what changed since it was read above its cards.
+  const SHEET_PAGE = '#new-message-sheet .notebook-sheet-page:not([hidden])', CHANGES = SHEET_PAGE + ' .notebook-sheet-changes';
+  const sheetShows = (p, title) => until(() => p.evaluate(`document.querySelector('#new-message-sheet').open && !document.querySelector('#reader').open
+    && document.querySelector('.notebook-sheet-title')?.textContent === ${JSON.stringify(title)} && document.querySelector(${JSON.stringify(SHEET_PAGE + ' .notebook-text')})?.value.length > 0`), `the composer shows the page ${title}`);
+  const closeSheet = async p => { await p.point('#new-message-sheet .notebook-sheet-close'); await until(() => p.evaluate("!document.querySelector('#new-message-sheet').open"), 'the sheet closes'); };
+  const changesShown = p => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(CHANGES)});return Boolean(c&&!c.hidden&&c.querySelector('.source-changes'))})()`);
   // WCAG contrast of an element's text on the nearest opaque background behind it.
   const contrast = (p, selector) => p.evaluate(`(()=>{
     const rgb=c=>c.match(/[\\d.]+/g).map(Number);
@@ -244,20 +250,25 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await p.key('a', 4);
       await p.send('Input.insertText', {text:name});
       await p.key('Enter');
-      await until(() => p.evaluate(`Boolean(document.querySelector('#deck-page .deck-writing textarea'))`), 'the new page opens with its first card ready to write');
-      const id = await p.evaluate(`new URL(location.href).searchParams.get('cards')`);
+      // The new page comes up in the composer over the feed, its first card ready to write (item 396).
+      const first = '#new-message-sheet.notebook-mode .notebook-sheet-page:not([hidden]) .deck-writing textarea';
+      await until(() => p.evaluate(`document.querySelector('#new-message-sheet').open && document.querySelector('.notebook-sheet-title')?.textContent===${JSON.stringify(name)} && Boolean(document.querySelector(${JSON.stringify(first)}))`), 'the new page opens in the composer with its first card ready to write');
+      assert.equal(await p.evaluate(`new URL(location.href).searchParams.has('cards')`), false, 'over the page it was started from');
+      const id = (await view('memory_items', {owner_scope:scope, limit:100})).items.find(item => item.title === name)?.id;
       const made = await view('memory_current', {item_id:id});
       assert.deepEqual(made.owner_scope, scope); assert.equal(made.title, name); assert.equal(made.body, '');
-      assert.equal(await p.evaluate(`document.activeElement===document.querySelector('#deck-page .deck-writing textarea')`), true, 'the cursor is in the first card');
+      assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(first)})`), true, 'the cursor is in the first card');
       await p.send('Input.insertText', {text:'First card\nThe new page is writable.'});
       await p.key('Escape');
       await until(async () => (await view('memory_current',{item_id:id})).body.includes('The new page is writable.'), 'the first card is saved in Core');
       await shot(p, 'notebook-create-' + label);
+      if (phone) await press('#new-message-sheet .notebook-sheet-close'); else await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open`), 'the sheet closes');
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
 
-  await check('notebook a page read and revised since wears its new revisions in the sidebar until opened, and the Reader shows what changed', async () => {
+  await check('notebook a page read and revised since wears its new revisions in the sidebar until opened, and opening it shows what changed', async () => {
     await revise('Ship on Friday.\nDan reviews the notes.\n');
     const p = await page('notebook-light', null, true);
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the page is listed in the sidebar');
@@ -265,8 +276,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.equal(await light(p), null, 'a page never read wears no light');
     await openRow(p);
     await until(async () => (await listed())?.read_revision === 1, 'Core records the read');
-    assert.equal(await p.evaluate("document.querySelector('#source-changes').hidden"), true, 'nothing to compare on a first read');
-    await closeReader(p);
+    assert.equal(await changesShown(p), false, 'nothing to compare on a first read');
+    await closeSheet(p);
     await revise('Ship on Monday.\nDan reviews the notes.\n');
     const lit = await until(() => light(p), 'the light comes on live, with no reload');
     assert.deepEqual(lit, { text: '1', className: 'unread-count changed', said: ', changed since you read it, 1 new revision' });
@@ -276,16 +287,15 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(looks, probe);
     await shot(p, 'notebook-sidebar-light');
     await openRow(p);
-    await until(() => p.evaluate("!document.querySelector('#source-changes').hidden"), 'what changed shows above the page');
-    const changes = await p.evaluate(`({title:document.querySelector('#source-changes-title').textContent,open:document.querySelector('#source-changes').open,
-      added:[...document.querySelectorAll('#source-changes-body .changes-added')].map(e=>e.lastChild.previousSibling.textContent),
-      removed:[...document.querySelectorAll('#source-changes-body .changes-removed')].map(e=>e.lastChild.previousSibling.textContent),
-      struck:getComputedStyle(document.querySelector('#source-changes-body .changes-removed')).textDecorationLine,
-      above:document.querySelector('#source-changes').compareDocumentPosition(document.querySelector('#source-body'))===Node.DOCUMENT_POSITION_FOLLOWING})`);
+    await until(() => changesShown(p), 'what changed shows above the page');
+    const changes = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(CHANGES)}),q=s=>[...c.querySelectorAll(s)].map(e=>e.lastChild.previousSibling.textContent);
+      return {title:c.querySelector('summary').textContent,open:c.querySelector('details').open,added:q('.changes-added'),removed:q('.changes-removed'),
+      struck:getComputedStyle(c.querySelector('.changes-removed')).textDecorationLine,
+      above:c.compareDocumentPosition(document.querySelector(${JSON.stringify(SHEET_PAGE + ' .deck-bar')}))===Node.DOCUMENT_POSITION_FOLLOWING}})()`);
     assert.deepEqual(changes, { title: 'What changed since you read revision 1', open: true, added: ['Monday'], removed: ['Friday'], struck: 'line-through', above: true });
-    await shot(p, 'notebook-reader-changes');
+    await shot(p, 'notebook-sheet-changes');
     await until(async () => (await light(p)) === null, 'the light goes out once the page is read');
-    await closeReader(p);
+    await closeSheet(p);
     assert.deepEqual(p.errors, []);
   });
 
@@ -300,26 +310,25 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     const openCard = async () => {
       await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
       await p.point(card);
-      await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.length > 0"), 'the Reader shows the page');
+      await sheetShows(p, 'Fixture item 0');
     };
     await openCard();
     await until(async () => (await read()) === 1, 'Core records the read');
-    await closeReader(p);
+    await closeSheet(p);
     const answer = await control({ method: 'memory_revise', operation_id: `${topicPage}-revise`, item_id: topicPage, expected_revision: 1, title: 'Fixture item 0', body: 'Fixture Notebook body, revised.' });
     assert.equal(answer.status, 'committed', JSON.stringify(answer));
     assert.deepEqual(await until(() => cardLight(p), 'the light comes on live, with no reload'),
       { text: '1', className: 'unread-count changed', said: ', changed since you read it, 1 new revision' });
     await shot(p, 'notebook-topic-light');
     await openCard();
-    await until(() => p.evaluate("!document.querySelector('#source-changes').hidden"), 'what changed shows above the page');
+    await until(() => changesShown(p), 'what changed shows above the page');
     await until(async () => (await cardLight(p)) === null, 'the light goes out once the page is read');
     // A page with nothing to compare, opened next, carries none of the changes just shown.
-    await closeReader(p);
+    await closeSheet(p);
     await openRow(p);
-    await until(() => p.evaluate("document.querySelector('#reader-title').textContent === 'Release plan'"), 'the outcome\'s page opens');
     await until(async () => (await listed())?.read_revision === (await listed())?.revision, 'it is read as it stands');
-    assert.equal(await p.evaluate("document.querySelector('#source-changes').hidden"), true, 'the next page shows none of the first page\'s changes');
-    await closeReader(p);
+    assert.equal(await changesShown(p), false, 'the next page shows none of the first page\'s changes');
+    await closeSheet(p);
     assert.deepEqual(p.errors, []);
   });
 
@@ -342,22 +351,21 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await shot(p, `notebook-phone-${scheme}-sidebar`);
       await openRow(p);
       assert.equal(await p.evaluate("document.getElementById('rail').classList.contains('open')"), false, 'opening the page folds the rail away');
-      await until(() => p.evaluate("!document.querySelector('#source-changes').hidden"), 'what changed shows');
-      const box = await p.evaluate(`(()=>{const c=document.querySelector('#source-changes').getBoundingClientRect(),b=document.querySelector('#source-body').getBoundingClientRect();return {left:c.left,right:c.right,body:b.height}})()`);
-      assert.ok(box.left >= 0 && box.right <= 390, `the changes stay inside the screen: ${JSON.stringify(box)}`);
-      assert.ok(box.body >= 60, `the page itself keeps room to read: ${box.body}`);
-      for (const selector of ['#source-changes-body .changes-added', '#source-changes-body .changes-removed', '#source-changes-title']) {
+      await until(() => changesShown(p), 'what changed shows');
+      const box = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(CHANGES)}).getBoundingClientRect(),d=document.querySelector('#new-message-sheet').getBoundingClientRect();return {left:c.left,right:c.right,page:document.documentElement.scrollWidth,sheet:[d.left,d.right]}})()`);
+      assert.ok(box.left >= 0 && box.right <= 390 && box.page <= 390 && box.sheet[0] >= 0 && box.sheet[1] <= 390, `the changes stay inside the screen: ${JSON.stringify(box)}`);
+      for (const selector of [`${CHANGES} .changes-added`, `${CHANGES} .changes-removed`, `${CHANGES} summary`]) {
         const ratio = await contrast(p, selector);
         assert.ok(ratio >= 4.5, `${scheme}: ${selector} contrast ${ratio.toFixed(2)}`);
       }
       await shot(p, `notebook-phone-${scheme}-changes`);
-      await closeReader(p);
+      await closeSheet(p);
       assert.deepEqual(p.errors, []);
       await p.close();
     }
   });
 
-  await check('notebook an outcome page lists its pages after its topics with the same light, and one opens in place with what changed', async () => {
+  await check('notebook an outcome page lists its pages after its topics with the same light, and one opens in the composer with what changed', async () => {
     const p = await page('notebook-outcome', null, true, { url: facts.origin + '/?workspace=w1' });
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the page is listed on the outcome page');
     assert.equal(await p.evaluate(`document.querySelector('#outcome-page').contains(document.querySelector(${JSON.stringify(row)})) &&
@@ -367,20 +375,19 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     // The Target (item 14) and Where it stands sit above the topics and pages (D11), so the row may be below the fold.
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     await p.point(row);
-    await until(() => p.evaluate("!document.querySelector('#page-here').hidden && Boolean(document.querySelector('#page-here .source-changes'))"), 'the page opens in place with what changed');
-    const here = await p.evaluate(`({title:document.querySelector('#page-here h2').textContent,focused:document.activeElement===document.querySelector('#page-here h2'),
-      body:document.querySelector('#page-here .page-here-body').textContent,added:[...document.querySelectorAll('#page-here .changes-added')].map(e=>e.lastChild.previousSibling.textContent)})`);
-    assert.deepEqual(here, { title: 'Release plan', focused: true, body: 'Ship on Thursday.\nDan reviews the notes, and Warp signs off.\n', added: ['Thursday'] });
+    await sheetShows(p, 'Release plan');
+    await until(() => changesShown(p), 'the page opens in the composer with what changed');
+    const here = await p.evaluate(`({body:document.querySelector(${JSON.stringify(SHEET_PAGE + ' .notebook-text')}).value,inPlace:!document.querySelector('#page-here').hidden,
+      added:[...document.querySelectorAll(${JSON.stringify(CHANGES + ' .changes-added')})].map(e=>e.lastChild.previousSibling.textContent)})`);
+    assert.deepEqual(here, { body: 'Ship on Thursday.\nDan reviews the notes, and Warp signs off.\n', inPlace: false, added: ['Thursday'] });
     await until(async () => (await light(p)) === null, 'the light goes out');
     await shot(p, 'notebook-outcome-page');
-    // Where the outcome stands sits above its topics (item 86), so Close may be below the fold: scroll to it as a reader would.
-    await p.evaluate(`document.querySelector('#page-here button').scrollIntoView({block:'center'})`);
-    await p.point('#page-here button');
-    assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(row)})`), true, 'Close gives the focus back to the row');
+    await closeSheet(p);
+    assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(row)})`), true, '✕ gives the focus back to the row');
     assert.deepEqual(p.errors, []);
   });
 
-  await check('notebook a page\'s link opens the page as it stands or at a revision, in the Reader on a topic\'s page and in place on its outcome\'s, opens here from a message, and the Reader\'s ⋯ copies it', async () => {
+  await check('notebook a page\'s link opens the page as it stands in the composer, and at a revision in the Reader on a topic\'s page and in place on its outcome\'s, opens here from a message, and the Reader\'s ⋯ copies it and edits it', async () => {
     const linked = (await control({ method: 'seed', memory_items: 1 })).item_ids[0];
     const first = await view('source', { source_ref: { kind: 'memory', id: linked, revision: 1 } });
     const revised = await control({ method: 'memory_revise', operation_id: `${linked}-link`, item_id: linked, expected_revision: 1, title: 'Linked page', body: 'The linked page, revised.' });
@@ -397,25 +404,29 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await p.point(`.message-menu-list [role=menuitem]:nth-child(${(await items(p)).indexOf(label) + 1})`);
       await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the menu closed');
     };
-    // As it stands, in the Reader on its topic's page; the address then names the topic alone.
+    // As it stands, in the composer over its topic's page; the address then names the topic alone.
     let p = await page('notebook-link-latest', null, true, { url: `${facts.origin}/?topic=t1&page=${linked}` });
-    await shows(p, 'Linked page', 'The linked page, revised.');
+    await sheetShows(p, 'Linked page');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(SHEET_PAGE + ' .notebook-text')}).value`), 'The linked page, revised.');
     assert.equal(await p.evaluate('location.search'), '?topic=t1');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // At a revision, in the Reader, whose ⋯ copies its two links and edits the page in the composer.
+    p = await page('notebook-link-revision', null, true, { url: `${facts.origin}/?topic=t1&page=${linked}&revision=1` });
+    await shows(p, first.title, first.body);
     await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
     // The page's own clipboard, never the Mac's.
     await p.evaluate(`(()=>{window.copied=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{window.copied.push(text)}});return true})()`);
     await p.point('#reader-menu');
-    await until(async () => JSON.stringify((await items(p)).slice(0, 2)) === JSON.stringify(['Copy Link', 'Copy Link to Revision 2']), 'the ⋯ offers the page\'s two links');
+    await until(async () => JSON.stringify((await items(p)).slice(0, 3)) === JSON.stringify(['Copy Link', 'Copy Link to Revision 1', 'Edit page']), 'the ⋯ offers the page\'s two links and Edit page');
     await p.point('.message-menu-list [role=menuitem]:nth-child(1)');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the menu closed');
-    await choose(p, 'Copy Link to Revision 2');
-    assert.deepEqual(await p.evaluate('window.copied'), [`${facts.origin}/?topic=t1&page=${linked}`, `${facts.origin}/?topic=t1&page=${linked}&revision=2`]);
+    await choose(p, 'Copy Link to Revision 1');
+    assert.deepEqual(await p.evaluate('window.copied'), [`${facts.origin}/?topic=t1&page=${linked}`, `${facts.origin}/?topic=t1&page=${linked}&revision=1`]);
     await shot(p, 'notebook-link-reader');
-    assert.deepEqual(p.errors, []);
-    await p.close();
-    // At a revision.
-    p = await page('notebook-link-revision', null, true, { url: `${facts.origin}/?topic=t1&page=${linked}&revision=1` });
-    await shows(p, first.title, first.body);
+    await choose(p, 'Edit page');
+    await sheetShows(p, 'Linked page');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(SHEET_PAGE + ' .notebook-text')}).value`), 'The linked page, revised.', 'Edit page opens the page as it stands in the composer, in the Reader\'s place');
     assert.deepEqual(p.errors, []);
     await p.close();
     // An outcome's page opens on the outcome's own page, in place, at its revision.
@@ -432,7 +443,14 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       { title: 'Linked plan', revision: 'Notebook · revision 1', body: 'Ship on Friday.\nDan reviews the notes.\n', at: '?workspace=w1' });
     assert.deepEqual(p.errors, []);
     await p.close();
-    // Pasted into a message, the outcome page's link opens the page in the Reader, here.
+    // As it stands, on the outcome's own page, in the composer over it, nothing opening in place.
+    p = await page('notebook-link-outcome-latest', null, true, { url: `${facts.origin}/?workspace=w1&page=${plan}` });
+    await sheetShows(p, 'Linked plan');
+    assert.deepEqual(await p.evaluate(`({body:document.querySelector(${JSON.stringify(SHEET_PAGE + ' .notebook-text')}).value,inPlace:!document.querySelector('#page-here').hidden})`),
+      { body: 'Ship on Monday.\nDan reviews the notes.\n', inPlace: false }, 'the outcome page\'s link as it stands opens the page in the composer');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // Pasted into a message, the outcome page's link opens the page in the composer, here.
     const message = (await control({ method: 'agent_message', operation_id: 'notebook-link-message', topic_id: 't1', body: `The plan: ${facts.origin}/?workspace=w1&page=${plan} as it stands.` })).result.message_id;
     p = await page('notebook-link-message', null, true);
     const anchor = `#messages [data-id="${message}"] a.words-link`;
@@ -440,7 +458,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(anchor)}).getAttribute('href')`), `?workspace=w1&page=${plan}`);
     await p.evaluate(`document.querySelector(${JSON.stringify(anchor)}).scrollIntoView({block:'center'})`);
     await p.point(anchor);
-    await shows(p, 'Linked plan', 'Ship on Monday.\nDan reviews the notes.\n');
+    await sheetShows(p, 'Linked plan');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(SHEET_PAGE + ' .notebook-text')}).value`), 'Ship on Monday.\nDan reviews the notes.\n');
     assert.equal(await p.evaluate('location.search'), '?topic=t1', 'opened here, without leaving the topic');
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -1088,4 +1107,6 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+  // A page in the composer over the feed (item 396), in a module of its own.
+  await notebookSheetChecks({ check, page, until, control, view, facts, shot });
 }

@@ -5,6 +5,14 @@ Changing the view writes no revision and does not convert or normalize the
 words. Existing Cards links still open Cards. The page's writing controls
 offer both views; a new page starts ready to write.
 
+The writing place stands in two places with the same writing and saving: the
+composer over the feed, where a page opens from the outline, the topic's
+Notebook, the right rail, the outcome's page, a link or Edit page (item 396,
+[decks.md](decks.md#where-it-opens)), and the full page at `?cards=ITEM`. The
+composer's close keeps the page and its unfinished writing for its next
+opening; a page closed there goes on saving what is not yet confirmed but is
+not read again until it opens.
+
 Both views save while writing, including an unfinished card. Each confirmed
 save is a normal `memory.revise` revision, immediately readable by agents.
 The saving sign distinguishes a device copy, an in-flight save, a confirmed
