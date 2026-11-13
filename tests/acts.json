@@ -2,7 +2,7 @@
  "acts": [
   {
    "item": 25,
-   "act": "The bar's \ud83d\udc4d records a thumbs-up in Core and a second press takes it back",
+   "act": "The bar's 👍 records a thumbs-up in Core and a second press takes it back",
    "break": [
     [
      "web/message-menu.mjs",
@@ -12,12 +12,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "the bar's \ud83d\udc4d and the card's \ud83d\udc4d count"
+    "case": "the bar's 👍 and the card's 👍 count"
    }
   },
   {
    "item": 25,
-   "act": "A press on the card's \ud83d\udc4d count, \u2705 or \ud83d\udeab acts, and opens nothing",
+   "act": "A press on the card's 👍 count, ✅ or 🚫 acts, and opens nothing",
    "break": [
     [
      "web/message-menu.mjs",
@@ -27,7 +27,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "the bar's \ud83d\udc4d and the card's \ud83d\udc4d count"
+    "case": "the bar's 👍 and the card's 👍 count"
    }
   },
   {
@@ -42,7 +42,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "the bar's \ud83d\udc4d and the card's \ud83d\udc4d count"
+    "case": "the bar's 👍 and the card's 👍 count"
    }
   },
   {
@@ -57,12 +57,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "the bar's \ud83d\udc4d and the card's \ud83d\udc4d count"
+    "case": "the bar's 👍 and the card's 👍 count"
    }
   },
   {
    "item": 25,
-   "act": "The card counts the thumbs-up and offers the reader's own \ud83d\udc4d as a press",
+   "act": "The card counts the thumbs-up and offers the reader's own 👍 as a press",
    "break": [
     [
      "web/reactions.mjs",
@@ -76,7 +76,7 @@
   },
   {
    "item": 25,
-   "act": "The Reader's \ud83d\udc4d beside Send records a thumbs-up in Core and a second press takes it back",
+   "act": "The Reader's 👍 beside Send records a thumbs-up in Core and a second press takes it back",
    "break": [
     [
      "web/app.mjs",
@@ -86,12 +86,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\ud83d\udc4d in the Reader beside Send"
+    "case": "👍 in the Reader beside Send"
    }
   },
   {
    "item": 25,
-   "act": "The Reader's \ud83d\udc4d shows on someone else's message",
+   "act": "The Reader's 👍 shows on someone else's message",
    "break": [
     [
      "web/reactions.mjs",
@@ -101,12 +101,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\ud83d\udc4d in the Reader beside Send"
+    "case": "👍 in the Reader beside Send"
    }
   },
   {
    "item": 126,
-   "act": "With the cursor in an empty reply, as Return leaves it, the Reader's \ud83d\udc4d stays beside Send",
+   "act": "With the cursor in an empty reply, as Return leaves it, the Reader's 👍 stays beside Send",
    "break": [
     [
      "web/aim.css",
@@ -116,12 +116,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\ud83d\udc4d in the Reader beside Send"
+    "case": "👍 in the Reader beside Send"
    }
   },
   {
    "item": 126,
-   "act": "The Reader's \ud83d\udc4d goes once a word is typed in the reply",
+   "act": "The Reader's 👍 goes once a word is typed in the reply",
    "break": [
     [
      "web/aim.css",
@@ -131,12 +131,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\ud83d\udc4d in the Reader beside Send"
+    "case": "👍 in the Reader beside Send"
    }
   },
   {
    "item": 126,
-   "act": "A reply typed in and deleted again is empty: the Reader's \ud83d\udc4d comes back beside Send, and stays when the Reader or the page opens again",
+   "act": "A reply typed in and deleted again is empty: the Reader's 👍 comes back beside Send, and stays when the Reader or the page opens again",
    "break": [
     [
      "web/reader.mjs",
@@ -151,12 +151,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\ud83d\udc4d in the Reader beside Send"
+    "case": "👍 in the Reader beside Send"
    }
   },
   {
    "item": 126,
-   "act": "With nothing written the Reader's \ud83d\udc4d stays beside the dimmed Send whoever the reply names and wherever it goes: moved to the outcome's conversation and emptied, Ask and the conversation chosen first, or someone named",
+   "act": "With nothing written the Reader's 👍 stays beside the dimmed Send whoever the reply names and wherever it goes: moved to the outcome's conversation and emptied, Ask and the conversation chosen first, or someone named",
    "break": [
     [
      "web/editor.mjs",
@@ -166,7 +166,7 @@
    ],
    "check": {
     "native": "compose",
-    "case": "chromium stacked: with nothing written \ud83d\udc4d"
+    "case": "chromium stacked: with nothing written 👍"
    }
   },
   {
@@ -199,7 +199,7 @@
   },
   {
    "item": 126,
-   "act": "A reply saved naming only its offered author, with nothing written, opens empty with \ud83d\udc4d",
+   "act": "A reply saved naming only its offered author, with nothing written, opens empty with 👍",
    "break": [
     [
      "web/editor.mjs",
@@ -228,7 +228,7 @@
   },
   {
    "item": 126,
-   "act": "Stacked, with nothing written, the reply field ends before \ud83d\udc4d beside Send",
+   "act": "Stacked, with nothing written, the reply field ends before 👍 beside Send",
    "break": [
     [
      "web/aim.css",
@@ -319,7 +319,7 @@
    "break": [
     [
      "aim_next/cli.py",
-     "self.out.plain(\"  (\ud83d\udc4d \" + \", \".join(thumb[\"actor_id\"] + (\" (yes)\" if thumb.get(\"answered\") else \"\")\n                                                for thumb in reactions[\"thumbs\"]) + \")\")",
+     "self.out.plain(\"  (👍 \" + \", \".join(thumb[\"actor_id\"] + (\" (yes)\" if thumb.get(\"answered\") else \"\")\n                                                for thumb in reactions[\"thumbs\"]) + \")\")",
      "pass"
     ]
    ],
@@ -329,7 +329,7 @@
   },
   {
    "item": 124,
-   "act": "The bar's \u2705 and \ud83d\udeab record the person's answer in Core and tell the agent by a reply",
+   "act": "The bar's ✅ and 🚫 record the person's answer in Core and tell the agent by a reply",
    "break": [
     [
      "web/message-menu.mjs",
@@ -339,12 +339,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2705 and \ud83d\udeab on a go-ahead ask"
+    "case": "✅ and 🚫 on a go-ahead ask"
    }
   },
   {
    "item": 124,
-   "act": "A go-ahead ask offers \u2705 and \ud83d\udeab on its card, to a person it asks",
+   "act": "A go-ahead ask offers ✅ and 🚫 on its card, to a person it asks",
    "break": [
     [
      "web/reactions.mjs",
@@ -354,7 +354,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2705 and \ud83d\udeab on a go-ahead ask"
+    "case": "✅ and 🚫 on a go-ahead ask"
    }
   },
   {
@@ -439,12 +439,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2191 and \u2193 move the light"
+    "case": "↑ and ↓ move the light"
    }
   },
   {
    "item": 114,
-   "act": "\u2191 and \u2193 move the light to the message below and above",
+   "act": "↑ and ↓ move the light to the message below and above",
    "break": [
     [
      "web/message-menu.mjs",
@@ -454,7 +454,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2191 and \u2193 move the light"
+    "case": "↑ and ↓ move the light"
    }
   },
   {
@@ -469,7 +469,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2191 and \u2193 move the light"
+    "case": "↑ and ↓ move the light"
    }
   },
   {
@@ -484,7 +484,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2191 and \u2193 move the light"
+    "case": "↑ and ↓ move the light"
    }
   },
   {
@@ -514,12 +514,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2191 and \u2193 move the light"
+    "case": "↑ and ↓ move the light"
    }
   },
   {
    "item": 114,
-   "act": "The bar's \u22ef opens the message's menu",
+   "act": "The bar's ⋯ opens the message's menu",
    "break": [
     [
      "web/message-menu.mjs",
@@ -529,7 +529,7 @@
    ],
    "check": {
     "native": "header",
-    "case": "header a message's \u22ef copies its link"
+    "case": "header a message's ⋯ copies its link"
    }
   },
   {
@@ -860,7 +860,7 @@
   },
   {
    "item": 78,
-   "act": "\u2325\u2191 and \u2325\u2193 in the writing move the line the cursor is on",
+   "act": "⌥↑ and ⌥↓ in the writing move the line the cursor is on",
    "break": [
     [
      "web/writing-input.mjs",
@@ -870,12 +870,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2325\u2191 and \u2325\u2193 move the line"
+    "case": "⌥↑ and ⌥↓ move the line"
    }
   },
   {
    "item": 78,
-   "act": "\u2318Z puts a moved line back",
+   "act": "⌘Z puts a moved line back",
    "break": [
     [
      "web/writing-input.mjs",
@@ -885,7 +885,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2325\u2191 and \u2325\u2193 move the line"
+    "case": "⌥↑ and ⌥↓ move the line"
    }
   },
   {
@@ -919,7 +919,7 @@
   },
   {
    "item": 121,
-   "act": "\u2193 and Return pick from the #img list",
+   "act": "↓ and Return pick from the #img list",
    "break": [
     [
      "web/image-pick.mjs",
@@ -1256,7 +1256,7 @@
   },
   {
    "item": 239,
-   "act": "A person's \ud83d\udc4d on an ask to them in the conversation answers it: \"Asks you\" and \"Waiting on you\" go, and taking it back brings them back",
+   "act": "A person's 👍 on an ask to them in the conversation answers it: \"Asks you\" and \"Waiting on you\" go, and taking it back brings them back",
    "break": [
     [
      "aim_next/reactions.py",
@@ -1266,12 +1266,12 @@
    ],
    "check": {
     "native": "conversation",
-    "case": "\ud83d\udc4d on an ask to the reader answers it yes"
+    "case": "👍 on an ask to the reader answers it yes"
    }
   },
   {
    "item": 239,
-   "act": "A person's \ud83d\udc4d on an ask to them in a topic answers that ask, and the topic's wait moves on or ends",
+   "act": "A person's 👍 on an ask to them in a topic answers that ask, and the topic's wait moves on or ends",
    "break": [
     [
      "aim_next/reactions.py",
@@ -1285,7 +1285,7 @@
   },
   {
    "item": 239,
-   "act": "Taking back a \ud83d\udc4d in an archived topic brings its wait back archived: it stays off Waiting on you and the outcome light",
+   "act": "Taking back a 👍 in an archived topic brings its wait back archived: it stays off Waiting on you and the outcome light",
    "break": [
     [
      "aim_next/topic_state.py",
@@ -1299,7 +1299,7 @@
   },
   {
    "item": 239,
-   "act": "A whisper to someone other than whoever asked answers no ask: a \ud83d\udc4d after one still answers it, and taking it back still brings the wait back",
+   "act": "A whisper to someone other than whoever asked answers no ask: a 👍 after one still answers it, and taking it back still brings the wait back",
    "break": [
     [
      "aim_next/reactions.py",
@@ -1313,7 +1313,7 @@
   },
   {
    "item": 239,
-   "act": "A wait someone said keeps its place on Waiting on you when a \ud83d\udc4d moves its ask on or brings it back",
+   "act": "A wait someone said keeps its place on Waiting on you when a 👍 moves its ask on or brings it back",
    "break": [
     [
      "aim_next/reactions.py",
@@ -1327,7 +1327,7 @@
   },
   {
    "item": 239,
-   "act": "A \ud83d\udc4d sent again says whether the one already there answered the ask",
+   "act": "A 👍 sent again says whether the one already there answered the ask",
    "break": [
     [
      "aim_next/reactions.py",
@@ -1370,7 +1370,7 @@
   },
   {
    "item": 276,
-   "act": "\u2191 and \u2193 move between the outline's rows, Home and End to the first and last",
+   "act": "↑ and ↓ move between the outline's rows, Home and End to the first and last",
    "break": [
     [
      "web/key-tree.mjs",
@@ -1385,7 +1385,7 @@
   },
   {
    "item": 276,
-   "act": "\u2318\u2190 folds an outcome and puts the keys on its row; \u2318\u2192 opens it",
+   "act": "⌘← folds an outcome and puts the keys on its row; ⌘→ opens it",
    "break": [
     [
      "web/outline-rail.mjs",
@@ -1433,7 +1433,7 @@
    "break": [
     [
      "web/pane-keys.mjs",
-     "  ['\u21e7\u2318\u2192 \u21e7\u2318\u2190', 'open every outcome, or fold every one'],\n",
+     "  ['⇧⌘→ ⇧⌘←', 'open every outcome, or fold every one'],\n",
      ""
     ]
    ],
@@ -1457,7 +1457,7 @@
   },
   {
    "item": 276,
-   "act": "\u2192 and \u2190 move between the outline, the messages and the right rail, each keeping its place",
+   "act": "→ and ← move between the outline, the messages and the right rail, each keeping its place",
    "break": [
     [
      "web/panes.mjs",
@@ -1467,12 +1467,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "\u2192 and \u2190 move between the outline"
+    "case": "→ and ← move between the outline"
    }
   },
   {
    "item": 276,
-   "act": "\u2190 from the messages comes back to the topic being read",
+   "act": "← from the messages comes back to the topic being read",
    "break": [
     [
      "web/panes.mjs",
@@ -1482,12 +1482,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "\u2192 and \u2190 move between the outline"
+    "case": "→ and ← move between the outline"
    }
   },
   {
    "item": 276,
-   "act": "\u2190 in the right rail open over the page, as a panel or a sheet, closes it and goes to a message in view",
+   "act": "← in the right rail open over the page, as a panel or a sheet, closes it and goes to a message in view",
    "break": [
     [
      "web/panes.mjs",
@@ -1517,7 +1517,7 @@
   },
   {
    "item": 276,
-   "act": "\u2191 \u2193 and Return light and open no message under a drawer or sheet open over the page",
+   "act": "↑ ↓ and Return light and open no message under a drawer or sheet open over the page",
    "break": [
     [
      "web/message-menu.mjs",
@@ -1532,7 +1532,7 @@
   },
   {
    "item": 80,
-   "act": "\u2318\u2191 and \u2318\u2193 move an outcome one place, the focus kept on it, and the order is kept on reload",
+   "act": "⌘↑ and ⌘↓ move an outcome one place, the focus kept on it, and the order is kept on reload",
    "break": [
     [
      "web/outline-order.mjs",
@@ -1542,12 +1542,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "\u2318\u2191 \u2318\u2193 move an outcome"
+    "case": "⌘↑ ⌘↓ move an outcome"
    }
   },
   {
    "item": 80,
-   "act": "\u2318Z right after a move puts it back",
+   "act": "⌘Z right after a move puts it back",
    "break": [
     [
      "web/outline-rail.mjs",
@@ -1557,7 +1557,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "\u2318\u2191 \u2318\u2193 move an outcome"
+    "case": "⌘↑ ⌘↓ move an outcome"
    }
   },
   {
@@ -1590,7 +1590,7 @@
   },
   {
    "item": 81,
-   "act": "\u2318\u2191 and \u2318\u2193 move a topic within its outcome, kept on reload",
+   "act": "⌘↑ and ⌘↓ move a topic within its outcome, kept on reload",
    "break": [
     [
      "web/outline-rail.mjs",
@@ -1600,7 +1600,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "\u2318\u2191 \u2318\u2193 move an outcome"
+    "case": "⌘↑ ⌘↓ move an outcome"
    }
   },
   {
@@ -1691,7 +1691,7 @@
   },
   {
    "item": 131,
-   "act": "Waiting for\u2026 holds only what the reader raised",
+   "act": "Waiting for… holds only what the reader raised",
    "break": [
     [
      "web/things-rail.mjs",
@@ -1875,7 +1875,7 @@
   },
   {
    "item": 131,
-   "act": "\u201cJust this topic\u201d shows the topic's own things again after \u201cAll of this outcome\u201d",
+   "act": "“Just this topic” shows the topic's own things again after “All of this outcome”",
    "break": [
     [
      "web/things-rail.mjs",
@@ -1965,7 +1965,7 @@
   },
   {
    "item": 286,
-   "act": "At 390 a tap on a row in the outline's drawer lands on the page's heading, not on \u2630 Outcomes",
+   "act": "At 390 a tap on a row in the outline's drawer lands on the page's heading, not on ☰ Outcomes",
    "break": [
     [
      "web/in-place-navigation.mjs",
@@ -1980,7 +1980,7 @@
   },
   {
    "item": 286,
-   "act": "\u2190 from the heading a move landed on takes the keys to the outline, on the place being read, with its ring",
+   "act": "← from the heading a move landed on takes the keys to the outline, on the place being read, with its ring",
    "break": [
     [
      "web/panes.mjs",
@@ -1995,7 +1995,7 @@
   },
   {
    "item": 286,
-   "act": "\u2193 from the heading a move landed on lights a message, as on a fresh page",
+   "act": "↓ from the heading a move landed on lights a message, as on a fresh page",
    "break": [
     [
      "web/message-menu.mjs",
@@ -2025,7 +2025,7 @@
   },
   {
    "item": 295,
-   "act": "A release record shipping a piece's last work sets its topic Ready for review, \"Live in release N since \u2026\", never Done",
+   "act": "A release record shipping a piece's last work sets its topic Ready for review, \"Live in release N since …\", never Done",
    "break": [
     [
      "aim_next/pipeline.py",
@@ -2081,7 +2081,7 @@
   },
   {
    "item": 295,
-   "act": "\u2705 Done shows only on a topic Ready for review",
+   "act": "✅ Done shows only on a topic Ready for review",
    "break": [
     [
      "web/topic-header.mjs",
@@ -2095,7 +2095,7 @@
   },
   {
    "item": 295,
-   "act": "\u2705 Done marks the topic Done, as the Done chip does",
+   "act": "✅ Done marks the topic Done, as the Done chip does",
    "break": [
     [
      "web/topic-state.mjs",
@@ -2109,7 +2109,7 @@
   },
   {
    "item": 295,
-   "act": "A refused \u2705 Done opens Topic settings to say so",
+   "act": "A refused ✅ Done opens Topic settings to say so",
    "break": [
     [
      "web/topic-state.mjs",
@@ -2123,7 +2123,7 @@
   },
   {
    "item": 295,
-   "act": "A click on \u2705 Done marks the topic Done, it lands in the outline's Done group and the button goes",
+   "act": "A click on ✅ Done marks the topic Done, it lands in the outline's Done group and the button goes",
    "break": [
     [
      "web/app.mjs",
@@ -2133,12 +2133,12 @@
    ],
    "check": {
     "native": "header",
-    "case": "header a topic Ready for review shows \u2705 Done beside its state"
+    "case": "header a topic Ready for review shows ✅ Done beside its state"
    }
   },
   {
    "item": 295,
-   "act": "A reader Core does not let say where a topic stands sees no \u2705 Done",
+   "act": "A reader Core does not let say where a topic stands sees no ✅ Done",
    "break": [
     [
      "web/app.mjs",
@@ -2148,12 +2148,12 @@
    ],
    "check": {
     "native": "header",
-    "case": "header a reader who may not say where a topic stands sees Ready for review and no \u2705"
+    "case": "header a reader who may not say where a topic stands sees Ready for review and no ✅"
    }
   },
   {
    "item": 295,
-   "act": "After Return or Space on \u2705 Done the focus lands on the subtitle saying Done",
+   "act": "After Return or Space on ✅ Done the focus lands on the subtitle saying Done",
    "break": [
     [
      "web/topic-header.mjs",
@@ -2163,12 +2163,12 @@
    ],
    "check": {
     "native": "header",
-    "case": "header \u2705 Done is reached with Tab and pressed with Return or Space"
+    "case": "header ✅ Done is reached with Tab and pressed with Return or Space"
    }
   },
   {
    "item": 295,
-   "act": "\u2705 Done is big enough to tap",
+   "act": "✅ Done is big enough to tap",
    "break": [
     [
      "web/aim.css",
@@ -2178,7 +2178,7 @@
    ],
    "check": {
     "native": "header",
-    "case": "header a topic Ready for review shows \u2705 Done beside its state"
+    "case": "header a topic Ready for review shows ✅ Done beside its state"
    }
   },
   {
@@ -2213,7 +2213,7 @@
   },
   {
    "item": 289,
-   "act": "\u2192 on an open outcome in the outline moves the keys into the messages; on a folded one it opens it",
+   "act": "→ on an open outcome in the outline moves the keys into the messages; on a folded one it opens it",
    "break": [
     [
      "web/outline-rail.mjs",
@@ -2223,12 +2223,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail \u2192 on an open outcome goes into the messages"
+    "case": "rail → on an open outcome goes into the messages"
    }
   },
   {
    "item": 290,
-   "act": "\u2190 and \u2192 move along the header's buttons, and past either end on to the outline or the right rail",
+   "act": "← and → move along the header's buttons, and past either end on to the outline or the right rail",
    "break": [
     [
      "web/panes.mjs",
@@ -2238,12 +2238,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail \u2191 from the top message reaches the buttons at the top of the feed"
+    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
    }
   },
   {
    "item": 290,
-   "act": "\u2193 from the header's buttons selects the first visible card or stack, rather than a remembered reply",
+   "act": "↓ from the header's buttons selects the first visible card or stack, rather than a remembered reply",
    "break": [
     [
      "web/panes.mjs",
@@ -2258,7 +2258,7 @@
   },
   {
    "item": 291,
-   "act": "In the right rail \u2190 folds an open section, goes from a row to its section, and from a folded section back to the messages, without \u2318",
+   "act": "In the right rail ← folds an open section, goes from a row to its section, and from a folded section back to the messages, without ⌘",
    "break": [
     [
      "web/things-rail.mjs",
@@ -2268,12 +2268,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail in the right rail \u2192 and \u2190 open and fold a section without \u2318"
+    "case": "rail in the right rail → and ← open and fold a section without ⌘"
    }
   },
   {
    "item": 292,
-   "act": "\u2318Return means a new message in the panes, and nothing in writing",
+   "act": "⌘Return means a new message in the panes, and nothing in writing",
    "break": [
     [
      "web/pane-keys.mjs",
@@ -2287,7 +2287,7 @@
   },
   {
    "item": 292,
-   "act": "\u2318Return on the page, outside writing, opens its New message box with the cursor in it",
+   "act": "⌘Return on the page, outside writing, opens its New message box with the cursor in it",
    "break": [
     [
      "web/panes.mjs",
@@ -2297,12 +2297,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail \u2318Return starts a new message in the place the keys are on"
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
    }
   },
   {
    "item": 292,
-   "act": "\u2318Return on a topic's row in the outline opens that topic's New message box, the topic opened in place first",
+   "act": "⌘Return on a topic's row in the outline opens that topic's New message box, the topic opened in place first",
    "break": [
     [
      "web/outline-rail.mjs",
@@ -2312,12 +2312,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail \u2318Return starts a new message in the place the keys are on"
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
    }
   },
   {
    "item": 292,
-   "act": "\u2318Return on another place opens its New message box once its run is up",
+   "act": "⌘Return on another place opens its New message box once its run is up",
    "break": [
     [
      "web/in-place-navigation.mjs",
@@ -2327,12 +2327,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail \u2318Return starts a new message in the place the keys are on"
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
    }
   },
   {
    "item": 292,
-   "act": "\u2318Return in the right rail opens the page's New message box",
+   "act": "⌘Return in the right rail opens the page's New message box",
    "break": [
     [
      "web/things-rail.mjs",
@@ -2342,12 +2342,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail \u2318Return starts a new message in the place the keys are on"
+    "case": "rail ⌘Return starts a new message in the place the keys are on"
    }
   },
   {
    "item": 300,
-   "act": "The card being written shows where Tab or \u21e7Tab put it, at its new depth",
+   "act": "The card being written shows where Tab or ⇧Tab put it, at its new depth",
    "break": [
     [
      "web/deck-page.mjs",
@@ -2362,7 +2362,7 @@
   },
   {
    "item": 300,
-   "act": "Tab or \u21e7Tab on a new card not yet made changes where it will go, and it is made there",
+   "act": "Tab or ⇧Tab on a new card not yet made changes where it will go, and it is made there",
    "break": [
     [
      "web/deck-page.mjs",
@@ -2377,7 +2377,7 @@
   },
   {
    "item": 303,
-   "act": "\u2191 at the very start of a card being written finishes it, saved, and goes on writing the card above, the cursor at its end",
+   "act": "↑ at the very start of a card being written finishes it, saved, and goes on writing the card above, the cursor at its end",
    "break": [
     [
      "web/deck-page.mjs",
@@ -2387,12 +2387,12 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook while a card is written, \u2191 at its very start and \u2193 at its very end"
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
    }
   },
   {
    "item": 303,
-   "act": "\u2193 at the very end of a card being written finishes it and goes on writing the card below, the cursor at its start",
+   "act": "↓ at the very end of a card being written finishes it and goes on writing the card below, the cursor at its start",
    "break": [
     [
      "web/deck-page.mjs",
@@ -2402,12 +2402,12 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook while a card is written, \u2191 at its very start and \u2193 at its very end"
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
    }
   },
   {
    "item": 303,
-   "act": "\u2191 and \u2193 from a card being written go on to the card that shows, past cards folded away",
+   "act": "↑ and ↓ from a card being written go on to the card that shows, past cards folded away",
    "break": [
     [
      "web/deck-page.mjs",
@@ -2417,7 +2417,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook while a card is written, \u2191 at its very start and \u2193 at its very end"
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
    }
   },
   {
@@ -2452,7 +2452,7 @@
   },
   {
    "item": 276,
-   "act": "\u21e7\u2318\u2192 opens every outcome and \u21e7\u2318\u2190 folds every one, from anywhere in the outline",
+   "act": "⇧⌘→ opens every outcome and ⇧⌘← folds every one, from anywhere in the outline",
    "break": [
     [
      "web/pane-keys.mjs",
@@ -2497,7 +2497,7 @@
   },
   {
    "item": 283,
-   "act": "\u2318Z puts a rename back",
+   "act": "⌘Z puts a rename back",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -2527,7 +2527,7 @@
   },
   {
    "item": 283,
-   "act": "\u22ef Star for me records a star in Core",
+   "act": "⋯ Star for me records a star in Core",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -2537,7 +2537,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u22ef Star is the reader's own"
+    "case": "stacks ⋯ Star is the reader's own"
    }
   },
   {
@@ -2552,12 +2552,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u22ef Star is the reader's own"
+    "case": "stacks ⋯ Star is the reader's own"
    }
   },
   {
    "item": 283,
-   "act": "\u2318\u2191 and \u2318\u2193 move a stack in the reader's own order",
+   "act": "⌘↑ and ⌘↓ move a stack in the reader's own order",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -2567,7 +2567,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u2318\u2191 \u2318\u2193 move a stack"
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
    }
   },
   {
@@ -2582,7 +2582,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u2318\u2191 \u2318\u2193 move a stack"
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
    }
   },
   {
@@ -2597,12 +2597,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u2318\u2191 \u2318\u2193 move a stack"
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
    }
   },
   {
    "item": 283,
-   "act": "\u2318Z puts a move back",
+   "act": "⌘Z puts a move back",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -2612,7 +2612,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u2318\u2191 \u2318\u2193 move a stack"
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
    }
   },
   {
@@ -2627,12 +2627,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u2318\u2191 \u2318\u2193 move a stack"
+    "case": "stacks ⌘↑ ⌘↓ move a stack"
    }
   },
   {
    "item": 283,
-   "act": "\u21e7\u2318\u2191 joins a stack to the one above, for everyone",
+   "act": "⇧⌘↑ joins a stack to the one above, for everyone",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -2642,7 +2642,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u21e7\u2318\u2191 joins a stack"
+    "case": "stacks ⇧⌘↑ joins a stack"
    }
   },
   {
@@ -2657,7 +2657,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u21e7\u2318\u2191 joins a stack"
+    "case": "stacks ⇧⌘↑ joins a stack"
    }
   },
   {
@@ -2672,7 +2672,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u21e7\u2318\u2191 joins a stack"
+    "case": "stacks ⇧⌘↑ joins a stack"
    }
   },
   {
@@ -2744,22 +2744,22 @@
   },
   {
    "item": 283,
-   "act": "On a phone \u22ef keeps the stack's moves behind Move or join\u2026",
+   "act": "On a phone ⋯ keeps the stack's moves behind Move or join…",
    "break": [
     [
      "web/stack-feed.mjs",
-     "    return { first: items, last: phone ? [{ label: 'Move or join\u2026', act: () => more(moves) }] : moves };",
+     "    return { first: items, last: phone ? [{ label: 'Move or join…', act: () => more(moves) }] : moves };",
      "    return { first: items, last: moves };"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "stacks on a phone \u22ef opens the acts as a sheet"
+    "case": "stacks on a phone ⋯ opens the acts as a sheet"
    }
   },
   {
    "item": 283,
-   "act": "The Reader's \u2191 and \u2193 follow the page, down a stack and on to the stack below",
+   "act": "The Reader's ↑ and ↓ follow the page, down a stack and on to the stack below",
    "break": [
     [
      "web/app.mjs",
@@ -2769,12 +2769,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks the Reader's \u2191 and \u2193"
+    "case": "stacks the Reader's ↑ and ↓"
    }
   },
   {
    "item": 283,
-   "act": "On a phone the Reader's message ends with \u2191 Previous \u00b7 \u2193 Next",
+   "act": "On a phone the Reader's message ends with ↑ Previous · ↓ Next",
    "break": [
     [
      "web/reader.mjs",
@@ -2784,7 +2784,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks the Reader's \u2191 and \u2193"
+    "case": "stacks the Reader's ↑ and ↓"
    }
   },
   {
@@ -3136,7 +3136,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks \u21e7\u2318\u2191 joins a stack"
+    "case": "stacks ⇧⌘↑ joins a stack"
    }
   },
   {
@@ -3246,7 +3246,7 @@
   },
   {
    "item": 283,
-   "act": "A context menu opened by a press (\u2303 and a press on a Mac) ends it",
+   "act": "A context menu opened by a press (⌃ and a press on a Mac) ends it",
    "break": [
     [
      "web/press-hold.mjs",
@@ -3350,7 +3350,7 @@
   },
   {
    "item": 283,
-   "act": "\u2191 onto a stack's head from below brings its tab into view with it, the head shown as one row or whole",
+   "act": "↑ onto a stack's head from below brings its tab into view with it, the head shown as one row or whole",
    "break": [
     [
      "web/stack-look.css",
@@ -3360,12 +3360,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks \u2191 onto a stack's head from a reply at the top of the window"
+    "case": "reading stacks ↑ onto a stack's head from a reply at the top of the window"
    }
   },
   {
    "item": 300,
-   "act": "While a card is written, Tab puts it under the card above and \u21e7Tab takes it out, saved at once, keeping what is written and the cursor",
+   "act": "While a card is written, Tab puts it under the card above and ⇧Tab takes it out, saved at once, keeping what is written and the cursor",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3380,7 +3380,7 @@
   },
   {
    "item": 311,
-   "act": "\u2193 from a card cleared of all its text goes on past the children that go with it, into the card after them",
+   "act": "↓ from a card cleared of all its text goes on past the children that go with it, into the card after them",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3390,12 +3390,12 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook while a card is written, \u2191 at its very start and \u2193 at its very end"
+    "case": "notebook while a card is written, ↑ at its very start and ↓ at its very end"
    }
   },
   {
    "item": 311,
-   "act": "\u21e7Tab on a new card begun among siblings takes it out after all its parent's children, so the siblings after it stay where they were",
+   "act": "⇧Tab on a new card begun among siblings takes it out after all its parent's children, so the siblings after it stay where they were",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3410,7 +3410,7 @@
   },
   {
    "item": 311,
-   "act": "Keys an input method composes with stay its own while a card is written: \u2191, \u2193, Tab and Escape move, save and finish nothing",
+   "act": "Keys an input method composes with stay its own while a card is written: ↑, ↓, Tab and Escape move, save and finish nothing",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3440,7 +3440,7 @@
   },
   {
    "item": 315,
-   "act": "\u2192 on a card with none of its children folded away gives the focus to its speech bubble, and \u2190 gives it back",
+   "act": "→ on a card with none of its children folded away gives the focus to its speech bubble, and ← gives it back",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3450,12 +3450,12 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook on the cards page, \u2192 gives a card's speech bubble the focus"
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
    }
   },
   {
    "item": 315,
-   "act": "\u2318\u2192 on a card whose children show still goes down to the first of them",
+   "act": "⌘→ on a card whose children show still goes down to the first of them",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3465,12 +3465,12 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook on the cards page, \u2192 gives a card's speech bubble the focus"
+    "case": "notebook on the cards page, → gives a card's speech bubble the focus"
    }
   },
   {
    "item": 313,
-   "act": "\u2318\u2191 and \u2318\u2193 while a card is written move it past the card beside it, saved at once, keeping what is written and the cursor",
+   "act": "⌘↑ and ⌘↓ while a card is written move it past the card beside it, saved at once, keeping what is written and the cursor",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3485,7 +3485,7 @@
   },
   {
    "item": 313,
-   "act": "\u2318\u2191 and \u2318\u2193 on a new card not yet made change where it will go, and it is made there",
+   "act": "⌘↑ and ⌘↓ on a new card not yet made change where it will go, and it is made there",
    "break": [
     [
      "web/deck.mjs",
@@ -3500,7 +3500,7 @@
   },
   {
    "item": 314,
-   "act": "\u2325\u2191 and \u2325\u2193 while a card is written move the line the cursor is on, as in the composer",
+   "act": "⌥↑ and ⌥↓ while a card is written move the line the cursor is on, as in the composer",
    "break": [
     [
      "web/deck-page.mjs",
@@ -3515,7 +3515,7 @@
   },
   {
    "item": 314,
-   "act": "A card being written has the composer's other writing keys, \u2303U deleting back to the start of the line",
+   "act": "A card being written has the composer's other writing keys, ⌃U deleting back to the start of the line",
    "break": [
     [
      "web/writing-input.mjs",
@@ -3770,7 +3770,7 @@
   },
   {
    "item": 325,
-   "act": "\u2318C on a lit message with no words selected copies its words as written",
+   "act": "⌘C on a lit message with no words selected copies its words as written",
    "break": [
     [
      "web/message-menu.mjs",
@@ -3780,12 +3780,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2318C with nothing selected"
+    "case": "⌘C with nothing selected"
    }
   },
   {
    "item": 325,
-   "act": "\u2318C copies a cut-off message whole, not its excerpt",
+   "act": "⌘C copies a cut-off message whole, not its excerpt",
    "break": [
     [
      "web/app.mjs",
@@ -3795,12 +3795,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2318C with nothing selected"
+    "case": "⌘C with nothing selected"
    }
   },
   {
    "item": 325,
-   "act": "With words selected, \u2318C is the browser's copy, not the lit message",
+   "act": "With words selected, ⌘C is the browser's copy, not the lit message",
    "break": [
     [
      "web/message-menu.mjs",
@@ -3810,12 +3810,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2318C with nothing selected"
+    "case": "⌘C with nothing selected"
    }
   },
   {
    "item": 325,
-   "act": "In writing, \u2318C is the writing's, with a message lit",
+   "act": "In writing, ⌘C is the writing's, with a message lit",
    "break": [
     [
      "web/message-menu.mjs",
@@ -3825,12 +3825,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2318C with nothing selected"
+    "case": "⌘C with nothing selected"
    }
   },
   {
    "item": 325,
-   "act": "With no message lit, \u2318C does nothing of the page's",
+   "act": "With no message lit, ⌘C does nothing of the page's",
    "break": [
     [
      "web/message-menu.mjs",
@@ -3840,12 +3840,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2318C with nothing selected"
+    "case": "⌘C with nothing selected"
    }
   },
   {
    "item": 325,
-   "act": "The copy key is \u2318C on a Mac and Ctrl-C elsewhere",
+   "act": "The copy key is ⌘C on a Mac and Ctrl-C elsewhere",
    "break": [
     [
      "web/writing-input.mjs",
@@ -3859,7 +3859,7 @@
   },
   {
    "item": 325,
-   "act": "The guide lists \u2318C",
+   "act": "The guide lists ⌘C",
    "break": [
     [
      "web/interaction-guide.mjs",
@@ -3874,7 +3874,7 @@
   },
   {
    "item": 326,
-   "act": "A \ud83d\udc4d given in the Reader closes it once Core holds it, on the quiet line or writing, keeping what the reply holds",
+   "act": "A 👍 given in the Reader closes it once Core holds it, on the quiet line or writing, keeping what the reply holds",
    "break": [
     [
      "web/app.mjs",
@@ -3889,7 +3889,7 @@
   },
   {
    "item": 326,
-   "act": "A \ud83d\udc4d Core refuses leaves the Reader and its reply open",
+   "act": "A 👍 Core refuses leaves the Reader and its reply open",
    "break": [
     [
      "web/app.mjs",
@@ -3904,7 +3904,7 @@
   },
   {
    "item": 326,
-   "act": "Taking a \ud83d\udc4d back in the Reader leaves it open",
+   "act": "Taking a 👍 back in the Reader leaves it open",
    "break": [
     [
      "web/app.mjs",
@@ -3919,7 +3919,7 @@
   },
   {
    "item": 326,
-   "act": "A \ud83d\udc4d on the quiet line of a Reader opened by a click closes it, as one given while writing does",
+   "act": "A 👍 on the quiet line of a Reader opened by a click closes it, as one given while writing does",
    "break": [
     [
      "web/app.mjs",
@@ -3953,7 +3953,7 @@
   },
   {
    "item": 327,
-   "act": "A \ud83d\udc4d reads its card at once, here and on another page, and a reload keeps it",
+   "act": "A 👍 reads its card at once, here and on another page, and a reload keeps it",
    "break": [
     [
      "web/card-reading.mjs",
@@ -3968,7 +3968,7 @@
   },
   {
    "item": 327,
-   "act": "Taking a \ud83d\udc4d back leaves its message read",
+   "act": "Taking a 👍 back leaves its message read",
    "break": [
     [
      "web/card-reading.mjs",
@@ -3998,7 +3998,7 @@
   },
   {
    "item": 327,
-   "act": "A \ud83d\udc4d that read its message places the New line afresh, as Mark read does",
+   "act": "A 👍 that read its message places the New line afresh, as Mark read does",
    "break": [
     [
      "web/app.mjs",
@@ -4013,7 +4013,7 @@
   },
   {
    "item": 327,
-   "act": "A \ud83d\udc4d that read nothing moves no New line",
+   "act": "A 👍 that read nothing moves no New line",
    "break": [
     [
      "web/app.mjs",
@@ -4028,7 +4028,7 @@
   },
   {
    "item": 327,
-   "act": "A \ud83d\udc4d given or an answer clears the person's mark on its message, in Core",
+   "act": "A 👍 given or an answer clears the person's mark on its message, in Core",
    "break": [
     [
      "aim_next/reactions.py",
@@ -4042,7 +4042,7 @@
   },
   {
    "item": 327,
-   "act": "A \ud83d\udc4d taken back clears no mark",
+   "act": "A 👍 taken back clears no mark",
    "break": [
     [
      "aim_next/reactions.py",
@@ -4056,7 +4056,7 @@
   },
   {
    "item": 327,
-   "act": "A \ud83d\udc4d that cleared a mark says it read the message",
+   "act": "A 👍 that cleared a mark says it read the message",
    "break": [
     [
      "aim_next/reactions.py",
@@ -4070,7 +4070,7 @@
   },
   {
    "item": 327,
-   "act": "A \ud83d\udc4d on a card marked unread reads it at once, here and on another page, and a reload keeps it",
+   "act": "A 👍 on a card marked unread reads it at once, here and on another page, and a reload keeps it",
    "break": [
     [
      "aim_next/reactions.py",
@@ -4085,7 +4085,7 @@
   },
   {
    "item": 327,
-   "act": "The page learns the mark a \ud83d\udc4d or an answer cleared before it paints the card",
+   "act": "The page learns the mark a 👍 or an answer cleared before it paints the card",
    "break": [
     [
      "web/reactions.mjs",
@@ -4599,7 +4599,7 @@
   },
   {
    "item": 354,
-   "act": "Right after \u21e7\u2318\u2191, \u21e7\u2318\u2193, \u22ef or the phone's sheet joins a stack, the page shows the stack it went into open, with the joined messages and their join line in the window",
+   "act": "Right after ⇧⌘↑, ⇧⌘↓, ⋯ or the phone's sheet joins a stack, the page shows the stack it went into open, with the joined messages and their join line in the window",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -4644,7 +4644,7 @@
   },
   {
    "item": 354,
-   "act": "After a join the page scrolls to the join line above the acted message where it has gone out of the window: from A's last reply at the window's top, or wholly above it, \u21e7\u2318\u2191 shows A's join line",
+   "act": "After a join the page scrolls to the join line above the acted message where it has gone out of the window: from A's last reply at the window's top, or wholly above it, ⇧⌘↑ shows A's join line",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -4659,7 +4659,7 @@
   },
   {
    "item": 354,
-   "act": "After a join the page scrolls the acted message into view where it is out of the window: from A's last reply below the window, or D's reply that \u21e7\u2318\u2193 carries below it, the page scrolls down just until it shows",
+   "act": "After a join the page scrolls the acted message into view where it is out of the window: from A's last reply below the window, or D's reply that ⇧⌘↓ carries below it, the page scrolls down just until it shows",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -4674,7 +4674,7 @@
   },
   {
    "item": 354,
-   "act": "\u2318Z after a join puts back how far the stack it went into was folded",
+   "act": "⌘Z after a join puts back how far the stack it went into was folded",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -4984,7 +4984,7 @@
   },
   {
    "item": 281,
-   "act": "A whispered reply to whoever asked answers a conversation ask, so taking a \ud83d\udc4d back puts nothing back",
+   "act": "A whispered reply to whoever asked answers a conversation ask, so taking a 👍 back puts nothing back",
    "break": [
     [
      "aim_next/reactions.py",
@@ -5148,7 +5148,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "\u2191 and \u2193 move the light"
+    "case": "↑ and ↓ move the light"
    }
   },
   {
@@ -5295,7 +5295,7 @@
   },
   {
    "item": 356,
-   "act": "\u22ef Fold in a fully open stack records the fold in Core, and the row shows at once",
+   "act": "⋯ Fold in a fully open stack records the fold in Core, and the row shows at once",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -5325,7 +5325,7 @@
   },
   {
    "item": 356,
-   "act": "\u2318Z undoes the fold just made",
+   "act": "⌘Z undoes the fold just made",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -6502,7 +6502,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "at the bottom of a long topic, \u2193 never opens the unloaded first message of a dossier the page holds below a closed More"
+    "case": "at the bottom of a long topic, ↓ never opens the unloaded first message of a dossier the page holds below a closed More"
    }
   },
   {
@@ -6517,7 +6517,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "at the bottom of a long topic, \u2193 never opens an unloaded message Core holds below a closed More"
+    "case": "at the bottom of a long topic, ↓ never opens an unloaded message Core holds below a closed More"
    }
   },
   {
@@ -6532,12 +6532,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "at the bottom of a long topic, \u2193 never opens an unloaded message Core holds below a closed More"
+    "case": "at the bottom of a long topic, ↓ never opens an unloaded message Core holds below a closed More"
    }
   },
   {
    "item": 355,
-   "act": "Under Only new the Reader's \u2193 steps along the New items it draws, one put below More included",
+   "act": "Under Only new the Reader's ↓ steps along the New items it draws, one put below More included",
    "break": [
     [
      "web/app.mjs",
@@ -6547,7 +6547,7 @@
    ],
    "check": {
     "native": "conversation",
-    "case": "Only new: the keys and the Reader's \u2193 reach a New item put below More"
+    "case": "Only new: the keys and the Reader's ↓ reach a New item put below More"
    }
   },
   {
@@ -6567,12 +6567,12 @@
    ],
    "check": {
     "native": "conversation",
-    "case": "Only new: the keys and the Reader's \u2193 reach a New item put below More"
+    "case": "Only new: the keys and the Reader's ↓ reach a New item put below More"
    }
   },
   {
    "item": 355,
-   "act": "The Reader's \u2191 and \u2193 step over a dossier below a closed More to the message shown beside it, and reach it below More once More is open",
+   "act": "The Reader's ↑ and ↓ step over a dossier below a closed More to the message shown beside it, and reach it below More once More is open",
    "break": [
     [
      "web/reply-stacks.mjs",
@@ -6582,7 +6582,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "shown order: the Reader's \u2191 and \u2193 step over a dossier below More"
+    "case": "shown order: the Reader's ↑ and ↓ step over a dossier below More"
    }
   },
   {
@@ -6601,7 +6601,7 @@
   },
   {
    "item": 355,
-   "act": "With Show agent coordination off, a join and the Reader's \u2191 step over the hidden agent coordination to the stack shown",
+   "act": "With Show agent coordination off, a join and the Reader's ↑ step over the hidden agent coordination to the stack shown",
    "break": [
     [
      "web/reply-stacks.mjs",
@@ -6659,7 +6659,7 @@
   },
   {
    "item": 355,
-   "act": "While the Reader is open, each redraw of the page's stacks works its \u2191 and \u2193 out again, so another device's move changes what they offer at once",
+   "act": "While the Reader is open, each redraw of the page's stacks works its ↑ and ↓ out again, so another device's move changes what they offer at once",
    "break": [
     [
      "web/app.mjs",
@@ -6853,7 +6853,7 @@
   },
   {
    "item": 355,
-   "act": "\u2191 and \u2193 from More, where Move below More leaves the keys, go to the card drawn just above it and to nothing below a closed More",
+   "act": "↑ and ↓ from More, where Move below More leaves the keys, go to the card drawn just above it and to nothing below a closed More",
    "break": [
     [
      "web/message-menu.mjs",
@@ -6868,7 +6868,7 @@
   },
   {
    "item": 355,
-   "act": "\u2192 on a reply of a dossier a link drew where it sits, though put below a closed More, keeps the dossier drawn there and the keys on it",
+   "act": "→ on a reply of a dossier a link drew where it sits, though put below a closed More, keeps the dossier drawn there and the keys on it",
    "break": [
     [
      "web/reply-stacks.mjs",
@@ -6878,12 +6878,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks below More: \u2192 on a reply of a dossier put below a closed More"
+    "case": "reading stacks below More: → on a reply of a dossier put below a closed More"
    }
   },
   {
    "item": 355,
-   "act": "\u22ef Fold on the reply a link drew in a dossier put below a closed More folds it where it is drawn, the keys on it",
+   "act": "⋯ Fold on the reply a link drew in a dossier put below a closed More folds it where it is drawn, the keys on it",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -6893,7 +6893,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks below More: \u22ef Fold on the reply a link drew"
+    "case": "reading stacks below More: ⋯ Fold on the reply a link drew"
    }
   },
   {
@@ -6913,7 +6913,7 @@
   },
   {
    "item": 355,
-   "act": "A dossier a link drew where it sits stays drawn there through \u2192, \u22ef Fold and the page reading the topic again, while nothing moves it",
+   "act": "A dossier a link drew where it sits stays drawn there through →, ⋯ Fold and the page reading the topic again, while nothing moves it",
    "break": [
     [
      "web/stack-order.mjs",
@@ -6923,7 +6923,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stays drawn there through \u2192, \u22ef Fold and the page reading the topic again"
+    "case": "stays drawn there through →, ⋯ Fold and the page reading the topic again"
    }
   },
   {
@@ -6995,7 +6995,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "one-row head keeps the ask lit with its \u2705 bar"
+    "case": "one-row head keeps the ask lit with its ✅ bar"
    }
   },
   {
@@ -7043,7 +7043,7 @@
   },
   {
    "item": 379,
-   "act": "\u2191 and \u2193 bring the lit message fully into view, scrolling the least that leaves a tenth of the window beyond the edge it came in at; one already a tenth inside stays",
+   "act": "↑ and ↓ bring the lit message fully into view, scrolling the least that leaves a tenth of the window beyond the edge it came in at; one already a tenth inside stays",
    "break": [
     [
      "web/message-menu.mjs",
@@ -7053,7 +7053,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading \u2193 and \u2191 down a long feed"
+    "case": "reading ↓ and ↑ down a long feed"
    }
   },
   {
@@ -7153,7 +7153,7 @@
   },
   {
    "item": 379,
-   "act": "On the cards page, \u2191 and \u2193 bring the picked card into view with a tenth of the window beyond it",
+   "act": "On the cards page, ↑ and ↓ bring the picked card into view with a tenth of the window beyond it",
    "break": [
     [
      "web/deck-page.mjs",
@@ -7168,7 +7168,7 @@
   },
   {
    "item": 379,
-   "act": "On the cards page, every key that moves the picked card or leaves it picked (\u2318\u2191 \u2318\u2193, \u21e7\u2318\u2191 \u21e7\u2318\u2193, Tab and \u21e7Tab, \u2318\u232b, \u2318Z, Escape) brings it into view by the same rule",
+   "act": "On the cards page, every key that moves the picked card or leaves it picked (⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓, Tab and ⇧Tab, ⌘⌫, ⌘Z, Escape) brings it into view by the same rule",
    "break": [
     [
      "web/deck-page.mjs",
@@ -7183,7 +7183,7 @@
   },
   {
    "item": 379,
-   "act": "On the cards page, a card being written that \u2318\u2191 or \u2318\u2193 moves comes into view by the same rule",
+   "act": "On the cards page, a card being written that ⌘↑ or ⌘↓ moves comes into view by the same rule",
    "break": [
     [
      "web/deck-page.mjs",
@@ -7213,7 +7213,7 @@
   },
   {
    "item": 379,
-   "act": "\u2193 and \u2191 along a rail's rows bring each row into view with a tenth of the rail beyond it; one already a tenth inside stays",
+   "act": "↓ and ↑ along a rail's rows bring each row into view with a tenth of the rail beyond it; one already a tenth inside stays",
    "break": [
     [
      "web/key-tree.mjs",
@@ -7228,7 +7228,7 @@
   },
   {
    "item": 379,
-   "act": "\u2190 back to the outline brings the row the keys land on into view by the same rule",
+   "act": "← back to the outline brings the row the keys land on into view by the same rule",
    "break": [
     [
      "web/key-tree.mjs",
@@ -7243,7 +7243,7 @@
   },
   {
    "item": 379,
-   "act": "\u2191 onto the header's buttons, and \u2190 and \u2192 along them, bring the button into view by the same rule",
+   "act": "↑ onto the header's buttons, and ← and → along them, bring the button into view by the same rule",
    "break": [
     [
      "web/panes.mjs",
@@ -7258,7 +7258,7 @@
   },
   {
    "item": 379,
-   "act": "\u2192 from the outline, or \u2193 from the header's buttons, back into the messages brings the message into view by the same rule",
+   "act": "→ from the outline, or ↓ from the header's buttons, back into the messages brings the message into view by the same rule",
    "break": [
     [
      "web/panes.mjs",
@@ -7288,7 +7288,7 @@
   },
   {
    "item": 379,
-   "act": "\u2193 and \u2191 in the #img list bring the image chosen into view with a tenth of the list beyond it",
+   "act": "↓ and ↑ in the #img list bring the image chosen into view with a tenth of the list beyond it",
    "break": [
     [
      "web/image-pick.mjs",
@@ -7298,12 +7298,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading #img: \u2193 and \u2191 through a long list"
+    "case": "reading #img: ↓ and ↑ through a long list"
    }
   },
   {
    "item": 379,
-   "act": "On the cards page, a card a key opens for writing (Return, \u2318Return, or \u2191 \u2193 at a written card's edge) comes into view by the same rule, once its box has the height it keeps",
+   "act": "On the cards page, a card a key opens for writing (Return, ⌘Return, or ↑ ↓ at a written card's edge) comes into view by the same rule, once its box has the height it keeps",
    "break": [
     [
      "web/deck-page.mjs",
@@ -7457,7 +7457,7 @@
    "break": [
     [
      "web/notebook-sheet.mjs",
-     "this.backButton.textContent = `\u2190 ${title}`;",
+     "this.backButton.textContent = `← ${title}`;",
      "this.backButton.textContent = '';"
     ]
    ],
@@ -7558,7 +7558,7 @@
   },
   {
    "item": 396,
-   "act": "\u2190 at the very start of a card being written folds away its children",
+   "act": "← at the very start of a card being written folds away its children",
    "break": [
     [
      "web/deck-page.mjs",
@@ -7568,12 +7568,12 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "\u2190 at its very start folds"
+    "case": "← at its very start folds"
    }
   },
   {
    "item": 396,
-   "act": "\u2318Return while a card is written goes on to a new card below it",
+   "act": "⌘Return while a card is written goes on to a new card below it",
    "break": [
     [
      "web/deck-page.mjs",
@@ -7583,12 +7583,12 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "\u2190 at its very start folds"
+    "case": "← at its very start folds"
    }
   },
   {
    "item": 396,
-   "act": "A page opened from the keys right after \u2715 stays open, the sheet put away as it closed",
+   "act": "A page opened from the keys right after ✕ stays open, the sheet put away as it closed",
    "break": [
     [
      "web/notebook-sheet.mjs",
@@ -7783,7 +7783,7 @@
   },
   {
    "item": 396,
-   "act": "The Reader's \u22ef Edit page opens the page as it stands in the sheet, in the Reader's place",
+   "act": "The Reader's ⋯ Edit page opens the page as it stands in the sheet, in the Reader's place",
    "break": [
     [
      "web/app.mjs",
@@ -7798,7 +7798,7 @@
   },
   {
    "item": 114,
-   "act": "Tab from the lit message goes to its bar's buttons, \u22ef last",
+   "act": "Tab from the lit message goes to its bar's buttons, ⋯ last",
    "break": [
     [
      "web/message-menu.mjs",
@@ -7808,7 +7808,7 @@
    ],
    "check": {
     "native": "header",
-    "case": "header Tab reaches a message's \u22ef"
+    "case": "header Tab reaches a message's ⋯"
    }
   },
   {
@@ -7892,7 +7892,7 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` \u00b7 ${head.fresh} new`));",
+     "  if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));",
      ""
     ]
    ],
@@ -8192,7 +8192,7 @@
   },
   {
    "item": 390,
-   "act": "A folded message's row carries its \ud83d\udc4d",
+   "act": "A folded message's row carries its 👍",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -8202,12 +8202,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a folded message's row carries its \ud83d\udc4d"
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   },
   {
    "item": 390,
-   "act": "The row's \ud83d\udc4d shows pressed once the person gave it",
+   "act": "The row's 👍 shows pressed once the person gave it",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -8217,12 +8217,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a folded message's row carries its \ud83d\udc4d"
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   },
   {
    "item": 390,
-   "act": "A press on the row's \ud83d\udc4d gives the thumbs-up without unfolding the message",
+   "act": "A press on the row's 👍 gives the thumbs-up without unfolding the message",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -8232,12 +8232,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a folded message's row carries its \ud83d\udc4d"
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   },
   {
    "item": 390,
-   "act": "The row's \ud83d\udc4d is 44px each way on a phone",
+   "act": "The row's 👍 is 44px each way on a phone",
    "break": [
     [
      "web/stack-look.css",
@@ -8247,12 +8247,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a folded message's row carries its \ud83d\udc4d"
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   },
   {
    "item": 390,
-   "act": "Tab from a selected folded row reaches its \ud83d\udc4d",
+   "act": "Tab from a selected folded row reaches its 👍",
    "break": [
     [
      "web/message-menu.mjs",
@@ -8262,7 +8262,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a folded message's row carries its \ud83d\udc4d"
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   },
   {
@@ -8296,7 +8296,7 @@
   },
   {
    "item": 394,
-   "act": "The chevron, the header, \u2192 \u2190 and \u22ef switch between the two states, never to the header alone",
+   "act": "The chevron, the header, → ← and ⋯ switch between the two states, never to the header alone",
    "break": [
     [
      "web/stack-order.mjs",
@@ -8311,7 +8311,7 @@
   },
   {
    "item": 394,
-   "act": "\u22ef offers only the stack step there is from where the stack stands",
+   "act": "⋯ offers only the stack step there is from where the stack stands",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -8355,7 +8355,7 @@
   },
   {
    "item": 390,
-   "act": "A lit folded row's bar sits clear of its \ud83d\udc4d, so the \ud83d\udc4d can be pressed",
+   "act": "A lit folded row's bar sits clear of its 👍, so the 👍 can be pressed",
    "break": [
     [
      "web/message-menu.mjs",
@@ -8365,7 +8365,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a folded message's row carries its \ud83d\udc4d"
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   },
   {
@@ -8430,7 +8430,7 @@
   },
   {
    "item": 376,
-   "act": "The Reader's \u22ef offers Fold message, which folds it for the reader alone",
+   "act": "The Reader's ⋯ offers Fold message, which folds it for the reader alone",
    "break": [
     [
      "web/app.mjs",
@@ -8445,7 +8445,7 @@
   },
   {
    "item": 376,
-   "act": "The Reader's \u22ef offers no Fold on a starred message",
+   "act": "The Reader's ⋯ offers no Fold on a starred message",
    "break": [
     [
      "web/app.mjs",
@@ -8460,7 +8460,7 @@
   },
   {
    "item": 376,
-   "act": "The Reader's \u22ef offers Unfold message on a folded message",
+   "act": "The Reader's ⋯ offers Unfold message on a folded message",
    "break": [
     [
      "web/app.mjs",
@@ -8713,7 +8713,7 @@
   },
   {
    "item": 376,
-   "act": "Only a message's card names it (data-id): the \ud83d\udc4d on its folded row names no message of its own",
+   "act": "Only a message's card names it (data-id): the 👍 on its folded row names no message of its own",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -8723,7 +8723,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a folded message's row carries its \ud83d\udc4d"
+    "case": "reading stacks a folded message's row carries its 👍"
    }
   },
   {
@@ -8970,7 +8970,7 @@
   },
   {
    "item": 371,
-   "act": "The Reader's \u22ef offers Edit page only to someone Core lets write the page",
+   "act": "The Reader's ⋯ offers Edit page only to someone Core lets write the page",
    "break": [
     [
      "web/app.mjs",
@@ -9131,7 +9131,7 @@
    "break": [
     [
      "web/reader.mjs",
-     "${source.draft === true ? ' \u00b7 draft' : ''}",
+     "${source.draft === true ? ' · draft' : ''}",
      ""
     ]
    ],
@@ -9175,7 +9175,7 @@
    "break": [
     [
      "web/page-here.mjs",
-     "${source.draft === true ? ' \u00b7 draft' : ''}",
+     "${source.draft === true ? ' · draft' : ''}",
      ""
     ]
    ],
@@ -9326,7 +9326,7 @@
   },
   {
    "item": 290,
-   "act": "\u2191 on the message at the top of the feed moves the keys onto the row of buttons just above it (the header's, with no filter shown), with a ring",
+   "act": "↑ on the message at the top of the feed moves the keys onto the row of buttons just above it (the header's, with no filter shown), with a ring",
    "break": [
     [
      "web/panes.mjs",
@@ -9336,12 +9336,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail \u2191 from the top message reaches the buttons at the top of the feed"
+    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
    }
   },
   {
    "item": 403,
-   "act": "Show agent coordination, in the row of filters over the feed, is one of the buttons at the top of the feed: \u2193 from it goes on to the first dossier or message shown, on or off, and \u2191 from there comes back to it",
+   "act": "Show agent coordination, in the row of filters over the feed, is one of the buttons at the top of the feed: ↓ from it goes on to the first dossier or message shown, on or off, and ↑ from there comes back to it",
    "break": [
     [
      "web/panes.mjs",
@@ -9356,7 +9356,7 @@
   },
   {
    "item": 403,
-   "act": "Only new, in the row of filters over a Conversation's feed, is one of the buttons at the top of the feed: \u2193 from it goes on to the first message shown, on or off, and \u2191 from there comes back to it",
+   "act": "Only new, in the row of filters over a Conversation's feed, is one of the buttons at the top of the feed: ↓ from it goes on to the first message shown, on or off, and ↑ from there comes back to it",
    "break": [
     [
      "web/panes.mjs",
@@ -9371,7 +9371,7 @@
   },
   {
    "item": 403,
-   "act": "\u2191 from the row of filters goes on up to the header's buttons, at the one the keys were last on there, so the keys never stay on a filter going up",
+   "act": "↑ from the row of filters goes on up to the header's buttons, at the one the keys were last on there, so the keys never stay on a filter going up",
    "break": [
     [
      "web/panes.mjs",
@@ -9386,7 +9386,7 @@
   },
   {
    "item": 403,
-   "act": "\u2191 from Only new goes on up to the Conversation's header buttons, never staying on it",
+   "act": "↑ from Only new goes on up to the Conversation's header buttons, never staying on it",
    "break": [
     [
      "web/panes.mjs",
@@ -9401,7 +9401,7 @@
   },
   {
    "item": 403,
-   "act": "\u2193 from the header's buttons comes down to the row of filters when one shows, at the filter the keys were last on there",
+   "act": "↓ from the header's buttons comes down to the row of filters when one shows, at the filter the keys were last on there",
    "break": [
     [
      "web/panes.mjs",
@@ -9431,7 +9431,7 @@
   },
   {
    "item": 403,
-   "act": "\u2190 and \u2192 move along the row of filters, and past its ends on to the outline and the right rail; the header's buttons end at their own row, so \u2192 from New message goes to the right rail, not on to a filter",
+   "act": "← and → move along the row of filters, and past its ends on to the outline and the right rail; the header's buttons end at their own row, so → from New message goes to the right rail, not on to a filter",
    "break": [
     [
      "web/panes.mjs",
@@ -9441,12 +9441,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading coordination \u2190 and \u2192 move along the filters' row"
+    "case": "reading coordination ← and → move along the filters' row"
    }
   },
   {
    "item": 403,
-   "act": "\u2192 past the last of the row of filters, Show agent coordination, goes on to the right rail where it takes the keys, as from the messages",
+   "act": "→ past the last of the row of filters, Show agent coordination, goes on to the right rail where it takes the keys, as from the messages",
    "break": [
     [
      "web/panes.mjs",
@@ -9456,12 +9456,12 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading coordination \u2190 and \u2192 move along the filters' row"
+    "case": "reading coordination ← and → move along the filters' row"
    }
   },
   {
    "item": 403,
-   "act": "\u2190 moves back along a row of the buttons at the top of the feed, from Show agent coordination to Read it",
+   "act": "← moves back along a row of the buttons at the top of the feed, from Show agent coordination to Read it",
    "break": [
     [
      "web/panes.mjs",
@@ -9471,7 +9471,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading coordination \u2190 and \u2192 move along the filters' row"
+    "case": "reading coordination ← and → move along the filters' row"
    }
   },
   {
@@ -9486,7 +9486,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading coordination \u2190 and \u2192 move along the filters' row"
+    "case": "reading coordination ← and → move along the filters' row"
    }
   },
   {
@@ -10215,8 +10215,8 @@
    "break": [
     [
      "web/reactions.mjs",
-     "  button.textContent = '\ud83d\udc4d';",
-     "  button.textContent = '\ud83d\udc4d ' + reactionsOf(item).thumbs.length;"
+     "  button.textContent = '👍';",
+     "  button.textContent = '👍 ' + reactionsOf(item).thumbs.length;"
     ]
    ],
    "check": {
@@ -10230,8 +10230,8 @@
    "break": [
     [
      "web/reactions.mjs",
-     "  line.textContent = `\ud83d\udc4d ${thumbs.length} ${names}`;",
-     "  line.textContent = '\ud83d\udc4d';"
+     "  line.textContent = `👍 ${thumbs.length} ${names}`;",
+     "  line.textContent = '👍';"
     ]
    ],
    "check": {
@@ -10286,7 +10286,7 @@
   },
   {
    "item": 433,
-   "act": "An act's answer goes to the message the page holds when it lands: x on a folded message whose \ud83d\udc4d's reactions read lands while the unfold is out never folds it again, and a second x is fenced on the answer's revision",
+   "act": "An act's answer goes to the message the page holds when it lands: x on a folded message whose 👍's reactions read lands while the unfold is out never folds it again, and a second x is fenced on the answer's revision",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -10301,7 +10301,7 @@
   },
   {
    "item": 433,
-   "act": "The same for a star: Star for me on a folded message whose \ud83d\udc4d's reactions read lands while the star is out stays starred",
+   "act": "The same for a star: Star for me on a folded message whose 👍's reactions read lands while the star is out stays starred",
    "break": [
     [
      "web/stack-feed.mjs",
