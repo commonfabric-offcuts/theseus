@@ -254,12 +254,13 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     if (!box.inPlace) assert.ok((await frames(p,id,kind)).some(f=>f.clock>keyed[1]&&(kind==='arrival'?f.transform!=='none':f.height<before.height+(box.height-before.height)*.9)),'the keys do not cut its motion short');
     return seen;
   };
-  // Each width runs still first, then moving, on topics of the same shape.
+  // Each width runs still first, then moving, on topics of the same shape. Their
+  // titles may wrap apart on a phone, so the page's scroll differs; the screen does not.
   const asStill = async (label, run) => {
     const seen = {};
     for (const still of [true,false]) await atWidths(label+(still?'-still':''),async ctx=>{ (seen[ctx.width]??={})[still?'still':'moving']=await run(ctx,still); });
     for (const [width,{still,moving}] of Object.entries(seen))
-      assert.ok(['y','top','bottom','height'].every(k=>Math.abs(moving[k]-still[k])<=1)&&moving.inPlace===still.inPlace&&moving.maxHeight===still.maxHeight,
+      assert.ok(['top','bottom','height'].every(k=>Math.abs(moving[k]-still[k])<=1)&&moving.inPlace===still.inPlace&&moving.maxHeight===still.maxHeight,
         `at ${width} the moving reply lands where and as the still page shows it: ${JSON.stringify({still,moving})}`);
   };
   await check('reading dossier motion the keys onto a long reply arriving low on a short page reveal it as the still page does at 320 375 390 and laptop', async()=>{
