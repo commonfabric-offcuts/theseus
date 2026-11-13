@@ -109,13 +109,13 @@ export function ordered(stacks) {
 // dossier begins (docs/reply-stacks.md, 359), never a step back to.
 export const LEVELS = ['folded', 'open'];
 
-// Whether a reply shows at the stack's level. kept(item) holds replies that
-// were unread when this partial view drew them. A fold never decides this:
+// Whether a reply shows at the stack's level. A reader's stars stay visible;
+// kept(item) holds replies that were unread when this partial view drew them. A fold never decides this:
 // a folded reply shows where it would, as its one-line row (rowFolded).
 export function shown(stack, item, { level = 'folded', kept = () => false } = {}) {
   if (level === 'open') return true;
   if (level === 'head') return false;
-  return kept(item) || item.seq === newestReply(stack);
+  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);
 }
 
 // Whether a message reads as its one-line row: the reader folded it (their
