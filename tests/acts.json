@@ -2456,8 +2456,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return kept(item) || item.seq === newestReply(stack);",
-     "  return item.seq === newestReply(stack);"
+     "  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
+     "  return actsOf(item).starred === true || item.seq === newestReply(stack);"
     ]
    ],
    "check": {
@@ -8245,6 +8245,21 @@
    "check": {
     "native": "reading",
     "case": "reading dossier look at latest and unread"
+   }
+  },
+  {
+   "item": 413,
+   "act": "The reader's starred read replies stay visible at latest and unread until unstarred, including after reload",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
+     "return kept(item) || item.seq === newestReply(stack);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks starred read replies remain visible"
    }
   }
  ]

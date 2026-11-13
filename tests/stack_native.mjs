@@ -671,7 +671,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await assertState('folded',['two','five','six'],false);
       const partial=await look(p,ids,'root');
       assert.equal(partial.rows.filter(x=>x==='six').length,1,'latest unread is never duplicated');
-      assert.ok(!partial.rows.includes('two'),'a read star does not add a third kind of content');
+      assert.equal(partial.rows.filter(x=>x==='two').length,1,'the read star stays visible once, without adding a stack state');
       await press(p,device,toggle);
       await assertState('open',all,true);
       await press(p,device,toggle);
@@ -921,8 +921,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await choose(p, 'laptop', 'Unstar');
     await until(async () => (await actsOf(topic, ids.one))?.starred === false, 'Unstar takes it back, in Core');
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(row)})`), 'and the rail lists it no more');
-    // Landing through Starred opens the full stack; it remains open for Unstar.
-    await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the stack opened again');
+    // Landing on an already-visible star does not open the full stack.
+    // After Unstar hides it, open the dossier explicitly to star it again.
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['three'], 'unstar hides the older read reply');
+    assert.equal((await look(p, ids, 'root')).fold, 'folded', 'landing on a visible star preserves latest and unread');
+    const starToggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+    await centre(p, starToggle); await press(p, 'laptop', starToggle);
+    await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the native chevron opens all replies again');
     await menuOf(p, 'laptop', ids.one);
     await choose(p, 'laptop', 'Star for me');
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'starred again, the rail lists it');
