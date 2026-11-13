@@ -63,15 +63,19 @@ export class StackMotion {
       !entry.isConnected || entry.parentElement !== parent || !visible(entry, this.win) || (card.dataset.folded === 'true') !== folded)) effect.finish();
     if (!this.allowed()) return;
     const current = new Map(entries(this.list).map(entry => [entry.dataset.id, entry]));
-    const batches = new Map();
+    const batches = new Map(), staticSections = new Set();
     for (const id of before.added) {
       const entry = current.get(id), section = entry?.closest('.reply-stack'), old = before.sections.get(section);
+      // A visible batch must have one floor. If a later new face is off
+      // screen, use natural layout for the whole dossier rather than leave
+      // that static face hanging outside an animated earlier floor.
+      if (old && entry.parentElement?.className === 'stack-replies' && entry.getClientRects().length && !visible(entry, this.win)) staticSections.add(section);
       if (!old || entry.parentElement?.className !== 'stack-replies' || !visible(entry, this.win) || Math.abs(rect(section).top - old.top) > 1 ||
           !belowAnchor(rect(entry).top, before.anchorBox)) continue;
       if (!batches.has(section)) batches.set(section, []);
       batches.get(section).push(entry);
     }
-    for (const [section, incoming] of batches) this.deal(section, incoming, before.sections.get(section).floor);
+    for (const [section, incoming] of batches) if (!staticSections.has(section)) this.deal(section, incoming, before.sections.get(section).floor);
     for (const [id, old] of before.faces) {
       const entry = current.get(id), card = entry && cardIn(entry), folded = card?.dataset.folded === 'true';
       if (!entry || !card || entry.parentElement?.className !== 'stack-replies' || !visible(entry, this.win) || folded === old.folded ||

@@ -10481,6 +10481,21 @@
    "check": {
     "node": "tests/ui_stack_motion.test.mjs"
    }
+  },
+  {
+   "item": 412,
+   "act": "A batch shares one moving floor; a batch extending off screen keeps natural layout together",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (!staticSections.has(section)) this.deal",
+     "if (true) this.deal"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a burst shares its moving floor"
+   }
   }
  ]
 }

@@ -149,4 +149,32 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     });
   });
 
+  await check('reading dossier motion a burst shares its moving floor and an off-screen batch stays natural', async()=>{
+    await atWidths('burst',async ctx=>{
+      const {p,ids,topic,width}=ctx;
+      const floor=await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').querySelector('.stack-replies').getBoundingClientRect().height`);
+      const burst=async(count,label)=>{
+        await p.evaluate("window.waitView='topic_messages'");
+        const added=[];
+        for(let i=0;i<count;i++)added.push((await control({method:'agent_message',operation_id:`${topic}-${label}-${i}`,topic_id:topic,source:'topic',sender:'aim-core',reply_to:ids.root,addressees:[facts.actor],body:`${label} short live reply ${i}.`})).result.message_id);
+        await p.evaluate('window.letViews()');
+        await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(added.at(-1)))}))`),'the whole committed batch reaches the real page');
+        return added;
+      };
+      const added=await burst(2,'visible');
+      await until(async()=>(await frames(p,added[1],'arrival')).length>2,'both visible faces share a landing'); await settled(p);
+      const samples=await p.evaluate(`window.motionFrames.filter(f=>${JSON.stringify(added)}.includes(f.id))`),groups=new Map();
+      for(const sample of samples){if(!groups.has(sample.clock))groups.set(sample.clock,[]);groups.get(sample.clock).push(sample);}
+      const together=[...groups.values()].filter(group=>group.length===2);
+      assert.ok(together.length>2,'both faces were measured in the same native frames');
+      assert.ok(together.every(group=>group.every(f=>Math.abs(f.floor-Math.max(floor,...group.map(g=>g.edge)))<1.1)),'one boundary follows the lowest travelling edge');
+      await centre(p,card(added[1])); await p.evaluate('window.motionFrames=[]');
+      const many=await burst(10,'offscreen');
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(done,0))))');
+      assert.deepEqual(await p.evaluate('window.motionFrames'),[],'a batch extending off screen uses natural layout together');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(many[0]))}).closest('.stack-replies').style.height`),'');
+      observations.push({name:'motion-burst-'+width,samples});
+    });
+  });
+
 }
