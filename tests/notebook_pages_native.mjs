@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { notebookSheetChecks } from './notebook_sheet_native.mjs';
+import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
 
 // Notebook pages in the real browser against the real server: an outcome's
 // pages sit in the sidebar after its topics; a page the reader has read and
@@ -268,6 +268,235 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     }
   });
 
+  // A page opened on a phone (390 wide, touch) or a laptop, and a press there: a finger aims once the target holds
+  // its place, as on a phone; a laptop clicks.
+  const opened = async (name, url, phone, script = null) => page(name, null, true, { url, beforeNavigate: async q => {
+    if (script) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: script });
+    if (!phone) return;
+    await q.send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
+    await q.send('Emulation.setTouchEmulationEnabled', {enabled:true,maxTouchPoints:1});
+  } });
+  const press = async (p, selector, phone) => {
+    if (!phone) return p.point(selector);
+    let last = null;
+    await until(async () => { const now = await p.box(selector), same = Boolean(last && now) && ['x','y','width','height'].every(key => now[key] === last[key]); last = now; return same; }, selector + ' holds its place');
+    const x = last.x + last.width/2, y = last.y + last.height/2;
+    assert.ok(x>=0 && y>=0 && x<390 && y<844, selector + ' is on screen');
+    await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x,y}]});
+    await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+  };
+  // Every saving sign the composer shows from the page's first paint, each once in turn (statusesSeen), so a reader
+  // is never told, even for a moment, that writing of theirs is kept.
+  const SIGNS = `globalThis.statusesSeen=[];new MutationObserver(()=>{const t=document.querySelector('#new-message-sheet .notebook-sheet-status')?.textContent;
+    if(t&&globalThis.statusesSeen.at(-1)!==t)globalThis.statusesSeen.push(t);}).observe(document,{subtree:true,childList:true,characterData:true});`;
+  const visible = (p, selector) => p.evaluate(`document.querySelector(${JSON.stringify(selector)})?.checkVisibility()===true`);
+  const menuItems = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
+  const RAIL_NOTEBOOK = '#things .things-sec[data-key="notebook"]', PENCIL = RAIL_NOTEBOOK + ' > summary .notebook-create';
+  const openRail = async (p, phone) => {
+    await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector('#things-open'))`), 'the page is up');
+    if (!phone) return;
+    await press(p, '#things-open', phone);
+    await until(() => p.evaluate(`document.documentElement.hasAttribute('data-things-open')`), 'the right rail opens');
+  };
+
+  // Items 371 and 383: the pencil, Edit page and every writing control show only to someone Core lets write
+  // the Notebook, which a topic's owner and its outcome's owner may, taking part in it or not.
+  await check('notebook the pencil and writing show only to someone Core lets write: none for a reader on the team, and a topic\'s owner who stepped out names and saves a page', async () => {
+    for (const phone of [false, true]) {
+      const label = phone ? 'phone' : 'laptop';
+      // A topic the person reads, on its outcome's team, and neither started nor takes part in.
+      const read = await control({ method: 'agent_topic', operation_id: 'nb-reader-' + label, title: 'Read here', body: 'The agent\'s topic.', team: true, watching: true });
+      const theirs = 'nb-their-page-' + label;
+      assert.equal((await control({ method: 'agent_page', operation_id: theirs, item_id: theirs, topic_id: read.topic_id, title: 'Their page', body: '## Theirs\n\nWords to read.\n' })).status, 'committed');
+      assert.equal((await view('memory_items', { owner_scope: { kind: 'topic', id: read.topic_id } })).reader_may_write, false, 'Core says the person may not write it');
+      let p = await opened('nb-reader-rail-' + label, `${facts.origin}/?topic=${read.topic_id}`, phone);
+      await openRail(p, phone);
+      await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(RAIL_NOTEBOOK + ' .things-list a')})].some(a=>a.textContent.startsWith('Their page'))`), 'the rail lists the page');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(PENCIL)})?.checkVisibility())`), false, 'no pencil for a reader Core does not let write');
+      await shot(p, 'notebook-no-pencil-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
+      // The page opens to read: no Draft, no Edit, New card or Undo, no Add image, no ask, its words not writable.
+      p = await opened('nb-reader-sheet-' + label, `${facts.origin}/?topic=${read.topic_id}&page=${theirs}`, phone, SIGNS);
+      await sheetShows(p, 'Their page');
+      await until(() => p.evaluate("document.querySelector('#new-message-sheet .notebook-sheet-status').textContent==='To read'"), 'the saving sign says the page is to read');
+      assert.deepEqual(await p.evaluate('globalThis.statusesSeen'), ['To read'], 'the saving sign never says anything of theirs is kept or saved');
+      assert.deepEqual(await p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(SHEET_PAGE)}),v=e=>Boolean(e?.checkVisibility());
+        return {draft:v(document.querySelector('#new-message-sheet .notebook-draft-toggle')),bar:[...s.querySelectorAll('.deck-bar button')].filter(v).length,
+          image:v(s.querySelector('.notebook-images>button')),ask:s.querySelectorAll('.deck-ask').length,writable:!s.querySelector('.notebook-text').readOnly,
+          status:document.querySelector('#new-message-sheet .notebook-sheet-status').textContent}})()`),
+        { draft: false, bar: 0, image: false, ask: 0, writable: false, status: 'To read' });
+      assert.deepEqual(p.errors, []); await p.close();
+      // The Reader's ⋯ at a revision copies its links and offers no Edit page.
+      p = await opened('nb-reader-menu-' + label, `${facts.origin}/?topic=${read.topic_id}&page=${theirs}&revision=1`, phone);
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Their page'`), 'the Reader shows the page');
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+      await press(p, '#reader-menu', phone);
+      await until(async () => (await menuItems(p)).includes('Copy Link to Revision 1'), 'the ⋯ opens');
+      assert.equal((await menuItems(p)).includes('Edit page'), false, 'no Edit page for a reader Core does not let write');
+      assert.deepEqual(p.errors, []); await p.close();
+
+      // A topic the person started and stepped out of, in an outcome they do not own: theirs to write.
+      const own = await control({ method: 'own_topic', operation_id: 'nb-owner-' + label, title: 'Mine, stepped out' });
+      assert.equal((await view('topic', { topic_id: own.topic_id })).participants.some(x => x.actor_id === facts.actor && x.active !== false), false, 'the person takes no part in it');
+      assert.equal((await view('memory_items', { owner_scope: { kind: 'topic', id: own.topic_id } })).reader_may_write, true);
+      p = await opened('nb-owner-' + label, `${facts.origin}/?topic=${own.topic_id}`, phone);
+      await openRail(p, phone);
+      await until(() => visible(p, PENCIL), 'the pencil shows to the topic\'s owner');
+      await p.evaluate(`document.querySelector(${JSON.stringify(PENCIL)}).scrollIntoView({block:'center'})`);
+      await press(p, PENCIL, phone);
+      const input = RAIL_NOTEBOOK + ' input', name = 'Owner\'s notes ' + label;
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(input)})`), 'the title line, focused');
+      await p.send('Input.insertText', { text: name });
+      await p.key('Enter');
+      const first = '#new-message-sheet.notebook-mode .notebook-sheet-page:not([hidden]) .deck-writing textarea';
+      await until(() => p.evaluate(`document.querySelector('.notebook-sheet-title')?.textContent===${JSON.stringify(name)} && document.activeElement===document.querySelector(${JSON.stringify(first)})`), 'the named page opens, its first card ready');
+      await p.send('Input.insertText', { text: 'First card\nWritten by its owner.' });
+      await p.key('Escape');
+      const made = (await view('memory_items', { owner_scope: { kind: 'topic', id: own.topic_id }, limit: 100 })).items.find(item => item.title === name);
+      assert.ok(made, 'Core holds the named page in the topic\'s Notebook');
+      await until(async () => (await view('memory_current', { item_id: made.id })).body.includes('Written by its owner.'), 'the card is saved in Core');
+      assert.deepEqual((await view('memory_current', { item_id: made.id })).owner_scope, { kind: 'topic', id: own.topic_id });
+      await shot(p, 'notebook-owner-page-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
+      // And the Reader's ⋯ offers its owner Edit page.
+      p = await opened('nb-owner-menu-' + label, `${facts.origin}/?topic=${own.topic_id}&page=${made.id}&revision=1`, phone);
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent===${JSON.stringify(name)}`), 'the Reader shows the page');
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+      await press(p, '#reader-menu', phone);
+      await until(async () => (await menuItems(p)).includes('Edit page'), 'Edit page for the topic\'s owner');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 391: a person who writes a page marks it a draft beside Text / Cards, in the composer and on the full page;
+  // agents then get its title and that it is a draft, never its words; Undo, or the toggle, clears it; and while it is
+  // marked its cards offer no speech bubble.
+  await check('notebook a writer marks a page a draft and Undo clears it: agents get no words, its cards offer no bubble, light and dark', async () => {
+    for (const phone of [false, true]) {
+      const label = phone ? 'phone' : 'laptop', id = 'nb-draft-' + label;
+      assert.equal((await control({ method: 'agent_page', operation_id: id, item_id: id, topic_id: 't1', title: 'Plan in progress', body: '## First\n\nHalf a thought.\n\n## Second\n\nAnother.\n' })).status, 'committed');
+      const core = () => view('memory_current', { item_id: id }), agent = () => control({ method: 'agent_view', name: 'memory_current', args: { item_id: id } });
+      const TOGGLE = '#new-message-sheet .notebook-sheet-views .notebook-draft-toggle', asks = p => p.evaluate(`document.querySelectorAll(${JSON.stringify(SHEET_PAGE + ' .deck-ask')}).length`);
+      let p = await opened('nb-draft-sheet-' + label, `${facts.origin}/?topic=t1&page=${id}`, phone);
+      await sheetShows(p, 'Plan in progress');
+      await until(async () => (await asks(p)) === 2, 'each card offers its speech bubble');
+      const control0 = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(TOGGLE)}),r=b.getBoundingClientRect();return {name:b.textContent,pressed:b.getAttribute('aria-pressed'),title:b.title,height:r.height,width:r.width}})()`);
+      assert.equal(control0.name, 'Draft'); assert.equal(control0.pressed, 'false'); assert.match(control0.title, /^Mark as a draft/);
+      if (phone) assert.ok(Math.round(control0.height) >= 44 && Math.round(control0.width) >= 44, 'the toggle is 44 points on a phone: ' + JSON.stringify(control0));
+      await press(p, TOGGLE, phone);
+      await until(async () => (await core()).draft === true, 'the mark is saved in Core');
+      assert.equal((await core()).source_ref.revision, 2, 'as a revision of its own');
+      const withheld = await agent();
+      assert.deepEqual([withheld.title, withheld.draft, withheld.withheld, withheld.body], ['Plan in progress', true, true, ''], 'an agent gets the title and the mark, never the words');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(TOGGLE)}).getAttribute('aria-pressed')==='true'`), 'the toggle shows the mark');
+      assert.match(await p.evaluate(`document.querySelector(${JSON.stringify(TOGGLE)}).title`), /agents do not read this page until the mark is cleared/);
+      await until(async () => (await asks(p)) === 0, 'a draft page\'s cards offer no speech bubble');
+      for (const scheme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+        assert.ok(await contrast(p, TOGGLE) >= 4.5, `the Draft word reads in ${scheme}`);
+        await shot(p, `notebook-draft-${label}-${scheme}`);
+      }
+      await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+      // Undo takes the mark back: another revision, the words the agents' again, the bubbles back.
+      const undo = await p.evaluate(`[...document.querySelectorAll(${JSON.stringify(SHEET_PAGE + ' .deck-bar button')})].findIndex(b=>b.textContent==='Undo')+1`);
+      assert.ok(undo > 0, 'the cards\' Undo');
+      await press(p, `${SHEET_PAGE} .deck-bar button:nth-of-type(${undo})`, phone);
+      await until(async () => (await core()).draft === false, 'Undo clears the mark in Core');
+      assert.equal((await core()).source_ref.revision, 3);
+      assert.equal((await agent()).body, '## First\n\nHalf a thought.\n\n## Second\n\nAnother.\n', 'the agents read the words again');
+      await until(async () => (await asks(p)) === 2, 'the bubbles come back with the words');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(TOGGLE)}).getAttribute('aria-pressed')`), 'false');
+      assert.deepEqual(p.errors, []); await p.close();
+      // On the full page the mark stands beside Text / Cards too; a person reading the page sees it in the listing
+      // and in the Reader; in the Text view the toggle itself clears it.
+      p = await opened('nb-draft-full-' + label, `${facts.origin}/?cards=${id}&view=text`, phone);
+      const FULL = '#deck-page .notebook-tools .notebook-draft-toggle';
+      await until(async () => await p.evaluate(`document.body.dataset.ready==='true'`) && await visible(p, FULL), 'the full page shows the toggle');
+      assert.equal(await p.evaluate(`(()=>{const v=document.querySelector('#deck-page .notebook-views').getBoundingClientRect(),d=document.querySelector(${JSON.stringify(FULL)}).getBoundingClientRect();return Math.abs((v.top+v.bottom)/2-(d.top+d.bottom)/2)<2})()`), true, 'on the line of Text / Cards');
+      await press(p, FULL, phone);
+      await until(async () => (await core()).draft === true, 'marked from the full page');
+      await shot(p, 'notebook-draft-full-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
+      p = await opened('nb-draft-listed-' + label, `${facts.origin}/?topic=t1`, phone);
+      await openRail(p, phone);
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(`${RAIL_NOTEBOOK} a[href*="page=${id}"] .draft-mark`)}))`), 'the listing marks it');
+      assert.match(await p.evaluate(`document.querySelector(${JSON.stringify(`${RAIL_NOTEBOOK} a[href*="page=${id}"] .draft-mark`)}).title`), /agents do not read this page until the mark is cleared/);
+      await p.evaluate(`document.querySelector(${JSON.stringify(`${RAIL_NOTEBOOK} a[href*="page=${id}"]`)}).scrollIntoView({block:'center'})`);
+      await shot(p, 'notebook-draft-listed-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
+      p = await opened('nb-draft-reader-' + label, `${facts.origin}/?topic=t1&page=${id}&revision=4`, phone);
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-origin')?.textContent.includes('Notebook · revision 4 · draft')`), 'the Reader names the revision a draft');
+      assert.equal(await p.evaluate(`document.querySelector('#source-body').textContent.includes('Half a thought.')`), true, 'a person reads its words');
+      assert.deepEqual(p.errors, []); await p.close();
+      p = await opened('nb-draft-clear-' + label, `${facts.origin}/?cards=${id}&view=text`, phone);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(FULL)})?.getAttribute('aria-pressed')==='true'`), 'the full page shows the mark');
+      await press(p, FULL, phone);
+      await until(async () => (await core()).draft === false, 'the toggle clears it in the Text view');
+      assert.equal((await agent()).withheld, false);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Items 371 and 391 for someone who reads a draft page Core no longer lets them write, here its writer once the
+  // outcome is reached: the mark without its toggle, beside Text / Cards in the composer's head (at 320 wide on a
+  // phone, clear of the saving sign) and on the full page; To read; its image without Remove; and, opened in place at
+  // its revision on the outcome's page, the revision named a draft and no Edit page.
+  await check('notebook a draft page in a reached outcome reads as a draft to someone Core no longer lets write it: the mark without its toggle, To read, its image without Remove, and in place the revision named a draft with no Edit page', async () => {
+    for (const phone of [false, true]) {
+      const label = phone ? 'phone' : 'laptop', outcome = 'nb-reached-' + label, id = 'nb-reached-page-' + label;
+      await control({ method: 'navigation_workspaces', workspaces: [{ id: outcome, title: 'Reached ' + label }] });
+      assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, workspace_id: outcome, draft: true, title: 'Final plan', body: '## Plan\n\nShip it.\n' })).status, 'committed');
+      // While the outcome is open its writer attaches an image, pasted in the Text view as the images case does.
+      let p = await page('nb-reached-image-' + label, null, true, { url: `${facts.origin}/?cards=${id}&view=text` });
+      await until(() => p.evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .notebook-draft-toggle[aria-pressed=true]'))"), 'its writer sees the page marked a draft');
+      const bytes = (await readFile(new URL('fixtures/media/one.png', import.meta.url))).toString('base64');
+      await p.point('#notebook-text');
+      await p.evaluate(`(()=>{const d=new DataTransfer();d.items.add(new File([Uint8Array.from(atob(${JSON.stringify(bytes)}),c=>c.charCodeAt(0))],'reached-chart.png',{type:'image/png'}));document.querySelector('#notebook-text').dispatchEvent(new ClipboardEvent('paste',{clipboardData:d,bubbles:true,cancelable:true}));})()`);
+      await until(async () => (await view('memory_current', { item_id: id })).attachments.length === 1, 'the image is saved to the page');
+      await until(() => p.evaluate("[...document.querySelectorAll('#deck-page .notebook-image button')].some(b=>b.textContent==='Remove'&&b.checkVisibility())"), 'its writer may remove the image');
+      assert.deepEqual(p.errors, []); await p.close();
+      for (const [kind, args] of [['outcome.kind_set', { kind: 'reach' }], ['outcome.reach', { words: 'Done', unmet_confirmed: true }]])
+        assert.equal((await control({ method: 'targets', kind, operation_id: `${outcome}-${kind}`, workspace_id: outcome, args })).status, 'committed');
+      const current = await view('memory_current', { item_id: id });
+      assert.deepEqual([current.draft, current.reader_may_write], [true, false], 'Core holds a draft its writer may no longer write');
+      // In the composer: on a phone at 320 wide, the narrowest head.
+      p = await page('nb-reached-sheet-' + label, null, true, { url: `${facts.origin}/?workspace=${outcome}&page=${id}`, beforeNavigate: async q => {
+        await q.send('Page.addScriptToEvaluateOnNewDocument', { source: SIGNS });
+        if (!phone) return;
+        await q.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 740, deviceScaleFactor: 1, mobile: true });
+        await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await sheetShows(p, 'Final plan');
+      await until(() => p.evaluate("document.querySelector('#new-message-sheet .notebook-sheet-status').textContent==='To read' && Boolean(document.querySelector('#new-message-sheet .notebook-image'))"), 'the page opens to read, its image listed');
+      const reads = p => p.evaluate(`(()=>{const v=e=>Boolean(e?.checkVisibility()),q=s=>document.querySelector(s),note=q('#new-message-sheet .notebook-sheet-views .notebook-draft-note');
+        return {toggle:v(q('#new-message-sheet .notebook-draft-toggle')),note:[v(note),note?.textContent,note?.title],
+          images:document.querySelectorAll(${JSON.stringify(SHEET_PAGE + ' .notebook-image')}).length,
+          remove:[...document.querySelectorAll(${JSON.stringify(SHEET_PAGE + ' .notebook-image button')})].filter(v).map(b=>b.textContent),
+          add:v(q(${JSON.stringify(SHEET_PAGE + ' .notebook-images>button')})),writable:!q(${JSON.stringify(SHEET_PAGE + ' .notebook-text')}).readOnly}})()`);
+      assert.deepEqual(await reads(p), { toggle: false, note: [true, 'Draft', 'A draft: agents do not read this page until the mark is cleared'], images: 1, remove: [], add: false, writable: false },
+        'the page reads as a draft, with nothing to write with');
+      assert.deepEqual(await p.evaluate('globalThis.statusesSeen'), ['To read'], 'the saving sign never says anything of theirs is kept or saved');
+      if (phone) {
+        const head = await sheetHead(p);
+        assert.deepEqual({ parts: head.parts.slice(3, 6), overlaps: head.overlaps, off: head.off, small: head.small, cut: head.cut },
+          { parts: ['Text', 'Cards', 'Draft'], overlaps: [], off: [], small: [], cut: null }, 'at 320 wide the Draft mark stands clear of To read');
+      }
+      await shot(p, 'notebook-reached-draft-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
+      // On the full page, the mark beside Text / Cards.
+      p = await opened('nb-reached-full-' + label, `${facts.origin}/?cards=${id}`, phone);
+      await until(() => p.evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .notebook-tools .notebook-draft-note')?.checkVisibility())"), 'the full page shows the mark');
+      assert.equal(await visible(p, '#deck-page .notebook-draft-toggle'), false, 'and no toggle');
+      assert.deepEqual(p.errors, []); await p.close();
+      // In place on the outcome's page, at its revision.
+      p = await opened('nb-reached-here-' + label, `${facts.origin}/?workspace=${outcome}&page=${id}&revision=${current.source_ref.revision}`, phone);
+      await until(() => p.evaluate("!document.querySelector('#page-here').hidden && Boolean(document.querySelector('#page-here .page-here-body'))"), 'the page opens in place');
+      assert.deepEqual(await p.evaluate(`({origin:document.querySelector('#page-here .muted').textContent,edit:Boolean(document.querySelector('#page-here .page-here-cards'))})`),
+        { origin: `Notebook · revision ${current.source_ref.revision} · draft`, edit: false }, 'the revision is named a draft, and there is no Edit page');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('notebook a page read and revised since wears its new revisions in the sidebar until opened, and opening it shows what changed', async () => {
     await revise('Ship on Friday.\nDan reviews the notes.\n');
     const p = await page('notebook-light', null, true);
@@ -439,8 +668,9 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     p = await page('notebook-link-outcome', null, true, { url: `${facts.origin}/?workspace=w1&page=${plan}&revision=1` });
     await until(() => p.evaluate("!document.querySelector('#page-here').hidden && Boolean(document.querySelector('#page-here .page-here-body'))"), 'the page opens in place');
     assert.deepEqual(await p.evaluate(`({title:document.querySelector('#page-here h2').textContent,revision:document.querySelector('#page-here .muted').textContent,
-      body:document.querySelector('#page-here .page-here-body').textContent,at:location.search})`),
-      { title: 'Linked plan', revision: 'Notebook · revision 1', body: 'Ship on Friday.\nDan reviews the notes.\n', at: '?workspace=w1' });
+      body:document.querySelector('#page-here .page-here-body').textContent,at:location.search,edit:document.querySelector('#page-here .page-here-cards')?.textContent??null})`),
+      { title: 'Linked plan', revision: 'Notebook · revision 1', body: 'Ship on Friday.\nDan reviews the notes.\n', at: '?workspace=w1', edit: 'Edit page' },
+      'in place, a page its reader may write offers Edit page, and a revision not marked is not named a draft');
     assert.deepEqual(p.errors, []);
     await p.close();
     // As it stands, on the outcome's own page, in the composer over it, nothing opening in place.

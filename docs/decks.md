@@ -163,8 +163,19 @@ when an agent answers the card's bubble by editing elsewhere in the deck.
 Changes to the same card on both sides, or overlapping Text writing, show both
 versions and ask which to continue with. Untouched writing accepts a newer
 revision without a question. A permission refusal preserves local writing and
-makes the page read-only. Background reads still check the Notebook version
-before reading the page body again.
+makes the page read-only. Someone Core does not let write the page (its
+`reader_may_write`, notebook-pages.md) reads it: no Edit, New card, Undo, Add
+image or Draft, the words not writable and the saving sign saying To read;
+writing they had kept on the device still goes to Core, which answers it.
+Every read of the page as it stands tells the page whether Core lets them
+write it, so after Discard my writing, or a save answered by a newer
+revision, a page they may not write is still to read.
+Background reads still check the Notebook version before reading the page body
+again.
+
+The page's draft mark ([notebook-pages.md](notebook-pages.md#a-draft-page)) is
+part of what the writing saves and merges, beside its title and words: marking
+or clearing it is one more act, saved as a revision, which Undo takes back.
 
 ## Asking about a card
 
@@ -191,6 +202,12 @@ extension in Chrome, ignore that request and judge a box with no label element
 by the words on the page around it, so beside a card about tokens or codes an
 empty box reads as a field for a one-time code. Each box is therefore named by
 a label element of its own, whose words name nothing AutoFill fills.
+
+A draft page's cards offer no speech bubble that asks: its words are kept from
+agents until the mark is cleared, and the bubble comes back with them. A card's
+reply stack, begun before the mark, still opens from its bubble. Nor does
+someone who may not write the page ask from it, since the ask writes the
+stack's link into the card.
 
 Once Core has the ask, the card keeps the link to its reply stack as a line of
 its words, `[Reply stack](ADDRESS)`. A line that holds only a link to a message
@@ -220,9 +237,17 @@ it comes up over that page. A link to a page at a revision still opens it in
 the Reader, or in place on its outcome's page, to read.
 
 The sheet's head is one line on a laptop: the page's title, Text and Cards as
-chips, the saving sign, a Full page glyph (↗, `?cards=ITEM`, below) and ✕, each
+chips with the page's Draft toggle beside them, the saving sign, a Full page glyph (↗, `?cards=ITEM`, below) and ✕, each
 glyph named for screen readers and with a tooltip; on a phone it takes two
-lines, the title with ↗ and ✕, then the chips and the sign. Below it is one
+lines, the title with ↗ and ✕, then the chips and the sign, which on a screen
+too narrow for both whole (320 points) takes a line of its own below the chips,
+never one over the other; each chip, and the Draft mark that stands for the
+toggle for someone who reads the page, is 44 points tall there. When the sign
+says what needs the person (a refused save with Try again and Discard my
+writing, a save paused, the device's copy unavailable), it takes a line of its
+own below the rest of the head at every width, on a laptop as on a phone, its
+words whole and wrapping and its buttons after them (44 points tall on touch),
+so a press on a chip always reaches the chip. Below it is one
 place that scrolls; on a phone one card fills it, swiped through as on the full
 page. The line of keys above the cards is short there (↑ ↓ pick · Return new
 card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the

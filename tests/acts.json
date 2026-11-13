@@ -2228,21 +2228,6 @@
   },
   {
    "item": 290,
-   "act": "↑ on the message at the top of the feed moves the keys onto the row of buttons just above it (the header's, with no filter shown), with a ring",
-   "break": [
-    [
-     "web/panes.mjs",
-     "    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
-   }
-  },
-  {
-   "item": 290,
    "act": "← and → move along the header's buttons, and past either end on to the outline or the right rail",
    "break": [
     [
@@ -8909,6 +8894,449 @@
    "check": {
     "native": "notebook",
     "case": "words typed into Text as the page is read again"
+   }
+  },
+  {
+   "item": 383,
+   "act": "A topic's owner and its outcome's owner write its Notebook without taking part in the topic",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "WHERE t.id=:scope AND (t.creator_id=:actor \"\n             \"OR w.owner_id=:actor OR EXISTS",
+     "WHERE t.id=:scope AND (0 \"\n             \"OR 0 OR EXISTS"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_write_rule.py"
+   }
+  },
+  {
+   "item": 371,
+   "act": "Core tells a reader whether it may write a Notebook or page by the rule it enforces, false in a reached outcome",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        return db.execute(\"SELECT 1 FROM outcome_reached WHERE workspace_id=?\", (workspace,)).fetchone() is None\n",
+     "        return True\n"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_write_rule.py"
+   }
+  },
+  {
+   "item": 371,
+   "act": "The outcome's pencil shows only while Core says the reader may write its Notebook",
+   "break": [
+    [
+     "web/outcome-references.mjs",
+     "this.creation?.setAvailable(mayWrite === true);",
+     "this.creation?.setAvailable(true);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_references.test.mjs"
+   }
+  },
+  {
+   "item": 371,
+   "act": "The topic's pencil shows only to someone Core lets write its Notebook",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "found.byTopic && found.notebook !== null && found.notebookMayWrite);",
+     "found.byTopic && found.notebook !== null);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "only to someone Core lets write"
+   }
+  },
+  {
+   "item": 371,
+   "act": "A page opens to read, with no Draft, Edit, New card, Undo or Add image, for someone Core does not let write it",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "this.readOnly=w.readOnly||w.reading; this.text.readOnly=this.readOnly;",
+     "this.readOnly=w.readOnly; this.text.readOnly=this.readOnly;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "only to someone Core lets write"
+   }
+  },
+  {
+   "item": 371,
+   "act": "The Reader's ⋯ offers Edit page only to someone Core lets write the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (p.source.reader_may_write === true) items.push({ label: 'Edit page'",
+     "if (true) items.push({ label: 'Edit page'"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "only to someone Core lets write"
+   }
+  },
+  {
+   "item": 371,
+   "act": "A reader Core does not let write the page writes nothing new, while writing kept on the device still goes",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "|| this.readOnly || this.reading || this.closed) return false;",
+     "|| this.readOnly || this.closed) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 391,
+   "act": "No read of a draft page, at any revision, gives an agent its words, attachments or evidence",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        withheld = draft_now and actor_kind(db, actor) == \"agent\"\n",
+     "        withheld = False\n"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_drafts.py"
+   }
+  },
+  {
+   "item": 391,
+   "act": "An agent listing a Notebook gets a draft page's title and mark, never its words",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "            withheld = bool(row[\"draft\"]) and agent\n",
+     "            withheld = False\n"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_drafts.py"
+   }
+  },
+  {
+   "item": 391,
+   "act": "Only a person marks a page a draft or clears it, and no agent writes a draft page",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        if (was or draft) and actor_kind(db, actor) == \"agent\":",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_drafts.py"
+   }
+  },
+  {
+   "item": 391,
+   "act": "A revision that leaves the mark out keeps the page's draft mark",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        draft = was if draft is None else draft\n",
+     "        draft = bool(draft)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_drafts.py"
+   }
+  },
+  {
+   "item": 391,
+   "act": "An agent's notes marks a draft page and note read prints none of its words",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "                line += \"  [draft: its writer keeps its words from agents]\"",
+     "                line += \"\""
+    ]
+   ],
+   "check": {
+    "python": "test_memory_drafts.py"
+   }
+  },
+  {
+   "item": 391,
+   "act": "The writing saves and merges the draft mark beside the page's words",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "const FIELDS = ['title','body','attachments','references','draft'];",
+     "const FIELDS = ['title','body','attachments','references'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 391,
+   "act": "A writer marks a page a draft beside Text and Cards, and the cards' Undo clears the mark",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "if(last?.kind!=='draft'||this.editing||this.asking||this.readOnly)return super.undo();",
+     "return super.undo();"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "marks a page a draft"
+   }
+  },
+  {
+   "item": 391,
+   "act": "A draft page's cards offer no speech bubble",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "&& !this.readOnly && !this.drafted()) {",
+     "&& !this.readOnly) {"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "marks a page a draft"
+   }
+  },
+  {
+   "item": 391,
+   "act": "A draft page is marked wherever it is listed",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "  if (item.draft === true) {\n",
+     "  if (false) {\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 391,
+   "act": "The Reader names a draft revision a draft",
+   "break": [
+    [
+     "web/reader.mjs",
+     "${source.draft === true ? ' · draft' : ''}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "marks a page a draft"
+   }
+  },
+  {
+   "item": 371,
+   "act": "Every read of a page tells the writing whether Core lets the person write it, so Discard my writing and a save answered by a newer revision leave a page they may not write to read",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "    this.reading = source.reader_may_write === false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 371,
+   "act": "A page opened in place on its outcome's page offers Edit page only to someone Core lets write it",
+   "break": [
+    [
+     "web/page-here.mjs",
+     "this.cards && source.reader_may_write === true ?",
+     "this.cards ?"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a draft page in a reached outcome"
+   }
+  },
+  {
+   "item": 391,
+   "act": "A page opened in place on its outcome's page names a draft revision a draft",
+   "break": [
+    [
+     "web/page-here.mjs",
+     "${source.draft === true ? ' · draft' : ''}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a draft page in a reached outcome"
+   }
+  },
+  {
+   "item": 391,
+   "act": "Someone who reads a draft page they may not write sees its Draft mark beside Text and Cards, without the toggle",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "this.draftNote.hidden=writer||!on||!this.writing?.base;",
+     "this.draftNote.hidden=true;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a draft page in a reached outcome"
+   }
+  },
+  {
+   "item": 371,
+   "act": "An image on a page someone may not write shows without Remove",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "row.removeButton.hidden=w.reading;",
+     "row.removeButton.hidden=false;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a draft page in a reached outcome"
+   }
+  },
+  {
+   "item": 391,
+   "act": "On a phone the composer's head keeps Text, Cards, Draft and the saving sign clear of one another, the sign below the chips where both do not fit",
+   "break": [
+    [
+     "web/aim.css",
+     "  .notebook-sheet-head{display:flex;flex-wrap:wrap;padding:.3rem .35rem .45rem 1rem}\n",
+     "  .notebook-sheet-head{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:\"title full close\" \"views status status\";padding:.3rem .35rem .45rem 1rem}\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "the sheet's head stands clear"
+   }
+  },
+  {
+   "item": 391,
+   "act": "On a phone the Draft mark for someone who reads the page is as tall as the chips beside it, 44 points",
+   "break": [
+    [
+     "web/aim.css",
+     ".notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}",
+     ".notebook-sheet-views .notebook-draft-toggle,.notebook-draft-note,.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}"
+    ],
+    [
+     "web/aim.css",
+     "@media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,",
+     "@media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-draft-note,"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a draft page in a reached outcome"
+   }
+  },
+  {
+   "item": 371,
+   "act": "Someone who may not write a page, with none of their writing on its way, is told it is to read, never that writing of theirs is kept",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    else if(w.reading&&!w.dirty&&!w.busy)this.say('To read');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "only to someone Core lets write"
+   }
+  },
+  {
+   "item": 371,
+   "act": "On a phone a saving sign that says what needs the person (a refusal with Try again and Discard my writing) takes a line of its own below the chips, so a press on Cards reaches Cards",
+   "break": [
+    [
+     "web/aim.css",
+     "  .notebook-sheet-status:has(.deck-status>[data-save=attention]){flex-basis:100%}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a refused save takes a line"
+   }
+  },
+  {
+   "item": 371,
+   "act": "On a laptop a saving sign that says what needs the person takes a line of its own below the sheet's head",
+   "break": [
+    [
+     "web/aim.css",
+     ".notebook-sheet-head:has(.deck-status>[data-save=attention]){grid-template-areas:\"title views . full close\" \"status status status status status\"}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a refused save takes a line"
+   }
+  },
+  {
+   "item": 371,
+   "act": "A refusal's words in the sheet's head show whole, wrapping on their own line, never cut short or squeezed to nothing",
+   "break": [
+    [
+     "web/aim.css",
+     ".notebook-sheet-status .deck-status>[data-save=attention]{flex:1 1 12rem;white-space:normal;overflow:visible;overflow-wrap:anywhere}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a refused save takes a line"
+   }
+  },
+  {
+   "item": 371,
+   "act": "On touch Try again and Discard my writing in the sheet's saving sign are 44 points tall",
+   "break": [
+    [
+     "web/aim.css",
+     ".notebook-sheet-views .notebook-draft-note,.notebook-sheet-status .deck-status>button{min-height:2.75rem}",
+     ".notebook-sheet-views .notebook-draft-note{min-height:2.75rem}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a refused save takes a line"
+   }
+  },
+  {
+   "item": 290,
+   "act": "↑ on the message at the top of the feed moves the keys onto the row of buttons just above it (the header's, with no filter shown), with a ring",
+   "break": [
+    [
+     "web/panes.mjs",
+     "    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail ↑ from the top message reaches the buttons at the top of the feed"
    }
   },
   {

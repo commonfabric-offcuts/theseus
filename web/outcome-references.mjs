@@ -44,11 +44,12 @@ export class OutcomeReferences {
     if (more && this.next === null) return Promise.resolve(true);
     const prior = new Set(this.items.map(item => item.id));
     this.more.setAttribute('aria-disabled', 'true');
-    this.loading = (more ? this.page(this.next, PAGE, this.items).then(answer => ({ items: [...this.items, ...answer.items], next: answer.next_cursor }))
-      : this.reread()).then(({ items, next }) => {
+    this.loading = (more ? this.page(this.next, PAGE, this.items).then(answer => ({ items: [...this.items, ...answer.items], next: answer.next_cursor, mayWrite: answer.reader_may_write }))
+      : this.reread()).then(({ items, next, mayWrite }) => {
       const focused = document.activeElement;
       this.items = items; this.next = next;
-      this.creation?.setAvailable(true);
+      // The pencil shows only to someone Core lets write this Notebook (reader_may_write).
+      this.creation?.setAvailable(mayWrite === true);
       this.message.hidden = true; this.paint(); this.seen(items);
       // More, once it has nothing left to bring, hands focus to what it brought.
       if (focused === this.more && this.more.hidden) [...this.list.children].find(row => !prior.has(row.dataset.id))?.focus();
@@ -86,11 +87,11 @@ export class OutcomeReferences {
   }
   async reread() {
     const last = this.items.at(-1)?.seq ?? null, items = [];
-    let next = null;
+    let next = null, mayWrite;
     do {
       const answer = await this.page(next, Math.min(this.pageMax, Math.max(PAGE, this.items.length)), items);
-      items.push(...answer.items); next = answer.next_cursor;
+      items.push(...answer.items); next = answer.next_cursor; mayWrite ??= answer.reader_may_write;
     } while (next !== null && last !== null && next < last);
-    return { items, next };
+    return { items, next, mayWrite };
   }
 }

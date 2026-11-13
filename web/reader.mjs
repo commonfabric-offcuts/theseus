@@ -860,7 +860,7 @@ export class Reader {
   }
 
   paintOrigin(source) {
-    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}`
+    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}${source.draft === true ? ' · draft' : ''}`
       : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : '';
     this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];

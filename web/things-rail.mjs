@@ -332,6 +332,7 @@ export class ThingsRail {
     for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
     const conversation = found.find(read => read.value?.place.conversation)?.value.messages ?? [];
     this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value === null ? null : notes.value?.items ?? (notes.error ? undefined : []),
+      notebookMayWrite: notes.value?.reader_may_write === true,
       messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation, stars: starred.value?.items ?? (starred.error ? undefined : []) });
     this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
     this.message.hidden = this.retry.hidden = !failed.length;
@@ -380,7 +381,8 @@ export class ThingsRail {
     const reader = this.handles.bootstrap.actor, nowMs = clock.now();
     const items = found.pipeline ? this.pipelineRows(found.pipeline, found.byTopic ? found.topicId : null) : null;
     const { previews, prs } = thingsIn(found.messages);
-    if (found.notebook !== undefined) this.notebookCreate?.setAvailable(found.byTopic && found.notebook !== null);
+    // The pencil shows only to someone Core lets write the topic's Notebook (reader_may_write).
+    if (found.notebook !== undefined) this.notebookCreate?.setAvailable(found.byTopic && found.notebook !== null && found.notebookMayWrite);
     const shown = {
       starred: found.stars === undefined ? undefined : this.starredSection(found.stars, found, reader),
       pipeline: found.pipeline === undefined ? undefined : this.pipelineSection(items, found, nowMs),
@@ -487,7 +489,7 @@ export class ThingsRail {
       return items && this.notebookCreate?.available ? { sum: '', key: 'note-none', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'No pages yet.' }) } : null;
     }
     const doc = this.doc, scope = found.byTopic ? { kind: 'topic', id: found.topicId } : { kind: 'workspace', id: this.handles.workspaceId };
-    return { sum: String(items.length), key: JSON.stringify(['note', scope, items.map(item => [item.id, item.title, item.revision, item.read_revision])]), node: () => element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
+    return { sum: String(items.length), key: JSON.stringify(['note', scope, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true])]), node: () => element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
       const link = this.placeLink({ ...scope, page: item.id }, item.title || 'Notebook page');
       paintChanged(link, item);
       return element(doc, 'li', {}, link);

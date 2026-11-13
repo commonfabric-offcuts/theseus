@@ -8,6 +8,23 @@ import assert from 'node:assert/strict';
 // Reader and its way back brings the page back as it was, from the same topic and from another; opening another
 // page replaces the first; what changed since it was read shows on opening; a revision made elsewhere reaches the
 // page while it shows and costs a closed one nothing; a reload keeps a card half written.
+// The sheet's head as drawn: its title, ↗, ✕, each chip beside the title (Text, Cards, and Draft, the toggle or the
+// mark), and the saving sign's words and time. overlaps names each pair whose boxes cross; off, each part not wholly
+// on screen; small, on touch, each control under 44 points; cut, the saving sign's words when they do not show whole;
+// covered, each part whose middle a press would not reach, something else drawn there.
+export const sheetHead = p => p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),shown=e=>e&&e.getClientRects().length&&!e.closest('[hidden]');
+  const name=e=>e.getAttribute('aria-label')||e.textContent.trim()||e.className;
+  const parts=[d.querySelector('.notebook-sheet-title'),d.querySelector('.notebook-sheet-full'),d.querySelector('.notebook-sheet-close'),
+    ...d.querySelectorAll('.notebook-sheet-views button,.notebook-sheet-views .notebook-draft-note'),...d.querySelectorAll('.notebook-sheet-status .deck-status>*')].filter(shown)
+    .map(e=>{const r=e.getBoundingClientRect();return {e,name:name(e),x:r.left,y:r.top,r:r.right,b:r.bottom}});
+  const overlaps=[];for(const [i,a] of parts.entries())for(const b of parts.slice(i+1))if(Math.min(a.r,b.r)-Math.max(a.x,b.x)>0.5&&Math.min(a.b,b.b)-Math.max(a.y,b.y)>0.5)overlaps.push(a.name+' × '+b.name+' at x '+Math.round(Math.max(a.x,b.x)));
+  const touch=matchMedia('(pointer:coarse)').matches,controls=parts.filter(q=>q.e.matches('button,a,.notebook-draft-note'));
+  const words=d.querySelector('.notebook-sheet-status .deck-status>span');
+  const covered=parts.filter(q=>{const at=document.elementFromPoint((q.x+q.r)/2,(q.y+q.b)/2);return !at||!(q.e===at||q.e.contains(at))}).map(q=>q.name);
+  return {parts:parts.map(q=>q.name),overlaps,covered,off:parts.filter(q=>q.x<0||q.r>innerWidth+0.5).map(q=>q.name),
+    small:touch?controls.filter(q=>q.r-q.x<43.5||q.b-q.y<43.5).map(q=>q.name+' '+Math.round(q.r-q.x)+'×'+Math.round(q.b-q.y)):[],
+    cut:!words?'no saving sign':words.scrollWidth>words.clientWidth+1?words.textContent:null,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+
 export async function notebookSheetChecks({ check, page, until, control, view, facts, shot }) {
   const SHEET = '#new-message-sheet', PAGE = `${SHEET} .notebook-sheet-page:not([hidden])`;
   // What the sheet shows: whether it is open as a Notebook page, its title, whether the Reader is open over the
@@ -50,7 +67,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     for (;;) {
       const now = await until(async () => { const at = await look(); return at.here || at.more ? at : null; }, said);
       if (now.here) return;
-      await press(p, more);
+      // More shown here may be the one an earlier press is still reading for: when that read brings the list's last
+      // page, More goes away as it is aimed at, and the list is looked at again rather than More pressed.
+      try { await press(p, more); } catch (error) { if ((await look()).more) throw error; continue; }
       // More while the list is being read again does nothing (outcome-references.mjs): once the read is done, More
       // is pressed again unless it brought the page.
       await until(async () => { const at = await look(); return at.here || at.rows > now.rows || at.more; }, `${said}, after More`);
@@ -182,7 +201,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         keys:{words:keys.textContent,fits:keys.scrollWidth<=keys.clientWidth+1,long:keys.title.length}}})()`);
     assert.deepEqual({ ...head, full: [head.full[0].replace(/^.*\?/, '?'), head.full[1], head.full[2]], keys: { ...head.keys, long: head.keys.long > 100 } }, {
       full: [`?cards=${plan}`, 'Open as a full page', 'Open as a full page'], close: ['Close, keeping your writing', 'Close, keeping your writing'],
-      views: [['Text', 'false'], ['Cards', 'true']], saving: true, inline: true,
+      views: [['Text', 'false'], ['Cards', 'true'], ['Draft', 'false']], saving: true, inline: true,
       keys: { words: '↑ ↓ pick · Return new card · ⌘Return edit', fits: true, long: true } }, 'the sheet\'s head, and its keys in one short line with the full page\'s line as its tooltip');
     // Text and Cards switch in place, writing nothing.
     const revision = (await view('memory_current', { item_id: plan })).source_ref.revision;
@@ -241,6 +260,78 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
       assert.deepEqual(p.errors, []);
       await p.close();
     }
+  });
+
+  // The head at every width a phone or a laptop gives it: on a phone the chips and the saving sign share a line
+  // only while both fit whole, and the sign takes a line of its own when they do not.
+  await check('notebook in the composer: the sheet\'s head stands clear at every width, its title, ↗, ✕, Text, Cards, Draft and saving sign never over one another, on phones 320 to 414 wide and on a laptop', async () => {
+    const id = await topicPage('Sheet head widths', cardsBody), seen = {}, clear = {}, sizes = {};
+    for (const [width, touch] of [[320, true], [360, true], [375, true], [390, true], [414, true], [761, false], [1024, false]]) {
+      const p = await page(`notebook-sheet-head-${width}`, null, true, { beforeNavigate: async q => {
+        await q.send('Emulation.setDeviceMetricsOverride', { width, height: touch ? 740 : 800, deviceScaleFactor: 1, mobile: touch });
+        if (touch) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      }, url: `${facts.origin}/?topic=t1&page=${id}` });
+      await opened(p, 'Sheet head widths', ['Plan', 'Steps', 'Notes']);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(SHEET + ' .notebook-sheet-status')}).textContent.includes('Saved to Theseus')`), 'the saving sign says the page is saved');
+      await settle(p);
+      const head = await sheetHead(p);
+      seen[width] = { parts: head.parts.slice(3, 6), overlaps: head.overlaps, covered: head.covered, off: head.off, small: head.small, cut: head.cut, sideways: head.sideways };
+      clear[width] = { parts: ['Text', 'Cards', 'Draft'], overlaps: [], covered: [], off: [], small: [], cut: null, sideways: false };
+      // What the head has to fit, should it not: the chips' width and the saving sign's words' own.
+      sizes[width] = await p.evaluate(`[document.querySelector('#new-message-sheet .notebook-sheet-views').scrollWidth,document.querySelector('#new-message-sheet .notebook-sheet-status .deck-status>span').scrollWidth]`);
+      if (width === 320 || width === 375) await shot(p, `notebook-sheet-head-${width}`);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+    assert.deepEqual(seen, clear, `each part of the sheet's head stands clear, on screen and whole, at each width (chips and words wide: ${JSON.stringify(sizes)})`);
+  });
+
+  // A refusal is the sign's widest state: its words and Try again and Discard my writing. It takes a line of its own
+  // under the head at every width, its words whole, so nothing in it lies over the chips, and a press on Cards
+  // reaches Cards (and sends nothing again).
+  await check('notebook in the composer: a refused save takes a line of its own under the sheet\'s head at every width, its words whole and Try again and Discard my writing over nothing, and a press on Cards reaches Cards', async () => {
+    // Core's own words for a topic's Notebook (aim_next/memory.py), longer than any phone's line.
+    const seen = {}, clear = {}, WHY = 'Only those taking part in this topic, its owner and its outcome\'s owner write its Notebook';
+    const REFUSE = `globalThis.revisesRefused=0;const originalFetch=fetch.bind(globalThis);
+      globalThis.fetch=async(...args)=>{let e;try{e=JSON.parse(args[1]?.body)}catch{}
+        if(e?.kind==='memory.revise'){revisesRefused++;return new Response(JSON.stringify({instance_id:e.instance_id,operation_id:e.operation_id,kind:e.kind,status:'rejected',recorded:false,error:{code:'FORBIDDEN',message:${JSON.stringify(WHY)}}}),{status:200,headers:{'content-type':'application/json'}});}
+        return originalFetch(...args);};`;
+    const pressed = p => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(SHEET + ' .notebook-sheet-views .notebook-views button')})].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.textContent)`);
+    // One page at every width: Discard my writing at the end of each leaves nothing of it kept on the device.
+    const id = await topicPage('Sheet head refused', cardsBody);
+    for (const [width, touch] of [[320, true], [360, true], [375, true], [390, true], [414, true], [761, false], [1024, false]]) {
+      const p = await page(`notebook-sheet-refused-${width}`, null, true, { beforeNavigate: async q => {
+        await q.send('Page.addScriptToEvaluateOnNewDocument', { source: REFUSE });
+        await q.send('Emulation.setDeviceMetricsOverride', { width, height: touch ? 740 : 800, deviceScaleFactor: 1, mobile: touch });
+        if (touch) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      }, url: `${facts.origin}/?topic=t1&page=${id}` });
+      const press = selector => touch ? tap(p, selector) : p.point(selector);
+      await opened(p, 'Sheet head refused', ['Plan', 'Steps', 'Notes']);
+      await press(`${SHEET} .notebook-sheet-views .notebook-views button:first-of-type`);
+      await until(async () => JSON.stringify(await pressed(p)) === '["Text"]', 'Text shows');
+      await press(`${PAGE} .notebook-text`);
+      await p.send('Input.insertText', { text: ' Refused.' });
+      await until(() => p.evaluate(`document.querySelectorAll(${JSON.stringify(SHEET + ' .notebook-sheet-status .deck-status button')}).length===2`), 'the refusal offers Try again and Discard my writing');
+      await settle(p);
+      const head = await sheetHead(p), sent = await p.evaluate('revisesRefused');
+      // The sign's line: below every other part of the head.
+      const below = await p.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(SHEET)}),sign=d.querySelector('.notebook-sheet-status').getBoundingClientRect().top;
+        return [...d.querySelectorAll('.notebook-sheet-title,.notebook-sheet-full,.notebook-sheet-close,.notebook-sheet-views')].every(e=>e.getBoundingClientRect().bottom<=sign+0.5)})()`);
+      if (width === 320 || width === 390 || width === 1024) await shot(p, `notebook-sheet-refused-${width}`);
+      await press(`${SHEET} .notebook-sheet-views .notebook-views button:nth-of-type(2)`);
+      await until(async () => JSON.stringify(await pressed(p)) === '["Cards"]', 'a press on Cards shows Cards').catch(() => {});
+      seen[width] = { parts: head.parts.slice(3), overlaps: head.overlaps, covered: head.covered, off: head.off, small: head.small, cut: head.cut, sideways: head.sideways, below,
+        cards: await pressed(p), sentAgain: (await p.evaluate('revisesRefused')) - sent };
+      clear[width] = { parts: ['Text', 'Cards', WHY, 'Try again', 'Discard my writing'], overlaps: [], covered: [], off: [], small: [], cut: null, sideways: false, below: true,
+        cards: ['Cards'], sentAgain: 0 };
+      // Discard my writing: the page as Core holds it, and nothing of this writing left on the device to send.
+      await press(`${SHEET} .notebook-sheet-status .deck-status button:last-of-type`);
+      await until(() => p.evaluate(`document.querySelectorAll(${JSON.stringify(SHEET + ' .notebook-sheet-status .deck-status button')}).length===0`), 'Discard my writing leaves nothing to send');
+      await waitFor(p, s => JSON.stringify(s.cards) === '["Plan","Steps","Notes"]', { cards: ['Plan', 'Steps', 'Notes'] }, 'the page is as Core holds it');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+    assert.deepEqual(seen, clear, `a refusal stands on its own line under the head, whole, at each width, and Cards takes its press: ${JSON.stringify(seen)}`);
   });
 
   await check('notebook in the composer: a card being written survives ✕, a press outside and Escape, which first finishes it; the feed comes back where it was, the focus on what opened the page, and the box is open again on reopening', async () => {

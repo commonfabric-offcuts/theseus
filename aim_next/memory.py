@@ -4,7 +4,7 @@ import json
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .conversation import _preview
-from .whispers import private_source_refused
+from .whispers import actor_kind, private_source_refused
 
 
 MEMORY_SCHEMA = [
@@ -26,6 +26,25 @@ MEMORY_READ_SCHEMA = [
 ]
 MEMORY_READ_DOWN = ("DROP TABLE memory_reads",)
 MEMORY_READ_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM memory_reads)"
+# Version 39: whether a revision's writer marked the page a draft
+# (docs/notebook-pages.md, "A draft page"). While a page's latest revision is
+# marked, no agent is given its words. Earlier code would give them, so once
+# any revision has been marked the step back is refused.
+MEMORY_DRAFT_SCHEMA = ["ALTER TABLE memory_revisions ADD COLUMN draft INTEGER NOT NULL DEFAULT 0"]
+MEMORY_DRAFT_DOWN = ("ALTER TABLE memory_revisions DROP COLUMN draft",)
+MEMORY_DRAFT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM memory_revisions WHERE draft<>0)"
+
+DRAFT_KEPT = ("This page is a draft: its writer keeps it from agents until the draft mark is cleared, so an agent "
+              "neither reads, writes nor marks it; nothing was written")
+
+# Who may write pages in a Notebook, the one rule Core enforces and every page reads (reader_may_write): in a
+# topic's, its active participants, its owner (who started it) and its outcome's owner; in an outcome's, its team,
+# the owner always among them. People and agents alike; every revision is kept.
+WRITERS = {
+    "topic": "SELECT 1 FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:scope AND (t.creator_id=:actor "
+             "OR w.owner_id=:actor OR EXISTS (SELECT 1 FROM topic_participants p WHERE p.topic_id=t.id AND p.actor_id=:actor AND p.active=1))",
+    "workspace": "SELECT 1 FROM workspace_members WHERE workspace_id=:scope AND actor_id=:actor",
+}
 
 
 class Memory:
@@ -37,17 +56,21 @@ class Memory:
             self._topic(db, actor, scope_id)
         else:
             self._workspace(db, actor, scope_id)
-        if write:
-            # A topic's pages are its active participants' to edit, and an
-            # outcome's are its team's (the owner always among them), people
-            # and agents alike; every revision is kept.
-            if scope["kind"] == "topic":
-                allowed = db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1", (scope_id, actor)).fetchone()
-            else:
-                allowed = db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (scope_id, actor)).fetchone()
-            if not allowed:
-                raise Refusal("FORBIDDEN", "Current participation is required to edit this Notebook")
+        if write and not self._notebook_writer(db, actor, scope["kind"], scope_id):
+            raise Refusal("FORBIDDEN", "Only those taking part in this topic, its owner and its outcome's owner write its Notebook"
+                          if scope["kind"] == "topic" else "Only this outcome's team writes its Notebook")
         return {"kind": scope["kind"], "id": scope_id}
+
+    def _notebook_writer(self, db, actor, kind, scope_id):
+        return db.execute(WRITERS[kind], {"scope": scope_id, "actor": actor}).fetchone() is not None
+
+    def _reader_may_write(self, db, actor, kind, scope_id, draft=False):
+        """What a page is told before it offers a pencil or writing: whether Core would take a revision from this
+        reader here. The writers' rule, in an outcome not yet reached, and never an agent on a draft page."""
+        if not self._notebook_writer(db, actor, kind, scope_id) or (draft and actor_kind(db, actor) == "agent"):
+            return False
+        workspace = scope_id if kind == "workspace" else db.execute("SELECT workspace_id FROM topics WHERE id=?", (scope_id,)).fetchone()[0]
+        return db.execute("SELECT 1 FROM outcome_reached WHERE workspace_id=?", (workspace,)).fetchone() is None
 
     def _memory_identity(self, db, actor, item_id, write=False):
         row = db.execute("SELECT * FROM memory_items WHERE id=?", (_identifier(item_id, "item_id"),)).fetchone()
@@ -67,8 +90,11 @@ class Memory:
         return identity
 
     def _memory_content(self, db, actor, args, retained=()):
-        if set(args) != {"title", "body", "attachments", "references"}:
+        # draft is optional: a revision that leaves it out keeps the page's mark.
+        if set(args) - {"draft"} != {"title", "body", "attachments", "references"}:
             raise Refusal("INVALID_ARGUMENT", "Supply a complete Notebook revision")
+        if "draft" in args and not isinstance(args["draft"], bool):
+            raise Refusal("INVALID_ARGUMENT", "A page's draft mark is true or false")
         title, body = _body(args["title"]), _body(args["body"])
         attachments, refs = args["attachments"], args["references"]
         if not isinstance(attachments, list) or not isinstance(refs, list):
@@ -85,7 +111,7 @@ class Memory:
             else:
                 raise Refusal("INVALID_ARGUMENT", "Evidence must name an exact message or Notebook revision")
         attachments = self._attachment_refs(db, actor, attachments, ready=True, retained=retained)
-        return title, body, attachments, refs
+        return title, body, attachments, refs, args.get("draft")
 
     def _command_memory_create(self, db, actor, envelope):
         return self._write_memory(db, actor, envelope, creating=True)
@@ -112,16 +138,23 @@ class Memory:
             scope = {"kind": old["scope_kind"], "id": old["scope_id"]}
             revision = old["current_revision"]
             _revision(envelope["expected"], "item_revision", revision)
-        retained = [] if creating else [ref["id"] for ref in json.loads(db.execute(
-            "SELECT attachments FROM memory_revisions WHERE item_id=? AND revision=?", (item_id, revision)).fetchone()[0])]
-        title, body, attachments, refs = self._memory_content(db, actor, envelope["args"], retained=retained)
+        current = None if creating else db.execute("SELECT attachments,draft FROM memory_revisions WHERE item_id=? AND revision=?",
+                                                   (item_id, revision)).fetchone()
+        retained = [] if creating else [ref["id"] for ref in json.loads(current["attachments"])]
+        title, body, attachments, refs, draft = self._memory_content(db, actor, envelope["args"], retained=retained)
+        was = bool(current and current["draft"])
+        draft = was if draft is None else draft
+        # Only a person marks a page or clears its mark, and no agent writes a page it is not given to read.
+        if (was or draft) and actor_kind(db, actor) == "agent":
+            raise Refusal("FORBIDDEN", DRAFT_KEPT)
         if creating:
             db.execute("INSERT INTO memory_items(id,scope_kind,scope_id,creator_id,current_revision) VALUES (?,?,?,?,1)",
                        (item_id, scope["kind"], scope["id"], actor))
         else:
             db.execute("UPDATE memory_items SET current_revision=? WHERE id=?", (revision + 1, item_id))
-        db.execute("INSERT INTO memory_revisions VALUES (?,?,?,?,?,?,?,?)", (item_id, revision + 1, actor,
-                   envelope["operation_id"], title, body, _json(attachments), _json(refs)))
+        db.execute("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft) "
+                   "VALUES (?,?,?,?,?,?,?,?,?)", (item_id, revision + 1, actor, envelope["operation_id"], title, body,
+                                                   _json(attachments), _json(refs), int(draft)))
         # Whoever writes a revision has read it, so their own edit never marks
         # the page changed for them. The write is already its own change.
         db.execute("INSERT INTO memory_reads(actor_id,item_id,revision) VALUES (?,?,?) "
@@ -160,14 +193,22 @@ class Memory:
             {"kind": "memory_read", "id": item["id"], "version": args["revision"]}]
 
     def _memory_source(self, db, actor, ref):
+        """One revision of a page. While the page is a draft an agent gets it with no words: no body, attachments or
+        evidence (withheld), whichever revision it names, so neither a read, a link nor a quote carries them."""
         item = self._memory_ref(db, actor, ref)
         row = db.execute("SELECT * FROM memory_revisions WHERE item_id=? AND revision=?", (ref["id"], ref["revision"])).fetchone()
+        # The page is a draft while its latest revision is marked; an agent is then given its title alone.
+        draft_now = bool(db.execute("SELECT draft FROM memory_revisions WHERE item_id=? AND revision=?",
+                                    (item["id"], item["current_revision"])).fetchone()[0])
+        withheld = draft_now and actor_kind(db, actor) == "agent"
         return {"instance_id": self.instance_id, "source_ref": dict(ref),
                 "owner_scope": {"kind": item["scope_kind"], "id": item["scope_id"]},
                 "topic_id": item["scope_id"] if item["scope_kind"] == "topic" else None,
                 "author": row["author_id"], "creator": item["creator_id"], "title": row["title"],
-                "body": row["body"], "attachments": json.loads(row["attachments"]),
-                "references": json.loads(row["refs"]), "version": row["revision"],
+                "body": "" if withheld else row["body"], "attachments": [] if withheld else json.loads(row["attachments"]),
+                "references": [] if withheld else json.loads(row["refs"]), "version": row["revision"],
+                "draft": bool(row["draft"]), "withheld": withheld,
+                "reader_may_write": self._reader_may_write(db, actor, item["scope_kind"], item["scope_id"], draft_now),
                 "current_revision": item["current_revision"], "allowed_actions": ["quote", "note.save"]}
 
     def _view_memory_current(self, db, actor, args):
@@ -177,18 +218,23 @@ class Memory:
         return self._memory_source(db, actor, {"kind": "memory", "id": item["id"], "revision": item["current_revision"]})
 
     def _view_memory_items(self, db, actor, args):
+        """A Notebook's pages, and whether the reader may write in it (reader_may_write), which a page reads before it
+        offers its pencil. A draft page is listed to an agent with its title and its mark and no words (withheld)."""
         scope = self._memory_scope(db, actor, args.get("owner_scope"))
         limit = _page_size(args)
-        rows = db.execute("SELECT i.*,r.author_id,substr(r.title,1,256) AS title,substr(r.body,1,1024) AS body,length(CAST(r.body AS BLOB)) AS body_bytes,"
+        agent = actor_kind(db, actor) == "agent"
+        rows = db.execute("SELECT i.*,r.author_id,r.draft,substr(r.title,1,256) AS title,substr(r.body,1,1024) AS body,length(CAST(r.body AS BLOB)) AS body_bytes,"
                           "coalesce(k.revision,0) AS read_revision FROM memory_items i JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
                           "LEFT JOIN memory_reads k ON k.actor_id=? AND k.item_id=i.id WHERE i.scope_kind=? AND i.scope_id=? AND i.seq>? ORDER BY i.seq LIMIT ?",
                           (actor, scope["kind"], scope["id"], args.get("cursor", 0), limit + 1)).fetchall()
         items, size = [], 1024
         for row in rows[:limit]:
-            body = _preview(row["body"])
+            withheld = bool(row["draft"]) and agent
+            body = "" if withheld else _preview(row["body"])
             item = {"id": row["id"], "seq": row["seq"], "owner_scope": scope,
                     "title": _preview(row["title"], 256), "body": body,
-                    "preview": len(body.encode("utf-8")) < row["body_bytes"],
+                    "preview": not withheld and len(body.encode("utf-8")) < row["body_bytes"],
+                    "draft": bool(row["draft"]), "withheld": withheld,
                     "source_ref": {"kind": "memory", "id": row["id"], "revision": row["current_revision"]},
                     "revision": row["current_revision"], "read_revision": row["read_revision"],
                     "author": row["author_id"], "allowed_actions": ["quote", "note.save"]}
@@ -199,5 +245,6 @@ class Memory:
             size += encoded
         version = db.execute("SELECT version FROM memory_notebooks WHERE scope_kind=? AND scope_id=?", (scope["kind"], scope["id"])).fetchone()
         return {"instance_id": self.instance_id, "items": items,
+                "reader_may_write": self._reader_may_write(db, actor, scope["kind"], scope["id"]),
                 "next_cursor": items[-1]["seq"] if len(rows) > len(items) else None,
                 "relevant_versions": {"notebook": version[0] if version else 0}}

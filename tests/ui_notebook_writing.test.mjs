@@ -175,3 +175,74 @@ test('card gestures rebase on changed neighbors but cannot remove changed childr
   const nested='## Plan\nShip it.\n### Notes\nDan reviews.\n';
   assert.equal(rebaseCardActs(nested,nested.replace('Dan reviews.','Agent changed child'),[{kind:'remove',text:'Plan\nShip it.',near:0}]),null);
 });
+
+// A draft page (item 391; docs/notebook-pages.md, "A draft page"): the mark is part of the page's content, saved,
+// merged and kept as its words are, and a person Core does not let write the page (item 371) writes nothing new.
+test('the draft mark is saved as a revision, merges beside other writing and leaves the words as they were', async t => {
+  const f=fixture(t), c=await f.make();
+  assert.equal(c.value.draft,false,'a page read without a mark is unmarked');
+  assert.equal(c.edit({draft:true},c.capture()),true); assert.equal(c.dirty,true);
+  await c.flush();
+  assert.equal(f.calls.at(-1).args.draft,true); assert.equal(f.source().draft,true); assert.equal(f.source().body,'## First\n\nOriginal words\n');
+  assert.equal(c.base.content.draft,true); assert.equal(c.dirty,false);
+  // Cleared while the person's own words wait unsaved: one revision carries both.
+  c.edit({body:'New words'},c.capture()); c.edit({draft:false},c.capture()); await c.flush();
+  assert.deepEqual([f.source().body,f.source().draft,f.source().source_ref.revision],['New words',false,3]);
+  // A mark and someone else's words merge, either way about: my words, their mark; my mark, their words.
+  assert.deepEqual(mergeCardContent({title:'T',body:'a',attachments:[],references:[],draft:false},{title:'T',body:'b',attachments:[],references:[],draft:false},
+    {title:'T',body:'a',attachments:[],references:[],draft:true}),{title:'T',body:'b',attachments:[],references:[],draft:true});
+  assert.deepEqual(mergeCardContent({title:'T',body:'a',attachments:[],references:[],draft:false},{title:'T',body:'a',attachments:[],references:[],draft:true},
+    {title:'U',body:'c',attachments:[],references:[],draft:false}),{title:'U',body:'c',attachments:[],references:[],draft:true});
+  // The same mark set on both sides is one change, not a conflict.
+  assert.equal(mergeCardContent({title:'T',body:'a',attachments:[],references:[],draft:true},{title:'T',body:'a',attachments:[],references:[],draft:false},
+    {title:'T',body:'a',attachments:[],references:[],draft:false}).draft,false);
+});
+
+test('writing kept on a device before the mark existed reads as unmarked, and is no change of its own', async t => {
+  const base={title:'T',body:'a',attachments:[],references:[]};
+  assert.equal(sameContent(base,{...base,draft:false}),true);
+  assert.equal(sameContent(base,{...base,draft:true}),false);
+  const f=fixture(t), c=await f.make(); c.close();
+  const held=f.held()??{v:1,binding:{instance_id:'i1',actor_id:'owner',item_id:'page'},base:copy(c.base),value:copy(c.value),pending:null,conflict:null,localVersion:0,images:[]};
+  delete held.base.content.draft; delete held.value.draft;
+  await f.store.put(held);
+  const next=await f.make();
+  assert.equal(next.dirty,false); assert.equal(f.calls.length,0,'nothing is saved for a mark nobody set');
+});
+
+test('a reader Core does not let write the page writes nothing new, and writing kept on the device still goes', async t => {
+  const f=fixture(t), c=await f.make();
+  c.edit({body:'Kept before the rule changed'},c.capture()); await c.serial;
+  f.api.view=(view=>async (...args)=>({...await view(...args),reader_may_write:false}))(f.api.view);
+  await c.refresh();
+  assert.equal(c.reading,true);
+  assert.equal(c.edit({body:'Not written'},c.capture()),false); assert.equal(c.edit({draft:true},c.capture()),false);
+  assert.equal(c.value.body,'Kept before the rule changed');
+  await c.flush(); assert.equal(f.calls.length,1,'what the device held goes, and Core answers it');
+  // Told again that they may write, they write.
+  f.api.view=(view=>async (...args)=>({...await view(...args),reader_may_write:true}))(f.api.view);
+  f.revise({title:'Plans'}); await c.refresh();
+  assert.equal(c.reading,false); assert.equal(c.edit({body:'Written'},c.capture()),true);
+});
+
+// Every read of the page as it stands tells the writing whether Core lets this person write it, so no path that
+// takes the latest page back leaves the writing controls to someone it would refuse.
+test('discarding after a refusal reads the page to read when Core no longer lets the person write it', async t => {
+  const f=fixture(t), c=await f.make();
+  c.edit({body:'Written before they left'},c.capture()); await c.serial;
+  f.api.view=(view=>async (...args)=>({...await view(...args),reader_may_write:false}))(f.api.view);
+  f.api.command=async e=>({instance_id:'i1',operation_id:e.operation_id,kind:e.kind,recorded:true,status:'rejected',error:{code:'FORBIDDEN',message:'Only those taking part write'}});
+  await c.flush(); assert.equal(c.readOnly,true);
+  assert.equal(await c.discard(),true);
+  assert.equal(c.readOnly,false); assert.equal(c.reading,true,'the page is to read, not to write');
+  assert.equal(c.edit({body:'Refused again'},c.capture()),false); assert.equal(c.value.body,f.source().body);
+});
+
+test('a save answered by a newer revision reads whether the person may still write the page', async t => {
+  const f=fixture(t), c=await f.make();
+  c.edit({body:'Mine'},c.capture()); await c.serial;
+  f.revise({title:'Renamed elsewhere'});
+  f.api.view=(view=>async (...args)=>({...await view(...args),reader_may_write:false}))(f.api.view);
+  await c.flush();
+  assert.equal(c.conflict.content.title,'Renamed elsewhere','the newer revision was read'); assert.equal(c.reading,true);
+});

@@ -247,3 +247,20 @@ test('Notebook writing links name Text or Cards without changing the page identi
   }
   assert.throws(()=>parseRoute(new URL('https://example.test/?cards=n-notes&view=unknown')),/incomplete|ambiguous/);
 });
+
+// A draft Notebook page wears a light "draft" after its title wherever it is listed, with the mark's tooltip; a page
+// not marked wears none (item 391; docs/notebook-pages.md, "A draft page").
+test('a draft page is marked in a listing and a page not marked is not', async () => {
+  const { paintChanged, DRAFT_TIP } = await import('../web/topic-navigation.mjs');
+  const previous = globalThis.document;
+  class Node { constructor() { this.children = []; } append(...nodes) { this.children.push(...nodes); } get lastChild() { return this.children.at(-1) ?? null; } }
+  globalThis.document = { createElement: () => new Node() };
+  try {
+    const marked = new Node(), plain = new Node();
+    paintChanged(marked, { revision: 2, read_revision: 2, draft: true });
+    paintChanged(plain, { revision: 2, read_revision: 2, draft: false });
+    assert.deepEqual(marked.children.map(n => [n.className, n.textContent, n.title]), [['draft-mark', 'draft', DRAFT_TIP]]);
+    assert.match(DRAFT_TIP, /agents do not read this page until the mark is cleared/);
+    assert.deepEqual(plain.children, []);
+  } finally { globalThis.document = previous; }
+});

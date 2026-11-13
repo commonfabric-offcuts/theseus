@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { OutcomeReferences } from '../web/outcome-references.mjs';
 
-function fixture(t, { pageMax } = {}) {
+function fixture(t, { pageMax, create } = {}) {
   const previous = globalThis.document;
   class Element {
     constructor() { this.children = []; this.dataset = {}; this.hidden = false; this.text = ''; }
@@ -21,7 +21,7 @@ function fixture(t, { pageMax } = {}) {
   const queue = [], calls = [], opened = [], seen = [];
   const item = (seq, title = `Item ${seq}`, revision = 1, read_revision) => ({ id: `m${seq}`, seq, title, revision, read_revision, owner_scope: { kind: 'workspace', id: 'w1' }, source_ref: { kind: 'memory', id: `m${seq}`, revision } });
   const answer = (items, next_cursor = null) => ({ instance_id: 'instance', items, next_cursor });
-  const references = new OutcomeReferences({ ...nodes, scope: 'w1', ...(pageMax ? { pageMax } : {}),
+  const references = new OutcomeReferences({ ...nodes, scope: 'w1', ...(pageMax ? { pageMax } : {}), ...(create ? { create } : {}),
     read: args => { calls.push(args); const next = queue.shift(); return typeof next === 'function' ? next() : Promise.resolve(next); },
     open: (...args) => opened.push(args), denied: error => error.status === 403, seen: items => seen.push(items.map(x => x.id)) });
   const titles = () => nodes.list.children.map(row => row.textContent);
@@ -193,4 +193,30 @@ test('the Notebook pages sit in the sidebar beside the topics, with the failure 
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
   assert.match(css, /#outcome-references-list \.nav-item\{min-height:44px;/, 'a page row is as tall as a topic row');
   assert.match(css, /@media\(max-width:760px\)\{#outcome-references\{[^}]*\}#outcome-references-list\{display:flex;overflow:auto;/, 'and scrolls sideways on a phone as topics do');
+});
+
+// The pencil (items 371 and 383): shown only to someone Core lets write the outcome's Notebook, as its answer says.
+test('the pencil shows only while Core says the reader may write the Notebook', async t => {
+  const pencil = { available: true, told: [], setAvailable(on) { this.available = on; this.told.push(on); } };
+  const f = fixture(t, { create: () => pencil });
+  assert.equal(pencil.available, false, 'hidden until Core answers');
+  f.queue.push({ ...f.answer([f.item(1, 'Architecture')]), reader_may_write: false });
+  await f.references.load();
+  assert.equal(pencil.available, false, 'a reader who may not write gets no pencil');
+  assert.equal(f.host.hidden, false, 'and still reads the pages');
+  f.queue.push({ ...f.answer([]), reader_may_write: false });
+  await f.references.load();
+  assert.equal(f.host.hidden, true, 'an empty Notebook with no pencil shows nothing');
+  f.queue.push({ ...f.answer([f.item(1, 'Architecture')], 1), reader_may_write: true });
+  await f.references.load();
+  assert.equal(pencil.available, true);
+  f.queue.push({ ...f.answer([f.item(2, 'More')]), reader_may_write: true });
+  await f.references.load(true);
+  assert.equal(pencil.available, true, 'More keeps it');
+  f.queue.push(f.answer([f.item(1, 'Architecture')]));
+  await f.references.load();
+  assert.equal(pencil.available, false, 'an answer that does not say so gives no pencil');
+  f.queue.push({ ...f.answer([]), reader_may_write: true });
+  await f.references.load();
+  assert.equal(f.host.hidden, false, 'an empty Notebook shows its heading with the pencil to someone who may write it');
 });

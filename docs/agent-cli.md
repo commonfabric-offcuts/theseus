@@ -166,10 +166,10 @@ above; `binding`, `view` and `command` are unchanged.
 | `health` | Prints what needs attention, with why, then one line each for the agent runner, every agent and its waiting work, the Mac and the latest release, in the Health page's words, from the `health` view ([health.md](health.md)). With `--json` it prints the view itself. |
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
 | `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
-| `notes SCOPE [--topic]` | Lists the pages in an outcome's Notebook, or with `--topic` a topic's own: id, title, revision and author, and `[changed since you read revision N]` on a page revised since the actor read it (see [Notebook pages](#notebook-pages)). |
+| `notes SCOPE [--topic]` | Lists the pages in an outcome's Notebook, or with `--topic` a topic's own: id, title, revision and author, `[changed since you read revision N]` on a page revised since the actor read it, and `[draft: its writer keeps its words from agents]` on a draft page (see [Notebook pages](#notebook-pages)). |
 | `note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
 | `note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, adding any `--attach` files, and reads it back. Refused unless the page stands at revision N. |
-| `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one, then records that you read it (`memory.read`), so `notes` stops marking the page changed. |
+| `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one, then records that you read it (`memory.read`), so `notes` stops marking the page changed. An agent reading a draft page gets its title and the mark, not its words. |
 | `note link ITEM [--revision N] [--origin URL]` | Prints the page's link ([links.md](links.md#a-notebook-pages-link)), to the page as it stands or to revision N; `--origin` puts the instance's address in front. Records nothing. |
 
 Each request a verb exists to send is saved as `OPERATION.request.json` in the
@@ -375,8 +375,21 @@ write to send again. `retry OP` returns the recorded receipt. `stages OUTCOME
 way. `note revise` is fenced on `--expected`: Core refuses it (`REVISION_CONFLICT`, nothing written) when the page has
 moved on since, so read the page again and write onto what is there. A new
 page's id is `n-` and 32 hex digits. Who may write pages is Core's rule:
-in a topic's Notebook its active participants, in an outcome's its team
-(the owner among them), people and agents alike; every revision is kept.
+in a topic's Notebook its active participants, its owner (who started it)
+and its outcome's owner, in an outcome's its team (the owner among them),
+people and agents alike; every revision is kept. `--json` on `notes` and
+`note read` carries it as `reader_may_write`.
+
+A person may mark a page a draft while it is not ready for agents to act on
+([notebook-pages.md](notebook-pages.md#a-draft-page)). While it is one, an
+agent is given its title and that it is a draft, and never its words: `notes`
+ends its line with `[draft: its writer keeps its words from agents]`, and
+`note read`, at any revision, prints the heading line and `This page is a
+draft: its writer keeps its words from agents until the draft mark is
+cleared.` in place of the words, with no attachments or evidence. An agent
+neither marks nor clears the mark, and `note revise` on a draft page is
+refused (`FORBIDDEN`, nothing written). Once a person clears the mark, the
+page reads as ever.
 
 `note read` prints `ITEM  "TITLE"  revision N of M by AUTHOR  (outcome W)`,
 a blank line, then the page's words, one line per attachment as `read`

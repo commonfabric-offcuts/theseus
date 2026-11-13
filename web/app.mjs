@@ -1229,8 +1229,8 @@ async function copyPageLink(source, revision, say) {
 }
 // The Reader's ⋯ (docs/reader.md): Copy Link, the mark, Quote selection while
 // there is something to quote, Start a topic from this, Add to pipeline, and
-// Wide or Stacked; for a Notebook page, Copy Link, Copy Link to Revision N and
-// Edit page (docs/notebook-writing.md).
+// Wide or Stacked; for a Notebook page, Copy Link, Copy Link to Revision N and,
+// for someone who may write it, Edit page (docs/notebook-writing.md).
 // The message's own acts live here, not in a row under it; on a phone the
 // menu opens as a sheet from the bottom.
 function openReaderMenu() {
@@ -1239,8 +1239,9 @@ function openReaderMenu() {
   if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
-      { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) },
-      { label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
+      { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
+    // Edit page only for someone Core lets write the page (its reader_may_write, docs/notebook-pages.md).
+    if (p.source.reader_may_write === true) items.push({ label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });

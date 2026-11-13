@@ -101,6 +101,13 @@ BEFORE_FOLD, FOLD_VERSION = BLOCKS_VERSION, str(int(BLOCKS_VERSION) + 1)
 SCHEMA_BEFORE_FOLD = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_FOLD)).read_text().splitlines()
 # Version 37 layout from approved 356 (a75954a), carried unchanged in 7e2aaae.
 SCHEMA_37 = (Path(__file__).parent / "fixtures" / "schema_37.sql").read_text().splitlines()
+# The step that marks a Notebook revision a draft (items 371, 383, 391) follows
+# 355's step (37->38, a reader's dossier set aside below More), so the layout
+# before it is version 38's, read from a fresh instance of release 69's
+# integration (ecb692d4). Named here once, so a renumbering of the step changes
+# only these two and the fixture's file name.
+BEFORE_DRAFT, DRAFT_VERSION = str(int(FOLD_VERSION) + 1), str(int(FOLD_VERSION) + 2)
+SCHEMA_BEFORE_DRAFT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_DRAFT)).read_text().splitlines()
 OLD_ACTS = ("CREATE TABLE message_acts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "kind TEXT NOT NULL CHECK(kind IN ('star','deal','place','name','join')), "
             "message_id TEXT NOT NULL REFERENCES messages(id), topic_id TEXT NOT NULL REFERENCES topics(id), seq INTEGER NOT NULL, "
@@ -125,6 +132,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The draft's version marks a Notebook revision a draft: before it, a revision has no mark.
+        db.execute("ALTER TABLE memory_revisions DROP COLUMN draft")
+        if version == BEFORE_DRAFT:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         db.execute("DROP INDEX IF EXISTS stack_replies")
         # The fold's version lets message_acts hold a fold: before it, the table names five kinds.
         db.execute("DROP TABLE message_acts")
@@ -1885,7 +1897,8 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_ORDER, SCHEMA_BEFORE_ORDER),
                      (BEFORE_STACKS, SCHEMA_BEFORE_STACKS),
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
-                     (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37))
+                     (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37),
+                     (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3359,6 +3372,72 @@ class FoldStepCase(MigrationCase):
         self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class DraftStepCase(MigrationCase):
+    """An instance at 355's version: the draft's step gives each Notebook revision a draft
+    mark, every revision kept unmarked, and steps back only while no revision is marked."""
+
+    VERSION, FIXTURE = BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_DRAFT)
+
+    def written(self):
+        """A page written at version 38, revised once."""
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO memory_items(id,scope_kind,scope_id,creator_id,current_revision) VALUES ('page','topic','t1','owner',2)")
+            for revision, body in ((1, "Words"), (2, "More words")):
+                db.execute("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs) "
+                           "VALUES ('page',?,'owner',?,'Page',?,'[]','[]')", (revision, "op-%d" % revision, body))
+
+    def revise(self, revision, draft):
+        receipt = self.command("memory.revise", {"title": "Page", "body": "Words", "attachments": [], "references": [], "draft": draft},
+                               {"item_id": "page"}, {"item_revision": revision})
+        self.assertEqual(receipt["status"], "committed", receipt)
+
+    def test_the_step_follows_355s_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_DRAFT, DRAFT_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, DRAFT_VERSION)
+
+    def test_upgrade_keeps_every_revision_unmarked_and_matches_a_fresh_instance(self):
+        self.written()
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_DRAFT,
+                                          "schema_version": DRAFT_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        after = everything(self.path)
+        self.assertEqual(after["memory_revisions"], sorted((row + (0,) for row in stored["memory_revisions"]), key=repr))
+        self.assertEqual({k: v for k, v in after.items() if k != "memory_revisions"},
+                         {k: v for k, v in stored.items() if k != "memory_revisions"})
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        page = self.store.view("agent-a", "memory_current", {"item_id": "page"})
+        self.assertEqual((page["body"], page["draft"], page["withheld"]), ("More words", False, False))
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_marked(self):
+        self.written()
+        stored = everything(self.path)
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.revise(2, False)
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_DRAFT))
+        back = everything(self.path)
+        self.assertEqual(back["memory_revisions"][:2], stored["memory_revisions"])
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_a_revision_is_marked_and_changes_nothing(self):
+        self.written()
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.revise(2, True)
+        self.revise(3, False)
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST", "a cleared page still keeps the revision that marked it")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], DRAFT_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -3415,6 +3494,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(BlocksStepCase, _name, None)
     if _name.startswith("test_") and _name not in FoldStepCase.__dict__:
         setattr(FoldStepCase, _name, None)
+    if _name.startswith("test_") and _name not in DraftStepCase.__dict__:
+        setattr(DraftStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

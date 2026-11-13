@@ -6,7 +6,7 @@ import { timeNode } from './times.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { revealSelection } from './reveal.mjs';
 
-const UNDO_LIMIT = 50;
+export const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 const WRITING_KEYS = 'Escape done · ⌘Return done and a new card below · ← at the very start folds the card away · ⌘↑ ⌘↓ move · Tab under the card above, ⇧Tab out · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
@@ -114,6 +114,8 @@ export class DeckPage {
     return element;
   }
   get phone() { return Boolean(this.narrow?.matches); }
+  // Whether the page is marked a draft, its words kept from agents (NotebookPage: as the person's writing has it).
+  drafted() { return this.source?.draft === true; }
 
   // The page as it stands, read again on every commit (app.mjs followCommits)
   // once its Notebook's version has moved, so a commit elsewhere costs one
@@ -667,7 +669,8 @@ export class DeckPage {
   }
   // A card's speech bubbles: one for each of its reply stacks, which opens it, saying Sent until its first reply
   // and then counting them, and marked only while one waits unread; or, on a card with none, one that asks an
-  // agent about it. A stack begun before the messages read says nothing.
+  // agent about it. A stack begun before the messages read says nothing. A draft page asks nothing: its words
+  // are kept from agents until its mark is cleared (docs/notebook-pages.md, "A draft page").
   bubbles(index, stacks) {
     const holder = this.node('div', 'deck-bubbles');
     for (const { topicId, messageId } of stacks) {
@@ -680,7 +683,7 @@ export class DeckPage {
       link.addEventListener('click', event => event.stopPropagation());
       holder.append(link);
     }
-    if (!stacks.length && this.room?.agents.length && !this.readOnly) {
+    if (!stacks.length && this.room?.agents.length && !this.readOnly && !this.drafted()) {
       const ask = this.node('button', 'deck-bubble deck-ask');
       ask.append(mark(this.doc, BALLOON));
       ask.type = 'button';
@@ -696,7 +699,7 @@ export class DeckPage {
   // person may choose another. One agent and not all, since each one asked would start on the same work.
   ask(index) {
     const card = this.deck.cards[index];
-    if (!card || !this.room?.agents.length || this.readOnly || this.asking) return;
+    if (!card || !this.room?.agents.length || this.readOnly || this.asking || this.drafted()) return;
     if (this.editing) this.finish();
     this.selected = new Set(); this.anchor = null;
     const form = this.node('div', 'deck-ask-form'), field = this.node('textarea', 'deck-ask-field'), to = this.node('select', 'deck-ask-to');

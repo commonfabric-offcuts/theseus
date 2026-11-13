@@ -38,9 +38,10 @@ export class PageHere {
     if (!current()) return;
     heading.textContent = source.title || 'Notebook page';
     heading.tabIndex = -1;
-    const origin = this.node('p', `Notebook · revision ${source.source_ref.revision}`, 'muted');
+    const origin = this.node('p', `Notebook · revision ${source.source_ref.revision}${source.draft === true ? ' · draft' : ''}`, 'muted');
     const body = linkWords(this.node('div', undefined, 'page-here-body'), source.body ?? '', { doc: this.doc });
-    const cards = this.cards ? Object.assign(this.node('a', 'Edit page', 'page-here-cards'), { href: this.cards(source.source_ref.id) }) : '';
+    // Edit page only for someone Core lets write the page (its reader_may_write).
+    const cards = this.cards && source.reader_may_write === true ? Object.assign(this.node('a', 'Edit page', 'page-here-cards'), { href: this.cards(source.source_ref.id) }) : '';
     this.host.replaceChildren(heading, origin, status, body, cards, close);
     heading.focus();
     let since;

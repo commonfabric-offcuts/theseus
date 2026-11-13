@@ -495,10 +495,17 @@ export function changedSince(item) {
     item.revision > item.read_revision ? item.revision - item.read_revision : 0;
 }
 // A Notebook page read before and revised since wears the count of its new
-// revisions as a topic wears its unread count, until the reader opens it.
+// revisions as a topic wears its unread count, until the reader opens it; a
+// draft page wears a light "draft" after it (docs/notebook-pages.md, "A draft page").
+export const DRAFT_TIP = 'A draft: agents do not read this page until the mark is cleared';
 export function paintChanged(host, item) {
   const since = changedSince(item);
   if (since) paintCount(host, since, 'unread-count changed', `, changed since you read it, ${since} new revision${since === 1 ? '' : 's'}`);
+  if (item.draft === true) {
+    const mark = document.createElement('span');
+    mark.className = 'draft-mark'; mark.textContent = 'draft'; mark.title = DRAFT_TIP;
+    host.append(mark);
+  }
 }
 function paintCount(host, count, className, said) {
   const badge = document.createElement('span'), spoken = document.createElement('span');

@@ -1168,6 +1168,9 @@ class Agent(PipelineVerbs, TargetVerbs):
             source["source_ref"]["id"], _one_line(source["title"]), source["version"], source["current_revision"],
             source["author"], self.scope_words(source["owner_scope"])))
         self.out.plain("")
+        if source.get("withheld"):
+            # A draft page gives an agent its title alone (docs/notebook-pages.md, "A draft page").
+            self.out.plain("This page is a draft: its writer keeps its words from agents until the draft mark is cleared.")
         for line in source["body"].split("\n") if source["body"] else ():
             self.out.plain(line)
         for attachment in source["attachments"]:
@@ -1215,6 +1218,8 @@ class Agent(PipelineVerbs, TargetVerbs):
             line = '%s  "%s"  revision %s by %s' % (item["id"], _one_line(item["title"], 80), item["revision"], item["author"])
             if 0 < item["read_revision"] < item["revision"]:
                 line += "  [changed since you read revision %s]" % item["read_revision"]
+            if item.get("draft"):
+                line += "  [draft: its writer keeps its words from agents]"
             self.out.plain(line)
         if not items:
             self.out.plain("no Notebook pages")

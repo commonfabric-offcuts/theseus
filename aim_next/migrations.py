@@ -22,7 +22,8 @@ from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 from .work import (OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED, OTHERS_SCHEMA, TURN_ACTIVITY_BACKFILL, TURN_ACTIVITY_DOWN,
                    TURN_ACTIVITY_OCCUPIED, WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA)
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
-from .memory import MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED, MEMORY_READ_SCHEMA
+from .memory import (MEMORY_DRAFT_DOWN, MEMORY_DRAFT_OCCUPIED, MEMORY_DRAFT_SCHEMA, MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED,
+                     MEMORY_READ_SCHEMA)
 from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
 from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
@@ -156,6 +157,10 @@ STEPS = (
     # refused once anyone has folded a message, even one unfolded since.
     ("36", "37", FOLD_UP, FOLD_DOWN, FOLD_OCCUPIED),
     ("37", "38", ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED),
+    # Version 39 keeps whether each Notebook revision's writer marked the page a
+    # draft, which no agent is given the words of. Stepping back is refused once
+    # any revision has been marked, since version 38 would give agents its words.
+    ("38", "39", MEMORY_DRAFT_SCHEMA, MEMORY_DRAFT_DOWN, MEMORY_DRAFT_OCCUPIED),
 )
 
 

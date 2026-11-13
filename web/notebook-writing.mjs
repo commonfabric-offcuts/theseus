@@ -3,18 +3,23 @@ const copy = structuredClone;
 const same = (a, b) => a === b || Boolean(a && b && typeof a === 'object' && typeof b === 'object' &&
   Array.isArray(a) === Array.isArray(b) && Object.keys(a).length === Object.keys(b).length &&
   Object.keys(a).every(key => Object.hasOwn(b,key) && same(a[key],b[key])));
-export const sameContent = (a,b) => Boolean(a && b && ['title','body','attachments','references'].every(key=>same(a[key],b[key])));
-function mergeTextContent(base,mine,theirs) {
-  const result={};
-  for(const field of ['title','body','attachments','references']) {
-    if(same(mine[field],base[field]))result[field]=copy(theirs[field]);
-    else if(same(theirs[field],base[field])||same(theirs[field],mine[field]))result[field]=copy(mine[field]);
+// A page's content: its words and what they carry, and its draft mark (docs/notebook-pages.md, "A draft page"),
+// which the writing keeps, merges and saves as it does the words. Writing kept on a device before the mark
+// existed holds no mark: it reads as unmarked.
+const FIELDS = ['title','body','attachments','references','draft'];
+const field = (content,key) => key === 'draft' ? content[key] === true : content[key];
+export const sameContent = (a,b) => Boolean(a && b && FIELDS.every(key=>same(field(a,key),field(b,key))));
+function mergeFields(fields,base,mine,theirs,result) {
+  for(const key of fields) {
+    if(same(field(mine,key),field(base,key)))result[key]=copy(field(theirs,key));
+    else if(same(field(theirs,key),field(base,key))||same(field(theirs,key),field(mine,key)))result[key]=copy(field(mine,key));
     else return null;
   }
   return result;
 }
+const mergeTextContent = (base,mine,theirs) => mergeFields(FIELDS,base,mine,theirs,{});
 const content = source => ({ title: source.title, body: source.body ?? '',
-  attachments: source.attachments.map(({ id }) => ({ id })), references: copy(source.references) });
+  attachments: source.attachments.map(({ id }) => ({ id })), references: copy(source.references), draft: source.draft === true });
 const authority = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
 const readOnly = new Set(['FORBIDDEN', 'OUTCOME_REACHED', 'AUTHORITY_CHANGED']);
 
@@ -27,6 +32,9 @@ export class NotebookWriting {
     this.error = null; this.readOnly = false; this.running = null; this.timer = null;
     this.active = false; this.closed = false; this.serial = Promise.resolve(); this.localVersion = 0; this.images = [];
     this.journalPending = 0; this.journalError = null;
+    // reading: Core does not let this person write the page (its reader_may_write), so nothing new is written
+    // here; writing already kept on this device still goes, and Core answers it.
+    this.reading = false;
   }
   get dirty() { return Boolean(this.value && !sameContent(this.value, this.base?.content)); }
   get hasLocal() { return this.dirty || this.localActive(); }
@@ -54,6 +62,9 @@ export class NotebookWriting {
     const source = await this.api.view('memory_current', { item_id: this.item });
     if (source.instance_id !== this.bootstrap.instance_id || source.source_ref?.kind !== 'memory' ||
         source.source_ref.id !== this.item || !Number.isInteger(source.source_ref.revision)) throw Error('This is not the requested Notebook page.');
+    // Each read of the page as it stands says whether Core lets this person write it now (refresh, a newer
+    // revision answering a save, Discard my writing): no path that takes the latest page back can miss it.
+    this.reading = source.reader_may_write === false;
     return { revision: source.source_ref.revision, content: content(source), source };
   }
   async open() {
@@ -74,7 +85,7 @@ export class NotebookWriting {
   edit(patch, seen, mode = 'text', acts = []) {
     // A caller must name the content it actually edited. In particular an
     // empty, not-yet-drawn surface must never borrow the current revision.
-    if (!seen?.content || !Number.isInteger(seen.revision) || !this.value || this.readOnly || this.closed) return false;
+    if (!seen?.content || !Number.isInteger(seen.revision) || !this.value || this.readOnly || this.reading || this.closed) return false;
     const next = { ...seen.content, ...copy(patch) };
     if (sameContent(next, seen.content)) return false;
     let merged;
@@ -349,12 +360,8 @@ function cardEdits(before, after) {
   flush();return edits;
 }
 export function mergeCardContent(base, mine, theirs) {
-  const merged={};
-  for(const field of ['title','attachments','references']) {
-    if(same(mine[field],base[field]))merged[field]=copy(theirs[field]);
-    else if(same(theirs[field],base[field])||same(theirs[field],mine[field]))merged[field]=copy(mine[field]);
-    else return null;
-  }
+  const merged=mergeFields(FIELDS.filter(key=>key!=='body'),base,mine,theirs,{});
+  if(merged===null)return null;
   if(mine.body===base.body) return {...merged,body:theirs.body};
   if(theirs.body===base.body||mine.body===theirs.body)return {...merged,body:mine.body};
   const byCard=mergeRewrittenCards(base.body,mine.body,theirs.body);

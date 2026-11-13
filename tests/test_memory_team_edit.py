@@ -2,7 +2,8 @@ from __future__ import annotations
 
 """Everyone on an outcome's team edits its Notebook pages, people as well as
 agents, and every revision is kept; a topic's own pages are its active
-participants' to edit, whoever they are."""
+participants' to edit, whoever they are, and its owner's and its outcome's
+owner's (test_memory_write_rule.py)."""
 
 import sqlite3
 
@@ -39,12 +40,18 @@ class TeamEditCase(ReaderCase):
         self.assertEqual(self.revisions("notes"), [(1, "teammate", "A person's page"), (2, "agent-b", "An agent's revision")])
 
     def test_a_person_in_a_topic_edits_its_pages_and_leaving_it_ends_that(self):
-        # The topic's creator, a person, takes part in it.
+        # The topic's creator, a person, takes part in it, and so does a person on the team.
         self.committed(self.memory(item="topic-page", actor="owner", body="The owner's topic page"))
         self.committed(self.memory(item="topic-page", revision=1, body="The agent's revision"))
+        self.committed(self.command("participation.set", {"actor_id": "teammate", "present": True}, target={"topic_id": "t1"}))
+        self.committed(self.memory(item="topic-page", actor="teammate", revision=2, body="The teammate's revision"))
+        self.committed(self.command("participation.set", {"actor_id": "teammate", "present": False}, target={"topic_id": "t1"}))
+        self.rejected(self.memory(item="topic-page", actor="teammate", revision=3, body="After leaving"), "FORBIDDEN")
+        # The topic's owner, who is also its outcome's, still writes it after stepping out.
         self.committed(self.command("participation.set", {"actor_id": "owner", "present": False}, target={"topic_id": "t1"}))
-        self.rejected(self.memory(item="topic-page", actor="owner", revision=2, body="After leaving"), "FORBIDDEN")
-        self.assertEqual(self.revisions("topic-page"), [(1, "owner", "The owner's topic page"), (2, "agent-a", "The agent's revision")])
+        self.committed(self.memory(item="topic-page", actor="owner", revision=3, body="The owner, stepped out"))
+        self.assertEqual(self.revisions("topic-page"), [(1, "owner", "The owner's topic page"), (2, "agent-a", "The agent's revision"),
+                                                        (3, "teammate", "The teammate's revision"), (4, "owner", "The owner, stepped out")])
 
     def test_someone_off_the_team_still_cannot_and_nothing_is_written(self):
         self.committed(self.memory(item="plan", scope=OUTCOME, body="The agent's plan"))

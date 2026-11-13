@@ -1,9 +1,14 @@
-import { DeckPage } from './deck-page.mjs';
+import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
 import { applyAct, deckBody, parseDeck, cardText, textCard, findCard } from './deck.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-writing.mjs';
 import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
+import { DRAFT_TIP } from './topic-navigation.mjs';
+
+// The draft mark's words (docs/notebook-pages.md, "A draft page").
+const DRAFT = { off: 'Mark as a draft: agents see its title and that it is a draft, never its words',
+  on: DRAFT_TIP + '. Press to clear it', note: DRAFT_TIP };
 
 // DeckPage supplies the existing card gestures and geometry. This surface
 // supplies one body and one saving stream, shared with the Text view.
@@ -34,7 +39,15 @@ export class NotebookPage extends DeckPage {
     this.addImage.onclick=()=>{this.imageFile.value='';this.imageFile.click();};
     this.imageFile.onchange=()=>{if(this.imageFile.files?.[0])this.captureImage(this.imageFile.files[0]);};
     this.imagePanel.append(this.imageRows,this.addImage,this.imageFile);
-    this.status.before(this.views); this.status.after(this.conflictPanel,this.imagePanel,this.textPanel);
+    // The draft mark: a toggle beside Text / Cards for someone Core lets write the page, a quiet mark for someone
+    // who reads it, shown while the page is a draft. The composer takes both with the views (notebook-sheet.mjs).
+    this.draft=this.node('span','notebook-draft');
+    this.draftButton=this.node('button','notebook-draft-toggle','Draft');this.draftButton.type='button';this.draftButton.hidden=true;
+    this.draftButton.onclick=()=>{this.markDraft(!this.drafted());};
+    this.draftNote=this.node('span','notebook-draft-note','Draft');this.draftNote.title=DRAFT.note;this.draftNote.hidden=true;
+    this.draft.append(this.draftButton,this.draftNote);
+    const tools=this.node('div','notebook-tools'); tools.append(this.views,this.draft);
+    this.status.before(tools); this.status.after(this.conflictPanel,this.imagePanel,this.textPanel);
     this.drawView();
   }
   async load() {
@@ -106,7 +119,7 @@ export class NotebookPage extends DeckPage {
     // taken between one input listener and the next, and the page drawn from the writing then keeps them.
     if(this.editing)this.save();
     this.textEdited();
-    this.source=w.base.source; this.base={revision:w.base.revision,body:w.base.content.body}; this.readOnly=w.readOnly;
+    this.source=w.base.source; this.base={revision:w.base.revision,body:w.base.content.body}; this.readOnly=w.readOnly||w.reading;
     this.header.title.textContent=w.value.title;
     const drawKept=force || !this.cardsSeen || !this.textSeen;
     if((!w.conflict || drawKept) && (drawKept || deckBody(this.deck)!==w.value.body)) {
@@ -168,6 +181,34 @@ export class NotebookPage extends DeckPage {
     if(this.writing)this.writing.active=false;
   }
   moveWriting(act) { super.moveWriting(act); this.save(); }
+  drafted() { return this.writing?.value?.draft === true; }
+  // Marking the page a draft, or clearing the mark, is an act of its own: saved as a revision as the words are,
+  // and taken back by Undo (or, in the Text view, by the toggle itself).
+  markDraft(on, undoing=false) {
+    const w=this.writing, seen=this.mode==='text'?this.textSeen:this.cardsSeen;
+    if(!w||!seen||this.readOnly||this.drafted()===on)return false;
+    if(this.asking){if(this.asking.sending)return false;this.endAsk(true);}
+    if(!w.edit({draft:on},seen,this.mode))return false;
+    for(const shown of [this.textSeen,this.cardsSeen])if(shown)shown.content={...shown.content,draft:on};
+    if(!undoing)this.undos=[...this.undos,{kind:'draft',draft:!on}].slice(-UNDO_LIMIT);
+    return true;
+  }
+  undo() {
+    const last=this.undos.at(-1);
+    if(last?.kind!=='draft'||this.editing||this.asking||this.readOnly)return super.undo();
+    this.undos=this.undos.slice(0,-1);
+    if(!this.markDraft(last.draft,true))this.say('Nothing taken back: the draft mark changed since.','attention');
+  }
+  paintDraft() {
+    const on=this.drafted(), writer=Boolean(this.writing?.base)&&!this.readOnly;
+    this.draftButton.hidden=!writer; this.draftNote.hidden=writer||!on||!this.writing?.base;
+    this.draftButton.setAttribute('aria-pressed',String(on));
+    this.draftButton.title=on?DRAFT.on:DRAFT.off;
+    this.host.classList.toggle('notebook-drafted',on);
+    // The cards' asks come and go with the mark.
+    if(this.paintedDraft!==undefined&&this.paintedDraft!==on)this.paint();
+    this.paintedDraft=on;
+  }
   paint() { if(this.mode!=='text')super.paint(); }
   key(event) {
     const picker=this.mode==='text'?this.textImages:this.cardImages;
@@ -196,9 +237,11 @@ export class NotebookPage extends DeckPage {
   writingChanged() {
     const w=this.writing;
     if(!w)return;
-    this.readOnly=w.readOnly; this.text.readOnly=w.readOnly;
-    if(this.editing)this.editing.field.readOnly=w.readOnly;
-    this.host.classList.toggle('deck-read-only',w.readOnly);
+    // A person Core does not let write the page reads it: no writing controls, and nothing to pause.
+    this.readOnly=w.readOnly||w.reading; this.text.readOnly=this.readOnly;
+    if(this.editing)this.editing.field.readOnly=this.readOnly;
+    this.host.classList.toggle('deck-read-only',this.readOnly);
+    this.paintDraft();
     const changed=w.conflict;
     this.conflictPanel.hidden=!changed;
     if(changed && this.conflictRevision!==changed.revision) {
@@ -223,6 +266,8 @@ export class NotebookPage extends DeckPage {
     else if(changed)this.say('Your writing is kept on this device. Review the changed page.','attention');
     else if(w.images.some(i=>!i.removed&&i.error))this.say('An image needs attention. Your words are kept.','attention');
     else if(w.images.some(i=>!i.removed&&!i.associated))this.say('Uploading image…','saving');
+    // Someone who may not write the page, with none of their writing on its way, reads it: the device keeps nothing for them.
+    else if(w.reading&&!w.dirty&&!w.busy)this.say('To read');
     else if(w.journalPending)this.say('Keeping your writing on this device…','saving');
     else if(w.busy)this.say('Saving…','saving');
     else if(w.dirty)this.say('Saved on this device · saving to Theseus…','saving');
@@ -259,7 +304,7 @@ export class NotebookPage extends DeckPage {
   }
   paintImages() {
     const w=this.writing;if(!w?.value||!this.imageRows)return;
-    this.addImage.disabled=w.readOnly;
+    this.addImage.disabled=w.readOnly; this.addImage.hidden=w.reading;
     const attached=w.value.attachments.map(ref=>{
       const own=w.images.find(i=>i.ready?.media_id===ref.id),d=own?.ready;
       const descriptor=d?{...d,id:d.media_id}:w.base?.source.attachments.find(a=>a.id===ref.id);
@@ -280,7 +325,8 @@ export class NotebookPage extends DeckPage {
       row.item=item;
       row.words.textContent=item.name+(item.own&&!item.own.ready?' · '+(item.own.error??'Uploading…'):'');
       row.removeButton.disabled=row.retryButton.disabled=w.readOnly;
-      row.retryButton.hidden=!item.own?.error;
+      row.removeButton.hidden=w.reading;
+      row.retryButton.hidden=!item.own?.error||w.reading;
       const descriptor=item.descriptor;
       if(item.own?.bytes||descriptor?.inline)paintThumb(row,item.id,async()=>(item.own?.bytes?new Blob([item.own.bytes],{type:item.own.type}):null)??(await this.api.media(this.bootstrap.instance_id,descriptor,item.own?undefined:w.base.source.source_ref)).blob);
       rows.push(row);

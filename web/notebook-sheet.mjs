@@ -1,6 +1,6 @@
 // A Notebook page in the composer over the feed (item 396): opening or
 // starting a page brings up the New message sheet with the page's title, a
-// Text / Cards switch, its saving sign, Full page and ✕. The page's writing
+// Text / Cards switch with the page's draft mark, its saving sign, Full page and ✕. The page's writing
 // is the full page's own (NotebookPage: the card gestures, the shared body,
 // the saving and recovery); this only hosts it over the feed.
 //
@@ -169,7 +169,7 @@ export class NotebookSheet {
     if (this.current && this.current !== page) this.keep(this.current);
     this.current = page;
     this.title.replaceChildren(page.sheetTitle);
-    this.views.replaceChildren(page.views);
+    this.views.replaceChildren(page.views, page.draft);
     this.status.replaceChildren(page.status);
     this.full.href = this.fullHref(page.item, page.mode);
     if (!this.showing) {

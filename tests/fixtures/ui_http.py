@@ -789,6 +789,35 @@ def main():
                             command("participation.set", prefix + "-watching", {"actor_id": actor, "present": False},
                                     {"topic_id": topic_id}, {"topic_revision": revision}, sender=agent)
                         answer = {"topic_id": topic_id, "workspace_id": workspace}
+                    elif freshness and request["method"] == "own_topic":
+                        # A topic the reader starts, with the fixture's agent in it, in an outcome the
+                        # agent owns and the reader is on the team of, and then steps out of: the reader
+                        # owns the topic without taking part in it or owning its outcome.
+                        agent, prefix = "fixture-notebook-agent", request["operation_id"]
+                        workspace, topic_id = prefix + "-w", prefix + "-t"
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "The agent's outcome", "team": [actor]}, sender=agent)
+                        command("draft.save", prefix + "-save", {
+                            "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
+                            "topic_id": topic_id, "generation": prefix + "-generation", "body": "Started by the reader",
+                            "opening": {"workspace_id": workspace, "title": request["title"], "participants": [agent]}},
+                            {"draft_id": prefix + "-draft"}, {"draft_revision": 0})
+                        command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
+                                                                           "send_operation_id": prefix + "-send"},
+                                {"topic_id": topic_id}, {"draft_revision": 1})
+                        command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id})
+                        revision = store().view(actor, "topic", {"topic_id": topic_id})["topic"]["version"]
+                        command("participation.set", prefix + "-out", {"actor_id": actor, "present": False},
+                                {"topic_id": topic_id}, {"topic_revision": revision})
+                        answer = {"topic_id": topic_id, "workspace_id": workspace}
+                    elif freshness and request["method"] == "agent_page":
+                        # The fixture's agent starts a page in the Notebook of a topic it takes part in.
+                        answer = command("memory.create", request["operation_id"], {
+                            "title": request["title"], "body": request["body"], "attachments": [], "references": []},
+                            {"item_id": request["item_id"], "owner_scope": {"kind": "topic", "id": request["topic_id"]}},
+                            {"item_revision": 0}, sender="fixture-notebook-agent")
+                    elif freshness and request["method"] == "agent_view":
+                        # What the fixture's agent is given by a view, as its CLI reads it.
+                        answer = store().view("fixture-notebook-agent", request["name"], request.get("args") or {})
                     elif freshness and request["method"] == "outcome_change":
                         # Someone who organises an outcome changes its record, as the CLI
                         # does: {"owner": id} hands it on, {"member": id, "present": bool}
@@ -899,12 +928,16 @@ def main():
                                          {"opening_id": prefix + "-opening"}, {"opening_revision": 1}, sender=agent)
                     elif freshness and request["method"] == "outcome_reference":
                         # An agent on the outcome's team writes to the outcome's
-                        # own Notebook, which every topic in it stands on.
-                        agent = on_team(request["operation_id"])
-                        answer = command("memory.create", request["operation_id"], {
+                        # own Notebook, which every topic in it stands on. With
+                        # "workspace_id", the person writes in that outcome of theirs,
+                        # marking the page a draft with "draft": true.
+                        workspace = request.get("workspace_id", "w1")
+                        sender = on_team(request["operation_id"]) if workspace == "w1" else actor
+                        answer = command("memory.create", request["operation_id"], dict({
                             "title": request["title"], "body": request["body"], "attachments": [], "references": []},
-                            {"item_id": request["item_id"], "owner_scope": {"kind": "workspace", "id": "w1"}},
-                            {"item_revision": 0}, sender=agent)
+                            **({"draft": True} if request.get("draft") else {})),
+                            {"item_id": request["item_id"], "owner_scope": {"kind": "workspace", "id": workspace}},
+                            {"item_revision": 0}, sender=sender)
                     elif freshness and request["method"] == "pipeline":
                         # Someone acts on an outcome's pipeline as their CLI does: a
                         # pipeline.* command fenced on the revision that sender reads

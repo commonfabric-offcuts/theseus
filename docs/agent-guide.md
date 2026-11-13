@@ -220,6 +220,13 @@ changed, and revise against the new revision. `notes` marks a page
 clears the mark.
 `note link` prints the page's link to paste into a message.
 
+You may write a topic's pages while you take part in it, and an outcome's
+while you are on its team; `--json` says so as `reader_may_write`. A page a
+person has marked a draft shows in `notes` with `[draft: its writer keeps its
+words from agents]`, and `note read` gives you its title and that it is a
+draft, never its words: it is not ready to act on. Leave it alone (you
+cannot revise it) and read it again once its writer clears the mark.
+
 ## Reading back what you wrote
 
 A command that exits 0 recorded what it says; check that it says what you

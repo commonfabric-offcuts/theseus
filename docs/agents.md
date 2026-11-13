@@ -218,7 +218,9 @@ output; the exit codes are those of `command`.
   each write reads its revision back and fails loudly on a difference, or
   with `READ_BACK_UNCONFIRMED` naming the recorded revision when the read-back
   fails, and `note read` records the revision it prints, which clears `notes`'
-  changed mark ([agent-cli.md](agent-cli.md#notebook-pages)).
+  changed mark. A page a person marked a draft lists with its title and the
+  mark, and reads with no words, until the mark is cleared
+  ([agent-cli.md](agent-cli.md#notebook-pages)).
 - `retry OPERATION`: re-sends a saved request exactly.
 
 A refusal that was not recorded suggests `retry` only when it is retryable;

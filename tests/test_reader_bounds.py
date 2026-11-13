@@ -64,7 +64,8 @@ class ReaderBoundsCase(ReaderCase):
             for index in range(5000):
                 item = "unrelated-%s" % index
                 db.execute("INSERT INTO memory_items(id,scope_kind,scope_id,creator_id,current_revision) VALUES (?,'workspace','w1','agent-a',1)", (item,))
-                db.execute("INSERT INTO memory_revisions VALUES (?,1,'agent-a',?,'Title','Unrelated text','[]','[]')", (item, "fixture-" + item))
+                db.execute("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs) "
+                           "VALUES (?,1,'agent-a',?,'Title','Unrelated text','[]','[]')", (item, "fixture-" + item))
             self.assertEqual(db.execute("SELECT count(*) FROM memory_items WHERE scope_kind='workspace' AND scope_id='w1'").fetchone()[0], 5000)
         setup_seconds = time.perf_counter() - started
         result, bulk_work = self.measured(lambda: self.store.view("owner", "memory_items", args))
