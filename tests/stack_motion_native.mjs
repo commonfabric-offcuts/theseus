@@ -6,16 +6,17 @@ addEventListener('DOMContentLoaded',()=>{const sample=()=>{window.motionClock++;
 for(const c of document.querySelectorAll('#messages .message-card[data-stack-motion]')){
  const e=c.closest('.message-fold')||c,s=c.closest('.reply-stack'),r=s?.querySelector('.stack-replies');
  const prior=[...r?.querySelectorAll(':scope>[data-id]')||[]].find(n=>n.dataset.id!==c.dataset.id&&!n.hidden);
+ const bar=document.querySelector('.message-bar'),barBox=bar?.getBoundingClientRect(),tab=s?.querySelector(':scope>[data-id] .stack-head')?.getBoundingClientRect();
  const b=e.getBoundingClientRect(),q=r?.getBoundingClientRect(),a=c.querySelector(':scope>.message-author');
  const authors=[...c.querySelectorAll(':scope>.message-author,:scope>.message-folded')].filter(n=>getComputedStyle(n).display!=='none'&&getComputedStyle(n).visibility!=='hidden');
  window.motionFrames.push({clock:window.motionClock,id:c.dataset.id,kind:c.dataset.stackMotion,top:b.top,bottom:b.bottom,height:b.height,
  opacity:+getComputedStyle(e).opacity,transform:getComputedStyle(e).transform,edge:b.bottom-(q?.top||0),floor:q?.height,
  authors:authors.length,authorOffset:a?a.getBoundingClientRect().top-b.top:null,authorOpacity:a?+getComputedStyle(a).opacity:1,sectionBottom:s?.getBoundingClientRect().bottom,
- priorTop:prior?.getBoundingClientRect().top,animations:e.getAnimations().length+c.getAnimations().length});}
+ priorTop:prior?.getBoundingClientRect().top,barId:document.querySelector('#messages .message-card.lit')?.dataset.id,barTop:barBox?.top,barHeight:barBox?.height,tabBottom:tab?.bottom,animations:e.getAnimations().length+c.getAnimations().length});}
  };const tick=()=>{setTimeout(sample,0);requestAnimationFrame(tick)};requestAnimationFrame(tick)});`;
 
 export async function motionChecks({ check, until, view, control, shot, facts, observations }, h) {
-  const { seed, open, centre, press, card, DEVICES, menuOf, choose, away } = h;
+  const { seed, open, centre, press, card, DEVICES, menuOf, choose, away, keyTo } = h;
   const widths = [320,375,390,1280];
   const atWidths = async (label, run) => {
     for (const width of widths) {
@@ -166,6 +167,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
   await check('reading dossier motion a burst shares its moving floor and an off-screen batch stays natural', async()=>{
     await atWidths('burst',async ctx=>{
       const {p,ids,topic,width}=ctx;
+      await keyTo(p,ids.two);
       const floor=await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').querySelector('.stack-replies').getBoundingClientRect().height`);
       const burst=async(count,label)=>{
         await p.evaluate("window.waitView='topic_messages'");
@@ -176,11 +178,15 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
         return added;
       };
       const added=await burst(2,'visible');
+      await keyTo(p,added[1]);
       await until(async()=>(await frames(p,added[1],'arrival')).length>2,'both visible faces share a landing'); await settled(p);
       const samples=await p.evaluate(`window.motionFrames.filter(f=>${JSON.stringify(added)}.includes(f.id))`),groups=new Map();
       for(const sample of samples){if(!groups.has(sample.clock))groups.set(sample.clock,[]);groups.get(sample.clock).push(sample);}
       const together=[...groups.values()].filter(group=>group.length===2);
       assert.ok(together.length>2,'both faces were measured in the same native frames');
+      const attached=samples.filter(f=>f.id===added[1]&&f.barId===added[1]&&Math.abs(f.floor-floor)<1.1&&f.top>Math.max(4,(f.tabBottom||0)+2)+f.barHeight/2+2);
+      assert.ok(attached.length>1,'a selected short face travels below the tab before contact');
+      assert.ok(attached.every(f=>Math.abs(f.barTop-(f.top-f.barHeight/2))<1.1),'the existing message bar follows the incoming face before folder growth');
       assert.ok(together.every(group=>group.every(f=>Math.abs(f.floor-Math.max(floor,...group.map(g=>g.edge)))<1.1)),'one boundary follows the lowest travelling edge');
       await centre(p,card(added[1])); await p.evaluate('window.motionFrames=[]');
       const many=await burst(10,'offscreen');

@@ -34,8 +34,8 @@ export function arrivalPose(progress, above) {
 }
 
 export class StackMotion {
-  constructor({ list, anchor = () => null, reading = () => {}, win = list.ownerDocument.defaultView }) {
-    Object.assign(this, { list, anchor, reading, win, doc: list.ownerDocument });
+  constructor({ list, anchor = () => null, reading = () => {}, moved = () => {}, win = list.ownerDocument.defaultView }) {
+    Object.assign(this, { list, anchor, reading, moved, win, doc: list.ownerDocument });
     this.handled = new Set(); this.next = []; this.active = new Set(); this.paused = false; this.disposed = false; this.awaitingAttention = false; this.staged = null;
     this.off = [];
     const on = (host, name, fn, options) => { host.addEventListener(name, fn, options); this.off.push(() => host.removeEventListener(name, fn, options)); };
@@ -116,7 +116,9 @@ export class StackMotion {
         if (done || this.paused) return;
         if (effect.last !== null) effect.elapsed += Math.max(0, now-effect.last);
         effect.last = now;
-        if (effect.tick?.(effect.elapsed)) { effect.finish(); return; }
+        const finished = effect.tick?.(effect.elapsed);
+        this.moved();
+        if (finished) { effect.finish(); return; }
         frame = this.win.requestAnimationFrame(effect.loop);
       },
       finish: () => {
@@ -125,7 +127,7 @@ export class StackMotion {
         for (const animation of animations) animation.cancel();
         for (const undo of cleanups.reverse()) undo();
         for (const { entry, card } of faces) { delete card.dataset.stackMotion; delete entry.dataset.stackMotion; this.reading(entry, false); }
-        this.active.delete(effect);
+        this.active.delete(effect); this.moved();
       },
     };
     for (const { entry, card } of faces) { entry.dataset.stackMotion = kind; card.dataset.stackMotion = kind; this.reading(entry, true); }

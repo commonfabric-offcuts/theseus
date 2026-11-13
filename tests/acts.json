@@ -10501,6 +10501,21 @@
     "native": "reading",
     "case": "reading dossier motion a burst shares its moving floor"
    }
+  },
+  {
+   "item": 412,
+   "act": "The existing message bar follows a selected incoming face before its folder grows",
+   "break": [
+    [
+     "web/app.mjs",
+     "moved: () => menu?.place(),",
+     "moved: () => {},"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a burst shares its moving floor"
+   }
   }
  ]
 }

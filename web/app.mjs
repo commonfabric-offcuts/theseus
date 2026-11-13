@@ -844,7 +844,7 @@ function actorLabel(id) {
 function stackMessages() { feedOf().arrange(); }
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
-  stackMotion ??= new StackMotion({ list: $('messages'), anchor: () => {
+  stackMotion ??= new StackMotion({ list: $('messages'), moved: () => menu?.place(), anchor: () => {
     const at = document.activeElement;
     return inline?.root.contains(at) ? inline.field : typingField(at) && inView(at) ? at : listAnchor();
   }, reading: (entry, moving) => {
