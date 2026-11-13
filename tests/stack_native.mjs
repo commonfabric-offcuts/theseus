@@ -212,10 +212,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const ids = await seed(topic, [
         ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root, read.', read: true }],
         ['before', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'A read reply hidden above the first face.', read: true }],
-        ['first', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The first unread reply, the first face.' }],
+        ['first', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A reply marked unread, the first face.' }],
         ['between', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'A read reply hidden between two faces.', read: true }],
         ['latest', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The latest reply, the second face.' }],
       ]);
+      // Reading is read-through: everything up to between is read. A mark
+      // puts the first face back unread, with read replies on both sides.
+      await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [ids.first], marked: true });
       const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;');
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
