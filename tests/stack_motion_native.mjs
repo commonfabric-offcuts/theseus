@@ -164,6 +164,60 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     });
   });
 
+  // Item 379: what the keys move to is brought fully into view. A reply still
+  // arriving is revealed where it lands, while it keeps travelling there.
+  await check('reading dossier motion the keys onto a reply still arriving bring it whole into view where it lands at 320 375 390 and laptop', async()=>{
+    await atWidths('keys',async ctx=>{
+      const {p,ids,topic}=ctx;
+      await keyTo(p,ids.two);
+      await p.evaluate(`(c=>scrollBy(0,c.getBoundingClientRect().bottom-(innerHeight-260)))(document.querySelector(${JSON.stringify(card(ids.two))}))`);
+      const id=(await control({method:'agent_message',operation_id:topic+'-tall',topic_id:topic,source:'topic',sender:'aim-core',reply_to:ids.root,addressees:[facts.actor],
+        body:Array.from({length:12},(_,i)=>`Line ${i+1} of a tall live reply.`).join('\n\n')})).result.message_id;
+      // The key goes as soon as the page's own frame shows the reply in flight.
+      await p.evaluate(`new Promise(done=>{const look=()=>{const c=document.querySelector(${JSON.stringify(card(id))}),e=c?.closest('.stack-replies > [data-id]');
+        if(c?.dataset.stackMotion==='arrival'&&+getComputedStyle(e).opacity<.6)done();else requestAnimationFrame(look)};look()})`);
+      await p.key('ArrowDown');
+      const keyed=await p.evaluate(`[document.querySelector(${JSON.stringify(card(id))}).dataset.stackMotion??null,window.motionClock,document.querySelector('#messages .message-card.lit')?.dataset.id??null]`);
+      assert.deepEqual([keyed[0],keyed[2]],['arrival',id],'ArrowDown lit the reply while it was still arriving');
+      await settled(p);
+      const box=await p.evaluate(`(r=>({top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight}))(document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect())`);
+      assert.ok(box.height<box.screen*.8,`the reply fits the screen with room: ${JSON.stringify(box)}`);
+      assert.ok(box.top>=0&&box.bottom<=box.screen,`the lit reply shows whole once it lands: ${JSON.stringify(box)}`);
+      assert.ok(box.bottom>=box.screen*.75,`the page scrolled no further than to show it: ${JSON.stringify(box)}`);
+      assert.ok((await frames(p,id,'arrival')).some(f=>f.clock>keyed[1]&&f.transform!=='none'),'the keys do not cut its landing short');
+    });
+  });
+
+  // What the person is writing below a dossier stays where it is: a reply
+  // arriving above it lands in its natural place, with no travel.
+  const holds = async (ctx, opener, field) => {
+    const {p,ids,topic,device}=ctx;
+    if (opener) { await centre(p,opener); await press(p,device,opener); }
+    else { await centre(p,field); await press(p,device,field); }
+    await until(()=>p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(field)})`),'the caret is in the field');
+    await p.evaluate(`(f=>scrollBy(0,f.getBoundingClientRect().top-(innerHeight-90)))(document.querySelector(${JSON.stringify(field)}))`);
+    const slot=await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.two))}).getBoundingClientRect().bottom`);
+    const at=await p.evaluate(`(f=>{const top=f.getBoundingClientRect().top;window.fieldTops=[];window.fieldSampling=true;
+      const tick=()=>{window.fieldTops.push(f.getBoundingClientRect().top);if(window.fieldSampling)requestAnimationFrame(tick)};requestAnimationFrame(tick);return {top,screen:innerHeight}})(document.querySelector(${JSON.stringify(field)}))`);
+    assert.ok(slot>0&&slot<at.top&&at.top<at.screen-40,`the dossier's end shows above the field, low on the screen: ${JSON.stringify({slot,...at})}`);
+    const id=await add(ctx,'held');
+    await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}))`),'the live reply is drawn');
+    await settled(p);
+    await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    const tops=await p.evaluate('(window.fieldSampling=false,window.fieldTops)');
+    const shown=await p.evaluate(`(r=>r.bottom>0&&r.top<innerHeight)(document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect())`);
+    assert.equal(shown,true,'the new reply landed on the screen, where it could have travelled');
+    assert.ok(tops.length>2&&tops.every(top=>Math.abs(top-at.top)<=1),`the field holds still in every frame: ${JSON.stringify({at:at.top,low:Math.min(...tops),high:Math.max(...tops)})}`);
+    assert.deepEqual(await frames(p,id,'arrival'),[],'a reply above the writing does not travel');
+    assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(field)})`),true,'the caret stays in the field');
+  };
+  await check('reading dossier motion writing below an arriving reply holds still: the People field at 320 375 390 and laptop', async()=>{
+    await atWidths('held-people',ctx=>holds(ctx,'#participants .add-chip','#participants .people-add input'));
+  });
+  await check('reading dossier motion writing below an arriving reply holds still: a new message at 320 375 390 and laptop', async()=>{
+    await atWidths('held-writing',ctx=>holds(ctx,null,'#inline-writing-body'));
+  });
+
   await check('reading dossier motion a burst shares its moving floor and an off-screen batch stays natural', async()=>{
     await atWidths('burst',async ctx=>{
       const {p,ids,topic,width}=ctx;
