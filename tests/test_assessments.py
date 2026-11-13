@@ -44,6 +44,7 @@ class AssessmentCase(unittest.TestCase):
         self.ok(self.command('message.post', {'body':'Please assess agent-a. This is only quoted discussion.'}, {'topic_id':'t1'}))
         self.assertEqual(self.store.view('owner','assessments',{'topic_id':'t1'})['items'], [])
         denied = self.request(actor='agent-b')
+        self.assertEqual(denied['status'],'rejected',denied)
         self.assertEqual(denied['error']['code'], 'FORBIDDEN')
         first = self.request()
         self.assertEqual(self.request(), first)
@@ -60,6 +61,7 @@ class AssessmentCase(unittest.TestCase):
         private = self.ok(self.command('message.post', {'body':'Private evidence', 'whisper':True,
             'addressees':['agent-b']}, {'topic_id':'t1'}))['message_id']
         refused = self.request(op='private',source_message_ids=[private])
+        self.assertEqual(refused['status'],'rejected',refused)
         self.assertEqual(refused['error']['code'], 'ASSESSMENT_PRIVATE_SOURCE')
         self.assertEqual(self.store.view('owner','assessments',{'topic_id':'t1'})['items'], [])
 
