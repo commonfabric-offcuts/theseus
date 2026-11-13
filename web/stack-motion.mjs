@@ -41,7 +41,7 @@ export class StackMotion {
     const faces = new Map();
     for (const entry of entries(this.list)) {
       const card = cardIn(entry), section = entry.closest('.reply-stack');
-      if (!section || !visible(entry, this.win)) continue;
+      if (!section || !visible(entry, this.win) || !visible(card, this.win)) continue;
       const style = this.win.getComputedStyle(card);
       faces.set(entry.dataset.id, { entry, card, section, box: rect(card), folded: card.dataset.folded === 'true',
         pad: parseFloat(style.paddingTop), displays: new Map([...card.children].map(child => [child, this.win.getComputedStyle(child).display])) });
