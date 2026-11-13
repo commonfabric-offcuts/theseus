@@ -4431,6 +4431,6 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await drawn(), false, `after the swipe and Core's answer, B is below the closed More (More: ${JSON.stringify(await more())})`);
     assert.deepEqual(p.errors, []); await p.close();
   });
-  await motionChecks({ check, until, control, shot, facts, observations }, { ...helpers, menuOf, choose });
+  await motionChecks({ check, until, view, control, shot, facts, observations }, { ...helpers, menuOf, choose });
 
 }

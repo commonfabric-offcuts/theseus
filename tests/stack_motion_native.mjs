@@ -13,7 +13,7 @@ for(const c of document.querySelectorAll('#messages .message-card[data-stack-mot
  animations:e.getAnimations().length+c.getAnimations().length});}
  };const tick=()=>{setTimeout(sample,0);requestAnimationFrame(tick)};requestAnimationFrame(tick)});`;
 
-export async function motionChecks({ check, until, control, shot, facts, observations }, h) {
+export async function motionChecks({ check, until, view, control, shot, facts, observations }, h) {
   const { seed, open, centre, press, card, DEVICES, menuOf, choose } = h;
   const widths = [320,375,390,1280];
   const atWidths = async (label, run) => {
@@ -46,10 +46,14 @@ export async function motionChecks({ check, until, control, shot, facts, observa
   };
   await check('reading dossier motion arrival follows the moving lower edge at 320 375 390 and laptop', async()=>{
     await atWidths('arrival',async ctx=>{
-      const {p,ids,width}=ctx;
+      const {p,ids,width,topic}=ctx;
       const old = await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').querySelector('.stack-replies').getBoundingClientRect().height`);
       const id=await add(ctx);
-      await until(async()=>(await frames(p,id,'arrival')).length>2,'a live reply actually travels'); await settled(p);
+      await until(async()=>(await frames(p,id,'arrival')).some(f=>f.opacity>.2&&f.opacity<.8),'a live reply actually travels');
+      const read = async()=> (await view('topic_messages',{topic_id:topic,audience:'all',direction:'after',cursor:0,limit:30})).items.find(item=>item.id===id);
+      assert.equal((await read()).unread,true,'a transparent travelling face has not earned a read in Core');
+      await settled(p); await centre(p,card(id));
+      await until(async()=>!(await read()).unread,'the settled visible face earns its real Core read');
       const samples=await frames(p,id,'arrival');
       assert.ok(samples.some(f=>f.opacity<.8&&f.transform!=='none'),'the new face fades and travels');
       assert.ok(samples.some(f=>f.edge<old-1&&Math.abs(f.floor-old)<1.1),'the old floor holds before contact');
@@ -127,4 +131,5 @@ export async function motionChecks({ check, until, control, shot, facts, observa
       assert.deepEqual(await p.evaluate('window.motionFrames'),[],'a replay of the same messages never deals them again');
     });
   });
+
 }

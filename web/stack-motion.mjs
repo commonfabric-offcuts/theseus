@@ -18,20 +18,25 @@ export function belowAnchor(top, anchorBox) { return !anchorBox || top >= anchor
 export class StackMotion {
   constructor({ list, anchor = () => null, reading = () => {}, win = list.ownerDocument.defaultView }) {
     Object.assign(this, { list, anchor, reading, win, doc: list.ownerDocument });
-    this.handled = new Set(); this.next = []; this.active = new Set(); this.paused = false; this.disposed = false;
+    this.handled = new Set(); this.next = []; this.active = new Set(); this.paused = false; this.disposed = false; this.awaitingAttention = false; this.staged = null;
     this.off = [];
     const on = (host, name, fn, options) => { host.addEventListener(name, fn, options); this.off.push(() => host.removeEventListener(name, fn, options)); };
-    on(this.doc, 'pointerdown', e => { if (e.isPrimary && e.button === 0) this.pause(); }, true);
+    on(this.doc, 'pointerdown', e => { if (e.isPrimary && e.button === 0) { this.awaitingAttention = false; this.pause(); } }, true);
+    on(this.doc, 'keydown', () => { this.awaitingAttention = false; }, true);
     for (const name of ['pointerup', 'pointercancel', 'contextmenu']) on(this.doc, name, () => this.resume(), true);
     on(win, 'blur', () => this.resume());
     on(win, 'resize', () => this.finish());
-    on(this.doc, 'visibilitychange', () => { if (this.doc.visibilityState !== 'visible') this.finish(); });
+    on(this.doc, 'visibilitychange', () => { if (this.doc.visibilityState !== 'visible') { this.awaitingAttention = true; this.finish(); } });
     on(win, 'pagehide', () => this.dispose());
     this.reduced = win.matchMedia('(prefers-reduced-motion: reduce)');
     on(this.reduced, 'change', () => this.finish());
   }
   arrivals(provenance) { this.next = arrivalIds(provenance, this.handled); }
+  // The app stages before inserting loose entries: their temporary placement
+  // must not masquerade as a dossier reorder or replace the held anchor.
+  stage(provenance) { this.staged = null; this.arrivals(provenance); this.staged = this.capture(); }
   capture() {
+    if (this.staged) { const before = this.staged; this.staged = null; return before; }
     if (this.next.length) this.finish(); // A burst supersedes the previous landing, never queues it.
     const faces = new Map();
     for (const entry of entries(this.list)) {
@@ -46,7 +51,7 @@ export class StackMotion {
     const anchor = this.anchor();
     return { faces, sections, anchor, anchorBox: anchor?.isConnected ? rect(anchor) : null, added: this.next.splice(0) };
   }
-  allowed() { return !this.disposed && !this.paused && !this.reduced.matches && this.doc.visibilityState === 'visible' && !this.list.closest('.only-new'); }
+  allowed() { return !this.disposed && !this.paused && !this.awaitingAttention && !this.reduced.matches && this.doc.visibilityState === 'visible' && !this.list.closest('.only-new'); }
   painted(before) {
     if (!before || this.disposed) return;
     // Repaints of receipts/read state leave the same motion running. A changed
@@ -107,13 +112,14 @@ export class StackMotion {
     const replies = section.querySelector('.stack-replies'), effect = this.effect(incoming, 'arrival');
     effect.style(replies, 'height', floor + 'px');
     for (const entry of incoming) {
+      const opacity = Number(this.win.getComputedStyle(entry).opacity);
       const above = -Math.max(rect(entry).height + 24, Math.min(480, Math.max(220, rect(entry).top - rect(section).top + 28)));
       this.run(effect, entry, [
         { opacity: 0, transform: `translateY(${above}px) rotate(-.45deg) scale(.985)`, easing: 'cubic-bezier(.25,.6,.3,1)' },
-        { opacity: .55, transform: `translateY(${above * .64}px) rotate(-.25deg) scale(.993)`, offset: .26, easing: 'cubic-bezier(.2,.7,.25,1)' },
-        { opacity: 1, transform: 'translateY(3px) rotate(.06deg) scale(1)', offset: .76, easing: 'ease-out' },
-        { opacity: 1, transform: 'translateY(-1px)', offset: .89, easing: 'ease-in-out' },
-        { opacity: 1, transform: 'none' },
+        { opacity: .55 * opacity, transform: `translateY(${above * .64}px) rotate(-.25deg) scale(.993)`, offset: .26, easing: 'cubic-bezier(.2,.7,.25,1)' },
+        { opacity, transform: 'translateY(3px) rotate(.06deg) scale(1)', offset: .76, easing: 'ease-out' },
+        { opacity, transform: 'translateY(-1px)', offset: .89, easing: 'ease-in-out' },
+        { opacity, transform: 'none' },
       ], { duration: this.duration('--stack-arrival-ms'), easing: 'linear' });
     }
     effect.tick = () => {

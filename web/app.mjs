@@ -741,6 +741,7 @@ function paintViews(kind, provenance) {
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
+  if (kind === 'messages') { feedOf(); stackMotion.stage(provenance); }
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
   let following = $('messages').firstElementChild;
@@ -788,7 +789,7 @@ function paintViews(kind, provenance) {
     learnReply(views.messages, item, bootstrap.actor);
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
-  if (kind === 'messages') { feedOf().arrived([...views.messages.values()], provenance); paintCardReading(); }
+  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {

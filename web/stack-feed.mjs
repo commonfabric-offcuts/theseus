@@ -304,8 +304,7 @@ export class StackFeed {
   // Such a reply also stays in view beside what answers it (it is never
   // unread, so nothing else keeps it), from the first draw it is in, until a
   // change of the stack's state or coming back lets go of it.
-  arrived(items, provenance) {
-    this.motion?.arrivals(provenance);
+  arrived(items) {
     const newest = items.reduce((most, item) => Math.max(most, item.seq), 0);
     const mine = this.newestSeen === null ? []
       : items.filter(item => item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || this.actsOf(item.id).joined));

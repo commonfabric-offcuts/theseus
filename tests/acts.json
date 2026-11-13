@@ -10433,6 +10433,40 @@
     "native": "reading",
     "case": "reading dossier motion no arrival on page load or a read-only replay"
    }
+  },
+  {
+   "item": 412,
+   "act": "Returning to a hidden feed does not animate catch-up; input resumes future live motion",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "!this.awaitingAttention &&",
+     "true &&"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_motion.test.mjs"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A transparent travelling reply earns no Core read until it settles visibly",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (moving) { cardObserver?.unobserve(entry);",
+     "if (false) { cardObserver?.unobserve(entry);"
+    ],
+    [
+     "web/app.mjs",
+     "!entry.dataset.stackMotion && onScreen(entry)",
+     "onScreen(entry)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion arrival follows the moving lower edge"
+   }
   }
  ]
 }
