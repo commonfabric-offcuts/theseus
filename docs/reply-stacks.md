@@ -385,6 +385,9 @@ the semantic colour tokens of `web/aim.css` and only the names that
     the message button, with `aria-expanded` and `aria-controls`.
   - `.stack-replies`, with each reply's entry and `.stack-join-line`
     (`.stack-join-words` and `.stack-split`).
+  - `data-stack-overlap` and `data-stack-covered` on message entries: visual
+    hooks for adjacent visible faces. Hidden entries do not separate faces;
+    a join line does. These attributes carry no saved fold or order state.
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
 - `[data-starred=true]` on any card the reader starred, and `.card-star`,
   the header's star, outlined or filled.
@@ -400,6 +403,28 @@ with the short name on the first and who started it, how many replied, who
 and what is new on the second; the tab and the body are one cut, joined by a
 curved corner. A compact chevron sits beside the name. The replies are the
 sheets inside, each card in its own colours; folded replies draw no extra bar.
+Later visible cards overlap the previous card's bottom edge by 12px, with a
+soft top contact shadow. Extra bottom padding keeps that overlap clear of
+words and controls. The root remains statically positioned so its folder tab
+keeps the same containing block, including when a message-fold wraps the root.
+Join and placement lines remain clear of the cards. No arrival or fold motion
+is part of this static treatment (item 429; motion remains item 412).
+
+The first author letter aligns with the body text. An agent's badge protrudes
+4px to the left; only the first name fragment moves when an Unread pill holds
+the final grapheme. A folded message keeps its author and words at full
+contrast, including quiet agent talk. A saved fold or the reader's own
+thumbs-up gives a card the existing read material even before its read marker
+catches up; this presentation writes no read command. Own messages retain
+black. Folded words keep at least 4.5:1 contrast across all agent palettes in
+light and dark.
+
+A folded face is 44px tall on a laptop. On a phone or coarse pointer it is
+56px tall: its successor covers 12px, leaving a reachable 44px strip and the
+folded thumbs-up. A hit box hidden under the successor does not count toward
+that 44px. Normal single messages keep their original box; stars still
+prevent an individual message fold. Whether a starred reply stays in the
+recent-replies view is a separate visibility rule (item 413).
 Shown whole, the head's card is the first
 sheet; while the stack is renamed, the field takes the tab's place. Only one
 current target has the strong ring: a message, or the whole folder when its
@@ -411,6 +436,13 @@ any placement control, with no reply strip or empty footer. Under Only new
 the stacks draw nothing.
 
 ## Checks
+
+The item 429 checks in `tests/stack_native.mjs`, named "reading dossier look",
+run under native-reading and native-webkit-reading at laptop and phone widths
+in both themes. They measure overlap, text clearance, first-letter alignment,
+folded palette contrast including quiet states, and the exposed phone strip
+with a real folded-thumb press. The negative case retains the full open
+messages, a normal single card and the star's fold protection.
 
 | What | Where |
 | --- | --- |

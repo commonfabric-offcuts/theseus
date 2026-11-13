@@ -12,6 +12,162 @@ import assert from 'node:assert/strict';
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
   const { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES } = helpers;
   const other = 'aim-core';
+  // Item 429: the static material uses the actual feed renderer and isolated
+  // Core records. Palette probes recolor that rendered face only; they do
+  // not stand in for native color-picker or fold gestures.
+  const dossierSeed = async (topic, wrapped = false, readAll = false) => seed(topic, [
+    ['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Fixture membership is ready.' }],
+    ['root', { sender: other, join: true, addressees: [wrapped ? 'aim-ux' : facts.actor], body: 'Dossier original words.\nA second paragraph stays readable.' }],
+    ['middle', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'An earlier reply with enough words to wrap on a phone.' }],
+    ['last', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The latest reply remains fully readable.' }],
+    ['single', { sender: other, addressees: [facts.actor], body: 'A single message stays a normal card.', read: readAll }],
+  ]);
+  const dossierOpen = async (p, device, root) => {
+    const toggle = `#messages .reply-stack[data-stack="${root}"] > .stack-toggle`;
+    await centre(p, toggle); await press(p, device, toggle);
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state === 'open'`), 'the dossier opens through its native control');
+    return toggle;
+  };
+  const dossierTheme = (p, theme) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+  const dossierFold = (topic, id, on = true) => control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: id, operation_id: `${topic}-${id}-${on}`, args: { folded: on } });
+
+  await check('reading dossier look overlaps visible cards by 12px without covering their words, including wrapped roots', async () => {
+    for (const device of Object.keys(DEVICES)) for (const wrapped of [false, true]) {
+      const topic = `dossier-layers-${device}-${wrapped}`, ids = await dossierSeed(topic, wrapped);
+      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const geometry = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},rect=e=>{const b=e.getBoundingClientRect();return {top:b.top,bottom:b.bottom}},
+          c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),entry=e=>e.parentElement.classList.contains('message-fold')?e.parentElement:e,
+          cards=[c(ids.root),c(ids.middle),c(ids.last)],section=cards[0].closest('.reply-stack');
+          return {wrapped:entry(cards[0]).classList.contains('message-fold'),fold:section.dataset.fold,
+            faces:cards.map(e=>({box:rect(entry(e)),words:rect(e.querySelector('.message-preview')),position:getComputedStyle(e).position})),
+            overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+        assert.equal(geometry.wrapped, wrapped, 'the fixture exercises both root shapes');
+        assert.equal(geometry.fold, 'open', 'the dossier remains fully open');
+        for (let i = 1; i < geometry.faces.length; i++) {
+          const prior = geometry.faces[i - 1], face = geometry.faces[i];
+          assert.ok(Math.abs(prior.box.bottom - face.box.top - 12) < .5, `${device} ${theme}: newer face overlaps its predecessor by 12px: ${JSON.stringify(geometry)}`);
+          assert.ok(prior.words.bottom <= face.box.top, 'overlap never covers the preceding words');
+        }
+        assert.equal(geometry.faces[0].position, 'static', 'the root keeps the folder as its tab containing block');
+        assert.equal(geometry.overflow, false, 'layering never overflows horizontally');
+        observations.push({ name: 'dossier layers', engine, device, theme, ...geometry });
+        await shot(p, `dossier-layers-${device}-${wrapped}-${theme}`);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading dossier look aligns the first author letter with the message words', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-align-${device}`, ids = await dossierSeed(topic);
+      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const aligned = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.middle))}),n=c.querySelector('.message-author > .author-name'),r=document.createRange();r.selectNodeContents(n);
+          return {name:r.getBoundingClientRect().left,words:c.querySelector('.message-preview').getBoundingClientRect().left}})()`);
+        assert.ok(Math.abs(aligned.name - aligned.words) < .5, `${device} ${theme}: first author letter aligns with body words: ${JSON.stringify(aligned)}`);
+        observations.push({ name: 'dossier alignment', engine, device, theme, ...aligned });
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading dossier look keeps folded words at 4.5 contrast across every palette and quiet-agent state', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-ink-${device}`, ids = await dossierSeed(topic, false, true);
+      await dossierFold(topic, ids.middle);
+      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root); await away(p);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const samples = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.middle))}),w=c.querySelector('.folded-words'),row=w.parentElement,
+          palettes=['green','blue','indigo','violet','rose','peach','cyan','olive','neutral','own'],results=[],saved={cls:c.className,talk:c.dataset.talk,style:c.getAttribute('style'),rowStyle:row.getAttribute('style')};
+          // Measure the static endpoint, not the first frame of the existing
+          // quiet-opacity transition. Opacity itself remains entirely CSS-owned.
+          c.style.transition='none';row.style.transition='none';
+          const pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
+            blend=(a,b,t)=>a.map((v,i)=>v*t+b[i]*(1-t)),lum=a=>a.map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0),
+            contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+          for(const palette of palettes)for(const quiet of [false,true]){c.className='message-card '+(palette==='own'?'own-message':palette==='neutral'?'':'agent-card agent-'+palette);c.dataset.talk=quiet?'agents':'';
+            const cs=getComputedStyle(c),rs=getComputedStyle(row),under=pixel(getComputedStyle(c.closest('.reply-stack')).backgroundColor),bg=pixel(cs.backgroundColor),fg=pixel(getComputedStyle(w).color),a=Number(cs.opacity),r=Number(rs.opacity),
+              background=blend(bg,under,a),foreground=blend(blend(fg,bg,r),under,a);
+            results.push({palette,quiet,ratio:contrast(foreground,background),opacity:a,rowOpacity:r});}
+          c.className=saved.cls;if(saved.talk===undefined)delete c.dataset.talk;else c.dataset.talk=saved.talk;
+          if(saved.style===null)c.removeAttribute('style');else c.setAttribute('style',saved.style);if(saved.rowStyle===null)row.removeAttribute('style');else row.setAttribute('style',saved.rowStyle);return results})()`);
+        for (const sample of samples) assert.ok(sample.ratio >= 4.5, `${device} ${theme}: folded ${sample.palette}, quiet=${sample.quiet}, contrast ${sample.ratio.toFixed(2)} is at least 4.5`);
+        observations.push({ name: 'dossier folded contrast', engine, device, theme, samples });
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading dossier look exposes a 44px phone strip and its folded thumbs-up remains reachable', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-touch-${device}`, ids = await dossierSeed(topic);
+      await dossierFold(topic, ids.middle);
+      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme); await centre(p, card(ids.middle)); await away(p);
+        const metrics = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.middle))}),next=document.querySelector(${JSON.stringify(card(ids.last))}),t=c.querySelector('.folded-thumb'),b=c.getBoundingClientRect(),n=next.getBoundingClientRect(),r=t.getBoundingClientRect(),x=r.left+r.width/2;
+          return {height:b.height,exposed:n.top-b.top,thumb:r.height,top:t.contains(document.elementFromPoint(x,r.top+1)),bottom:t.contains(document.elementFromPoint(x,r.bottom-1)),overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+        if (device === 'phone') {
+          assert.ok(metrics.exposed >= 43.5 && Math.abs(metrics.height - metrics.exposed - 12) < .5, `${theme}: the phone strip exposes 44px before the 12px overlap: ${JSON.stringify(metrics)}`);
+          assert.ok(metrics.thumb >= 44 && metrics.top && metrics.bottom, 'all 44px of the phone thumbs-up receive the tap');
+        }
+        assert.equal(metrics.overflow, false, 'the folded strip never overflows sideways');
+        const target = card(ids.middle) + ' > .message-folded > .folded-thumb';
+        const before = await p.evaluate(`document.querySelector(${JSON.stringify(target)}).getAttribute('aria-pressed')`);
+        await press(p, device, target);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(target)}).getAttribute('aria-pressed')!==${JSON.stringify(before)}`), 'native press toggles the folded thumbs-up');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.middle))}).dataset.folded`), 'true', 'the thumb never unfolds its card');
+        observations.push({ name: 'dossier folded target', engine, device, theme, ...metrics });
+        await shot(p, `dossier-target-${device}-${theme}`);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading dossier look gives a saved fold the read material before its read marker catches up', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-material-${device}`, ids = await dossierSeed(topic);
+      await dossierFold(topic, ids.middle);
+      const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;'); await dossierOpen(p, device, ids.root); await away(p);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const fill = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.middle))}),probe=document.createElement('span');
+          probe.style.background='color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))';c.append(probe);
+          const pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
+            result={read:c.hasAttribute('data-read'),actual:pixel(getComputedStyle(c).backgroundColor),expected:pixel(getComputedStyle(probe).backgroundColor)};probe.remove();return result})()`);
+        assert.equal(fill.read, false, 'the fixture retains its unread marker, so readNow cannot make this pass');
+        assert.deepEqual(fill.actual, fill.expected, `${device} ${theme}: a saved fold uses read material without a read marker`);
+        observations.push({ name: 'dossier folded read material', engine, device, theme, ...fill });
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading dossier look preserves full open messages, single cards and star fold protection', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-negatives-${device}`, ids = await dossierSeed(topic);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.middle, operation_id: topic + '-star', args: { starred: true } });
+      const p = await open(topic, device, topic, ids.root); const toggle = await dossierOpen(p, device, ids.root);
+      const full = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),single=c(ids.single),s=getComputedStyle(single);
+        return {bodies:[ids.root,ids.middle,ids.last].map(id=>{const e=c(id).querySelector('.message-preview');return e.getClientRects().length>0&&getComputedStyle(e).display!=='none'}),
+          single:{stack:Boolean(single.closest('.reply-stack')),padding:parseFloat(s.paddingTop),folded:single.dataset.folded==='true'},overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      assert.deepEqual(full.bodies, [true,true,true], 'all original and reply words stay shown when open');
+      assert.deepEqual(full.single, { stack:false,padding:16,folded:false }, 'a single message keeps its normal box and behavior');
+      assert.equal(full.overflow, false, 'no horizontal overflow');
+      // Focus is setup; the actual x key must refuse folding a star in Core.
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.middle))}).focus()`); await p.key('x');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.middle))}).dataset.folded==='true'`), false, 'a starred message never folds');
+      const acts = await view('message_acts', { topic_id: topic });
+      assert.equal(acts.items.find(item => item.message_id === ids.middle).acts.folded, false, 'no fold was recorded for the star');
+      await centre(p, toggle); await press(p, device, toggle); await press(p, device, toggle);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`), 'open', 'the existing two-state control is unchanged');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
   // A stack, as the page shows it: its head's row and whether its full message
   // shows, its fold, and what sits under it top to bottom, by the names seeded.
   const look = (p, ids, head) => {

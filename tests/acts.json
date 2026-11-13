@@ -8096,6 +8096,86 @@
     "native": "reading",
     "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
    }
+  },
+  {
+   "item": 429,
+   "act": "Later dossier faces overlap by 12px without covering the words",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-overlap:12px;",
+     "--stack-overlap:0px;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look overlaps"
+   }
+  },
+  {
+   "item": 429,
+   "act": "The first author letter aligns with the body words",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}",
+     ".agent-card>.message-author>.author-name:first-child{margin-left:0}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look aligns"
+   }
+  },
+  {
+   "item": 429,
+   "act": "Folded words remain readable in quiet agent cards",
+   "break": [
+    [
+     "web/stack-look.css",
+     "align-items:center;padding-block:0;opacity:1;transition:none}",
+     "align-items:center;padding-block:0;opacity:.62;transition:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look keeps folded words"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A phone exposes 44px of a folded dossier face with a reachable thumbs-up",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:56px}",
+     "--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:44px}"
+    ],
+    [
+     "web/stack-look.css",
+     ":root{--stack-folded-height:56px}",
+     ":root{--stack-folded-height:44px}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look exposes"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A saved fold uses read material before its read marker catches up",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)){background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}",
+     ".message-card.agent-card:has(>.message-reactions>.reaction-count.mine){background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives a saved fold"
+   }
   }
  ]
 }
