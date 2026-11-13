@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import unittest
 import uuid
 
-from aim_next.assessment_dispatch import Core, DispatchError, Session, drive, request_lock
+from aim_next.assessment_dispatch import Core, DispatchError, Session, drive, request_lock, read_tool
 from aim_next.codex_host import ProvisionError
 from aim_next.profile import Profile
 import test_assessments
@@ -214,4 +214,42 @@ class DispatchCase(unittest.TestCase):
         finally:
             self.assertEqual(rpc.close(),0)
         with request_lock(self.profile,self.identity): pass
+
+    def test_read_tool_is_bound_paged_full_and_excludes_private_or_other_topic(self):
+        thread = str(uuid.uuid4())
+        self.core.command(self.identity,'attach',{'thread_id':thread,'runtime_digest':'a'*64})
+        def read(args, **changes):
+            params = dict(threadId=thread,tool='theseus_read',arguments=args); params.update(changes)
+            return read_tool(self.core,self.identity,{'params':params})
+        self.assertEqual(read({'action':'binding'})['actor_id'],'agent-b')
+        private = self.ok(self.command('message.post',{'body':'Private evidence','whisper':True,
+             'addressees':['agent-b']},{'topic_id':'t1'}))['message_id']
+        body = 'Full original source. '*200
+        public = [self.ok(self.command('message.post',{'body':body+str(i)},{'topic_id':'t1'}))['message_id'] for i in range(8)]
+        first = read({'action':'messages'})
+        self.assertNotIn(private,[m['id'] for m in first['items']])
+        second = read({'action':'messages','cursor':first['next_cursor']})
+        self.assertTrue(set(public) <= {m['id'] for m in first['items']+second['items']})
+        self.assertEqual(read({'action':'source','message_id':public[0]})['body'],body+'0')
+        with self.assertRaisesRegex(DispatchError,'read_scope'): read({'action':'source','message_id':private})
+        other_topic = self.sql("SELECT id FROM topics WHERE kind='conversation'")[0][0]
+        other = self.ok(self.command('message.post',{'body':'Another topic'},{'topic_id':other_topic}))['message_id']
+        with self.assertRaisesRegex(DispatchError,'read_scope'): read({'action':'source','message_id':other})
+        with self.assertRaisesRegex(DispatchError,'read_scope'): read({'action':'binding'},threadId=str(uuid.uuid4()))
+        with self.assertRaisesRegex(DispatchError,'unsupported'): read({'action':'message.post','body':'Unwanted write'})
+
+    def test_native_tool_read_is_answered_before_turn_start_reply(self):
+        root = Path(__file__).resolve().parents[1]
+        home = (self.path.parent/'read-home').resolve(); home.mkdir(mode=0o700)
+        self.config.destination = {'codex_home':str(home)}
+        self.config.codex_executable = str(root/'tests/fixtures/fake_assessment_server.py')
+        report = dict(body='Continue: original source inspected.',recommendation='continue',
+                      evidence_message_ids=[self.source],next_checkpoint='Verify deployment')
+        (home/'fake-script.json').write_text(json.dumps({'signed_in':True,'report':report,
+            'assessment_read_source':self.source,'assessment_source_body':'Build the requested artifact'}))
+        with request_lock(self.profile,self.identity) as fd:
+            rpc = Session(self.config,fd)
+            try: result = drive(self.core,self.config,self.identity,rpc)
+            finally: self.assertEqual(rpc.close(),0)
+        self.assertEqual(result['body'],report['body'])
 

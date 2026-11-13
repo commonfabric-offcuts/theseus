@@ -126,6 +126,15 @@ class AssessmentCase(unittest.TestCase):
             source_message_ids=[source],operator_id='owner'),{'topic_id':conversation})
         self.assertEqual(result['error']['code'],'ASSESSMENT_TOPIC_REQUIRED')
 
+    def test_missing_access_report_can_record_no_message_citations(self):
+        identity=self.ok(self.request())['assessment_id']; thread=str(uuid.uuid4())
+        self.ok(self.attach(identity,thread))
+        args=dict(thread_id=thread,body='Artifact exists; source access was unavailable. No source messages read.',
+                  recommendation='remove-blocker',evidence_message_ids=[],next_checkpoint='Restore source access')
+        result=self.ok(self.command('assessment.finish',args,{'assessment_id':identity},actor='agent-b'))
+        self.assertEqual(self.read(identity)['assessment']['evidence_message_ids'],[])
+        self.assertEqual(self.sql('SELECT body FROM messages WHERE id=?',(result['message_id'],)),[(args['body'],)])
+
     def test_scoped_pagination_and_operator_renewal_do_not_change_team(self):
         ids=[self.ok(self.request(op='request-'+str(i),assignment='Artifact '+str(i)))['assessment_id'] for i in range(3)]
         first=self.store.view('agent-b','assessments',{'limit':2})

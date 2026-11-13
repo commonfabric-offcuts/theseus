@@ -8194,6 +8194,34 @@
    "check": {
     "python": "test_assessment_dispatch.py"
    }
+  },
+  {
+   "item": 405,
+   "act": "The assessment read capability refuses private evidence and other topics",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if source.get('topic_id') != record['topic_id'] or source.get('whisper'):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Native source reads work before the turn-start receipt without granting writes",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if message.get('method') == 'item/tool/call' and self.read_scope is not None:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
   }
  ]
 }

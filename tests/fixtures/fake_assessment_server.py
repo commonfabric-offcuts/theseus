@@ -19,6 +19,25 @@ class AssessmentFake(Fake):
         return result
 
     def on_turn_start(self,request,params):
+        if self.script.get('assessment_read_source'):
+            self.pending_assessment = (request,params)
+            self.send({'id':'assessment-read','method':'item/tool/call','params':{
+                'threadId':params['threadId'],'turnId':'fixture-turn','callId':'fixture-call',
+                'tool':'theseus_read','arguments':{'action':'source','message_id':self.script['assessment_read_source']}}})
+            return
+        self.finish_assessment(request,params)
+
+    def answered(self,message):
+        if message.get('id') == 'assessment-read':
+            import json
+            result = message['result']
+            assert result['success'], result
+            assert json.loads(result['contentItems'][0]['text'])['body'] == self.script['assessment_source_body']
+            self.finish_assessment(*self.pending_assessment)
+        else:
+            super().answered(message)
+
+    def finish_assessment(self,request,params):
         thread = params['threadId']
         turn = {'id':str(uuid.uuid4()),'status':'completed','items':[]}
         self.state['threads'][thread]['turns'].append(turn)

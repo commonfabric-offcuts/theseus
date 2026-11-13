@@ -176,8 +176,9 @@ class Assessments:
             raise Refusal('INVALID_ARGUMENT', 'Unknown assessment recommendation')
         body = text(args['body'], 'report', 65536)
         checkpoint = text(args['next_checkpoint'], 'next_checkpoint')
-        evidence = self._assessment_sources(db, (actor,record['requested_by'],record['operator_id']),
-                                            record['topic_id'], args['evidence_message_ids'])
+        # A report of unavailable source access must not fabricate a citation.
+        evidence = [] if args['evidence_message_ids'] == [] else self._assessment_sources(
+            db, (actor,record['requested_by'],record['operator_id']), record['topic_id'], args['evidence_message_ids'])
         fingerprint = hashlib.sha256(_json(args).encode('utf-8')).hexdigest()
         if record['report_message_id']:
             if fingerprint != record['report_fingerprint']:

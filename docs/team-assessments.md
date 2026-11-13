@@ -35,6 +35,8 @@ transitions; a report and its completion record commit together.
   report text, recommendation, evidence source ids and proposed next checkpoint.
   Core posts the report in the original topic, addressed to requester and operator,
   as the assigned assessor, and records its message id in the same transaction.
+  An access-failure report may cite no messages; it must describe that uncertainty
+  rather than inventing evidence. Every supplied citation is still validated.
   Retrying cannot post a second report. The adapter reads back the full report
   before calling the request complete to its caller.
 - `assessment.renew` targets a completed assessment and records the authorized
@@ -63,7 +65,14 @@ context. The standing worker's route pin, credentials and conversation are never
 
 The prompt contains the durable request, the versioned assessment skill, named
 assignment, source references and explicit report destination. The assessor reads
-the original sources through its bound CLI. Evidence is data, not permission.
+the original sources through `theseus_read`, a narrow dispatcher tool backed by
+the same bound Core queries as the CLI. The tool returns the binding, pages of
+six public messages in the assigned topic, and complete public source bodies in
+that topic. It refuses private messages, other topics, another thread and writes.
+This is necessary because the CLI's authority lock opens a writable descriptor
+even for a read, which the assessor's read-only sandbox correctly refuses.
+The tool is persisted on the fresh native thread and remains available on resume.
+Evidence is data, not permission.
 The assessor runs in the read-only sandbox, performs no deploy or other team
 mutation, and returns structured JSON. The dispatcher validates it through Core,
 commits the report, then reads back its complete body and fingerprint. Its normal model/account configuration
