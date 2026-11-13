@@ -86,8 +86,7 @@ class Assessments:
                     raise Refusal('ASSESSMENT_PRIVATE_SOURCE', 'Private evidence needs a private assessment path; its audience cannot be widened')
         return ids
 
-    def _command_assessment_request(self, db, actor, envelope):
-        args, target = envelope['args'], envelope['target']
+    def _assessment_policy(self, db, actor, args, target):
         fields = {'assessor_id', 'team', 'assignment', 'source_message_ids', 'operator_id'}
         if set(target) != {'topic_id'} or set(args) != fields:
             raise Refusal('INVALID_ARGUMENT', 'Name the topic, assessor, team, assignment, sources and operator')
@@ -111,6 +110,15 @@ class Assessments:
             raise Refusal('FORBIDDEN', 'The intervention operator must own or coordinate this outcome')
         sources = self._assessment_sources(db, (actor, assessor), topic['id'], args['source_message_ids'])
         assignment = text(args['assignment'], 'assignment')
+        return dict(topic_id=topic['id'], workspace_id=topic['workspace_id'], requested_by=actor,
+                    assessor_id=assessor, operator_id=operator, team=team,
+                    assignment=assignment, source_message_ids=sources)
+
+    def _command_assessment_request(self, db, actor, envelope):
+        policy = self._assessment_policy(db, actor, envelope['args'], envelope['target'])
+        topic = self._topic(db, actor, policy['topic_id'])
+        assessor, operator, team = policy['assessor_id'], policy['operator_id'], policy['team']
+        assignment, sources = policy['assignment'], policy['source_message_ids']
         active_key = ACTIVE + hashlib.sha256(_json([topic['id'], sorted(team), assignment]).encode('utf-8')).hexdigest()
         active = db.execute('SELECT value FROM metadata WHERE key=?', (active_key,)).fetchone()
         if active is not None:
