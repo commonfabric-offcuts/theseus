@@ -12,6 +12,7 @@ import uuid
 
 from .contract import Refusal, _body, _identifier, _json, _page_size, _bounded_page, organises
 from .delivery import _now_ms
+from .outcome_kind import _clock
 
 PREFIX = 'assessment.v1:'
 THREAD = 'assessment_thread.v1:'
@@ -69,10 +70,23 @@ class Assessments:
                    (PREFIX + record['id'], _json(record)))
         self._change(db, 'actor', record['assessor_id'], 'assessment', record['id'], record['version'])
 
+    def _assessment_reached(self, db, workspace_id):
+        return db.execute('SELECT w.title,r.reached_ms FROM outcome_reached r JOIN workspaces w ON w.id=r.workspace_id '
+                          'WHERE r.workspace_id=?', (workspace_id,)).fetchone()
+
+    def _assessment_open(self, db, workspace_id):
+        # Assessment records change only the assessor's feed, which Store._refuse_reached
+        # does not see, so every assessment write states finality itself (D42, 4.5).
+        reached = self._assessment_reached(db, workspace_id)
+        if reached is not None:
+            raise Refusal('OUTCOME_REACHED', '%s was reached on %s; its topics are kept to read.' % (reached[0], _clock(reached[1])))
+
     def _assessment_target(self, db, actor, envelope):
         if set(envelope['target']) != {'assessment_id'}:
             raise Refusal('INVALID_ARGUMENT', 'Name exactly one assessment')
-        return self._assessment(db, actor, envelope['target']['assessment_id'])
+        record = self._assessment(db, actor, envelope['target']['assessment_id'])
+        self._assessment_open(db, record['workspace_id'])
+        return record
 
     def _assessment_sources(self, db, readers, topic_id, ids):
         ids = identifiers(ids, 'source_message_ids', 20)
@@ -90,6 +104,7 @@ class Assessments:
         if set(target) != {'topic_id'} or set(args) != fields:
             raise Refusal('INVALID_ARGUMENT', 'Name the topic, assessor, team, assignment, sources and operator')
         topic = self._topic(db, actor, target['topic_id'])
+        self._assessment_open(db, topic['workspace_id'])
         if topic['kind'] == 'conversation':
             raise Refusal('ASSESSMENT_TOPIC_REQUIRED', 'Use a named topic for an assessment; its report must not settle another conversation item')
         if not organises(topic, actor):
@@ -246,7 +261,10 @@ class Assessments:
         return {'assessment_id':record['id'], 'renewal':record['renewal']}, []
 
     def _view_assessment(self, db, actor, args):
-        return {'instance_id':self.instance_id, 'assessment':self._assessment(db, actor, args.get('assessment_id'))}
+        record = self._assessment(db, actor, args.get('assessment_id'))
+        # A reader learns finality before spending anything on a request that can no longer finish.
+        return {'instance_id':self.instance_id, 'assessment':record,
+                'outcome_reached':self._assessment_reached(db, record['workspace_id']) is not None}
 
     def _view_assessments(self, db, actor, args):
         limit = _page_size(args)

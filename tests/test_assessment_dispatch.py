@@ -343,3 +343,37 @@ class DispatchCase(unittest.TestCase):
         self.native.call=original
         self.assertEqual(self.run_assessment()['status'],'reported')
         self.assertEqual(self.count('turn/start'),1)
+    def test_a_reached_outcome_is_never_dispatched_and_spends_nothing(self):
+        # The request was made before the outcome was reached, then never started.
+        test_assessments.AssessmentCase.reach_outcome(self)
+        with self.assertRaisesRegex(DispatchError,'OUTCOME_REACHED'): self.run_assessment()
+        self.assertEqual(self.native.calls,[])
+        self.assertEqual(self.core.record(self.identity)['state'],'requested')
+        # A request made after Reached is refused at Core, so there is nothing to dispatch.
+        refused = self.request(op='after-reach',assignment='After reach')
+        self.assertEqual((refused['status'],refused['error']['code']),('rejected','OUTCOME_REACHED'),refused)
+
+    def test_an_attached_request_in_a_reached_outcome_starts_no_model_turn(self):
+        self.native.fail = 'thread/resume'
+        with self.assertRaises(DispatchError): self.run_assessment()
+        thread = self.core.record(self.identity)['thread_id']
+        test_assessments.AssessmentCase.reach_outcome(self)
+        calls = list(self.native.calls)
+        with self.assertRaisesRegex(DispatchError,'OUTCOME_REACHED'): self.run_assessment()
+        self.assertEqual(self.native.calls,calls)
+        self.assertEqual(self.count('turn/start'),0)
+        record = self.core.record(self.identity)
+        self.assertEqual((record['state'],record['thread_id']),('attached',thread))
+
+    def test_an_outcome_reached_while_resuming_still_starts_no_model_turn(self):
+        original = self.native.call
+        def reach_during_resume(method, params):
+            result = original(method, params)
+            if method == 'thread/resume':
+                test_assessments.AssessmentCase.reach_outcome(self)
+            return result
+        self.native.call = reach_during_resume
+        with self.assertRaisesRegex(DispatchError,'OUTCOME_REACHED'): self.run_assessment()
+        self.assertEqual(self.count('thread/resume'),1)
+        self.assertEqual(self.count('turn/start'),0)
+        self.assertEqual(self.core.record(self.identity)['state'],'attached')

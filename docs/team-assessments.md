@@ -162,3 +162,14 @@ state, waits and activity timestamp, including a completed topic. Normal message
 keep their existing behavior. Metadata transitions write assessment keys only in
 actor scope; the report's ordinary topic change makes open feeds paint it without
 introducing a new topic-scope change kind.
+
+## A reached outcome is final
+
+Because assessment metadata changes only actor scope, the general reached-outcome
+guard does not see it. Each assessment command therefore refuses
+`OUTCOME_REACHED` itself once the topic's outcome is reached: a new request, an
+attach, a report, an abandonment and a renewal decision all leave the outcome as
+it was. A request made before Reached stays in the state it had. The
+`assessment` view says `outcome_reached`, and the dispatcher reads it before any
+native call and again just before a model turn, so it starts no thread and spends
+no turn for a reached outcome. Reading a recorded assessment stays open.
