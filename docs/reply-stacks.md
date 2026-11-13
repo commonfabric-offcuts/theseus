@@ -618,4 +618,6 @@ remain the endpoints. A writing or reading anchor above the changing region
 stays put; motion that would move that anchor is skipped. A primary press
 pauses running geometry until release/cancel. Superseding acts, resize, hidden
 pages and navigation cancel temporary geometry and restore natural layout.
+After a hidden visit, catch-up stays static until a pointer or key resumes
+attention; later live additions can animate again.
 Transparent incoming faces do not enter read tracking until motion settles.

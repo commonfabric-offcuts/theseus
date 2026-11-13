@@ -5,12 +5,13 @@ const PROBE = `window.motionFrames=[];window.motionClock=0;
 addEventListener('DOMContentLoaded',()=>{const sample=()=>{window.motionClock++;
 for(const c of document.querySelectorAll('#messages .message-card[data-stack-motion]')){
  const e=c.closest('.message-fold')||c,s=c.closest('.reply-stack'),r=s?.querySelector('.stack-replies');
+ const prior=[...r?.querySelectorAll(':scope>[data-id]')||[]].find(n=>n.dataset.id!==c.dataset.id&&!n.hidden);
  const b=e.getBoundingClientRect(),q=r?.getBoundingClientRect(),a=c.querySelector(':scope>.message-author');
  const authors=[...c.querySelectorAll(':scope>.message-author,:scope>.message-folded')].filter(n=>getComputedStyle(n).display!=='none'&&getComputedStyle(n).visibility!=='hidden');
  window.motionFrames.push({clock:window.motionClock,id:c.dataset.id,kind:c.dataset.stackMotion,top:b.top,bottom:b.bottom,height:b.height,
  opacity:+getComputedStyle(e).opacity,transform:getComputedStyle(e).transform,edge:b.bottom-(q?.top||0),floor:q?.height,
  authors:authors.length,authorOpacity:a?+getComputedStyle(a).opacity:1,sectionBottom:s?.getBoundingClientRect().bottom,
- animations:e.getAnimations().length+c.getAnimations().length});}
+ priorTop:prior?.getBoundingClientRect().top,animations:e.getAnimations().length+c.getAnimations().length});}
  };const tick=()=>{setTimeout(sample,0);requestAnimationFrame(tick)};requestAnimationFrame(tick)});`;
 
 export async function motionChecks({ check, until, view, control, shot, facts, observations }, h) {
@@ -48,6 +49,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     await atWidths('arrival',async ctx=>{
       const {p,ids,width,topic}=ctx;
       const old = await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').querySelector('.stack-replies').getBoundingClientRect().height`);
+      const priorTop=(await p.box(card(ids.one))).y;
       const id=await add(ctx);
       await until(async()=>(await frames(p,id,'arrival')).some(f=>f.opacity>.2&&f.opacity<.8),'a live reply actually travels');
       const read = async()=> (await view('topic_messages',{topic_id:topic,audience:'all',direction:'after',cursor:0,limit:30})).items.find(item=>item.id===id);
@@ -55,6 +57,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       await settled(p); await centre(p,card(id));
       await until(async()=>!(await read()).unread,'the settled visible face earns its real Core read');
       const samples=await frames(p,id,'arrival');
+      assert.ok(samples.every(f=>Math.abs(f.priorTop-priorTop)<1.1),'the earlier words being read keep their screen position during travel');
       assert.ok(samples.some(f=>f.opacity<.8&&f.transform!=='none'),'the new face fades and travels');
       assert.ok(samples.some(f=>f.edge<old-1&&Math.abs(f.floor-old)<1.1),'the old floor holds before contact');
       assert.ok(samples.some(f=>f.edge>old+2&&Math.abs(f.floor-f.edge)<1.1),'after contact the floor follows the moving edge');
