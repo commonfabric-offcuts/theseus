@@ -218,52 +218,60 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     });
   });
 
-  // At the page's end the window cannot yet scroll to where a reply still
-  // moving lands: its folder is shorter in flight. The keys still reveal it as
-  // the still page would, the reveal's room below it and no more.
+  // Low on a short page the window cannot yet scroll to where a reply still
+  // moving lands: its folder is shorter in flight. The keys still reveal it
+  // as the still page (reduced motion) does, once, and it keeps moving there.
   const long = width => 'A long live reply.\n\n'+'The boundary follows this moving edge. '.repeat(width>=1280?32:width<=320?20:24);
-  const atEnd = async (ctx, kind, start) => {
+  const atEnd = async (ctx, kind, start, still) => {
     const {p,ids}=ctx;
     await keyTo(p,ids.two);
-    const end=await p.evaluate('(scrollTo(0,document.scrollingElement.scrollHeight),{y:scrollY,max:document.scrollingElement.scrollHeight-innerHeight})');
-    assert.ok(end.max>0&&Math.abs(end.y-end.max)<1,`the page stands at its end: ${JSON.stringify(end)}`);
+    const low=await p.evaluate(`(c=>(scrollBy(0,c.getBoundingClientRect().bottom-(innerHeight-260)),{bottom:c.getBoundingClientRect().bottom,screen:innerHeight,y:scrollY,max:document.scrollingElement.scrollHeight-innerHeight}))(document.querySelector(${JSON.stringify(card(ids.two))}))`);
+    assert.ok(low.bottom>0&&low.bottom<low.screen-40,`the dossier's last reply shows low on the screen: ${JSON.stringify(low)}`);
+    if (still) await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
     await p.evaluate('window.motionFrames=[]');
     const id=await start();
-    // The key goes on the page's own frame that shows it early in its motion;
-    // a reply drawn still (or already landed) ends the wait, and the check says so.
+    // The key goes on the page's own frame that shows the reply early in its
+    // motion (or, still, drawn); a reply drawn still ends the wait as well.
     const early=await p.evaluate(`new Promise(done=>{const look=()=>{const c=document.querySelector(${JSON.stringify(card(id))}),e=c?.closest('.stack-replies > [data-id]'),o=e&&+getComputedStyle(e).opacity;
-      if(c&&c.dataset.stackMotion!==${JSON.stringify(kind)})done({still:c.dataset.stackMotion??null,opacity:o});
-      else if(c&&(${JSON.stringify(kind)}!=='arrival'||o>.02&&o<.6))done(true);else requestAnimationFrame(look)};look()})`);
-    assert.equal(early,true,`the reply is early in its ${kind} when the key goes`);
-    const before=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return {height:c.getBoundingClientRect().height,y:scrollY}})()`);
+      if(c?.dataset.stackMotion===${JSON.stringify(kind)}&&(${JSON.stringify(kind)}!=='arrival'||o>.02&&o<.6))done(true);
+      else if(c&&!c.dataset.stackMotion&&c.dataset.folded!=='true')done({still:true,opacity:o});else requestAnimationFrame(look)};look()})`);
+    assert.ok(still?early?.still===true&&!(early.opacity<1):early===true,`the reply is ${still?'drawn still':'early in its '+kind} when the key goes: ${JSON.stringify(early)}`);
+    const before=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return {height:c.getBoundingClientRect().height,y:scrollY,max:document.scrollingElement.scrollHeight-innerHeight}})()`);
     await p.key('ArrowDown');
     const keyed=await p.evaluate(`[document.querySelector(${JSON.stringify(card(id))}).dataset.stackMotion??null,window.motionClock,document.querySelector('#messages .message-card.lit')?.dataset.id??null,scrollY]`);
-    assert.deepEqual([keyed[0],keyed[2]],[kind,id],`ArrowDown lit the reply while it was still moving (${kind})`);
+    assert.deepEqual([keyed[0],keyed[2]],[still?null:kind,id],`ArrowDown lit the reply ${still?'drawn still':'while it was still moving ('+kind+')'}`);
     await settled(p);
     await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
-    const box=await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect(),s=getComputedStyle(document.documentElement);
-      const top=parseFloat(s.scrollPaddingTop)||0,bottom=innerHeight-(parseFloat(s.scrollPaddingBottom)||0),h=bottom-top;
-      return {top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight,want:bottom-Math.min(h*.1,h-r.height),y:scrollY,
-        rootStyle:document.documentElement.style.minHeight}})()`);
-    assert.ok(box.height<box.screen,`the reply fits the screen: ${JSON.stringify(box)}`);
-    assert.ok(box.top>=0&&Math.abs(box.bottom-box.want)<=1.5,`the lit reply lands whole with the reveal's room below it, as the still page shows it: ${JSON.stringify({before,keyed:keyed[3],...box})}`);
+    const box=await p.evaluate(`(r=>({top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight,y:scrollY,minHeight:document.documentElement.style.minHeight}))(document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect())`);
+    const seen={before,keyed:keyed[3],...box};
+    assert.ok(box.height<box.screen*.95,`the reply fits the screen: ${JSON.stringify(seen)}`);
+    assert.ok(box.top>=0&&box.bottom<=box.screen,`the lit reply shows whole once it lands: ${JSON.stringify(seen)}`);
+    if (still) { assert.deepEqual(await p.evaluate('window.motionFrames'),[],'the still page runs no motion'); return seen; }
     assert.equal(box.y,keyed[3],'the page scrolled once, at the key, and stayed while it landed');
-    assert.equal(box.rootStyle,'','nothing the motion held on the page outlives it');
+    assert.equal(box.minHeight,'','the length the motion held goes with it');
     assert.ok((await frames(p,id,kind)).some(f=>f.clock>keyed[1]&&(kind==='arrival'?f.transform!=='none':f.height<before.height+(box.height-before.height)*.9)),'the keys do not cut its motion short');
+    return seen;
   };
-  await check('reading dossier motion the keys onto a long reply arriving at the page end reveal it as the still page does at 320 375 390 and laptop', async()=>{
-    await atWidths('keys-end',async ctx=>atEnd(ctx,'arrival',async()=>
-      (await control({method:'agent_message',operation_id:ctx.topic+'-long',topic_id:ctx.topic,source:'topic',sender:'aim-core',reply_to:ctx.ids.root,addressees:[facts.actor],body:long(ctx.width)})).result.message_id));
+  // Each width runs still first, then moving, on topics of the same shape.
+  const asStill = async (label, run) => {
+    const seen = {};
+    for (const still of [true,false]) await atWidths(label+(still?'-still':''),async ctx=>{ (seen[ctx.width]??={})[still?'still':'moving']=await run(ctx,still); });
+    for (const [width,{still,moving}] of Object.entries(seen))
+      assert.ok(Math.abs(moving.bottom-still.bottom)<=1&&Math.abs(moving.top-still.top)<=1,`at ${width} the moving reply lands where the still page shows it: ${JSON.stringify({still,moving})}`);
+  };
+  await check('reading dossier motion the keys onto a long reply arriving low on a short page reveal it as the still page does at 320 375 390 and laptop', async()=>{
+    await asStill('keys-end',(ctx,still)=>atEnd(ctx,'arrival',async()=>
+      (await control({method:'agent_message',operation_id:ctx.topic+'-long',topic_id:ctx.topic,source:'topic',sender:'aim-core',reply_to:ctx.ids.root,addressees:[facts.actor],body:long(ctx.width)})).result.message_id,still));
   });
-  await check('reading dossier motion the keys onto a long reply unfolding at the page end reveal it as the still page does at 320 375 390 and laptop', async()=>{
-    await atWidths('keys-end-unfold',async ctx=>{
+  await check('reading dossier motion the keys onto a long reply unfolding low on a short page reveal it as the still page does at 320 375 390 and laptop', async()=>{
+    await asStill('keys-end-unfold',async(ctx,still)=>{
       const {p,topic,ids}=ctx;
       const id=(await control({method:'agent_message',operation_id:topic+'-long',topic_id:topic,source:'topic',sender:'aim-core',reply_to:ids.root,addressees:[facts.actor],body:long(ctx.width)})).result.message_id;
       await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}))`),'the long reply is drawn'); await settled(p);
       const fold=on=>control({method:'stack_act',sender:facts.actor,kind:'message.fold',message_id:id,operation_id:`${topic}-fold-${on}`,args:{folded:on}});
       await fold(true);
       await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.folded==='true'`),'the fold from another device reaches the page'); await settled(p);
-      await atEnd(ctx,'unfold',async()=>(await fold(false),id));
+      return atEnd(ctx,'unfold',async()=>(await fold(false),id),still);
     });
   });
 

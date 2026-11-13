@@ -10564,7 +10564,7 @@
   },
   {
    "item": 412,
-   "act": "The keys moving to a long reply still arriving or unfolding at the page end scroll as far as the still page would, once, and the page's held length goes when it lands",
+   "act": "The keys moving to a long reply still arriving or unfolding low on a short page reveal it where the still page does, in one scroll, and the page's held length goes when it lands",
    "break": [
     [
      "web/stack-motion.mjs",
