@@ -163,6 +163,10 @@ try {
       }
       if (method === 'Emulation.setEmulatedMedia') {
         for (const feature of params.features ?? []) {
+          if (feature.name === 'prefers-reduced-motion') {
+            await pw.emulateMedia({ reducedMotion: feature.value === 'reduce' ? 'reduce' : 'no-preference' });
+            continue;
+          }
           assert.equal(feature.name, 'prefers-color-scheme', `media feature ${feature.name}`);
           scheme = feature.value || null;
           await pw.emulateMedia({ colorScheme: scheme });
