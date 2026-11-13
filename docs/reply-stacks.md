@@ -624,6 +624,8 @@ is in flight, and it keeps moving there. While anything moves, the page keeps
 the length it will have once it lands, as empty room below everything: a
 folder is shorter in flight, and at the page's end the window could not yet
 scroll as far as the still page would. The room goes when the motion does.
+A cut-off reply the keys light while it moves keeps the height it lands at
+when its whole words come in, and they end its motion as any changed body does.
 A primary press
 pauses running geometry until release/cancel. Superseding acts, resize, hidden
 pages and navigation cancel temporary geometry and restore natural layout.

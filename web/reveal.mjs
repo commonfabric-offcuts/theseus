@@ -57,6 +57,8 @@ function padding(style, side) {
 // is in flight. landing(read) runs read and gives back what it gave.
 const landings = new WeakMap();
 export function landWith(doc, landing) { if (landing) landings.set(doc, landing); else landings.delete(doc); }
+// read(), measured where doc's moving cards land (read itself when none move).
+export function landed(doc, read) { return (landings.get(doc) ?? (look => look()))(read); }
 
 // Scrolls el's nearest scrolling box, at once, by revealBy. The area is what
 // of that box shows in the window, less its scroll-padding.
@@ -66,8 +68,7 @@ export function revealSelection(el, { margin = MARGIN } = {}) {
   const shown = box ? box.getBoundingClientRect() : { top: 0, bottom: view.innerHeight };
   const style = view.getComputedStyle(box ?? doc.documentElement);
   const area = { top: Math.max(shown.top, 0) + padding(style, 'Top'), bottom: Math.min(shown.bottom, view.innerHeight) - padding(style, 'Bottom') };
-  const landing = landings.get(doc) ?? (read => read());
-  const by = Math.round(revealBy(landing(() => el.getBoundingClientRect()), area, margin));
+  const by = Math.round(revealBy(landed(doc, () => el.getBoundingClientRect()), area, margin));
   if (!by) return;
   if (box) box.scrollBy({ top: by, behavior: 'instant' });
   else view.scrollBy({ top: by, behavior: 'instant' });

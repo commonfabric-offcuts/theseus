@@ -10576,6 +10576,21 @@
     "native": "reading",
     "case": "reading dossier motion the keys onto a long reply"
    }
+  },
+  {
+   "item": 412,
+   "act": "A cut-off reply the keys light while it arrives or unfolds reads on in place in a box of the height it lands at, not its height in flight",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "const height = landed(card.ownerDocument, () => card.getBoundingClientRect().height);",
+     "const height = card.getBoundingClientRect().height;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion the keys onto a long reply"
+   }
   }
  ]
 }

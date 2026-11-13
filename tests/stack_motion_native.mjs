@@ -242,14 +242,16 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     assert.deepEqual([keyed[0],keyed[2]],[still?null:kind,id],`ArrowDown lit the reply ${still?'drawn still':'while it was still moving ('+kind+')'}`);
     await settled(p);
     await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
-    const box=await p.evaluate(`(r=>({top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight,y:scrollY,minHeight:document.documentElement.style.minHeight}))(document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect())`);
+    const box=await p.evaluate(`(c=>(r=>({top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight,y:scrollY,minHeight:document.documentElement.style.minHeight,inPlace:c.classList.contains('scroll-in-place'),maxHeight:c.style.maxHeight}))(c.getBoundingClientRect()))(document.querySelector(${JSON.stringify(card(id))}))`);
     const seen={before,keyed:keyed[3],...box};
     assert.ok(box.height<box.screen*.95,`the reply fits the screen: ${JSON.stringify(seen)}`);
     assert.ok(box.top>=0&&box.bottom<=box.screen,`the lit reply shows whole once it lands: ${JSON.stringify(seen)}`);
     if (still) { assert.deepEqual(await p.evaluate('window.motionFrames'),[],'the still page runs no motion'); return seen; }
     assert.equal(box.y,keyed[3],'the page scrolled once, at the key, and stayed while it landed');
     assert.equal(box.minHeight,'','the length the motion held goes with it');
-    assert.ok((await frames(p,id,kind)).some(f=>f.clock>keyed[1]&&(kind==='arrival'?f.transform!=='none':f.height<before.height+(box.height-before.height)*.9)),'the keys do not cut its motion short');
+    // A cut-off message's whole words, read in once the keys light it, are a
+    // changed body: they end its motion (a laptop here). Otherwise it keeps moving.
+    if (!box.inPlace) assert.ok((await frames(p,id,kind)).some(f=>f.clock>keyed[1]&&(kind==='arrival'?f.transform!=='none':f.height<before.height+(box.height-before.height)*.9)),'the keys do not cut its motion short');
     return seen;
   };
   // Each width runs still first, then moving, on topics of the same shape.
@@ -257,7 +259,8 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     const seen = {};
     for (const still of [true,false]) await atWidths(label+(still?'-still':''),async ctx=>{ (seen[ctx.width]??={})[still?'still':'moving']=await run(ctx,still); });
     for (const [width,{still,moving}] of Object.entries(seen))
-      assert.ok(Math.abs(moving.bottom-still.bottom)<=1&&Math.abs(moving.top-still.top)<=1,`at ${width} the moving reply lands where the still page shows it: ${JSON.stringify({still,moving})}`);
+      assert.ok(['y','top','bottom','height'].every(k=>Math.abs(moving[k]-still[k])<=1)&&moving.inPlace===still.inPlace&&moving.maxHeight===still.maxHeight,
+        `at ${width} the moving reply lands where and as the still page shows it: ${JSON.stringify({still,moving})}`);
   };
   await check('reading dossier motion the keys onto a long reply arriving low on a short page reveal it as the still page does at 320 375 390 and laptop', async()=>{
     await asStill('keys-end',(ctx,still)=>atEnd(ctx,'arrival',async()=>

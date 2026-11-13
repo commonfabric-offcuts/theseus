@@ -78,7 +78,8 @@ the pointer's way, the keys' and the phone's.
   is said when it copies, as in the Reader; a refusal says how else to copy.
 - **A cut-off message** (the first 1,024 bytes are shown) reads on in place:
   once the pointer rests on it, the keys light it or a finger taps it, the whole
-  card scrolls under the wheel, trackpad or a finger, keeping its height. The
+  card scrolls under the wheel, trackpad or a finger, keeping its height (the
+  height it lands at, for a reply still arriving or unfolding). The
   author, timestamp and reply context scroll away with the words, in standalone
   messages and stack messages alike. The card's border and dossier title stay
   in place. At either end, scrolling carries on with the page. Where a finger
