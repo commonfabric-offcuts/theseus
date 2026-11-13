@@ -26,6 +26,7 @@ export class StackMotion {
     for (const name of ['pointerup', 'pointercancel', 'contextmenu']) on(this.doc, name, () => this.resume(), true);
     on(win, 'blur', () => this.resume());
     on(win, 'resize', () => this.finish());
+    on(this.doc, 'load', event => { for (const effect of [...this.active]) if (effect.faces.some(face => face.card.contains(event.target))) effect.finish(); }, true);
     on(this.doc, 'visibilitychange', () => { if (this.doc.visibilityState !== 'visible') { this.awaitingAttention = true; this.finish(); } });
     on(win, 'pagehide', () => this.dispose());
     this.reduced = win.matchMedia('(prefers-reduced-motion: reduce)');
@@ -81,7 +82,7 @@ export class StackMotion {
   effect(incoming, kind) {
     const cleanups = [], animations = [], faces = incoming.map(entry => ({ entry, card: cardIn(entry), parent: entry.parentElement, folded: cardIn(entry).dataset.folded === 'true' }));
     let done = false, frame = null;
-    const effect = { faces, animations, tick: null,
+    const effect = { faces, animations, kind, tick: null,
       style(node, key, value) { const old = node.style.getPropertyValue(key), priority = node.style.getPropertyPriority(key); node.style.setProperty(key, value); cleanups.push(() => old ? node.style.setProperty(key, old, priority) : node.style.removeProperty(key)); },
       cleanup(fn) { cleanups.push(fn); },
       loop: () => {
@@ -163,8 +164,16 @@ export class StackMotion {
         sizes.set(record.target, size);
       }
     });
-    for (const { card } of effect.faces) { const body = card.querySelector(':scope > .message-preview'); if (body) observer.observe(body); }
-    effect.cleanup(() => observer.disconnect());
+    const changes = new this.win.MutationObserver(() => effect.finish());
+    for (const { entry, card } of effect.faces) {
+      // Transforms do not change the arrival's layout size. Fold owns its
+      // height, so observe its content/header rather than its animated box.
+      if (effect.kind === 'arrival') observer.observe(entry);
+      const author = card.querySelector(':scope > .message-author'); if (author) observer.observe(author);
+      const body = card.querySelector(':scope > .message-preview');
+      if (body) { observer.observe(body); changes.observe(body, {childList:true,characterData:true,subtree:true}); }
+    }
+    effect.cleanup(() => { observer.disconnect(); changes.disconnect(); });
   }
   pause() { this.paused = true; for (const effect of this.active) for (const animation of effect.animations) animation.pause(); }
   resume() { if (!this.paused) return; this.paused = false; for (const effect of this.active) { for (const animation of effect.animations) animation.play(); effect.loop(); } }
