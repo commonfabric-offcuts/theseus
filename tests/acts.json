@@ -9488,6 +9488,90 @@
     "native": "reading",
     "case": "reading coordination ← and → move along the filters' row"
    }
+  },
+  {
+   "item": 447,
+   "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "import { messagePreview } from './message-preview.mjs';",
+     "import { messagePreview } from './message-preview.mjs';\nimport { firstLine } from './pipeline-words.mjs';"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "  words.textContent = messagePreview(item);",
+     "  words.textContent = firstLine(item.body);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 447,
+   "act": "A dossier is named by its first message's own words until someone types a name",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "headOf(stack, { preview: messagePreview, unread",
+     "headOf(stack, { unread"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 447,
+   "act": "Renaming a dossier starts from the name shown, and Return on it unchanged names nothing",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "import { messagePreview } from './message-preview.mjs';",
+     "import { messagePreview } from './message-preview.mjs';\nimport { firstLine } from './pipeline-words.mjs';"
+    ],
+    [
+     "web/stack-feed.mjs",
+     "!typed && name === messagePreview(item)",
+     "!typed && name === firstLine(item.body)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 447,
+   "act": "A message that is only quotes shows its quoted words inside quote marks, so they read as a quote",
+   "break": [
+    [
+     "web/message-preview.mjs",
+     "if (text) return bounded(quoted ? `“${text}”` : text);",
+     "if (text) return bounded(text);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_preview.test.mjs"
+   }
+  },
+  {
+   "item": 447,
+   "act": "A message with only attachments shows by one line what is attached",
+   "break": [
+    [
+     "web/message-preview.mjs",
+     "return attached.length ? bounded(`Attached: ${attached.join(', ')}`) : '';",
+     "return '';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
   }
  ]
 }

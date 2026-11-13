@@ -29,6 +29,7 @@ The code:
   shows the act at once, sends it to Core in order, and holds ⌘Z, the keys,
   the ⋯ items, the phone's swipe and the trackpad's.
 - `web/stack-look.css`: how a stack looks, and nothing else does.
+- `web/message-preview.mjs`: a message shown by one line (below).
 
 ## What Core records
 
@@ -48,7 +49,7 @@ message, even one unfolded since.
 | deal | `message.deal` | `{"dealt": true}` | the reader's own |
 | fold | `message.fold` | `{"folded": true}` | the reader's own |
 | place | `stack.place` | `{"key": 1.5}` or `{"key": null}` | the reader's own |
-| name | `stack.name` | `{"name": "Cabin week"}` (empty gives back the first line) | the topic's |
+| name | `stack.name` | `{"name": "Cabin week"}` (empty gives back its first message's line) | the topic's |
 | join | `stack.join` | `{"into": "m-…"}` or `{"into": null}` (split back out) | the topic's |
 
 Each act names one message, `target: {"message_id": "m-…"}`, and is fenced on
@@ -150,9 +151,9 @@ their acts.
 - **Folded messages.** A message the reader folded stays folded for them, on
   every device and after a reload, until they unfold it; nobody else's view
   changes. Wherever its stack shows it, at every state, fully open included,
-  and on its own, it is one row: who wrote it, its first words, a 👍, and
-  "Folded". The 👍 is the message's thumbs-up, as its bar's: pressed once
-  given, with the count once anyone has, and a press gives or takes it back
+  and on its own, it is one row: who wrote it, its line (One line of a
+  message, below), a 👍, and "Folded". The 👍 is the message's thumbs-up,
+  as its bar's: pressed once given, with the count once anyone has, and a press gives or takes it back
   without unfolding the message (none on the reader's own message). It is a
   button named "Thumbs up" or "Remove thumbs up" (with the count), with that
   tooltip; on a laptop Tab from the selected row reaches it (Safari's
@@ -181,7 +182,7 @@ their acts.
   goes with what caused it. A press on the row, x, or Unfold in ⋯ unfolds
   it.
 - **First messages.** A stack's first message folds into its head row, which already
-  says who began the stack and its first line: the row adds "Folded", the
+  says who began the stack and its short name: the row adds "Folded", the
   full message stays hidden even with the stack fully open, and no second
   row doubles the tab. A press on that head row, or x on it, unfolds it and
   opens the stack, so x on it again folds it. A link, search or the rail's Starred that lands on a folded
@@ -198,7 +199,9 @@ their acts.
   who began the stack, "New" when the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. On a phone the
   count, who replied and what is new sit on a second short line. The short name is the
-  one someone typed, or else the first line of the first message. Pressing
+  one someone typed, or else the first message's line (One line of a message,
+  below); renaming starts from the name shown, and Return on it unchanged
+  names nothing. Pressing
   the row opens the entire stack; pressing it again returns to latest plus
   unread. The original message has no independent open/closed state.
   A message that stops
@@ -250,6 +253,22 @@ their acts.
   Another → when fully open moves to the right siderail; another ← at
   latest plus unread moves to the left siderail. A hidden rail
   stays hidden. Each stack step can be undone with ⌘Z.
+- **One line of a message (item 447).** Where the feed shows a message by
+  one line (a folded message's row, and a stack's short name until someone
+  types one), the line is the author's own words: the first line of the
+  first block that is not a quote, read as the card reads the message,
+  without the marks that begin it (a list's dash or number, a task's box, a
+  heading's #s) or emphasis marks. A reply that begins by quoting what it
+  answers shows the words after the quote. A message that is only quotes
+  shows its first quoted line inside quote marks (“…”), so it reads as a
+  quote and not as the author's words; one with only attachments says
+  "Attached:" and their names; an empty one shows nothing. The line is never
+  cut at a colon or a full stop: the row's ellipsis shortens a line too long
+  for it, and a line over 200 characters (a short name's limit) ends at a
+  word with "…". The message itself is unchanged, and a pipeline item's
+  title keeps its own rule (docs/pipeline.md). The line saying what a reply
+  answers ("Replying to …") and the line of a message between others are
+  not this rule yet.
 
 Each viewer has their own order and folds, because they come from that
 viewer's places, folded messages and the page's own state. Names and joins
@@ -431,6 +450,8 @@ the stacks draw nothing.
 | a scroll right after a trackpad swipe folded a message | `tests/stack_native.mjs`, "reading stacks a scroll right after two fingers fold a message …" |
 | x folds and unfolds the selected message; a starred one, a dossier and writing | `tests/ui_outline_order.test.mjs` (the key map); `tests/stack_native.mjs`, "reading stacks x folds the selected message …" |
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
+| one line of a message: the author's words after a quote, colon and all, a quote alone, list and heading marks, an attachment alone, an empty message, a long line | `tests/ui_message_preview.test.mjs` |
+| on the page: folded rows, a dossier's name folded and not, and a message on its own show the author's own words on one line, at 320, 375 and 390 pixels and on a laptop; renaming starts from that name and Return unchanged names nothing | `tests/stack_native.mjs`, "reading stacks a folded message's row shows its author's own words …", in Chrome and Safari's engine |
 | two states, by the chevron, the header, → ← and ⋯; a stack left at its header | `tests/ui_stack_order.test.mjs` (`LEVELS`, `foldStep`, `levelOf`); `tests/stack_native.mjs`, "reading stacks use exactly two states …" and "reading stacks a dossier left at its header alone …" |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a phone's tap on a go-ahead ask's one-row head keeps the ask lit with its bar while the page hears of a star made on another device, on a message it has not loaded (which draws nothing again) and on one it shows (whose repaint lands under the finger) | `tests/ui_stack_position.test.mjs`; in Chrome and Safari's engine, `tests/topic_reading_native.mjs`, "reading a phone's tap on a go-ahead ask's one-row head …" (Safari's engine in the harness taps whole, so there the star is read just before the tap) |

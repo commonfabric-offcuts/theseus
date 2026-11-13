@@ -2620,7 +2620,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await choose(p, 'laptop', 'Fold');
     await until(async () => await foldOf(topic, ids.two), 'Core holds the fold');
     assert.equal(await foldOf(topic, ids.two, other), false, 'another reader\'s view of it is unchanged');
-    await becomes(() => folded(p, ids.two), { row: true, words: `${other}Reply two, to foldFolded`, whole: false },
+    await becomes(() => folded(p, ids.two), { row: true, words: `${other}Reply two, to fold.Folded`, whole: false },
       'in the fully open stack it is one row: who wrote it, its first words and Folded');
     assert.deepEqual((await look(p, ids, 'root')).rows, ['one', 'two', 'three'], 'in its place; nothing else folds');
     assert.equal((await look(p, ids, 'root')).fold, 'open', 'the stack stays fully open');
@@ -2640,7 +2640,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(async () => (await look(p, ids, 'root')).fold, level, `the chevron steps to ${level}`);
       assert.equal(await foldOf(topic, ids.two), true, `${level}: Core still holds the fold`);
     }
-    await becomes(() => folded(p, ids.two), { row: true, words: `${other}Reply two, to foldFolded`, whole: false }, 'open again, it is still its row');
+    await becomes(() => folded(p, ids.two), { row: true, words: `${other}Reply two, to fold.Folded`, whole: false }, 'open again, it is still its row');
     await shot(p, 'stack-fold-open');
     await p.close();
     // A reload: the fold is still there.
@@ -2723,7 +2723,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     };
     await drag(card(ids.two), 20, 160);
     await until(async () => await foldOf(topic, ids.two), 'phone: swiped right in the fully open stack, it is folded in Core');
-    await becomes(async () => ({ ...(await folded(p, ids.two)), rows: (await look(p, ids, 'root')).rows }), { row: true, words: `${other}Reply two, swipedFolded`, whole: false, rows: ['one', 'two', 'three'] },
+    await becomes(async () => ({ ...(await folded(p, ids.two)), rows: (await look(p, ids, 'root')).rows }), { row: true, words: `${other}Reply two, swiped.Folded`, whole: false, rows: ['one', 'two', 'three'] },
       'phone: it is one row, in its place in the open stack');
     await shot(p, 'stack-fold-phone');
     await drag(card(ids.two), 160, 20);
@@ -2784,7 +2784,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
     await drag(card(ids.one), 20, 160);
     await until(async () => await foldOf(topic, ids.one), 'phone: swiped right, reply one is folded, in Core');
-    await becomes(async () => ({ ...(await folded(p, ids.one)), rows: (await look(p, ids, 'root')).rows }), { row: true, words: `${other}Reply one, unreadFolded`, whole: false, rows: ['one', 'wide', 'two'] },
+    await becomes(async () => ({ ...(await folded(p, ids.one)), rows: (await look(p, ids, 'root')).rows }), { row: true, words: `${other}Reply one, unread.Folded`, whole: false, rows: ['one', 'wide', 'two'] },
       'phone: swiped right, reply one is its one row, in its place');
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -3062,7 +3062,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(p, ids.two);
     await typeX(p);
     await until(async () => await foldOf(topic, ids.two), 'x folds the selected reply, in Core');
-    await becomes(() => folded(p, ids.two), { row: true, words: `${other}Reply two, folded by xFolded`, whole: false }, 'and it is its one row');
+    await becomes(() => folded(p, ids.two), { row: true, words: `${other}Reply two, folded by x.Folded`, whole: false }, 'and it is its one row');
     assert.equal(await focusedOn(p), ids.two, 'the keys stay on it');
     assert.equal(await said(p), 'Folded to one line, for you only');
     assert.equal(await foldOf(topic, ids.two, other), false, 'another reader\'s view of it is unchanged');
@@ -3218,6 +3218,71 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await foldOf(topic, ids.two), true, 'laptop: and the message stays folded');
         assert.equal(await readerOn(p), null, 'laptop: Return on the 👍 opens no Reader');
       }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 447: a message shown by one line, its folded row or its dossier's name, shows its author's own words
+  // (message-preview.mjs): Tony's reply began with a quoted line and its row read "Release 69, 1:06 AM".
+  await check('reading stacks a folded message\'s row shows its author\'s own words: after a quote they began with, colon and all, a quote alone as a quote, an attachment alone by its name, a dossier and a message on its own named the same, each on one line on a laptop and phones 320 to 390 wide', async () => {
+    const tony = '> - Release 69, 1:06 AM: moving messages/dossiers below More...\n>\n\nbank this - not a request but lets discuss:\n\nWhat if a dossier put aside said why?';
+    const his = 'bank this - not a request but lets discuss:';
+    const want = { reply: his, quote: '“Release 69 shipped at 1:06 AM: the dossiers moved below More.”', list: 'Here is the plan: fold the shipped list by release.',
+      file: 'Attached: cabin-notes.txt', lone: his };
+    // Each folded row's words, and whether the row keeps to one line inside its card, its words shortened by the
+    // page's ellipsis rather than pushing Folded out; and whether anything scrolls sideways.
+    const rows = (p, ids) => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},out={};
+      for(const key of ${JSON.stringify(Object.keys(want))}){const c=document.querySelector('#messages .message-card[data-id="'+ids[key]+'"]'),r=c?.querySelector(':scope > .message-folded');
+        if(!r||!r.getClientRects().length){out[key]=null;continue}
+        const box=e=>e.getBoundingClientRect(),cb=box(c),w=r.querySelector('.folded-words'),a=r.querySelector('.folded-author'),f=r.querySelector('.folded-cue');
+        out[key]={words:w.textContent,oneLine:Math.abs(box(w).top-box(a).top)<4&&Math.abs(box(f).top-box(a).top)<6,inCard:box(f).right<=cb.right+0.5&&box(w).right<=box(f).left+0.5&&box(a).left>=cb.left-0.5}}
+      return {rows:out,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    const named = (p, id) => p.evaluate(`(()=>{const c=document.querySelector('#messages .message-card[data-id="${id}"]'),n=c?.querySelector(':scope > .stack-head > .stack-name');
+      if(!n)return null;const b=n.getBoundingClientRect(),s=c.closest('.reply-stack').getBoundingClientRect();
+      return {name:n.textContent,folded:Boolean(c.querySelector(':scope > .stack-head > .stack-folded')),inStack:b.right<=s.right+0.5,toggle:c.closest('.reply-stack').querySelector(':scope > .stack-toggle').getAttribute('aria-label').endsWith(': '+n.textContent)}})()`);
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-fold-words-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.', read: true }],
+        ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: tony, read: true }],
+        ['quote', { sender: other, reply_to: 'root', addressees: [facts.actor], body: '> Release 69 shipped at 1:06 AM: the dossiers moved below More.', read: true }],
+        ['list', { sender: other, reply_to: 'root', addressees: [facts.actor], body: '- Here is the plan: fold the shipped list by release.\n- Then the rest.', read: true }],
+        ['file', { sender: other, reply_to: 'root', addressees: [facts.actor], body: '', attachments: [{ name: 'cabin-notes.txt', text: 'Notes for the cabin.' }], read: true }],
+        ['named', { sender: other, addressees: [facts.actor], body: tony, read: true }],
+        ['namedReply', { sender: other, reply_to: 'named', addressees: [facts.actor], body: 'A reply to it.', read: true }],
+        ['lone', { sender: other, addressees: [facts.actor], body: tony, read: true }]]);
+      for (const key of Object.keys(want)) await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids[key], operation_id: `${topic}-fold-${key}`, args: { folded: true } });
+      const p = await open(topic, device, topic, ids.root);
+      await fullyOpen(p, device, ids);
+      for (const width of device === 'phone' ? [390, 375, 320] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        const fits = Object.fromEntries(Object.entries(want).map(([key, words]) => [key, { words, oneLine: true, inCard: true }]));
+        await becomes(() => rows(p, ids), { rows: fits, sideways: false }, `${device} ${width}px: each folded row shows its author's own words on one line in its card`);
+        assert.equal((await named(p, ids.named)).inStack, true, `${device} ${width}px: the dossier's name stays in its tab`);
+      }
+      // A dossier named by such a message, until someone types a name: the same words, in its tab and its chevron's name.
+      await becomes(() => named(p, ids.named), { name: his, folded: false, inStack: true, toggle: true }, `${device}: the dossier is named by his own words`);
+      const seen = (await rows(p, ids)).rows;
+      for (const key of ['reply', 'lone']) assert.doesNotMatch(seen[key].words, /Release 69/, `${device}: ${key}: nothing of the quote he began with`);
+      for (const theme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await shot(p, `stack-fold-words-${device}-${theme}`);
+      }
+      // Renaming starts from the name shown, and Return on it unchanged names nothing: the name is still its message's
+      // line. A press on the name renames on a laptop; the rename case holds it on a phone.
+      if (device === 'laptop') {
+        const input = `#messages .reply-stack[data-stack="${ids.named}"] .stack-rename-input`;
+        await centre(p, `${card(ids.named)} .stack-name`);
+        await p.point(`${card(ids.named)} .stack-name`);
+        await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), `${device}: the name opens to rename`);
+        assert.equal(await p.evaluate(`document.activeElement.value`), his, `${device}: starting from his own words`);
+        await p.key('Enter');
+        await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), `${device}: Return closes it`);
+        assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, `${device}: the name unchanged sends nothing`);
+        assert.equal((await actsOf(topic, ids.named))?.name ?? null, null, `${device}: and Core holds no typed name`);
+      }
+      // Its first message folded: the head row stands for it, with the same words and Folded.
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.named, operation_id: `${topic}-fold-named`, args: { folded: true } });
+      await becomes(async () => { const n = await named(p, ids.named); return n && [n.name, n.folded]; }, [his, true], `${device}: folded, its head row keeps his words and says Folded`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
@@ -3459,19 +3524,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(p, ids.root);
     assert.equal((await look(p, ids, 'root')).headOpen, 'false', 'the keys are on the dossier\'s compact header');
     await p.key('Enter');
-    await becomes(keysOn, 'Plan the cabin week', 'Return on the selected dossier opens its title to edit, the cursor in it');
+    await becomes(keysOn, 'Plan the cabin week.', 'Return on the selected dossier opens its title to edit, the cursor in it');
     assert.equal(await readerOn(p), null, 'and opens no Reader');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Escape');
     await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Escape cancels the edit');
-    assert.equal(await name(), 'Plan the cabin week', 'the title is as it was');
+    assert.equal(await name(), 'Plan the cabin week.', 'the title is as it was');
     assert.equal(await names(), 0, 'and nothing is sent');
     assert.equal((await actsOf(topic, ids.root))?.name ?? null, null, 'nor held by Core');
     // Its chevron selected stands for the dossier too.
     await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).focus({preventScroll:true})`);
     const fold = (await look(p, ids, 'root')).fold;
     await p.key('Enter');
-    await becomes(keysOn, 'Plan the cabin week', 'Return on the dossier\'s chevron opens its title to edit');
+    await becomes(keysOn, 'Plan the cabin week.', 'Return on the dossier\'s chevron opens its title to edit');
     assert.equal((await look(p, ids, 'root')).fold, fold, 'and does not press the chevron');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Enter');

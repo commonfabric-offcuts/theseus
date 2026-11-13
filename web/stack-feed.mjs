@@ -18,7 +18,7 @@ import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
 import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
-import { firstLine } from './pipeline-words.mjs';
+import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 
@@ -324,8 +324,8 @@ export class StackFeed {
     const item = this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
     const name = String(text ?? '').replace(/\s+/g, ' ').trim();
     this.arrange();
-    // Unchanged, or the first line it is named by already: nothing to record.
-    if (name === typed || !typed && name === firstLine(item.body)) { this.focusOn(stack.id); return; }
+    // Unchanged, or the line it is named by already (messagePreview): nothing to record.
+    if (name === typed || !typed && name === messagePreview(item)) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);

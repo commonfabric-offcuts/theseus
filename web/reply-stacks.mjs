@@ -18,7 +18,7 @@
 // folded; a stack's folded first message is its head row alone.
 import { cardIn, opened } from './fold.mjs';
 import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown } from './stack-order.mjs';
-import { firstLine } from './pipeline-words.mjs';
+import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
 
@@ -321,7 +321,7 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
   if (card.firstElementChild !== row) card.prepend(row);
   card.classList.add('stack-head-card');
-  const head = headOf(stack, { firstLine, unread, peeked: item => state.peeked.has(item.id) });
+  const head = headOf(stack, { preview: messagePreview, unread, peeked: item => state.peeked.has(item.id) });
   const act = (name, className, text, title) => {
     const span = element(doc, 'span', `stack-act ${className}`, text); span.dataset.stackAct = name;
     if (title) span.title = title; return span;
@@ -364,7 +364,7 @@ function paintFolded(entry, item, folded, { nameOf, doc }) {
   }
   const [author, words] = row.children;
   author.textContent = nameOf(item.author_id);
-  words.textContent = firstLine(item.body);
+  words.textContent = messagePreview(item);
   if (card.firstElementChild !== row) card.prepend(row);
   card.dataset.folded = 'true';
 }
@@ -408,7 +408,7 @@ function paintStack(section, stack, byId, context) {
   };
   head.hidden = false;
   if (!single) opened(head);
-  const shown = single ? { name: firstLine(stack.head.body) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
+  const shown = single ? { name: messagePreview(stack.head) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
   p.toggle.dataset.state = level;
   Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(coordination && level === 'head' && state.renaming !== stack.id) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
