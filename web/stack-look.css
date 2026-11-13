@@ -61,6 +61,12 @@
   --stack-tab-h:calc(.85rem + var(--stack-name-lh) + var(--stack-meta-lh));
   --stack-pad:.5rem;                      /* folder edge to sheet */
   --stack-sheet-gap:.45rem;
+  --stack-overlap:12px;
+  --stack-contact:0 -1px 2px rgb(54 46 38 / .10);
+  --stack-folded-height:44px;
+  --stack-folded-ink:var(--muted);
+  --stack-read-ink:#56616a;
+  --stack-name-inset:4px;
   --stack-gap:1.75rem;                    /* clear paper round a stack */
 }
 @media(prefers-color-scheme:dark){:root{
@@ -69,6 +75,8 @@
   --stack-sheet:#2a3437; --stack-read-sheet:#232c2f; --stack-read-hover:#2c3639; --stack-sheet-edge:rgb(255 255 255 / .05);
   --stack-input-edge:rgb(255 255 255 / .2);
   --stack-star:#e8c67f;
+  --stack-contact:0 -1px 2px rgb(0 0 0 / .20);
+  --stack-read-ink:#9aaba8;
 }}
 
 /* The folder's body. The sheets inside read on the folder's own sheet colours; a card keeps its tint. */
@@ -80,7 +88,7 @@
 .reply-stack[data-single=true]:not(.only-new *){margin-top:var(--stack-gap);border-radius:var(--stack-r)}
 :is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
 .reply-stack:not(.only-new *) .message-card{border-radius:var(--stack-r-sheet)}
-.reply-stack:not(.only-new *) .message-card{outline:none;border-color:transparent;box-shadow:0 0 0 1px var(--stack-sheet-edge)}
+.reply-stack:not(.only-new *) .message-card{outline:none;border-color:transparent;box-shadow:var(--stack-contact)}
 /* Only the current message gets a strong ring. Keyboard focus left behind
    when the pointer moves is not a second selection. */
 .reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}
@@ -114,7 +122,7 @@
 .reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card{
   min-height:0;height:0;padding:0;border:0;background:none;box-shadow:none;outline:none;overflow:visible}
 .reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card>:not(.stack-head){display:none}
-.reply-stack[data-head-open=true]:not(.only-new *) .stack-head-card{margin-bottom:var(--stack-sheet-gap)}
+.reply-stack[data-head-open=true]:not(.only-new *) .stack-head-card{margin-bottom:0}
 .reply-stack[data-single=false]>.message-fold>.fold-line{display:none}
 
 /* The tab: the head row (or, while renaming, the rename field) standing on the folder's top edge, two lines high. */
@@ -178,10 +186,28 @@
 .stack-rename-hint{flex:none;color:var(--stack-meta-ink)}
 
 /* The replies: sheets in the folder, oldest first. */
-.stack-replies{display:flex;flex-direction:column;gap:var(--stack-sheet-gap);margin:0}
+.stack-replies{position:relative;display:flex;flex-direction:column;gap:0;margin:0}
 .stack-replies:empty{display:none}
+/* Later faces paint above earlier ones in DOM order. The root stays static:
+   its absolutely positioned tab still belongs to the folder, not the card. */
+.reply-stack:not(.only-new *) .stack-replies>[data-id]{position:relative}
+.reply-stack:not(.only-new *) .stack-replies>[data-stack-overlap=true]{margin-top:calc(-1 * var(--stack-overlap))}
+/* The overlap covers only this extra material, never the last words or a
+   control. A wrapped entry puts that material on its actual visible face. */
+.reply-stack:not(.only-new *) :is(.message-card[data-stack-covered=true],.message-fold[data-stack-covered=true]>.message-card){padding-bottom:calc(1rem + var(--stack-overlap))}
+.reply-stack:not(.only-new *) .message-fold>.message-card{margin-bottom:0}
+.reply-stack:not(.only-new *) .message-fold>.fold-line{background:var(--stack-read-sheet);border-radius:var(--stack-r-sheet);color:var(--stack-folded-ink)}
+.reply-stack:not(.only-new *) .message-fold[data-stack-covered=true]>.fold-line[aria-expanded=false]{min-height:var(--stack-folded-height);padding-bottom:calc(.3rem + var(--stack-overlap))}
+/* Agent badges protrude; the letters align with the message's words. Only
+   the first fragment moves when an Unread pill holds the final grapheme. */
+.reply-stack:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}
+.reply-stack:not(.only-new *) .agent-card .author-name-start{padding-right:0}
+.reply-stack:not(.only-new *) .agent-card .author-name-end{padding-left:0}
+.reply-stack:not(.only-new *) .agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}
+.reply-stack:not(.only-new *) .agent-card .folded-author{margin-left:calc(-1 * var(--stack-name-inset));padding-inline:var(--stack-name-inset);border-radius:.3rem;background:var(--agent-tag)}
 /* A joined stack's first message, and a stack the reader placed: one quiet line says so. */
 .stack-join-line,.stack-placed-line{display:flex;flex-wrap:wrap;align-items:center;gap:0 .4rem;margin:0;padding:.15rem .5rem 0;color:var(--stack-meta-ink);font-size:.76rem}
+.stack-join-line{padding-block:var(--stack-sheet-gap)}
 .stack-placed-line{padding:.35rem .5rem 0}
 :is(.stack-split,.stack-unplace){min-height:1.75rem;padding:0 .2rem;border:0;border-radius:.3rem;background:transparent;color:var(--stack-folder-ink);
   font-size:.76rem;text-decoration:underline;text-underline-offset:3px}
@@ -209,11 +235,30 @@
 .stack-head>.stack-folded{margin-left:calc(.3em - .5rem)}
 .stack-head>.stack-folded::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-style:normal}
 
+/* Quiet edges keep full-strength ink, including agent-only talk: opacity on
+   the card or its row would compound and make the words unreadable. */
+.reply-stack:not(.only-new *) .message-card[data-folded=true]{height:var(--stack-folded-height);min-height:var(--stack-folded-height);align-items:center;padding-block:0;opacity:1;transition:none}
+.reply-stack:not(.only-new *) :is(.message-card[data-folded=true][data-stack-covered=true],.message-fold[data-stack-covered=true]>.message-card[data-folded=true]){padding-bottom:var(--stack-overlap)}
+.reply-stack:not(.only-new *) .message-card[data-folded=true]>.message-folded,
+.reply-stack:not(.only-new *) .message-fold[data-talk=agents]>.fold-line{opacity:1;transition:none}
+.reply-stack:not(.only-new *) .message-folded{color:var(--stack-folded-ink);align-items:center}
+/* A saved fold or this reader's thumb gets the same material as a read
+   message, even before the feed's read marker catches up. Other people's
+   thumbs do not change it; the reader's own cards keep their black. */
+.message-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):not(.own-message):not(.agent-card){--muted:var(--stack-read-ink);background:var(--read-card)}
+.message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)){background:color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))}
+.message-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):not(.own-message):not(.agent-card):hover{background:var(--read-hover)}
+.message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):hover{background:var(--agent-hover)}
+
 /* A narrow column (a phone): a shorter tab, a little less folder round the sheets. */
 @media(max-width:760px){
-  :root{--stack-pad:.4rem;--stack-r:.85rem;--stack-tab-max:85%;--stack-tab-pad:.4rem .7rem .35rem;--stack-name-lh:1.4rem;--stack-meta-lh:1.15rem;--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh))}
+  :root{--stack-pad:.4rem;--stack-r:.85rem;--stack-tab-max:85%;--stack-tab-pad:.4rem .7rem .35rem;--stack-name-lh:1.4rem;--stack-meta-lh:1.15rem;--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:56px}
   .stack-name,.stack-rename-input{font-size:.9rem}
   .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){font-size:.74rem}
+}
+@media(pointer:coarse){
+  :root{--stack-folded-height:56px}
+  .reply-stack:not(.only-new *) .folded-thumb{margin:0}
 }
 /* A touch screen: quiet line buttons keep full tap targets. */
 @media(pointer:coarse){:is(.stack-split,.stack-unplace){min-height:2.75rem;margin-block:-.5rem}}

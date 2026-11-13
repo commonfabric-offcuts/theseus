@@ -386,6 +386,19 @@ function paintStack(section, stack, byId, context) {
   const used = new Set(desired);
   for (const [key, node] of p.lines) if (!used.has(node)) { node.remove(); p.lines.delete(key); }
   reconcile(p.replies, desired);
+  // Presentation only: overlap adjacent visible faces, never a provenance
+  // line. Hidden replies neither consume an edge nor separate two faces.
+  for (const entry of [head, ...desired]) if (entry.dataset.id) {
+    entry.dataset.stackOverlap = 'false'; entry.dataset.stackCovered = 'false';
+  }
+  let previousFace = open ? head : null;
+  for (const entry of desired) {
+    if (entry.hidden) continue;
+    if (!entry.dataset.id) { previousFace = null; continue; }
+    entry.dataset.stackOverlap = String(Boolean(previousFace));
+    if (previousFace) previousFace.dataset.stackCovered = 'true';
+    previousFace = entry;
+  }
   if (stack.placed !== null && !p.placed) {
     p.placed = element(doc, 'p', 'stack-placed-line');
     const words = element(doc, 'span', 'stack-placed-words', 'Placed here by you'), free = element(doc, 'button', 'stack-unplace', 'Let new replies move it');
