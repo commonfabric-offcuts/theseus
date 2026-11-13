@@ -147,6 +147,98 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // The read material is a saved fold's in a dossier, and nothing else's: the
+  // reader's own thumbs-up on an unread card, inside a dossier or out, and a
+  // fold outside a dossier keep the feed's unread material, beside a twin of
+  // the same palette that nobody touched.
+  await check('reading dossier look gives read material to no thumbs-up and no fold outside a dossier', async () => {
+    const human = 'fixture-other-person';
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-unread-material-${device}`;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root for unread material.', read: true }],
+        ['agentThumb', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'An agent reply with the reader\'s thumbs-up.' }],
+        ['agentPlain', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'An agent reply nobody touched.' }],
+        ['humanThumb', { sender: human, join: true, reply_to: 'root', addressees: [facts.actor], body: 'A person\'s reply with the reader\'s thumbs-up.' }],
+        ['humanPlain', { sender: human, reply_to: 'root', addressees: [facts.actor], body: 'A person\'s reply nobody touched.' }],
+        ['singleThumb', { sender: other, addressees: [facts.actor], body: 'A single agent message with the reader\'s thumbs-up.' }],
+        ['singleFold', { sender: other, addressees: [facts.actor], body: 'A single agent message the reader folded.' }],
+        ['singlePlain', { sender: other, addressees: [facts.actor], body: 'A single agent message nobody touched.' }],
+        ['humanSingleFold', { sender: human, addressees: [facts.actor], body: 'A single person\'s message the reader folded.' }],
+        ['humanSinglePlain', { sender: human, addressees: [facts.actor], body: 'A single person\'s message nobody touched.' }],
+      ]);
+      const thumbed = [ids.agentThumb, ids.humanThumb, ids.singleThumb];
+      // A star keeps a thumbed card whole (a thumbs-up folds it otherwise), as the reviewer's steps do.
+      for (const id of thumbed) {
+        await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: id, operation_id: `${topic}-${id}-star`, args: { starred: true } });
+        await control({ method: 'agent_thumb', sender: facts.actor, message_id: id, operation_id: `${topic}-${id}-thumb` });
+      }
+      for (const id of [ids.singleFold, ids.humanSingleFold]) await dossierFold(topic, id);
+      await control({ method: 'mark', operation_id: topic + '-mark', message_ids: thumbed, marked: true });
+      const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;'); await dossierOpen(p, device, ids.root);
+      const pairs = [['agentThumb', 'agentPlain', true], ['humanThumb', 'humanPlain', true], ['singleThumb', 'singlePlain', false],
+        ['singleFold', 'singlePlain', false], ['humanSingleFold', 'humanSinglePlain', false]];
+      await until(() => p.evaluate(`${JSON.stringify(thumbed)}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-reactions > .reaction-count.mine'))`),
+        `${device}: the reader's own thumbs-up shows on each thumbed card`);
+      await away(p);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const material = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
+          pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
+          face=id=>{const e=c(id);return {stack:Boolean(e.closest('.reply-stack:not([data-single=true])')),read:e.hasAttribute('data-read'),folded:e.dataset.folded==='true',
+            unreadPill:Boolean(e.querySelector('.unread-mark')),mine:Boolean(e.querySelector(':scope > .message-reactions > .reaction-count.mine')),fill:pixel(getComputedStyle(e).backgroundColor)}};
+          return Object.fromEntries(Object.keys(ids).map(name=>[name,face(ids[name])]))})()`);
+        for (const [touched, plain, stacked] of pairs) {
+          const t = material[touched], u = material[plain];
+          assert.deepEqual([t.stack, u.stack], [stacked, stacked], `${device} ${theme}: ${touched} and ${plain} are ${stacked ? 'inside' : 'outside'} a dossier: ${JSON.stringify(material)}`);
+          assert.deepEqual([t.read, u.read], [false, false], `${device} ${theme}: ${touched} and ${plain} are both unread`);
+          if (touched.endsWith('Thumb')) assert.deepEqual([t.mine, t.folded, t.unreadPill], [true, false, true], `${device} ${theme}: ${touched} holds the reader's thumbs-up, whole, marked unread`);
+          else assert.equal(t.folded, true, `${device} ${theme}: ${touched} is a saved fold`);
+          assert.deepEqual(t.fill, u.fill, `${device} ${theme}: ${touched} keeps the unread material of ${plain}`);
+        }
+        observations.push({ name: 'dossier unread material', engine, device, theme, material });
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 429 at the level people see most: latest and unread. Read replies are
+  // hidden there; a hidden reply above the first visible one gives it no
+  // overlap past the folder's top edge, and one between two faces neither
+  // separates them nor takes the covered padding.
+  await check('reading dossier look at latest and unread overlaps only visible faces, never past the folder\'s top edge', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-default-level-${device}`;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root, read.', read: true }],
+        ['before', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'A read reply hidden above the first face.', read: true }],
+        ['first', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The first unread reply, the first face.' }],
+        ['between', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'A read reply hidden between two faces.', read: true }],
+        ['latest', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The latest reply, the second face.' }],
+      ]);
+      const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;');
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const g = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),entry=e=>e.parentElement.classList.contains('message-fold')?e.parentElement:e,
+          section=c(ids.root).closest('.reply-stack'),replies=section.querySelector(':scope > .stack-replies'),rect=e=>{const b=e.getBoundingClientRect();return {top:b.top,bottom:b.bottom}};
+          return {fold:section.dataset.fold,headOpen:section.dataset.headOpen,replies:rect(replies),
+            hidden:[ids.before,ids.between].map(id=>{const e=entry(c(id));return {shown:e.getClientRects().length>0,overlap:e.dataset.stackOverlap,covered:e.dataset.stackCovered}}),
+            first:{box:rect(entry(c(ids.first))),words:rect(c(ids.first).querySelector('.message-preview')),margin:parseFloat(getComputedStyle(entry(c(ids.first))).marginTop)},
+            latest:{box:rect(entry(c(ids.latest))),covered:entry(c(ids.latest)).dataset.stackCovered}}})()`);
+        assert.deepEqual([g.fold, g.headOpen], ['folded', 'false'], `${device} ${theme}: the dossier is at latest and unread, its head a tab: ${JSON.stringify(g)}`);
+        assert.deepEqual(g.hidden.map(h => h.shown), [false, false], `${device} ${theme}: both read replies are hidden at this level`);
+        assert.ok(g.first.box.top >= g.replies.top - .5 && g.first.margin === 0, `${device} ${theme}: the first visible face takes no overlap past the folder's top edge: ${JSON.stringify(g)}`);
+        assert.ok(Math.abs(g.first.box.bottom - g.latest.box.top - 12) < .5, `${device} ${theme}: the next visible face overlaps it by 12px across the hidden reply: ${JSON.stringify(g)}`);
+        assert.ok(g.first.words.bottom <= g.latest.box.top, `${device} ${theme}: the overlap never covers the first face's words`);
+        assert.deepEqual(g.hidden.map(h => [h.overlap, h.covered]), [['false', 'false'], ['false', 'false']], `${device} ${theme}: a hidden reply takes neither the overlap nor the covered padding`);
+        assert.equal(g.latest.covered, 'false', `${device} ${theme}: the last face is covered by nothing`);
+        observations.push({ name: 'dossier default level layers', engine, device, theme, ...g });
+        await shot(p, `dossier-default-level-${device}-${theme}`);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('reading dossier look preserves full open messages, single cards and star fold protection', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = `dossier-negatives-${device}`, ids = await dossierSeed(topic);
