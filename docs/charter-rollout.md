@@ -3,7 +3,7 @@
 Owner: auditor. Source: Tony's New Charter topic,
 `t-314359e63ef84d59ace7349c3a167221`, especially 2448, 2450, 2453 and 2455.
 Implementation tracking: Building Theseus item **405**, created and read back.
-Snapshot: 13 November 2026, 01:43 Pacific. Update this record when evidence
+Snapshot: 13 November 2026, 05:21 Pacific. Update this record when evidence
 changes; a plan or candidate is not installed behavior. The governing request
 is Tony's New Charter #2693, followed by #2700: ship the agreed remaining batch,
 then message editing, then marking outcomes done. Tony's absence is not a new
@@ -11,46 +11,48 @@ review gate for the authorized work.
 
 ## Finish the existing delivery commitments
 
-Fable retains live deployment ownership. Last verified live: release 69,
-`15789b277d055a9a0b7fff2440df0b6d69d8656a`, at 01:06 Pacific. Audit #2750
-includes served-module comparisons, timing and the retained failure evidence.
+Fable retains live deployment ownership. Last verified live: release 70,
+`e61254704beaf3622240a727f12b0ec8f1f4217c`, at 01:53 Pacific. Audit #2770
+includes served-module comparisons and the retained failure evidence.
 
 - Already live: keyboard selection margin 379; reply threading 402; Notebook
   cards in the composer 396; message folding 377/381/388/390/393/394; small
-  controls 376/382/384/385/386/387/389; agent-name fix 415.
-- The static dossier look, 429, passed round-2 review but its release check
-  exposed a new join-scroll regression: two candidate failures against two passing
-  live-68 controls. The candidate remains unshipped. Fable's round-3 fixer is the
-  sole writer/probe; Codex owns live verification when it ships. The visual
-  follow-ups remain item 430. Codex is preparing starred messages in latest mode
-  (413) separately: its new Chrome case passed, two old expectations were updated,
-  and the corrected Chrome batch passed 3/3 at published `b743d92f`. Its single
-  WebKit batch is queued behind release 70 and earlier probes; Codex asked Fable
-  to inspect the overdue queue holder in #2756. Motion (412) follows.
-- Release 69 shipped 355, 403 and 421/422. Its final checks report Python 2213,
-  Node 1896 and browser 941/960, with 19 previously observed failures accepted
-  in four steps. The final scoped check omitted deploy-refusals and wake-replay;
-  it must not be described as an all-green full-suite run. Item 433 retains the
-  click-target displacement seen in an earlier candidate: a redraw moved it
-  78px between hit-test and press, but the element that grew remains unidentified.
-  Passing reruns do not clear that possible product fault. The separate broker
-  startup failure also reproduced on live 68 and remains item 432.
-- Notebook write access/Draft work 371/383/391 is now checking in release 70,
-  candidate `e6125470` on live 69, with migration 39. Its 01:39 check finished:
-  Node 1903/1903 and Notebook 50/50 in each engine pass; 17 failed cases match
-  prior observations, while a denied-topic reread and WebKit copy failure remain
-  unresolved. Fable is comparing those cases. It is not yet live.
-- 411 (quoting preserves place) passed round-2 review at `d4706afc`, 01:10 Pacific,
-  and awaits integration. Fable owns 398–400 next: scrolling controls and composer
-  size, including the responsive width and feed-card scrollbar requests in this stack.
-- Auditor handed off 401/406 at `e9c4d0c8`. Independent review found two
-  concrete omissions: the source-only Reader loses reaction names/count, and
-  Show full resets internal scrolling without preserving the paragraph's viewport
-  position. Fable confirmed in #2741 that his existing review-loop fixer owns both
-  corrections. Auditor leaves that integration tree and its checks alone; bounded
-  re-review follows. The original candidate is not approved or live.
-- Message editing (228) follows this agreed batch, then completing outcomes
-  (404), per Tony #2700 and Fable's confirmation #2706.
+  controls 376/382/384/385/386/387/389; agent-name fix 415; moving dossiers below
+  More 355; 403 and 421/422; Notebook write access and Draft work 371/383/391.
+- Release 71 is checking, not yet live. Fable's #2816 lists approved heads:
+  static dossier look 429 at `7a82e069`; quoting preserves place 411 at
+  `d4706afc`; clipped-message Show full and composer reaction changes 401/406
+  at `4e350116`; starred messages in latest mode 413 at `135eeca2`; late
+  message-object replacement fix 433 at `8ce1cee7`; broker timing under load
+  fix 432 at `479310c6`; assessment first path 405 at `6263d4f2`.
+- 429's intervening join-scroll regression was fixed and round 4 approved the
+  code at 01:57. Its visual follow-ups remain 436. Codex owns live verification;
+  motion 412 remains Next. The delayed fold answer in 433 now updates the
+  message object held by the page when the answer arrives; its review is
+  approved, but the fix is not live until 71 ships.
+- Auditor handed 398/399 to Fable at `887689cd`, on
+  `auditor/quiet-scrollbars`, with the ordinary release reading checks calling
+  its 24 cases in each engine. Review is running on Fable's separate integration
+  branch; the auditor's branch is frozen. Final native verification is queued
+  behind release 71 and composer sizing 400. Chrome's 23 passing cases plus
+  its corrected four viewport cases and WebKit's 20 nested pixel cases provide
+  preliminary evidence. WebKit viewport snapshots omit even a calibration
+  scrollbar; those four cases explicitly qualify the missing paint evidence
+  and check native movement, resolved style and geometry instead. This is not
+  a claim that final checks or review have finished.
+- 400 is a separate Fable build: the composer uses available height and a wider
+  responsive maximum width. It and 398/399 follow release 71; they do not hold it.
+- Release 70's final checks reported Python 2227, Node 1903 and browser 951/970.
+  The accepted summary omitted deploy-refusals and wake-replay. Earlier
+  accepted-red manifests had inherited `only:true`; Fable's new wrapper rejects
+  acceptance of missing steps, and 71 is running STEPS=all. Actual deploy code
+  still runs from the recorded modified deploy46 checkout, with path, digest
+  and patch evidence, until direct-boundary fix 442 lands. Current checks do not
+  retroactively prove protections ran for earlier releases. Retained product
+  risks are tracked separately, including 437/438 and WebKit Notebook click 439.
+- Message editing (228) follows the agreed batch, then completing outcomes
+  (404), per Tony #2700 and Fable's confirmation #2706. Neither is implemented
+  merely because it is listed here.
 
 405 remains a separate auditor obligation below. The charter/assessment rollout
 must not become a prerequisite for these UX releases. Known defects and checks
@@ -189,10 +191,15 @@ on a desktop login change. Preserve its context and binding. Automatic cross-mod
 team provisioning and migration of existing seats remain later work. The visual
 study is useful hosted work, not a formally instrumented charter trial.
 
-Current continuity check, 13 November 01:36 Pacific: the hosted Codex worker is
+Earlier continuity check, 13 November 01:36 Pacific: the hosted Codex worker is
 working with zero pending deliveries and no reported failure. After auditor's
 follow-through #2751, it reconciled the queued Chrome result and published 413's
 clean successor (#2754–2756); the remaining WebKit batch is waiting in the shared
 browser queue. The runner is live, this chat receives wakes, and release 69's
 server/runner verification passed. This is health and recorded-work evidence,
 not a new account/quota probe or a claim that queued testing has finished.
+
+Latest health read, 13 November 05:20 Pacific: the bound CLI reports the runner
+running, Codex caught up with no pending deliveries, and release 70 still live.
+Mac load is 3.93 on 18 cores. This is a health read, not a new model turn or
+account/quota probe. Native wakes continue reaching this chat.
