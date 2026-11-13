@@ -3,7 +3,7 @@
 Owner: auditor. Source: Tony's New Charter topic,
 `t-314359e63ef84d59ace7349c3a167221`, especially 2448, 2450, 2453 and 2455.
 Implementation tracking: Building Theseus item **405**, created and read back.
-Snapshot: 13 November 2026, 00:56 Pacific. Update this record when evidence
+Snapshot: 13 November 2026, 01:15 Pacific. Update this record when evidence
 changes; a plan or candidate is not installed behavior. The governing request
 is Tony's New Charter #2693, followed by #2700: ship the agreed remaining batch,
 then message editing, then marking outcomes done. Tony's absence is not a new
@@ -11,8 +11,9 @@ review gate for the authorized work.
 
 ## Finish the existing delivery commitments
 
-Fable retains live deployment ownership. Last verified live: release 68,
-`b282fbc3085d3411d011e3dab0d04c03b431e5fb`, at 20:43 Pacific.
+Fable retains live deployment ownership. Last verified live: release 69,
+`15789b277d055a9a0b7fff2440df0b6d69d8656a`, at 01:06 Pacific. Audit #2750
+includes served-module comparisons, timing and the retained failure evidence.
 
 - Already live: keyboard selection margin 379; reply threading 402; Notebook
   cards in the composer 396; message folding 377/381/388/390/393/394; small
@@ -24,18 +25,19 @@ Fable retains live deployment ownership. Last verified live: release 68,
   follow-ups remain item 430. Codex is preparing starred messages in latest mode
   (413) separately: its new Chrome case passed, two old expectations were updated,
   and the combined native rerun/WebKit evidence is pending. Motion (412) follows.
-- The earlier release-69 train ended unshipped; a new candidate `15789b27` on 68
-  combines 355, 403 and 421/422 and is being checked. The trackpad and Notebook
-  drag setup failures were fixed. The broker failure also reproduces on live 68,
-  with the same `codex_no_answer` trace before queue/add; its underlying cause
-  remains unresolved (item 432). The click-to-select scenario's unexpected fold
-  still needs attribution; passing reruns alone do not establish its cause.
-- Notebook write access/Draft work 371/383/391 is approved and integrated in a
-  candidate, including migration renumbering. It is not yet live.
-- 403 (keyboard passes the coordination filter) is approved and waits to combine.
-  411 (quoting preserves place) is in its fix round. Fable owns 398–400 next:
-  scrolling controls and composer size, including the responsive width and
-  feed-card scrollbar requests captured in this stack.
+- Release 69 shipped 355, 403 and 421/422. Its final checks report Python 2213,
+  Node 1896 and browser 941/960, with 19 previously observed failures accepted
+  in four steps. The final scoped check omitted deploy-refusals and wake-replay;
+  it must not be described as an all-green full-suite run. Item 433 retains the
+  click-target displacement seen in an earlier candidate: a redraw moved it
+  78px between hit-test and press, but the element that grew remains unidentified.
+  Passing reruns do not clear that possible product fault. The separate broker
+  startup failure also reproduced on live 68 and remains item 432.
+- Notebook write access/Draft work 371/383/391 is now checking in release 70,
+  candidate `e6125470` on live 69, with migration 39. It is not yet live.
+- 411 (quoting preserves place) passed round-2 review at `d4706afc`, 01:10 Pacific,
+  and awaits integration. Fable owns 398–400 next: scrolling controls and composer
+  size, including the responsive width and feed-card scrollbar requests in this stack.
 - Auditor handed off 401/406 at `e9c4d0c8`. Independent review found two
   concrete omissions: the source-only Reader loses reaction names/count, and
   Show full resets internal scrolling without preserving the paragraph's viewport
@@ -100,15 +102,12 @@ their specific evidence is linked; a Markdown rule does not implement a dispatch
 - This establishes a usable local procedure and limited behavioral evidence. It
   does not establish real-team performance, a deployed Theseus trigger, automatic
   checkpoint monitoring, or installation in the hosted worker's separate home.
-- The first request-to-report implementation is pushed at `eb306da8` on
-  `auditor/assessment-dispatch`. Round-1's five blockers are fixed: supported topic
-  freshness keys, complete view privacy classification, terminal recovery from
-  an unusable completed report, work-neutral reporting with explicit operator
-  notification, and permission/scope checks that fail on the actual removed guards.
-  There are 29 focused checks, 144 passing regressions, 25 caught mutations with
-  restored controls, and a passing handoff check. Evidence:
-  `auditor/2026-11-13/assessment-review1`. Handoff #2742 was read back; Fable resumes
-  the same review at round 2. This remains unshipped.
+- The first request-to-report implementation passed verification of round-1's
+  five fixes at `eb306da8`. Round 2 found a new interaction: actor-scope metadata
+  no longer went through the completed-outcome guard. Fable's `6263d4f2` adds
+  explicit finality checks and refuses native dispatch/model spend after reaching
+  an outcome. It is in re-review and remains unshipped. Earlier evidence is kept
+  under `auditor/2026-11-13/assessment-review1`.
 - A real installed-Codex functional pilot on a wholly fictional isolated
   assignment read full bound sources and its artifact, then posted/read back one
   report; retry returned the same report. The original source-lock failure is
@@ -117,12 +116,14 @@ their specific evidence is linked; a Markdown rule does not implement a dispatch
   was proposed in #2731 and accepted by Fable: auditor's 405 delivery assignment,
   assessed by Codex in a fresh native context, with Fable as intervention operator.
   It must preserve Codex's standing 429/413 context and inspect the original sources.
-- The checkpoint successor was handed off at `455cd765` in #2727. It now includes
-  the first-path fixes and follow-through corrections locally at `e2b7057`:
-  supported feed changes, neutral reminders preserving reader/work state, complete
-  view classification, and a new policy after an abandoned assessment. Fourteen
-  checkpoint tests and 193 focused/regression checks pass; the expanded mutation
-  run is in progress. Evidence: `auditor/2026-11-13/assessment-checkpoints`.
+- The checkpoint successor was handed off at `e2b7057` in #2743: 193 regressions
+  and 16 mutation/control cases passed. It preserves reader/work state, uses
+  supported feed changes, and allows a new policy after abandonment. The next
+  candidate incorporates first-path `6263d4f2` and applies its finality rule to
+  checkpoints. It also keeps an unrecorded store error resumable instead of
+  abandoning a completed native report. Both defects were reproduced before the
+  fixes; 213 focused/regression checks now pass and expanded mutation checks are
+  running. Evidence: `auditor/2026-11-13/assessment-checkpoints`.
   Adopted policies record artifacts, due times, evidenced misses and known waits;
   thresholds atomically request an assessment. This does not install a background
   scheduler or yet prove adoption by the coordinator's running loop.
@@ -179,8 +180,9 @@ on a desktop login change. Preserve its context and binding. Automatic cross-mod
 team provisioning and migration of existing seats remain later work. The visual
 study is useful hosted work, not a formally instrumented charter trial.
 
-Current continuity check, 13 November 00:52 Pacific: the hosted Codex worker is
+Current continuity check, 13 November 01:06 Pacific: the hosted Codex worker is
 all caught up with zero pending deliveries; its last wake got through at 00:43.
 Its recent #2739 report describes actual 413 coding/native checks. The runner is
-running, and live remains release 68. Health reports host load 19.97 on 18 cores,
-which is a shared performance observation, not evidence of an account failure.
+running, this chat is receiving wakes, and no new sign-in failure is reported.
+Release 69 was then deployed and its server/runner verification passed. This is
+health and recorded-work evidence, not a new account/quota probe.
