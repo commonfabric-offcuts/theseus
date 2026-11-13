@@ -44,7 +44,9 @@ export class StackMotion {
       const card = cardIn(entry), section = entry.closest('.reply-stack');
       if (!section || !visible(entry, this.win) || !visible(card, this.win)) continue;
       const style = this.win.getComputedStyle(card);
-      const header = card.querySelector(card.dataset.folded === 'true' ? ':scope > .message-folded .folded-author' : ':scope > .message-author');
+      // During a reversal the semantic fold may already be true while the
+      // original header still paints. Measure the header that is visible.
+      const header = [card.querySelector(':scope > .message-folded .folded-author'), card.querySelector(':scope > .message-author')].find(node => node?.getClientRects().length);
       const headerInset = header ? rect(header).top - rect(card).top - (parseFloat(style.borderTopWidth) || 0) : parseFloat(style.paddingTop);
       faces.set(entry.dataset.id, { entry, card, section, box: rect(card), folded: card.dataset.folded === 'true',
         headerInset, scrollTop: card.scrollTop, pad: parseFloat(style.paddingTop), displays: new Map([...card.children].map(child => [child, this.win.getComputedStyle(child).display])) });

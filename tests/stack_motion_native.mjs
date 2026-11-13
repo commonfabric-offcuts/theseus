@@ -136,6 +136,18 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       assert.deepEqual(await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),r=c.closest('.stack-replies');return [c.style.transform,c.style.opacity,r.style.height,c.getAnimations().length]})()`),['','','',0]);
       await centre(p,card(id)); // Bring the next slot on screen; off-screen arrivals correctly stay static.
       const next=await add(ctx,'successor'); await until(async()=>(await frames(p,next,'arrival')).length>2,'successor can animate after cancellation'); await settled(p);
+      // A real Undo can reverse a fold before its clipped author reaches the
+      // row. Its semantic row is hidden then: measure the original header.
+      await centre(p,card(ctx.ids.one));
+      const full=(await p.box(card(ctx.ids.one))).height;
+      const compact=await p.evaluate(`parseFloat(getComputedStyle(document.querySelector('#messages')).getPropertyValue('--stack-folded-height'))`);
+      await menuOf(p,ctx.device,ctx.ids.one); await choose(p,ctx.device,'Fold');
+      await until(()=>p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ctx.ids.one))});return c.dataset.stackMotion==='fold'&&c.getBoundingClientRect().height<${compact+(full-compact)*.35}&&c.getBoundingClientRect().height>${compact+3}})()`),'the fold is partway through its clip');
+      const inset=()=>p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ctx.ids.one))});return c.querySelector(':scope>.message-author').getBoundingClientRect().top-c.getBoundingClientRect().top})()`);
+      const held=await inset(); await p.key('z',4);
+      assert.ok(Math.abs(await inset()-held)<3,'Undo reverses from the single currently visible author, without a header jump');
+      await settled(p);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ctx.ids.one))}).dataset.folded`),'false','native Undo restores the unfolded state');
     });
   });
   await check('reading dossier motion no arrival on page load or a read-only replay', async()=>{
