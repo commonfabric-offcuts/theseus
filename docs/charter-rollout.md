@@ -3,39 +3,51 @@
 Owner: auditor. Source: Tony's New Charter topic,
 `t-314359e63ef84d59ace7349c3a167221`, especially 2448, 2450, 2453 and 2455.
 Implementation tracking: Building Theseus item **405**, created and read back.
-Snapshot: 12 November 2026, 13:44 Pacific (status request #2481). Update this record when evidence changes; do not
-interpret a planned step as installed behavior or infer approval from silence.
+Snapshot: 12 November 2026, 22:34 Pacific. Update this record when evidence
+changes; a plan or candidate is not installed behavior. The governing request
+is Tony's New Charter #2693, followed by #2700: ship the agreed remaining batch,
+then message editing, then marking outcomes done. Tony's absence is not a new
+review gate for the authorized work.
 
 ## Finish the existing delivery commitments
 
-Fable retains ownership of the active UX work and live deployment. The last
-verified live release is 64, `e710d88`, at 05:12 Pacific. Current scoped work:
+Fable retains live deployment ownership. Last verified live: release 68,
+`b282fbc3085d3411d011e3dab0d04c03b431e5fb`, at 20:43 Pacific.
 
-- 379, keyboard selection margin: independently approved at 10:21 and waiting
-  to combine since then; not yet live. Identify any concrete dependency that
-  prevents this approved change shipping separately from 355.
-- 355, move dossiers below More: the board's stage label says Review round 8,
-  while its latest note describes round 10 repairs. Fable's note reports 19
-  further visibility problems: 12 also fail on live and are filed as 407-410;
-  seven belong to 355 and are being fixed. That is attributed builder evidence,
-  not a fresh independent audit. The candidate is not ready to ship.
-- 396, Notebook cards in composer: feel accepted; review sent it back at 13:33
-  and Build round 2 is active.
-- Remaining agreed UX feel batch: 376; 377/381/388/390/393/394;
-  385/386/387; 382/384/389. Some are represented by grouped work rather than
-  separate stage records. Group 377 entered Review round 1 at 13:40; 376 still
-  displays Feel preview. Scope is the agreed batch, not the whole Now list.
-- 402, agent replies stay in the request stack: final candidate `7c88d23`
-  independently approved and pushed; Fable has the handoff for after the current
-  UX batch. Auditor owns post-deploy instruction and actual-task verification.
-- 406, the composer's personal thumbs-up action must not display everyone
-  else's reaction count: filed in Next with source screenshot, confirmed cause
-  and acceptance checks. Auditor owns tracking; implementation has not started.
+- Already live: keyboard selection margin 379; reply threading 402; Notebook
+  cards in the composer 396; message folding 377/381/388/390/393/394; small
+  controls 376/382/384/385/386/387/389; agent-name fix 415.
+- The static dossier look, 429, is Codex's candidate `5fa5f8ac` in independent
+  review. Fable confirmed in #2706 that once approved it ships alone on live
+  68 if the preceding release remains held. Codex owns it through live
+  verification, then takes starred messages in latest mode (413), then motion
+  (412), in separately verified increments.
+- Release 69, 355 plus 421/422, has three new unresolved native failures:
+  the trackpad case in both engines and the Notebook sheet's background-scroll
+  case in Chrome. Fable reports the other 17 failures have identical observed
+  values on the prior releases. Investigation is narrowed to the next open
+  question; it is not permission to call the three failures pre-existing.
+- Notebook write access/Draft work 371/383/391 is approved and undergoing
+  integration, including its migration renumbering. It is not yet live.
+- 403 (keyboard passes the coordination filter) and 411 (quoting preserves
+  place) remain in Build/Review. Fable owns 398–400 next: scrolling controls
+  and composer size, including the responsive width and feed-card scrollbar
+  requests captured in this stack.
+- Auditor has implemented 401/406 at `68b1b09` on
+  `auditor/show-full-own-thumb-build`: Show full message for one feed card,
+  and the composer's own thumbs-up state. Ten focused unit checks, a failing
+  and restored source-race mutation, six ledger checks and handoff-check pass.
+  Browser evidence is queued, so this is not a completed handoff or shipment.
+- Message editing (228) follows this agreed batch, then completing outcomes
+  (404), per Tony #2700 and Fable's confirmation #2706.
 
-The charter, assessment tooling and a later agent migration must not become
-prerequisites for these releases. Independently finished work can ship when its
-actual dependencies and verification permit. Use Fable's evidence checkpoints
-for forecasts; do not manufacture dates from the pipeline's historical averages.
+405 remains a separate auditor obligation below. The charter/assessment rollout
+must not become a prerequisite for these UX releases. Known defects and checks
+retain their evidence. Neither broad pipeline cleanup nor every item in Next is
+part of this agreed batch. Current sources and full readback are recorded under
+`auditor/2026-11-11/overnight-status.json` in the local Theseus data directory;
+the complete New Charter snapshot through #2693 is
+`auditor/2026-11-12/new-charter-wake787.json`.
 
 ## Make assessment usable first
 
