@@ -238,6 +238,20 @@ class CheckpointCase(unittest.TestCase):
         self.assertNotEqual(new,identity)
         self.assertEqual(self.read(new)['state'],'open')
 
+    def test_reached_outcome_refuses_every_checkpoint_write_but_keeps_history_readable(self):
+        identity=self.ok(self.create())['checkpoint_id']
+        version=lambda:self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
+        self.ok(self.command('outcome.kind_set',{'kind':'reach'},{'workspace_id':'w1'},{'workspace_revision':version()}))
+        self.ok(self.command('outcome.reach',{'words':'Assignment ended','unmet_confirmed':True},
+                            {'workspace_id':'w1'},{'workspace_revision':version()}))
+        before=self.read(identity)
+        self.assert_refused(self.create(assignment='New task'),'OUTCOME_REACHED')
+        self.assert_refused(self.observe(identity,'met'),'OUTCOME_REACHED')
+        self.assert_refused(self.command('checkpoint.prompt',{},{'checkpoint_id':identity}),'OUTCOME_REACHED')
+        self.assert_refused(self.command('checkpoint.close',{'reason':'Late close'},{'checkpoint_id':identity},
+                                        {'checkpoint_revision':before['version']}),'OUTCOME_REACHED')
+        self.assertEqual(self.read(identity),before)
+
     def test_checkpoint_changes_preserve_feed_work_and_reader_state(self):
         source=self.ok(self.command('message.post',{'body':'Named artifact evidence'},
                                    {'topic_id':'t1'},actor='agent-a'))['message_id']

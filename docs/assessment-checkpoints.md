@@ -7,6 +7,11 @@ from elapsed time, a turn count, message prose or a queue alone.
 
 Core commands use the normal bound envelope and operation identity:
 
+A reached outcome is final: creating, observing, prompting or closing a checkpoint
+there is refused with `OUTCOME_REACHED`. Existing records and observations remain
+readable. This rule applies explicitly even though checkpoint changes use actor
+scope rather than topic scope.
+
 - `checkpoint.create`, targeting `topic_id`, takes the same assessor, team,
   assignment, sources and operator as `assessment.request`, plus `artifact`,
   `due_ms` and `miss_limit` (2–10). This explicitly authorizes an assessment after

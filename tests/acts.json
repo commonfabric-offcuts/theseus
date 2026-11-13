@@ -8754,6 +8754,34 @@
    "check": {
     "python": "test_assessment_dispatch.py"
    }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint creation respects reached outcome finality",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "        self._assessment_open(db, topic['workspace_id'])",
+     "        pass # mutation: policy bypasses finality"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint observations prompts and closing respect reached outcome finality",
+   "break": [
+    [
+     "aim_next/checkpoints.py",
+     "        self._assessment_open(db, record['workspace_id'])",
+     "        pass # mutation: checkpoint bypasses finality"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
   }
  ]
 }

@@ -41,7 +41,9 @@ class Checkpoints:
     def _checkpoint_target(self, db, actor, envelope):
         if set(envelope['target']) != {'checkpoint_id'}:
             raise Refusal('INVALID_ARGUMENT', 'Name exactly one checkpoint')
-        return self._checkpoint(db, actor, envelope['target']['checkpoint_id'])
+        record = self._checkpoint(db, actor, envelope['target']['checkpoint_id'])
+        self._assessment_open(db, record['workspace_id'])
+        return record
 
     def _checkpoint_operator(self, db, actor, record, allow_organizer=False):
         topic = self._topic(db, actor, record['topic_id'])
