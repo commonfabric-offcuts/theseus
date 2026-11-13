@@ -85,6 +85,7 @@ export class StackMotion {
       style(node, key, value) { const old = node.style.getPropertyValue(key), priority = node.style.getPropertyPriority(key); node.style.setProperty(key, value); cleanups.push(() => old ? node.style.setProperty(key, old, priority) : node.style.removeProperty(key)); },
       cleanup(fn) { cleanups.push(fn); },
       loop: () => {
+        this.win.cancelAnimationFrame(frame); frame = null;
         if (done || this.paused) return;
         effect.tick?.(); frame = this.win.requestAnimationFrame(effect.loop);
       },
@@ -166,5 +167,5 @@ export class StackMotion {
   pause() { this.paused = true; for (const effect of this.active) for (const animation of effect.animations) animation.pause(); }
   resume() { if (!this.paused) return; this.paused = false; for (const effect of this.active) { for (const animation of effect.animations) animation.play(); effect.loop(); } }
   finish() { for (const effect of [...this.active]) effect.finish(); }
-  dispose() { if (this.disposed) return; this.disposed = true; this.finish(); for (const off of this.off) off(); this.off = []; this.next = []; this.handled.clear(); }
+  dispose() { if (this.disposed) return; this.disposed = true; this.finish(); for (const off of this.off) off(); this.off = []; this.next = []; this.staged = null; this.handled.clear(); }
 }
