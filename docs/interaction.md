@@ -52,6 +52,8 @@ the pointer's way, the keys' and the phone's.
   little that opens it; one that fits but not with the whole gap shows whole
   with the gap there is room for; one already a tenth inside does not move.
   One taller than the area lands with its top a tenth below the area's top.
+  A reply still arriving in a dossier (docs/reply-stacks.md, "Dossier
+  motion") is measured where it lands, and keeps travelling there.
   Going up and going down read the same rule. The scrolling area is the
   nearest box that scrolls (a rail, a drawer), else the window; a page may
   leave a bar it keeps at an edge out of it with CSS `scroll-padding`, which

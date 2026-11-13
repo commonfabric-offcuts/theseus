@@ -615,7 +615,12 @@ uses a 360ms clipped height transition with one solid original author, without
 a duplicate or a text fade. The semantic saved state changes immediately.
 The 429 full-strength muted ink and 56px phone face (44px exposed after overlap)
 remain the endpoints. A writing or reading anchor above the changing region
-stays put; motion that would move that anchor is skipped. A primary press
+stays put; motion that would move that anchor is skipped. The anchor is the
+one a repaint holds (the inline writing, a field on the page being typed in,
+else the first card in view), so a reply arriving above the People field or a
+new message with the caret in it lands in place. The keys moving to a reply
+still arriving bring it into view where it lands, not where it is in flight,
+and it keeps travelling there. A primary press
 pauses running geometry until release/cancel. Superseding acts, resize, hidden
 pages and navigation cancel temporary geometry and restore natural layout.
 After a hidden visit, catch-up stays static until a pointer or key resumes

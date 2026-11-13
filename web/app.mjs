@@ -672,10 +672,7 @@ async function openSource(ref, opener, act = null) {
 // the repaint: when the repaint stops drawing it (put below More on another
 // device), the card drawn next below it is held instead.
 function keepListAnchor(paint) {
-  const at = document.activeElement, list = $('messages');
-  const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
-  const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const anchor = writing ? inline.field : field ? at : listAnchor();
+  const list = $('messages'), { writing, field, anchor } = heldAt();
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
@@ -683,6 +680,13 @@ function keepListAnchor(paint) {
   paint();
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
   if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
+}
+// What a repaint holds in place, and what dossier motion may not move (stack-motion.mjs).
+function heldAt() {
+  const at = document.activeElement;
+  const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
+  const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
+  return { writing, field, anchor: writing ? inline.field : field ? at : listAnchor() };
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
@@ -844,10 +848,7 @@ function actorLabel(id) {
 function stackMessages() { feedOf().arrange(); }
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
-  stackMotion ??= new StackMotion({ list: $('messages'), moved: () => menu?.place(), anchor: () => {
-    const at = document.activeElement;
-    return inline?.root.contains(at) ? inline.field : typingField(at) && inView(at) ? at : listAnchor();
-  }, reading: (entry, moving) => {
+  stackMotion ??= new StackMotion({ list: $('messages'), moved: () => menu?.place(), anchor: () => heldAt().anchor, reading: (entry, moving) => {
     const seq = Number(entry.dataset.seq);
     if (moving) { cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); halfShown.delete(seq); atMiddle.delete(seq); }
     else if (entry.isConnected) { cardObserver?.observe(entry); middleObserver?.observe(entry); }

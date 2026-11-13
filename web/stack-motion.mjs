@@ -2,8 +2,10 @@
 // acts and the renderer's final membership remain synchronous and authoritative.
 import { entries } from './reply-stacks.mjs';
 import { cardIn } from './fold.mjs';
+import { landWith } from './reveal.mjs';
 
 const rect = node => node.getBoundingClientRect();
+const put = (node, key, value, priority) => value ? node.style.setProperty(key, value, priority) : node.style.removeProperty(key);
 const visible = (node, win) => node?.isConnected && node.getClientRects().length && rect(node).bottom > 0 && rect(node).top < win.innerHeight;
 export function arrivalIds(provenance, handled) {
   const ids = provenance?.live && !provenance.initial ? provenance.addedIds ?? [] : [];
@@ -49,6 +51,13 @@ export class StackMotion {
     on(win, 'pagehide', () => this.dispose());
     this.reduced = win.matchMedia('(prefers-reduced-motion: reduce)');
     on(this.reduced, 'change', () => this.finish());
+    landWith(this.doc, read => this.landed(read));
+  }
+  // read(), with every running effect posed for that one synchronous look as
+  // it will land: its owners' styles back and its animations at their end.
+  landed(read) {
+    const undo = [...this.active].map(effect => effect.land());
+    try { return read(); } finally { for (const restore of undo.reverse()) restore(); }
   }
   arrivals(provenance) { this.next = arrivalIds(provenance, this.handled); }
   // The app stages before inserting loose entries: their temporary placement
@@ -106,10 +115,17 @@ export class StackMotion {
   }
   // Every temporary property is restored to exactly what its owner supplied.
   effect(incoming, kind) {
-    const cleanups = [], animations = [], faces = incoming.map(entry => ({ entry, card: cardIn(entry), parent: entry.parentElement, folded: cardIn(entry).dataset.folded === 'true' }));
+    const cleanups = [], owned = [], animations = [], faces = incoming.map(entry => ({ entry, card: cardIn(entry), parent: entry.parentElement, folded: cardIn(entry).dataset.folded === 'true' }));
     let done = false, frame = null;
     const effect = { faces, animations, kind, tick: null, last: null, elapsed: 0,
-      style(node, key, value) { const old = node.style.getPropertyValue(key), priority = node.style.getPropertyPriority(key); node.style.setProperty(key, value); cleanups.push(() => old ? node.style.setProperty(key, old, priority) : node.style.removeProperty(key)); },
+      style(node, key, value) { const old = node.style.getPropertyValue(key), priority = node.style.getPropertyPriority(key); node.style.setProperty(key, value); owned.push([node, key, old, priority]); cleanups.push(() => put(node, key, old, priority)); },
+      land: () => {
+        const now = owned.map(([node, key]) => [node, key, node.style.getPropertyValue(key), node.style.getPropertyPriority(key)]);
+        const times = animations.map(animation => [animation, animation.currentTime]);
+        for (const [node, key, old, priority] of owned) put(node, key, old, priority);
+        for (const animation of animations) animation.currentTime = animation.effect.getComputedTiming().endTime;
+        return () => { for (const [animation, time] of times) animation.currentTime = time; for (const [node, key, value, priority] of now.reverse()) put(node, key, value, priority); };
+      },
       cleanup(fn) { cleanups.push(fn); },
       loop: (now = this.win.performance.now()) => {
         this.win.cancelAnimationFrame(frame); frame = null;
@@ -214,5 +230,5 @@ export class StackMotion {
   pause() { this.paused = true; for (const effect of this.active) for (const animation of effect.animations) { const time=animation.currentTime; animation.pause(); animation.currentTime=time; } }
   resume() { if (!this.paused) return; this.paused = false; for (const effect of this.active) { for (const animation of effect.animations) animation.play(); effect.last=null; if (effect.tick) effect.loop(); } }
   finish() { for (const effect of [...this.active]) effect.finish(); }
-  dispose() { if (this.disposed) return; this.disposed = true; this.finish(); for (const off of this.off) off(); this.off = []; this.next = []; this.staged = null; this.handled.clear(); }
+  dispose() { if (this.disposed) return; this.disposed = true; this.finish(); landWith(this.doc, null); for (const off of this.off) off(); this.off = []; this.next = []; this.staged = null; this.handled.clear(); }
 }

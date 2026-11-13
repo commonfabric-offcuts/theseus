@@ -10516,6 +10516,36 @@
     "native": "reading",
     "case": "reading dossier motion a burst shares its moving floor"
    }
+  },
+  {
+   "item": 412,
+   "act": "The keys moving to a reply still arriving bring it whole into view where it lands, and it keeps travelling there",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "landWith(this.doc, read => this.landed(read));",
+     "void 0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion the keys onto a reply still arriving"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A reply arriving above the field or new message being written lands in place, without moving the writing",
+   "break": [
+    [
+     "web/app.mjs",
+     "anchor: () => heldAt().anchor,",
+     "anchor: () => null,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion writing below an arriving reply holds still"
+   }
   }
  ]
 }
