@@ -26,6 +26,11 @@ class DispatchError(Exception):
     pass
 
 
+class ReportRefused(DispatchError):
+    """Core positively rejected this completed report; not a transport failure."""
+    pass
+
+
 REPORT_SCHEMA = {'type':'object', 'additionalProperties':False,
     'required':['body','recommendation','evidence_message_ids','next_checkpoint'], 'properties':{
         'body':{'type':'string'}, 'recommendation':{'type':'string','enum':sorted(RECOMMENDATIONS)},
@@ -67,7 +72,8 @@ class Core:
                                      'authority_epoch':self.profile.authority_epoch}}}
         receipt = self.store.command(self.profile.actor_id,envelope)
         if receipt.get('status') != 'committed':
-            raise DispatchError(receipt.get('error',{}).get('code','unconfirmed_command'))
+            error = ReportRefused if action == 'finish' and receipt.get('status') == 'rejected' else DispatchError
+            raise error(receipt.get('error',{}).get('code','unconfirmed_command'))
         return receipt['result']
 
     def readback(self, record):
@@ -97,7 +103,9 @@ def settings(config):
         '\nDispatcher-specific scope: you are already the fresh assessor. Return the bounded JSON report to the caller; '
         'the caller performs the authorized report post. Do not perform that write yourself. '
         'theseus_read replaces the skill\'s CLI read transport while preserving the expected binding and full-body checks. '
-        'If sources cannot be read, say so and use an empty evidence_message_ids list; never invent a citation.')
+        'If sources cannot be read, say so and use an empty evidence_message_ids list; never invent a citation. '
+        'evidence_message_ids contains distinct public message ids from this topic only. '
+        'Cite artifact paths, test outputs and commit ids in body, never in evidence_message_ids.')
     result = {'cwd':config.cwd,'approvalPolicy':'never','sandbox':'read-only',
               'developerInstructions':instructions,'config':{'agents':{'enabled':False}}}
     if config.model is not None:
@@ -190,11 +198,18 @@ def report_from_turn(rpc, thread, turn):
     raise DispatchError('completed_turn_has_no_report')
 
 
+def abandoned(record):
+    return {'status':'abandoned','assessment_id':record['id'],'thread_id':record['thread_id'],
+            'reason':record['abandonment']['reason']}
+
+
 def drive(core, config, identity, rpc):
     rpc.read_scope = (core,identity)
     record = core.record(identity)
     if record['state'] == 'reported':
         return core.readback(record)
+    if record['state'] == 'abandoned':
+        return abandoned(record)
     params = settings(config)
     fingerprint = runtime_digest(config,params)
     if record['thread_id'] and record['runtime_digest'] != fingerprint:
@@ -216,7 +231,7 @@ def drive(core, config, identity, rpc):
     previous = last_turn(rpc,thread)
     if previous and previous['status'] == 'completed':
         # Includes the crash after native completion but before Core recorded the report.
-        report = report_from_turn(rpc,thread,previous['id'])
+        turn = previous['id']
     else:
         status = resumed['thread'].get('status',{}).get('type')
         if previous and previous['status'] == 'inProgress' and status == 'active':
@@ -232,8 +247,18 @@ def drive(core, config, identity, rpc):
         completed = last_turn(rpc,thread)
         if not completed or completed['id'] != turn or completed['status'] != 'completed':
             raise DispatchError('assessment_turn_unfinished')
+    try:
         report = report_from_turn(rpc,thread,turn)
-    core.command(identity,'finish',dict(report,thread_id=thread))
+    except DispatchError as error:
+        if str(error) not in ('report_too_large','report_invalid_json','report_invalid_shape','completed_turn_has_no_report'):
+            raise
+        core.command(identity,'abandon',{'reason':'Completed native report is unusable: '+str(error)})
+        return abandoned(core.record(identity))
+    try:
+        core.command(identity,'finish',dict(report,thread_id=thread))
+    except ReportRefused as error:
+        core.command(identity,'abandon',{'reason':'Core refused the completed native report: '+str(error)})
+        return abandoned(core.record(identity))
     return core.readback(core.record(identity))
 
 
@@ -330,6 +355,8 @@ def main(argv=None):
             record = core.record(args.assessment_id)
             if record['state'] == 'reported':
                 result = core.readback(record)
+            elif record['state'] == 'abandoned':
+                result = abandoned(record)
             else:
                 session = Session(config,lock_fd)
                 try:
@@ -337,7 +364,7 @@ def main(argv=None):
                 finally:
                     session.close()
         print(json.dumps(result))
-        return 0
+        return 0 if result['status'] == 'reported' else 2
     except (DispatchError,codex_host.ProvisionError,broker_routes.BrokerConfigError,ProfileError,StoreError) as error:
         print(json.dumps({'status':'unfinished','reason':getattr(error,'code',None) or str(error)}),file=sys.stderr)
         return 1

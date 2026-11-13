@@ -4,7 +4,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 
 COMMANDS = {
-    **{"assessment."+name: "_command_assessment_"+name for name in ("request","attach","finish","renew")},
+    **{"assessment."+name: "_command_assessment_"+name for name in ("request","attach","finish","renew","abandon")},
     "agent.execution": "_command_agent_execution",
     "workspace.create": "_command_workspace_create",
     "workspace.member_set": "_command_workspace_member_set",
@@ -54,7 +54,7 @@ COMMANDS = {
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
     "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
 }
-EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
+EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "topic.read_through": set(),

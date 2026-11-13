@@ -789,6 +789,8 @@ class WhisperCLICase(verbs.AgentVerbCase):
 # Every view, and how a whisper is kept from anyone outside it (spec §6). A new
 # view is classified here before it ships; until then this audit fails.
 VIEW_PATHS = {
+    "assessment": "request/report metadata scoped by readable topic; all cited messages validated public in that topic",
+    "assessments": "paged readable-topic or own-assessor metadata; private citations refused before recording",
     "topic_messages": "VISIBLE in each of its queries; a hidden parent's excerpt is blanked",
     "topic_images": "VISIBLE in its window over each topic's newest messages",
     "source": "_message_access applies visible(); quotes are redacted",

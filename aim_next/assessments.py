@@ -67,7 +67,6 @@ class Assessments:
         record['version'] += 1
         db.execute('INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
                    (PREFIX + record['id'], _json(record)))
-        self._change(db, 'topic', record['topic_id'], 'assessment', record['id'], record['version'])
         self._change(db, 'actor', record['assessor_id'], 'assessment', record['id'], record['version'])
 
     def _assessment_target(self, db, actor, envelope):
@@ -115,7 +114,7 @@ class Assessments:
         active = db.execute('SELECT value FROM metadata WHERE key=?', (active_key,)).fetchone()
         if active is not None:
             previous = self._assessment(db, actor, active[0])
-            if previous['state'] != 'reported':
+            if previous['state'] not in ('reported', 'abandoned'):
                 same = (previous['requested_by'] == actor and previous['assessor_id'] == assessor
                         and previous['operator_id'] == operator and previous['source_message_ids'] == sources)
                 if not same:
@@ -144,6 +143,8 @@ class Assessments:
         digest = envelope['args']['runtime_digest']
         if not isinstance(digest, str) or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
             raise Refusal('INVALID_ARGUMENT', 'runtime_digest must be a SHA256 hex digest')
+        if record['state'] == 'abandoned':
+            raise Refusal('ASSESSMENT_ABANDONED', 'This request was abandoned; request a fresh assessment')
         if record['thread_id']:
             if record['thread_id'] != thread or record['runtime_digest'] != digest:
                 raise Refusal('ASSESSMENT_THREAD_MISMATCH', 'Resume the recorded assessment thread; never rebind it')
@@ -168,6 +169,8 @@ class Assessments:
             raise Refusal('FORBIDDEN', 'Only the assigned assessor records its report')
         if set(args) != {'thread_id','body','recommendation','evidence_message_ids','next_checkpoint'}:
             raise Refusal('INVALID_ARGUMENT', 'Name the assessment thread, report, recommendation, evidence and next checkpoint')
+        if record['state'] == 'abandoned':
+            raise Refusal('ASSESSMENT_ABANDONED', 'This request was abandoned; its late report cannot be published')
         if record['thread_id'] is None:
             raise Refusal('ASSESSMENT_NOT_ATTACHED', 'Attach a fresh context before reporting')
         if args['thread_id'] != record['thread_id']:
@@ -187,12 +190,31 @@ class Assessments:
         post = dict(envelope, kind='message.post', target={'topic_id':record['topic_id']}, args={
             'body':body, 'intent':'tell', 'addressees':list(dict.fromkeys((record['requested_by'],record['operator_id']))),
             'reply_to':record['source_message_ids'][0]})
-        result, affected = self._command_message_post(db, actor, post)
+        snapshot = self._writing(post['args'])
+        result, affected = self._publish(db, actor, envelope['operation_id'], record['topic_id'], snapshot, record_only=True)
         record.update(state='reported', reported_ms=_now_ms(), report_message_id=result['message_id'],
                       report_fingerprint=fingerprint, recommendation=args['recommendation'],
                       evidence_message_ids=evidence, next_checkpoint=checkpoint)
         self._save_assessment(db, record)
         return {'assessment_id':record['id'], 'message_id':result['message_id']}, affected
+
+    def _command_assessment_abandon(self, db, actor, envelope):
+        record = self._assessment_target(db, actor, envelope)
+        topic = self._topic(db, actor, record['topic_id'])
+        if actor != record['assessor_id'] and not (actor in (record['operator_id'], record['requested_by']) and organises(topic, actor)):
+            raise Refusal('FORBIDDEN', 'Only the assessor or authorized request operator may abandon it')
+        if set(envelope['args']) != {'reason'}:
+            raise Refusal('INVALID_ARGUMENT', 'Record the reason for abandonment')
+        reason = text(envelope['args']['reason'], 'reason')
+        if record['state'] == 'reported':
+            raise Refusal('ASSESSMENT_ALREADY_REPORTED', 'A published assessment cannot be abandoned')
+        if record['state'] == 'abandoned':
+            if record['abandonment']['reason'] != reason:
+                raise Refusal('ASSESSMENT_ABANDONMENT_MISMATCH', 'The abandonment reason is already recorded')
+            return {'assessment_id':record['id'], 'abandonment':record['abandonment']}, []
+        record.update(state='abandoned', abandonment=dict(reason=reason, by=actor, recorded_ms=_now_ms()))
+        self._save_assessment(db, record)
+        return {'assessment_id':record['id'], 'abandonment':record['abandonment']}, []
 
     def _command_assessment_renew(self, db, actor, envelope):
         record = self._assessment_target(db, actor, envelope)
