@@ -7,7 +7,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
-import { TopicViews } from './topic-views.mjs';
+import { TopicViews, followEdits } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
@@ -32,7 +32,9 @@ import { PurposeLine } from './outcome-purpose.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
-import { betweenOthers, foldCard, cardIn, paintFold, opened } from './fold.mjs';
+import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
+import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
+import { MessageEdit } from './message-edit.mjs';
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
@@ -98,6 +100,11 @@ let pipelineRow = null, pipelineAddFor = null;
 let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
 let menu = null, reactions = null, cardScroll = null;
+// Whether the open topic's outcome is reached, as its light last said: its
+// messages are kept to read, so none offers Edit (Core refuses one too).
+let outcomeReached = false;
+// The Reader's edit of one of the person's messages, while it is open (editMessage).
+let messageEdit = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
 let stackFeed = null;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
@@ -522,6 +529,8 @@ function onPage(presentation, core) {
 function takeNeighbors(presentation, core) {
   presentation.core = core;
   presentation.neighbors = onPage(presentation, core);
+  // While a message is edited the Reader steps nowhere; what it may step to once the edit ends is kept for then.
+  if (reader?.editing) { reader.stepsBefore = [!presentation.neighbors.previous, !presentation.neighbors.next]; return; }
   $('previous-message').disabled = !presentation.neighbors.previous; $('next-message').disabled = !presentation.neighbors.next;
 }
 // Everything placed by what the page shows is placed again each time the
@@ -723,6 +732,8 @@ function paintViews(kind) {
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
+  // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
+  if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
@@ -944,7 +955,7 @@ function paintHeader(current) {
 }
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
-  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
+  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item));
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
@@ -1179,6 +1190,8 @@ function messageMenuItems(item, say, anchor = say) {
   const items = [...stack.first, { label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   const card = cardIn(messageEntries.get(item.id));
   if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', act: () => run(() => cardScroll.showFull(card, item)) });
+  // Edit, on the person's own message (docs/message-edit.md): the Reader opens on it to edit.
+  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', act: () => run(() => editMessage(item.id, editOpener(item, anchor))) });
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', act: () => run(() => markFromMenu(item.id, !marked)) });
@@ -1240,6 +1253,8 @@ function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
   if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
+  // Edit turns the Reader to its edit mode on the message it shows (docs/message-edit.md).
+  if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', act: () => run(() => editMessage(ref.id, button)) });
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
       { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
@@ -1257,6 +1272,134 @@ function openReaderMenu() {
   if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
+}
+// Who may edit which message here (message-edit-writing.mjs, mayEdit).
+const editRights = () => ({ actor: bootstrap.actor, actorKind: bootstrap.actor_kind, unavailable: topicUnavailable, reached: outcomeReached });
+// What an Edit chosen from a message's ⋯ gives the focus back to: its card,
+// or the line it is folded to, rather than the bar's ⋯, which goes with the light.
+function editOpener(item, anchor) {
+  const entry = messageEntries.get(item.id), card = entry && cardIn(entry);
+  if (card?.isConnected && !card.hidden) return card;
+  return entry?.querySelector('.fold-line') ?? anchor ?? $('main');
+}
+// Edit on the person's own message (docs/message-edit.md). From a card's or a
+// dossier row's ⋯ the Reader opens on the message, as a card's click opens
+// it, and goes straight to its edit mode, as Edit page hands a page to its
+// sheet; from the Reader's ⋯ the Reader turns to it in place. The edit mode
+// has its own writing (message-edit-writing.mjs), kept on the device and
+// saved with message.edit; the reply beside it is left as it is. Save,
+// Cancel, Use saved and Escape end it, and the focus goes back to where Edit
+// was chosen: a Reader opened for the edit closes onto the card.
+async function editMessage(id, opener) {
+  if (messageEdit) return;
+  const shown = () => reader.dialog.open && registry.current?.source?.source_ref?.kind === 'message' &&
+    registry.current.source.source_ref.id === id && !registry.current.sourceUnavailable;
+  const opened = !shown();
+  if (opened) await openSource({ kind: 'message', id }, opener);
+  const p = registry.current;
+  if (!shown() || messageEdit || !mayEdit({ author_id: p.source.author }, editRights())) return;
+  let store;
+  try { store = await messageEditStore({ instance_id: bootstrap.instance_id, actor_id: bootstrap.actor, message_id: id }); }
+  catch (error) { reader.notice(error); return; }
+  if (!registry.isSourceCurrent(p) || messageEdit) { store.close(); return; }
+  const source = p.source;
+  const writing = new MessageEditWriting({ message: { id, revision: revisionOf(source), body: source.body ?? '', attachments: source.attachments ?? [] },
+    bootstrap, api, store, authority: () => registry.runtime.current,
+    read: async () => {
+      const latest = checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass: 'foreground' }), bootstrap.instance_id);
+      return { revision: revisionOf(latest), body: latest.body };
+    } });
+  const session = messageEdit = { id, writing, opener, opened, presentation: p };
+  // The edit mode shows only once the words kept on this device are read.
+  try { await writing.load(); } catch (error) { messageEdit = null; writing.close(); reader.notice(error); return; }
+  if (!shown() || !registry.isSourceCurrent(p)) { messageEdit = null; writing.close(); return; }
+  const view = new MessageEdit({ host: $('message-edit'), writing, doc: document, done: state => run(() => finishEdit(session, state)) });
+  reader.notice('');
+  reader.startEdit({ field: view.field, save: () => run(() => writing.save()), leave: ({ closing = false } = {}) => leaveEdit(session, { closing }) });
+  try { await writing.resume(); } catch (error) { if (messageEdit === session) { reader.notice(error); leaveEdit(session); } }
+}
+// The edit mode goes: its writing stays on the device unless it ended
+// (saved, cancelled, discarded). A Reader opened for the edit closes, giving
+// the focus back to the card; one already open goes back to the message,
+// with the focus on its ⋯.
+function leaveEdit(session, { closing = false } = {}) {
+  if (messageEdit !== session) return;
+  messageEdit = null;
+  session.writing.close();
+  reader.stopEdit();
+  if (closing) return;
+  if (session.opened && registry.isSourceCurrent(session.presentation)) { run(() => reader.close()); return; }
+  if (session.opener?.isConnected) session.opener.focus({ preventScroll: true });
+}
+// The edit ended. Saved: the Reader shows the new words at once, and the
+// page reads the message from Core, which says the new revision to everyone
+// reading it. Use saved: the saved words Core gave in the conflict.
+function finishEdit(session, state) {
+  const p = session.presentation, source = p.source, w = session.writing;
+  if (state === 'saved') {
+    if (revisionOf(source) < w.result.revision) Object.assign(source, { body: w.result.body, revision: w.result.revision, edited_ms: w.result.edited_ms });
+    freshness?.invalidate('edit:' + session.id, w.result.revision); freshness?.request();
+  } else if (state === 'discarded' && revisionOf(source) < w.base.revision) {
+    Object.assign(source, { body: w.base.body, revision: w.base.revision });
+    freshness?.invalidate('edit:' + session.id, w.base.revision); freshness?.request();
+  }
+  leaveEdit(session);
+  if (registry.isSourceCurrent(p)) reader.redrawSource();
+}
+// A message edited (an actor-scope edit change, or the person's own Save): the
+// page's copy of it, if loaded (TopicViews, edit:<id>), an attention row
+// that shows it, and an open Reader on it, which shows the new words in place
+// unless it is editing that very message: then its next Save is a conflict.
+async function messageEdited(key, version, read, current) {
+  const id = key.slice(5);
+  // The rails beside the page keep a topic's newest messages by its version, which an edit does not move.
+  shell.messageEdited(id);
+  const done = await views.refresh(key, version, read, current);
+  if (done === false || !current()) return done;
+  if (attention?.last?.latest_addressed?.some(row => row?.message?.id === id)) attention.refresh();
+  const p = registry.current;
+  if (!reader.dialog.open || !p || p.sourceUnavailable || p.source.source_ref.kind !== 'message' || p.source.source_ref.id !== id) return done;
+  if (messageEdit?.id === id || revisionOf(p.source) >= version) return done;
+  // A page item may hold only the first words: the Reader reads the whole message.
+  const loaded = views.messages.get(id);
+  let latest = loaded && !loaded.preview && revisionOf(loaded) >= version ? loaded : null;
+  // Refused (the message is no longer readable here): the Reader keeps what it shows, and the page goes on.
+  try { latest ??= await read('source', { source_ref: { kind: 'message', id } }); }
+  catch (error) { if (['FORBIDDEN', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code)) return done; throw error; }
+  if (!current() || !registry.isSourceCurrent(p) || messageEdit?.id === id || revisionOf(latest) <= revisionOf(p.source)) return done;
+  Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null });
+  reader.redrawSource();
+  return done;
+}
+// Each card whose words an edit changed (TopicViews.takeRevised): the edited
+// message's words, its excerpt cue, its folded line and its author line's
+// "Edited", and the reply line of each loaded reply to it; then the
+// conversation's own copy of each edited message (edits, loaded here or not)
+// and of each reply to one, and the stacks, whose rows read first lines.
+function repaintEdited(ids, edits) {
+  const CUE = 'Excerpt · Open to read the rest';
+  if (here) followEdits(here.items, edits);
+  for (const id of ids) {
+    const item = views.messages.get(id), entry = messageEntries.get(id);
+    if (!item || !entry) continue;
+    const card = cardIn(entry);
+    paintCardAuthor(card.querySelector(':scope > .message-author'), item);
+    const line = card.querySelector(':scope > .message-reply-to'), answers = replyLine(item);
+    if (line && answers) linkWords(line, answers, { partial: true });
+    const preview = card.querySelector(':scope > .message-preview');
+    if (preview) {
+      formatWords(preview, item.body, { partial: item.preview === true });
+      preview.classList.remove('scroll-in-place');
+      const cue = card.querySelector(':scope > .message-preview-cue');
+      if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
+      else if (cue && !item.preview) cue.remove();
+      else if (cue) { cue.textContent = CUE; cue.hidden = false; }
+    }
+    paintFoldWords(entry, item);
+    cardScroll?.forget(id, card);
+  }
+  stackMessages(); menu?.paint();
+  if (here?.page) paintConversationPage();
 }
 // The source a page's link names: that revision, or the page as it stands,
 // which Core is asked for by name (memory_current).
@@ -1517,6 +1660,7 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
     rebuild: async (_read, current) => { if (current()) for (const item of views.refreshKeys()) freshness.invalidate(item.key, item.version, true); },
     refresh: async (key, version, read, current) => {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
+      if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       if (key !== 'neighbors') return views.refresh(key, version, read, current);
       const p = registry.current;
       if (!p || p.source.source_ref.kind !== 'message') return true;
@@ -1663,7 +1807,9 @@ async function initialize() {
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });
+  // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
+  const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -1681,6 +1827,9 @@ async function initialize() {
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
+    // A reached outcome's messages are kept to read: none offers Edit. Read in the background; Core refuses an edit there anyway.
+    api.view('outcome_light', { workspace_id: workspace.id }, { readClass: 'background' })
+      .then(answer => { outcomeReached = checkedView(answer, bootstrap.instance_id).lead?.kind === 'reached'; }, () => {});
     here.has ||= hasConversation(workspace);
     if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }

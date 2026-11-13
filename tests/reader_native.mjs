@@ -578,9 +578,9 @@ try {
       { name: 'double-click-keeps-custom-share', file: 'web/reader.mjs', index: 6,
         from: "this.layout.resetShare('wide');", to: "this.layout.share('wide');", expected: /wide double-click resets its share/ },
       { name: 'layout-loses-field-selection', file: 'web/reader.mjs', index: 7,
-        from: 'this.restoreVisiblePlace(place);', to: 'this.restoreVisiblePlace(place); this.field.setSelectionRange(0, 0);', expected: /field selection is preserved/ },
+        from: 'this.restoreVisiblePlace(place);\n    this.compose?.fit();', to: 'this.restoreVisiblePlace(place); this.field.setSelectionRange(0, 0);\n    this.compose?.fit();', expected: /field selection is preserved/ },
       { name: 'layout-does-not-restore-reading-anchor', file: 'web/reader.mjs', index: 7,
-        from: 'this.restoreVisiblePlace(place);', to: 'void place;', expected: /source anchor(?: offset)? is preserved/ },
+        from: 'this.restoreVisiblePlace(place);\n    this.compose?.fit();', to: 'void place;\n    this.compose?.fit();', expected: /source anchor(?: offset)? is preserved/ },
     ];
     for (const mutant of mode === '--anchor-control' ? definitions.slice(-1) : definitions) {
       const file = path.join(root, mutant.file), original = await readFile(file, 'utf8');

@@ -142,10 +142,21 @@ and the bar's ⋯ is one more tap. The items:
   someone else. Mark read places the New line afresh, as the Reader's button
   does. A card never opened may have a mark the page has not seen; a refusal
   that names its revision is answered once more at it.
+- Edit, on a message of the person's own, for people only, while the topic
+  can be read and its outcome is not reached. It opens the Reader on the
+  message in its edit mode, as Edit page hands a Notebook page to its sheet:
+  the message's words in a field, with Save (⌘ Return) and Cancel; the reply
+  beside it is left as it is. Saved, cancelled or left with Escape, the Reader
+  closes and the focus goes back to the message's card. Everyone sees the new
+  words marked "Edited" (docs/message-edit.md).
 
 The Reader's header has the same ⋯ in place of the Wide/Stacked button: Copy
-Link and the mark for a message, and Wide layout or Stacked layout where the
-window is wide enough to choose. Up and Down move through a menu, Escape
+Link, Edit on the person's own message (the Reader turns to its edit mode in
+place, and back to the message when it ends, the focus on its ⋯), and the mark
+for a message, and Wide layout or Stacked layout where the
+window is wide enough to choose. While a message is edited, ⌘↑ and ⌘↓ step
+nowhere and Escape leaves the edit, its writing kept on the device for the
+next Edit. Up and Down move through a menu, Escape
 closes it and gives the focus back, and a press outside or a scroll that
 moves what opened it closes it.
 

@@ -38,6 +38,16 @@ export class CardScroll {
     return source.body;
   }
   known(id) { return this.wholes.get(id); }
+  // An edited message (docs/message-edit.md): its whole words are read again
+  // when next wanted, and its card, drawn afresh from its new words, reads
+  // as a card not yet read on.
+  forget(id, card = null) {
+    this.wholes.delete(id);
+    if (!card) return;
+    delete card.dataset.whole; delete card.dataset.full; delete card.dataset.more;
+    if (card.style) card.style.maxHeight = '';
+    card.classList.remove('scroll-in-place', 'show-full');
+  }
   // A menu choice belongs to this card for this page's life. Feed repaints
   // reuse its node; nothing is saved to Core or browser storage.
   clipped(card, item) {

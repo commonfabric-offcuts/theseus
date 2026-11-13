@@ -39,7 +39,7 @@ MARK_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_marks)"
 MARKED = ("k.revision%2=1 AND " + READABLE.replace(":actor", "k.actor_id") + " AND NOT EXISTS ("
           "SELECT 1 FROM messages o WHERE o.id=k.message_id AND o.author_id=k.actor_id) AND NOT EXISTS ("
           "SELECT 1 FROM deliveries d CROSS JOIN delivery_groups g ON g.id=d.group_id "
-          "WHERE d.message_id=k.message_id AND d.recipient_id=k.actor_id AND d.state='pending' AND g.active=1)")
+          "WHERE d.message_id=k.message_id AND d.recipient_id=k.actor_id AND d.revision=1 AND d.state='pending' AND g.active=1)")
 
 
 class Marks:

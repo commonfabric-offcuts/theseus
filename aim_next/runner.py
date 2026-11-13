@@ -285,8 +285,16 @@ class Runner:
             # Each routed recipient is one primary-key probe; people and agents
             # without a route are never read, claimed or attempted here.
             rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING + " AND " + self._execution_allowed(db) + " ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
-            claims = []
+            claims, settled = [], False
             for row in rows:
+                # A correction whose message its agent can no longer read is settled here, before any work is
+                # handed, whichever write took the message away (docs/message-edit.md); with nothing else
+                # pending, nothing is claimed.
+                if self._settle_unreadable_corrections(db, row["recipient_id"]):
+                    settled = True
+                    row = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (row["recipient_id"],)).fetchone()
+                    if row["pending_count"] == 0:
+                        continue
                 if row["claim_token"] is not None and row["claim_until_ms"] > now:
                     # This is an invariant failure, not a reason to run a second
                     # child or scan indefinitely for another due recipient.
@@ -305,7 +313,7 @@ class Runner:
                                "handed_seq": row["handed_seq"],
                                "route_binding": {"instance_id": self.instance_id, "actor_id": row["recipient_id"], "db_path": str(self.path),
                                                  "authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"]}})
-            return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims)
+            return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims) or settled
         return self._effect(guard, action)
 
     def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None, reason=None, from_turn=None):

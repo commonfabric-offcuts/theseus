@@ -27,6 +27,7 @@ from .delivery import _now_ms
 from . import check_reading, outcome_rules
 from .outcome_asks import release_held
 from .whispers import private_source_refused
+from .message_edit import words
 from .work import work_by_topic
 
 
@@ -284,7 +285,7 @@ class Checks:
 
     def _check_asks(self, db, workspace):
         """{check_id: ask} open asks to the owner whose subject is one of this outcome's checks."""
-        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq,substr(m.body,1,280) AS excerpt,"
+        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq,substr(" + words("m") + ",1,280) AS excerpt,"
                           "substr(CAST(t.title AS BLOB),1,257) AS title_prefix FROM topic_waiting q "
                           "JOIN message_subjects s ON s.message_id=q.ask_message_id AND s.kind='check' "
                           "JOIN messages m ON m.id=q.ask_message_id JOIN topics t ON t.id=q.topic_id "
@@ -943,7 +944,7 @@ class Checks:
             fix_topics = sorted({item["fix_topic"]["id"] for item in worse if item.get("fix_topic")})
             if fix_topics:
                 # The whole outcome reads the account, so it is a message on the record, never a whisper.
-                account = db.execute("SELECT m.id,m.topic_id,m.author_id,m.sent_ms,substr(m.body,1,400) AS excerpt FROM message_subjects s "
+                account = db.execute("SELECT m.id,m.topic_id,m.author_id,m.sent_ms,substr(" + words("m") + ",1,400) AS excerpt FROM message_subjects s "
                                      "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.kind='check' AND m.private_to IS NULL AND m.topic_id IN "
                                      "(SELECT value FROM json_each(?)) ORDER BY m.seq DESC LIMIT 1", (workspace["id"], _json(fix_topics))).fetchone()
                 if account is not None:

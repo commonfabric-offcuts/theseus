@@ -18,6 +18,7 @@
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
+import { editChecks } from './message_edit_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 const entry = id => `#messages [data-id="${id}"]`;
@@ -875,7 +876,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.evaluate('document.activeElement?.blur()');
         await p.key('?');
         await until(async () => (await guide())?.open === true, 'laptop: ? opens the guide');
-        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 15 }, 'laptop: the guide, every rule');
+        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 16 }, 'laptop: the guide, every rule');
         await shot(p, 'reading-guide-laptop');
         await p.key('Escape');
         await until(async () => (await guide())?.open === false, 'laptop: Escape closes it');
@@ -1959,4 +1960,6 @@ export async function readingChecks({ check, page, until, view, control, shot, f
 
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
+  await editChecks({ check, until, view, facts, shot, engine },
+    { seed, open, centre, tap, press, lit, light, openReader, closeReader, readerOn, into, valueOf, card, words, DEVICES });
 }

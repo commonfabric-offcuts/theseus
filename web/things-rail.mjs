@@ -271,6 +271,14 @@ export class ThingsRail {
     if (id && this.handles.readable?.() === false) { this.kept.delete(id); this.serial += 1; this.clear(); }
     this.changed();
   }
+  // A message was edited (docs/message-edit.md): its words, and the previews, pull requests and lines read from
+  // them, are kept with the version of its topic, which an edit does not move. Each place holding it is read again.
+  messageEdited(id) {
+    let held = false;
+    for (const [place, kept] of this.kept) if (kept.value.messages.some(message => message.id === id)) { this.kept.delete(place); held = true; }
+    if (held) this.changed();
+    return held;
+  }
   shown() { if (this.handles && this.stale && this.shows()) this.reload(); }
   choose(scope) {
     if (this.scope === scope) return;

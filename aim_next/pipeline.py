@@ -31,6 +31,7 @@ from . import outcome_rules, pipeline_state
 from .work import work_by_topic
 from .standing_conversation import partial
 from .whispers import private_source_refused
+from .message_edit import words as message_words
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -905,7 +906,8 @@ class Pipeline:
         topic of this outcome, newer than the owner's last placement of the item, and it names the item or replies to a
         message that proposes moving the item to this section."""
         owner = workspace["owner_id"]
-        row = db.execute("SELECT m.author_id,m.sent_ms,m.body,m.reply_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id "
+        # The word is read as it stands when the move is made: its latest words (message_edit.py).
+        row = db.execute("SELECT m.author_id,m.sent_ms," + message_words("m") + " AS body,m.reply_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id "
                          "WHERE m.id=?", (message["id"],)).fetchone()
         words = dict(SECTION_WORDS, **_loads(pipeline["section_words"], {}), dropped="Dropped")
         if row["workspace_id"] != workspace["id"]:
@@ -934,7 +936,7 @@ class Pipeline:
         """Whether the message a go-ahead replies to proposed this move: it names the item and the section it goes to."""
         if message_id is None:
             return False
-        row = db.execute("SELECT id,body FROM messages WHERE id=? AND private_to IS NULL", (message_id,)).fetchone()
+        row = db.execute("SELECT m.id," + message_words("m") + " AS body FROM messages m WHERE m.id=? AND m.private_to IS NULL", (message_id,)).fetchone()
         if row is None or not self._names_item(db, workspace_id, row["id"], row["body"], number):
             return False
         names = {section, word.lower()} | {"dropped": {"drop"}, "candidates": {"candidate"}}.get(section, set())
@@ -1181,7 +1183,7 @@ class Pipeline:
 
     def _asks_about(self, db, actor, workspace_id):
         """{number: [ask]} open asks to the reader whose subject is an item of this outcome."""
-        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq,substr(m.body,1,240) AS excerpt,"
+        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq,substr(" + message_words("m") + ",1,240) AS excerpt,"
                           "substr(CAST(t.title AS BLOB),1,257) AS title_prefix FROM topic_waiting q "
                           "JOIN message_subjects s ON s.message_id=q.ask_message_id AND s.kind='item' "
                           "JOIN messages m ON m.id=q.ask_message_id JOIN topics t ON t.id=q.topic_id "

@@ -8,6 +8,7 @@ import uuid
 from .contract import LIMITS, Refusal, _identifier, _json, _page_size, _prefix
 from .marks import MARKED
 from .topic_reading import unread_groups
+from .message_edit import current_words, words_at
 
 
 DELIVERY_SCHEMA = [
@@ -140,15 +141,19 @@ class Delivery:
         db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=?,handed_seq=? WHERE recipient_id=?",
                    (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, handed, actor))
 
-    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False):
-        """Queue one delivery of a message; settled, it is recorded already acknowledged and waits on nobody."""
+    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False, revision=1):
+        """Queue one delivery of a message; settled, it is recorded already acknowledged and waits on nobody.
+
+        A correction (reason `correction`, docs/message-edit.md) delivers the message again at a later revision,
+        in the recipient's one correction group, which nothing counts as unread or addressed."""
         direct = any(reason != "subscription" for reason in reasons)
-        key = (recipient, "direct" if direct else "subscription", "" if direct else topic_id, 0 if direct else reasons["subscription"])
+        kind = "correction" if "correction" in reasons else "direct" if direct else "subscription"
+        key = (recipient, kind, "" if direct else topic_id, 0 if direct else reasons["subscription"])
         db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
         delivery_id = "d-" + uuid.uuid4().hex
-        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state) VALUES (?,?,?,?,?,?)",
-                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "pending")).lastrowid
+        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision) VALUES (?,?,?,?,?,?,?)",
+                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "pending", revision)).lastrowid
         db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
         if settled:
             return delivery_id
@@ -358,12 +363,19 @@ class Delivery:
     def _delivery_item(self, db, row, active=True):
         # The message's own sequence and its topic's title prefix let an inbox
         # line or a wake notice name the place without another read.
-        message = dict(db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.intent,m.private_to IS NOT NULL AS whisper,substr(m.body,1,256) AS body,length(m.body)>256 AS preview,"
+        message = dict(db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.intent,m.private_to IS NOT NULL AS whisper,"
                                   "substr(CAST(t.title AS BLOB),1,1025) AS title_prefix FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.id=?",
                                   (row["message_id"],)).fetchone())
-        message["preview"], message["whisper"] = bool(message["preview"]), bool(message["whisper"])
+        # A delivery shows the message's latest words; a correction shows the words of its own revision (message_edit.py).
+        if row["revision"] == 1:
+            body, message["revision"], message["edited_ms"] = current_words(db, row["message_id"])
+        else:
+            (body, message["edited_ms"]), message["revision"] = words_at(db, row["message_id"], row["revision"]), row["revision"]
+        message["body"], message["preview"], message["whisper"] = body[:256], len(body) > 256, bool(message["whisper"])
         title, truncated = _prefix(message.pop("title_prefix"))
         item = {key: row[key] for key in ("seq", "id", "message_id", "recipient_id", "state")}
+        if row["revision"] != 1:
+            item["correction"] = {"revision": row["revision"]}
         if row["state"] == "pending" and not active:
             # A pending row of a cancelled subscription can never be settled.
             item["state"] = "cancelled"
@@ -394,23 +406,34 @@ class Delivery:
         for group in groups:
             group_id = group["id"]
             seq = start_seq if group_id == start_group else 0
-            rows = db.execute("SELECT * FROM deliveries INDEXED BY pending_group_deliveries WHERE group_id=? AND state='pending' AND seq>? ORDER BY seq LIMIT ?", (group_id, seq, limit - len(answer["items"]) + 1)).fetchall()
-            for row in rows:
-                if len(answer["items"]) == limit:
-                    answer["next_cursor"] = _cursor(*last)
-                    return answer
-                item = self._delivery_item(db, row)
-                candidate = dict(answer, items=answer["items"] + [item], next_cursor=_cursor(group_id, row["seq"]))
-                if len(_json(candidate).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
-                    if not answer["items"]:
-                        raise Refusal("SUMMARY_ITEM_TOO_LARGE", "This preview exceeds the configured response limit")
-                    answer["next_cursor"] = _cursor(*last)
-                    return answer
-                answer["items"].append(item)
-                last = (group_id, row["seq"])
-            # A previous page may have ended at this group's last row. Advance
-            # the continuation even if all its pending rows precede that cursor.
-            last = (group_id, rows[-1]["seq"] if rows else seq)
+            while True:
+                wanted = limit - len(answer["items"]) + 1
+                rows = db.execute("SELECT * FROM deliveries INDEXED BY pending_group_deliveries WHERE group_id=? AND state='pending' AND seq>? ORDER BY seq LIMIT ?",
+                                  (group_id, seq, wanted)).fetchall()
+                for row in rows:
+                    if len(answer["items"]) == limit:
+                        answer["next_cursor"] = _cursor(*last)
+                        return answer
+                    if not self._correction_readable(db, actor, row):
+                        # A correction of a message the actor can no longer read is never shown, even in a preview.
+                        last = (group_id, row["seq"])
+                        continue
+                    item = self._delivery_item(db, row)
+                    candidate = dict(answer, items=answer["items"] + [item], next_cursor=_cursor(group_id, row["seq"]))
+                    if len(_json(candidate).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+                        if not answer["items"]:
+                            raise Refusal("SUMMARY_ITEM_TOO_LARGE", "This preview exceeds the configured response limit")
+                        answer["next_cursor"] = _cursor(*last)
+                        return answer
+                    answer["items"].append(item)
+                    last = (group_id, row["seq"])
+                # A previous page may have ended at this group's last row. Advance
+                # the continuation even if all its pending rows precede that cursor.
+                seq = rows[-1]["seq"] if rows else seq
+                last = (group_id, seq)
+                # Rows left out above leave room on the page: read on in this group until it is done.
+                if len(rows) < wanted:
+                    break
         if len(groups) == 100:
             answer["next_cursor"] = _cursor(*last)
         return answer

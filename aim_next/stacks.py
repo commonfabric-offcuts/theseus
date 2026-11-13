@@ -41,6 +41,7 @@ import math
 from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
 from .whispers import VISIBLE, visible
+from .message_edit import words
 
 
 def _act_table(kinds):
@@ -423,7 +424,7 @@ class Stacks:
         if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0:
             raise Refusal("INVALID_ARGUMENT", "Invalid cursor")
         rows = db.execute(
-            "SELECT a.id AS star,a.at_ms AS starred_ms,a.revision,m.id,m.topic_id,m.seq,m.author_id,m.sent_ms,substr(m.body,1,160) AS excerpt,"
+            "SELECT a.id AS star,a.at_ms AS starred_ms,a.revision,m.id,m.topic_id,m.seq,m.author_id,m.sent_ms,substr(" + words("m") + ",1,160) AS excerpt,"
             "t.title AS topic_title,t.kind AS topic_kind,t.workspace_id FROM message_acts a INDEXED BY reader_stars "
             "JOIN messages m ON m.id=a.message_id JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
             "WHERE a.owner=:actor AND a.kind='star' AND a.id<:cursor AND json_extract(a.value,'$.starred')=1 "

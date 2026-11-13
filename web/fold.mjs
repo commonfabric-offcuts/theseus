@@ -38,7 +38,7 @@ export function foldCard(card, item, doc = document) {
   card.id = `card-${item.id}`; line.setAttribute('aria-controls', card.id);
   line.onclick = () => show(fold, card.hidden);
   fold.append(line, card);
-  folds.set(fold, { line, author, card, name: item.author_id });
+  folds.set(fold, { line, author, words, card, name: item.author_id });
   show(fold, false);
   return fold;
 }
@@ -51,6 +51,12 @@ export function show(fold, open) {
 
 // The card a list entry shows: a fold's card, or the entry itself.
 export const cardIn = entry => folds.get(entry)?.card ?? entry;
+
+// A fold's line says the message's latest words once it is edited (docs/message-edit.md).
+export function paintFoldWords(entry, item) {
+  const fold = folds.get(entry);
+  if (fold) linkWords(fold.words, foldWords(item), { partial: cutShort(item) });
+}
 
 // A fold's line carries the Unread pill of a message marked unread; any other entry has no line.
 export function paintFold(entry, marked) {

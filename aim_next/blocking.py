@@ -20,6 +20,11 @@ from .contract import Refusal, _identifier, _prefix
 from .outcome_asks import held_ask, record_ask
 from .reactions import answered_yes
 from .standing_conversation import is_conversation
+from .message_edit import current_words
+
+# What an ask that holds something is read with (messages m): what _ask_waits and the order read. Its line is read
+# afterwards from its latest words, for the asks kept only (message_edit.py), so no row costs a lookup per revision.
+ASK_COLUMNS = "m.id,m.seq,m.topic_id,m.author_id,m.sent_ms,m.intent,m.addressees,m.private_to"
 
 
 # Version 36 keeps what an ask blocks. A message keeps it as written, so the
@@ -142,7 +147,7 @@ class Blocking:
         (outcome_asks.release_held moves it on to a newer held ask while older asks still wait), so no reader
         narrows by it."""
         rows = db.execute(
-            "SELECT b.kind,b.ref,m.*,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.kind AS topic_kind,t.workspace_id,"
+            "SELECT b.kind,b.ref," + ASK_COLUMNS + ",substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.kind AS topic_kind,t.workspace_id,"
             "substr(CAST(w.title AS BLOB),1,1025) AS workspace_title_prefix "
             "FROM topic_waiting INDEXED BY reader_waiting CROSS JOIN message_blocks b INDEXED BY topic_blocks ON b.topic_id=topic_waiting.topic_id "
             "CROSS JOIN messages m ON m.id=b.message_id CROSS JOIN topics t ON t.id=b.topic_id JOIN workspaces w ON w.id=t.workspace_id "
@@ -157,7 +162,7 @@ class Blocking:
             outcome, outcome_truncated = _prefix(row["workspace_title_prefix"])
             found.append({"message_id": row["id"], "topic_id": row["topic_id"], "title": title, "title_truncated": truncated,
                           "workspace": {"id": row["workspace_id"], "title": outcome, "title_truncated": outcome_truncated},
-                          "by": row["author_id"], "since_ms": row["sent_ms"], "line": first_line(row["body"]),
+                          "by": row["author_id"], "since_ms": row["sent_ms"], "line": first_line(current_words(db, row["id"])[0]),
                           "blocks": self._blocked_words(db, row["kind"], row["ref"])})
         return found
 
@@ -165,7 +170,7 @@ class Blocking:
         """The asks that hold one piece or release and still wait on someone, in the one order (newest first): {message_id,
         topic_id, by, since_ms, waiting_on, line}, waiting_on in the order the ask named them."""
         held = []
-        rows = db.execute("SELECT m.*,t.kind AS topic_kind,t.workspace_id FROM message_blocks b INDEXED BY blocks_held "
+        rows = db.execute("SELECT " + ASK_COLUMNS + ",t.kind AS topic_kind,t.workspace_id FROM message_blocks b INDEXED BY blocks_held "
                           "CROSS JOIN messages m ON m.id=b.message_id CROSS JOIN topics t ON t.id=b.topic_id "
                           "WHERE b.workspace_id=? AND b.kind=? AND b.ref=?", (workspace_id, kind, str(ref))).fetchall()
         for row in sorted(rows, key=lambda row: order(kind, row)):
@@ -173,7 +178,7 @@ class Blocking:
             waiting = [member for member in json.loads(row["addressees"]) if self._ask_waits(db, topic, row, member)]
             if waiting:
                 held.append({"message_id": row["id"], "topic_id": row["topic_id"], "by": row["author_id"], "since_ms": row["sent_ms"],
-                             "waiting_on": waiting, "line": first_line(row["body"])})
+                             "waiting_on": waiting, "line": first_line(current_words(db, row["id"])[0])})
         return held
 
     def _block_fields(self, db, items):

@@ -1003,3 +1003,14 @@ dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - 3
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
   .notebook-back{max-width:9rem}
 }
+/* Editing a sent message (docs/message-edit.md): the Reader's edit mode stands where the message's words were, its field the message's own width, Save and Cancel under it in one line. "Edited" on a card's author line is a quiet word after the time. */
+.message-edit{flex:1;min-height:0;display:flex;flex-direction:column;gap:.5rem;padding:.3rem 0 .6rem}
+.message-edit-field{flex:1;min-height:8rem;line-height:1.7}
+.message-edit-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.5rem}
+.message-edit-status{flex:1;min-width:0;font-size:.8rem;color:var(--muted)}
+.message-edit-status[data-state=busy],.message-edit-status[data-state=uncertain],.message-edit-status[data-state=failed],.message-edit-status[data-state=refused]{color:var(--ink)}
+.message-edit-keys{margin-left:.4rem;opacity:.75}
+.message-edit-conflict{border:1px solid var(--line);border-radius:.5rem;background:var(--panel);padding:.6rem .75rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.message-edit-conflict-title{flex-basis:100%;font-weight:600;font-size:.9rem}
+.message-edit-saved{flex-basis:100%;margin:0;font:inherit;font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere;max-height:min(10rem,20dvh);overflow:auto;color:var(--muted)}
+.message-edited{color:var(--muted)}

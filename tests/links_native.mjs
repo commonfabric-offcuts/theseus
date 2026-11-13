@@ -226,14 +226,14 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header a message the reader wrote offers Copy Link alone; a right-click on a card opens the menu at the pointer, and on a link or selected words the browser\'s own menu stays', async () => {
+  await check('header a message the reader wrote offers Copy Link and Edit; a right-click on a card opens the menu at the pointer, and on a link or selected words the browser\'s own menu stays', async () => {
     const own = await post('links-own', 'links-m', 'My own words.', { sender: 'person', join: false });
     const linked = await post('links-linked', 'links-m', `Words around ${ELSEWHERE} a link.`);
     const p = await page('links-right', null, true, { url: facts.origin + '/?topic=links-m' });
     const ownCard = `#messages [data-id="${own}"]`, card = `#messages [data-id="${linked}"]`;
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(ownCard)})) && Boolean(document.querySelector(${JSON.stringify(card + ' a.words-link')}))`), 'the cards are drawn');
     await light(p, ownCard);
-    await p.point(menuMore); await menuOpen(p, ['Copy Link']);
+    await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Edit']);
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.activeElement === document.querySelector(${JSON.stringify(menuMore)})`), 'Escape closes it and gives the focus back');
     await contextLog(p);

@@ -15,6 +15,7 @@ import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { ComposeBar } from './compose-bar.mjs';
 import { copyText, COPY_REFUSED } from './message-menu.mjs';
+import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -39,6 +40,10 @@ const visible = el => el.getClientRects().length && !el.disabled && !el.hidden;
 // The same message, shown again: its reply sent elsewhere (In), a saved
 // version adopted, its access checked. Your place holds through it.
 const sameSource = (a, b) => Boolean(a && b && a.kind === b.kind && a.id === b.id);
+// What a quote names as its source: a message's quote says which revision of
+// its words it was taken from (docs/message-edit.md), 1 for one never edited;
+// a Notebook page's source names its revision already.
+const quoteSource = source => (source.source_ref.kind === 'message' ? { ...structuredClone(source.source_ref), revision: revisionOf(source) } : structuredClone(source.source_ref));
 
 // The Reader steps as the eye goes down the topic page (docs/reply-stacks.md):
 // ↑ is the message above the one open, Previous, and ↓ the one below, Next,
@@ -560,7 +565,7 @@ export class Reader {
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
-    editor.edit({ quotes: [...editor.draft.quotes, { source: structuredClone(this.source.source_ref), excerpt }] });
+    editor.edit({ quotes: [...editor.draft.quotes, { source: quoteSource(this.source), excerpt }] });
     // The message's selection is let go before the field takes focus: once
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
@@ -888,8 +893,10 @@ export class Reader {
       : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : '';
     this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
+    // A message whose words were changed after it was sent says so (docs/message-edit.md).
+    const edited = source.source_ref.kind === 'message' && wasEdited(source) ? [' · Edited'] : [];
     const author = this.callbacks?.actorName?.(source.author) ?? source.author;
-    this.$('reader-origin').replaceChildren([author, provenance].filter(Boolean).join(' · '), ...sent);
+    this.$('reader-origin').replaceChildren([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
     this.paintTone(source);
   }
   // The page the source is read on: an agent's message wears its color, as
@@ -930,6 +937,43 @@ export class Reader {
       host.append(card);
     }
     this.paintStatus();
+  }
+
+  // The message shown, edited elsewhere (docs/message-edit.md): its new words
+  // drawn where it is read, the place in it held, the reply left as it is.
+  redrawSource() {
+    if (!this.source) return;
+    const place = this.captureVisiblePlace();
+    this.disarm(); this.kept = null;
+    this.drawSource(this.source.body ?? '');
+    this.paintOrigin(this.source);
+    this.restoreVisiblePlace(place);
+  }
+
+  // The edit mode (docs/message-edit.md, message-edit.mjs): the message's
+  // words give way to a field holding them, with Save and Cancel; the reply
+  // beside it stays as it is. editing: { field, save(), leave() }. While it
+  // is on the Reader does not step to another message.
+  startEdit(editing) {
+    this.editing = editing;
+    this.disarm();
+    this.sourceBody.hidden = true;
+    this.endLine?.remove();
+    this.$('message-edit').hidden = false;
+    this.dialog.dataset.editing = 'true';
+    this.stepsBefore = ['previous-message', 'next-message'].map(id => this.$(id).disabled);
+    for (const id of ['previous-message', 'next-message']) this.$(id).disabled = true;
+    editing.field.focus();
+    editing.field.setSelectionRange(editing.field.value.length, editing.field.value.length);
+  }
+  stopEdit() {
+    if (!this.editing) return;
+    this.editing = null;
+    this.sourceBody.hidden = false;
+    this.$('message-edit').hidden = true; this.$('message-edit').replaceChildren();
+    delete this.dialog.dataset.editing;
+    ['previous-message', 'next-message'].forEach((id, n) => { this.$(id).disabled = this.stepsBefore?.[n] ?? this.$(id).disabled; });
+    this.placeEnd();
   }
 
   // A failure goes to the notice as the error itself (lines.mjs).
@@ -996,6 +1040,8 @@ export class Reader {
   }
 
   finishClose() {
+    // An edit under way is left as Escape leaves it: its writing stays on the device.
+    this.editing?.leave({ closing: true });
     ++this.viewToken;
     this.held = null;
     // The naming sheet is a modal of its own: it goes with the Reader.
@@ -1010,10 +1056,12 @@ export class Reader {
 
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }
   // Steps to the message above or below the open one, as the page shows them.
-  stepTo(where) { return this.step(neighborAt(where) === 'next' ? 1 : -1); }
+  stepTo(where) { if (this.editing) return; return this.step(neighborAt(where) === 'next' ? 1 : -1); }
   // Escape with no panel of the reply open (compose-bar.mjs heard takes it
   // while one is).
   escape() {
+    // Escape leaves the edit mode and keeps its writing (docs/message-edit.md).
+    if (this.editing) { this.editing.leave(); return; }
     if (this.hover || !window.getSelection()?.isCollapsed) { this.disarm(); window.getSelection()?.removeAllRanges(); return; }
     this.close();
   }
@@ -1036,6 +1084,15 @@ export class Reader {
       if (event.shiftKey && target === stops[0]) { event.preventDefault(); stops.at(-1)?.focus(); }
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }
       return;
+    }
+    // While a message is edited, ⌘↑ and ⌘↓ step nowhere, and in its field
+    // ⌘ Return saves the edit; every other key there is the field's own.
+    if (this.editing) {
+      if (event.metaKey && Object.values(STEPPING).some(step => step.key === event.key)) { event.preventDefault(); return; }
+      if (target === this.editing.field) {
+        if (keyAction(event, { context: 'edit' }) === 'save-edit') { event.preventDefault(); this.editing.save(); }
+        return;
+      }
     }
     // Select All outside a text field takes the message's text, never the
     // Reader's buttons and labels; in a field the browser selects its own text.

@@ -313,7 +313,10 @@ export class Shell {
   }
   // The page has read its topic again (a message, a state): what the rails show of it may have moved on.
   topicChanged() { if (this.handles) for (const listener of this.listeners) listener.topicChanged?.(); }
-  // listener: { begin(feed, route), ready(handles), topicChanged() }; each hears every run.
+  // A message was edited (docs/message-edit.md): an edit moves no topic's version, so what a rail keeps of a
+  // topic by its version is read again where it holds the message.
+  messageEdited(id) { if (this.handles) for (const listener of this.listeners) listener.messageEdited?.(id); }
+  // listener: { begin(feed, route), ready(handles), topicChanged(), messageEdited(id) }; each hears every run.
   follow(listener) {
     this.listeners.add(listener);
     if (this.handles) listener.ready?.(this.handles);
