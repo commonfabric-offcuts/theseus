@@ -3,7 +3,7 @@
 Owner: auditor. Source: Tony's New Charter topic,
 `t-314359e63ef84d59ace7349c3a167221`, especially 2448, 2450, 2453 and 2455.
 Implementation tracking: Building Theseus item **405**, created and read back.
-Snapshot: 13 November 2026, 01:15 Pacific. Update this record when evidence
+Snapshot: 13 November 2026, 01:43 Pacific. Update this record when evidence
 changes; a plan or candidate is not installed behavior. The governing request
 is Tony's New Charter #2693, followed by #2700: ship the agreed remaining batch,
 then message editing, then marking outcomes done. Tony's absence is not a new
@@ -24,7 +24,9 @@ includes served-module comparisons, timing and the retained failure evidence.
   sole writer/probe; Codex owns live verification when it ships. The visual
   follow-ups remain item 430. Codex is preparing starred messages in latest mode
   (413) separately: its new Chrome case passed, two old expectations were updated,
-  and the combined native rerun/WebKit evidence is pending. Motion (412) follows.
+  and the corrected Chrome batch passed 3/3 at published `b743d92f`. Its single
+  WebKit batch is queued behind release 70 and earlier probes; Codex asked Fable
+  to inspect the overdue queue holder in #2756. Motion (412) follows.
 - Release 69 shipped 355, 403 and 421/422. Its final checks report Python 2213,
   Node 1896 and browser 941/960, with 19 previously observed failures accepted
   in four steps. The final scoped check omitted deploy-refusals and wake-replay;
@@ -34,7 +36,10 @@ includes served-module comparisons, timing and the retained failure evidence.
   Passing reruns do not clear that possible product fault. The separate broker
   startup failure also reproduced on live 68 and remains item 432.
 - Notebook write access/Draft work 371/383/391 is now checking in release 70,
-  candidate `e6125470` on live 69, with migration 39. It is not yet live.
+  candidate `e6125470` on live 69, with migration 39. Its 01:39 check finished:
+  Node 1903/1903 and Notebook 50/50 in each engine pass; 17 failed cases match
+  prior observations, while a denied-topic reread and WebKit copy failure remain
+  unresolved. Fable is comparing those cases. It is not yet live.
 - 411 (quoting preserves place) passed round-2 review at `d4706afc`, 01:10 Pacific,
   and awaits integration. Fable owns 398–400 next: scrolling controls and composer
   size, including the responsive width and feed-card scrollbar requests in this stack.
@@ -106,7 +111,8 @@ their specific evidence is linked; a Markdown rule does not implement a dispatch
   five fixes at `eb306da8`. Round 2 found a new interaction: actor-scope metadata
   no longer went through the completed-outcome guard. Fable's `6263d4f2` adds
   explicit finality checks and refuses native dispatch/model spend after reaching
-  an outcome. It is in re-review and remains unshipped. Earlier evidence is kept
+  an outcome. Round 3 approved it at 01:35; it awaits integration and remains
+  unshipped. Earlier evidence is kept
   under `auditor/2026-11-13/assessment-review1`.
 - A real installed-Codex functional pilot on a wholly fictional isolated
   assignment read full bound sources and its artifact, then posted/read back one
@@ -122,8 +128,11 @@ their specific evidence is linked; a Markdown rule does not implement a dispatch
   candidate incorporates first-path `6263d4f2` and applies its finality rule to
   checkpoints. It also keeps an unrecorded store error resumable instead of
   abandoning a completed native report. Both defects were reproduced before the
-  fixes; 213 focused/regression checks now pass and expanded mutation checks are
-  running. Evidence: `auditor/2026-11-13/assessment-checkpoints`.
+  fixes. Final successor `37ef49d7` is pushed clean and handed off in #2752:
+  213 regression checks, 49 deliberate mutation failures with passing restored
+  controls, and the handoff check all pass. The aggregate review is
+  `6263d4f2..37ef49d7`; the branch contains merges. Evidence:
+  `auditor/2026-11-13/assessment-checkpoints/review2-check-record.json`.
   Adopted policies record artifacts, due times, evidenced misses and known waits;
   thresholds atomically request an assessment. This does not install a background
   scheduler or yet prove adoption by the coordinator's running loop.
@@ -180,9 +189,10 @@ on a desktop login change. Preserve its context and binding. Automatic cross-mod
 team provisioning and migration of existing seats remain later work. The visual
 study is useful hosted work, not a formally instrumented charter trial.
 
-Current continuity check, 13 November 01:06 Pacific: the hosted Codex worker is
-all caught up with zero pending deliveries; its last wake got through at 00:43.
-Its recent #2739 report describes actual 413 coding/native checks. The runner is
-running, this chat is receiving wakes, and no new sign-in failure is reported.
-Release 69 was then deployed and its server/runner verification passed. This is
-health and recorded-work evidence, not a new account/quota probe.
+Current continuity check, 13 November 01:36 Pacific: the hosted Codex worker is
+working with zero pending deliveries and no reported failure. After auditor's
+follow-through #2751, it reconciled the queued Chrome result and published 413's
+clean successor (#2754–2756); the remaining WebKit batch is waiting in the shared
+browser queue. The runner is live, this chat receives wakes, and release 69's
+server/runner verification passed. This is health and recorded-work evidence,
+not a new account/quota probe or a claim that queued testing has finished.
