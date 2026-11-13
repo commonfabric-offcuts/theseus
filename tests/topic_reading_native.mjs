@@ -18,6 +18,7 @@
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
+import { scrollbarChecks } from './scrollbars_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 const entry = id => `#messages [data-id="${id}"]`;
@@ -50,7 +51,8 @@ const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;window.wai
 
 // grant(names): Chrome's own grant of permissions (clipboard-read, ...) to the page's
 // origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
-export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, engine = 'chrome' }) {
+// scrollbars: how the browser draws its scroll bars in this run, 'overlay' or 'classic' (tests/scrollbars_native.mjs).
+export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, engine = 'chrome', scrollbars = 'overlay' }) {
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = async (topic, said) => {
@@ -65,8 +67,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     return ids;
   };
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
-  const open = async (name, device, topic, first, init = '') => {
-    const metrics = DEVICES[device];
+  const open = async (name, device, topic, first, init = '', metrics = DEVICES[device]) => {
     const p = await page(name, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
       if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
@@ -1651,6 +1652,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await scrollbarChecks({ check, until, control, shot, facts, observations, engine },
+    { seed, open, centre, press, light, openReader, card, within }, scrollbars);
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
 }

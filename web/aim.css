@@ -1000,3 +1000,26 @@ dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - 3
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
   .notebook-back{max-width:9rem}
 }
+/* Where the platform shows its scroll bars always (web/scrollbars.mjs sets
+   data-quiet-scrollbars only there), thumbs are quiet between scrolls. Each
+   bar takes the platform's own measured width, idle, scrolling and fading,
+   so no area is narrower than the platform draws it. Overlay bars, which take
+   no room and show only while scrolling already, are left to the platform. */
+@property --quiet-scrollbar-thumb{syntax:"<color>";inherits:true;initial-value:transparent}
+/* Pseudo thumbs inherit from their scroller; actual child elements reset it. */
+html[data-quiet-scrollbars],html[data-quiet-scrollbars] *{--quiet-scrollbar-thumb:transparent}
+/* The viewport scrollbar can use the body's style, even though the document
+   scroll event belongs to html. Body follows that colour; its children reset. */
+html[data-quiet-scrollbars]>body{--quiet-scrollbar-thumb:inherit}
+/* A property on the scroller also invalidates WebKit's cached thumb style.
+   https://developer.chrome.com/docs/css-ui/scrollbar-styling */
+html[data-quiet-scrollbars][data-scrolling],html[data-quiet-scrollbars] [data-scrolling]{--quiet-scrollbar-thumb:var(--muted)}
+html[data-quiet-scrollbars]::-webkit-scrollbar,html[data-quiet-scrollbars] *::-webkit-scrollbar{width:var(--quiet-scrollbar-size);height:var(--quiet-scrollbar-size)}
+html[data-quiet-scrollbars]::-webkit-scrollbar-track,html[data-quiet-scrollbars] *::-webkit-scrollbar-track,
+html[data-quiet-scrollbars]::-webkit-scrollbar-corner,html[data-quiet-scrollbars] *::-webkit-scrollbar-corner{background:transparent}
+html[data-quiet-scrollbars]::-webkit-scrollbar-thumb,html[data-quiet-scrollbars] *::-webkit-scrollbar-thumb{background-color:var(--quiet-scrollbar-thumb);border:2px solid transparent;background-clip:padding-box;border-radius:999px}
+/* Standard colours are the fallback in engines without custom scrollbars.
+   Reset descendants because scrollbar-color inherits from an active parent. */
+@supports not selector(::-webkit-scrollbar){
+  html[data-quiet-scrollbars],html[data-quiet-scrollbars] *{scrollbar-color:var(--quiet-scrollbar-thumb) transparent}
+}
