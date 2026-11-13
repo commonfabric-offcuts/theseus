@@ -562,6 +562,51 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await check('reading Show full message removes clipping for just that feed card, in topics and Conversation, until the page is left', async () => {
+    for (const device of Object.keys(DEVICES)) for (const conversation of [false, true]) {
+      const name = `reading-show-full-${device}-${conversation}`, body = Array.from({ length: 70 }, (_, i) => `Paragraph ${i}. Words that need the full height of the message to be read.`).join('\n\n');
+      let topic = name;
+      if (conversation) {
+        await control({ method: 'navigation_workspaces', workspaces: [{ id: name, title: name, team: ['fable'], coordinator: 'fable' }] });
+        topic = (await view('conversation', { workspace_id: name })).conversation.topic_id;
+      } else await control({ method: 'navigation_topics', topics: [{ id: topic, title: name }] });
+      const say = async (n, text, reply_to = null) => (await control({ method: 'agent_message', operation_id: `${name}-${n}`, topic_id: topic, source: 'topic', sender: 'fable', join: !conversation && n === 0, addressees: [facts.actor], body: text, ...(reply_to ? { reply_to } : {}) })).result.message_id;
+      const root = await say(0, 'A short stack root.'), reply = await say(1, body, root), alone = await say(2, body);
+      const p = await open(name, device, topic, alone, 'window.holdReads = true;');
+      const geometry = id => p.evaluate(`(c=>({height:c.getBoundingClientRect().height,overflow:c.scrollHeight-c.clientHeight,words:c.querySelector('.message-preview').textContent,excerpt:c.querySelector('.message-preview-cue')?.getClientRects().length??0}))(document.querySelector(${JSON.stringify(card(id))}))`);
+      const show = async id => {
+        await light(p, device, id);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.whole==='shown'`), name + ': the complete source is loaded into the clipped card');
+        const before = await geometry(id);
+        assert.ok(before.overflow > 100, name + ': the message starts clipped');
+        await press(p, device, BAR + ' [data-act="more"]');
+        const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+        assert.ok(index >= 0, name + ': the clipped message offers Show full message');
+        await press(p, device, `.message-menu-list > button:nth-child(${index + 1})`);
+        await until(async () => (await geometry(id)).height > before.height + 100, name + ': the card grows to show its entire message');
+        const whole = await geometry(id);
+        assert.ok(whole.overflow <= 1, name + ': nothing remains in an internal scrolling viewport');
+        assert.ok(whole.words.includes('Paragraph 69.'), name + ': the last paragraph is present');
+        assert.equal(whole.excerpt, 0, name + ': the excerpt cue is gone');
+        assert.equal(await readerOn(p), null, name + ': no Reader opened');
+      };
+      const replyHeight = (await geometry(reply)).height;
+      await show(alone);
+      assert.equal((await geometry(reply)).height, replyHeight, name + ': the other card has not expanded');
+      await show(reply);
+      const height = (await geometry(reply)).height;
+      // A real new reply causes live rearrangement; the choice remains on the same card.
+      await say(3, 'Another reply arriving while the long message is shown.', root);
+      await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes('Another reply arriving')`), name + ': the live reply arrived');
+      assert.equal((await geometry(reply)).height, height, name + ': a live update preserves full height');
+      await shot(p, name);
+      assert.deepEqual(p.errors, []); await p.close();
+      const q = await open(name + '-new-page', device, topic, alone, 'window.holdReads = true;');
+      assert.ok(await q.evaluate(`(c=>c.getBoundingClientRect().height<${height}-100)(document.querySelector(${JSON.stringify(card(reply))}))`), name + ': a new page has the ordinary clipped card');
+      assert.deepEqual(q.errors, []); await q.close();
+    }
+  });
+
   await check('reading a cut-off message scrolls in place under the wheel or a finger, and the page does not move', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-long-' + device;
@@ -1034,6 +1079,41 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
+  await check('reading the composer thumb represents only your action while the message keeps everyone’s count and names', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-own-thumb-' + device;
+      const ids = await seed(topic, [['other', { sender: 'aim-ux', join: true, body: 'Here to read the message.' }],
+        ['theirs', { sender: 'aim-core', join: true, body: 'A message with another person’s thumbs-up.' }]]);
+      await control({ method: 'agent_thumb', operation_id: topic + '-other', sender: 'aim-ux', message_id: ids.theirs });
+      const p = await open(topic, device, topic, ids.theirs);
+      const button = () => p.evaluate(`(b=>({text:b.textContent,pressed:b.getAttribute('aria-pressed'),title:b.title}))(document.querySelector('#thumb-source'))`);
+      const count = () => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.theirs) + ' .reaction-number')})?.textContent`);
+      const off = { text: '👍', pressed: 'false', title: 'Thumbs-up: read and understood' };
+      await readerByClick(p, device, ids.theirs, 'A message with another');
+      assert.deepEqual(await button(), off, device + ': someone else’s reaction is not on the composer button');
+      assert.equal(await count(), '1', device + ': the message retains the aggregate');
+      assert.ok(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.theirs) + ' .reaction-count')}).title.includes('aim-ux')`), device + ': the message names the other reader');
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 1 && await readerOn(p) === null, device + ': your thumb records once and closes the Reader');
+      await until(() => foldedRow(p, ids.theirs), device + ': your thumb folds the card');
+      await unfoldRow(p, device, ids.theirs);
+      await readerByClick(p, device, ids.theirs, 'A message with another');
+      assert.deepEqual(await button(), { text: '👍', pressed: 'true', title: 'You said you read and understood it. Press to take it back.' }, device + ': your own state is selected without the aggregate');
+      assert.equal(await count(), '2', device + ': both reactions remain on the message');
+      await press(p, device, '#thumb-source');
+      await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0 && (await button()).pressed === 'false', device + ': undo changes only your reaction');
+      assert.equal(await thumbsBy(ids.theirs, 'aim-ux'), 1, device + ': the other reader’s reaction remains');
+      await control({ method: 'agent_thumb', operation_id: topic + '-other-off', sender: 'aim-ux', message_id: ids.theirs, thumbed: false });
+      await until(async () => await count() === undefined, device + ': the live aggregate repaint arrived');
+      assert.deepEqual(await button(), off, device + ': another person’s change never selects your control');
+      await into(p, device, '#writing-body'); await p.send('Input.insertText', { text: 'Unsent words' });
+      assert.equal(await p.evaluate(`document.querySelector('#thumb-source').getClientRects().length`), 0, device + ': typing hides the personal action');
+      assert.equal(await thumbsBy(ids.theirs, facts.actor), 0, device + ': typing sends no thumb');
+      await shot(p, topic); await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('reading 👍 in the Reader beside Send records a thumbs-up in Core, and a second press takes it back', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-reader-thumb-' + device;
@@ -1063,7 +1143,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await unfoldRow(p, device, ids.theirs);
       await readerByClick(p, device, ids.theirs, 'A message to thumb up');
       await until(async () => (await button())?.pressed === 'true', `${device}: opened again, the Reader's 👍 shows it on`);
-      assert.equal((await button()).text, '👍 1', device + ': and counts it');
+      assert.equal((await button()).text, '👍', device + ': the personal action has no aggregate count');
       await press(p, device, '#thumb-source');
       await until(async () => await thumbsBy(ids.theirs, facts.actor) === 0, `${device}: Core holds the thumbs-up taken back`);
       await until(async () => (await button())?.pressed === 'false', `${device}: the Reader's 👍 shows it taken back`);
