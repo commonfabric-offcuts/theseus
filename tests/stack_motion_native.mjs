@@ -42,7 +42,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
   const settled = p => until(()=>p.evaluate(`!document.querySelector('#messages [data-stack-motion]')`),'motion restores natural geometry');
   const add = async ({topic,ids}, label='new') => (await control({method:'agent_message',operation_id:topic+'-'+label,topic_id:topic,source:'topic',sender:'aim-core',reply_to:ids.root,addressees:[facts.actor],body:'A new live reply.\n\n'+('The boundary follows this moving edge. '.repeat(9))})).result.message_id;
   const folded = async ctx => {
-    await menuOf(ctx.p,ctx.device,ctx.ids.one); await choose(ctx.p,ctx.device,'Fold message');
+    await menuOf(ctx.p,ctx.device,ctx.ids.one); await choose(ctx.p,ctx.device,'Fold');
     await settled(ctx.p);
   };
   await check('reading dossier motion arrival follows the moving lower edge at 320 375 390 and laptop', async()=>{
@@ -62,7 +62,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       assert.ok(samples.some(f=>f.edge<old-1&&Math.abs(f.floor-old)<1.1),'the old floor holds before contact');
       assert.ok(samples.some(f=>f.edge>old+2&&Math.abs(f.floor-f.edge)<1.1),'after contact the floor follows the moving edge');
       assert.ok(samples.every(f=>Math.abs(f.floor-Math.max(old,f.edge))<1.1),'every sampled boundary follows contact rather than pre-expanding');
-      observations['motion-arrival-'+width]={old,samples}; await shot(p,'motion-arrival-'+width);
+      observations.push({name:'motion-arrival-'+width,old,samples}); await shot(p,'motion-arrival-'+width);
     });
   });
   await check('reading dossier motion fold clips one solid author at 320 375 390 and laptop', async()=>{
@@ -79,7 +79,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       const surface=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.one))}),n=c.parentElement.querySelector(${JSON.stringify(card(ids.two))}),b=c.getBoundingClientRect(),z=n.getBoundingClientRect();return {folded:c.dataset.folded,exposed:z.top-b.top,words:getComputedStyle(c.querySelector('.folded-words')).opacity,hit:c.contains(document.elementFromPoint(b.left+b.width/2,b.top+22))}})()`);
       assert.equal(surface.folded,'true'); assert.equal(surface.words,'1');
       if(width<760){assert.ok(surface.exposed>=43.9,'44px phone strip remains exposed');assert.equal(surface.hit,true);}
-      observations['motion-fold-'+width]={surface,samples}; await shot(p,'motion-fold-'+width);
+      observations.push({name:'motion-fold-'+width,surface,samples}); await shot(p,'motion-fold-'+width);
     });
   });
   await check('reading dossier motion unfold draws the same solid author at 320 375 390 and laptop', async()=>{
@@ -93,7 +93,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       assert.ok(samples.every(f=>f.authors===1&&f.authorOpacity===1),'unfold keeps one solid header');
       assert.ok(Math.abs(samples[0].authorOffset-headerOffset)<3,'the original author resumes at the folded author inset');
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).dataset.folded`),'false');
-      observations['motion-unfold-'+width]=samples; await shot(p,'motion-unfold-'+width);
+      observations.push({name:'motion-unfold-'+width,samples}); await shot(p,'motion-unfold-'+width);
     });
   });
   await check('reading dossier motion reduced preference paints natural arrival fold and unfold without travel', async()=>{
