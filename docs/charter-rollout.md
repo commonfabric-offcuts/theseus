@@ -3,7 +3,7 @@
 Owner: auditor. Source: Tony's New Charter topic,
 `t-314359e63ef84d59ace7349c3a167221`, especially 2448, 2450, 2453 and 2455.
 Implementation tracking: Building Theseus item **405**, created and read back.
-Snapshot: 13 November 2026, 00:18 Pacific. Update this record when evidence
+Snapshot: 13 November 2026, 00:56 Pacific. Update this record when evidence
 changes; a plan or candidate is not installed behavior. The governing request
 is Tony's New Charter #2693, followed by #2700: ship the agreed remaining batch,
 then message editing, then marking outcomes done. Tony's absence is not a new
@@ -17,30 +17,31 @@ Fable retains live deployment ownership. Last verified live: release 68,
 - Already live: keyboard selection margin 379; reply threading 402; Notebook
   cards in the composer 396; message folding 377/381/388/390/393/394; small
   controls 376/382/384/385/386/387/389; agent-name fix 415.
-- The static dossier look, 429, passed independent round-2 review at 00:00,
-  head `a934be83`. Fable is checking separate release-429, squash `85d4155`,
-  on live 68. Its visual follow-ups are item 430, not extra release blockers.
-  Codex owns it through live verification, then takes starred messages in latest
-  mode (413), then motion (412), in separately verified increments.
-- The earlier release-69 train (355 and 421/422) ended without shipping so 429
-  could go first. Its evidence remains intact. The trackpad and Notebook drag
-  failures are fixed in test setup; both engines' relevant cases pass. The new
-  broker failure is reproduced on live 68 with the same `codex_no_answer` trace
-  before queue/add, so it can be separately recorded as existing; its underlying
-  cause remains unresolved (item 432). The click-to-select scenario's unexpected
-  folded state has not been demonstrated on live 68. Fable is capturing that
-  transition in a bounded diagnostic; passing reruns alone do not establish cause.
+- The static dossier look, 429, passed round-2 review but its release check
+  exposed a new join-scroll regression: two candidate failures against two passing
+  live-68 controls. The candidate remains unshipped. Fable's round-3 fixer is the
+  sole writer/probe; Codex owns live verification when it ships. The visual
+  follow-ups remain item 430. Codex is preparing starred messages in latest mode
+  (413) separately: its new Chrome case passed, two old expectations were updated,
+  and the combined native rerun/WebKit evidence is pending. Motion (412) follows.
+- The earlier release-69 train ended unshipped; a new candidate `15789b27` on 68
+  combines 355, 403 and 421/422 and is being checked. The trackpad and Notebook
+  drag setup failures were fixed. The broker failure also reproduces on live 68,
+  with the same `codex_no_answer` trace before queue/add; its underlying cause
+  remains unresolved (item 432). The click-to-select scenario's unexpected fold
+  still needs attribution; passing reruns alone do not establish its cause.
 - Notebook write access/Draft work 371/383/391 is approved and integrated in a
   candidate, including migration renumbering. It is not yet live.
 - 403 (keyboard passes the coordination filter) is approved and waits to combine.
   411 (quoting preserves place) is in its fix round. Fable owns 398–400 next:
   scrolling controls and composer size, including the responsive width and
   feed-card scrollbar requests captured in this stack.
-- Auditor handed off 401/406 at `e9c4d0c8` on
-  `auditor/show-full-own-thumb-build`: Show full message for one feed card,
-  and the composer's own thumbs-up state. Focused Chrome and WebKit checks,
-  source-failure retry, unit checks and mutation evidence pass. Independent review
-  is running in Fable's own branch; the auditor's candidate is frozen.
+- Auditor handed off 401/406 at `e9c4d0c8`. Independent review found two
+  concrete omissions: the source-only Reader loses reaction names/count, and
+  Show full resets internal scrolling without preserving the paragraph's viewport
+  position. Fable confirmed in #2741 that his existing review-loop fixer owns both
+  corrections. Auditor leaves that integration tree and its checks alone; bounded
+  re-review follows. The original candidate is not approved or live.
 - Message editing (228) follows this agreed batch, then completing outcomes
   (404), per Tony #2700 and Fable's confirmation #2706.
 
@@ -99,25 +100,32 @@ their specific evidence is linked; a Markdown rule does not implement a dispatch
 - This establishes a usable local procedure and limited behavioral evidence. It
   does not establish real-team performance, a deployed Theseus trigger, automatic
   checkpoint monitoring, or installation in the hosted worker's separate home.
-- The first request-to-report implementation is complete and pushed at
-  `1cdcf88f` on `auditor/assessment-dispatch`, with 21 focused tests and nine
-  caught mutations. A real installed-Codex functional pilot on a wholly fictional
-  isolated assignment read the complete bound sources through a read-only native
-  tool, inspected the artifact, and posted/read back one report. Repeating the
-  invocation returned the same report. Evidence lives in
-  `auditor/2026-11-12/assessment-405/pilot1/pilot2-evidence.json`. The first pilot's
-  source-lock failure remains recorded; it led to the narrow read-tool transport.
-  No production team was graded. Fable's independent review of this candidate is
-  running on `fable/integrate-405`.
-- The checkpoint successor is complete and pushed at `455cd765` on
-  `auditor/assessment-checkpoints`, based on the frozen first-path candidate.
-  It records adopted artifact/due policies, attributed observations, known waits,
-  consecutive misses and recurring faults; it atomically requests one assessment
-  at the adopted boundary and requires operator renewal for the next increment.
-  Due prompts are repeat-safe and do not declare failure. Twelve focused tests,
-  the 21 request/dispatch regressions and ten caught mutations pass. Contract:
-  `docs/assessment-checkpoints.md`; evidence: `auditor/2026-11-13/assessment-checkpoints`.
-  Handoff #2727 is read back. This does not install a background scheduler.
+- The first request-to-report implementation is pushed at `eb306da8` on
+  `auditor/assessment-dispatch`. Round-1's five blockers are fixed: supported topic
+  freshness keys, complete view privacy classification, terminal recovery from
+  an unusable completed report, work-neutral reporting with explicit operator
+  notification, and permission/scope checks that fail on the actual removed guards.
+  There are 29 focused checks, 144 passing regressions, 25 caught mutations with
+  restored controls, and a passing handoff check. Evidence:
+  `auditor/2026-11-13/assessment-review1`. Handoff #2742 was read back; Fable resumes
+  the same review at round 2. This remains unshipped.
+- A real installed-Codex functional pilot on a wholly fictional isolated
+  assignment read full bound sources and its artifact, then posted/read back one
+  report; retry returned the same report. The original source-lock failure is
+  retained. Evidence: `auditor/2026-11-12/assessment-405/pilot1/pilot2-evidence.json`.
+  No production team was graded by that pilot. The first authorized real target
+  was proposed in #2731 and accepted by Fable: auditor's 405 delivery assignment,
+  assessed by Codex in a fresh native context, with Fable as intervention operator.
+  It must preserve Codex's standing 429/413 context and inspect the original sources.
+- The checkpoint successor was handed off at `455cd765` in #2727. It now includes
+  the first-path fixes and follow-through corrections locally at `e2b7057`:
+  supported feed changes, neutral reminders preserving reader/work state, complete
+  view classification, and a new policy after an abandoned assessment. Fourteen
+  checkpoint tests and 193 focused/regression checks pass; the expanded mutation
+  run is in progress. Evidence: `auditor/2026-11-13/assessment-checkpoints`.
+  Adopted policies record artifacts, due times, evidenced misses and known waits;
+  thresholds atomically request an assessment. This does not install a background
+  scheduler or yet prove adoption by the coordinator's running loop.
 - Remaining acceptance: the specifically requested real-team assessment and actual
   adoption in the coordinator's checkpoint loop. These remain under 405. Pipeline
   state permits only one piece per item; Fable confirmed in #2726 that after the
@@ -170,3 +178,9 @@ allowance changed. Do not copy credentials or migrate the worker's account based
 on a desktop login change. Preserve its context and binding. Automatic cross-model
 team provisioning and migration of existing seats remain later work. The visual
 study is useful hosted work, not a formally instrumented charter trial.
+
+Current continuity check, 13 November 00:52 Pacific: the hosted Codex worker is
+all caught up with zero pending deliveries; its last wake got through at 00:43.
+Its recent #2739 report describes actual 413 coding/native checks. The runner is
+running, and live remains release 68. Health reports host load 19.97 on 18 cores,
+which is a shared performance observation, not evidence of an account failure.
