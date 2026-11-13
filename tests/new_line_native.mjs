@@ -66,7 +66,7 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
   const card = id => `#messages [data-id="${id}"]`;
   const frames = p => p.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
   // Every transition (the line's fade among them) has run.
-  const still = async (p, label) => { await frames(p); await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), label + ': transitions ran'); };
+  const still = async (p, label) => { await frames(p); await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), label + ': transitions ran'); };
   const line = p => p.evaluate(`(()=>{const lines=[...document.querySelectorAll('#messages .new-line')],l=lines[0],c=l&&getComputedStyle(l);
     return {count:lines.length,kind:l?.dataset.line??null,read:l?.classList.contains('new-line-read')??null,opacity:c?.opacity??null,inert:l?.inert??null,
       after:l?.previousElementSibling?.dataset?.id??null}})()`);

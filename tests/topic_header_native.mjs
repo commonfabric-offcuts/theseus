@@ -278,7 +278,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(() => p.calls.slice(before).find(c => c.payload?.kind === 'topic.update' && c.payload.args?.title === 'Renamed by its coordinator'), 'the rename is sent');
     await until(() => p.evaluate(`document.querySelector('#topic-title').textContent === 'Renamed by its coordinator'`), 'the title changes without a reload');
     assert.equal((await view('topic', { topic_id: made.topic_id })).topic.title, 'Renamed by its coordinator', 'Core took the coordinator\'s rename');
-    await until(() => p.evaluate(`document.getAnimations().every(a=>a.playState!=='running')`), 'settled');
+    await until(() => p.evaluate(`document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')`), 'settled');
     await shot(p, 'header-coordinator');
     await p.key('Escape');
     await until(async () => !await isOpen(p), 'Escape closes it');
@@ -323,6 +323,67 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.ok(members.items.some(m => m.actor_id === 'fixture-outside-agent'), 'Core took it: ' + JSON.stringify(members.items));
     await shot(p, 'header-team-coordinator');
     assert.deepEqual(p.errors, []);
+  });
+
+  await check('header renamed agent shows its current name in team and topic pickers while click and Return retain its identity', async () => {
+    const id = 'fixture-outside-agent', name = 'codex';
+    const made = await control({ method: 'agent_topic', operation_id: 'header-renamed-team', title: 'Current names', body: 'Keep the same agent.', coordinator: true });
+    await control({ method: 'actor_name', actor_id: id, name });
+    try {
+      const p = await page('header-renamed-team', null, true, { url: `${facts.origin}/?workspace=${made.workspace_id}` });
+      const chip = `#team-people .people-chips [data-id="${id}"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector('#team-people .add-chip'))`), 'team management appears');
+      await p.evaluate(`document.querySelector('#team-people .add-chip').scrollIntoView({block:'center'})`);
+      await p.point('#team-people .add-chip');
+      await p.send('Input.insertText', { text: name });
+      await until(() => p.evaluate(`document.querySelector('${chip}')?.textContent === 'codex'`), 'the current name is offered');
+      await p.point(chip);
+      const inTeam = async () => (await view('workspace_members', { workspace_id: made.workspace_id })).items.some(m => m.actor_id === id && m.name === name);
+      await until(inTeam, 'click adds the original actor, with its current name');
+      await until(() => p.evaluate(`Boolean(document.querySelector('#team-people [aria-label="Remove codex"]'))`), 'team pill also uses the current name');
+      await shot(p, 'header-renamed-team');
+      await p.point('#team-people [aria-label="Remove codex"]');
+      await until(async () => !await inTeam(), 'remove uses the same actor');
+      await p.point('#team-people .people-add input');
+      await p.key('a', 4);
+      await p.send('Input.insertText', { text: 'CoDeX' });
+      await p.key('Enter');
+      await until(inTeam, 'Return resolves the current name to that same actor');
+
+      const q = await page('header-renamed-topic', null, true, { url: `${facts.origin}/?topic=${made.topic_id}` });
+      await until(() => q.evaluate(`Boolean(document.querySelector('#participants .add-chip'))`), 'topic management appears');
+      await q.evaluate(`document.querySelector('#participants').scrollIntoView({block:'center'})`);
+      await q.point('#participants .add-chip');
+      await q.send('Input.insertText', { text: name });
+      await until(() => q.evaluate(`document.querySelector('#participants [data-id="${id}"]')?.textContent === 'codex'`), 'topic picker offers current name');
+      await q.key('Enter');
+      await until(async () => (await view('topic', { topic_id: made.topic_id })).participants.some(m => m.actor_id === id && m.active), 'topic joins original actor');
+      await until(() => q.evaluate(`Boolean(document.querySelector('#participants [aria-label="Remove codex"]')) && [...document.querySelectorAll('#participants .pill-name')].some(b => b.textContent === 'codex')`), 'the topic color/name button also uses current name');
+      await shot(q, 'header-renamed-topic');
+      const message = (await control({ method: 'agent_message', operation_id: 'header-renamed-message', sender: id, topic_id: made.topic_id, whole_topic: true, body: 'Same agent, current name.' })).result.message_id;
+      const card = `#messages .message-card[data-id="${message}"]`;
+      await until(() => q.evaluate(`document.querySelector('${card} .author-name')?.textContent === 'codex'`), 'the new message badge uses current name');
+      assert.equal((await view('source', { source_ref: { kind: 'message', id: message } })).author, id, 'the message remains attributed to its original actor');
+      await q.evaluate(`document.querySelector('${card}').scrollIntoView({block:'center'})`);
+      await q.point(`${card} .message-preview`);
+      await until(() => q.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-origin').textContent.startsWith('codex')`), 'the Reader also uses current name');
+      await until(() => q.evaluate(`document.querySelector('#recipient-chips [data-name="${id}"]')?.textContent === 'codex'`), 'reply recipient choice uses current name');
+      assert.equal(await q.evaluate(`document.querySelector('#who-chip').textContent`), 'Tell codex · everyone here');
+      assert.equal(await q.evaluate(`document.querySelector('#writing-to').textContent`), 'To codex');
+      assert.ok((await q.evaluate(`document.querySelector('#writing-body').placeholder`)).startsWith('Reply to codex'));
+      await shot(q, 'header-renamed-reader');
+      const body = 'Reply addressed to the same renamed agent.';
+      await q.point('#writing-body');
+      await q.send('Input.insertText', { text: body });
+      await until(() => q.evaluate(`document.querySelector('#writing-body').value === ${JSON.stringify(body)}`), 'reply is written');
+      await q.point('#send-reply');
+      const sent = await until(async () => (await view('topic_messages', { topic_id: made.topic_id, direction: 'before', limit: 20 })).items.find(item => item.body === body), 'Core records the reply');
+      assert.deepEqual(sent.addressees, [id], 'display names never replace canonical recipients');
+      assert.equal(sent.reply_to, message, 'the renamed author keeps the same reply thread');
+      assert.deepEqual([...p.errors, ...q.errors], []);
+    } finally {
+      await control({ method: 'actor_name', actor_id: id, name: id });
+    }
   });
 
   await check('header a tap on a chip saves at once, and while it waits each person is a chip whose tap is saved, the focus staying on it', async () => {
@@ -868,7 +929,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       await tapOn(p, '#settings-open');
       await until(() => isOpen(p), 'a tap on the gear opens it');
       // Measured once its opening animation has run, as the person sees it.
-      await until(() => p.evaluate(`document.getAnimations().every(a=>a.playState!=='running')`), 'the dialog settled');
+      await until(() => p.evaluate(`document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')`), 'the dialog settled');
       const full = await p.evaluate(`(()=>{const b=document.querySelector('#topic-settings').getBoundingClientRect();return {box:[b.x,b.y,b.width,b.height],viewport:[innerWidth,innerHeight],font:getComputedStyle(document.querySelector('#topic-state-note')).fontSize}})()`);
       assert.deepEqual(full.box, [0, 0, ...full.viewport], 'the dialog fills the screen');
       assert.equal(full.font, '16px', 'its fields are 16px, so the phone does not zoom');
@@ -923,16 +984,16 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     let stop = null;
     const expected = await p.evaluate(`${buttons}.map(e=>e.getAttribute('aria-label')||e.title)`);
     const seen = [];
-    // A lit card's bar buttons follow it in the Tab order (docs/interaction.md): up to three stops before the people.
+    // A lit card's header star and bar buttons follow it in the Tab order (docs/interaction.md): up to four stops before the people.
     let past = 0;
     for (;;) {
       await p.key('Tab');
-      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar')),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
-      if (!at.pill && at.bar && !seen.length && past++ < 3) continue;
+      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar'))||a.classList.contains('card-star'),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
+      if (!at.pill && at.bar && !seen.length && past++ < 4) continue;
       if (!at.pill) { stop = await p.evaluate(`(a=>a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30))(document.activeElement)`); break; }
       seen.push(at.name);
       assert.deepEqual([at.visible, at.style], [true, 'solid'], `${at.name}: the browser draws its keyboard ring`);
-      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'settled');
+      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'settled');
       const sides = ringSides(await screen(), at.box, focusColor);
       if (seen.length === 1) await shot(p, 'header-ring-first-pill-button');
       for (const [side, share] of Object.entries(sides)) assert.ok(share >= 0.5, `${at.name}: the ring shows along its ${side} side (${share.toFixed(2)} of it): ${JSON.stringify(sides)}`);

@@ -15,7 +15,8 @@ places them in (docs/outline-order.md).
 {
   "instance_id": "I",
   "items": [
-    {"id": "W", "owner_id": "A", "title": "Outcome", "title_truncated": false, "version": 1}
+    {"id": "W", "owner_id": "A", "title": "Outcome", "title_truncated": false, "version": 1,
+     "conversation_id": "T"}
   ],
   "next_cursor": null
 }
@@ -27,6 +28,11 @@ ordinary `workspace` detail view retrieves the full title. Stored titles are
 unchanged. SQL retrieves at most 1025 bytes of each title, and the complete compact
 UTF-8 JSON response fits the existing 131072-byte summary limit, including escapes
 and the continuation cursor.
+
+`conversation_id` names the topic that holds the outcome's Conversation, or is
+`null` while it has none (an outcome made before the Conversation existed), so the
+Outcomes home can open an outcome's Conversation with one press and its page when
+it has none.
 
 Only `next_cursor: null` means the list has ended. A byte-limited page can contain
 fewer than `limit` items and still continue. The cursor names the last returned

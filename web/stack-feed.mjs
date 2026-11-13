@@ -77,9 +77,10 @@ export class StackFeed {
   // hold(paint): repaints keeping the page where the person is. press: the
   // press held down on the page (press-hold.mjs).
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
+  // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {},
-    hold = paint => paint(), press, thumb = null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, hold, press, thumb, clock, doc });
+    hold = paint => paint(), press, thumb = null, redrawn = () => {}, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, hold, press, thumb, redrawn, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
@@ -131,8 +132,9 @@ export class StackFeed {
     } }));
     for (const entry of entries(this.list)) {
       const card = cardIn(entry), item = this.messages().get(card.dataset.id);
-      if (item) this.paintFoldedThumb(card, item);
+      if (item) { this.paintStar(card.querySelector(':scope > .message-author'), item); this.paintFoldedThumb(card, item); }
     }
+    this.redrawn();
   }
   // A 👍 on a folded message's row (item 390), before "Folded": the same
   // thumbs-up as the bar's 👍, pressed once given, with the count once anyone
@@ -145,16 +147,40 @@ export class StackFeed {
     if (!row || !this.thumb || !mayThumb(item, this.viewer)) { button?.remove(); return; }
     if (!button) {
       button = this.doc.createElement('span'); button.className = 'folded-thumb'; button.setAttribute('role', 'button'); button.tabIndex = -1;
-      const press = () => { const shown = this.messages().get(button.dataset.id); if (shown) this.thumb(shown, !thumbed(shown, this.viewer)); };
+      const press = () => { const shown = this.cardItem(button); if (shown) this.thumb(shown, !thumbed(shown, this.viewer)); };
       button.onclick = event => { event.stopPropagation(); press(); };
       button.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); press(); } };
       row.insertBefore(button, row.querySelector(':scope > .folded-cue'));
     }
     const on = thumbed(item, this.viewer), count = reactionsOf(item).thumbs.length, words = on ? 'Remove thumbs up' : 'Thumbs up';
     const shown = count ? `👍 ${count}` : '👍';
-    button.dataset.id = item.id;
     if (button.textContent !== shown) button.textContent = shown;
     button.setAttribute('aria-pressed', String(on)); button.setAttribute('aria-label', count ? `${words} (${count})` : words); button.title = words;
+  }
+  // The message a control in a card acts on: its card's. Only the card names
+  // its message (data-id), so what finds a message's card finds that alone.
+  cardItem(control) { return this.messages().get(control.closest('.message-card')?.dataset.id) ?? null; }
+  // The star in a message's header (item 376), right after who wrote it and
+  // when: the same act as Star for me in ⋯. Outline, it shows while the
+  // message is lit (under the pointer, chosen by the keys, or tapped) or has
+  // the focus; filled, on a message the reader starred, always (stack-look.css).
+  // The card is a button, so the star is a part of it, as the reply arrow is
+  // (card-reading.mjs): it answers its own press and keys, and the bar's Tab
+  // reaches it first (message-menu.mjs). Kept where it is when the line is
+  // painted again (author: the card's author line).
+  paintStar(author, item) {
+    if (!author) return;
+    let star = author.querySelector(':scope > .card-star');
+    if (!star) {
+      star = this.doc.createElement('span'); star.className = 'card-star'; star.setAttribute('role', 'button'); star.tabIndex = -1;
+      const press = () => { const shown = this.cardItem(star); if (shown) this.star(shown); };
+      star.onclick = event => { event.stopPropagation(); press(); };
+      star.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); press(); } };
+      author.insertBefore(star, author.querySelector(':scope > .replied-mark'));
+    }
+    const starred = Boolean(this.actsOf(item.id, item).starred), words = starred ? 'Unstar' : 'Star for me';
+    if (star.textContent !== (starred ? '★' : '☆')) star.textContent = starred ? '★' : '☆';
+    star.setAttribute('aria-pressed', String(starred)); star.setAttribute('aria-label', words); star.title = words;
   }
   paintCoordination(count = this.coordinationCount ?? 0) {
     this.coordinationCount = count;
@@ -193,9 +219,11 @@ export class StackFeed {
   }
   // Draws the stacks again when a message's acts as shown are no longer what
   // they were last drawn with; an answer landing under a press held down waits
-  // for it to end, so nothing moves under the pointer.
+  // for it to end, so nothing moves under the pointer. One the page has not
+  // loaded (the Reader's, opened alone) is shown only by what else shows its acts.
   settled(id) {
-    if (this.messages().has(id) && this.drawn.get(id) !== JSON.stringify(this.actsOf(id))) this.press.after('stacks', () => this.arrange());
+    if (!this.messages().has(id)) this.redrawn();
+    else if (this.drawn.get(id) !== JSON.stringify(this.actsOf(id))) this.press.after('stacks', () => this.arrange());
   }
   async send(kind, item, args) {
     const field = FIELD[kind], { authority_id, authority_epoch } = this.authority();
@@ -231,9 +259,9 @@ export class StackFeed {
   }
   // A star keeps a message in view: starring a folded message unfolds it too.
   star(item) {
-    const on = !this.actsOf(item.id).starred;
+    const on = !this.actsOf(item.id, item).starred;
     this.act('message.star', item, { starred: on });
-    if (on && this.actsOf(item.id).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
+    if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
     this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
   }
   // The right rail's Unstar, for a message here or in another place: one this
@@ -410,6 +438,7 @@ export class StackFeed {
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
   key(event) {
+    if (this.renameKey(event)) return;
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]')) return;
     const at = this.doc.activeElement;
@@ -445,6 +474,22 @@ export class StackFeed {
     if (acts.starred && !acts.folded) { this.say('Starred messages stay open'); return; }
     if (tab && levelOf(this.state, found.stack.id) !== 'open') setLevel(this.state, found.stack, 'open');
     this.setFold(item, !acts.folded);
+  }
+  // Return on a dossier as a whole, its chevron or its compact header (the
+  // head's row standing for the dossier), edits its title as Rename in ⋯ does
+  // (item 385); Return saves it and Escape cancels, as there. Return on a
+  // message, a head shown whole included, still replies.
+  renameKey(event) {
+    if (event.key !== 'Enter' || event.isComposing || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || this.doc.querySelector('dialog[open]')) return false;
+    const at = this.doc.activeElement, section = at && this.list.contains(at) ? at.closest('.reply-stack') : null;
+    const head = section && this.entryFor(section.dataset.stack);
+    if (!head) return false;
+    const whole = at.classList.contains('stack-toggle') || (section.dataset.headOpen === 'false' && at === cardIn(head));
+    const found = whole && stackOf(this.list, head);
+    if (!found?.head || !found.stack.replies.length) return false;
+    event.preventDefault();
+    this.startRename(found.stack);
+    return true;
   }
   // What ⋯ offers for the stack a message is in, with the keys that do the
   // same; on a phone, the stack's moves and joins sit behind "Move or join…".

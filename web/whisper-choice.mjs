@@ -137,7 +137,7 @@ export function sendWord(state, names) {
 // place: where the writing is posted when that is not the topic being read (audienceWords).
 // to: the quiet line that says who it goes to (toWords), when the composer has one.
 export function paintChoice(row, { draft, names, kindOf, everyone, send, field, chip = null, lineHost = null, readOnly = false, answeringWhisper = false,
-  place = null, to = null, onChoose }) {
+  place = null, to = null, onChoose, nameOf = id => id }) {
   if (!row.querySelector('.intent-choice')) {
     const group = node('div', undefined, 'intent-choice');
     group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'How this is sent');
@@ -171,7 +171,8 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
     chip.title = why;
     if (why) chip.setAttribute('aria-label', `${WORDS[value]}, ${why}`); else chip.removeAttribute('aria-label');
   }
-  const [who, words, more] = audienceWords(state, names, everyone, { answeringWhisper, place });
+  const shownNames = names.map(nameOf), shownEveryone = everyone.map(nameOf);
+  const [who, words, more] = audienceWords(state, shownNames, shownEveryone, { answeringWhisper, place });
   const line = (lineHost ?? row).querySelector('.audience-line');
   line.classList.toggle('switched', state.switched);
   line.replaceChildren(node('strong', who), state.switched ? node('span', words, 'switch-words') : words, node('span', more, 'audience-more'));
@@ -179,9 +180,9 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
   const word = send?.querySelector('.send-word');
   if (word) word.textContent = sendWord(state, names);
   // Painted on every keystroke: only a change is written, so a screen reader hears it once.
-  if (to) { const words = toWords(names, place); if (to.textContent !== words) to.textContent = words; to.hidden = false; }
+  if (to) { const words = toWords(shownNames, place); if (to.textContent !== words) to.textContent = words; to.hidden = false; }
   if (chip) {
-    chip.textContent = chipWords(state, names, everyone, { answeringWhisper, place });
+    chip.textContent = chipWords(state, shownNames, shownEveryone, { answeringWhisper, place });
     chip.classList.toggle('whispering', state.choice === 'whisper');
   }
   return state;

@@ -286,7 +286,7 @@ try {
         }
         await point(`#messages [data-id="${facts.sources[index].id}"]`);
         await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
-        await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
+        await until(() => evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled reader');
       },
     };
     await setup.beforeNavigate?.(p);

@@ -88,6 +88,18 @@ class WhoIsInItCase(ConversationCase):
         self.assertEqual(self.store.view("owner", "workspace", {"workspace_id": "w-old"})["workspace"]["conversation_id"],
                          self.store.view("owner", "conversation", {"workspace_id": "w-old"})["conversation"]["topic_id"])
 
+    def test_the_list_of_outcomes_says_each_ones_conversation_so_a_press_on_it_can_open_that(self):
+        # Item 384: the Outcomes home opens an outcome's Conversation, and its page while it has none.
+        listed = lambda actor: {item["id"]: item["conversation_id"] for item in self.store.view(actor, "workspaces", {})["items"]}
+        self.assertEqual(listed("agent-b")["w1"], self.conversation)
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO workspaces VALUES ('w-old','owner','Older','',NULL,1)")
+            db.execute("INSERT INTO workspace_members VALUES ('w-old','owner')")
+        self.assertIsNone(listed("owner")["w-old"], "an outcome made before version 28 has none")
+        self.assertEqual(listed("owner")["w1"], self.conversation)
+        self.store.start_conversation("w-old", None, [])
+        self.assertEqual(listed("owner")["w-old"], self.store.view("owner", "conversation", {"workspace_id": "w-old"})["conversation"]["topic_id"])
+
     def test_changing_the_coordinator_moves_who_is_in_it_once_and_the_old_one_still_owes_its_asks(self):
         ask = self.posted("Can you check the copy?", addressees=["agent-a"], intent="ask")
         self.assertEqual(self.waiting(), [("agent-a", ask)])

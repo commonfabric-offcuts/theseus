@@ -126,7 +126,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (size === 'laptop' && theme === 'light') {
         // ← Outcomes opens the Outcomes home, where the list of outcomes is.
         await o.point('#outcomes-home');
-        await until(() => o.evaluate('document.body?.dataset.ready==="true" && location.search==="" && document.querySelector("#topic-title").textContent==="Outcomes"').catch(() => false), 'the Outcomes home opened');
+        await until(() => o.evaluate('document.body?.dataset.ready==="true" && location.search==="" && Boolean(document.querySelector("#workspaces a[data-workspace-id=w1]"))').catch(() => false), 'the Outcomes home opened');
       }
       assert.deepEqual(o.errors, []); await o.close();
       // The Outcomes home: no rail either; the logo block heads main, above the outcomes.
@@ -1052,7 +1052,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card)}).classList.contains('lit')`), at + ': the first tap lights the card');
       await tap(p, words);
       await until(() => readerOpen(p), at + ': the second tap opens it in the Reader');
-      await until(() => p.evaluate('document.getAnimations().every(a => a.playState !== "running")'), at + ': the Reader has settled');
+      await until(() => p.evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== "running")'), at + ': the Reader has settled');
       await tap(p, '#writing-body');
       await until(() => p.evaluate("document.activeElement?.id==='writing-body'"), at + ': the reply has the focus');
       await p.send('Input.insertText', { text: 'An answer' });
@@ -1333,6 +1333,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await leaveFeed('ArrowRight');
     assert.equal(await keyedAt(p), 'things:' + sections[1], 'and → to the right rail, on the section it was on');
     await p.key('ArrowLeft');
+    // On a dossier shown as its row, Return edits its title (item 385): the keys go on to a message of their own.
+    for (let n = 0; n < 4 && await p.evaluate("Boolean(document.activeElement?.matches?.('.stack-head-card') && document.activeElement.closest('.reply-stack')?.dataset.headOpen === 'false')"); ++n) await p.key('ArrowDown');
     const back = await keyedAt(p);
     // Return on the message opens the Reader; the keys there are the writing's.
     await p.key('Enter');
@@ -2077,5 +2079,56 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await keyedAt(p), 'message:' + first, '↓ from the header goes to the message at the top');
     await roomy('↓ from the header\'s buttons, from the window\'s top edge');
     assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 384: on the Outcomes home a press on an outcome opens its Conversation, and the home has no heading of its own.
+  // Last, so the outcome it adds lengthens no outline the cases before it press in.
+  await check('rail on the Outcomes home a press on an outcome opens its Conversation, and so does Return on its row; one with no Conversation opens its page, and the home has no Outcomes heading', async () => {
+    await control({ method: 'older_outcome', workspace_id: 'rail-home-older', title: 'Home older outcome', topic_id: 'rail-home-older-topic', topic_title: 'Home older topic' });
+    const row = id => `#workspaces a[data-workspace-id="${id}"]`;
+    const press = async (p, size, selector) => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+      if (SIZES[size].mobile) await tap(p, selector); else await p.point(selector);
+    };
+    // The home lists twenty outcomes at a time, and the cases before this one made many: More until each is listed.
+    const listed = async (p, size, ids, label) => {
+      for (let page = 0; page < 20; page++) {
+        const missing = await until(() => p.evaluate(`document.body?.dataset.ready==="true" && document.querySelector('#workspaces a') ? ${JSON.stringify(ids.map(row))}.filter(s=>!document.querySelector(s)).length + (document.querySelector('#more-workspaces')?.hidden === false ? ':more' : ':end') : null`).catch(() => null), label);
+        if (missing.startsWith('0:')) return;
+        assert.ok(missing.endsWith(':more'), `${label}: ${ids} are not all on the list, and it has no more`);
+        const shown = await p.evaluate(`document.querySelectorAll('#workspaces a').length`);
+        await press(p, size, '#more-workspaces');
+        await until(() => p.evaluate(`document.querySelectorAll('#workspaces a').length > ${shown}`), label + ': More lists more');
+      }
+      assert.fail(label + ': never listed');
+    };
+    const landed = (p, search) => until(() => p.evaluate(`document.body?.dataset.ready==="true" && location.search===${JSON.stringify(search)}`).catch(() => false), 'the page reached is ' + search);
+    for (const size of ['laptop', 'phone']) {
+      let h = await open(`rail-home-press-${size}`, '/', size);
+      await listed(h, size, ['w1', 'rail-home-older'], size + ': the outcomes are listed');
+      const heading = await h.evaluate(`(()=>{const shown=e=>Boolean(e)&&e.getClientRects().length>0;return {header:shown(document.querySelector('#main > .topic-header')),title:shown(document.getElementById('topic-title')),
+        line:shown(document.getElementById('topic-description')),list:document.getElementById('outcomes-heading').textContent}})()`);
+      assert.deepEqual(heading, { header: false, title: false, line: false, list: 'Your outcomes' }, size + ': no Outcomes heading or line under it; the list is the page');
+      assert.deepEqual(await h.evaluate(`[${JSON.stringify(row('w1'))},${JSON.stringify(row('rail-home-older'))}].map(s=>document.querySelector(s).getAttribute('href'))`),
+        ['?conversation=w1', '?workspace=rail-home-older'], size + ': each row\'s link names where a press goes');
+      await shot(h, `rail-home-press-${size}`);
+      await press(h, size, row('w1'));
+      await landed(h, '?conversation=w1');
+      assert.equal(await h.evaluate(`document.body.classList.contains('conversation-page') && document.getElementById('topic-title').textContent`), 'Conversation', size + ': a press on an outcome opens its Conversation');
+      assert.deepEqual(h.errors, []); await h.close();
+      h = await open(`rail-home-older-${size}`, '/', size);
+      await listed(h, size, ['rail-home-older'], size + ': the older outcome is listed');
+      await press(h, size, row('rail-home-older'));
+      await landed(h, '?workspace=rail-home-older');
+      assert.equal(await h.evaluate(`document.getElementById('topic-title').textContent`), 'Home older outcome', size + ': an outcome with no Conversation opens its page');
+      assert.deepEqual(h.errors, []); await h.close();
+    }
+    // The keys: Return on a focused row opens the outcome's Conversation too.
+    const k = await open('rail-home-return', '/', 'laptop');
+    await listed(k, 'laptop', ['w1'], 'the outcomes are listed');
+    await k.evaluate(`document.querySelector(${JSON.stringify(row('w1'))}).focus()`);
+    await k.key('Enter');
+    await landed(k, '?conversation=w1');
+    assert.deepEqual(k.errors, []); await k.close();
   });
 }

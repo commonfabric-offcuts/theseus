@@ -17,13 +17,24 @@ the pointer's way, the keys' and the phone's.
   the reply arrow beside the card's time (docs/topic-reading.md): where it
   would, it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through
-  its bar's buttons, ⋯ last, then on from the message (Shift-Tab from the
+  the star in its header (docs/reply-stacks.md) and its bar's buttons, ⋯ last, then on from the message (Shift-Tab from the
   bar's first button comes back to it). Moving the pointer off the messages
   and their bar, or focusing another pane, clears the feed's light. Its last
   message is still remembered for returning with the keys. A rail's old DOM
   focus never draws a second ring while the pointer selects a message;
   using the rail keys gives the light back to that rail. A click on a lit message opens
-  it in the Reader. On a phone a tap lights a message and shows its bar, a
+  it in the Reader.
+  A click or a tap in a message, or on its bar, moves the keys' place to that
+  message, and one on a dossier's header to the dossier, so ↑ ↓, Return and the
+  stack keys go on from there; the pointer moving onto a message or a header
+  does the same. Neither scrolls the page. Neither takes the focus from
+  writing, a composer's own controls and panels (its who chip and Who sees
+  this message, say), an open menu or the Reader, the places the page's keys
+  leave alone (`writing` in `web/pane-keys.mjs`); a press on a message's bar
+  there acts and leaves the focus where it was. A press that ends selecting words
+  leaves them selected. The pointer gives the keys' place only when it really
+  moves: the keys moving the page under a still pointer keep theirs, and a
+  finger gives it by its tap alone. On a phone a tap lights a message and shows its bar, a
   second tap opens it, and a tap anywhere but a message, its bar or a pop-up lets the
   light go; scrolling keeps it. The bar stays inside the window while any of
   its message is on screen and scrolls away with it. Where a finger presses,
@@ -51,8 +62,10 @@ the pointer's way, the keys' and the phone's.
   (`web/reveal.mjs`, `shownSelected` in `web/reply-stacks.mjs`)
 - **Return**, or **Reply** on the bar (a phone's way), opens the Reader on the
   lit message with the cursor in the reply and nothing quoted; to quote part of
-  it, select that part in the Reader and press Return. Return in writing, on a
-  folded line or on another control does what it does there.
+  it, select that part in the Reader and press Return. Return on a selected
+  dossier (its header or chevron) edits its title instead, as ✎ does: Return
+  saves it and Escape cancels; Space folds and opens the dossier. Return in
+  writing, on a folded line or on another control does what it does there.
 - **⌘C** (Ctrl-C off a Mac, as ⌘A is, `web/writing-input.mjs`) with no words
   selected copies the lit message's words as written: the message the pointer
   or the keys lit last, the one Return answers, and a cut-off message whole.
@@ -251,6 +264,13 @@ page painted. Its checks, by rule:
   page, every key that leaves a card picked …" (`native-notebook`,
   `native-webkit-notebook`); the rule's geometry, the scrolling area and its
   `scroll-padding`: `tests/ui_reveal.test.mjs`;
+  a click, a tap or the pointer moving giving the keys' place, and not from
+  writing or a composer's panel, nor by a press on the bar while writing,
+  under keys moving a still pointer, or by touch: "reading stacks a
+  click or a tap in a message moves the keys' place there …" and "reading
+  stacks the pointer moving onto a message or a dossier gives it the keys'
+  place …"; Return on a dossier: "reading stacks Return on a selected dossier
+  edits its title …";
   Tab through the bar and the ⋯ menu: `tests/links_native.mjs` ("header Tab
   reaches a message's ⋯ …", "header a message's ⋯ copies its link …").
 - A cut-off message: "reading a cut-off message scrolls in place …". Safari's

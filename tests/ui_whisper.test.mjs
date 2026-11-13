@@ -33,6 +33,20 @@ function painted(t) {
   return { document, row, field, send, word, paint, radios, line, chosenBy };
 }
 
+test('audience labels use current names while whisper eligibility and sending keep canonical actors', t => {
+  const f = painted(t), chip = f.document.createElement('button'), to = f.document.createElement('div');
+  const draft = { whisper: true, addressees: ['codex-worker'] }, kinds = [];
+  const kindOf = id => { kinds.push(id); return id === 'codex-worker' ? 'agent' : 'human'; };
+  f.paint(draft, draft.addressees, { chip, to, kindOf, everyone: ['codex-worker'], nameOf: id => id === 'codex-worker' ? 'codex' : id });
+  assert.equal(chip.textContent, 'Whisper to codex · only you two');
+  assert.equal(to.textContent, 'To codex');
+  assert.equal(f.line().querySelector('strong').textContent, 'Only you and codex');
+  assert.equal(f.radios().whisper.disabled, false);
+  assert.ok(kinds.every(id => id === 'codex-worker'));
+  assert.deepEqual(draft.addressees, ['codex-worker']);
+  assert.deepEqual(sending(draft, draft.addressees, kindOf), { whisper: true, intent: null });
+});
+
 test('with no choice of the person\'s a message starts as a Tell, even to one agent; only a reply to a whisper starts as a whisper', () => {
   assert.equal(defaultChoice([], kindOf), 'tell', 'nobody named');
   assert.equal(defaultChoice(['fable'], kindOf), 'tell', 'one agent');

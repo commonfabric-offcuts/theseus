@@ -8,6 +8,16 @@ import { checkedView } from './freshness.mjs';
 
 const PAGE = 100;
 
+// Names are presentation; membership and addressing still use the stable ID.
+const actorName = person => person.name || person.id || person.actor_id;
+const actorId = person => person.id ?? person.actor_id;
+const folded = value => String(value ?? '').toLowerCase();
+function distinctName(person, people) {
+  const name = actorName(person), id = actorId(person);
+  return people.some(other => other && actorId(other) !== id && folded(actorName(other)) === folded(name))
+    ? `${name} (${id})` : name;
+}
+
 // Every enabled person and agent, up to pages * PAGE of them; more says the
 // directory went on past what was read.
 export async function readDirectory(api, instanceId, { pages = 10 } = {}) {
@@ -61,17 +71,17 @@ const element = (tag, props = {}, ...children) => {
 // the topic, and add, given to a reader who may change its participants,
 // offers to make them one, which also sends them every later message. answer
 // is reach(name), when the caller has already asked.
-export function markReach(chip, name, reach, answer = reach?.(name)) {
+export function markReach(chip, name, reach, answer = reach?.(name), nameOf = id => id) {
   if (!answer || answer.reachable) return;
   chip.classList.add('unreachable');
   if (answer.disabled) {
     chip.append(element('span', { className: 'reach', textContent: ' · switched off' }));
-    chip.title = `${name} is switched off, so a message to them is refused.`;
+    chip.title = `${nameOf(name)} is switched off, so a message to them is refused.`;
     return;
   }
   chip.append(element('span', { className: 'reach', textContent: ' · not in this topic' }));
-  chip.title = answer.add ? `A message to ${name} is refused until they are in this topic.`
-    : `A message to ${name} is refused until they are in this topic. Its creator or the outcome's owner can add them.`;
+  chip.title = answer.add ? `A message to ${nameOf(name)} is refused until they are in this topic.`
+    : `A message to ${nameOf(name)} is refused until they are in this topic. Its creator or the outcome's owner can add them.`;
   if (!answer.add) return;
   const add = element('button', { type: 'button', textContent: 'Add to topic (gets all its messages)' });
   const said = element('span', { className: 'reach-notice', hidden: true });
@@ -89,7 +99,7 @@ export function markReach(chip, name, reach, answer = reach?.(name)) {
     let receipt;
     try { receipt = await answer.add(); } catch (error) { receipt = { error }; }
     offer.out = false;
-    offer.notice = receipt?.status === 'committed' ? '' : ` · ${receipt?.error?.message ?? `Adding ${name} was not confirmed.`}`;
+    offer.notice = receipt?.status === 'committed' ? '' : ` · ${receipt?.error?.message ?? `Adding ${nameOf(name)} was not confirmed.`}`;
     offer.paint(); offer.leave();
   };
   chip.append(add, said);
@@ -150,7 +160,7 @@ function placeChips(host, chips) {
 // phone (docs/reader.md): everyone named, each with only a ×, and opener
 // (+ Someone) for the rest. It never lists anyone not named, so it is the
 // same size however big the team.
-export function paintAddress(host, field, { people, named, toggle, remove, reach, summary = null }) {
+export function paintAddress(host, field, { people, named, toggle, remove, reach, summary = null, nameOf = id => id }) {
   const at = document.activeElement, holder = [...host.children].find(chip => chip === at || [...chip.children ?? []].includes(at));
   const held = holder ? { name: holder.dataset.name, inner: holder !== at ? at.textContent : null } : null;
   const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
@@ -163,6 +173,7 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
   const offered = people.filter((id, index) => people.indexOf(id) === index);
   const chips = offered.map(id => {
     const chip = kept(id, 'choice', () => element('button', { type: 'button', className: 'choice-chip', textContent: id }));
+    if (chip.textContent !== nameOf(id)) chip.textContent = nameOf(id);
     chip.setAttribute('aria-pressed', named.includes(id) ? 'true' : 'false');
     chip.onclick = () => toggle(id, !named.includes(id));
     return chip;
@@ -172,15 +183,20 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
     const answer = reach?.(name); answers.set(name, answer);
     const key = JSON.stringify(['named', answer ? [answer.reachable === true, answer.disabled === true, Boolean(answer.add), answer.scope ?? null] : null]);
     const chip = kept(name, key, () => {
-      const fresh = element('span', { className: 'chip', textContent: name }), out = element('button', { type: 'button', textContent: '×' });
-      out.setAttribute('aria-label', `Remove ${name}`); fresh.out = out;
-      fresh.append(out); markReach(fresh, name, reach, answer); return fresh;
+      const fresh = element('span', { className: 'chip' }), out = element('button', { type: 'button', textContent: '×' });
+      fresh.nameNode = element('span', { textContent: nameOf(name) }); fresh.out = out;
+      fresh.append(fresh.nameNode, out); markReach(fresh, name, reach, answer, nameOf); return fresh;
     });
+    chip.nameNode.textContent = nameOf(name);
+    chip.out.setAttribute('aria-label', `Remove ${nameOf(name)}`);
+    if (answer && !answer.reachable) chip.title = answer.disabled
+      ? `${nameOf(name)} is switched off, so a message to them is refused.`
+      : `A message to ${nameOf(name)} is refused until they are in this topic.${answer.add ? '' : " Its creator or the outcome's owner can add them."}`;
     chip.out.onclick = () => remove(name);
     chips.push(chip);
   }
   placeChips(host, chips);
-  if (summary) paintNamed(summary, named, remove, answers);
+  if (summary) paintNamed(summary, named, remove, answers, nameOf);
   if (!held) return;
   const next = chips.find(chip => chip.dataset.name === held.name);
   // The same button on the new chip (its words say which), or the chip itself.
@@ -192,19 +208,21 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
 // (its offer to add them is in the naming sheet). A chip is kept while it
 // shows the same, so a press held across a repaint still clicks, and a ×
 // that held the focus as its chip went hands it to opener.
-function paintNamed({ host, opener }, named, remove, answers) {
+function paintNamed({ host, opener }, named, remove, answers, nameOf) {
   const held = [...host.children].some(chip => chip.contains(document.activeElement));
   const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
   const chips = [...new Set(named)].map(name => {
     const answer = answers.get(name), away = Boolean(answer && !answer.reachable);
     let chip = was.get(name);
     if (chip?.away !== away) {
-      chip = element('span', { className: away ? 'chip unreachable' : 'chip', textContent: name });
+      chip = element('span', { className: away ? 'chip unreachable' : 'chip' });
+      chip.nameNode = element('span', { textContent: nameOf(name) });
       const out = element('button', { type: 'button', textContent: '×' });
-      out.setAttribute('aria-label', `Remove ${name}`);
-      if (away) chip.title = `${name} is not in this topic, so a message to them is refused. + Someone says more.`;
-      chip.append(out); Object.assign(chip, { out, away }); chip.dataset.name = name;
+      chip.append(chip.nameNode, out); Object.assign(chip, { out, away }); chip.dataset.name = name;
     }
+    chip.nameNode.textContent = nameOf(name);
+    chip.out.setAttribute('aria-label', `Remove ${nameOf(name)}`);
+    if (away) chip.title = `${nameOf(name)} is not in this topic, so a message to them is refused. + Someone says more.`;
     chip.out.onclick = () => remove(name);
     return chip;
   });
@@ -246,7 +264,14 @@ export class PeoplePanel {
     // typed while the add was out is the person's next one.
     const go = () => {
       const typed = this.input.value, words = typed.trim().replace(/^@/, '');
-      const id = this.candidates().find(person => person?.id?.toLowerCase() === words.toLowerCase())?.id ?? words;
+      const candidates = this.candidates().filter(person => person?.id);
+      const exact = candidates.find(person => folded(person.id) === folded(words));
+      const names = candidates.filter(person => folded(actorName(person)) === folded(words));
+      if (!exact && new Set(names.map(person => person.id)).size > 1) {
+        this.error = 'More than one person has that name. Choose their button or type their ID.';
+        this.paint(); return;
+      }
+      const id = exact?.id ?? names[0]?.id ?? words;
       if (id) return this.submit(() => this.add(id), () => { if (this.input.value === typed) this.input.value = ''; this.paintChoices(); });
     };
     this.input.oninput = () => this.paintChoices();
@@ -284,12 +309,14 @@ export class PeoplePanel {
     const chips = addable.map(person => {
       let chip = was.get(person.id);
       if (!chip) {
-        chip = element('button', { type: 'button', className: 'choice-chip', textContent: person.id });
+        chip = element('button', { type: 'button', className: 'choice-chip' });
         chip.dataset.id = person.id; chip.setAttribute('aria-pressed', 'false');
         chip.onclick = () => this.submit(() => this.add(person.id), () => this.paintChoices(), () => {
           const next = [...this.choices.children][0]; (next ?? this.input).focus();
         });
       }
+      const label = distinctName(person, this.candidates());
+      if (chip.textContent !== label) chip.textContent = label;
       chip.title = person.name && person.name !== person.id ? person.name : ''; chip.disabled = this.busy;
       return chip;
     });
@@ -308,7 +335,7 @@ export class PeoplePanel {
     // What each chip shows. A name may be a control of its own (named), such as
     // an agent's color; the light says whether this agent's wakes are getting
     // through, when they are not.
-    const shown = people.map(person => ({ id: person.actor_id, named: this.named(person),
+    const shown = people.map(person => ({ id: person.actor_id, label: distinctName(person, people), named: this.named(person, distinctName(person, people)),
       className: this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip',
       light: this.light(person), removable: manage && !fixed.has(person.actor_id) }));
     this.paintChips(shown);
@@ -331,12 +358,13 @@ export class PeoplePanel {
     const heldName = [...this.namers].find(([, name]) => name === at)?.[0];
     const was = this.pills;
     this.pills = new Map(); this.removers = new Map(); this.namers = new Map();
-    const pills = shown.map(({ id, named, className, light, removable }) => {
+    const pills = shown.map(({ id, label, named, className, light, removable }) => {
       const key = JSON.stringify([className, light, removable]);
       let pill = was.get(id);
       if (pill?.key !== key || pill.named !== named) pill = { key, named, chip: this.drawPill(id, named, className, light, removable) };
+      if (!named && pill.chip.nameNode.textContent !== label) pill.chip.nameNode.textContent = label;
       pill.out = pill.chip.out;
-      if (pill.out) { pill.out.disabled = this.busy; this.removers.set(id, pill.out); }
+      if (pill.out) { pill.out.setAttribute('aria-label', `Remove ${label}`); pill.out.disabled = this.busy; this.removers.set(id, pill.out); }
       if (named) this.namers.set(id, named);
       this.pills.set(id, pill);
       return pill.chip;
@@ -348,9 +376,9 @@ export class PeoplePanel {
   }
 
   drawPill(id, named, className, light, removable) {
-    const chip = named ? element('span', { className }, named)
-      : this.pill ? element('span', { className }, element('span', { className: 'pill-name', textContent: id }))
-      : element('span', { className, textContent: id });
+    const nameNode = named ?? element('span', { ...(this.pill ? { className: 'pill-name' } : {}), textContent: id });
+    const chip = element('span', { className }, nameNode);
+    chip.nameNode = nameNode;
     if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));
     if (removable) {
       const out = element('button', { type: 'button', textContent: '×', ...(this.pill ? { className: 'pill-remove' } : {}) });
@@ -369,7 +397,7 @@ export class PeoplePanel {
     try { people = this.read ? await this.read() : null; } catch { people = null; }
     if (Array.isArray(people)) this.people = people;
     if (refusal) return refusal;
-    return people ? `The change was not confirmed. Here now: ${listWords(people.map(person => person.actor_id))}.`
+    return people ? `The change was not confirmed. Here now: ${listWords(people.map(actorName))}.`
       : 'The change was not confirmed, and reading who is here again failed too.';
   }
 

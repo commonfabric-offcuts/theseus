@@ -119,7 +119,7 @@ async function open(p, id, words = id === first ? 'First agent' : 'Second agent'
   }
   await until(p, s => document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith(s), 'the Reader on the message', words)
     .catch(async error => { await picture(p, 'open-failed'); throw Error(`${error.message}: ${await p.evaluate(s => JSON.stringify({ open: document.querySelector('#reader').open, lit: document.querySelector(s)?.className, at: document.activeElement?.id, body: document.querySelector('#source-body').textContent.slice(0, 40) }), card)}`); });
-  await until(p, () => document.getAnimations().every(a => a.playState !== 'running'), 'a settled Reader');
+  await until(p, () => document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'a settled Reader');
 }
 // The keyboard comes up as a phone's does: the visible height falls while a text field has focus.
 async function keyboardUp(p) {
@@ -155,7 +155,7 @@ const messageLines = p => p.evaluate(() => {
 async function picture(p, name) {
   const file = path.join(evidence, engine, `${p.shape}-${p.scheme}-${name}.png`);
   await mkdir(path.dirname(file), { recursive: true });
-  await until(p, () => document.getAnimations().every(a => a.playState !== 'running'), 'a settled page');
+  await until(p, () => document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'a settled page');
   await p.screenshot({ path: file });
   shots.push(path.relative(evidence, file));
 }
@@ -272,7 +272,7 @@ async function run() {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
         for (let step = 1; step <= 8; step++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 12 }] });
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        await until(p, () => document.getAnimations().every(a => a.playState !== 'running'), 'the scroll settled');
+        await until(p, () => document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'the scroll settled');
         assert.ok(await scrolled() > top, 'the finger scrolled the message');
         assert.equal(await p.evaluate(() => document.querySelector('#who-panel').hidden), false, 'scrolling the message keeps the who panel');
       }
@@ -416,7 +416,7 @@ async function run() {
       await p.evaluate(() => { const text = document.querySelector('#source-body').children[45].firstChild, range = document.createRange(); range.setStart(text, 0); range.setEnd(text, 12); getSelection().removeAllRanges(); getSelection().addRange(range); });
       await until(p, () => !document.querySelector('#quote-selection').hidden, 'the quote pill for a passage further down');
       await press(p, '#quote-selection');
-      await until(p, () => document.querySelector('#writing-body').value.includes('Second agent') && document.getAnimations().every(a => a.playState !== 'running'), 'the words quoted into the reply');
+      await until(p, () => document.querySelector('#writing-body').value.includes('Second agent') && document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'the words quoted into the reply');
       const measureKept = () => {
         const body = document.querySelector('#source-body'), style = getComputedStyle(body), box = body.getBoundingClientRect();
         const wide = document.querySelector('#reader').dataset.layout === 'wide';
@@ -432,7 +432,7 @@ async function run() {
       if (shape === 'stacked') {
         const before = await p.evaluate(() => document.querySelector('#reader-composer').getBoundingClientRect().height);
         await p.locator('#writing-body').fill('Short.');
-        await until(p, h => document.querySelector('#reader-composer').getBoundingClientRect().height < h - 20 && document.getAnimations().every(a => a.playState !== 'running'), 'the reply shorter', before);
+        await until(p, h => document.querySelector('#reader-composer').getBoundingClientRect().height < h - 20 && document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'the reply shorter', before);
         // A resize is told to its observers at the next frame's rendering, after its animation callbacks.
         await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         const after = await p.evaluate(measureKept);
@@ -890,7 +890,7 @@ async function run() {
     await press(p, at.open);
     await until(p, a => document.querySelector(a.sheet)?.open && document.activeElement === document.querySelector(a.input), 'the naming sheet, its field taking the typing', at)
       .catch(error => assert.fail(error.message));
-    await until(p, () => document.getAnimations().every(a => a.playState !== 'running'), 'the sheet settled');
+    await until(p, () => document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'the sheet settled');
     let two = await stepTwo(p, at);
     assert.deepEqual([two.modal, two.box], [true, [0, 0, 0, 0]], `the sheet is a modal over the whole screen: ${JSON.stringify(two)}`);
     assert.deepEqual([two.title, two.titleShown], ['Name someone', true], 'the sheet says what it is for at its top');

@@ -36,7 +36,20 @@ export class TopicViews {
     // the reader acts, unless its report is known to have settled nothing.
     this.sight = new Set();
     this.currentItem = null; this.openingItem = null;
+    // The message the Reader shows that no loaded page holds (opened alone,
+    // from a link to an older message): { id, seq, acts }, its acts read with
+    // the loaded messages' (readActs), absent until first read.
+    this.alone = null;
   }
+  // The Reader shows message id, at seq in the topic: when no loaded page holds
+  // it, its acts are kept as the loaded messages' are. True when that asks for
+  // a read of the acts. The item, once its acts are read: aloneItem.
+  showAlone(id, seq) {
+    if (id === null || this.messages.has(id) || !integer(seq)) { this.alone = null; return false; }
+    if (this.alone?.id === id) return false;
+    this.alone = { id, seq }; return true;
+  }
+  aloneItem(id) { return this.alone?.id === id && this.alone.acts ? this.alone : null; }
   retain(current = this.currentItem, opening = this.openingItem) {
     this.currentItem = current; this.openingItem = opening;
     this.revisions.retain([...this.memory.keys(), current, opening].filter(Boolean));
@@ -182,8 +195,9 @@ export class TopicViews {
   // message the answer names takes its acts as Core holds them. version: the
   // newest act the change named, which the answer must have reached.
   async readActs(version, read, current) {
-    if (!this.messages.size) return true;
-    let oldest = Infinity;
+    const alone = this.alone;
+    if (!this.messages.size && !alone) return true;
+    let oldest = alone?.seq ?? Infinity;
     for (const item of this.messages.values()) oldest = Math.min(oldest, item.seq);
     const found = new Map();
     let cursor = null, reached = null;
@@ -203,9 +217,11 @@ export class TopicViews {
     // puts back nothing (stack-order.mjs, laterActs).
     let changed = false;
     for (const [id, acts] of found) {
-      const item = this.messages.get(id), later = item && laterActs(item.acts, acts);
+      const item = this.messages.get(id) ?? (alone?.id === id ? alone : null), later = item && laterActs(item.acts, acts);
       if (item && JSON.stringify(item.acts) !== JSON.stringify(later)) { item.acts = later; changed = true; }
     }
+    // A message the answers never named has had no act made.
+    if (alone && !alone.acts) { alone.acts = {}; changed = true; }
     if (changed) this.paint('acts');
     return true;
   }

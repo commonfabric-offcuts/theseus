@@ -81,9 +81,9 @@
       <section id="unfinished-work" class="selection-page" aria-label="Unfinished work" hidden></section>
       <section id="page-here" class="page-here" aria-label="Notebook page" hidden></section>
       <section id="topic-pending" aria-label="Your pending replies"></section>
-      <p id="topic-marks" class="topic-marks" hidden><span id="topic-marks-words"></span><span aria-hidden="true">·</span><button id="read-mark" type="button">Read it</button></p>
+      <div class="feed-filters"><p id="topic-marks" class="topic-marks" hidden><span id="topic-marks-words"></span><span aria-hidden="true">·</span><button id="read-mark" type="button">Read it</button></p>
       <div id="conversation-show" class="conversation-show" role="group" aria-label="Show" hidden></div>
-      <div id="agent-coordination-show" class="conversation-show" role="group" aria-label="Agent coordination" hidden></div>
+      <div id="agent-coordination-show" class="conversation-show" role="group" aria-label="Agent coordination" hidden></div></div>
       <div id="conversation-empty" class="conversation-empty" hidden></div>
       <section id="messages" aria-label="Conversation"></section>
       <button id="more-messages" type="button" hidden>More messages</button>
@@ -135,7 +135,7 @@
     <div class="reader-main">
     <header class="reader-header">
       <button id="reader-parent" type="button" class="quiet" aria-label="Back to the topic" title="Back to the topic">←</button>
-      <div class="reader-heading"><h2 id="reader-title">Message</h2><p id="reader-origin" class="muted"></p></div>
+      <div class="reader-heading"><div class="reader-title-row"><h2 id="reader-title">Message</h2><button id="reader-star" type="button" aria-pressed="false" aria-label="Star for me" title="Star for me" hidden>☆</button></div><p id="reader-origin" class="muted"></p></div>
       <div id="reader-stepping"><button id="next-message" type="button" aria-label="Previous message (above)" title="Previous message (above)">↑</button><button id="previous-message" type="button" aria-label="Next message (below)" title="Next message (below)">↓</button></div>
       <button id="reader-menu" type="button" class="message-menu" aria-haspopup="menu" aria-label="More for this message" title="More">⋯</button>
       <button id="reader-close" type="button" aria-label="Close reader">✕</button>

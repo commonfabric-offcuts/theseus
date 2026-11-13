@@ -16,7 +16,7 @@ message; at latest plus unread the compact header already serves as that stop.
 Down from the page header enters the first dossier header. The dossier owns
 the strong outline there, and message actions appear only on message stops.
 A chevron that holds the focus without being a stop (Tab or a click onto it,
-or Return or Space that just folded the dossier) stands for the dossier's
+or Space that just folded the dossier) stands for the dossier's
 compact header, so Up and Down move on from that dossier.
 
 The code:
@@ -189,7 +189,7 @@ their acts.
   stack's state folds it to its row again.
 - **Expand and collapse.** One chevron beside the title switches between
   latest plus unread (→) and every message (↓).
-  It is a button reachable by Tab and operable by Return or
+  It is a button reachable by Tab and operable by
   Space, with `aria-expanded` and a label naming the stack. The header already
   gives the reply and new counts; no repeated count or fold bar sits between
   the messages. Its accessible label describes the current state and next
@@ -205,7 +205,10 @@ their acts.
   heading a stack, joined into another or left with no replies, loses the
   row at once and reads as a card.
 - **Replying.** Use Reply on the message's bar, or Return on the selected
-  message, to open the Reader with its reply composer. Stacks have no
+  message, to open the Reader with its reply composer. Return on a selected
+  dossier (its header or chevron) edits its title instead, as ✎ does:
+  Return saves the title, Escape cancels, and Return while writing in a
+  field types there. Stacks have no
   input-looking reply strip: that control opened the modal rather than
   accepting writing in place, so Tony asked to remove it.
   A reply of yours that arrives while this page is open, sent here or from
@@ -249,7 +252,17 @@ Each viewer has their own order and folds, because they come from that
 viewer's places, folded messages and the page's own state. Names and joins
 are the topic's, the same for everyone. A star and a folded message are the
 reader's alone, and only they see them; a star shows on the card and in the
-rail.
+rail. The star sits at the right of the message's header: an outline ☆
+while the message is lit or hovered, a filled ★ once starred, and a press on
+either stars or unstars it for the reader alone. Its place in the line is
+kept while it is hidden, so lighting a message moves nothing under a finger
+(a tap on the reply arrow beside it lands on the arrow), and under a finger it
+answers 44px each way. It is not a Tab stop of its own; Tab from a lit message
+reaches it before the bar's buttons. Like the 👍 on a folded row, it names no
+message of its own: only the card carries the message's `data-id`, so what
+finds a card finds it alone, and the star acts on the card it sits in. It is
+put back each time the author line is painted again (a mark from another
+device, the time's words changing).
 
 ## Doing it
 
@@ -260,6 +273,7 @@ On a message (its card focused, never in writing), these keys work:
 | ⌘↑ ⌘↓ | move its stack up or down, for you alone |
 | → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
+| Return | reply to it; on a dossier's header or chevron, edit the dossier's title (Return saves, Escape cancels) |
 | x | fold it to its row, for you alone, or unfold it; a starred message stays open, and on a dossier as a whole x does nothing yet, unless its first message is folded: then its head row is that message, and x unfolds it and opens the dossier |
 | ⌘Z | undo the last of these, or the last Fold or Unfold (not a fold a reply or a 👍 made) |
 
@@ -372,7 +386,8 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `.stack-replies`, with each reply's entry and `.stack-join-line`
     (`.stack-join-words` and `.stack-split`).
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
-- `[data-starred=true]` on any card the reader starred.
+- `[data-starred=true]` on any card the reader starred, and `.card-star`,
+  the header's star, outlined or filled.
 - `[data-folded=true]` on any card the reader folded, holding its one row,
   `.message-folded` (`.folded-author`, `.folded-words`, `.folded-thumb`,
   the row's 👍, and `.folded-cue`);
@@ -416,6 +431,9 @@ the stacks draw nothing.
 | two states, by the chevron, the header, → ← and ⋯; a stack left at its header | `tests/ui_stack_order.test.mjs` (`LEVELS`, `foldStep`, `levelOf`); `tests/stack_native.mjs`, "reading stacks use exactly two states …" and "reading stacks a dossier left at its header alone …" |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
+| the star in a message's header: an outline while lit, filled once starred, for the reader alone, opening nothing | `tests/stack_native.mjs`, "reading stacks a star in a message's header …", in Chrome and Safari's engine |
+| Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
+| the view filter at the right of the Read it row, at a laptop's and a phone's width | `tests/stack_native.mjs`, "reading stacks the feed's view filter sits at the right of the row …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
 
 `tests/acts.json` names the break each act must catch.

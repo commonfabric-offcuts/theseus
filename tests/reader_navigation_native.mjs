@@ -51,13 +51,14 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.ok(created.every(r=>r.status==='committed'));
     const p=await page('outcome-navigation',null,true,{url:facts.origin+'/'});
     const activate=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'center'})`);await p.point(selector);};
-    assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcomes','root provides discoverable outcomes rather than requiring a topic URL');
     await until(()=>p.evaluate('document.querySelectorAll("#workspaces a").length===20'),'first bounded outcome page');
+    // The list of outcomes is the root itself, with no heading of its own (item 384).
+    assert.equal(await p.evaluate('document.querySelector("#main > .topic-header").getClientRects().length'),0,'root provides discoverable outcomes rather than requiring a topic URL, with no heading over them');
     assert.equal(p.calls.some(c=>['topic','topic_messages','editor_state'].includes(c.payload?.name)),false,'root reads no fabricated topic/editor');
-    // Two outcomes with the same title stay two links to two pages; the grey line under each name
-    // says where it stands (item 86), and its id is at the top of its own page.
+    // Two outcomes with the same title stay two links to two places, each its own Conversation (item 384); the grey line
+    // under each name says where it stands (item 86), and its id is at the top of its own page.
     const labels=await p.evaluate('[...document.querySelectorAll("#workspaces a")].slice(0,2).map(a=>({text:a.textContent,href:a.getAttribute("href")}))');
-    assert.deepEqual(labels,[{text:'Same outcomeNo topics yet',href:'?workspace=outcome-00'},{text:'Same outcomeNo topics yet',href:'?workspace=outcome-01'}]);
+    assert.deepEqual(labels,[{text:'Same outcomeNo topics yet',href:'?conversation=outcome-00'},{text:'Same outcomeNo topics yet',href:'?conversation=outcome-01'}]);
     await shot(p,'outcomes-root');
     // With no Refresh button, a page reads its lists again after each commit
     // the live stream brings. A commit made elsewhere: the person marks, or
@@ -76,7 +77,10 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>p.evaluate('document.querySelector("#more-workspaces").hidden'),'last outcome page');
     assert.equal(await p.evaluate('document.querySelectorAll("#workspaces a").length'),22);
     assert.equal(await p.evaluate('document.activeElement.dataset.workspaceId'),'outcome-20');
+    // A press on it opens its Conversation; its own page, empty, is a link away.
     await activate('#workspaces a[data-workspace-id="outcome-00"]');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && new URL(location.href).searchParams.get("conversation")==="outcome-00"'),'the outcome\'s Conversation');
+    await p.evaluate('location.assign("?workspace=outcome-00")');
     await until(()=>p.evaluate('document.body?.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'empty outcome');
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Same outcome');
     assert.match(await p.evaluate('document.querySelector("#outcome-empty").textContent'),/No topics yet/);
@@ -91,7 +95,9 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await p.key('Tab');
     assert.equal(await p.evaluate('document.activeElement.dataset.workspaceId'),'w1');
     await p.key('Enter');
-    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && location.search==="?conversation=w1"'),'Return on the row opens its Conversation');
+    await p.evaluate('location.assign("?workspace=w1")');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && location.search==="?workspace=w1" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
     await control({method:'read_fault',name:'workspace',status:403,body:{error:{code:'FORBIDDEN',message:'Outcome access denied'}},count:1});
     await commitElsewhere(false);
     await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden'),'denied outcome hides its previous topic choices');
@@ -122,7 +128,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(await p.evaluate('location.search'),'','a neighboring gap does not choose an outcome');
     await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2}]});
     await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'mobile outcome selection');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && new URL(location.href).searchParams.get("conversation")==="outcome-00"'),'mobile outcome selection opens its Conversation');
     await shot(p,'outcomes-mobile-empty');
     noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
   });
@@ -209,9 +215,9 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
     await heldTransition(true);
     // Outcomes is now the selected bare-root behavior; pending topic headers
-    // stay empty, while a resolved root has its own real selection heading.
+    // stay empty, and a resolved root is its list of outcomes, with no heading (item 384).
     await p.send('Page.navigate',{url:facts.origin+'/'});
-    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'bare-root outcome selection');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#main > .topic-header").hidden && Boolean(document.querySelector("#workspaces a"))'),'bare-root outcome selection');
     assert.equal((await header()).generic,false);
     noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
   });
@@ -392,7 +398,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
 
   await check('navigation New outcome is one title line: Return creates it once, with its title alone, and opens its page',async()=>{
     const p=await page('new-outcome-line',null,true,{url:facts.origin+'/'});
-    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'root ready');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#main > .topic-header").hidden && Boolean(document.querySelector("#workspaces a"))'),'root ready');
     assert.equal(await p.evaluate('document.querySelector("#new-outcome").disabled'),false,'New outcome must be discoverable and enabled');
     await p.evaluate('document.querySelector("#new-outcome").scrollIntoView({block:"center"})');await p.point('#new-outcome');
     await until(()=>p.evaluate('document.activeElement?.id==="new-outcome-title"'),'one title line, focused');
@@ -420,7 +426,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   await check('navigation outcome creation saves a form resumes and creates once by keyboard',async()=>{
     const p=await page('create-outcome',null,true,{url:facts.origin+'/'});
     const click=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await p.point(selector);};
-    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'root ready');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#main > .topic-header").hidden && Boolean(document.querySelector("#workspaces a"))'),'root ready');
     // New outcome is one title line now (the next check); the full form remains for an outcome started before, reached by its route.
     await p.send('Page.navigate',{url:facts.origin+'/?new=outcome&intent=keyboard-outcome-intent'});
     await until(()=>p.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#outcome-title-input"))'),'outcome form');
@@ -430,7 +436,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(p.calls.some(c=>c.payload?.kind==='workspace.create'),false,'Enter adds team metadata without creating');
     await until(()=>p.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'form durable');
     const route=await p.evaluate('location.href');await click('#creation-later');
-    await until(()=>p.evaluate('document.querySelector("#topic-title").textContent==="Outcomes" && Boolean(document.querySelector("#unfinished-work a"))'),'local Resume entry');
+    await until(()=>p.evaluate('document.querySelector("#main > .topic-header").hidden && Boolean(document.querySelector("#workspaces a")) && Boolean(document.querySelector("#unfinished-work a"))'),'local Resume entry');
     await click('#unfinished-work a');await until(()=>p.evaluate('Boolean(document.querySelector("#outcome-title-input"))'),'resumed form');
     assert.equal(await p.evaluate('location.href'),route);assert.equal(await p.evaluate('document.querySelector("#outcome-title-input").value'),'Keyboard outcome');
     assert.equal(await p.evaluate('document.querySelector("#outcome-purpose-input").value'),'A retained purpose');

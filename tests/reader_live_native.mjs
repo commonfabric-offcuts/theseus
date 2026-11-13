@@ -165,7 +165,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.point('#settings-open');
     await until(() => p.evaluate("document.querySelector('#topic-settings').open"), 'Topic settings is open');
     // Measured once its opening animation has run, as the person sees it.
-    await until(() => p.evaluate("document.getAnimations().every(a => a.playState !== 'running')"), 'Topic settings settled');
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running')"), 'Topic settings settled');
     await p.point('#topic-state [data-state=waiting]');
     await until(async () => (await lit())[0] === 'Waiting', 'Waiting is saved and lit');
     await until(() => p.evaluate("Boolean(document.querySelector('#topic-state .people-chips button')?.offsetParent)"), 'the people show as chips');

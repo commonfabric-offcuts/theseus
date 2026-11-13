@@ -208,7 +208,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
         await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'wide'`), 'the Reader is wide');
       }
       if (layout === 'narrow') await narrow(p);
-      await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled layout');
+      await until(() => p.evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=="running")'), 'settled layout');
       p.intercept(payload => payload?.kind === 'draft.save');
       const previousHeld = p.held.length;
       await replace(p, `Footer stability ${layout}`);
@@ -242,7 +242,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   await check('images restoration footer touch gap does nothing and deliberate Send works', async () => {
     const p = await page('footer-touch', null, true); await p.open(1);
     await narrow(p);
-    await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled narrow reader');
+    await until(() => p.evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=="running")'), 'settled narrow reader');
     await replace(p, 'Footer touch narrow');
     await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'touch fixture saved');
     // The field and Send, with the gap between them (docs/reader.md).
@@ -872,7 +872,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const revision = (await view('memory_current', { item_id: 'fixture-notebook' })).source_ref.revision;
     const p = await page('images-notebook', null, true, { url: `${facts.origin}/?topic=t1&page=fixture-notebook&revision=${revision}` });
     await until(() => p.evaluate('document.querySelector("#reader").open && document.querySelector("#reader-origin").textContent.includes("Notebook")'), 'Notebook Reader');
-    await until(() => p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled Notebook reader');
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled Notebook reader');
     const choose = async filename => {
       await until(() => p.evaluate('!document.querySelector("#add-image").disabled'), 'Notebook image action ready');
       const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
@@ -928,7 +928,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const q = await page('images-refusal-restored', null, true, { url: `${facts.origin}/?topic=t1&page=fixture-notebook&revision=${revision}` });
     try { await until(() => q.evaluate('document.querySelector("#reader").open'), 'restored Notebook reader'); }
     catch (error) { observations.push({ name: 'restored Notebook failure', text: await q.evaluate('document.body.innerText'), errors: q.errors, calls: q.calls }); await shot(q, 'restored-notebook-failure'); throw error; }
-    await until(() => q.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled restored Notebook');
+    await until(() => q.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled restored Notebook');
     await q.point('#pending-submissions button');
     await until(() => q.box(card), 'restored pending card');
     assert.equal(await q.evaluate(`document.querySelector(${JSON.stringify(card)}).textContent.includes(${JSON.stringify(rejected.error.message)})`), false, 'no eager per-card receipt read');

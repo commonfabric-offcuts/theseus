@@ -101,14 +101,23 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     if (undone !== want) { await p.evaluate(`document.querySelector(${JSON.stringify(field)}).select()`); await p.send('Input.insertText', { text: want }); }
   };
   const centre = (p, selector) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
-  // A finger's tap where the target shows, failing by name when something else is there.
+  // A finger's tap where the target shows, failing by name when something else is there. The point is
+  // measured and hit-tested in one look at the page, once the target has held its place across two
+  // animation frames, as a person aims at a still target: a row filled in above the feed (the outline
+  // rail at phone width) moves the cards with no scroll, and a point measured before that lands on
+  // whatever moved under it. A page not shown draws no frames, and is measured as it stands.
   const tap = async (p, selector, at = 'corner') => {
-    const b = await p.box(selector);
+    const aim = await until(() => p.evaluate(`new Promise(done=>{const t=document.querySelector(${JSON.stringify(selector)}),
+      rect=()=>{if(!t)return null;const b=t.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),
+      look=()=>{const b=rect();if(!b)return {b};const x=${at === 'centre'}?b.x+b.width/2:b.x+Math.min(12,b.width/2),y=${at === 'centre'}?b.y+b.height/2:b.y+Math.min(12,b.height/2),
+        h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
+      if(document.hidden)return done(look());
+      const first=rect();requestAnimationFrame(()=>{const second=rect();requestAnimationFrame(()=>done(same(first,second)&&same(second,rect())?look():null))})})`),
+      `${selector} holds its place across two frames before a tap`);
+    const { b, x, y } = aim;
     assert.ok(b && b.width > 0 && b.height > 0, `visible target ${selector}`);
-    const x = at === 'centre' ? b.x + b.width / 2 : b.x + Math.min(12, b.width / 2), y = at === 'centre' ? b.y + b.height / 2 : b.y + Math.min(12, b.height / 2);
-    assert.ok(x >= 0 && y >= 0 && x < b.viewportWidth && y < b.viewportHeight, `${selector} is inside the window before a tap`);
-    const hit = await p.evaluate(`(t=>{const h=document.elementFromPoint(${x},${y});return t?.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'})(document.querySelector(${JSON.stringify(selector)}))`);
-    assert.equal(hit, '', `${selector} is covered by ${hit} where it would be tapped`);
+    assert.ok(aim.inside, `${selector} is inside the window before a tap`);
+    assert.equal(aim.hit, '', `${selector} is covered by ${aim.hit} where it would be tapped`);
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
@@ -169,6 +178,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   const reactions = async id => (await view('reactions', { message_id: id })).reactions;
   const thumbsBy = async (id, who) => (await reactions(id)).thumbs.filter(thumb => thumb.actor_id === who).length;
   // The Reader on a message, opened as the person opens it: Return on the lit message, or a phone's second tap.
+  // On a phone a tap on a message already lit (the Reader closing lights the message it showed) is that second
+  // tap: it opens the Reader at once, and a further tap would land on the Reader opening over the message.
   const openReader = async (p, device, id, starts) => {
     await p.evaluate('document.activeElement?.blur()');
     if (device === 'laptop') { await light(p, device, id); await p.key('Enter'); }

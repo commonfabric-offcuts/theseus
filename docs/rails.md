@@ -5,7 +5,10 @@ left is an outline of every outcome. On the right are the outcome's things.
 Moving between topics and Conversations does not load the page again: the
 outline stays where it was, and only the middle and the right rail change.
 Every other page (the Outcomes home, an outcome's own page, its pipeline,
-Health) keeps the side rail it had.
+Health) keeps the side rail it had. The Outcomes home lists the outcomes with no
+heading of its own above them; a press on one, or Return on its row, opens its
+Conversation, and one with no Conversation yet opens its page (`outcome_rail_native.mjs`,
+"rail on the Outcomes home a press on an outcome opens its Conversation …").
 
 The code: `web/in-place-navigation.mjs` (the shell that keeps the rails across
 moves), `web/outline-rail.mjs` (left), `web/things-rail.mjs` (right),

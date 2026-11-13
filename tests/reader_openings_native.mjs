@@ -259,7 +259,7 @@ try {
     }
     await p[p.touch ? 'tap' : 'click'](`#messages [data-id="${message}"]`);
     await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent===${JSON.stringify(body)}`), 'Reader shows the exact opening message');
-    await until(() => p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled Reader');
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled Reader');
     return message;
   };
   const agent = 'fixture-notebook-agent';

@@ -793,6 +793,24 @@ function paintViews(kind) {
 const messageEntries = new Map(), memoryCards = new Map();
 // The color the reader sees an agent in: their choice, or the agent's own.
 const agentShown = id => colors?.color(id) ?? agentColor(id);
+// Only the label changes; all record lookup, color and routing keep the ID.
+function displayActor(id) {
+  const known = [...views?.participants ?? [], ...outcomeMembers ?? [], ...directoryPeople];
+  return known.find(person => (person.actor_id ?? person.id) === id && person.name)?.name || id;
+}
+// Where someone chooses a recipient, equal display names must remain distinguishable.
+function actorLabel(id) {
+  const known = [...views?.participants ?? [], ...outcomeMembers ?? [], ...directoryPeople], names = new Map();
+  for (const person of known) {
+    const key = person.actor_id ?? person.id;
+    if (person.name && !names.has(key)) names.set(key, person.name);
+  }
+  const name = names.get(id) || id;
+  return known.some(person => {
+    const other = person.actor_id ?? person.id;
+    return other !== id && (names.get(other) || other).toLowerCase() === name.toLowerCase();
+  }) ? `${name} (${id})` : name;
+}
 // Replies gather under the message they answer on every topic page, the
 // conversation's included (reply-stacks.mjs). A folded stack keeps in view a
 // reply the person has not read and, in the conversation, one whose card asks
@@ -803,9 +821,9 @@ function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current, send: envelope => api.command(envelope),
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
-    keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : id),
+    keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on) });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
   return stackFeed;
 }
 // The conversation's own word on a message: its item and the asks that wait,
@@ -867,15 +885,17 @@ async function pickColor(agent, anchor, back = anchor) {
 // agent keeps one name button across repaints, so a choice that repaints the
 // participants leaves the picker's opener on the page to take the focus back.
 const participantNames = new Map();
-function participantName(person) {
+function participantName(person, label = person.name || person.actor_id) {
   if (person.kind !== 'agent' || person.actor_id === bootstrap.actor) return null;
   let name = participantNames.get(person.actor_id);
   if (!name) {
-    name = node('button', person.actor_id); name.type = 'button';
-    name.setAttribute('aria-haspopup', 'dialog'); name.title = `Change ${person.actor_id}'s color`;
+    name = node('button'); name.type = 'button';
+    name.setAttribute('aria-haspopup', 'dialog');
     name.onclick = () => run(() => pickColor(person.actor_id, name));
     participantNames.set(person.actor_id, name);
   }
+  if (name.textContent !== label) name.textContent = label;
+  name.title = `Change ${label}'s color`;
   name.className = 'pill-name';
   return name;
 }
@@ -899,9 +919,11 @@ function paintHeader(current) {
 }
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
-  paintAuthor(author, item.author_id, Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
+  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
+  // The star in its header, put back as the line is painted again (StackFeed.paintStar).
+  stackFeed?.paintStar(author, item);
 }
 // Who the composers may whisper to, and who everyone in this topic is: the
 // topic's participants and the outcome's team, by kind, never the reader.
@@ -1026,6 +1048,45 @@ function paintReaderMark() {
   // links (openReaderMenu), or the layout where the window has room to choose.
   $('reader-menu').hidden = !(p && !p.sourceUnavailable && ((ref?.kind === 'message' && topic) || (ref?.kind === 'memory' && p.source.owner_scope))) && !reader?.layoutChoice;
   paintReaderThumb$();
+  paintReaderStar();
+}
+// The message the Reader shows, with its acts: its star and fold there are
+// the reader's own (stack-feed.mjs). The page's reply stacks hold it, or, for
+// a message of this topic no loaded page holds (opened alone, from a link to
+// an older message), the page keeps its acts beside them (followReaderMessage).
+// Null for a Notebook page, another topic's message, or until its acts are read.
+function readerMessage() {
+  const p = registry?.current, ref = p?.source?.source_ref;
+  return stackFeed && !topicUnavailable && p && !p.sourceUnavailable && ref?.kind === 'message' && p.source.topic_id === topic?.id ? p.source : null;
+}
+function readerFeedItem() {
+  const source = readerMessage(), id = source?.source_ref.id;
+  return source ? views.messages.get(id) ?? views.aloneItem(id) : null;
+}
+// A message the Reader shows that no loaded page holds has its acts read with
+// the loaded messages', and again whenever the topic's acts change: once the
+// page reads what changes (freshness), which the next paint finds.
+function followReaderMessage() {
+  const source = readerMessage();
+  if (freshness && views.showAlone(source?.source_ref.id ?? null, source?.seq)) freshness.invalidate('acts', 0, true);
+}
+// The star beside the Reader's title: the same act as Star for me in the
+// card's ⋯ (StackFeed.star), so the card and the Reader agree. Outline until
+// starred, filled once starred.
+function paintReaderStar() {
+  followReaderMessage();
+  const button = $('reader-star'), item = readerFeedItem();
+  button.hidden = !item;
+  if (!item) return;
+  const starred = Boolean(stackFeed.actsOf(item.id, item).starred), words = starred ? 'Unstar' : 'Star for me';
+  button.textContent = starred ? '★' : '☆';
+  button.setAttribute('aria-pressed', String(starred));
+  button.setAttribute('aria-label', words); button.title = words;
+}
+function starFromReader() {
+  const item = readerFeedItem();
+  if (!item) return;
+  stackFeed.star(item);
 }
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.
@@ -1158,6 +1219,10 @@ function openReaderMenu() {
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
+  // Fold message: the reader's own fold, as Fold in the card's ⋯ (StackFeed.setFold); a starred message offers none.
+  const item = message ? readerFeedItem() : null, acts = item ? stackFeed.actsOf(item.id, item) : {};
+  if (item && acts.folded) items.push({ label: 'Unfold message', act: () => stackFeed.setFold(item, false, { focus: false }) });
+  else if (item && !acts.starred) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });
   if (reader.quotable) items.push({ label: 'Quote selection', act: () => reader.quote() });
   if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', act: () => openStartLine() });
   if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
@@ -1636,6 +1701,7 @@ async function initialize() {
   const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
     images: topicImages, imageBytes,
+    actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     reach: recipientReach, addressable: addressPeople,
     uploads: editor => registry.sessionFor(editor).uploads,
@@ -1650,6 +1716,8 @@ async function initialize() {
   });
   reader = new Reader({
     images: topicImages, imageBytes,
+    actorName: displayActor,
+    actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
     closing: p => registry?.isClosing(p),
@@ -1755,6 +1823,7 @@ async function initialize() {
   $('mark-unread').onclick = () => run(toggleMark);
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
+  $('reader-star').onclick = () => starFromReader();
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();
@@ -1968,6 +2037,15 @@ function refreshDirectory() {
     fillNames($('directory-names'), items);
     directoryPeople = items.map(item => ({ id: item.id, name: item.name, kind: item.kind }));
     teamPanel?.paintChoices(); participantsPanel?.paintChoices();
+    // The background directory may arrive after a card. Update labels in
+    // place, without reloading content or rearranging what is being read.
+    if (views) for (const entry of entries($('messages'))) {
+      const card = cardIn(entry), item = views.messages.get(card.dataset.id);
+      if (item) paintCardAuthor(card.querySelector('.message-author'), item);
+    }
+    if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintOrigin(reader.source);
+    if (reader?.sessions) { reader.paintRecipients(); reader.paintChoice(); }
+    if (inline?.editor) { inline.paintRecipients(); inline.paintChoice(); }
   })
     .catch(() => {}).finally(() => { directoryRead = null; });
   return directoryRead;
@@ -2073,6 +2151,7 @@ function answeredBy(composer, audience, names, on) {
   const team = (outcomeMembers ?? []).filter(person => person.enabled !== false).map(person => person.actor_id);
   // The names wait for the conversation's view, which says who the coordinator is.
   const shown = on && here?.view ? paintAnswerers(choices, { coordinator: here.view.coordinator?.actor_id, members: team, names, reader: bootstrap.actor,
+    nameOf: actorLabel,
     toggle: (id, add) => add ? composer.addName(id) : composer.removeName(id) }) : [];
   if (!shown.length) choices.replaceChildren();
   // A team member named here shows as their pressed chip, not twice.
@@ -2189,7 +2268,8 @@ async function openDestination(target, title, from = null) {
   }
 }
 // painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).
-function initializeOutcomeNavigation(current=null,painted=()=>{}) {
+// opens: what a press on an outcome opens, its page ('workspace') or its Conversation ('conversation').
+function initializeOutcomeNavigation(current=null,painted=()=>{},opens='workspace') {
   const home=event=>{
     if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault();return openDestination({kind:'root'},'Outcomes');
@@ -2211,7 +2291,7 @@ function initializeOutcomeNavigation(current=null,painted=()=>{}) {
   const peek=new LightPeek({host:$('light-tip'),read:async id=>checkedView(await api.view('outcome_light',{workspace_id:id},{readClass:'foreground'}),bootstrap.instance_id)});
   outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
     retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
-    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax(),peek,painted});
+    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax(),peek,painted,opens});
 }
 async function initializeOutcomePage(route) {
   // There is no topic, implicit composer or source in a selection-only view.
@@ -2237,10 +2317,11 @@ async function initializeOutcomePage(route) {
     // an outcome's own page says its questions once, in "Where it stands".
     waitingHost=$('waiting-on-you');
     if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));
-    $('topic-title').textContent='Outcomes';$('topic-description').textContent='Choose an outcome to see its topics.';
+    // The home has no heading of its own: the list of outcomes is the page, and a press on one opens its Conversation (item 384).
+    document.querySelector('#main > .topic-header').hidden=true;
     $('outcomes-heading').textContent='Your outcomes';
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
-    initializeOutcomeNavigation();
+    initializeOutcomeNavigation(null,()=>{},'conversation');
     // The page an owner lands on says when wakes are not going out.
     // With no rail, the logo block heads the main column.
     placeBrand($('main'));

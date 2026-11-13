@@ -16,11 +16,13 @@ const AT = Date.UTC(2026, 10, 6, 18, 0);
 const words = tags => tags.map(tag => [tag.tag, tag.parts.map(part => typeof part === 'string' ? part : part.link ?? (part.time !== undefined ? '<time>' : '')).join('')]);
 const item = (state, takes = []) => ({ id: 'm-item', item: { state, takes } });
 
-test('each take is one tag under its card in the words of what became of it, and New stays while only part was taken', () => {
+test('each take is one tag under its card in the words of what became of it, and the item waits for an answer while only part was taken', () => {
   assert.deepEqual(itemTags({ id: 'm-plain', item: null }, [], 'tony'), [], 'a message that is not an item has no tags');
-  assert.deepEqual(words(itemTags(item('new'), [], 'tony')), [['New', '']]);
+  assert.deepEqual(words(itemTags(item('new'), [], 'tony')), [['Waiting for an answer', '']]);
+  assert.equal(itemTags(item('new'), [], 'tony')[0].waiting, true, 'an item nothing has settled waits, drawn as three dots');
   const part = { kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: true };
-  assert.deepEqual(words(itemTags(item('new', [part]), [], 'tony')), [['New', 'part taken so far'], ['Answered', "fable's reply · <time>"]]);
+  assert.deepEqual(words(itemTags(item('new', [part]), [], 'tony')), [['Waiting for an answer', 'part taken so far'], ['Answered', "fable's reply · <time>"]]);
+  assert.deepEqual(itemTags(item('settled', [{ ...part, part: false }]), [], 'tony').filter(tag => tag.waiting), [], 'a settled item waits for nothing');
   assert.deepEqual(words(itemTags(item('settled', [{ ...part, part: false, actor_id: 'tony' }]), [], 'tony')), [['Answered', 'your reply · <time>']]);
   // An answer by whisper, read by someone outside it: who answered and when, never a link to the reply.
   const hidden = itemTags(item('settled', [{ ...part, part: false, ref: null, readable: false }]), [], 'warp');
@@ -65,6 +67,21 @@ test('the tags paint at the foot of the card, a link follows without opening the
   assert.ok(stopped, 'the card under the link is not opened as well');
   paintItemTags(card, { id: 'm-item', item: null }, [], 'tony', () => {}, doc);
   assert.equal(card.querySelector(':scope > .item-tags'), null);
+});
+
+test('an item that waits for an answer paints three dots named by its words in place of a word chip, and they go once it is answered (item 389)', () => {
+  const doc = miniDocument(), card = doc.createElement('article');
+  const part = { kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: true };
+  paintItemTags(card, item('new', [part]), [], 'tony', () => {}, doc);
+  const dots = card.querySelector('.item-waiting');
+  assert.ok(dots, 'the dots are drawn');
+  assert.equal(dots.children.length, 3, 'three of them');
+  assert.deepEqual([dots.getAttribute('role'), dots.getAttribute('aria-label'), dots.title],
+    ['img', 'Waiting for an answer · part taken so far', 'Waiting for an answer · part taken so far'], 'named and titled in words');
+  assert.deepEqual(card.querySelectorAll('.item-tag').map(tag => tag.textContent), ['Answered'], 'no word chip says New: only the answer so far');
+  paintItemTags(card, item('settled', [{ ...part, part: false }]), [], 'tony', () => {}, doc);
+  assert.equal(card.querySelector('.item-waiting'), null, 'answered, the dots go');
+  assert.deepEqual(card.querySelectorAll('.item-tag').map(tag => tag.textContent), ['Answered']);
 });
 
 test('a message sent from another topic says which message it is about, unless the reader cannot open it', () => {
@@ -332,6 +349,16 @@ test('Answered by offers the coordinator first, then the team; with nobody named
   paintAnswerers(host, { coordinator: 'fable', members: ['warp'], names: ['warp'], reader: 'tony', toggle: (id, on) => toggled.push([id, on]), doc });
   host.children[1].onclick();
   assert.deepEqual(toggled, [['warp', true], ['warp', false]]);
+});
+
+test('conversation answerer labels use current names and still toggle the canonical recipient', () => {
+  const doc = miniDocument(), host = doc.createElement('span'), toggled = [];
+  const shown = paintAnswerers(host, { coordinator: 'codex-worker', members: ['warp'], names: [], reader: 'tony', doc,
+    nameOf: id => id === 'codex-worker' ? 'codex' : 'Warp', toggle: (id, on) => toggled.push([id, on]) });
+  assert.deepEqual(shown, ['codex-worker', 'warp']);
+  assert.equal(host.children[0].textContent, 'codex');
+  assert.equal(host.children[0].title, 'codex answers when you name nobody');
+  host.children[1].onclick(); assert.deepEqual(toggled, [['warp', true]]);
 });
 
 test("the conversation's heading names who answers, and its address is ?conversation=OUTCOME", () => {

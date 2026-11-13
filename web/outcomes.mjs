@@ -5,8 +5,10 @@ export class OutcomeRail {
   // peek, when given, opens what a row's light is made of (outcome-light.mjs);
   // painted hears the rows after every read, so a line that counts them
   // agrees, and null when they could not be read, so it shows no stale rows.
-  constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE,peek=null,painted=()=>{}}) {
-    Object.assign(this,{current,host,more,retry,message,empty,open,isDenied:denied,pageMax,peek,painted});
+  // opens: what a press on an outcome opens, its page ('workspace') or, on the
+  // Outcomes home, its Conversation ('conversation'; its page while it has none).
+  constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE,peek=null,painted=()=>{},opens='workspace'}) {
+    Object.assign(this,{current,host,more,retry,message,empty,open,isDenied:denied,pageMax,peek,painted,opens});
     // Reached outcomes fold into one "Reached (N)" line at the end of the list, which opens them (D42).
     this.reachedCount=0;
     this.read=async args=>{const answer=await read(args);this.reachedCount=Number.isSafeInteger(answer?.reached_count)?answer.reached_count:0;return answer;};
@@ -16,7 +18,7 @@ export class OutcomeRail {
       if(!this.reached.open)return;
       list.textContent='Reading…';
       read({reached:true,limit:PAGE}).then(answer=>{list.replaceChildren(...answer.items.map(item=>{
-        const link=document.createElement('a');link.className='nav-item';link.href=routeHref({kind:'workspace',id:item.id});
+        const link=document.createElement('a');link.className='nav-item';link.href=routeHref(this.target(item));
         const name=document.createElement('span'),when=document.createElement('small');name.textContent=item.title;
         when.textContent=item.reached_ms?'Reached '+new Date(item.reached_ms).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'Reached';
         link.append(name,when);if(item.id===this.current)link.setAttribute('aria-current','page');return link;}));
@@ -32,6 +34,10 @@ export class OutcomeRail {
       if(touch.clientX<b.left||touch.clientX>b.right||touch.clientY<b.top||touch.clientY>b.bottom)event.preventDefault();
     },{passive:false});
   }
+  // Where a press on an outcome goes (opens).
+  target(item) {
+    return this.opens==='conversation'&&typeof item.conversation_id==='string'?{kind:'conversation',id:item.id}:{kind:'workspace',id:item.id};
+  }
   paint() {
     const items=this.pages.items,ids=new Set(items.map(x=>x.id));
     for(const link of [...this.host.children])if(!ids.has(link.dataset.workspaceId))link.remove();
@@ -39,15 +45,15 @@ export class OutcomeRail {
       let link=[...this.host.children].find(x=>x.dataset.workspaceId===item.id);
       if(!link){
         link=document.createElement('a');link.className='nav-item';link.dataset.workspaceId=item.id;
-        link.href=routeHref({kind:'workspace',id:item.id});
         link.onclick=event=>{
           if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
           event.preventDefault();
-          const title=this.pages.loaded.get(item.id)?.title;
-          return this.open({kind:'workspace',id:item.id},title||item.id);
+          const loaded=this.pages.loaded.get(item.id)??item;
+          return this.open(this.target(loaded),loaded.title||item.id);
         };
         link.append(document.createElement('span'),document.createElement('small'));
       }
+      link.href=routeHref(this.target(item));
       link.children[0].textContent=item.title+(item.title_truncated?'…':'');
       // The grey line carries where the outcome stands (item 86); the id stays at the top of its own page.
       paintRowLight(link.children[1],item.light);

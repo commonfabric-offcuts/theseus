@@ -27,7 +27,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
         await until(()=>p.evaluate("document.querySelector('#reader .reader-end')?.getClientRects().length>0"),'the end line on a phone');
         const words=await style('.reader-end .end-step'),pane=await style('.reading-pane');
         await p.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
-        await until(()=>p.evaluate("!matchMedia('(max-width: 760px)').matches&&document.getAnimations().every(animation=>animation.playState!=='running')"),'the window put back');
+        await until(()=>p.evaluate("!matchMedia('(max-width: 760px)').matches&&document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"),'the window put back');
         return {color:words.color,background:pane.background};
       };
       const initialOwn=await style(own),initialOther=await style(`#messages [data-id="${original.result.message_id}"]`);
@@ -87,7 +87,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       // card just pressed. Every other source is read on the neutral page.
       await p.point(other);
       await until(()=>p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#source-body').textContent.includes('Other author for reading colors')`),'the agent message is open');
-      await until(()=>p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"),'settled reader');
+      await until(()=>p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"),'settled reader');
       const agentSource=await style('.reading-pane'),agentSample=await behindWords();
       expect(agentSource.background===topicHover.background,theme+': an agent message is read on its card hover color');
       expect(painted(agentSample,topicHover.background),theme+': painted background behind the agent message words matches its card hover');

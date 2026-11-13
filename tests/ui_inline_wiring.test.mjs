@@ -169,7 +169,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     runtime: { current: bootstrap.authority },
   };
   const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
-  const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
+  const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1, showAlone: () => false, aloneItem: () => null };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
@@ -1983,7 +1983,7 @@ test('a team read on focus that fails keeps the team the page had; one refused f
   const offered = () => f.get('addressable-names').children.map(option => option.value);
   const mark = name => {
     nameIn(f, 'inline-recipient-input', name);
-    return f.get('inline-recipient-chips').children.find(node => node.textContent === name).className;
+    return f.get('inline-recipient-chips').children.find(node => node.dataset.name === name).className;
   };
   assert.deepEqual([offered(), mark('stranger')], [['fixture-person', 'ally', 'fable'], 'chip unreachable']);
   // A busy server sheds the background read just as the person starts naming.
@@ -2006,22 +2006,22 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   await f.initialize();
   const team = f.get('team-people');
   assert.equal(f.get('outcome-team').hidden, false);
-  assert.deepEqual(walk(team).filter(node => node.textContent === '×').map(node => node['aria-label']), ['Remove ally']);
+  assert.deepEqual(walk(team).filter(node => node.textContent === '×').map(node => node['aria-label']), ['Remove Ally']);
   await add(team, 'tony');
   await drain();
   // Someone's message elsewhere in the outcome moves its revision on.
   f.pickers.workspace.version += 1;
-  await removeButton(team, 'ally').onclick();
+  await removeButton(team, 'Ally').onclick();
   await drain();
   assert.deepEqual(sentOf(f, 'workspace.member_set', 'workspace_revision'),
     [[5, { actor_id: 'tony', present: true }], [6, { actor_id: 'ally', present: false }], [7, { actor_id: 'ally', present: false }]]);
   assert.deepEqual(f.pickers.members.map(row => row.actor_id), ['fixture-person', 'tony']);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'tony'], 'the panel shows the reread team');
+  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony'], 'the panel shows the reread team');
 
   // A team that cannot be read keeps the chips it had and says so.
   f.pickers.membersRefused = true;
   await commit(f.live, 2);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'tony']);
+  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony']);
   assert.match(walk(team).find(node => node.className === 'notice').textContent, /^The team could not be read/);
 
   // Someone else's commit: the page rereads the outcome, so its revision and team stay current.
@@ -2165,7 +2165,7 @@ test('addressing someone outside the topic offers its manager to add them, and t
   await f.initialize();
   showComposer(f);
   const address = name => { nameIn(f, 'inline-recipient-input', name); };
-  const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
+  const chip = name => f.get('inline-recipient-chips').children.find(node => node.dataset.name === name);
   address('ally'); address('stranger'); address('fable');
   assert.equal(chip('ally').className, 'chip', 'an outcome member can be sent to');
   assert.deepEqual([chip('fable').className, chip('fable')['aria-pressed']], ['choice-chip', 'true'], 'a participant is a name tapped once, lit when named');
@@ -2192,7 +2192,7 @@ test('a switched-off participant or teammate is marked so, with no add offer, an
   await f.initialize();
   showComposer(f);
   const address = name => { nameIn(f, 'inline-recipient-input', name); };
-  const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
+  const chip = name => f.get('inline-recipient-chips').children.find(node => node.dataset.name === name);
   address('idle'); address('gone'); address('stranger');
   for (const name of ['idle', 'gone']) {
     assert.equal(chip(name).className, 'chip unreachable', `${name} cannot receive`);
@@ -2230,11 +2230,11 @@ test('a reader who cannot change the participants is told who could, and a team 
   await f.initialize();
   showComposer(f);
   nameIn(f, 'inline-recipient-input', 'stranger');
-  const chip = f.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger');
+  const chip = f.get('inline-recipient-chips').children.find(node => node.dataset.name === 'stranger');
   assert.equal(chip.className, 'chip unreachable');
   assert.equal(walk(chip).some(node => node.textContent?.startsWith('Add to topic')), false);
   nameIn(f, 'inline-recipient-input', 'tony');
-  assert.equal(f.get('inline-recipient-chips').children.find(node => node.textContent === 'tony').className, 'chip',
+  assert.equal(f.get('inline-recipient-chips').children.find(node => node.dataset.name === 'tony').className, 'chip',
     'the topic\'s owner can always be sent to, participant or not');
 
   const hidden = fixture();
@@ -2244,7 +2244,7 @@ test('a reader who cannot change the participants is told who could, and a team 
   await hidden.initialize();
   showComposer(hidden);
   nameIn(hidden, 'inline-recipient-input', 'stranger');
-  assert.equal(hidden.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger').className, 'chip');
+  assert.equal(hidden.get('inline-recipient-chips').children.find(node => node.dataset.name === 'stranger').className, 'chip');
 });
 
 test('a card in the topic log says when its message was sent, and a message from before times were kept says nothing', async () => {
@@ -2260,8 +2260,10 @@ test('a card in the topic log says when its message was sent, and a message from
   // The author line follows the card's ⋯ (docs/links.md).
   const author = id => f.get('messages').children.find(card => card.dataset.id === id).children.find(node => node.className === 'message-author');
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
-  const parts = id => author(id).children.map(text);
+  // The star in the header (item 376) comes after who and when, and is no part of the time.
+  const parts = id => author(id).children.filter(node => node.className !== 'card-star').map(text);
   assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM'], 'sent today: the time alone');
+  assert.deepEqual(author('m1').children.map(node => node.className).slice(-1), ['card-star'], 'the star follows who and when');
   assert.deepEqual(parts('m2'), ['fable']);
   assert.deepEqual(parts('m3'), ['fable', ' · Yesterday 9:12 PM']);
   assert.deepEqual(parts('m4'), ['fable', ' · 7:41 AM Tue Nov 3'], 'earlier: dated as before');
@@ -3433,7 +3435,7 @@ test('an outcome\'s team says wakes are paused on each agent with work while no 
   wakesApi(f, () => [{ actor_id: 'ally', waiting: 4, why: 'wakes_paused' }]);
   await f.initialize();
   await drain();
-  assert.deepEqual(chipWords(f.get('team-people')), ['fixture-person', 'ally · wakes paused · 4 waiting']);
+  assert.deepEqual(chipWords(f.get('team-people')), ['Fixture', 'Ally · wakes paused · 4 waiting']);
 });
 
 test('while wakes are not going out, the page says so once, and the words go when a commit shows them going out again', async () => {

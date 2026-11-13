@@ -173,7 +173,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       // A page with no card heading shows its words as the cards' opening, or in Text.
       const words = `(h=>Boolean(h)&&(h.textContent.includes(${JSON.stringify(expectedBody)})||h.querySelector('.notebook-text')?.value.includes(${JSON.stringify(expectedBody)})))(document.querySelector('${shown}'))`;
       await until(() => p.evaluate(`document.querySelector('${sheet}.notebook-mode')?.open && document.querySelector('#notebook-sheet-title').textContent===${JSON.stringify(expectedTitle)} && ${words}`), 'native activation opens exact Notebook title and its words');
-      await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled composer');
+      await until(() => p.evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=="running")'), 'settled composer');
     };
     const close = async id => {
       await p.point(`${sheet} .notebook-sheet-close`);
@@ -533,7 +533,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
     // The Reader takes its stacked layout when it hears the width change, after the media query matches.
-    await until(() => p.evaluate('matchMedia("(max-width:760px)").matches && document.querySelector("#reader").dataset.layout==="stacked" && document.getAnimations().every(a=>a.playState!=="running")'), 'mobile reader layout');
+    await until(() => p.evaluate('matchMedia("(max-width:760px)").matches && document.querySelector("#reader").dataset.layout==="stacked" && document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=="running")'), 'mobile reader layout');
     const writingBox = await p.box('#writing-body');
     const before = await p.evaluate('freshSnapshot()'); assert.ok(before.quotes.length);
     const revised = await revise('A newer Notebook passage, offered explicitly');
@@ -1194,7 +1194,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'the newest message is shown');
     await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
     await p.point(card);
-    await until(() => p.evaluate('document.querySelector("#reader").open && document.getAnimations().every(a => a.playState !== "running")'), 'the Reader is open');
+    await until(() => p.evaluate('document.querySelector("#reader").open && document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== "running")'), 'the Reader is open');
     const title = await text('#reader-title');
     await replace(p, 'Writing kept while access is checked');
     await until(() => p.evaluate('(()=>{const e=observedRegistry.current.editors.reply;return e.localVersion===e.ackVersion})()'), 'the writing is saved');
