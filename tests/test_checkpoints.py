@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import importlib.util
 import unittest
 from unittest import mock
 
@@ -16,8 +17,10 @@ class CheckpointCase(unittest.TestCase):
     def setUp(self):
         test_assessments.AssessmentCase.setUp(self)
         self.now = 2000000
-        clock = mock.patch('aim_next.checkpoints._now_ms',side_effect=lambda:self.now)
-        clock.start(); self.addCleanup(clock.stop)
+        # Keep the pre-feature control able to reach Core's command refusal.
+        if importlib.util.find_spec('aim_next.checkpoints') is not None:
+            clock = mock.patch('aim_next.checkpoints._now_ms',side_effect=lambda:self.now)
+            clock.start(); self.addCleanup(clock.stop)
 
     def create(self, actor='owner', **changes):
         args = dict(assessor_id='agent-b',team=['agent-a'],assignment='Deliver the named artifact',
@@ -47,7 +50,9 @@ class CheckpointCase(unittest.TestCase):
 
     def test_policy_is_explicit_authorized_and_coalesces_concurrent_creates(self):
         self.ok(self.command('message.post',{'body':'Assess after two misses: this is just discussion.'},{'topic_id':'t1'}))
-        self.assertEqual(self.store.view('owner','checkpoints',{})['items'],[])
+        listed=self.store.view('owner','checkpoints',{})
+        self.assertIn('items',listed)
+        self.assertEqual(listed['items'],[])
         self.assert_refused(self.create(actor='agent-b'),'FORBIDDEN')
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             receipts = list(pool.map(lambda _:self.create(),range(2)))
