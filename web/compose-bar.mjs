@@ -24,7 +24,7 @@ function trackKeyboard(win, doc) {
   const vv = win.visualViewport;
   if (!vv || !doc) return;
   const root = doc.documentElement;
-  let full = 0, width = 0;
+  let full = 0, width = 0, last = vv.height;
   const read = () => {
     const typing = doc.activeElement?.matches?.(TYPING) && !doc.activeElement.readOnly;
     if (vv.width !== width) { width = vv.width; full = 0; }
@@ -32,6 +32,12 @@ function trackKeyboard(win, doc) {
     else if (full - vv.height > KEYBOARD_MIN) root.style.setProperty('--keyboard', `${Math.round(full - vv.height)}px`);
     root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
     root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+    // Less shows (the keyboard came up): a composer now taller than what it
+    // has scrolls inside itself (aim.css), and brings the field being typed
+    // in, with Send on its row, back into view.
+    const field = typing && vv.height < last ? doc.activeElement.closest('.composer .field-box') : null, composer = field?.closest('.composer');
+    if (composer && composer.scrollHeight > composer.clientHeight) field.scrollIntoView({ block: 'nearest' });
+    last = vv.height;
   };
   vv.addEventListener('resize', read);
   vv.addEventListener('scroll', read);

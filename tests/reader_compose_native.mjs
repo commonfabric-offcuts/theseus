@@ -1273,7 +1273,12 @@ const REM = 16, WIDEST = { stacked: 72 * REM, wide: 100 * REM };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 const SIZES = { 'phone 320×568': ['phone-320'], 'phone 375×667': ['phone-375'], 'phone 390×844': ['phone-390'],
   'laptop 1440×960': ['laptop-stacked', 'laptop-wide'], 'very wide 2560×1440': ['very-wide-stacked', 'very-wide-wide'] };
-const DRAFTS = { empty: 'light', 'a long draft': 'dark', 'an image': 'light' };
+// A refused image: an iPhone's HEIC photo the server takes no copy of, so it
+// waits on a choice (Attach as download, Remove) and Send is refused until it
+// has one: the notice says why and the image's choices open, the composer's
+// tallest state.
+const DRAFTS = { empty: 'light', 'a long draft': 'dark', 'an image': 'light', 'a refused image': 'dark' };
+const HEIC = { name: 'IMG_3307.heic', mimeType: 'image/heic', buffer: Buffer.from('not an image the browser can read') };
 const LONG = Array.from({ length: 120 }, (_, i) => `Line ${i + 1} of a draft longer than any field.`).join('\n');
 // What one composer's surface measures: its box, its composer's, the field's
 // and Send's, against what shows of the window, and which of its controls, or
@@ -1284,13 +1289,27 @@ const sized = (p, which) => p.evaluate(which => {
   const box = el => { const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), width: Math.round(b.width), height: Math.round(b.height) }; };
   const view = { top: Math.round(visualViewport.offsetTop), height: Math.round(visualViewport.height), width: innerWidth, innerHeight };
   const shown = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
-  // A control in a box of the composer that scrolls (a phone's panel holding more than fits) is where a finger brings it: that box is what must show.
-  const scroller = el => { for (let at = el.parentElement; at && at !== c; at = at.parentElement) if (/auto|scroll/.test(getComputedStyle(at).overflowY) && at.scrollHeight > at.clientHeight) return at; return el; };
+  // A control in a box of the composer that scrolls (a phone's panel holding more than fits, or the composer itself where it is taller than what it has) is where a finger brings it: that box is what must show.
+  const scroller = el => { for (let at = el.parentElement; at && at !== c.parentElement; at = at.parentElement) if (/auto|scroll/.test(getComputedStyle(at).overflowY) && at.scrollHeight > at.clientHeight) return at; return el; };
   const past = [...c.querySelectorAll('button, input, textarea, select, [role=button]')].filter(shown).map(el => [el.id || el.className || el.tagName, box(scroller(el))])
     .filter(([, b]) => b.left < -1 || b.right > view.width + 1 || b.top < view.top - 1 || b.bottom > view.top + view.height + 1).map(([name]) => name);
   const panel = c.querySelector('.compose-panel:not([hidden])');
-  return { open: d.open, dialog: box(d), composer: box(c), field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4 }, send: shown(send) ? box(send) : null, panel: panel && box(panel),
-    images: c.querySelectorAll('.image-strip .image-choice').length, view, past, sideways: document.documentElement.scrollWidth > innerWidth };
+  // Shows itself, not only its scroller: its own box inside what shows and inside every box of the composer that clips it.
+  const seen = el => { const b = el.getBoundingClientRect(); if (b.top < view.top - 1 || b.bottom > view.top + view.height + 1 || b.left < -1 || b.right > view.width + 1) return false;
+    for (let at = el.parentElement; at && at !== c.parentElement; at = at.parentElement) if (getComputedStyle(at).overflowY !== 'visible') { const a = at.getBoundingClientRect(); if (b.top < a.top - 1 || b.bottom > a.bottom + 1) return false; }
+    return true; };
+  const focus = c.contains(document.activeElement) ? { id: document.activeElement.id || document.activeElement.className, seen: seen(document.activeElement) } : null;
+  const notice = c.querySelector('.notice:not([hidden])'), taller = c.querySelector('.taller-field');
+  // The composer's rows, top to bottom, are each clear of the others: the notice, the head, a panel in its row, the images, and the foot (+, the field, 👍, Send), which share theirs.
+  // A row given less than its height would be drawn over the next (an image's choices under Send).
+  const rows = [...c.children].filter(el => shown(el) && getComputedStyle(el).position === 'static' && el.matches('.notice, .compose-head, .compose-panel, .image-strip, .plus-button, .field-box, .compose-send, #thumb-source')
+    && !(el.matches('.compose-head') && c.dataset.compose !== 'writing')).map(el => [el.id || el.className, box(el), el.matches('.plus-button, .field-box, .compose-send, #thumb-source') ? 'foot' : el]);
+  const over = rows.flatMap(([a, ba, ra], i) => rows.slice(i + 1).filter(([, bb, rb]) => (ra !== 'foot' || rb !== 'foot') && Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top) > 1).map(([b]) => `${a} / ${b}`));
+  // The surface never scrolls, so its own head (the Reader's ✕ and ↑ ↓, the sheet's title and ✕) stays where it is: what is taller scrolls inside the composer.
+  const head = d.querySelector(which === 'sheet' ? '.inline-composer>h2' : '.reader-header');
+  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: box(c), field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4 }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
+    images: c.querySelectorAll('.image-strip .image-choice').length, choices: c.querySelectorAll('.image-strip .image-choice[data-open][data-needs]').length, notice: notice ? notice.textContent : '',
+    focus, compose: c.dataset.compose, taller: Boolean(shown(taller)), over, view, past, sideways: document.documentElement.scrollWidth > innerWidth };
 }, which);
 async function runSizes() {
   for (const [size, shapes] of Object.entries(SIZES)) for (const [draft, scheme] of Object.entries(DRAFTS)) await check(`size ${size}, ${draft}: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen`, async () => {
@@ -1304,7 +1323,9 @@ async function runSizes() {
       const expected = (which, v) => phone ? { width, height: v.height - (which === 'sheet' ? 12 : 0) }
         : { width: Math.min(WIDEST[which === 'reader' && wide ? 'wide' : 'stacked'], width - 3 * REM), height: v.innerHeight - 3 * REM };
       const near = (a, b) => Math.abs(a - b) <= 2;
+      const fieldOf = { sheet: 'inline-writing-body', reader: 'writing-body' };
       const holds = async (which, when) => {
+        const field = fieldOf[which];
         const m = await sized(p, which), want = expected(which, m.view), said = `${shape} ${which} ${when}: ${JSON.stringify({ want, ...m })}`;
         assert.ok(m.open, `open: ${said}`);
         assert.ok(near(m.dialog.height, want.height), `as tall as what shows of the window (${want.height}px), not ${m.dialog.height}px: ${said}`);
@@ -1312,6 +1333,9 @@ async function runSizes() {
         assert.deepEqual([m.dialog.top >= m.view.top - 1, m.dialog.bottom <= m.view.top + m.view.height + 1, m.dialog.left >= 0, m.dialog.right <= width + 1, m.sideways, m.past],
           [true, true, true, true, false, []], `nothing reaches past what shows, sideways or down, Send included: ${said}`);
         assert.ok(m.send, `Send shows: ${said}`);
+        assert.deepEqual(m.over, [], `no row of the composer is drawn over another: ${said}`);
+        assert.equal(m.surfaceScrolled, 0, `the ${which} itself never scrolls, what is taller scrolls inside the composer: ${said}`);
+        if (which === 'reader') assert.ok(m.head.top >= m.dialog.top - 1 && m.head.bottom <= m.view.top + m.view.height + 1, `the Reader's header shows: ${said}`);
         // Alone, or side by side, the composer is the surface's whole height,
         // its field taking what the rest leaves; stacked, the reply is as tall
         // as its writing and the message has the rest (docs/reader.md).
@@ -1323,19 +1347,41 @@ async function runSizes() {
           assert.ok(foot - m.field.bottom <= (which === 'sheet' ? 24 : 120), `the field reaches down to the composer's foot: ${said}`);
         }
         if (draft === 'a long draft') assert.ok(m.field.scrolls, `a draft longer than the field scrolls inside it: ${said}`);
-        if (draft === 'an image') assert.equal(m.images, 1, `the image shows in the composer: ${said}`);
+        if (draft === 'an image' || draft === 'a refused image') assert.equal(m.images, 1, `the image shows in the composer: ${said}`);
+        // What has focus shows itself, and with the field in hand Send shows beside it: a composer taller than what shows scrolls inside itself, the focus in view.
+        assert.ok(!m.focus || m.focus.seen, `what has focus shows: ${said}`);
+        if (m.focus?.id === field) assert.ok(m.send.seen, `with the field in hand, Send shows: ${said}`);
+        if (draft === 'a refused image') {
+          assert.equal(m.choices, 1, `the refused image's choices are open: ${said}`);
+          if (which === 'reader') assert.equal(m.notice, `Finish or remove the image ${HEIC.name} before sending.`, `the notice says why Send was refused: ${said}`);
+        }
+        // On a phone, writing: the Reader's stacked field has ⤢ to make it taller; the sheet's field is already the sheet's height, so it has none.
+        if (phone && m.compose === 'writing') assert.equal(m.taller, which === 'reader', `⤢ ${which === 'reader' ? 'makes the Reader\'s field taller' : 'is not in the sheet, whose field fills it'}: ${said}`);
         return m;
       };
       const fill = async (which, field, plus, tile) => {
         if (draft === 'a long draft' && which === 'reader') await p.keyboard.insertText(LONG);
-        if (draft === 'an image') {
+        if (draft === 'an image' || draft === 'a refused image') {
           await p.keyboard.insertText('Here is the picture.');
           await press(p, plus);
           await until(p, s => !document.querySelector(s).hidden, 'the + panel', which === 'sheet' ? '#inline-plus-panel' : '#plus-panel');
           const chooser = p.waitForEvent('filechooser');
           await press(p, tile);
-          await (await chooser).setFiles({ name: 'picture.png', mimeType: 'image/png', buffer: PNG });
+          await (await chooser).setFiles(draft === 'an image' ? { name: 'picture.png', mimeType: 'image/png', buffer: PNG } : HEIC);
           await until(p, s => document.querySelectorAll(`${s} .image-strip .image-choice`).length === 1, 'the image in the composer', which === 'sheet' ? '#inline-composer' : '#reader-composer', 20000);
+          if (draft === 'a refused image') {
+            const strip = which === 'sheet' ? '#inline-attachments' : '#writing-attachments';
+            await until(p, s => document.querySelector(`${s} .image-choice`)?.hasAttribute('data-needs'), 'the image waiting on a choice', strip, 20000);
+            // Send, refused, says why and opens the image's choices in the Reader; in the sheet Send waits, and a press on the image opens them.
+            if (which === 'reader') {
+              await press(p, '#send-reply', true);
+              await until(p, () => !document.querySelector('#reader-notice').hidden, 'the notice');
+            } else await press(p, `${strip} .image-open`);
+            await until(p, s => document.querySelector(`${s} .image-choice`).hasAttribute('data-open'), 'the image\'s choices open', strip);
+            await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'a settled composer');
+            await holds(which, 'refused, the image\'s choices open');
+            await shot(p, `size-refused-${which}-choices`);
+          }
           // On a phone the tile let the keyboard go; the field takes it back.
           await press(p, field);
         }

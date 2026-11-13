@@ -125,14 +125,26 @@ above it), so nothing goes past the screen, sideways or down, and Send stays
 in reach with the keyboard up. In Wide the reply's column is the Reader's
 whole height; in the New message sheet the composer is the sheet's height
 and its field takes what the head, an open panel and the images leave, then
-scrolls, so there is no taller toggle there; on a laptop the sheet's who panel
-opens in it under the head, and + over the field's foot, as in Wide. Stacked,
-the reply stays as tall as its writing and the message has the rest; where
-the Reader is shorter than both (a small phone with the keyboard up, the
-reply holding an image), the field gives way, down to one line, so the
-reply's head, its images and Send stay on the screen. The sizes are in
-`web/aim.css` (`--widest`, and the stacked reply's last row), not measured
-in script.
+scrolls, so there is no taller toggle (⤢) there, while the stacked Reader's
+field on a phone keeps it; on a laptop the sheet's who panel opens in it
+under the head, and + over the field's foot, as in Wide. Stacked, the reply
+stays as tall as its writing and the message has the rest; where the Reader
+is shorter than both (a small phone with the keyboard up, the reply holding
+an image), the field gives way, down to one line, so the reply's head, its
+images and Send stay on the screen.
+
+Shorter still, as on a 320-point phone with the keyboard up and an image
+whose Send was refused (its notice, the image's choices to Attach as
+download or Remove, the head, the field and Send), the composer scrolls
+inside itself: the stacked reply below the Reader's header, the composer
+inside the sheet. Every row above the field keeps its whole height, so no
+row is drawn over another, and the field keeps one line. What has focus
+shows: a press brings it into view as any focus does, and as the keyboard
+comes up the field being typed in, with Send on its row, is brought back
+into view (`web/compose-bar.mjs`, which reads the keyboard). Nothing of the
+composer goes past the screen, and every part of it is a scroll away. The
+sizes are in `web/aim.css` (`--widest`, the stacked reply's rows and the
+sheet's), not measured in script.
 
 ## Layouts
 
@@ -258,12 +270,16 @@ the Reader, whose header then leads back to the page ("← page title").
 Chrome and WebKit): at 320×568, 375×667 and 390×844 with touch, at 1440×960
 stacked and Wide, and at 2560×1440, past the maximum, with the composer empty,
 holding a draft longer than its field (in the sheet, one written at the
-page's end first) and holding an image, the Reader and the New message sheet
-are each measured against the window: their height and width as above, the
-composer filling the sheet and Wide's column, the field reaching the
-composer's foot, a long draft scrolling inside the field, and no control of
-the composer, nor the page, reaching past what shows; on a phone again with
-the keyboard up.
+page's end first), holding an image, and holding a HEIC image that waits on a
+choice, its choices open (in the Reader by a refused Send, whose notice says
+why), the Reader and the New message sheet are each measured against the
+window: their height and width as above, the composer filling the sheet and
+Wide's column, the field reaching the composer's foot, a long draft scrolling
+inside the field, no row of the composer drawn over another, what has focus
+showing (with the field in hand, Send too), ⤢ in the stacked Reader on a
+phone and not in the sheet, and no control of the composer, nor the page,
+reaching past what shows, a control in a part that scrolls counting where
+that part is; on a phone again with the keyboard up.
 
 `tests/reader_compose_native.mjs` runs in Chrome for Testing and in
 Playwright's WebKit at 390×844 with touch, and at 1280×800 stacked and wide,

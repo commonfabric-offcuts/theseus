@@ -9638,6 +9638,111 @@
     "native": "compose",
     "case": "chromium size phone 320×568, an image"
    }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the stacked reply, taller than what the Reader's header leaves, scrolls inside itself, and the Reader with its header never scrolls",
+   "break": [
+    [
+     "web/aim.css",
+     "  #reader:not([data-layout=wide]) .writing-pane{overflow-y:auto;",
+     "  #reader:not([data-layout=wide]) .writing-pane{"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the composer taller than the sheet scrolls inside itself rather than past the sheet",
+   "break": [
+    [
+     "web/aim.css",
+     "1fr;align-content:stretch;overflow-y:auto;",
+     "1fr;align-content:stretch;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the field keeps its line however little the rows above it leave",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(0,1fr);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In the sheet each row above the field keeps its whole height, so the image's choices are never drawn under Send",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:auto auto auto auto auto 1fr;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In the stacked Reader on a phone each row above the field keeps its whole height, so the image's choices are never drawn over the head or the field",
+   "break": [
+    [
+     "web/aim.css",
+     "  #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.75rem,auto)}",
+     "  #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:auto auto auto auto auto minmax(2.75rem,auto)}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "As the keyboard comes up, a composer that scrolls brings the field being typed in, with Send, back into view",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "if (composer && composer.scrollHeight > composer.clientHeight) field.scrollIntoView({ block: 'nearest' });",
+     "if (false) field.scrollIntoView({ block: 'nearest' });"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the New message sheet has no ⤢, its field already the sheet's height",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer .taller-field{display:none}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, empty"
+   }
   }
  ]
 }

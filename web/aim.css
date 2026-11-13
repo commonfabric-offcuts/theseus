@@ -813,8 +813,8 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .image-choice[data-open]>button[data-method]{display:inline-block}
 .image-choice[data-open]>button[data-method=remove]{position:static;width:auto;height:auto;min-height:2.25rem;padding:.15rem .6rem;border-radius:.5rem;font-size:.78rem}
 .image-choice[data-open]>button[data-method=remove]::before{content:none}
-/* Stacked: the reply is as tall as its writing, the field four lines at most on a laptop, and the message has the rest. Where the Reader is shorter than both (a small phone with the keyboard up), the field gives way, down to one line, so the reply's head, its images and Send stay on the screen (item 400). */
-#reader:not([data-layout=wide]) .writing-pane{flex:0 1 auto;grid-template-rows:auto auto auto auto auto minmax(2.5rem,auto);padding-left:1rem;padding-right:1rem}
+/* Stacked: the reply is as tall as its writing, the field four lines at most on a laptop, and the message has the rest. Where the Reader is shorter than both (a small phone with the keyboard up), the field gives way, down to one line; shorter still (an image's choices open, a notice above them), the reply scrolls inside itself, below the Reader's header, each row above the field keeping its whole height (min-content: the image strip, which scrolls, would otherwise give way to nothing and be drawn over the head and the field) (item 400). */
+#reader:not([data-layout=wide]) .writing-pane{flex:0 1 auto;grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);padding-left:1rem;padding-right:1rem}
 #reader:not([data-layout=wide]) .writing-pane>.field-box{align-self:stretch;display:flex;flex-direction:column;justify-content:center}
 #reader:not([data-layout=wide]) .writing-pane textarea{flex:0 1 auto}
 /* Laptop, side by side: the column carries the head, the field filling it, the hint under it on a line of its own however narrow the column, then + · 👍 · Send. Its who panel opens inside the column. */
@@ -855,6 +855,8 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .message-menu-list.menu-sheet button{min-height:3rem;font-size:1rem}
 @media(max-width:760px){
   dialog#reader,dialog#reader[data-layout=wide]{top:var(--vv-top,0px);bottom:auto;height:var(--vv-height,100dvh);max-height:var(--vv-height,100dvh)}
+  /* Stacked, the reply is never taller than what the header leaves (its row's minimum is the pane's, 0): past that it scrolls inside itself, the field brought into view as the keyboard comes up (compose-bar.mjs), so no part of it goes past the screen and the Reader itself never scrolls. */
+  #reader:not([data-layout=wide]) .writing-pane{overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
   .composer{padding-left:.6rem;padding-right:.6rem;column-gap:.35rem}
   .composer textarea{max-height:calc(3 * 1.5em + 1.1rem)}
   .compose-send>[aria-hidden=true]{display:none}
@@ -882,7 +884,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   .composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}
   .plus-button,.composer>#thumb-source{width:2.75rem;height:2.75rem}
   .composer[data-compose=line] textarea{height:2.75rem}
-  #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:auto auto auto auto auto minmax(2.75rem,auto)}
+  #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.75rem,auto)}
   .reader-header>button,#reader-stepping>button,#reader-star{min-width:2.75rem;min-height:2.75rem}
   .taller-field{width:2.75rem;height:2.75rem;top:0}
   .image-strip{padding:1rem 1rem 0 0}
@@ -898,8 +900,8 @@ dialog.composer-home:not([open]){display:block;position:static;width:auto;height
 .composer-home:not([open]) .inline-composer{border:1px solid var(--line);border-radius:.9rem;background:var(--paper)}
 dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);max-height:calc(var(--vv-height,100dvh) - 3rem);overflow:visible}
 dialog.composer-home[open] .inline-composer{border:0;border-radius:1rem}
-/* Alone in the sheet the composer is the sheet's height, and its field takes what the head, a panel and the images leave, then scrolls; ⤢ has nothing to add there. On a laptop the who panel opens in the composer, under the head, and + over the field's foot, as side by side, since a popover above the sheet would be off the screen. */
-dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:auto auto auto auto auto minmax(0,1fr);align-content:stretch}
+/* Alone in the sheet the composer is the sheet's height, and its field takes what the head, a panel and the images leave, then scrolls; ⤢ has nothing to add there. Where the rest leaves less than one line (a small phone with the keyboard up, an image's choices open), the field keeps its line, every row above it keeps its whole height (min-content: the image strip and a panel, which scroll, would otherwise give way to nothing and be drawn under the rows beside them), and the composer scrolls inside itself, the field brought into view as the keyboard comes up (compose-bar.mjs), so nothing goes past the sheet. On a laptop the who panel opens in the composer, under the head, and + over the field's foot, as side by side, since a popover above the sheet would be off the screen. */
+dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;align-content:stretch;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
 dialog.composer-home[open] .inline-composer>.field-box{align-self:stretch}
 dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;max-height:none;padding-right:.9rem}
 dialog.composer-home[open] .inline-composer .taller-field{display:none}
