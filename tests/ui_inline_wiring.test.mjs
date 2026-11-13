@@ -169,7 +169,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     runtime: { current: bootstrap.authority },
   };
   const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
-  const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
+  const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1, showAlone: () => false, aloneItem: () => null };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
@@ -2260,8 +2260,10 @@ test('a card in the topic log says when its message was sent, and a message from
   // The author line follows the card's ⋯ (docs/links.md).
   const author = id => f.get('messages').children.find(card => card.dataset.id === id).children.find(node => node.className === 'message-author');
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
-  const parts = id => author(id).children.map(text);
+  // The star in the header (item 376) comes after who and when, and is no part of the time.
+  const parts = id => author(id).children.filter(node => node.className !== 'card-star').map(text);
   assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM'], 'sent today: the time alone');
+  assert.deepEqual(author('m1').children.map(node => node.className).slice(-1), ['card-star'], 'the star follows who and when');
   assert.deepEqual(parts('m2'), ['fable']);
   assert.deepEqual(parts('m3'), ['fable', ' · Yesterday 9:12 PM']);
   assert.deepEqual(parts('m4'), ['fable', ' · 7:41 AM Tue Nov 3'], 'earlier: dated as before');

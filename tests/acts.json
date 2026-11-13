@@ -433,8 +433,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      if (entry && entry !== this.lit) this.light(entry);\n      else if (!entry && !this.ownsControls(event.target)) this.light(null);\n    });\n    // What was lit",
-     "      if (!entry && !this.ownsControls(event.target)) this.light(null);\n    });\n    // What was lit"
+     "      if (entry && entry !== this.lit) this.light(entry);\n      else if (!entry && !this.ownsControls(event.target)) this.light(null);\n      // The keys follow the pointer too (item 387): what it moved onto takes the keyboard's place, as a click gives it (claim).\n      if (this.host.contains(event.target)) this.hover(event);\n",
+     "      if (!entry && !this.ownsControls(event.target)) this.light(null);\n"
     ]
    ],
    "check": {
@@ -493,8 +493,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      button.onclick = () => this.act(name);",
-     "      button.onclick = () => name === 'reply' || this.act(name);"
+     "button.onclick = () => { if (this.lit) this.claim(cardIn(this.lit)); this.act(name); };",
+     "button.onclick = () => { if (this.lit) this.claim(cardIn(this.lit)); name === 'reply' || this.act(name); };"
     ]
    ],
    "check": {
@@ -5389,7 +5389,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (on && this.actsOf(item.id).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }\n",
+     "    if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }\n",
      ""
     ]
    ],
@@ -7442,8 +7442,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "      if (item) this.paintFoldedThumb(card, item);\n",
-     ""
+     " this.paintFoldedThumb(card, item); }",
+     " }"
     ]
    ],
    "check": {
@@ -7502,8 +7502,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "    const order = [folded, ...(this.bar.hidden ? [] : Object.values(this.buttons))]",
-     "    const order = [...(this.bar.hidden ? [] : Object.values(this.buttons))]"
+     "    const order = [folded, star, ...(this.bar.hidden ? [] : Object.values(this.buttons))]",
+     "    const order = [star, ...(this.bar.hidden ? [] : Object.values(this.buttons))]"
     ]
    ],
    "check": {
@@ -7612,6 +7612,489 @@
    "check": {
     "native": "reading",
     "case": "reading stacks a folded message's row carries its 👍"
+   }
+  },
+  {
+   "item": 376,
+   "act": "A press on the star in a message's header stars it for the reader alone, and a second press unstars it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const press = () => { const shown = this.cardItem(star); if (shown) this.star(shown); };",
+     "const press = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a star in a message's header"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The header's star shows, an outline, while its message is lit, and filled on a starred message always",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".message-card:is(.lit,:focus-visible,:focus-within) .card-star,[data-starred=true] .card-star{visibility:visible}",
+     ".message-card:is(.lit,:focus-visible,:focus-within) .card-star,[data-starred=true] .card-star{visibility:hidden}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a star in a message's header"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The star beside the Reader's title stars and unstars the message it shows",
+   "break": [
+    [
+     "web/app.mjs",
+     "$('reader-star').onclick = () => starFromReader();",
+     "$('reader-star').onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star beside its title"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The Reader's star follows the message's star as the stacks are drawn again, outline or filled",
+   "break": [
+    [
+     "web/app.mjs",
+     "redrawn: () => paintReaderStar() });",
+     "redrawn: () => {} });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star beside its title"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The Reader's ⋯ offers Fold message, which folds it for the reader alone",
+   "break": [
+    [
+     "web/app.mjs",
+     "else if (item && !acts.starred) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });",
+     "else if (false) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star beside its title"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The Reader's ⋯ offers no Fold on a starred message",
+   "break": [
+    [
+     "web/app.mjs",
+     "else if (item && !acts.starred) items.push({ label: 'Fold message'",
+     "else if (item) items.push({ label: 'Fold message'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star beside its title"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The Reader's ⋯ offers Unfold message on a folded message",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (item && acts.folded) items.push({ label: 'Unfold message'",
+     "if (false) items.push({ label: 'Unfold message'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star beside its title"
+   }
+  },
+  {
+   "item": 382,
+   "act": "The feed's view filters sit side by side at the right of the Read it row",
+   "break": [
+    [
+     "web/aim.css",
+     ".feed-filters{display:flex;flex-wrap:wrap;",
+     ".feed-filters{display:block;flex-wrap:wrap;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the feed's view filter sits at the right of the row"
+   }
+  },
+  {
+   "item": 382,
+   "act": "The Read it row takes no room when nothing in it shows",
+   "break": [
+    [
+     "web/aim.css",
+     ".feed-filters:not(:has(>:not([hidden]))){display:none}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the feed's view filter sits at the right of the row"
+   }
+  },
+  {
+   "item": 382,
+   "act": "On a Conversation, Only new sits on the Read it row",
+   "break": [
+    [
+     "web/aim.css",
+     ".feed-filters{display:flex;flex-wrap:wrap;",
+     ".feed-filters{display:block;flex-wrap:wrap;"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation a link to its topic opens as"
+   }
+  },
+  {
+   "item": 384,
+   "act": "A press on an outcome on the Outcomes home opens its Conversation",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "return this.opens==='conversation'&&typeof item.conversation_id==='string'?{kind:'conversation',id:item.id}:{kind:'workspace',id:item.id};",
+     "return {kind:'workspace',id:item.id};"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on the Outcomes home a press on an outcome opens its Conversation"
+   }
+  },
+  {
+   "item": 384,
+   "act": "An outcome with no Conversation yet opens its page from the Outcomes home",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "this.opens==='conversation'&&typeof item.conversation_id==='string'?",
+     "this.opens==='conversation'?"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on the Outcomes home a press on an outcome opens its Conversation"
+   }
+  },
+  {
+   "item": 384,
+   "act": "The Outcomes home has no Outcomes heading",
+   "break": [
+    [
+     "web/app.mjs",
+     "document.querySelector('#main > .topic-header').hidden=true;",
+     "document.querySelector('#main > .topic-header').hidden=false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on the Outcomes home a press on an outcome opens its Conversation"
+   }
+  },
+  {
+   "item": 384,
+   "act": "The list of outcomes names each one's Conversation, or none",
+   "break": [
+    [
+     "aim_next/store.py",
+     "\"conversation_id\": conversation[\"id\"] if conversation else None,",
+     "\"conversation_id\": None,"
+    ]
+   ],
+   "check": {
+    "python": "test_conversation.py"
+   }
+  },
+  {
+   "item": 385,
+   "act": "Return on a selected dossier edits its title",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (this.renameKey(event)) return;",
+     "    if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Return on a selected dossier edits its title"
+   }
+  },
+  {
+   "item": 385,
+   "act": "Return on a message in a dossier still replies, a head shown whole included",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const whole = at.classList.contains('stack-toggle') || (section.dataset.headOpen === 'false' && at === cardIn(head));",
+     "const whole = true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Return on a selected dossier edits its title"
+   }
+  },
+  {
+   "item": 386,
+   "act": "A click or a tap in a message moves the keys' place there, scrolling nothing",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "host.addEventListener('click', event => this.claim(event.target), true);",
+     "host.addEventListener('click', event => {}, true);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a click or a tap in a message moves the keys' place there"
+   }
+  },
+  {
+   "item": 387,
+   "act": "The pointer moving onto a message or a dossier gives it the keys' place",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (this.host.contains(event.target)) this.hover(event);",
+     "if (false) this.hover(event);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
+   }
+  },
+  {
+   "item": 387,
+   "act": "The pointer moving over the messages takes nothing from writing",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (!at || writing(at) || writing(focused) || focused?.isContentEditable || ",
+     "if (!at || writing(at) || "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
+   }
+  },
+  {
+   "item": 389,
+   "act": "An item that waits for an answer shows three quiet dots, not a word",
+   "break": [
+    [
+     "web/outcome-conversation.mjs",
+     "tag.waiting ? waitingDots(doc,",
+     "false ? waitingDots(doc,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_conversation.test.mjs"
+   }
+  },
+  {
+   "item": 389,
+   "act": "On the page the three dots pulse in turn, in the card's ink",
+   "break": [
+    [
+     "web/aim.css",
+     ".item-waiting>span:nth-child(2){animation-delay:.25s}",
+     ".item-waiting>span:nth-child(2){animation-delay:0s}"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation the page is a topic page"
+   }
+  },
+  {
+   "item": 389,
+   "act": "Under reduced motion the dots stand still",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(prefers-reduced-motion:reduce){.item-waiting>span{animation:none;opacity:.55}}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "conversation the page is a topic page"
+   }
+  },
+  {
+   "item": 376,
+   "act": "Only a message's card names it (data-id): the star in its header names no message of its own, so what finds a card finds it alone",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    star.setAttribute('aria-pressed', String(starred));",
+     "    star.dataset.id = item.id; star.setAttribute('aria-pressed', String(starred));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a star in a message's header"
+   }
+  },
+  {
+   "item": 376,
+   "act": "Only a message's card names it (data-id): the 👍 on its folded row names no message of its own",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    button.setAttribute('aria-pressed', String(on));",
+     "    button.dataset.id = item.id; button.setAttribute('aria-pressed', String(on));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row carries its 👍"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The star in a message's header is put back, as it was, each time its author line is painted again (a mark from another device, the time's words)",
+   "break": [
+    [
+     "web/app.mjs",
+     "  stackFeed?.paintStar(author, item);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a star in a message's header"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The Reader's star and Fold message show for a message of the topic no loaded page holds, opened alone from its link",
+   "break": [
+    [
+     "web/app.mjs",
+     "return source ? views.messages.get(id) ?? views.aloneItem(id) : null;",
+     "return source ? views.messages.get(id) ?? null : null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star and Fold message show for a message the page has not loaded"
+   }
+  },
+  {
+   "item": 376,
+   "act": "A message the Reader shows that no loaded page holds has its acts read, so its star shows",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (freshness && views.showAlone(source?.source_ref.id ?? null, source?.seq)) freshness.invalidate('acts', 0, true);",
+     "if (freshness && views.showAlone(source?.source_ref.id ?? null, source?.seq)) {}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star and Fold message show for a message the page has not loaded"
+   }
+  },
+  {
+   "item": 376,
+   "act": "A message opened alone follows its acts as they change on another device",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "const item = this.messages.get(id) ?? (alone?.id === id ? alone : null), later",
+     "const item = this.messages.get(id), later"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star and Fold message show for a message the page has not loaded"
+   }
+  },
+  {
+   "item": 376,
+   "act": "A second press on the Reader's star of a message opened alone unstars it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const on = !this.actsOf(item.id, item).starred;",
+     "const on = !this.actsOf(item.id).starred;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star and Fold message show for a message the page has not loaded"
+   }
+  },
+  {
+   "item": 376,
+   "act": "A star refused on a message opened alone is shown no more: the Reader's star shows what Core holds",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (!this.messages().has(id)) this.redrawn();\n",
+     "    if (!this.messages().has(id)) {}\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star and Fold message show for a message the page has not loaded"
+   }
+  },
+  {
+   "item": 387,
+   "act": "The pointer moving over a message takes no focus from a composer's own controls and panels (Who sees this message), as the page's keys leave them alone",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (!at || writing(at) || writing(focused) || ",
+     "if (!at || writing(at) || focused?.matches?.('input, textarea, select') || "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
+   }
+  },
+  {
+   "item": 386,
+   "act": "A press on a message's bar while writing acts and leaves the cursor in the writing",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (!at || writing(at) || writing(focused) || focused?.isContentEditable || ",
+     "if (!at || writing(at) || "
+    ],
+    [
+     "web/message-menu.mjs",
+     "    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]')) return;",
+     "    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]') || writing(this.doc.activeElement)) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
    }
   }
  ]

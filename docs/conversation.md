@@ -12,10 +12,12 @@ act that did it.
 `?conversation=OUTCOME` is a topic page like any other: the messages, newest
 first, with the same cards, reply stacks, New line and counts, and the writing
 box below them ("Write to OUTCOME…"). The heading is "Conversation", with what it is for
-and who answers under it. A card's tags say New, Answered (with the reply),
+and who answers under it. A card's tags show three quiet dots pulsing in turn while nothing has settled its item ("Waiting for an answer", still under reduced motion), then say Answered (with the reply),
 Taken into a topic (with the topic) or On the pipeline, and, beside any of
-them, Waiting on someone (with the ask). One filter chip, "Only new (N)",
-leaves out every card but the items nothing has settled; a new item in a reply
+them, Waiting on someone (with the ask). One filter chip, "Only new (N)", at
+the right of the row above the feed (beside "N messages marked unread · Read it"
+when that shows, on one row while both fit; at a phone's width Only new wraps
+just under it, still at the right), leaves out every card but the items nothing has settled; a new item in a reply
 stack shows on its own, without the messages it hangs under, and lays out as
 a card on its own does (in line with the others and as far apart), whatever
 else of its stack is new: there a stack draws nothing of its own. In a folded

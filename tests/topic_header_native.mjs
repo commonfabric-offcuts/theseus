@@ -278,7 +278,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(() => p.calls.slice(before).find(c => c.payload?.kind === 'topic.update' && c.payload.args?.title === 'Renamed by its coordinator'), 'the rename is sent');
     await until(() => p.evaluate(`document.querySelector('#topic-title').textContent === 'Renamed by its coordinator'`), 'the title changes without a reload');
     assert.equal((await view('topic', { topic_id: made.topic_id })).topic.title, 'Renamed by its coordinator', 'Core took the coordinator\'s rename');
-    await until(() => p.evaluate(`document.getAnimations().every(a=>a.playState!=='running')`), 'settled');
+    await until(() => p.evaluate(`document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')`), 'settled');
     await shot(p, 'header-coordinator');
     await p.key('Escape');
     await until(async () => !await isOpen(p), 'Escape closes it');
@@ -929,7 +929,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       await tapOn(p, '#settings-open');
       await until(() => isOpen(p), 'a tap on the gear opens it');
       // Measured once its opening animation has run, as the person sees it.
-      await until(() => p.evaluate(`document.getAnimations().every(a=>a.playState!=='running')`), 'the dialog settled');
+      await until(() => p.evaluate(`document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')`), 'the dialog settled');
       const full = await p.evaluate(`(()=>{const b=document.querySelector('#topic-settings').getBoundingClientRect();return {box:[b.x,b.y,b.width,b.height],viewport:[innerWidth,innerHeight],font:getComputedStyle(document.querySelector('#topic-state-note')).fontSize}})()`);
       assert.deepEqual(full.box, [0, 0, ...full.viewport], 'the dialog fills the screen');
       assert.equal(full.font, '16px', 'its fields are 16px, so the phone does not zoom');
@@ -984,16 +984,16 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     let stop = null;
     const expected = await p.evaluate(`${buttons}.map(e=>e.getAttribute('aria-label')||e.title)`);
     const seen = [];
-    // A lit card's bar buttons follow it in the Tab order (docs/interaction.md): up to three stops before the people.
+    // A lit card's header star and bar buttons follow it in the Tab order (docs/interaction.md): up to four stops before the people.
     let past = 0;
     for (;;) {
       await p.key('Tab');
-      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar')),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
-      if (!at.pill && at.bar && !seen.length && past++ < 3) continue;
+      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar'))||a.classList.contains('card-star'),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
+      if (!at.pill && at.bar && !seen.length && past++ < 4) continue;
       if (!at.pill) { stop = await p.evaluate(`(a=>a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30))(document.activeElement)`); break; }
       seen.push(at.name);
       assert.deepEqual([at.visible, at.style], [true, 'solid'], `${at.name}: the browser draws its keyboard ring`);
-      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'settled');
+      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'settled');
       const sides = ringSides(await screen(), at.box, focusColor);
       if (seen.length === 1) await shot(p, 'header-ring-first-pill-button');
       for (const [side, share] of Object.entries(sides)) assert.ok(share >= 0.5, `${at.name}: the ring shows along its ${side} side (${share.toFixed(2)} of it): ${JSON.stringify(sides)}`);

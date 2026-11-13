@@ -414,7 +414,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     // At a revision, in the Reader, whose ⋯ copies its two links and edits the page in the composer.
     p = await page('notebook-link-revision', null, true, { url: `${facts.origin}/?topic=t1&page=${linked}&revision=1` });
     await shows(p, first.title, first.body);
-    await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
     // The page's own clipboard, never the Mac's.
     await p.evaluate(`(()=>{window.copied=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{window.copied.push(text)}});return true})()`);
     await p.point('#reader-menu');

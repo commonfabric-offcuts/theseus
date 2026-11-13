@@ -59,7 +59,7 @@ export async function agentColorsCheck({ check, page, until, facts, control, sho
             nameBackground:n.backgroundColor,nameColor:n.color,timeColor:time?getComputedStyle(time).color:null,wordsColor:getComputedStyle(words).color,
             edges:{left:[c.borderLeftWidth,c.borderLeftColor],right:[c.borderRightWidth,c.borderRightColor],top:[c.borderTopWidth,c.borderTopColor],shadow:c.boxShadow,before:before.content,after:after.content},
             card:box(card),name:box(name),paper:getComputedStyle(document.documentElement).backgroundColor,soft:getComputedStyle(document.documentElement).getPropertyValue('--soft')}})()`);
-        await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'settled');
+        await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'settled');
         const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
         return { ...painted, image };
       };

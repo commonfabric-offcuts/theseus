@@ -47,7 +47,7 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
     await p.point(card(id));
     await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(words)})`), 'the Reader shows it');
-    await until(() => p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled reader');
   };
   // Sending a reply closes the Reader on its own; otherwise its ✕ does.
   const closeReader = async p => {

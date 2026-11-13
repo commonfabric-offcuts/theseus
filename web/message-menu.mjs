@@ -51,6 +51,8 @@ export class MessageMenu {
       const entry = this.entryOf(event.target);
       if (entry && entry !== this.lit) this.light(entry);
       else if (!entry && !this.ownsControls(event.target)) this.light(null);
+      // The keys follow the pointer too (item 387): what it moved onto takes the keyboard's place, as a click gives it (claim).
+      if (this.host.contains(event.target)) this.hover(event);
     });
     // What was lit when the press began: the press itself focuses the card,
     // which lights it, before its click arrives.
@@ -77,6 +79,10 @@ export class MessageMenu {
         event.preventDefault(); event.stopPropagation();
       }
     }, true);
+    // A click or tap in a message or a dossier also moves the keys' place there
+    // (item 386): it runs before the control pressed acts, so whatever that
+    // control focuses itself (a menu, the Reader, a field) still takes the focus.
+    host.addEventListener('click', event => this.claim(event.target), true);
     // A tap anywhere but a message, its bar, its menu or a pop-up lets the light go. A
     // finger lifted after a scroll ends in pointercancel, so scrolling keeps it.
     doc.addEventListener('pointerup', event => {
@@ -125,7 +131,8 @@ export class MessageMenu {
       // replies. On mousedown, not pointerdown: WebKit drops a tap's click when
       // its pointerdown is cancelled, and a tap's mousedown comes after the touch.
       button.addEventListener('mousedown', event => event.preventDefault());
-      button.onclick = () => this.act(name);
+      // A press on the bar puts the keys on its message, as a press in the message does (claim).
+      button.onclick = () => { if (this.lit) this.claim(cardIn(this.lit)); this.act(name); };
       return button;
     };
     this.buttons = {
@@ -153,6 +160,34 @@ export class MessageMenu {
   // The ⋯ that shows the entry's menu and says "Link copied": the bar's, while
   // the entry is lit; else none.
   moreFor(entry) { return entry && entry === this.lit && !this.bar.hidden ? this.buttons.more : null; }
+  // Moves the keyboard's place, coarsely, to what a click or tap fell in: the
+  // dossier's chevron, or the message (a head's row is its head, which stands
+  // for the dossier once it shows as one row), focused as the keys focus it
+  // (key), without scrolling, so the next
+  // arrow, Return or shortcut acts from there. Writing keeps the focus, with
+  // a composer's own controls and panels, a menu and a dialog, as the page's
+  // keys leave them alone (pane-keys.mjs, writing): whether the press fell
+  // there or the focus is there (a press on the bar takes no focus). One that
+  // ends a drag selecting words leaves it, so the words stay selected.
+  claim(target) {
+    const at = target?.nodeType === 1 ? target : target?.parentElement, focused = this.doc.activeElement;
+    if (!at || writing(at) || writing(focused) || focused?.isContentEditable || this.doc.getSelection?.()?.isCollapsed === false) return;
+    const header = at.closest('.stack-toggle');
+    const entry = header ? null : this.entryOf(at);
+    const stop = header ?? (entry && (cardIn(entry).hidden ? entry.querySelector('.fold-line') : cardIn(entry)));
+    if (!stop || stop === this.doc.activeElement || !stop.getClientRects().length) return;
+    stop.focus({ preventScroll: true });
+    if (header) this.light(null);
+  }
+  // The pointer moved onto a message or a dossier's header: the keys act there
+  // next, as after a click (claim), without scrolling. Only a pointer that
+  // really moved, with no button held (a drag selecting words), comes here.
+  // Writing keeps the focus (claim), and so do an open menu, the Reader or any
+  // other dialog, so typing and their keys never go elsewhere.
+  hover(event) {
+    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]')) return;
+    this.claim(event.target);
+  }
   light(entry) {
     if (this.lit && this.lit !== entry) {
       this.lit.classList.remove('lit'); cardIn(this.lit).classList.remove('lit');
@@ -298,13 +333,14 @@ export class MessageMenu {
   // once followed it; Tab from the bar's last goes on from the card, by the
   // browser's own order, and Shift-Tab from its first comes back to the card.
   // Tab from the lit message goes through the 👍 on its folded row
-  // (StackFeed.paintFoldedThumb), then its bar's buttons, ⋯ last, then on
-  // from the message; Shift-Tab comes back the same way.
+  // (StackFeed.paintFoldedThumb) and the star in its header
+  // (StackFeed.paintStar), then its bar's buttons, ⋯ last, then on from the
+  // message; Shift-Tab comes back the same way.
   tab(event) {
     if (!this.lit?.isConnected) return;
     const card = cardIn(this.lit), at = this.doc.activeElement;
-    const folded = card.querySelector(':scope > .message-folded > .folded-thumb');
-    const order = [folded, ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
+    const star = card.querySelector(':scope > .message-author > .card-star'), folded = card.querySelector(':scope > .message-folded > .folded-thumb');
+    const order = [folded, star, ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
     if (!order.length) return;
     const index = order.indexOf(at);
     if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }

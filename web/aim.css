@@ -288,6 +288,10 @@ textarea.whispering,textarea.whispering:focus{border:1px dashed var(--whisper-li
 /* Answered by: the team's names in the row, then a field a name wide that adds on Return. */
 .audience .answerer-chips{display:contents}.audience.answered-by input{flex:0 1 12rem;width:12rem;max-width:100%}.audience.answered-by>button:not(.someone){display:none}
 .conversation-show{display:flex;justify-content:flex-end;margin:0 0 .6rem}
+/* One row above the feed: "N messages marked unread · Read it" at its left when it shows, the view filters side by side at its right; it wraps only when the row cannot hold them, and takes no room when none shows. */
+.feed-filters{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.4rem .5rem;margin:0 0 .6rem}
+.feed-filters:not(:has(>:not([hidden]))){display:none}
+.feed-filters>.topic-marks{margin:0 auto 0 0}.feed-filters>.conversation-show{margin:0}
 .filter-chip{min-height:2.2rem;padding:.15rem .75rem;border-radius:1.2rem;font-size:.8rem;color:var(--muted)}
 .filter-chip[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--ink);font-weight:650}
 .conversation-empty{padding:.5rem 0 1rem;display:flex;flex-direction:column;gap:.4rem;max-width:40rem}.conversation-empty p{margin:0}
@@ -306,6 +310,12 @@ html:has(#messages:hover){overscroll-behavior-x:none}
 .message-card .item-detail{opacity:.85;overflow-wrap:anywhere;min-width:0}
 .message-card .item-tag{flex-shrink:0;padding:0 .45rem;border:1px solid currentColor;border-radius:1rem;font-size:.7rem;font-weight:650;line-height:1.3rem;white-space:nowrap}
 .message-card .item-tag.mine{border-width:2px;font-weight:750}
+/* An item nothing has settled yet: three quiet dots in the card's own ink, pulsing in turn, still under reduced motion. */
+.item-waiting{display:inline-flex;align-items:center;gap:.22rem;height:1.3rem;padding:0 .15rem;cursor:default}
+.item-waiting>span{width:.34rem;height:.34rem;border-radius:50%;background:currentColor;opacity:.3;animation:item-waiting 1.5s ease-in-out infinite}
+.item-waiting>span:nth-child(2){animation-delay:.25s}.item-waiting>span:nth-child(3){animation-delay:.5s}
+@keyframes item-waiting{0%,70%,100%{opacity:.3}35%{opacity:.85}}
+@media(prefers-reduced-motion:reduce){.item-waiting>span{animation:none;opacity:.55}}
 .message-card .item-link{text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .message-card .asks-you{margin:0 .35rem 0 .4rem}
 .conversation-row{min-height:44px;padding:.6rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
@@ -831,6 +841,10 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .reader-header>button,#reader-stepping>button{min-width:2.5rem;min-height:2.5rem;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.05rem;color:var(--ink)}
 .reader-header>button:hover,#reader-stepping>button:hover{background:var(--soft)}
 #reader-stepping>button:disabled{opacity:.3}
+/* The star beside the Reader's title: a quiet glyph, outline until starred, filled once starred; its row keeps the heading's height however big its target. */
+.reader-title-row{display:flex;align-items:center;gap:.15rem;min-width:0}.reader-title-row h2{min-width:0}
+#reader-star{flex:none;min-width:2.5rem;min-height:2.5rem;margin:-.5rem 0;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.15rem;line-height:1;color:var(--muted)}
+#reader-star:hover{background:var(--soft);color:var(--ink)}#reader-star[aria-pressed=true]{color:var(--accent)}
 /* ↑ Previous · ↓ Next at the end of the message, on a phone only. */
 .reader-end{display:none}
 /* The ⋯ as a sheet from the bottom, on a phone. */
@@ -865,7 +879,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   .composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}
   .plus-button,.composer>#thumb-source{width:2.75rem;height:2.75rem}
   .composer[data-compose=line] textarea{height:2.75rem}
-  .reader-header>button,#reader-stepping>button{min-width:2.75rem;min-height:2.75rem}
+  .reader-header>button,#reader-stepping>button,#reader-star{min-width:2.75rem;min-height:2.75rem}
   .taller-field{width:2.75rem;height:2.75rem;top:0}
   .image-strip{padding:1rem 1rem 0 0}
   .image-choice>button[data-method=remove]{width:2.75rem;height:2.75rem;top:-1rem;right:-1rem;background:transparent;border:0}

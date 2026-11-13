@@ -74,7 +74,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'the card is drawn');
     await p.point(card);
     await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent === ${JSON.stringify(body)}`), 'the Reader shows the message');
-    await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
     const passages = await p.evaluate(`[...document.querySelector('#source-body').children].map(s=>[s.textContent,[...s.querySelectorAll('a.words-link')].map(a=>a.textContent)])`);
     assert.deepEqual(passages, [['First sentence here. ', []], [`The preview is at ${ELSEWHERE} now. `, [ELSEWHERE]], ['Last sentence.', []]], 'the link sits whole in one passage');
     await shot(p, 'links-reader');
@@ -126,7 +126,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await p.evaluate('scrollTo(0,0)');
     await p.point('#settings-open');
     await until(() => open(p, 'topic-settings'), 'Topic settings open');
-    await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the dialog settled');
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the dialog settled');
     const box = await p.box('#topic-settings'), note = await centre(p, '#topic-state-note');
     const backdrop = [box.x / 2, box.y + box.height / 2];
     await drag(p, note, backdrop);
@@ -167,7 +167,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
   };
   // Whether the page's last context menu event was left to the browser.
   const contextLog = p => p.evaluate(`(()=>{window.contexts=[];addEventListener('contextmenu',e=>contexts.push(e.defaultPrevented));return true})()`);
-  const settled = p => until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'settled');
+  const settled = p => until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'settled');
   const readerShows = (p, words) => until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent === ${JSON.stringify(words)}`), 'the Reader shows ' + words);
   const post = async (operation, topic, body, more = {}) => (await control({ method: 'agent_message', operation_id: operation, topic_id: topic, join: true, source: 'topic', body, ...more })).result.message_id;
   await topics({ id: 'links-m', title: 'Links menu' }, { id: 'links-o', title: 'Other links' });
@@ -276,20 +276,20 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard)}))`), 'the card is drawn');
     await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(menuCard)}).focus();return true})()`);
     await until(() => barShown(p), 'the card the focus is on lights, with its bar');
-    // Tab from the lit card goes on to its bar's buttons, in order, as its own ⋯ once followed it.
-    const focused = () => p.evaluate(`(()=>{const a=document.activeElement;return a?.closest('.message-bar')?'bar:'+a.dataset.act:a===document.querySelector(${JSON.stringify(menuCard)})?'card':(a?.tagName??'')+(a?.className?'.'+a.className:'')})()`);
+    // Tab from the lit card goes on to the star in its header (item 376), then its bar's buttons, in order, as its own ⋯ once followed it.
+    const focused = () => p.evaluate(`(()=>{const a=document.activeElement;return a?.closest('.message-bar')?'bar:'+a.dataset.act:a?.classList.contains('card-star')?'star':a===document.querySelector(${JSON.stringify(menuCard)})?'card':(a?.tagName??'')+(a?.className?'.'+a.className:'')})()`);
     const order = [];
-    for (let i = 0; i < 3; i++) { await p.key('Tab'); order.push(await focused()); }
-    assert.deepEqual(order, ['bar:thumb', 'bar:reply', 'bar:more'], 'Tab from the card reaches its bar\'s 👍, Reply and ⋯');
-    // Shift-Tab from the bar's first button comes back to the card; Tab past its ⋯ goes on to what follows the card.
-    await p.key('Tab', 8); await p.key('Tab', 8); await p.key('Tab', 8);
-    assert.equal(await focused(), 'card', 'Shift-Tab from the bar\'s first button comes back to the card');
-    for (let i = 0; i < 3; i++) await p.key('Tab');
+    for (let i = 0; i < 4; i++) { await p.key('Tab'); order.push(await focused()); }
+    assert.deepEqual(order, ['star', 'bar:thumb', 'bar:reply', 'bar:more'], 'Tab from the card reaches its star, then its bar\'s 👍, Reply and ⋯');
+    // Shift-Tab back through the bar and the star comes back to the card; Tab past its ⋯ goes on to what follows the card.
+    for (let i = 0; i < 4; i++) await p.key('Tab', 8);
+    assert.equal(await focused(), 'card', 'Shift-Tab from the star comes back to the card');
+    for (let i = 0; i < 4; i++) await p.key('Tab');
     assert.equal(await focused(), 'bar:more');
     await p.key('Tab');
     assert.equal(await p.evaluate(`(()=>{const a=document.activeElement,c=document.querySelector(${JSON.stringify(menuCard)});return !a.closest('.message-bar')&&a!==c&&Boolean(c.compareDocumentPosition(a)&Node.DOCUMENT_POSITION_FOLLOWING)})()`), true, 'Tab past the ⋯ goes on from the card, not to the page\'s end');
     await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(menuCard)}).focus();return true})()`);
-    for (let i = 0; i < 3; i++) await p.key('Tab');
+    for (let i = 0; i < 4; i++) await p.key('Tab');
     assert.equal(await focused(), 'bar:more', 'Tab from the card reaches its ⋯');
     await p.key('Enter');
     await menuOpen(p, ['Copy Link', 'Mark unread']);

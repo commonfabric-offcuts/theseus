@@ -48,8 +48,8 @@ export function itemTags(message, waits, reader) {
   const item = message?.item;
   if (item) {
     const takes = Array.isArray(item.takes) ? item.takes : [];
-    // Still New: nothing has settled it, though a take may have used part of it.
-    if (item.state === 'new') tags.push({ tag: 'New', parts: takes.length ? ['part taken so far'] : [] });
+    // Waiting for an answer, as three quiet dots: nothing has settled it, though a take may have used part of it.
+    if (item.state === 'new') tags.push({ tag: 'Waiting for an answer', waiting: true, parts: takes.length ? ['part taken so far'] : [] });
     for (const take of takes) {
       const by = named(take.actor_id, reader);
       if (take.kind === 'answer') {
@@ -95,6 +95,15 @@ const itemLink = (doc, host, words, kind, id) => {
   return link;
 };
 
+// Three dots pulsing in turn, in the card's own ink, for an item that waits for
+// an answer (item 389): still under reduced motion (aim.css), and named for a
+// screen reader and the pointer by words.
+function waitingDots(doc, words) {
+  const dots = element(doc, 'span', { className: 'item-waiting', title: words }, element(doc, 'span'), element(doc, 'span'), element(doc, 'span'));
+  dots.setAttribute('role', 'img'); dots.setAttribute('aria-label', words);
+  return dots;
+}
+
 // Paints the tags at the foot of one card into its .item-tags row; open(kind, id) follows a link.
 export function paintItemTags(card, message, waits, reader, open, doc = document) {
   let host = card.querySelector(':scope > .item-tags');
@@ -103,7 +112,8 @@ export function paintItemTags(card, message, waits, reader, open, doc = document
   if (!host) { host = element(doc, 'span', { className: 'item-tags' }); card.append(host); }
   if (shows(host, open, JSON.stringify(tags))) return;
   host.replaceChildren(...tags.map(tag => element(doc, 'span', { className: 'item-tag-group' },
-    element(doc, 'span', { className: tag.mine ? 'item-tag mine' : 'item-tag', textContent: tag.tag }),
+    tag.waiting ? waitingDots(doc, [tag.tag, ...tag.parts.filter(part => typeof part === 'string')].join(' · '))
+      : element(doc, 'span', { className: tag.mine ? 'item-tag mine' : 'item-tag', textContent: tag.tag }),
     ...(tag.parts.length ? [element(doc, 'span', { className: 'item-detail' }, ...tag.parts.map(part => {
       if (typeof part === 'string') return part;
       if (part.time !== undefined) return Number.isSafeInteger(part.time) ? timeNode(part.time, doc) : '';

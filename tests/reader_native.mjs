@@ -101,7 +101,7 @@ try {
   // opening animation still moves the dialog it would sit outside it, and a
   // press on its item would be a press outside the Reader. Native input on it
   // waits for the dialog to settle, as reset() does.
-  const settled = () => until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled reader');
+  const settled = () => until(() => evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation => animation.playState !== "running")'), 'settled reader');
   // Wide or Stacked is an item in the Reader's ⋯ (docs/links.md): a native
   // press on the ⋯, then on the item it lists.
   const switchLayout = async () => {
@@ -140,7 +140,7 @@ try {
     await until(async () => {
       const current = await evaluate(`(()=>{const dialog=document.querySelector('#reader'), b=dialog.getBoundingClientRect();
         return {box:[b.x,b.y,b.width,b.height],ready:getComputedStyle(dialog).opacity==='1' && b.width>0 && b.height>0 &&
-          document.getAnimations().every(animation=>animation.playState!=='running')}})()`);
+          document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')}})()`);
       const stable = current.ready && previous && current.box.every((number, index) => Math.abs(number - previous[index]) < .1);
       previous = current.box;
       return stable;
@@ -157,7 +157,7 @@ try {
       assert.equal(pageErrors.length, 0, 'no browser exceptions');
       results.push({ phase, name, passed: true, observations });
     } catch (error) { results.push({ phase, name, passed: false, error: error.stack, observations }); }
-    await until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled screenshot');
+    await until(() => evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation => animation.playState !== "running")'), 'settled screenshot');
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     await writeFile(path.join(evidencePath, `${results.length}.png`), Buffer.from(shot.data, 'base64'));
   };
@@ -481,7 +481,7 @@ try {
           }
           // The status shows in the head row while writing (docs/reader.md).
           await point(surface === 'reader' ? '#writing-body' : '#inline-writing-body');
-          await until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled layout');
+          await until(() => evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation => animation.playState !== "running")'), 'settled layout');
           const label = `${width}px ${view}`, status = surface === 'reader' ? '#save-state' : '#inline-save-state';
           const shown = [];
           for (const text of words) { await say(status, text); shown.push({ text, ...await measure(surface) }); }

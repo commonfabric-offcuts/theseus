@@ -313,7 +313,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             const card = `#messages [data-id="${unmarked}"]`, button = "document.querySelector('#mark-unread')";
             await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({ block: 'center' })`);
             await p.point(card);
-            await until(() => p.evaluate(`document.querySelector('#reader').open && !${button}.hidden && ${button}.getAttribute('aria-pressed') === 'false' && document.getAnimations().every(a => a.playState !== 'running')`), 'the Reader offers Mark unread');
+            await until(() => p.evaluate(`document.querySelector('#reader').open && !${button}.hidden && ${button}.getAttribute('aria-pressed') === 'false' && document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running')`), 'the Reader offers Mark unread');
             await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
             keep(`${route}-${scheme}-${layout}-reader`, await p.evaluate(audit), Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'), await p.evaluate(legible));
             await p.point('#mark-unread');

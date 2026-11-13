@@ -13,9 +13,20 @@ Nothing under the message is boxed. A draft already written shows a Draft
 tag on the line, and one waiting to be reviewed shows its chip ("1 reply may
 not have sent", read whole by a screen reader).
 
+A star beside the message's title stars it for you, and pressed again
+unstars it: outline until starred, filled once starred, "Star for me" or
+"Unstar" by name, a 44 pixel target under a finger. It is the card's ⋯ Star
+for me (`StackFeed.star`), so the card and the Reader agree; it shows for
+any message of the topic, never for a Notebook page. A message no loaded page
+holds (opened alone, from a link to an older message) has its star and Fold
+message too: the page reads its acts with the loaded messages', and again
+whenever they change (`TopicViews.showAlone`), so a star made on another
+device shows there as well.
+
 The message's own acts are in the Reader's ⋯, beside Copy Link: Quote
 selection (only while words are selected or a passage is lit), Mark unread,
-Start a topic from this, and Add to pipeline, and Wide or Stacked layout
+Fold message (Unfold message once folded; a starred message offers none, as
+on the card), Start a topic from this, and Add to pipeline, and Wide or Stacked layout
 where the window can choose. Pressing the ⋯ or + can move the focus and let
 the selection go, so what Quote selection quotes there is what was chosen
 as it was pressed, by a pointer, a finger or the keys. ↑ and ↓ in the

@@ -571,7 +571,9 @@ class Store(HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Mem
             unread, addressed = totals.get(row["id"], (0, 0))
             # Where the outcome stands for this reader (item 86, docs/outcome-light.md).
             facts = self._kind_facts(db, row)
-            return {"id": row["id"], "owner_id": row["owner_id"], "title": title,
+            # Its conversation, so a press on it can open that (null for one made before version 28 and not yet started).
+            conversation = self._conversation_of(db, row["id"])
+            return {"id": row["id"], "owner_id": row["owner_id"], "title": title, "conversation_id": conversation["id"] if conversation else None,
                     "title_truncated": truncated, "version": row["version"],
                     "unread": unread, "addressed": addressed, "kind": facts["kind"],
                     "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
