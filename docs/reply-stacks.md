@@ -601,3 +601,21 @@ menu, moves it below More messages like any other dossier ([Put a dossier
 aside](#put-a-dossier-aside)), and it keeps its quiet row
 there. With Show agent coordination off, agent coordination below More is
 hidden as well and More counts only the dossiers it would show.
+
+### Dossier motion (412)
+
+Only newly accepted live IDs can deal onto an existing, visible dossier.
+Initial loads, history, read/act replays, filters and opening a dossier do not
+replay arrivals. A hidden page or reduced-motion preference paints the final
+natural layout. Motion never changes message order, acts or saved folds.
+
+A new face travels down over the earlier faces for 760ms. The replies keep
+their old floor until contact, then follow the moving lower edge. Fold/unfold
+uses a 360ms clipped height transition with one solid original author, without
+a duplicate or a text fade. The semantic saved state changes immediately.
+The 429 full-strength muted ink and 56px phone face (44px exposed after overlap)
+remain the endpoints. A writing or reading anchor above the changing region
+stays put; motion that would move that anchor is skipped. A primary press
+pauses running geometry until release/cancel. Superseding acts, resize, hidden
+pages and navigation cancel temporary geometry and restore natural layout.
+Transparent incoming faces do not enter read tracking until motion settles.

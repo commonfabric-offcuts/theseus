@@ -61,6 +61,7 @@ import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress }
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
+import { StackMotion } from './stack-motion.mjs';
 import { readerSteps } from './stack-order.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
@@ -99,7 +100,7 @@ let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
 let menu = null, reactions = null, cardScroll = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
-let stackFeed = null;
+let stackFeed = null, stackMotion = null;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
 const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
@@ -454,7 +455,7 @@ function noteRead() {
   const shown = new Set();
   for (const entry of entries($('messages'))) {
     const seq = Number(entry.dataset.seq);
-    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) shown.add(seq);
+    if ((halfShown.has(seq) || atMiddle.has(seq)) && !entry.dataset.stackMotion && onScreen(entry)) shown.add(seq);
   }
   if (!shown.size) return;
   for (const [from, through] of seenRanges([...views.messages.values()], seq => shown.has(seq), id => views.runOf(id), bootstrap.actor))
@@ -714,11 +715,11 @@ function paintMoreMessages() {
   $('more-messages').hidden = Boolean(aside && !view.asideShown) || views.olderCursor === null || (!view?.only &&
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
-function paintViews(kind) {
+function paintViews(kind, provenance) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
-  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
+  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind, { ...provenance, live: false })); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
@@ -787,7 +788,7 @@ function paintViews(kind) {
     learnReply(views.messages, item, bootstrap.actor);
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
-  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); paintCardReading(); }
+  if (kind === 'messages') { feedOf().arrived([...views.messages.values()], provenance); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
@@ -842,7 +843,15 @@ function actorLabel(id) {
 function stackMessages() { feedOf().arrange(); }
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
-  stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
+  stackMotion ??= new StackMotion({ list: $('messages'), anchor: () => {
+    const at = document.activeElement;
+    return inline?.root.contains(at) ? inline.field : typingField(at) && inView(at) ? at : listAnchor();
+  }, reading: (entry, moving) => {
+    const seq = Number(entry.dataset.seq);
+    if (moving) { cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); halfShown.delete(seq); atMiddle.delete(seq); }
+    else if (entry.isConnected) { cardObserver?.observe(entry); middleObserver?.observe(entry); }
+  } });
+  stackFeed ??= new StackFeed({ motion: stackMotion, list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current, send: envelope => api.command(envelope),
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
@@ -2704,7 +2713,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
+window.addEventListener('pagehide', () => { stackMotion?.dispose(); live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).

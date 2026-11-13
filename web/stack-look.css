@@ -295,3 +295,10 @@
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
 #messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
 #agent-coordination-show:has(~ #messages[hidden]){display:none}
+
+/* Motion owns only temporary geometry on the existing faces. Root cards and
+   their absolute folder tab never transform. Values follow the approved v4. */
+:root{--stack-arrival-ms:760;--stack-fold-ms:360;--stack-motion-ease:cubic-bezier(.25,.7,.2,1)}
+.stack-replies>[data-id]{flex-shrink:0}
+.message-card[data-stack-motion=fold]{display:block!important;align-items:initial!important}
+.message-card[data-stack-motion=fold]>.message-folded{display:none!important}

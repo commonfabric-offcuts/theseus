@@ -81,8 +81,8 @@ export class StackFeed {
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {},
-    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, clock, doc });
+    motion = null, refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, motion, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each dossier root the page has not loaded, kept so each act
     // on it learns the revision the act before it left, as a loaded message does.
@@ -133,7 +133,7 @@ export class StackFeed {
     } };
   }
   arrange() {
-    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
+    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { motion: this.motion, keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
@@ -304,7 +304,8 @@ export class StackFeed {
   // Such a reply also stays in view beside what answers it (it is never
   // unread, so nothing else keeps it), from the first draw it is in, until a
   // change of the stack's state or coming back lets go of it.
-  arrived(items) {
+  arrived(items, provenance) {
+    this.motion?.arrivals(provenance);
     const newest = items.reduce((most, item) => Math.max(most, item.seq), 0);
     const mine = this.newestSeen === null ? []
       : items.filter(item => item.seq > this.newestSeen && item.author_id === this.viewer && (item.reply_to || this.actsOf(item.id).joined));

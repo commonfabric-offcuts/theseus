@@ -95,6 +95,7 @@ export class TopicViews {
       const known = this.messages.get(item.id);
       if (known && (known.seq !== item.seq || known.body !== item.body || known.author_id !== item.author_id)) throw invalid('An immutable message changed.');
     }
+    const addedIds = answer.items.filter(item => !this.messages.has(item.id)).map(item => item.id);
     // A page is contiguous in the topic. It extends the run it continues (the
     // newest message for a live page, the oldest for an older page) and joins
     // every run it overlaps; a page that does neither, such as the newest page
@@ -117,7 +118,7 @@ export class TopicViews {
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live) this.olderCursor = answer.next_cursor;
-    this.paint('messages'); return true;
+    this.paint('messages', { initial, live, addedIds }); return true;
   }
   // Whether the line holds: a message at or above it (its own or a newer one)
   // is unread, as the answer that drives the counts and the Unread pills says,
