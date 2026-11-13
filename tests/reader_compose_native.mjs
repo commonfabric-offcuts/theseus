@@ -81,7 +81,7 @@ const SHAPES = {
   // sized as a small laptop window, and a narrow, short window with a mouse is
   // laid out as a phone is, without the keyboard or a finger's sizes.
   'phone-sideways': { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
-  narrow: { viewport: { width: 600, height: 320 }, deviceScaleFactor: 1 },
+  narrow: { viewport: { width: 480, height: 300 }, deviceScaleFactor: 1 },
   'laptop-stacked': { viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 },
   'laptop-wide': { viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 },
   'very-wide-stacked': { viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 },
@@ -1276,7 +1276,7 @@ async function run() {
 // and with an image, measured in px from the page's own boxes.
 const REM = 16, WIDEST = { stacked: 72 * REM, wide: 100 * REM };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-const SIZES = { 'phone 320×568': ['phone-320'], 'phone 375×667': ['phone-375'], 'phone 390×844': ['phone-390'], 'phone sideways 844×390': ['phone-sideways'], 'narrow window 600×320': ['narrow'],
+const SIZES = { 'phone 320×568': ['phone-320'], 'phone 375×667': ['phone-375'], 'phone 390×844': ['phone-390'], 'phone sideways 844×390': ['phone-sideways'], 'narrow window 480×300': ['narrow'],
   'laptop 1440×960': ['laptop-stacked', 'laptop-wide'], 'very wide 2560×1440': ['very-wide-stacked', 'very-wide-wide'] };
 // A refused image: an iPhone's HEIC photo the server takes no copy of, so it
 // waits on a choice (Attach as download, Remove) and Send is refused until it
@@ -1312,7 +1312,7 @@ const sized = (p, which) => p.evaluate(which => {
   const over = rows.flatMap(([a, ba, ra], i) => rows.slice(i + 1).filter(([, bb, rb]) => (ra !== 'foot' || rb !== 'foot') && Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top) > 1).map(([b]) => `${a} / ${b}`));
   // The surface never scrolls, so its own head (the Reader's ✕ and ↑ ↓, the sheet's title and ✕) stays where it is: what is taller scrolls inside the composer.
   const head = d.querySelector(which === 'sheet' ? '.inline-composer>h2' : '.reader-header');
-  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: { ...box(c), scrolls: c.scrollHeight > c.clientHeight + 1 }, field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4 }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
+  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: { ...box(c), scrolls: c.scrollHeight > c.clientHeight + 1 }, field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4, line: parseFloat(getComputedStyle(field).minHeight) }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
     images: c.querySelectorAll('.image-strip .image-choice').length, choices: c.querySelectorAll('.image-strip .image-choice[data-open][data-needs]').length, notice: notice ? notice.textContent : '',
     focus, compose: c.dataset.compose, taller: Boolean(shown(taller)), over, view, past, sideways: document.documentElement.scrollWidth > innerWidth };
 }, which);
@@ -1360,9 +1360,9 @@ async function runSizes() {
           const foot = m.panel && m.panel.top >= m.field.bottom - 1 ? m.panel.top : m.dialog.bottom;
           assert.ok(foot - m.field.bottom <= (which === 'sheet' ? 24 : 120), `the field reaches down to the composer's foot: ${said}`);
         }
-        // Only a refused image's notice and choices may make the composer taller than what it has: short of that,
-        // its field gives way, so the head, the images and Send show with it and nothing needs scrolling to.
-        if (draft !== 'a refused image') assert.equal(m.composer.scrolls, false, `the composer holds all it has without scrolling: ${said}`);
+        // The field gives way first: a composer holding more than it shows (and so scrolling inside itself) has its
+        // field at one line, its own minimum, so as much of the head and the images shows as can.
+        if (m.composer.scrolls) assert.ok(m.field.height <= m.field.line + 1, `the field gives way to one line (${m.field.line}px) before the composer scrolls: ${said}`);
         if (draft === 'a long draft') assert.ok(m.field.scrolls, `a draft longer than the field scrolls inside it: ${said}`);
         if (draft === 'an image' || draft === 'a refused image') assert.equal(m.images, 1, `the image shows in the composer: ${said}`);
         // What has focus shows itself, and with the field in hand Send shows beside it: a composer taller than what shows scrolls inside itself, the focus in view.
@@ -1434,7 +1434,9 @@ async function runSizes() {
         await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'a settled sheet');
         await holds('sheet', 'open');
         await shot(p, `size-${draft.replaceAll(' ', '-')}-sheet`);
-        if (draft === 'empty' && !sideways) for (const [panel, opener] of [['#inline-who-panel', '#inline-who-chip'], ['#inline-plus-panel', '#inline-plus-button']]) {
+        // The panels are measured where the window is as tall as a phone's or a laptop's: in a short window
+        // (sideways, or the narrow 300-high one) a panel is a sliver, and where it opens is not this item's.
+        if (draft === 'empty' && height > 400) for (const [panel, opener] of [['#inline-who-panel', '#inline-who-chip'], ['#inline-plus-panel', '#inline-plus-button']]) {
           // Each panel opens inside the sheet, on the screen: a popover above a sheet as tall as the window would be off it.
           await press(p, opener);
           await until(p, s => !document.querySelector(s).hidden, 'the panel', panel);

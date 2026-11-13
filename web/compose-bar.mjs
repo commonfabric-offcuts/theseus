@@ -32,11 +32,17 @@ function trackKeyboard(win, doc) {
     else if (full - vv.height > KEYBOARD_MIN) root.style.setProperty('--keyboard', `${Math.round(full - vv.height)}px`);
     root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
     root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
-    // Less shows (the keyboard came up): a composer now taller than what it
-    // has scrolls inside itself (aim.css), and brings the field being typed
-    // in, with Send on its row, back into view.
-    const field = typing && vv.height < last ? doc.activeElement.closest('.composer .field-box') : null, composer = field?.closest('.composer');
-    if (composer && composer.scrollHeight > composer.clientHeight) field.scrollIntoView({ block: 'nearest' });
+    // Less shows (the keyboard came up): the composer the field is typed in
+    // scrolls itself, and only itself, to bring the field, with Send on its
+    // row, back into view above its scroll padding (aim.css). A composer that
+    // does not scroll (side by side, or wider than a phone) takes no
+    // scrollTop, so nothing moves, and nothing around it is ever scrolled:
+    // the Reader, which clips, stays where it is.
+    const field = typing && vv.height < last ? doc.activeElement.closest('.composer .field-box') : null;
+    if (field) {
+      const composer = field.closest('.composer'), port = composer.getBoundingClientRect().top + composer.clientTop + composer.clientHeight;
+      composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom + (parseFloat(win.getComputedStyle(composer).scrollPaddingBottom) || 0) - port);
+    }
     last = vv.height;
   };
   vv.addEventListener('resize', read);

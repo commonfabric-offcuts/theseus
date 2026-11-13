@@ -9626,7 +9626,7 @@
   },
   {
    "item": 400,
-   "act": "Stacked, where the Reader is short (a small phone with the keyboard up), the field gives way, so the reply's head, its image and Send stay on the screen",
+   "act": "Stacked, where the Reader is short (a small phone with the keyboard up), the field gives way to one line before the reply scrolls, so as much of its head and image shows with Send as can",
    "break": [
     [
      "web/aim.css",
@@ -9716,12 +9716,12 @@
   },
   {
    "item": 400,
-   "act": "As the keyboard comes up, a composer that scrolls brings the field being typed in, with Send, back into view",
+   "act": "As the keyboard comes up, the composer the field is typed in scrolls itself to bring the field, with Send, back into view",
    "break": [
     [
      "web/compose-bar.mjs",
-     "if (composer && composer.scrollHeight > composer.clientHeight) field.scrollIntoView({ block: 'nearest' });",
-     "if (false) field.scrollIntoView({ block: 'nearest' });"
+     "composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom",
+     "composer.scrollTop += 0 * Math.max(0, field.getBoundingClientRect().bottom"
     ]
    ],
    "check": {
@@ -9742,6 +9742,36 @@
    "check": {
     "native": "compose",
     "case": "chromium size phone 320×568, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "As the keyboard comes up only the composer scrolls: the Reader, which clips, never moves, its header staying at its top (a phone turned sideways)",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom",
+     "field.scrollIntoView({ block: 'nearest' }); (field.getBoundingClientRect().bottom"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone sideways 844×390, a long draft"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In a narrow window without touch, each row of the stacked reply above the field keeps its whole height, so the image's choices are never drawn over the head, + or Send",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);",
+     "#reader:not([data-layout=wide]) .writing-pane{grid-template-rows:auto auto auto auto auto minmax(2.5rem,auto);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size narrow window 480×300, a refused image"
    }
   }
  ]
