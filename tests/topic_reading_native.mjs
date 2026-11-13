@@ -608,7 +608,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   });
 
   await check('reading Show full message preserves the excerpt on a failed source read and retries without opening the Reader', async () => {
-    const topic = 'reading-show-full-retry', body = 'The complete message.\n\n' + 'More words to read.\n\n'.repeat(120);
+    const topic = 'reading-show-full-retry', body = Array.from({ length: 70 }, (_, i) => `Paragraph ${i}. Words that need the full height of the message to be read.`).join('\n\n');
     const ids = await seed(topic, [['long', { sender: 'aim-core', join: true, addressees: [facts.actor], body }]]);
     const init = `(()=>{window.failWhole=true;const f=window.fetch;window.fetch=(url,init)=>{let b;try{b=JSON.parse(init?.body)}catch{};if(window.failWhole&&b?.name==='source')return Promise.reject(Error('Source offline for this check'));return f(url,init)}})()`;
     const p = await open(topic, 'laptop', topic, ids.long, init);
