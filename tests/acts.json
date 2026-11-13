@@ -8131,7 +8131,7 @@
    "break": [
     [
      "aim_next/assessments.py",
-     "if previous['state'] != 'reported':",
+     "if previous['state'] not in ('reported', 'abandoned'):",
      "if False:"
     ]
    ],
@@ -8217,6 +8217,230 @@
      "aim_next/assessment_dispatch.py",
      "if message.get('method') == 'item/tool/call' and self.read_scope is not None:",
      "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The intervention operator must organise the outcome",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not organises(topic, operator):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Request evidence belongs to the named topic",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if source['topic_id'] != topic_id:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Every report citation is public evidence in the named topic",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "evidence = [] if args['evidence_message_ids'] == [] else self._assessment_sources(\n            db, (actor,record['requested_by'],record['operator_id']), record['topic_id'], args['evidence_message_ids'])",
+     "evidence = list(args['evidence_message_ids'])"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "An active request refuses changed assessor operator or sources",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not same:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Renewal follows an actual report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if record['state'] != 'reported':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The native runtime must actually apply read-only sandbox",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "or result.get('sandbox',{}).get('type') != 'readOnly'",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The standing Conversation cannot hold a named assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if topic['kind'] == 'conversation':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The assessor is independent of the named team",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if assessor in team:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only the named operator records the renewal",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if actor != record['operator_id'] or not organises(topic, actor):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A standing pinned native thread cannot become a fresh assessor",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if pinned:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Assessment metadata never stops the topic feed",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._change(db, 'actor', record['assessor_id'], 'assessment', record['id'], record['version'])",
+     "self._change(db, 'topic', record['topic_id'], 'assessment', record['id'], record['version'])"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A report preserves done state and does not wake assessed subscribers",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "snapshot, record_only=True)",
+     "snapshot, record_only=False)"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A confirmed refusal of a completed native report is durably terminal",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "except ReportRefused as error:\n        core.command",
+     "except ReportRefused as error:\n        raise\n        core.command"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Abandonment requires assessor or authorized operator",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if actor != record['assessor_id'] and not (actor in (record['operator_id'], record['requested_by']) and organises(topic, actor)):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "An abandoned assignment can be explicitly requested afresh",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if previous['state'] not in ('reported', 'abandoned'):",
+     "if previous['state'] != 'reported':"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Fresh and resumed native contexts request read-only execution without approvals",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "'sandbox':'read-only',",
+     "'sandbox':'workspace-write',"
     ]
    ],
    "check": {

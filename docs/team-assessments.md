@@ -45,7 +45,7 @@ transitions; a report and its completion record commit together.
 
 `assessment` reads one request; `assessments` pages requests assigned to the caller
 or belonging to a named readable topic. Reads preserve authorization and do not
-scan unrelated topic history. State is `requested`, `attached`, or `reported`;
+scan unrelated topic history. State is `requested`, `attached`, `reported`, or `abandoned`;
 renewal is a separate decision, not an invented execution state.
 
 ## Execution and recovery
@@ -127,3 +127,28 @@ staffing or process intervention remains a separate authorized act.
 The separate [artifact checkpoint policy](assessment-checkpoints.md) records due
 artifacts and evidenced observations, requests assessments at adopted thresholds,
 and exposes due reminders to the coordinator. It is not a background scheduler.
+## Refused reports and recording without reopening work
+
+`assessment.abandon` targets an unreported request and takes a nonempty `reason`.
+The assigned assessor may record an unusable native result; the named operator or
+requester may abandon only while still organizing the outcome. The terminal
+record retains its thread, runtime and reason. It rejects later attach/finish,
+never changes a route or stops a running agent, and never posts a report. An
+identical reason is idempotent; a changed reason is refused. The same assignment
+can then be explicitly requested again with a fresh request and fresh thread.
+Reported assessments cannot be abandoned. This also gives the operator a way out
+when the recorded runtime or native history is no longer available.
+
+The dispatcher abandons a completed report only on a confirmed Core rejection or
+unusable final JSON. An uncertain transport/store failure remains resumable and
+must reconcile first. It returns the terminal reason on retry without another
+model turn. Message citation ids must be distinct ids of public messages in the
+named topic; artifact paths and commit ids belong in the report body.
+
+A report is a public record in its original topic, with pending deliveries only
+for its requester/operator. Other participants receive settled deliveries; the
+assessed team is not woken by subscription. Recording preserves the topic's work
+state, waits and activity timestamp, including a completed topic. Normal messages
+keep their existing behavior. Metadata transitions write assessment keys only in
+actor scope; the report's ordinary topic change makes open feeds paint it without
+introducing a new topic-scope change kind.

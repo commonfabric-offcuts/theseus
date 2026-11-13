@@ -85,6 +85,11 @@ class DispatchCase(unittest.TestCase):
         self.assertEqual(self.count('thread/start'),1)
         self.assertEqual(self.count('turn/start'),1)
         self.assertEqual(self.sql("SELECT count(*) FROM metadata WHERE key LIKE 'route_pin.v1:%'"),[(0,)])
+        for method,params in calls:
+            if method in ('thread/start','thread/resume'):
+                self.assertEqual(params['sandbox'],'read-only')
+                self.assertEqual(params['approvalPolicy'],'never')
+                self.assertEqual(params['cwd'],self.config.cwd)
 
     def test_crash_before_attach_leaves_only_unused_empty_thread(self):
         self.native.fail = 'thread/inject_items'
@@ -253,3 +258,41 @@ class DispatchCase(unittest.TestCase):
             finally: self.assertEqual(rpc.close(),0)
         self.assertEqual(result['body'],report['body'])
 
+    def test_completed_invalid_reports_end_once_instead_of_pinning_the_assignment(self):
+        for evidence in [None,[self.source,'deadbeef'],[self.source,self.source],['docs/team-assessments.md']]:
+            with self.subTest(evidence=evidence):
+                self.identity=self.ok(self.request(op='bad-'+str(self.serial),assignment='Bad report '+str(self.serial)))['assessment_id']
+                self.native=Native(self.source)
+                original=self.native.call
+                def bad_report(method,params):
+                    result=original(method,params)
+                    if method=='thread/items/list':
+                        report=json.loads(result['data'][0]['item']['text']); report['evidence_message_ids']=evidence
+                        result['data'][0]['item']['text']=json.dumps(report) if evidence is not None else 'unparseable report'
+                    return result
+                self.native.call=bad_report
+                try:
+                    first=self.run_assessment()
+                except DispatchError as error:
+                    self.fail('Completed unusable report must reach a durable terminal state: '+str(error))
+                self.assertEqual(first['status'],'abandoned',first)
+                self.assertEqual(self.run_assessment(),first)
+                self.assertEqual(self.count('turn/start'),1)
+                record=self.core.record(self.identity)
+                new=self.ok(self.request(op='retry-'+str(self.serial),assignment=record['assignment']))['assessment_id']
+                self.assertNotEqual(new,self.identity)
+                self.assertIsNone(self.core.record(new)['thread_id'])
+
+    def test_native_settings_are_verified_before_attaching(self):
+        for key,value in [('approvalPolicy','on-request'),('sandbox',{'type':'workspaceWrite'}),('cwd','/wrong')]:
+            with self.subTest(key=key):
+                self.identity=self.ok(self.request(op='settings-'+key,assignment='Settings '+key))['assessment_id']
+                self.native=Native(self.source); original=self.native.call
+                def changed(method,params):
+                    result=original(method,params)
+                    if method=='thread/start': result[key]=value
+                    return result
+                self.native.call=changed
+                with self.assertRaisesRegex(DispatchError,'settings_not_applied'): self.run_assessment()
+                self.assertIsNone(self.core.record(self.identity)['thread_id'])
+                self.assertEqual(self.count('turn/start'),0)
