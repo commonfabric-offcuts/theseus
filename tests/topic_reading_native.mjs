@@ -607,6 +607,28 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
+  await check('reading Show full message preserves the excerpt on a failed source read and retries without opening the Reader', async () => {
+    const topic = 'reading-show-full-retry', body = 'The complete message.\n\n' + 'More words to read.\n\n'.repeat(120);
+    const ids = await seed(topic, [['long', { sender: 'aim-core', join: true, addressees: [facts.actor], body }]]);
+    const init = `(()=>{window.failWhole=true;const f=window.fetch;window.fetch=(url,init)=>{let b;try{b=JSON.parse(init?.body)}catch{};if(window.failWhole&&b?.name==='source')return Promise.reject(Error('Source offline for this check'));return f(url,init)}})()`;
+    const p = await open(topic, 'laptop', topic, ids.long, init);
+    const choose = async () => {
+      await light(p, 'laptop', ids.long); await press(p, 'laptop', BAR + ' [data-act="more"]');
+      const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+      assert.ok(index >= 0, 'the action remains available');
+      await press(p, 'laptop', `.message-menu-list > button:nth-child(${index + 1})`);
+    };
+    const shape = () => p.evaluate(`(c=>({height:c.getBoundingClientRect().height,words:c.querySelector('.message-preview').textContent}))(document.querySelector(${JSON.stringify(card(ids.long))}))`);
+    await light(p, 'laptop', ids.long); const before = await shape();
+    await choose();
+    await until(() => p.evaluate(`document.querySelector('#app-status').textContent.includes('Source offline')`), 'the failed read is reported');
+    assert.deepEqual(await shape(), before, 'a failed source read loses neither the excerpt nor its layout');
+    await p.evaluate('window.failWhole=false'); await choose();
+    await until(async () => (await shape()).height > before.height + 100, 'retry displays the full source');
+    assert.equal(await readerOn(p), null, 'retry never opens a modal');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('reading a cut-off message scrolls in place under the wheel or a finger, and the page does not move', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-long-' + device;

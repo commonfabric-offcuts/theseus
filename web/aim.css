@@ -538,6 +538,8 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .reaction-said{opacity:.8}
 .message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;overscroll-behavior:auto;scrollbar-gutter:stable}
 .message-preview.scroll-in-place{display:block}
+.message-card.show-full{max-height:none;overflow:visible}
+.message-card.show-full>.message-preview{max-height:none;overflow:visible}
 #thumb-source{flex-shrink:0;min-width:2.75rem}
 #thumb-source[aria-pressed=true]{background:var(--soft);font-weight:700}
 .guide-open{min-height:1.6rem;padding:0 .55rem;border-radius:.45rem;color:var(--muted);font-size:.8rem}

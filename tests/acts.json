@@ -8096,6 +8096,36 @@
     "native": "reading",
     "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
    }
+  },
+  {
+   "item": 401,
+   "act": "Show full message grows one clipped feed card without opening the Reader, preserving it across updates only on this page",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "    card.style.maxHeight = 'none'; card.scrollTop = 0;",
+     "    card.style.maxHeight = '100px'; card.scrollTop = 0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Show full message removes clipping"
+   }
+  },
+  {
+   "item": 406,
+   "act": "The composer thumb shows only your own state while the message keeps the shared count and names",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "  button.textContent = '👍';",
+     "  button.textContent = '👍 ' + reactionsOf(item).thumbs.length;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading the composer thumb represents only"
+   }
   }
  ]
 }
