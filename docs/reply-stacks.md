@@ -129,23 +129,32 @@ their acts.
   keyboard commands, header and menu (item 394 took away the header-only
   state, now that a swipe moves a dossier out of the way):
   - Folded (→): the latest reply plus unread replies, each shown once.
-    The original message is not shown here. Stars and joins do not force
+    The original message is not shown here. The reader's own starred
+    replies also show here, read or not (item 413). Joins do not force
     additional read messages into this view; a join the reader makes opens
     the stack it went into instead (see Doing it).
   - Open (↓): the original message and every reply.
 
-  A stack whose replies are all read shows its latest reply alone when
-  folded. A quiet agent dossier (below, 359) still begins as its header
+  A stack whose replies are all read shows its latest reply and the reader's
+  starred replies when folded. A quiet agent dossier (below, 359) still begins as its header
   alone; its first step opens it to latest plus unread, and only ⌘Z right
   after takes it back there. A stack left at its header that is no longer
   agents' alone (a reply to the person arrived, say) shows latest plus
   unread (`levelOf`).
 
-  Replies that were unread when drawn stay in view while being read, so
-  reading them does not make them vanish. Explicitly changing state, or
-  coming back to the page with a stack off screen, lets go of that snapshot.
+  Replies that were unread or starred when drawn stay in view while being
+  read or unstarred, so reading them or taking a star off them, here or on
+  another device, does not make them vanish under the reader: the keys and
+  the light stay on such a reply. Explicitly changing state, or coming back
+  to the page with a stack off screen, lets go of that snapshot.
   A newer reply replaces the previous latest if that previous reply was
-  already read; read asks and stars do not add exceptions to latest plus unread.
+  already read and not starred. The reader's starred replies remain visible
+  in their chronological places in latest plus unread, including after a
+  reload; once the star is off, an older read reply hides again at the next
+  change of the stack's state, on coming back, or after a reload. This uses
+  that reader's existing acts, never another reader's stars. Read asks do not
+  add an exception. An agent-only dossier's explicit header-only state is
+  unchanged; opening it to latest plus unread applies the same star rule.
   Coming back also returns off-screen fully open stacks to the partial view.
 - **Folded messages.** A message the reader folded stays folded for them, on
   every device and after a reload, until they unfold it; nobody else's view
@@ -363,8 +372,13 @@ Acts are sent one at a time, in order. Until Core answers an act, the page
 draws it over what Core holds, so a quick run of presses always shows the
 last one. Each act the page holds is the later by its revision of what it
 knew and what it reads, so an answer read before a commit puts back nothing,
-whenever it lands. When an answer changes what a stack shows, the page draws
-it again. A refusal reads the acts back and draws what Core holds. A screen reader hears each act said ("Moved up",
+whenever it lands. An answer goes to the message as the page holds it when
+the answer lands: a read that landed while the act was out (a 👍's reactions,
+a page of messages) may have put a new copy of the message in the page, and
+the answer is not lost on the copy it began with (item 433). So a message
+unfolded never folds again when its answer lands, a star never goes out, and
+the next act is fenced on the revision the answer gave. When an answer changes
+what a stack shows, the page draws it again. A refusal reads the acts back and draws what Core holds. A screen reader hears each act said ("Moved up",
 "Joined to the stack above").
 
 ## The look
@@ -388,6 +402,9 @@ the semantic colour tokens of `web/aim.css` and only the names that
     the message button, with `aria-expanded` and `aria-controls`.
   - `.stack-replies`, with each reply's entry and `.stack-join-line`
     (`.stack-join-words` and `.stack-split`).
+  - `data-stack-overlap` and `data-stack-covered` on message entries: visual
+    hooks for adjacent visible faces. Hidden entries do not separate faces;
+    a join line does. These attributes carry no saved fold or order state.
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
 - `[data-starred=true]` on any card the reader starred, and `.card-star`,
   the header's star, outlined or filled.
@@ -403,6 +420,36 @@ with the short name on the first and who started it, how many replied, who
 and what is new on the second; the tab and the body are one cut, joined by a
 curved corner. A compact chevron sits beside the name. The replies are the
 sheets inside, each card in its own colours; folded replies draw no extra bar.
+Later visible cards overlap the previous card's bottom edge by 12px, with a
+soft top contact shadow. At latest and unread, read replies hidden above the
+first visible reply give it no overlap, so it never rises over the folder's top
+edge, and a hidden reply between two visible ones neither separates them nor
+takes the covered padding. Extra bottom padding keeps that overlap clear of
+words and controls. The root remains statically positioned so its folder tab
+keeps the same containing block, including when a message-fold wraps the root.
+Join and placement lines remain clear of the cards. A join line's gap from
+the cards is outside its box, so a join that brings the line into view
+measures the line itself, not blank space above it: with the line a tenth
+inside the window, the page stays where it was. No arrival or fold motion
+is part of this static treatment (item 429; motion remains item 412).
+
+The first author letter aligns with the body text. An agent's badge protrudes
+4px to the left; only the first name fragment moves when an Unread pill holds
+the final grapheme. A folded message keeps its author and words at full
+contrast, including quiet agent talk. In a dossier, a saved fold gives its
+card the existing read material even before its read marker catches up; this
+presentation writes no read command. Nothing else does: a thumbs-up, the
+reader's own or anyone's, leaves a card's material to its read state, and so
+does a fold outside a dossier, a placed single message included. Own messages
+retain black. Folded words keep at least 4.5:1 contrast across all agent palettes in
+light and dark.
+
+A folded face is 44px tall on a laptop. On a phone or coarse pointer it is
+56px tall: its successor covers 12px, leaving a reachable 44px strip and the
+folded thumbs-up. A hit box hidden under the successor does not count toward
+that 44px. Normal single messages keep their original box; stars still
+prevent an individual message fold. Starred replies stay visible in the recent-replies view through the
+reader's existing star act (item 413).
 Shown whole, the head's card is the first
 sheet; while the stack is renamed, the field takes the tab's place. Only one
 current target has the strong ring: a message, or the whole folder when its
@@ -414,6 +461,16 @@ any placement control, with no reply strip or empty footer. Under Only new
 the stacks draw nothing.
 
 ## Checks
+
+The item 429 checks in `tests/stack_native.mjs`, named "reading dossier look",
+run under native-reading and native-webkit-reading at laptop and phone widths
+in both themes. They measure overlap, at all messages and at latest and
+unread with hidden replies around the first visible one, text clearance,
+first-letter alignment, folded palette contrast including quiet states, and the
+exposed phone strip with a real folded-thumb press. The negative cases retain
+the full open messages, a normal single card and the star's fold protection,
+and the unread material of a card with the reader's own thumbs-up (inside a
+dossier and out) and of a fold outside a dossier (in the feed and placed).
 
 | What | Where |
 | --- | --- |
@@ -431,6 +488,7 @@ the stacks draw nothing.
 | a scroll right after a trackpad swipe folded a message | `tests/stack_native.mjs`, "reading stacks a scroll right after two fingers fold a message …" |
 | x folds and unfolds the selected message; a starred one, a dossier and writing | `tests/ui_outline_order.test.mjs` (the key map); `tests/stack_native.mjs`, "reading stacks x folds the selected message …" |
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
+| an act's answer that lands after a 👍's reactions read put a new copy of the message in the page: x never refolds it and a second x is not refused, a star stays | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks x unfolds a folded message while its 👍's read is out …" and "reading stacks Star for me on a folded message while its 👍's read is out …" |
 | two states, by the chevron, the header, → ← and ⋯; a stack left at its header | `tests/ui_stack_order.test.mjs` (`LEVELS`, `foldStep`, `levelOf`); `tests/stack_native.mjs`, "reading stacks use exactly two states …" and "reading stacks a dossier left at its header alone …" |
 | a press held, and each way it ends | `tests/ui_press_hold.test.mjs`; in Chrome, `tests/stack_native.mjs`, "reading stacks a press ends however it ends …" |
 | a phone's tap on a go-ahead ask's one-row head keeps the ask lit with its bar while the page hears of a star made on another device, on a message it has not loaded (which draws nothing again) and on one it shows (whose repaint lands under the finger) | `tests/ui_stack_position.test.mjs`; in Chrome and Safari's engine, `tests/topic_reading_native.mjs`, "reading a phone's tap on a go-ahead ask's one-row head …" (Safari's engine in the harness taps whole, so there the star is read just before the tap) |

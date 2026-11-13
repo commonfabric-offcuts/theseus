@@ -58,3 +58,34 @@ test('with no press, a repaint shows at once', () => {
   hold.after('line', () => painted.push('line'));
   assert.deepEqual(painted, ['line']);
 });
+
+// over(): a redraw that replaces the element pressed waits for the press and
+// the click its release sends in the same task (card-scroll.mjs); with no
+// press held it goes on at once.
+test('over() settles after a held press ends and after the click its release sends, and at once with no press', async () => {
+  const p = page(), hold = new PressHold(p.doc), heard = [];
+  await hold.over(); heard.push('no press');
+  p.press();
+  const over = hold.over().then(() => heard.push('over'));
+  await Promise.resolve();
+  assert.deepEqual(heard, ['no press'], 'nothing goes on while the press is held');
+  p.fire('pointerup', { isPrimary: true, button: 0 });
+  // A browser runs the microtasks queued by each listener before it sends the next event, the click among them.
+  for (let n = 0; n < 4; n++) await Promise.resolve();
+  p.fire('click');
+  heard.push('click');
+  assert.deepEqual(heard, ['no press', 'click'], 'the release and its click are heard first');
+  await over;
+  assert.deepEqual(heard, ['no press', 'click', 'over']);
+});
+
+for (const [ending, end] of Object.entries(ENDINGS)) {
+  test(`over() settles when a press ends by ${ending}`, async () => {
+    const p = page(), hold = new PressHold(p.doc);
+    p.press();
+    const over = hold.over();
+    end(p);
+    await over;
+    assert.equal(hold.down, false);
+  });
+}

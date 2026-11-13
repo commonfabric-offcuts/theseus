@@ -139,6 +139,15 @@ message's revisions, so it only grows. `read` prints "(👍 tony, …)", with
 
 ## Changes
 
+The Reader composer's 👍 represents only the current reader's reaction. It
+always says 👍, selected only when that reader has given one; its tooltip
+offers giving or taking back their own reaction. The aggregate count and
+the names of everyone who reacted remain on the message: on its card, and in
+the Reader on a quiet line under the message's words, read from the loaded
+card's item or, where no loaded page holds the card, from the message's
+source (item 406). This
+presentation does not change sending, undo, reading, folding or draft state.
+
 Who sees a reaction is who sees the message. Each of them gets an
 actor-scoped change `reaction` keyed by the message at its new version; a
 topic page reads its reader's own scope after each commit, as it does for a
