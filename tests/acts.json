@@ -7243,7 +7243,7 @@
    "break": [
     [
      "aim_next/conversation.py",
-     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if snapshot.get(\"reply_to\") else []",
+     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if not record_only and snapshot.get(\"reply_to\") else []",
      "        folded = []"
     ]
    ],
@@ -7313,7 +7313,7 @@
    "break": [
     [
      "aim_next/conversation.py",
-     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if snapshot.get(\"reply_to\") else []",
+     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if not record_only and snapshot.get(\"reply_to\") else []",
      "        folded = []"
     ]
    ],
@@ -8537,7 +8537,7 @@
    "break": [
     [
      "aim_next/checkpoints.py",
-     "if not assessment['renewal']:",
+     "if not assessment['renewal'] and assessment['state'] != 'abandoned':",
      "if False:"
     ]
    ],
@@ -8581,6 +8581,76 @@
      "aim_next/checkpoints.py",
      "recurrence = (int(previous[0]) if previous else 0) + 1",
      "recurrence = 0"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint metadata preserves topic feed continuity",
+   "break": [
+    [
+     "aim_next/checkpoints.py",
+     "        self._change(db, 'actor', record['operator_id'], 'checkpoint', record['id'], record['version'])",
+     "        self._change(db, 'topic', record['topic_id'], 'checkpoint', record['id'], record['version'])"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint reminders preserve work and do not wake subscribers",
+   "break": [
+    [
+     "aim_next/checkpoints.py",
+     "snapshot,record_only=True)",
+     "snapshot,record_only=False)"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint reminders do not fold the human operator source",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if not record_only and snapshot.get(\"reply_to\") else []",
+     "        folded = self._fold_answered(db, actor, snapshot[\"reply_to\"]) if snapshot.get(\"reply_to\") else []"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint policies can restart after an abandoned assessment",
+   "break": [
+    [
+     "aim_next/checkpoints.py",
+     "if not assessment['renewal'] and assessment['state'] != 'abandoned':",
+     "if not assessment['renewal']:"
+    ]
+   ],
+   "check": {
+    "python": "test_checkpoints.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Checkpoint reminders do not acknowledge source deliveries for the human operator",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "if not record_only and snapshot.get(\"reply_to\") and self._actor(db, actor)[\"kind\"] == \"human\":",
+     "if snapshot.get(\"reply_to\") and self._actor(db, actor)[\"kind\"] == \"human\":"
     ]
    ],
    "check": {

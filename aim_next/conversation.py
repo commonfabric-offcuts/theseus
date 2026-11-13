@@ -408,7 +408,7 @@ class Conversation:
         # still pending where it counts, is settled as reading it on screen
         # would. An agent's deliveries are its work, which it acknowledges
         # itself (delivery.ack), so its replies settle nothing.
-        if snapshot.get("reply_to") and self._actor(db, actor)["kind"] == "human":
+        if not record_only and snapshot.get("reply_to") and self._actor(db, actor)["kind"] == "human":
             answered = db.execute("SELECT d.* FROM deliveries d CROSS JOIN delivery_groups g ON g.id=d.group_id "
                                   "WHERE d.message_id=? AND d.recipient_id=? AND d.state='pending' AND g.active=1",
                                   (snapshot["reply_to"], actor)).fetchone()
@@ -458,7 +458,7 @@ class Conversation:
         if private is not None:
             result["whisper"] = True
         # A person's reply folds the message it answers for them (Stacks._fold_answered).
-        folded = self._fold_answered(db, actor, snapshot["reply_to"]) if snapshot.get("reply_to") else []
+        folded = self._fold_answered(db, actor, snapshot["reply_to"]) if not record_only and snapshot.get("reply_to") else []
         return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + folded
 
     def _message_access(self, db, actor, message_id):

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import importlib.util
+import json
+from pathlib import Path
+import subprocess
 import unittest
 from unittest import mock
 
@@ -194,12 +197,12 @@ class CheckpointCase(unittest.TestCase):
 
     def test_prompt_transaction_rolls_back_and_next_revision_can_prompt_again(self):
         identity=self.ok(self.create())['checkpoint_id']
-        post=self.store._command_message_post
-        def failed_post(*args):
-            post(*args)
+        post=self.store._publish
+        def failed_post(*args,**kwargs):
+            post(*args,**kwargs)
             raise Refusal('TEST_ROLLBACK','After reminder post')
         count=self.sql('SELECT count(*) FROM messages')[0][0]
-        with mock.patch.object(self.store,'_command_message_post',side_effect=failed_post):
+        with mock.patch.object(self.store,'_publish',side_effect=failed_post):
             self.assert_refused(self.command('checkpoint.prompt',{},{'checkpoint_id':identity}),'TEST_ROLLBACK')
         self.assertEqual(self.sql('SELECT count(*) FROM messages')[0][0],count)
         first=self.ok(self.command('checkpoint.prompt',{},{'checkpoint_id':identity}))['message_id']
@@ -224,3 +227,42 @@ class CheckpointCase(unittest.TestCase):
         new=self.ok(self.create())['checkpoint_id']
         self.assertNotEqual(new,identity)
         self.assertEqual(self.read(new)['consecutive_misses'],0)
+
+    def test_abandoned_assessment_does_not_pin_a_finished_series(self):
+        identity=self.ok(self.create())['checkpoint_id']
+        self.ok(self.observe(identity)); self.now+=100
+        assessment=self.ok(self.observe(identity))['assessment_id']
+        self.ok(self.command('assessment.abandon',{'reason':'No usable completed report'},
+                            {'assessment_id':assessment},actor='agent-b'))
+        new=self.ok(self.create())['checkpoint_id']
+        self.assertNotEqual(new,identity)
+        self.assertEqual(self.read(new)['state'],'open')
+
+    def test_checkpoint_changes_preserve_feed_work_and_reader_state(self):
+        source=self.ok(self.command('message.post',{'body':'Named artifact evidence'},
+                                   {'topic_id':'t1'},actor='agent-a'))['message_id']
+        scope={'kind':'topic','id':'t1'}
+        baseline=self.store.view('owner','changes',{'scope':scope})['checkpoint']
+        identity=self.ok(self.create(source_message_ids=[source]))['checkpoint_id']
+        self.ok(self.observe(identity,'waiting')); self.now+=100
+        topic=self.store.view('owner','topic',{'topic_id':'t1'})['topic']
+        self.ok(self.command('topic.update',{'state':'done','note':'Finished artifact'},
+                            {'topic_id':'t1'},{'topic_revision':topic['version']}))
+        before=self.store.view('owner','topic_messages',{'topic_id':'t1'})['items']
+        delivery_before=self.sql("SELECT state FROM deliveries WHERE message_id=? AND recipient_id='owner'",(source,))
+        self.assertEqual(delivery_before,[('pending',)])
+        report=self.ok(self.command('checkpoint.prompt',{},{'checkpoint_id':identity}))['message_id']
+        after=self.store.view('owner','topic_messages',{'topic_id':'t1'})['items']
+        self.assertEqual(next(m['acts'] for m in before if m['id']==source),next(m['acts'] for m in after if m['id']==source))
+        self.assertEqual(self.sql("SELECT state FROM deliveries WHERE message_id=? AND recipient_id='owner'",(source,)),delivery_before)
+        self.assertEqual(self.store.view('owner','topic',{'topic_id':'t1'})['topic']['state'],'done')
+        self.assertEqual(self.sql("SELECT recipient_id FROM deliveries WHERE message_id=? AND state='pending'",(report,)),[])
+        self.ok(self.command('checkpoint.close',{'reason':'Finished'},{'checkpoint_id':identity},{'checkpoint_revision':2}))
+        page=self.store.view('owner','changes',{'scope':scope,'cursor':baseline})
+        bootstrap=dict(instance_id='test-instance',actor='owner',authority=self.pin)
+        result=subprocess.run(['node','tests/assessment_freshness_probe.mjs'],input=json.dumps(dict(bootstrap=bootstrap,baseline=baseline,page=page)),
+                              capture_output=True,text=True,cwd=str(Path(__file__).resolve().parents[1]))
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        observed=json.loads(result.stdout)
+        self.assertFalse(observed['stopped'],observed)
+        self.assertIn('topic:t1',observed['painted'],observed)

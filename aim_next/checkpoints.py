@@ -66,7 +66,6 @@ class Checkpoints:
         if record['state'] == 'open':
             db.execute('INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)',
                        (self._checkpoint_due_key(record), record['id']))
-        self._change(db, 'topic', record['topic_id'], 'checkpoint', record['id'], record['version'])
         self._change(db, 'actor', record['operator_id'], 'checkpoint', record['id'], record['version'])
 
     def _command_checkpoint_create(self, db, actor, envelope):
@@ -89,7 +88,7 @@ class Checkpoints:
                 return {'checkpoint_id':previous['id']}, []
             if previous['state'] == 'assessment-requested':
                 assessment = self._assessment(db,actor,previous['assessment_id'])
-                if not assessment['renewal']:
+                if not assessment['renewal'] and assessment['state'] != 'abandoned':
                     raise Refusal('CHECKPOINT_RENEWAL_REQUIRED', 'Record the operator renewal before adopting the next checkpoint policy')
         identity = 'checkpoint-' + uuid.uuid4().hex
         record = dict(policy, id=identity, policy_fingerprint=fingerprint, artifact=artifact, due_ms=due,
@@ -195,9 +194,9 @@ class Checkpoints:
             return {'checkpoint_id':record['id'],'message_id':prior[0]}, []
         body = ('Checkpoint due: %s\nExpected artifact: %s\nPlease record the observed evidence and any human or tool wait. '
                 'Elapsed time alone is not a missed commitment or an assessment verdict.' % (record['assignment'],record['artifact']))
-        result, affected = self._command_message_post(db,actor,dict(envelope,kind='message.post',
-            target={'topic_id':record['topic_id']},args=dict(body=body,intent='tell',
-            addressees=[record['operator_id']],reply_to=record['source_message_ids'][0])))
+        snapshot = self._writing(dict(body=body,intent='tell',addressees=[record['operator_id']],
+                                      reply_to=record['source_message_ids'][0]))
+        result, affected = self._publish(db,actor,envelope['operation_id'],record['topic_id'],snapshot,record_only=True)
         db.execute('INSERT INTO metadata(key,value) VALUES (?,?)',(key,result['message_id']))
         return {'checkpoint_id':record['id'],'message_id':result['message_id']}, affected
 

@@ -30,11 +30,16 @@ Core commands use the normal bound envelope and operation identity:
   fresh assessor's work. The existing dispatcher executes that request, and the
   operator records `assessment.renew` after the report. A next increment needs a
   new explicit checkpoint policy. No agent is restarted or replaced by this act.
+  If the assessment was explicitly abandoned without a report, the organizer may
+  adopt a new policy; a nonexistent report cannot require a renewal decision.
 - `checkpoint.prompt` is an explicit operator/owner/coordinator act. Once due,
   it posts one reminder per checkpoint revision in the original named topic,
   addressed to the operator. It asks for evidence and known waits, and expressly
   does not declare a failure. Identical retries return the same message. Prompting
   does not change the checkpoint revision or count as an observation.
+  The reminder preserves topic state, reading/folding state and waits. Only its
+  explicitly addressed operator receives pending work; other readers can see the
+  public record without being woken by subscription.
 - `checkpoint.close` requires the expected revision and a reason. The named
   operator or current owner/coordinator can end an open policy without assessment.
   The record/history remain readable; staffing and ongoing work stay unchanged.
@@ -43,6 +48,8 @@ Views `checkpoint`, `checkpoints` (own operator scope, optionally a readable top
 `checkpoint_observations` and `checkpoints_due` are paged. Due work uses a bounded
 index for the calling operator, and caller-supplied `before_ms` cannot exceed now.
 No view mutates records, prompts, launches an assessor or scans unrelated history.
+Checkpoint metadata changes stay in actor scope, where the coordinator reads them;
+ordinary topic changes from reminder/report messages keep the topic feed current.
 
 This is the durable policy and due-work interface for the existing coordinator's
 loop. It does not install a new background scheduler or infer an assessment request
