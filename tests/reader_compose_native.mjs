@@ -77,6 +77,11 @@ const SHAPES = {
   'phone-320': { viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
   'phone-375': { viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
   'phone-390': { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
+  // A phone turned sideways is wider than the phone's layout (760px), so it is
+  // sized as a small laptop window, and a narrow, short window with a mouse is
+  // laid out as a phone is, without the keyboard or a finger's sizes.
+  'phone-sideways': { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
+  narrow: { viewport: { width: 600, height: 320 }, deviceScaleFactor: 1 },
   'laptop-stacked': { viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 },
   'laptop-wide': { viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 },
   'very-wide-stacked': { viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 },
@@ -1271,7 +1276,7 @@ async function run() {
 // and with an image, measured in px from the page's own boxes.
 const REM = 16, WIDEST = { stacked: 72 * REM, wide: 100 * REM };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-const SIZES = { 'phone 320×568': ['phone-320'], 'phone 375×667': ['phone-375'], 'phone 390×844': ['phone-390'],
+const SIZES = { 'phone 320×568': ['phone-320'], 'phone 375×667': ['phone-375'], 'phone 390×844': ['phone-390'], 'phone sideways 844×390': ['phone-sideways'], 'narrow window 600×320': ['narrow'],
   'laptop 1440×960': ['laptop-stacked', 'laptop-wide'], 'very wide 2560×1440': ['very-wide-stacked', 'very-wide-wide'] };
 // A refused image: an iPhone's HEIC photo the server takes no copy of, so it
 // waits on a choice (Attach as download, Remove) and Send is refused until it
@@ -1307,7 +1312,7 @@ const sized = (p, which) => p.evaluate(which => {
   const over = rows.flatMap(([a, ba, ra], i) => rows.slice(i + 1).filter(([, bb, rb]) => (ra !== 'foot' || rb !== 'foot') && Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top) > 1).map(([b]) => `${a} / ${b}`));
   // The surface never scrolls, so its own head (the Reader's ✕ and ↑ ↓, the sheet's title and ✕) stays where it is: what is taller scrolls inside the composer.
   const head = d.querySelector(which === 'sheet' ? '.inline-composer>h2' : '.reader-header');
-  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: box(c), field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4 }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
+  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: { ...box(c), scrolls: c.scrollHeight > c.clientHeight + 1 }, field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4 }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
     images: c.querySelectorAll('.image-strip .image-choice').length, choices: c.querySelectorAll('.image-strip .image-choice[data-open][data-needs]').length, notice: notice ? notice.textContent : '',
     focus, compose: c.dataset.compose, taller: Boolean(shown(taller)), over, view, past, sideways: document.documentElement.scrollWidth > innerWidth };
 }, which);
@@ -1315,12 +1320,14 @@ async function runSizes() {
   for (const [size, shapes] of Object.entries(SIZES)) for (const [draft, scheme] of Object.entries(DRAFTS)) await check(`size ${size}, ${draft}: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen`, async () => {
     for (const shape of shapes) {
       let p = await page(shape, scheme);
-      const phone = p.touch, wide = shape.endsWith('wide');
+      const phone = p.touch, wide = shape.endsWith('wide'), sideways = shape === 'phone-sideways';
       const { width, height } = SHAPES[shape].viewport;
+      // The layout is the window's width's, whatever the pointer (aim.css, max-width:760px): a finger only brings the keyboard.
+      const narrow = width <= 760;
       // What each surface must measure: on a laptop the window less 3rem each
-      // way, up to the maximum across; on a phone the width, and what shows
+      // way, up to the maximum across; narrow (a phone) the width, and what shows
       // (less .75rem above the sheet, which the feed's dimming shows through).
-      const expected = (which, v) => phone ? { width, height: v.height - (which === 'sheet' ? 12 : 0) }
+      const expected = (which, v) => narrow ? { width, height: v.height - (which === 'sheet' ? 12 : 0) }
         : { width: Math.min(WIDEST[which === 'reader' && wide ? 'wide' : 'stacked'], width - 3 * REM), height: v.innerHeight - 3 * REM };
       const near = (a, b) => Math.abs(a - b) <= 2;
       const fieldOf = { sheet: 'inline-writing-body', reader: 'writing-body' };
@@ -1328,6 +1335,13 @@ async function runSizes() {
         const field = fieldOf[which];
         const m = await sized(p, which), want = expected(which, m.view), said = `${shape} ${which} ${when}: ${JSON.stringify({ want, ...m })}`;
         assert.ok(m.open, `open: ${said}`);
+        // Sideways, a phone's Reader is a small laptop's, and the keyboard leaves it a sliver: what is held there is
+        // only that nothing moves the surface itself, its header (✕, ↑ ↓) staying at its top.
+        if (sideways) {
+          assert.equal(m.surfaceScrolled, 0, `the ${which} itself never scrolls: ${said}`);
+          if (which === 'reader') assert.ok(m.head.top >= m.dialog.top - 1, `the Reader's header stays at its top: ${said}`);
+          return m;
+        }
         assert.ok(near(m.dialog.height, want.height), `as tall as what shows of the window (${want.height}px), not ${m.dialog.height}px: ${said}`);
         assert.ok(near(m.dialog.width, want.width), `as wide as the window allows up to its maximum (${want.width}px), not ${m.dialog.width}px: ${said}`);
         assert.deepEqual([m.dialog.top >= m.view.top - 1, m.dialog.bottom <= m.view.top + m.view.height + 1, m.dialog.left >= 0, m.dialog.right <= width + 1, m.sideways, m.past],
@@ -1346,6 +1360,9 @@ async function runSizes() {
           const foot = m.panel && m.panel.top >= m.field.bottom - 1 ? m.panel.top : m.dialog.bottom;
           assert.ok(foot - m.field.bottom <= (which === 'sheet' ? 24 : 120), `the field reaches down to the composer's foot: ${said}`);
         }
+        // Only a refused image's notice and choices may make the composer taller than what it has: short of that,
+        // its field gives way, so the head, the images and Send show with it and nothing needs scrolling to.
+        if (draft !== 'a refused image') assert.equal(m.composer.scrolls, false, `the composer holds all it has without scrolling: ${said}`);
         if (draft === 'a long draft') assert.ok(m.field.scrolls, `a draft longer than the field scrolls inside it: ${said}`);
         if (draft === 'an image' || draft === 'a refused image') assert.equal(m.images, 1, `the image shows in the composer: ${said}`);
         // What has focus shows itself, and with the field in hand Send shows beside it: a composer taller than what shows scrolls inside itself, the focus in view.
@@ -1355,8 +1372,8 @@ async function runSizes() {
           assert.equal(m.choices, 1, `the refused image's choices are open: ${said}`);
           if (which === 'reader') assert.equal(m.notice, `Finish or remove the image ${HEIC.name} before sending.`, `the notice says why Send was refused: ${said}`);
         }
-        // On a phone, writing: the Reader's stacked field has ⤢ to make it taller; the sheet's field is already the sheet's height, so it has none.
-        if (phone && m.compose === 'writing') assert.equal(m.taller, which === 'reader', `⤢ ${which === 'reader' ? 'makes the Reader\'s field taller' : 'is not in the sheet, whose field fills it'}: ${said}`);
+        // Narrow (a phone, or a narrow window), writing: the Reader's stacked field has ⤢ to make it taller; the sheet's field is already the sheet's height, so it has none.
+        if (narrow && m.compose === 'writing') assert.equal(m.taller, which === 'reader', `⤢ ${which === 'reader' ? 'makes the Reader\'s field taller' : 'is not in the sheet, whose field fills it'}: ${said}`);
         return m;
       };
       const fill = async (which, field, plus, tile) => {
@@ -1417,7 +1434,7 @@ async function runSizes() {
         await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'a settled sheet');
         await holds('sheet', 'open');
         await shot(p, `size-${draft.replaceAll(' ', '-')}-sheet`);
-        if (draft === 'empty') for (const [panel, opener] of [['#inline-who-panel', '#inline-who-chip'], ['#inline-plus-panel', '#inline-plus-button']]) {
+        if (draft === 'empty' && !sideways) for (const [panel, opener] of [['#inline-who-panel', '#inline-who-chip'], ['#inline-plus-panel', '#inline-plus-button']]) {
           // Each panel opens inside the sheet, on the screen: a popover above a sheet as tall as the window would be off it.
           await press(p, opener);
           await until(p, s => !document.querySelector(s).hidden, 'the panel', panel);
