@@ -80,12 +80,19 @@ starts or ends inside the pop-up is not an outside press.
 
 ## Your place holds
 
-A message arriving never moves what is being read or written. Loading older
-messages shows them where they were asked for.
+A message arriving never moves what is being read or written, and nor does
+quoting from it. Loading older messages shows them where they were asked for.
 
+- `tests/reader_compose_native.mjs` (`native-compose`): "quoting keeps your
+  place: the quoted passage stays where it was on screen, …" and "quoting from
+  a passage taller than what shows keeps the words quoted where they were, …",
+  in Chrome and Safari's engine, on a phone and a laptop, stacked and wide.
 - `tests/reader_live_native.mjs` (`native-live`): "live a message arriving
   leaves the card being read in place, and a field scrolled away holds nothing",
   "live with no card on the screen, a message arriving scrolls nothing".
+- `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading Show full message on a card scrolled inside keeps the words being
+  read where they were".
 - `tests/reader_freshness_native.mjs` (`native-freshness`): the F-series. Reads
   continue through retries, resyncs and failures, and a "caught up" state is
   claimed only after a pass of reads has run to its end

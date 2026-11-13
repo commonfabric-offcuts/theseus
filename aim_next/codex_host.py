@@ -215,7 +215,7 @@ def _private_append(path):
 class Child:
     """One app-server process and its framing. Its PID is captured at spawn and never looked up again."""
 
-    def __init__(self, home, executable, stderr, writable=lambda child, on: None):
+    def __init__(self, home, executable, stderr, writable=lambda child, on: None, *, inherited_fds=()):
         environment = {key: os.environ[key] for key in ("HOME", "LANG", "TMPDIR") if key in os.environ}
         environment.update(PATH=SPAWN_PATH, CODEX_HOME=home)
         self.home = home
@@ -223,7 +223,7 @@ class Child:
         # No shell, the runner's own process group, no inherited descriptors.
         self.popen = subprocess.Popen([executable, "app-server", "--listen", "stdio://", *SPAWN_OVERRIDES],
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, shell=False,
-                                      env=environment, close_fds=True, bufsize=0, start_new_session=False)
+                                      env=environment, close_fds=True, pass_fds=inherited_fds, bufsize=0, start_new_session=False)
         self.pid = self.popen.pid
         self.out = self.popen.stdout.fileno()
         os.set_blocking(self.out, False)

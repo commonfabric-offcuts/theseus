@@ -22,6 +22,7 @@ from .memory import Memory, MEMORY_DRAFT_SCHEMA, MEMORY_READ_SCHEMA, MEMORY_SCHE
 from .media import Media, MEDIA_SCHEMA
 from .route_pins import RoutePins
 from .hosted_control import HostedControl
+from .assessments import Assessments
 from .changes import Changes
 from .topic_state import ACTIVITY_SCHEMA, ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA, order_cursor, order_position
 from .work import OTHERS_SCHEMA, TURN_ACTIVITY_BACKFILL, WORK_SCHEMA, work_by_topic
@@ -155,7 +156,7 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
+class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()

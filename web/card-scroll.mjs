@@ -34,6 +34,35 @@ export class CardScroll {
     return source.body;
   }
   known(id) { return this.wholes.get(id); }
+  // A menu choice belongs to this card for this page's life. Feed repaints
+  // reuse its node; nothing is saved to Core or browser storage.
+  clipped(card, item) {
+    const preview = card?.querySelector(':scope > .message-preview');
+    return Boolean(preview?.getBoundingClientRect().height && card.dataset.full !== 'shown' &&
+      ((item?.preview && card.dataset.whole !== 'shown') || card.scrollHeight > card.clientHeight + 1 || preview.scrollHeight > preview.clientHeight + 1));
+  }
+  async showFull(card, item) {
+    if (!card || !item) return false;
+    // Keep the excerpt and the action available if the source cannot load.
+    const body = item.preview ? await this.whole(item.id) : item.body;
+    if (!card.isConnected) return false;
+    const preview = card.querySelector(':scope > .message-preview');
+    if (!preview) return false;
+    // The words the reader had scrolled to inside the box hold their place:
+    // the page scrolls by as much as the box's own scroll gives back.
+    const top = preview.getBoundingClientRect().top;
+    formatWords(preview, body);
+    preview.classList.add('scroll-in-place');
+    card.dataset.whole = 'shown'; card.dataset.full = 'shown';
+    card.classList.remove('scroll-in-place'); card.classList.add('show-full');
+    card.style.maxHeight = 'none'; card.scrollTop = 0;
+    delete card.dataset.more;
+    const cue = card.querySelector(':scope > .message-preview-cue');
+    if (cue) cue.hidden = true;
+    const moved = preview.getBoundingClientRect().top - top;
+    if (moved) card.ownerDocument.defaultView.scrollBy({ top: moved, behavior: 'instant' });
+    return true;
+  }
   // card: the message's card; item: its topic_messages item.
   async expand(card, item) {
     if (!item?.preview || card.dataset.whole === 'shown' || this.loading.has(card)) return false;
@@ -42,7 +71,7 @@ export class CardScroll {
     this.loading.add(card);
     try {
       const body = await this.whole(item.id);
-      if (!card.isConnected || !preview.getBoundingClientRect().height) return false;
+      if (!card.isConnected || !preview.getBoundingClientRect().height || card.dataset.full === 'shown') return false;
       // Measure only while the message is shown, never a closed stack's zero-
       // height root. Keep the whole card's size, including its header and cue.
       const height = card.getBoundingClientRect().height;

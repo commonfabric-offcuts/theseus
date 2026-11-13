@@ -98,7 +98,7 @@ export class Reader {
       if (this.pressedBy !== 'touch' || event.target.closest?.('a,button') || window.getSelection()?.isCollapsed === false) return;
       this.compose?.fold();
     });
-    // The passage just quoted stays above the reply while the message's room
+    // The words just quoted keep showing while the message's room
     // changes: the reply growing with the quote, the keyboard coming up.
     new ResizeObserver(() => { if (this.dialog.open) this.alignKept(); }).observe(this.sourceBody);
     for (const forget of ['wheel', 'touchmove', 'keydown']) this.sourceBody.addEventListener(forget, () => { this.kept = null; }, { passive: true });
@@ -454,7 +454,7 @@ export class Reader {
   // Takes what a press on an offer of Quote (by: its id) would quote, before
   // the press moves the focus or lets the selection go; nothing when nothing is chosen.
   hold(by) {
-    this.held = this.chosen ? { excerpt: this.selectedPassage(), passage: this.lastQuoted(), by } : null;
+    this.held = this.chosen ? { excerpt: this.selectedPassage(), place: this.quotedPlace(), by } : null;
     this.paintQuote();
   }
   paintQuote() {
@@ -501,14 +501,22 @@ export class Reader {
     this.paintQuote();
   }
 
-  // The passage last quoted sits just above the reply, so what is answered
-  // shows while it is answered; kept there as the keyboard comes up, until
-  // the person scrolls the message.
-  keepAbove(passage) { this.kept = passage ?? null; this.alignKept(); }
+  // Quoting keeps your place: what showed of the words quoted stays where it
+  // was on screen, so what is answered shows while it is answered. Only where
+  // the reply or the keyboard comes to cover it does the message move, the
+  // least that shows it just above them (as much of it as the room holds);
+  // words quoted from out of sight come into sight the same least way. Kept
+  // so as the message's room changes, until the person scrolls the message.
+  keepAbove(place) { this.kept = place ?? null; this.alignKept(); }
+  room() {
+    const box = this.sourceBody.getBoundingClientRect(), style = getComputedStyle(this.sourceBody);
+    return { top: box.top + parseFloat(style.paddingTop), bottom: box.bottom - parseFloat(style.paddingBottom) };
+  }
   alignKept() {
-    if (!this.kept?.isConnected) { this.kept = null; return; }
-    const box = this.sourceBody.getBoundingClientRect(), bottom = box.bottom - parseFloat(getComputedStyle(this.sourceBody).paddingBottom);
-    this.sourceBody.scrollTop += this.kept.getBoundingClientRect().bottom - bottom;
+    if (!this.kept?.passage.isConnected) { this.kept = null; return; }
+    const room = this.room(), at = this.kept.passage.getBoundingClientRect().top, top = at + this.kept.top, bottom = at + this.kept.bottom;
+    if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop += Math.min(bottom - room.bottom, top - room.top);
+    else if (top < room.top && bottom < room.bottom) this.sourceBody.scrollTop += Math.max(top - room.top, bottom - room.bottom);
   }
 
   // The source's own words a selection covers, never what the page shows for
@@ -530,16 +538,20 @@ export class Reader {
     const held = this.held; this.held = null;
     const excerpt = this.selectedPassage() || held?.excerpt;
     if (!excerpt || !this.sessions) return;
-    const passage = this.lastQuoted() ?? held?.passage;
+    const place = this.quotedPlace() ?? held?.place;
     // A quote is writing on, so the last notice goes as it starts; what the
     // quote itself does (leaving a note cancels a step that waits) is said
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(excerpt, passage); } finally { this.quoting = false; }
+    try { this.quoteInto(excerpt, place); } finally { this.quoting = false; }
   }
 
-  quoteInto(excerpt, passage) {
+  quoteInto(excerpt, place) {
+    // Measuring the field as it grows gives the message more room for a
+    // moment, and a message scrolled to its end is pulled down by it; the
+    // message is put back where it was before the quote is kept in sight.
+    const scrolled = place && this.sourceBody.scrollTop;
     if (this.mode === 'note') this.switchMode('reply');
     const editor = this.sessions.reply;
     if (!this.writes(editor)) return;
@@ -565,21 +577,33 @@ export class Reader {
     this.field.setSelectionRange(end, end);
     this.field.scrollTop = this.field.scrollHeight;
     this.disarm();
-    this.keepAbove(passage);
+    if (place) this.sourceBody.scrollTop = scrolled;
+    this.keepAbove(place);
   }
 
-  // The last passage a quote takes words from: the lit passages', or the
-  // selection's end.
-  lastQuoted() {
+  // Where the words a quote takes are, as it takes them: the words selected,
+  // or the passages lit, and of them what shows (all of them when none
+  // does), held as heights from the top of the passage they end in, which
+  // scrolls with them. A passage can be taller than the screen: a log in a
+  // code block, a long table.
+  quotedPlace() {
     if (!this.compose) return null;
-    const selection = window.getSelection();
+    const selection = window.getSelection(), lit = [...this.sourceBody.querySelectorAll('.hover-quote')];
+    let passage = null, words = null;
     if (selection?.rangeCount && !selection.isCollapsed) {
-      let at = selection.getRangeAt(0).endContainer;
-      at = at.nodeType === Node.ELEMENT_NODE ? at : at.parentElement;
-      while (at && at.parentElement !== this.sourceBody) at = at.parentElement;
-      if (at) return at;
+      const range = selection.getRangeAt(0);
+      passage = range.endContainer.nodeType === Node.ELEMENT_NODE ? range.endContainer : range.endContainer.parentElement;
+      while (passage && passage.parentElement !== this.sourceBody) passage = passage.parentElement;
+      words = passage && range.getBoundingClientRect();
     }
-    return [...this.sourceBody.querySelectorAll('.hover-quote')].at(-1) ?? null;
+    if (!passage && lit.length) {
+      passage = lit.at(-1);
+      words = { top: lit[0].getBoundingClientRect().top, bottom: passage.getBoundingClientRect().bottom };
+    }
+    if (!passage) return null;
+    const room = this.room(), at = passage.getBoundingClientRect().top;
+    const top = Math.max(words.top, room.top), bottom = Math.min(words.bottom, room.bottom), shows = top < bottom;
+    return { passage, top: (shows ? top : words.top) - at, bottom: (shows ? bottom : words.bottom) - at };
   }
 
   // The reply, with the cursor after what is already written: Reply, or Return,

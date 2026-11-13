@@ -81,7 +81,12 @@ the pointer's way, the keys' and the phone's.
   in place. At either end, scrolling carries on with the page. Where a finger
   scrolls, the excerpt is never taller
   than 60% of the window, so a drag outside the lit message still scrolls the
-  page. (`web/card-scroll.mjs`)
+  page. In a topic or Conversation feed, its ⋯ also offers **Show full
+  message**: the one card grows to the whole message, without opening the
+  Reader, and the words the reader had scrolled to inside the card stay where
+  they were on the screen (the page takes up the card's own scroll). This choice lasts through incoming updates on this page; leaving
+  or reloading the page restores ordinary clipping. It is never saved or
+  shared with another browser or device. (`web/card-scroll.mjs`, item 401)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's
   composer on its own, with no message above it and the cursor in the field;
   Escape, ✕ or a press outside puts it back at the page's end with the writing
@@ -100,7 +105,11 @@ the pointer's way, the keys' and the phone's.
   phone), on the lit message, whose count then reads the names. A press on the
   count thumbs up; a tap on it on a phone lights the message and names who, and
   the bar's 👍 thumbs up. In the Reader 👍 sits on the quiet line and beside Send;
-  pressed in either it is a reply of one thumb, and once Core holds it the
+  it shows only your own pressed state, with no aggregate count or other
+  readers' names. Those remain on the message: on its card, and in the
+  Reader on a quiet line under its words ("👍 2 you, aim-ux"), whether or not
+  its card is on the page, as for a message opened from a link (item 406).
+  Pressed in either it is a reply of one thumb, and once Core holds it the
   Reader closes as after Send, keeping what the reply holds. Refused, or
   taken back, it leaves the Reader and the reply open. **✅ and 🚫**
   answer an agent's go-ahead ask in one tap or click, on the message or its

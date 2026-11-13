@@ -252,7 +252,9 @@ export class StackFeed {
       throw Error(receipt?.error?.message ?? 'That was not confirmed. The page shows what Theseus holds.');
     }
     const answer = learned(kind, receipt.result, this.viewer, this.clock());
-    for (const each of new Set([item, current])) each.acts = laterActs(each.acts, answer);
+    // The answer goes to the message the page holds now as well: a read that landed while the act was out (a
+    // 👍's reactions, a page of messages) can have put a new copy of it in the page (item 433).
+    for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);
     if (kind === 'message.star') this.starsChanged();
     if (kind === 'stack.aside') await this.refreshPositions();
     return receipt.result;

@@ -329,13 +329,15 @@ class Conversation:
             return "tell"
         return intent
 
-    def _publish(self, db, actor, operation_id, topic_id, snapshot, topic=None, settled_for=()):
+    def _publish(self, db, actor, operation_id, topic_id, snapshot, topic=None, settled_for=(), record_only=False):
         """Publish frozen writing as one message with its deliveries; every send shares this path.
 
         topic, the topic's row, and settled_for are given only by Theseus's own
         notices (health.py), written into an outcome's conversation by no member
         of it: whoever a notice is about gets it settled, so it is never work
-        that wakes them."""
+        that wakes them. record_only is an internal assessment-report capability:
+        it retains the message/freshness, but not work-state or subscription wakes.
+        No public message command accepts this flag."""
         topic = self._topic(db, actor, topic_id) if topic is None else topic
         parent = None
         if snapshot.get("reply_to"):
@@ -399,7 +401,7 @@ class Conversation:
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The author has written in this topic (TopicState._may_say); an agent's whisper is not writing in it.
-        if counts:
+        if counts and not record_only:
             db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
                        (topic_id, actor, sequence + 1))
         # A person replying to a message has read it: their delivery of it, if
@@ -419,7 +421,7 @@ class Conversation:
         answers = parent["author_id"] if parent else None
         for recipient, reasons in audience.items():
             between = bool(snapshot["addressees"]) and "addressed" not in reasons and recipient != answers
-            settled = recipient in settled_for or between and self._actor(db, recipient)["kind"] == "human"
+            settled = recipient in settled_for or record_only and "addressed" not in reasons or between and self._actor(db, recipient)["kind"] == "human"
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons, settled=settled)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         if private is not None:
@@ -436,8 +438,11 @@ class Conversation:
             # A whisper never moves these: they point at the message, which nobody else can open.
             db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
                        (actor, message_id, topic_id))
-        self._message_activity(db, topic, actor, message_id, sent_ms)
-        if topic["kind"] == "conversation":
+        if not record_only:
+            self._message_activity(db, topic, actor, message_id, sent_ms)
+        if record_only:
+            waited = []
+        elif topic["kind"] == "conversation":
             # A conversation keeps its items, what became of each, and its waits ask by ask.
             waited = self._conversation_record(db, actor, topic, message_id, snapshot, intent, private)
         else:

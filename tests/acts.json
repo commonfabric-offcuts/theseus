@@ -2441,8 +2441,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return kept(item) || item.seq === newestReply(stack);",
-     "  return item.seq === newestReply(stack);"
+     "  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
+     "  return actsOf(item).starred === true || item.seq === newestReply(stack);"
     ]
    ],
    "check": {
@@ -9487,6 +9487,846 @@
    "check": {
     "native": "reading",
     "case": "reading coordination ← and → move along the filters' row"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only an outcome organizer may request an assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not organises(topic, actor):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Private source evidence cannot be widened into an assessment report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if source['private_to']:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Concurrent or differently identified retries keep one active assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if previous['state'] not in ('reported', 'abandoned'):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A completed assessment cannot post a second report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if record['report_message_id']:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A lost native completion is recovered without a second model turn",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if previous and previous['status'] == 'completed':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The child retains per-request exclusion if the dispatcher parent exits",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "subprocess.DEVNULL,inherited_fds=(lock_fd,)))",
+     "subprocess.DEVNULL,inherited_fds=()))"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The same request cannot resume under another runtime binding",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if record['thread_id'] and record['runtime_digest'] != fingerprint:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The assessment read capability refuses private evidence and other topics",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if source.get('topic_id') != record['topic_id'] or source.get('whisper'):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Native source reads work before the turn-start receipt without granting writes",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if message.get('method') == 'item/tool/call' and self.read_scope is not None:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The intervention operator must organise the outcome",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not organises(topic, operator):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Request evidence belongs to the named topic",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if source['topic_id'] != topic_id:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Every report citation is public evidence in the named topic",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "evidence = [] if args['evidence_message_ids'] == [] else self._assessment_sources(\n            db, (actor,record['requested_by'],record['operator_id']), record['topic_id'], args['evidence_message_ids'])",
+     "evidence = list(args['evidence_message_ids'])"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "An active request refuses changed assessor operator or sources",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not same:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Renewal follows an actual report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if record['state'] != 'reported':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The native runtime must actually apply read-only sandbox",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "or result.get('sandbox',{}).get('type') != 'readOnly'",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The standing Conversation cannot hold a named assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if topic['kind'] == 'conversation':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The assessor is independent of the named team",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if assessor in team:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only the named operator records the renewal",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if actor != record['operator_id'] or not organises(topic, actor):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A standing pinned native thread cannot become a fresh assessor",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if pinned:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Assessment metadata never stops the topic feed",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._change(db, 'actor', record['assessor_id'], 'assessment', record['id'], record['version'])",
+     "self._change(db, 'topic', record['topic_id'], 'assessment', record['id'], record['version'])"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A report preserves done state and does not wake assessed subscribers",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "snapshot, record_only=True)",
+     "snapshot, record_only=False)"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A confirmed refusal of a completed native report is durably terminal",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "except ReportRefused as error:\n        core.command",
+     "except ReportRefused as error:\n        raise\n        core.command"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Abandonment requires assessor or authorized operator",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if actor != record['assessor_id'] and not (actor in (record['operator_id'], record['requested_by']) and organises(topic, actor)):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "An abandoned assignment can be explicitly requested afresh",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if previous['state'] not in ('reported', 'abandoned'):",
+     "if previous['state'] != 'reported':"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Fresh and resumed native contexts request read-only execution without approvals",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "'sandbox':'read-only',",
+     "'sandbox':'workspace-write',"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A reached outcome refuses a new assessment request",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._assessment_open(db, topic['workspace_id'])\n        if topic['kind'] == 'conversation':",
+     "if topic['kind'] == 'conversation':"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A reached outcome refuses attaching, reporting, abandoning or renewing an earlier assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._assessment_open(db, record['workspace_id'])\n        return record",
+     "return record"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only the assessment's own outcome being reached closes it",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "'WHERE r.workspace_id=?', (workspace_id,)",
+     "'WHERE 1 OR r.workspace_id=?', (workspace_id,)"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The dispatcher starts no native context for a reached outcome",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "    record = core.record(identity,open_outcome=True)\n    if not record['thread_id']:",
+     "    if not record['thread_id']:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The dispatcher starts no model turn in an outcome reached while it resumed",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "            record = core.record(identity,open_outcome=True)\n            prompt =",
+     "            prompt ="
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoting keeps your place: what showed of the words quoted stays where it was on screen, the topic page behind the Reader too, and the quote lands after the writing with the cursor after it",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
+     "if (bottom !== room.bottom) this.sourceBody.scrollTop"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words the opening reply would cover are shown the least way, just above the reply",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
+     "if (false) this.sourceBody.scrollTop"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "What a quote keeps showing is the words it takes, not the whole passage they are in: a line of a log taller than the screen stays where it was",
+   "break": [
+    [
+     "web/reader.mjs",
+     "words = passage && range.getBoundingClientRect();",
+     "words = passage && passage.getBoundingClientRect();"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A passage lit whole and taller than the screen keeps what showed of it where it was",
+   "break": [
+    [
+     "web/reader.mjs",
+     "shows = top < bottom;",
+     "shows = false;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words taller than the room the reply leaves fill it, their start kept on the screen",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.min(bottom - room.bottom, top - room.top)",
+     "(bottom - room.bottom)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Measuring the reply as a quote grows it does not pull a message scrolled to its end down",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (place) this.sourceBody.scrollTop = scrolled;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A line quoted from above what shows comes into sight at its top, the least way",
+   "break": [
+    [
+     "web/reader.mjs",
+     "else if (top < room.top && bottom < room.bottom) this.sourceBody.scrollTop",
+     "else if (false) this.sourceBody.scrollTop"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Words taller than the room quoted from above it come into sight with their end at its bottom, the least way",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.max(top - room.top, bottom - room.bottom)",
+     "(top - room.top)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 429,
+   "act": "Later dossier faces overlap by 12px without covering the words",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-overlap:12px;",
+     "--stack-overlap:0px;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look overlaps"
+   }
+  },
+  {
+   "item": 429,
+   "act": "The first author letter aligns with the body words",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}",
+     ".agent-card>.message-author>.author-name:first-child{margin-left:0}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look aligns"
+   }
+  },
+  {
+   "item": 429,
+   "act": "Folded words remain readable in quiet agent cards",
+   "break": [
+    [
+     "web/stack-look.css",
+     "align-items:center;padding-block:0;opacity:1;transition:none}",
+     "align-items:center;padding-block:0;opacity:.62;transition:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look keeps folded words"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A phone exposes 44px of a folded dossier face with a reachable thumbs-up",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:56px}",
+     "--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:44px}"
+    ],
+    [
+     "web/stack-look.css",
+     ":root{--stack-folded-height:56px}",
+     ":root{--stack-folded-height:44px}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look exposes"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A saved fold in a dossier uses read material before its read marker catches up",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=none]{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives a saved fold"
+   }
+  },
+  {
+   "item": 429,
+   "act": "The reader's own thumbs-up leaves a card's unread material, in a dossier or out",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)){"
+    ],
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card){",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):not(.own-message):not(.agent-card){"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A fold outside a dossier keeps the feed's read state",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".message-card.agent-card[data-folded=true]{"
+    ],
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card){",
+     ".message-card[data-folded=true]:not(.own-message):not(.agent-card){"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A placed single message is no dossier: its fold keeps the feed's read state",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack:not(.only-new *) .message-card.agent-card[data-folded=true]{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "At latest and unread, hidden replies take no overlap and separate no visible faces",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (entry.hidden) continue;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look at latest and unread"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A join line keeps its gap from the cards outside its box, so a join that reveals the line a tenth inside the window leaves the page where it was",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-join-line{margin-block:var(--stack-sheet-gap)}",
+     ".stack-join-line{padding-block:var(--stack-sheet-gap)}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a join you make shows where it went"
+   }
+  },
+  {
+   "item": 401,
+   "act": "Show full message grows one clipped feed card without opening the Reader, preserving it across updates only on this page",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "    card.style.maxHeight = 'none'; card.scrollTop = 0;",
+     "    card.style.maxHeight = '100px'; card.scrollTop = 0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Show full message removes clipping"
+   }
+  },
+  {
+   "item": 406,
+   "act": "The composer thumb shows only your own state while the message keeps the shared count and names",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "  button.textContent = '👍';",
+     "  button.textContent = '👍 ' + reactionsOf(item).thumbs.length;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading the composer thumb represents only"
+   }
+  },
+  {
+   "item": 406,
+   "act": "The Reader shows under the message how many thumbed it up and who, also when no loaded page holds its card",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "  line.textContent = `👍 ${thumbs.length} ${names}`;",
+     "  line.textContent = '👍';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a message opened from an About link"
+   }
+  },
+  {
+   "item": 401,
+   "act": "Show full message on a card scrolled inside keeps the words being read where they were on the screen",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "    if (moved) card.ownerDocument.defaultView.scrollBy({ top: moved, behavior: 'instant' });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Show full message on a card scrolled inside"
+   }
+  },
+  {
+   "item": 413,
+   "act": "The reader's starred read replies stay visible at latest and unread until unstarred, including after reload",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
+     "return kept(item) || item.seq === newestReply(stack);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks starred read replies remain visible"
+   }
+  },
+  {
+   "item": 413,
+   "act": "Unstarring a reply in view, here or on another device, leaves it, the keys and the light in place until the stack's state changes",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks unstarring a reply in view"
+   }
+  },
+  {
+   "item": 433,
+   "act": "An act's answer goes to the message the page holds when it lands: x on a folded message whose 👍's reactions read lands while the unfold is out never folds it again, and a second x is fenced on the answer's revision",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);",
+     "    for (const each of new Set([item, current])) each.acts = laterActs(each.acts, answer);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks x unfolds a folded message while its"
+   }
+  },
+  {
+   "item": 433,
+   "act": "The same for a star: Star for me on a folded message whose 👍's reactions read lands while the star is out stays starred",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);",
+     "    for (const each of new Set([item, current])) each.acts = laterActs(each.acts, answer);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Star for me on a folded message while its"
+   }
+  },
+  {
+   "item": 433,
+   "act": "The harness's point() fails by naming where a press fell when a redraw moves its target between the hit-test and the press",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "        if (fell) assert.fail(`${selector} moved between the hit-test and the press: the press fell on ${fell}`);\n",
+     "        if (false) assert.fail(`${selector} moved between the hit-test and the press: the press fell on ${fell}`);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a press whose target a redraw moves between the aim and the press"
    }
   }
  ]

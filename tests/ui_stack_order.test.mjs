@@ -254,6 +254,28 @@ test('a fold shows the newest reply and every kept one in its place, with a line
   assert.deepEqual(words(rowsOf(short, { level: 'open' })), ['m2']);
 });
 
+test('latest and unread keeps the reader\'s starred replies whole, in order, until unstarred', () => {
+  const items = [message(1), message(2, { reply_to: 'm1' }),
+    message(3, { reply_to: 'm1', acts: { starred: true, star_revision: 1, folded: true, fold_revision: 1 } }),
+    message(4, { reply_to: 'm1' }), message(5, { reply_to: 'm1', acts: { starred: true } })];
+  const [stack] = stacksOf(items), kept = item => item.seq === 2;
+  assert.deepEqual(words(rowsOf(stack, { kept })), ['m2', 'm3', '1 more reply', 'm5'], 'kept unread, older starred and latest replies remain in chronological places');
+  assert.equal(rowFolded(items[2]), false, 'a saved fold never hides a starred reply\'s words');
+  assert.deepEqual(rowsOf(stack, { level: 'open' }).filter(row => row.kind === 'reply').map(row => row.item.id), ['m2','m3','m4','m5'], 'all messages stays unchanged, without duplicate stars');
+  assert.equal(shown(stack, items[2], { level: 'head' }), false, 'the quiet agent header-only state remains explicit');
+  const unstarred = stacksOf(items.map(item => item.seq === 3 ? { ...item, acts: { ...item.acts, starred: false, star_revision: 2 } } : item))[0];
+  assert.deepEqual(words(rowsOf(unstarred, { kept })), ['m2', '2 more replies', 'm5'], 'unstarred older read replies hide again');
+});
+
+test('star visibility follows the reader\'s acts through joined stacks, not another reader\'s stars', () => {
+  const items = [message(1), message(2, { acts: { joined: { into: 'm1', by: 'owner' } } }),
+    message(3, { reply_to: 'm2', acts: { starred: true, star_revision: 1 } }), message(4, { reply_to: 'm1' })];
+  const replies = stack => rowsOf(stack).filter(row => row.kind === 'reply').map(row => row.item.id);
+  assert.deepEqual(replies(stacksOf(items)[0]), ['m3', 'm4'], 'an older starred reply in a joined stack remains visible');
+  const otherReader = items.map(item => ({ ...item, acts: { ...item.acts, starred: false, star_revision: 0 } }));
+  assert.deepEqual(replies(stacksOf(otherReader)[0]), ['m4'], 'another reader\'s ordinary read reply stays hidden');
+});
+
 test('a fold line holding unread replies says how many in red; the head says New when its own message is', () => {
   const items = [message(1), ...[2, 3, 4, 5].map(seq => message(seq, { reply_to: 'm1', author_id: seq === 4 ? 'agent-b' : 'agent-a' }))];
   const [stack] = stacksOf(items);

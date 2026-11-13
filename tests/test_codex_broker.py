@@ -5,11 +5,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
+import tempfile
 import time
 import unittest
 from unittest import mock
 
 from aim_next import wake_adapter
+from aim_next.codex_broker import ADD_SECONDS, CLEANUP_SECONDS, TOTAL_SECONDS
 import test_broker_routes as routes_setup
 
 
@@ -23,13 +26,18 @@ CLIENT = 'theseus_wake_broker'
 
 # Executed only in isolated fixtures. It records requests actually received over
 # stdin, including an EOF record before exit. It never opens a real Codex root.
+# One copy serves the whole test process (setUpModule); each dispatch writes
+# its scenario and trace path to fixture.json beside it.
 SERVER = r'''
 from __future__ import annotations
 import json, os, sys, time
 from pathlib import Path
 
-SCENARIO = __SCENARIO__
-TRACE = Path(__TRACE__)
+if sys.argv[1:]==['--warm']:
+    sys.exit(0)
+PARAMS = json.loads(Path(sys.argv[0]).with_name('fixture.json').read_text())
+SCENARIO = PARAMS['scenario']
+TRACE = Path(PARAMS['trace'])
 def record(kind, **fields):
     with TRACE.open('a') as out:
         out.write(json.dumps(dict(kind=kind, at_ns=time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW), **fields))+'\n')
@@ -53,9 +61,6 @@ for line in sys.stdin:
         continue
     for i in range(SCENARIO.get('notifications',0)):
         send(dict(method='remoteControl/status/changed',params={'fixture':True,'n':i}))
-    delay=SCENARIO.get('delays',{}).get(method,0)
-    if delay:
-        time.sleep(delay)
     if method == 'initialize':
         if SCENARIO.get('server_request'):
             send(dict(id=999,method='item/commandExecution/requestApproval',params={}))
@@ -74,9 +79,17 @@ for line in sys.stdin:
                 record('exit',code=0,ppid=os.getppid())
                 sys.exit(0)
         result = dict(userAgent=SCENARIO.get('user_agent',
-            request['params']['clientInfo']['name']+'/'+SCENARIO.get('version',__VERSION__)+' fixture'),
+            request['params']['clientInfo']['name']+'/'+SCENARIO.get('version',PARAMS['version'])+' fixture'),
             codexHome=SCENARIO.get('root',os.environ.get('CODEX_HOME')))
     elif method == 'thread/queue/list':
+        if 'list_answer_left' in SCENARIO:
+            # Answer when this much of the broker's RPC budget is left, measured
+            # from the broker's own recorded start, whatever startup took.
+            started=next(row['started'] for row in map(json.loads,TRACE.read_text().splitlines())
+                         if row['kind']=='broker-started')
+            target=started+PARAMS['rpc_seconds']-SCENARIO['list_answer_left']
+            time.sleep(max(0.0,target-time.monotonic()))
+            record('list-answered',left=started+PARAMS['rpc_seconds']-time.monotonic())
         if SCENARIO.get('partial'):
             sys.stdout.write('{"id":');sys.stdout.flush()
             # No newline or response: wait for broker EOF, not a private retry.
@@ -128,26 +141,37 @@ sys.exit(SCENARIO.get('exit_code',0))
 # A test-only bootstrap runs the actual broker script in this same owned
 # process. It can rewrite the fixture config immediately after the real pin
 # read and observe the exact env passed to Popen before an interpreter adds
-# platform variables. It never changes the compared pin or transport result.
+# platform variables. It records the start the broker's budget counts from.
+# It never changes the compared pin or transport result. Like SERVER, one copy
+# serves the test process and reads bootstrap.json beside it.
 BOOTSTRAP = r'''
 from __future__ import annotations
 import json, os, runpy, subprocess, sys, time
 from pathlib import Path
+if sys.argv[1:]==['--warm']:
+    sys.exit(0)
+PARAMS=json.loads(Path(sys.argv[0]).with_name('bootstrap.json').read_text())
 sys.dont_write_bytecode=True
-sys.path.insert(0,__SOURCE_ROOT__)
+sys.path.insert(0,PARAMS['source_root'])
 from aim_next import Store
-trace=Path(__TRACE__)
+import aim_next.codex_broker as codex_broker
+trace=Path(PARAMS['trace'])
 def record(kind,**fields):
     with trace.open('a') as out:
         out.write(json.dumps(dict(kind=kind,at_ns=time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW),**fields))+'\n')
 record('broker-env',home=os.environ.get('CODEX_HOME'),marker=os.environ.get('THESEUS_TEST_MUST_NOT_INHERIT'))
-after_pin=__AFTER_PIN__
+broker_main=codex_broker.main
+def main(argv=None,*,started=None):
+    record('broker-started',started=started)
+    return broker_main(argv,started=started)
+codex_broker.main=main
+after_pin=PARAMS['after_pin']
 original_pin=Store.read_route_pin
 if after_pin is not None:
     def read_pin(self,actor,destination):
         result=original_pin(self,actor,destination)
         record('pin-compared',destination=result['destination'])
-        path=Path(__CONFIG__)
+        path=Path(PARAMS['config'])
         value=json.loads(path.read_text())
         value['destination']=after_pin
         path.write_text(json.dumps(value))
@@ -163,8 +187,33 @@ def launch(*args,**kwargs):
                home=(env or {}).get('CODEX_HOME'),marker=(env or {}).get('THESEUS_TEST_MUST_NOT_INHERIT'))
     return original_popen(*args,**kwargs)
 subprocess.Popen=launch
-runpy.run_path(__BROKER__,run_name='__main__')
+runpy.run_path(PARAMS['broker'],run_name='__main__')
 '''
+
+# macOS assesses an executable file the first time it is run: a freshly written
+# script took 0.6 to 3.1 s to start here (a repeat run 25 ms), longer under
+# load. A fixture written per dispatch spent that inside the broker's own
+# four-second budget, so a correct broker refused with codex_no_answer. Each
+# fixture executable is written once per test process and run to completion
+# once before any dispatch can count its start.
+_EXECUTABLES = {}
+
+
+def setUpModule():
+    directory = tempfile.TemporaryDirectory(prefix='theseus-codex-fixtures-')
+    unittest.addModuleCleanup(directory.cleanup)
+    root = Path(directory.name).resolve()
+    for name,code in (('codex',SERVER),('bootstrap',BOOTSTRAP)):
+        path = root/name
+        path.write_text('#!/usr/bin/python3\n'+code)
+        path.chmod(0o700)
+        subprocess.run([str(path),'--warm'],check=True,stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        _EXECUTABLES[name] = path
+
+
+def _write(path, value):
+    path.write_text(json.dumps(value))
 
 
 class CodexBrokerCase(unittest.TestCase):
@@ -181,25 +230,25 @@ class CodexBrokerCase(unittest.TestCase):
         count = getattr(self, 'fixture_count', 0) + 1
         self.fixture_count = count
         trace = self.root / ('rpc-%s.jsonl' % count)
-        executable = self.root / ('codex-fixture-%s' % count)
-        code = (SERVER.replace('__SCENARIO__',repr(scenario or {})).replace('__TRACE__',repr(str(trace)))
-                .replace('__VERSION__',repr(VERSION)))
-        # spawn_fails: an executable the trust policy accepts but the kernel cannot start.
-        interpreter = '/nonexistent/aim-next-fixture-python' if (scenario or {}).get('spawn_fails') else '/usr/bin/python3'
-        executable.write_text('#!'+interpreter+'\n'+code)
-        executable.chmod(0o700)
+        scenario = scenario or {}
+        if scenario.get('spawn_fails'):
+            # An executable the trust policy accepts but the kernel cannot start.
+            executable = self.root / ('codex-fixture-%s' % count)
+            executable.write_text('#!/nonexistent/aim-next-fixture-python\n')
+            executable.chmod(0o700)
+        else:
+            executable = _EXECUTABLES['codex']
+            _write(executable.with_name('fixture.json'),dict(scenario=scenario,trace=str(trace),
+                version=VERSION,rpc_seconds=TOTAL_SECONDS-CLEANUP_SECONDS))
         value=dict(self.config_value,codex_executable=str(executable))
         value.update(config_changes or {})
         self.save(self.config,value)
         broker = Path(__file__).resolve().parents[1]/'bin'/'aim-next-codex-broker'
         self.assertTrue(broker.is_file(), 'selected stdio broker must exist before dispatch')
-        if after_pin is not None or ambient:
-            wrapper=self.root/('broker-bootstrap-%s' % count)
-            code=BOOTSTRAP.replace('__SOURCE_ROOT__',repr(str(broker.parent.parent)))
-            for key,content in [('__TRACE__',str(trace)),('__CONFIG__',str(self.config)),
-                                ('__BROKER__',str(broker)),('__AFTER_PIN__',after_pin)]:
-                code=code.replace(key,repr(content))
-            wrapper.write_text('#!/usr/bin/python3\n'+code);wrapper.chmod(0o700)
+        if after_pin is not None or ambient or 'list_answer_left' in scenario:
+            wrapper=_EXECUTABLES['bootstrap']
+            _write(wrapper.with_name('bootstrap.json'),dict(source_root=str(broker.parent.parent),
+                trace=str(trace),config=str(self.config),broker=str(broker),after_pin=after_pin))
             broker=wrapper
         self.save(self.route,dict(self.route_value,profile=value['profile'],
             argv=[str(broker),'--config',str(self.config)]))
@@ -579,14 +628,26 @@ class CodexBrokerCase(unittest.TestCase):
                 self.assertLess(exited-start,4500000000,'API child must close within the internal budget')
 
     def test_late_valid_list_does_not_erase_the_reserved_add_budget(self):
-        result,rows=self.dispatch(dict(delays={'initialize':1.4,'thread/queue/list':1.4}))
+        # The list answers with half the add reserve left of the broker's budget,
+        # counted from the broker's start, however long startup took.
+        result,rows=self.dispatch(dict(list_answer_left=ADD_SECONDS/2))
+        answered=next(r for r in rows if r['kind']=='list-answered')
+        self.assertTrue(0<answered['left']<ADD_SECONDS,answered)
         self.assertEqual(result.outcome,'error')
         self.assertEqual(result.reason,'codex_no_answer')
         self.assertEqual(len(self.requests(rows,'thread/queue/list')),1)
         self.assertFalse(self.requests(rows,'thread/queue/add'))
+        self.assertEqual([r['kind'] for r in rows][-2:],['eof','exit'])
         start=next(r['at_ns'] for r in rows if r['kind']=='start')
         exited=next(r['at_ns'] for r in rows if r['kind']=='exit')
         self.assertLess(exited-start,4500000000)
+
+    def test_a_list_answered_with_the_add_reserve_left_still_adds(self):
+        # The same late answer, with half a second more than the reserve left.
+        result,rows=self.dispatch(dict(list_answer_left=ADD_SECONDS+0.5))
+        answered=next(r for r in rows if r['kind']=='list-answered')
+        self.assertGreater(answered['left'],ADD_SECONDS,answered)
+        self.assertAccepted(result,rows)
 
     def test_valid_receipt_does_not_hide_nonzero_or_unconfirmed_api_exit(self):
         for scenario in (dict(exit_code=9),dict(late_exit=True)):

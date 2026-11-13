@@ -53,7 +53,7 @@ import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
-import { Reactions, learnReactions, paintReaderThumb } from './reactions.mjs';
+import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
@@ -97,7 +97,7 @@ let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
 let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
-let menu = null, reactions = null;
+let menu = null, reactions = null, cardScroll = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
 let stackFeed = null;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
@@ -1123,6 +1123,7 @@ function readerItem() {
 function paintReaderThumb$() {
   const item = readerItem();
   paintReaderThumb($('thumb-source'), reactions && item, bootstrap.actor, Boolean(item && reactions?.busy.has(item.id)));
+  paintReaderReactions($('reader-reactions'), item, bootstrap.actor);
 }
 // Reply, or Return, on a lit message: the Reader opens on it with the cursor
 // in the reply, and nothing quoted until the reader selects a passage.
@@ -1176,6 +1177,8 @@ function messageMenuItems(item, say, anchor = say) {
   const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
   const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: moves, label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
   const items = [...stack.first, { label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
+  const card = cardIn(messageEntries.get(item.id));
+  if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', act: () => run(() => cardScroll.showFull(card, item)) });
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', act: () => run(() => markFromMenu(item.id, !marked)) });
@@ -1800,7 +1803,7 @@ async function initialize() {
     // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
     cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
-  const cardScroll = new CardScroll({ read: async id => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass: 'background' }), bootstrap.instance_id) });
+  cardScroll = new CardScroll({ read: async id => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass: 'background' }), bootstrap.instance_id) });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
   // (Core settled the person's delivery of it, or cleared their mark on it)
