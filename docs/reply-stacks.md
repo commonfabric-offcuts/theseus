@@ -134,8 +134,8 @@ their acts.
     the stack it went into instead (see Doing it).
   - Open (↓): the original message and every reply.
 
-  A stack whose replies are all read shows its latest reply alone when
-  folded. A quiet agent dossier (below, 359) still begins as its header
+  A stack whose replies are all read shows its latest reply and the reader's
+  starred replies when folded. A quiet agent dossier (below, 359) still begins as its header
   alone; its first step opens it to latest plus unread, and only ⌘Z right
   after takes it back there. A stack left at its header that is no longer
   agents' alone (a reply to the person arrived, say) shows latest plus
@@ -145,7 +145,12 @@ their acts.
   reading them does not make them vanish. Explicitly changing state, or
   coming back to the page with a stack off screen, lets go of that snapshot.
   A newer reply replaces the previous latest if that previous reply was
-  already read; read asks and stars do not add exceptions to latest plus unread.
+  already read and not starred. The reader's starred replies remain visible
+  in their chronological places in latest plus unread, including after a
+  reload; removing the star lets an older read reply hide again. This uses
+  that reader's existing acts, never another reader's stars. Read asks do not
+  add an exception. An agent-only dossier's explicit header-only state is
+  unchanged; opening it to latest plus unread applies the same star rule.
   Coming back also returns off-screen fully open stacks to the partial view.
 - **Folded messages.** A message the reader folded stays folded for them, on
   every device and after a reload, until they unfold it; nobody else's view
@@ -428,8 +433,8 @@ A folded face is 44px tall on a laptop. On a phone or coarse pointer it is
 56px tall: its successor covers 12px, leaving a reachable 44px strip and the
 folded thumbs-up. A hit box hidden under the successor does not count toward
 that 44px. Normal single messages keep their original box; stars still
-prevent an individual message fold. Whether a starred reply stays in the
-recent-replies view is a separate visibility rule (item 413).
+prevent an individual message fold. Starred replies stay visible in the recent-replies view through the
+reader's existing star act (item 413).
 Shown whole, the head's card is the first
 sheet; while the stack is renamed, the field takes the tab's place. Only one
 current target has the strong ring: a message, or the whole folder when its

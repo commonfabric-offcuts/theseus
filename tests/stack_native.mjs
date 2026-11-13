@@ -650,7 +650,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded')`),'true','the chevron always says the dossier is expanded: there is no closed state');
         assert.ok((await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-label')`)).startsWith(labels[level]+': '),'the chevron names the state it shows and the one it moves to');
       };
-      await assertState('folded', ['five','six'], false);
+      await assertState('folded', ['two','five','six'], false);
       assert.match((await look(p,ids,'root')).meta,/^6 replies .*2 new$/,'counts remain in the header');
       assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#messages .stack-fresh')).color`),await alertColour(p),'new count remains red');
       assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-fold-line').length`),0,'no repeated fold bars');
@@ -668,20 +668,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // Space presses it; Return on a dossier edits its title (item 385).
         await p.key(' ');
       } else await press(p,device,toggle);
-      await assertState('folded',['five','six'],false);
+      await assertState('folded',['two','five','six'],false);
       const partial=await look(p,ids,'root');
       assert.equal(partial.rows.filter(x=>x==='six').length,1,'latest unread is never duplicated');
       assert.ok(!partial.rows.includes('two'),'a read star does not add a third kind of content');
       await press(p,device,toggle);
       await assertState('open',all,true);
       await press(p,device,toggle);
-      await assertState('folded',['five','six'],false);
+      await assertState('folded',['two','five','six'],false);
       // The header row is the same switch.
       await light(p,device,ids.root);
       await press(p,device,`${card(ids.root)} .stack-who`);
       await assertState('open',all,true);
       await press(p,device,`${card(ids.root)} .stack-who`);
-      await assertState('folded',['five','six'],false);
+      await assertState('folded',['two','five','six'],false);
       assert.equal(await readerOn(p),null,'the chevron and the header open no Reader');
       if(device==='laptop') {
         // The ⋯ menu offers only the step there is: Open at latest plus unread, Fold at all. (A phone's sheet
@@ -694,7 +694,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await readerOn(p),null,'choosing Open its stack opens no Reader');
         assert.deepEqual(await stackItems(),['Fold its stack←'],'at all messages, ⋯ offers Fold its stack and no Open');
         await choose(p,device,'Fold its stack');
-        await assertState('folded',['five','six'],false);
+        await assertState('folded',['two','five','six'],false);
         assert.equal(await said(p),'Latest and unread replies shown');
         assert.equal(await readerOn(p),null,'choosing Fold its stack opens no Reader');
         // → and ← step between the two; ← at latest plus unread leaves for the outline, the dossier as it was.
@@ -702,15 +702,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await p.key('ArrowRight');
         await assertState('open',all,true);
         await p.key('ArrowLeft');
-        await assertState('folded',['five','six'],false);
+        await assertState('folded',['two','five','six'],false);
         await p.key('ArrowLeft');
         await until(() => p.evaluate("Boolean(document.activeElement.closest('#outline'))"),'← at latest plus unread moves into the outline');
-        await assertState('folded',['five','six'],false);
+        await assertState('folded',['two','five','six'],false);
         await p.key('ArrowRight');
         assert.equal(await focusedOn(p),ids.root,'→ from the outline comes back to the same dossier');
         // ⌘Z puts back each step, and only those two states.
         await p.key('ArrowRight'); await assertState('open',all,true);
-        await p.key('z',4); await assertState('folded',['five','six'],false);
+        await p.key('z',4); await assertState('folded',['two','five','six'],false);
       }
       assert.equal(await readerOn(p),null,'stack controls do not open a modal');
       assert.deepEqual(p.errors,[]); await p.close();
@@ -901,10 +901,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal((await actsOf(topic, ids.one, other))?.starred ?? false, false, 'another reader sees no star');
     assert.deepEqual(await starsOf(other), [], 'and lists none');
     assert.ok((await starsOf(facts.actor)).includes(ids.one), 'the reader\'s stars list it');
-    // Latest plus unread shows no more for a star: the starred reply, read, folds away with the rest.
+    // Latest plus unread retains a read star, alongside the latest reply.
     await keyTo(p, ids.root);
     await p.key('ArrowLeft');
-    await becomes(async () => (await look(p, ids, 'root')).rows, ['three'], 'latest plus unread leaves the starred read reply out too');
+    await becomes(async () => (await look(p, ids, 'root')).rows, ['one','three'], 'latest plus unread keeps the starred read reply visible');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one) + ' > .message-author > .card-star')})?.textContent`), '★', 'the starred reply shows its filled star after its author');
     // The rail's Starred: this topic's star, and a press lands on it.
     // Stars elsewhere (another check's) sit under Elsewhere, after this topic's.
@@ -921,7 +921,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await choose(p, 'laptop', 'Unstar');
     await until(async () => (await actsOf(topic, ids.one))?.starred === false, 'Unstar takes it back, in Core');
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(row)})`), 'and the rail lists it no more');
-    // Landing on a hidden star opens the stack; it remains open for Unstar.
+    // Landing through Starred opens the full stack; it remains open for Unstar.
     await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the stack opened again');
     await menuOf(p, 'laptop', ids.one);
     await choose(p, 'laptop', 'Star for me');
@@ -933,6 +933,33 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).dataset.starred === 'false'`), 'the card shows no star');
     assert.deepEqual(p.errors, []);
     await p.close();
+  });
+
+  await check('reading stacks starred read replies remain visible at latest and unread after reload and unstar hides them again', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-star-visible-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'A read root.' }],
+        ['star', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'An older read starred reply.' }],
+        ['ordinary', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'An ordinary read reply.' }],
+        ['latest', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The latest read reply.', read: true }]]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.star, operation_id: topic + '-star', args: { starred: true } });
+      let p = await open(topic, device, topic, ids.root);
+      const rows = () => look(p, ids, 'root').then(state => ({ fold: state.fold, rows: state.rows, full: state.full }));
+      await becomes(rows, { fold:'folded', rows:['star','latest'], full:false }, 'the default level keeps the read star and latest, hiding ordinary read replies');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.star))}).dataset.folded==='true'`), false, 'the star reads whole');
+      const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+      await centre(p, toggle); await press(p, device, toggle);
+      await becomes(rows, { fold:'open', rows:['star','ordinary','latest'], full:true }, 'all messages remains chronological');
+      await centre(p, toggle); await press(p, device, toggle);
+      await becomes(rows, { fold:'folded', rows:['star','latest'], full:false }, 'returning to latest and unread retains the star');
+      await p.close(); p = await open(topic + '-reload', device, topic, ids.root);
+      await becomes(rows, { fold:'folded', rows:['star','latest'], full:false }, 'reload retains the reader\'s saved star');
+      assert.equal((await actsOf(topic, ids.star, other))?.starred ?? false, false, 'no star leaks to another reader');
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.star, operation_id: topic + '-unstar', args: { starred: false } });
+      await becomes(rows, { fold:'folded', rows:['latest'], full:false }, 'unstar on another device hides the older read reply again');
+      await shot(p, 'star-visible-unstar-' + device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
   });
 
   await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; a new reply does not lift it; another reader keeps newest on top', async () => {
