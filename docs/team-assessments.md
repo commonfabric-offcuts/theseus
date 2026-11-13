@@ -123,3 +123,7 @@ does not claim a report was posted. A finished result includes the complete repo
 read back from its original topic. The coordinator reads that report and records
 `assessment.renew` with `decision`, `reason` and `next_checkpoint`; any actual
 staffing or process intervention remains a separate authorized act.
+
+The separate [artifact checkpoint policy](assessment-checkpoints.md) records due
+artifacts and evidenced observations, requests assessments at adopted thresholds,
+and exposes due reminders to the coordinator. It is not a background scheduler.
