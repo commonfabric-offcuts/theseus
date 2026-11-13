@@ -220,6 +220,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // puts the first face back unread, with read replies on both sides.
       await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [ids.first], marked: true });
       const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;');
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.first) + ' .unread-mark')})?.getClientRects().length)`),
+        `${device}: the reply marked unread shows, with its Unread pill`);
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
         const g = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),entry=e=>e.parentElement.classList.contains('message-fold')?e.parentElement:e,
