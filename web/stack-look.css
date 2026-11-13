@@ -64,7 +64,7 @@
   --stack-overlap:12px;
   --stack-contact:0 -1px 2px rgb(54 46 38 / .10);
   --stack-folded-height:44px;
-  --stack-folded-ink:var(--muted);
+  --stack-folded-ink:var(--stack-read-ink);
   --stack-read-ink:#56616a;
   --stack-name-inset:4px;
   --stack-gap:1.75rem;                    /* clear paper round a stack */
@@ -88,7 +88,7 @@
 .reply-stack[data-single=true]:not(.only-new *){margin-top:var(--stack-gap);border-radius:var(--stack-r)}
 :is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
 .reply-stack:not(.only-new *) .message-card{border-radius:var(--stack-r-sheet)}
-.reply-stack:not(.only-new *) .message-card{outline:none;border-color:transparent;box-shadow:var(--stack-contact)}
+.reply-stack:not(.only-new *) .message-card{--stack-folded-ink:var(--muted);outline:none;border-color:transparent;box-shadow:var(--stack-contact)}
 /* Only the current message gets a strong ring. Keyboard focus left behind
    when the pointer moves is not a second selection. */
 .reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}
