@@ -15,6 +15,24 @@ export function arrivalIds(provenance, handled) {
 // after the synchronous anchor correction without moving them a second time.
 export function belowAnchor(top, anchorBox) { return !anchorBox || top >= anchorBox.bottom - 1; }
 
+// The v4 segments share one clock with the physical folder edge. A
+// compositor-owned transform can advance ahead of a JS measurement in WebKit.
+const CURVES = [[.25,.6,.3,1],[.2,.7,.25,1],[0,0,.58,1],[.42,0,.58,1]];
+function curve(x, [x1,y1,x2,y2]) {
+  const at = (t,a,b) => 3*(1-t)*(1-t)*t*a + 3*(1-t)*t*t*b + t*t*t;
+  let lo=0, hi=1;
+  for (let i=0;i<20;i++) { const t=(lo+hi)/2; if (at(t,x1,x2)<x) lo=t; else hi=t; }
+  return at((lo+hi)/2,y1,y2);
+}
+export function arrivalPose(progress, above) {
+  const p=Math.max(0,Math.min(1,progress));
+  const stops=[[0,above,-.45,.985,0],[.26,above*.64,-.25,.993,.55],[.76,3,.06,1,1],[.89,-1,0,1,1],[1,0,0,1,1]];
+  const i=Math.min(3,stops.findIndex((stop,j)=>j<4&&p<=stops[j+1][0]));
+  const a=stops[i],b=stops[i+1],t=curve((p-a[0])/(b[0]-a[0]),CURVES[i]);
+  const mix=j=>a[j]+(b[j]-a[j])*t;
+  return {y:mix(1),angle:mix(2),scale:mix(3),opacity:mix(4)};
+}
+
 export class StackMotion {
   constructor({ list, anchor = () => null, reading = () => {}, win = list.ownerDocument.defaultView }) {
     Object.assign(this, { list, anchor, reading, win, doc: list.ownerDocument });
@@ -90,13 +108,16 @@ export class StackMotion {
   effect(incoming, kind) {
     const cleanups = [], animations = [], faces = incoming.map(entry => ({ entry, card: cardIn(entry), parent: entry.parentElement, folded: cardIn(entry).dataset.folded === 'true' }));
     let done = false, frame = null;
-    const effect = { faces, animations, kind, tick: null,
+    const effect = { faces, animations, kind, tick: null, last: null, elapsed: 0,
       style(node, key, value) { const old = node.style.getPropertyValue(key), priority = node.style.getPropertyPriority(key); node.style.setProperty(key, value); cleanups.push(() => old ? node.style.setProperty(key, old, priority) : node.style.removeProperty(key)); },
       cleanup(fn) { cleanups.push(fn); },
-      loop: () => {
+      loop: (now = this.win.performance.now()) => {
         this.win.cancelAnimationFrame(frame); frame = null;
         if (done || this.paused) return;
-        effect.tick?.(); frame = this.win.requestAnimationFrame(effect.loop);
+        if (effect.last !== null) effect.elapsed += Math.max(0, now-effect.last);
+        effect.last = now;
+        if (effect.tick?.(effect.elapsed)) { effect.finish(); return; }
+        frame = this.win.requestAnimationFrame(effect.loop);
       },
       finish: () => {
         if (done) return; done = true;
@@ -121,24 +142,29 @@ export class StackMotion {
   deal(section, incoming, floor) {
     const replies = section.querySelector('.stack-replies'), effect = this.effect(incoming, 'arrival');
     effect.style(replies, 'height', floor + 'px');
-    for (const entry of incoming) {
+    const faces = incoming.map(entry => {
       const opacity = Number(this.win.getComputedStyle(entry).opacity);
       const above = -Math.max(rect(entry).height + 24, Math.min(480, Math.max(220, rect(entry).top - rect(section).top + 28)));
-      this.run(effect, entry, [
-        { opacity: 0, transform: `translateY(${above}px) rotate(-.45deg) scale(.985)`, easing: 'cubic-bezier(.25,.6,.3,1)' },
-        { opacity: .55 * opacity, transform: `translateY(${above * .64}px) rotate(-.25deg) scale(.993)`, offset: .26, easing: 'cubic-bezier(.2,.7,.25,1)' },
-        { opacity, transform: 'translateY(3px) rotate(.06deg) scale(1)', offset: .76, easing: 'ease-out' },
-        { opacity, transform: 'translateY(-1px)', offset: .89, easing: 'ease-in-out' },
-        { opacity, transform: 'none' },
-      ], { duration: this.duration('--stack-arrival-ms'), easing: 'linear' });
-    }
-    effect.tick = () => {
+      effect.style(entry, 'transition-property', 'none');
+      effect.style(entry, 'transform', 'none'); effect.style(entry, 'opacity', String(opacity));
+      return {entry,opacity,above};
+    });
+    const duration = this.duration('--stack-arrival-ms');
+    effect.tick = elapsed => {
+      const progress = duration > 0 ? Math.min(1,elapsed/duration) : 1;
+      for (const {entry,opacity,above} of faces) {
+        const pose=arrivalPose(progress,above);
+        entry.style.transform=`translateY(${pose.y}px) rotate(${pose.angle}deg) scale(${pose.scale})`;
+        entry.style.opacity=String(pose.opacity*opacity);
+      }
       const edge = Math.max(floor, ...incoming.map(entry => rect(entry).bottom - rect(replies).top));
       replies.style.height = edge + 'px';
+      return progress === 1;
     };
-    effect.loop();
     this.watchSize(effect);
+    effect.loop();
   }
+
   fold(entry, old, folded) {
     const card = cardIn(entry), target = rect(card).height, style = this.win.getComputedStyle(card), naturalPad = parseFloat(style.paddingTop);
     const rowAuthor = card.querySelector(':scope > .message-folded .folded-author');
@@ -183,8 +209,8 @@ export class StackMotion {
     }
     effect.cleanup(() => { observer.disconnect(); changes.disconnect(); });
   }
-  pause() { this.paused = true; for (const effect of this.active) for (const animation of effect.animations) animation.pause(); }
-  resume() { if (!this.paused) return; this.paused = false; for (const effect of this.active) { for (const animation of effect.animations) animation.play(); effect.loop(); } }
+  pause() { this.paused = true; for (const effect of this.active) for (const animation of effect.animations) { const time=animation.currentTime; animation.pause(); animation.currentTime=time; } }
+  resume() { if (!this.paused) return; this.paused = false; for (const effect of this.active) { for (const animation of effect.animations) animation.play(); effect.last=null; if (effect.tick) effect.loop(); } }
   finish() { for (const effect of [...this.active]) effect.finish(); }
   dispose() { if (this.disposed) return; this.disposed = true; this.finish(); for (const off of this.off) off(); this.off = []; this.next = []; this.staged = null; this.handled.clear(); }
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { StackMotion, arrivalIds, belowAnchor } from '../web/stack-motion.mjs';
+import { StackMotion, arrivalIds, belowAnchor, arrivalPose } from '../web/stack-motion.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 
 test('only fresh accepted live IDs can enter; initial, older and duplicate pages never replay', () => {
@@ -42,4 +42,13 @@ test('visibility cancels motion and catch-up stays static until native attention
   doc.dispatchEvent(new Event('keydown')); assert.equal(motion.allowed(),true);
   media.matches=true; media.dispatchEvent(new Event('change')); assert.equal(motion.allowed(),false);
   motion.dispose(); media.matches=false; assert.equal(motion.allowed(),false);
+});
+
+test('the shared arrival clock retains the approved v4 landing and settle poses', () => {
+  const near=(actual,want)=>assert.ok(Math.abs(actual-want)<.001,`${actual} near ${want}`);
+  for(const above of [-220,-480,-900]) {
+    for(const [time,y,opacity] of [[0,above,0],[.26,above*.64,.55],[.76,3,1],[.89,-1,1],[1,0,1]]) {
+      const pose=arrivalPose(time,above); near(pose.y,y);near(pose.opacity,opacity);
+    }
+  }
 });

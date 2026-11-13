@@ -10412,6 +10412,11 @@
      "web/stack-motion.mjs",
      "on(win, 'resize', () => this.finish());",
      "on(win, 'resize', () => {});"
+    ],
+    [
+     "web/stack-motion.mjs",
+     "watchSize(effect) {",
+     "watchSize(effect) { return;"
     ]
    ],
    "check": {

@@ -116,7 +116,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
   await check('reading dossier motion a press held through arrival freezes geometry until release', async()=>{
     await atWidths('press',async ctx=>{
       const {p,ids}=ctx, id=await add(ctx);
-      await until(async()=>(await frames(p,id,'arrival')).some(f=>f.opacity>.1&&f.opacity<.8),'the arrival is mid-flight');
+      await until(()=>p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});return c?.dataset.stackMotion==='arrival'&&+getComputedStyle(c).opacity>.1&&+getComputedStyle(c).opacity<.8})()`),'the arrival is currently mid-flight');
       const b=await p.box('#topic-title'),x=b.x+10,y=b.y+b.height/2;
       await p.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
       const look=()=>p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),r=c.getBoundingClientRect();return [r.top,r.bottom,getComputedStyle(c).transform,c.closest('.reply-stack').getBoundingClientRect().bottom]})()`);
@@ -132,6 +132,8 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       const {p}=ctx,id=await add(ctx);
       await until(async()=>(await frames(p,id,'arrival')).length>2,'arrival began before cancellation');
       await p.send('Emulation.setDeviceMetricsOverride',{...DEVICES[ctx.device],width:ctx.width+1});
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))})?.dataset.stackMotion)`),false,'resize cancels before the normal end of the flight');
       await settled(p);
       assert.deepEqual(await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),r=c.closest('.stack-replies');return [c.style.transform,c.style.opacity,r.style.height,c.getAnimations().length]})()`),['','','',0]);
       await centre(p,card(id)); // Bring the next slot on screen; off-screen arrivals correctly stay static.
