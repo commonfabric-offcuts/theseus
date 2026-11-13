@@ -58,10 +58,14 @@ class Core:
             raise DispatchError(result.get('error',{}).get('code','binding_mismatch'))
         return result
 
-    def record(self, identity):
-        record = self.view('assessment', {'assessment_id':identity})['assessment']
+    def record(self, identity, open_outcome=False):
+        found = self.view('assessment', {'assessment_id':identity})
+        record = found['assessment']
         if record['assessor_id'] != self.profile.actor_id:
             raise DispatchError('wrong_assessor')
+        # A reached outcome is final (D42): no native context or model turn starts for it.
+        if open_outcome and found['outcome_reached'] is not False:
+            raise DispatchError('OUTCOME_REACHED')
         return record
 
     def command(self, identity, action, args):
@@ -214,6 +218,7 @@ def drive(core, config, identity, rpc):
     fingerprint = runtime_digest(config,params)
     if record['thread_id'] and record['runtime_digest'] != fingerprint:
         raise DispatchError('assessment_runtime_mismatch')
+    record = core.record(identity,open_outcome=True)
     if not record['thread_id']:
         started = rpc.call('thread/start',dict(params,ephemeral=False,serviceName='theseus-assessment',dynamicTools=[READ_TOOL]))
         check_settings(started,params)
@@ -239,6 +244,7 @@ def drive(core, config, identity, rpc):
         else:
             # An interrupted/lost turn resumes within the same assessment context, never a fork.
             # The process-inherited lock proves the previous owning child has exited before this driver runs.
+            record = core.record(identity,open_outcome=True)
             prompt = 'Assess the named assignment using the skill. Return only the JSON report. Request record:\n'+json.dumps(record,sort_keys=True)
             started = rpc.call('turn/start',{'threadId':thread,'input':[{'type':'text','text':prompt}],
                                           'outputSchema':REPORT_SCHEMA})

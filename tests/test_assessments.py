@@ -244,3 +244,44 @@ class AssessmentCase(unittest.TestCase):
         self.refused(self.attach(new,thread),'ASSESSMENT_THREAD_REUSED')
         self.ok(self.command('assessment.abandon',{'reason':'Operator ended it'},{'assessment_id':new}))
         self.assertEqual(self.read(new)['assessment']['state'],'abandoned')
+
+    def reach_outcome(self, workspace='w1'):
+        version=lambda: self.store.view('owner','workspace',{'workspace_id':workspace})['workspace']['version']
+        self.ok(self.command('outcome.kind_set',{'kind':'reach'},{'workspace_id':workspace},{'workspace_revision':version()}))
+        self.ok(self.command('outcome.reach',{'words':'The artifact shipped','unmet_confirmed':True},
+                             {'workspace_id':workspace},{'workspace_revision':version()}))
+
+    def test_a_reached_outcome_refuses_every_assessment_write(self):
+        # One request at each stage before the outcome is reached (D42, 4.5).
+        requested=self.ok(self.request(op='requested',assignment='Requested'))['assessment_id']
+        attached=self.ok(self.request(op='attached',assignment='Attached'))['assessment_id']; thread=str(uuid.uuid4())
+        self.ok(self.attach(attached,thread))
+        reported=self.ok(self.request(op='reported',assignment='Reported'))['assessment_id']; done=str(uuid.uuid4())
+        self.ok(self.attach(reported,done))
+        report=dict(body='Report',recommendation='continue',evidence_message_ids=[self.source],next_checkpoint='Artifact')
+        self.ok(self.command('assessment.finish',dict(report,thread_id=done),{'assessment_id':reported},actor='agent-b'))
+        self.reach_outcome()
+        before=self.sql("SELECT key,value FROM metadata WHERE key LIKE 'assessment%' ORDER BY key")
+        messages=self.sql('SELECT count(*) FROM messages')
+        self.refused(self.request(op='after-reach',assignment='After reach'),'OUTCOME_REACHED')
+        self.refused(self.attach(requested),'OUTCOME_REACHED')
+        self.refused(self.attach(attached,thread),'OUTCOME_REACHED')
+        self.refused(self.command('assessment.finish',dict(report,thread_id=thread),{'assessment_id':attached},actor='agent-b'),'OUTCOME_REACHED')
+        for identity,actor in ((requested,'owner'),(attached,'agent-b')):
+            self.refused(self.command('assessment.abandon',{'reason':'Outcome reached'},{'assessment_id':identity},actor=actor),'OUTCOME_REACHED')
+        self.refused(self.command('assessment.renew',dict(decision='retain',reason='Good',next_checkpoint='Artifact'),
+                                  {'assessment_id':reported}),'OUTCOME_REACHED')
+        self.assertEqual(self.sql("SELECT key,value FROM metadata WHERE key LIKE 'assessment%' ORDER BY key"),before)
+        self.assertEqual(self.sql('SELECT count(*) FROM messages'),messages)
+        # Reading what was assessed stays open.
+        self.assertEqual(self.read(reported)['assessment']['state'],'reported')
+        self.assertTrue(self.read(requested)['outcome_reached'])
+
+    def test_another_reached_outcome_leaves_this_outcomes_assessments_open(self):
+        self.ok(self.command('workspace.create',{'id':'w2','title':'Other','purpose':'','team':['agent-a','agent-b'],
+                                                 'coordinator':'agent-a'}))
+        self.reach_outcome('w2')
+        identity=self.ok(self.request())['assessment_id']
+        self.assertFalse(self.read(identity)['outcome_reached'])
+        self.ok(self.attach(identity))
+        self.ok(self.command('assessment.abandon',{'reason':'Not needed'},{'assessment_id':identity}))

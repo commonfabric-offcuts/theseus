@@ -8446,6 +8446,76 @@
    "check": {
     "python": "test_assessment_dispatch.py"
    }
+  },
+  {
+   "item": 405,
+   "act": "A reached outcome refuses a new assessment request",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._assessment_open(db, topic['workspace_id'])\n        if topic['kind'] == 'conversation':",
+     "if topic['kind'] == 'conversation':"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A reached outcome refuses attaching, reporting, abandoning or renewing an earlier assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._assessment_open(db, record['workspace_id'])\n        return record",
+     "return record"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only the assessment's own outcome being reached closes it",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "'WHERE r.workspace_id=?', (workspace_id,)",
+     "'WHERE 1 OR r.workspace_id=?', (workspace_id,)"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The dispatcher starts no native context for a reached outcome",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "    record = core.record(identity,open_outcome=True)\n    if not record['thread_id']:",
+     "    if not record['thread_id']:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The dispatcher starts no model turn in an outcome reached while it resumed",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "            record = core.record(identity,open_outcome=True)\n            prompt =",
+     "            prompt ="
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
   }
  ]
 }
