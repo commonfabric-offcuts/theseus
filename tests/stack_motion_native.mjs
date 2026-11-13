@@ -68,8 +68,12 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
   await check('reading dossier motion fold clips one solid author at 320 375 390 and laptop', async()=>{
     await atWidths('fold',async ctx=>{
       const {p,ids,width}=ctx, before=(await p.box(card(ids.one))).height;
+      // A long card may own only the y longhand. Animation cleanup must not
+      // erase it by restoring an absent overflow shorthand.
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).style.overflowY='auto'`);
       await folded(ctx);
       const samples=await frames(p,ids.one,'fold'), final=await p.box(card(ids.one));
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))}).style.overflowY`),'auto','the card keeps its original scroll axis');
       assert.ok(samples.length>2&&samples.some(f=>f.height>final.height+2&&f.height<before-2),'fold has intermediate clipped heights');
       assert.ok(samples.every(f=>f.authors===1&&f.authorOpacity===1),'one solid author, no fading duplicate');
       const surface=await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.one))}),n=c.parentElement.querySelector(${JSON.stringify(card(ids.two))}),b=c.getBoundingClientRect(),z=n.getBoundingClientRect();return {folded:c.dataset.folded,exposed:z.top-b.top,words:getComputedStyle(c.querySelector('.folded-words')).opacity,hit:c.contains(document.elementFromPoint(b.left+b.width/2,b.top+22))}})()`);

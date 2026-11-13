@@ -144,7 +144,9 @@ export class StackMotion {
         effect.cleanup(() => { child.inert = inert; hidden === null ? child.removeAttribute('aria-hidden') : child.setAttribute('aria-hidden', hidden); });
       }
     }
-    effect.style(card, 'overflow', 'clip'); effect.style(card, 'min-height', '0');
+    // Restore each axis separately: a CardScroll overflow-y declaration
+    // need not have an inline overflow shorthand to save and restore.
+    effect.style(card, 'overflow-x', 'clip'); effect.style(card, 'overflow-y', 'clip'); effect.style(card, 'min-height', '0');
     effect.style(card, 'height', old.box.height + 'px');
     effect.style(card, 'padding-top', (folded ? old.pad : compactPad) + 'px');
     this.run(effect, card, [{ height: old.box.height + 'px', paddingTop: (folded ? old.pad : compactPad) + 'px' },
