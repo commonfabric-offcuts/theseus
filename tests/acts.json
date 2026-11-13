@@ -8096,6 +8096,104 @@
     "native": "reading",
     "case": "reading stacks the pointer moving onto a message or a dossier gives it the keys' place"
    }
+  },
+  {
+   "item": 405,
+   "act": "Only an outcome organizer may request an assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not organises(topic, actor):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Private source evidence cannot be widened into an assessment report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if source['private_to']:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Concurrent or differently identified retries keep one active assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if previous['state'] != 'reported':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A completed assessment cannot post a second report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if record['report_message_id']:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A lost native completion is recovered without a second model turn",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if previous and previous['status'] == 'completed':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The child retains per-request exclusion if the dispatcher parent exits",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "subprocess.DEVNULL,inherited_fds=(lock_fd,)))",
+     "subprocess.DEVNULL,inherited_fds=()))"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The same request cannot resume under another runtime binding",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if record['thread_id'] and record['runtime_digest'] != fingerprint:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
   }
  ]
 }
