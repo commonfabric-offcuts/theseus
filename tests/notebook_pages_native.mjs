@@ -12,7 +12,8 @@ import { readFile } from 'node:fs/promises';
 // or from a message's words, and the Reader's ⋯ copies it. On the cards page,
 // a card being written moves with Tab and ⇧Tab, and goes on into the card
 // beside with ↑ and ↓, each act read back from the page as saved, while the
-// keys an input method composes with stay its own.
+// keys an input method composes with stay its own; and every key that leaves a
+// card picked brings it into view with a tenth of the window beyond it (379).
 export async function notebookChecks({ check, page, until, control, view, facts, shot }) {
   await check('notebook a competing revision is reviewed without replacing active writing and a second tab cannot take its journal', async () => {
     const item='notebook-writing-conflict';
@@ -1012,6 +1013,78 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await showing(only(['Notes']), 'a move to where the pointer already is, as the page sends when it scrolls under it, shows neither');
     await move(12);
     await showing(only(['Notes', 'Risks']), 'a move of the mouse shows them again');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('notebook on the cards page, every key that leaves a card picked brings it into view with a tenth of the window beyond it: ↑ ↓, ⌘↑ ⌘↓, ⇧⌘↓, Tab and ⇧Tab, ⌘Z, ⇧↓ and Escape, ⌘⌫, and Return and ⌘↓ on a card being written; a click scrolls nothing', async () => {
+    const body = Array.from({ length: 30 }, (_, k) => `## Card ${k + 1}\n\nThe words of card ${k + 1}.\n`).join('\n');
+    const id = 'notebook-cards-margin', p = await cards(id, body);
+    // The picked card, or the card being written: its title, its box, the window's height, and how far the page is and can be scrolled.
+    const at = () => p.evaluate(`(()=>{const w=document.querySelector('#deck-page .deck-writing'),r=w??document.querySelector('#deck-page .deck-card[aria-current=true]'),b=r.getBoundingClientRect();
+      return {title:w?w.querySelector('textarea').value.split('\\n')[0]:r.querySelector('.deck-title').textContent,top:b.top,bottom:b.bottom,h:innerHeight,y:scrollY,max:document.documentElement.scrollHeight-innerHeight}})()`);
+    const close = (a, b) => Math.abs(a - b) <= 1.5;
+    // The keys' rule (docs/interaction.md): the card shows whole, with a tenth of the window below it and above it,
+    // unless the page is scrolled as far as it goes that way.
+    const roomy = async (title, words) => {
+      const a = await at(), room = a.h * 0.1, said = `${words}: ${JSON.stringify(a)}`;
+      if (title !== null) assert.equal(a.title, title, `${words}: the card the keys leave picked`);
+      assert.ok(a.top >= -0.5 && a.bottom <= a.h + 0.5, `${said}: the card shows whole`);
+      if (a.y < a.max - 0.5) assert.ok(a.bottom <= a.h - room + 1.5, `${said}: a tenth of the window shows below it`);
+      if (a.y > 0.5) assert.ok(a.top >= room - 1.5, `${said}: a tenth of the window shows above it`);
+      return a;
+    };
+    // Before a key: the page scrolled so the card stands 4px inside the window's top or bottom edge, whole, where
+    // scrolling only as far as the card needs would leave it.
+    const edge = async (side, words) => {
+      await p.evaluate(`(()=>{const r=(document.querySelector('#deck-page .deck-writing')??document.querySelector('#deck-page .deck-card[aria-current=true]')).getBoundingClientRect();
+        scrollBy({top:${side === 'bottom' ? 'r.bottom-(innerHeight-4)' : 'r.top-4'},behavior:'instant'})})()`);
+      const a = await at();
+      assert.ok(side === 'bottom' ? close(a.bottom, a.h - 4) : close(a.top, 4), `${words}: before the key, the card stands 4px inside the window's ${side}: ${JSON.stringify(a)}`);
+    };
+    let ys = [];
+    for (let k = 2; k <= 30; k++) { await p.key('ArrowDown'); ys.push((await roomy(`Card ${k}`, `↓ onto Card ${k}`)).y); }
+    assert.ok(new Set(ys).size >= 4, `↓ down the deck scrolled the page: ${JSON.stringify(ys)}`);
+    for (let k = 29; k >= 18; k--) { await p.key('ArrowUp'); await roomy(`Card ${k}`, `↑ onto Card ${k}`); }
+    // ⌘↓ moves Card 18 down the deck, each move a tenth inside the window, as each ↓ was.
+    ys = [];
+    for (let n = 1; n <= 8; n++) { await p.key('ArrowDown', 4); ys.push((await roomy('Card 18', `⌘↓ moves Card 18 down, ${n}`)).y); }
+    assert.ok(new Set(ys).size >= 2, `⌘↓ down the deck scrolled the page: ${JSON.stringify(ys)}`);
+    // Up the deck again, to a card the page can scroll to either edge of the window.
+    for (let n = 1; n <= 12; n++) { await p.key('ArrowUp'); await roomy(null, `↑ back up the deck, ${n}`); }
+    const mid = (await at()).title;
+    await edge('bottom', '⌘↓'); await p.key('ArrowDown', 4); await roomy(mid, '⌘↓ from the window\'s bottom edge');
+    await edge('top', '⌘↑'); await p.key('ArrowUp', 4); await roomy(mid, '⌘↑ from the window\'s top edge');
+    await edge('bottom', '⇧⌘↓'); await p.key('ArrowDown', 12); await roomy(null, '⇧⌘↓ merges, from the window\'s bottom edge');
+    await edge('bottom', '⌘Z'); await p.key('z', 4); await roomy(null, '⌘Z puts the merge back, from the window\'s bottom edge');
+    // Safari's engine presses a check's Tab as ⌥Tab (webkit_native.mjs), which a picked card leaves to the browser.
+    if (!p.pw) {
+      await edge('bottom', 'Tab'); await p.key('Tab'); const tabbed = await roomy(null, 'Tab puts the card under the one above, from the window\'s bottom edge');
+      await edge('bottom', '⇧Tab'); await p.key('Tab', 8); await roomy(tabbed.title, '⇧Tab takes it out, from the window\'s bottom edge');
+    }
+    await p.key('ArrowDown', 8); const extended = await roomy(null, '⇧↓ selects the card below with it');
+    assert.equal(await p.evaluate("document.querySelectorAll('#deck-page .deck-selected').length"), 2, '⇧↓ selects two cards');
+    await edge('bottom', 'Escape'); await p.key('Escape'); await roomy(extended.title, 'Escape ends the selection, from the window\'s bottom edge');
+    assert.equal(await p.evaluate("document.querySelectorAll('#deck-page .deck-selected').length"), 0, 'Escape ends the selection');
+    await edge('bottom', '⌘⌫'); await p.key('Backspace', 4); const after = await roomy(null, '⌘⌫ removes the card, from the window\'s bottom edge');
+    assert.notEqual(after.title, extended.title, '⌘⌫ removed the picked card');
+    await edge('bottom', 'Return'); await p.key('Enter'); await roomy('', 'Return opens a new card under it, from the window\'s bottom edge');
+    await p.send('Input.insertText', { text: 'Written' });
+    await edge('bottom', '⌘↓ in writing'); await p.key('ArrowDown', 4); await roomy('Written', '⌘↓ moves the card being written, from the window\'s bottom edge');
+    await p.key('Escape');
+    await until(async () => (await at()).title === 'Written' && !await p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing'))"), 'Escape makes the card written');
+    // A click on a card standing in the window's bottom tenth opens it for writing where it is: the page stays.
+    await p.key('ArrowUp');
+    const clicked = await at();
+    await edge('bottom', 'a click');
+    const still = await p.evaluate('scrollY');
+    const word = await p.evaluate(`(()=>{const r=document.querySelector('#deck-page .deck-card[aria-current=true] .deck-words').getBoundingClientRect();return {x:r.left+4,y:r.top+r.height/2}})()`);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...word });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...word, button: 'left', clickCount: 1 });
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...word, button: 'left', clickCount: 1 });
+    await until(async () => (await at()).title === clicked.title && await p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing'))"), 'a click opens the card for writing');
+    assert.equal(await p.evaluate('scrollY'), still, 'a click on a card in the window\'s bottom tenth scrolls nothing');
+    await p.key('Escape');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

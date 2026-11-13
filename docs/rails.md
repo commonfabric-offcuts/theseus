@@ -56,6 +56,9 @@ Each outcome ends with + New topic.
   the messages (→ on an open outcome goes straight there, as on a topic), and
   ⌘Return starts a new message in the row's topic or the outcome's
   Conversation. A "Keys" line under the outline lists them in plain words.
+  The row the keys reach comes into view by the one rule for what the keys
+  select (docs/interaction.md, "What the keys select comes into view"), in the
+  rail's own scrolling, never the page's under it.
 - **The outcome being read** always has its row. Before the outline's list has
   reached it, a provisional row with the page's title for it stands in its
   place. Its topic list is the page's own (`TopicRail`). Once that list has

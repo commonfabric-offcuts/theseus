@@ -14,7 +14,8 @@
 // scrolls in place (108); the guide (106); read cards and quiet agent talk
 // (31); the reply arrow (102); reply stacks (103, and 283 in stack_native.mjs); the time beside "Saved to
 // Theseus" (61); ⌥↑ and ⌥↓ (78); and #img, Paste image and a pasted image
-// (121), in the topic's composer and in the Reader.
+// (121), in the topic's composer and in the Reader; and what the keys select
+// coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
 
@@ -100,14 +101,23 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     if (undone !== want) { await p.evaluate(`document.querySelector(${JSON.stringify(field)}).select()`); await p.send('Input.insertText', { text: want }); }
   };
   const centre = (p, selector) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
-  // A finger's tap where the target shows, failing by name when something else is there.
+  // A finger's tap where the target shows, failing by name when something else is there. The point is
+  // measured and hit-tested in one look at the page, once the target has held its place across two
+  // animation frames, as a person aims at a still target: a row filled in above the feed (the outline
+  // rail at phone width) moves the cards with no scroll, and a point measured before that lands on
+  // whatever moved under it. A page not shown draws no frames, and is measured as it stands.
   const tap = async (p, selector, at = 'corner') => {
-    const b = await p.box(selector);
+    const aim = await until(() => p.evaluate(`new Promise(done=>{const t=document.querySelector(${JSON.stringify(selector)}),
+      rect=()=>{if(!t)return null;const b=t.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),
+      look=()=>{const b=rect();if(!b)return {b};const x=${at === 'centre'}?b.x+b.width/2:b.x+Math.min(12,b.width/2),y=${at === 'centre'}?b.y+b.height/2:b.y+Math.min(12,b.height/2),
+        h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
+      if(document.hidden)return done(look());
+      const first=rect();requestAnimationFrame(()=>{const second=rect();requestAnimationFrame(()=>done(same(first,second)&&same(second,rect())?look():null))})})`),
+      `${selector} holds its place across two frames before a tap`);
+    const { b, x, y } = aim;
     assert.ok(b && b.width > 0 && b.height > 0, `visible target ${selector}`);
-    const x = at === 'centre' ? b.x + b.width / 2 : b.x + Math.min(12, b.width / 2), y = at === 'centre' ? b.y + b.height / 2 : b.y + Math.min(12, b.height / 2);
-    assert.ok(x >= 0 && y >= 0 && x < b.viewportWidth && y < b.viewportHeight, `${selector} is inside the window before a tap`);
-    const hit = await p.evaluate(`(t=>{const h=document.elementFromPoint(${x},${y});return t?.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'})(document.querySelector(${JSON.stringify(selector)}))`);
-    assert.equal(hit, '', `${selector} is covered by ${hit} where it would be tapped`);
+    assert.ok(aim.inside, `${selector} is inside the window before a tap`);
+    assert.equal(aim.hit, '', `${selector} is covered by ${aim.hit} where it would be tapped`);
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
@@ -150,10 +160,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   const reactions = async id => (await view('reactions', { message_id: id })).reactions;
   const thumbsBy = async (id, who) => (await reactions(id)).thumbs.filter(thumb => thumb.actor_id === who).length;
   // The Reader on a message, opened as the person opens it: Return on the lit message, or a phone's second tap.
+  // On a phone a tap on a message already lit (the Reader closing lights the message it showed) is that second
+  // tap: it opens the Reader at once, and a further tap would land on the Reader opening over the message.
   const openReader = async (p, device, id, starts) => {
     await p.evaluate('document.activeElement?.blur()');
     if (device === 'laptop') { await light(p, device, id); await p.key('Enter'); }
-    else { await centre(p, card(id)); await tap(p, words(id)); await until(async () => (await lit(p)).includes(id), 'phone: the message lights'); await tap(p, words(id)); }
+    else {
+      await centre(p, card(id));
+      if (!(await lit(p)).includes(id)) { await tap(p, words(id)); await until(async () => (await lit(p)).includes(id), 'phone: the message lights'); }
+      await tap(p, words(id));
+    }
     await until(async () => (await readerOn(p))?.startsWith(starts), `${device}: the Reader opens on "${starts}"`);
   };
   // The Reader opened to be read: a click on the lit message, or a phone's second tap. The cursor is never put
@@ -325,6 +341,192 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(p.errors, []);
       await p.close();
     }
+  });
+
+  // What the keys select comes fully into view (item 379, docs/interaction.md, web/reveal.mjs). WHERE, in the
+  // page: the message entries on show, top to bottom; which one is lit (i of n); the box of what shows as
+  // selected (its card, or for a dossier's compact header the whole dossier, whole); the ones beside it; the
+  // window's height and scroll.
+  const WHERE = `(()=>{const list=document.querySelector('#messages'),shown=[...list.querySelectorAll(':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]')].filter(e=>e.getClientRects().length);
+    const lit=list.querySelector('.lit[data-id]'),i=lit?shown.findIndex(e=>e===lit||e.contains(lit)):-1;if(i<0)return {i,n:shown.length};
+    const entry=shown[i],s=entry.parentElement.classList.contains('reply-stack')?entry.parentElement:null,whole=Boolean(s&&s.dataset.single==='false'&&s.dataset.headOpen==='false'&&s.firstElementChild===entry);
+    const r=(whole?s:lit).getBoundingClientRect(),beside=k=>shown[k]?.getBoundingClientRect()??null;
+    return {i,n:shown.length,whole,top:r.top,bottom:r.bottom,prevBottom:beside(i-1)?.bottom??null,nextTop:beside(i+1)?.top??null,h:innerHeight,y:scrollY,max:document.documentElement.scrollHeight-innerHeight}})()`;
+  const TENTH = 0.1, close = (a, b) => Math.abs(a - b) <= 1.5;
+  // Presses key (↓ or ↑) from the lit message to the last one that way, holding each step to the rule: one
+  // taller than the window lands its top a tenth below the top; one that fits shows whole, and scrolls
+  // nothing when it already stood a tenth inside (or the room there is), else the least that leaves that room
+  // beyond the edge it came in at, where the page can scroll that far. The steps, each with how far it scrolled.
+  const walk = async (p, device, key) => {
+    const way = key === 'ArrowDown' ? 1 : -1, steps = [];
+    let before = await p.evaluate(WHERE);
+    assert.ok(before.i >= 0, `${device}: a message is lit before the keys walk`);
+    while (before.i + way >= 0 && before.i + way < before.n) {
+      await p.key(key);
+      await until(async () => (await p.evaluate(WHERE)).i === before.i + way, `${device}: ${key} lights the next message along`);
+      const now = await p.evaluate(WHERE), moved = now.y - before.y, h = now.h, size = now.bottom - now.top;
+      const atEnd = now.y >= now.max - 0.5, atTop = now.y <= 0.5;
+      const said = `${device}: ${way > 0 ? '↓' : '↑'} onto ${now.whole ? 'a dossier' : 'a message'}, ${now.i + 1} of ${now.n}: ${JSON.stringify({ was: before, now })}`;
+      if (size > h) {
+        // Unless the page cannot scroll the way that would take it.
+        if (!(now.top < h * TENTH ? atTop : atEnd)) assert.ok(close(now.top, h * TENTH), said + ': taller than the window, its top lands a tenth below the top');
+      } else {
+        const room = Math.min(h * TENTH, h - size), was = { top: now.top + moved, bottom: now.bottom + moved };
+        assert.ok(now.top >= -0.5 && now.bottom <= h + 0.5, said + ': it shows whole');
+        const low = was.bottom > h - room + 0.5, high = was.top < room - 0.5;
+        if (!low && !high) assert.equal(moved, 0, said + ': one already a tenth inside the window scrolls nothing');
+        else if (low && !high && !atEnd) assert.ok(close(now.bottom, h - room), said + ': it scrolls the least that leaves a tenth of the window below it');
+        else if (high && !low && !atTop) assert.ok(close(now.top, room), said + ': it scrolls the least that leaves a tenth of the window above it');
+        if (room === h * TENTH && way > 0 && now.nextTop !== null) assert.ok(now.nextTop < h - 1, said + ': the next message shows below it');
+        if (room === h * TENTH && way < 0 && now.prevBottom !== null && !atTop) assert.ok(now.prevBottom > 1, said + ': the message above it shows');
+      }
+      steps.push({ ...now, moved });
+      before = now;
+    }
+    return steps;
+  };
+  // The keys start from nothing lit, at the top of the page: ↓ lights the top message.
+  const keysFromTop = async (p, device) => {
+    if (device === 'laptop') await away(p);
+    await p.evaluate('(document.activeElement?.blur(), scrollTo(0, 0))');
+    await p.key('ArrowDown');
+    await until(async () => (await p.evaluate(WHERE)).i === 0, `${device}: ↓ with nothing lit lights the top message`);
+  };
+
+  await check('reading ↓ and ↑ down a long feed bring each message fully into view with a tenth of the window beyond it, and a click, a tap or the pointer resting on a card near the bottom scrolls nothing', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-margin-' + device;
+      const ids = await seed(topic, Array.from({ length: 16 }, (_, k) => [`m${k}`, { sender: 'aim-core', ...(k === 0 ? { join: true } : {}), ...(k === 15 ? { read: true } : {}),
+        addressees: [facts.actor], body: `Message ${k} of a long feed. ` + 'Words to read, enough for a card of a few lines. '.repeat(3) }]));
+      const p = await open('reading-margin-' + device, device, topic, ids.m0);
+      await keysFromTop(p, device);
+      const down = await walk(p, device, 'ArrowDown');
+      assert.ok(down.filter(step => step.moved > 0).length >= 3, `${device}: going down, the keys scrolled the page at least three times: ${JSON.stringify(down.map(step => step.moved))}`);
+      await shot(p, 'reading-margin-' + device);
+      const up = await walk(p, device, 'ArrowUp');
+      assert.ok(up.filter(step => step.moved < 0).length >= 3, `${device}: going up, the keys scrolled the page at least three times: ${JSON.stringify(up.map(step => step.moved))}`);
+      // A card reaching into the bottom tenth, where a key would scroll it: the pointer resting on it, a click
+      // (which opens it in the Reader) or a tap (which lights it) leaves the page where it is.
+      const target = ids.m7, scrollY = () => p.evaluate('scrollY');
+      await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card(target))});scrollBy({top:e.getBoundingClientRect().top-innerHeight*0.85,behavior:'instant'})})()`);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(target))}).getBoundingClientRect().bottom > innerHeight * 0.9`), true,
+        `${device}: the card reaches into the bottom tenth of the window`);
+      const still = await scrollY();
+      if (device === 'laptop') {
+        await p.point(words(target), 'move');
+        await until(async () => (await lit(p)).includes(target), 'laptop: the pointer resting on the card lights it');
+        assert.equal(await scrollY(), still, 'laptop: the pointer resting on a card near the bottom scrolls nothing');
+        await p.point(words(target));
+        await until(async () => (await readerOn(p))?.startsWith('Message 7'), 'laptop: a click opens the card in the Reader');
+        assert.equal(await scrollY(), still, 'laptop: a click on a card near the bottom scrolls nothing');
+        await closeReader(p, device);
+      } else {
+        await tap(p, words(target));
+        await until(async () => (await lit(p)).includes(target), 'phone: a tap lights the card');
+        assert.equal(await scrollY(), still, 'phone: a tap on a card near the bottom scrolls nothing');
+        assert.equal(await readerOn(p), null, 'phone: and opens nothing');
+      }
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading a dossier taller than the window, its header selected by ↓ or by ↑, lands with its top a tenth below the top, and the keys bring each of its replies into view whole', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-margin-dossier-' + device;
+      // Every reply unread, so the dossier, at its first fold, shows them all under its compact header. The
+      // page's reports of what it read are held, so nothing changes under the keys.
+      const replies = Array.from({ length: 7 }, (_, k) => [`r${k}`, { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor],
+        body: `Reply ${k}, a long one. ` + 'A reply that takes several lines to read, so the dossier with all of its replies is taller than the window. '.repeat(5) }]);
+      const ids = await seed(topic, [['old', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The oldest message, on its own, below the dossier.' }],
+        ['root', { sender: 'aim-core', addressees: [facts.actor], body: 'The message the long replies answer.' }], ...replies,
+        ['top', { sender: 'aim-core', addressees: [facts.actor], body: 'The newest message, on its own, above the dossier.' }]]);
+      const p = await open('reading-margin-dossier-' + device, device, topic, ids.old, 'window.holdReads = true;');
+      const dossier = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      assert.equal(await p.evaluate(`(s=>s.dataset.headOpen==='false'&&s.getBoundingClientRect().height>innerHeight)(document.querySelector(${JSON.stringify(dossier)}))`), true,
+        `${device}: the dossier shows its compact header and its replies, taller than the window`);
+      await keysFromTop(p, device);
+      const down = await walk(p, device, 'ArrowDown'), onto = down.find(step => step.whole);
+      assert.ok(onto && close(onto.top, onto.h * TENTH), `${device}: ↓ onto the dossier's header lands the dossier's top a tenth below the top: ${JSON.stringify(onto)}`);
+      assert.ok(onto.bottom - onto.top > onto.h, `${device}: what the keys brought into view is the whole dossier, taller than the window`);
+      await shot(p, 'reading-margin-dossier-' + device);
+      const up = await walk(p, device, 'ArrowUp'), back = up.find(step => step.whole);
+      assert.ok(back && close(back.top, back.h * TENTH) && back.moved < 0, `${device}: ↑ onto the dossier's header from its replies lands its top a tenth below the top: ${JSON.stringify(back)}`);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading a dossier showing its whole first message, its chevron selected by ↓, comes into view as the whole dossier, its top a tenth below the top when it is taller than the window', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-margin-chevron-' + device;
+      const replies = Array.from({ length: 7 }, (_, k) => [`r${k}`, { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor],
+        body: `Reply ${k}, a long one. ` + 'A reply that takes several lines to read, so the dossier with all of its replies is taller than the window. '.repeat(5) }]);
+      const ids = await seed(topic, [['old', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The oldest message, on its own, below the dossier.' }],
+        ['root', { sender: 'aim-core', addressees: [facts.actor], body: 'The message the long replies answer.' }], ...replies,
+        ['top', { sender: 'aim-core', addressees: [facts.actor], body: 'The newest message, on its own, above the dossier.' }]]);
+      const p = await open('reading-margin-chevron-' + device, device, topic, ids.old, 'window.holdReads = true;');
+      const dossier = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      // The dossier as it shows: its first message whole or not, whether its chevron has the keys, its box and the window's.
+      const shown = () => p.evaluate(`(s=>{const r=s.getBoundingClientRect();return {headOpen:s.dataset.headOpen,chevron:document.activeElement===s.querySelector(':scope > .stack-toggle'),
+        top:r.top,bottom:r.bottom,h:innerHeight,y:scrollY}})(document.querySelector(${JSON.stringify(dossier)}))`);
+      await keysFromTop(p, device);
+      await p.key('ArrowDown');
+      await until(async () => { const w = await p.evaluate(WHERE); return w.i === 1 && w.whole; }, `${device}: ↓ selects the dossier's compact header`);
+      // → opens the dossier fully, its first message whole, and its chevron becomes a stop of its own.
+      for (let n = 0; n < 3 && (await shown()).headOpen !== 'true'; n++) await p.key('ArrowRight');
+      await until(async () => (await shown()).headOpen === 'true', `${device}: → opens the dossier fully`);
+      // ↑ back to the newest message, above it, then ↓ onto the chevron.
+      for (let n = 0; n < 4 && (await p.evaluate(WHERE)).i !== 0; n++) await p.key('ArrowUp');
+      await until(async () => (await p.evaluate(WHERE)).i === 0, `${device}: ↑ lights the newest message again`);
+      const before = await shown();
+      assert.ok(before.top > before.h * 0.1 + 20, `${device}: before ↓, the dossier's top stands well below a tenth of the window: ${JSON.stringify(before)}`);
+      await p.key('ArrowDown');
+      await until(async () => (await shown()).chevron, `${device}: ↓ puts the keys on the dossier's chevron`);
+      const now = await shown();
+      assert.ok(now.bottom - now.top > now.h, `${device}: the dossier, fully open, is taller than the window: ${JSON.stringify(now)}`);
+      assert.ok(close(now.top, now.h * TENTH), `${device}: ↓ onto the chevron brings the whole dossier into view, its top a tenth below the window's top: ${JSON.stringify({ before, now })}`);
+      await shot(p, 'reading-margin-chevron-' + device);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading #img: ↓ and ↑ through a long list of images bring the one chosen into view with a tenth of the list beyond it', async () => {
+    // A laptop's keys: a phone picks from the list with a tap.
+    const topic = 'reading-img-margin';
+    const ids = await seed(topic, Array.from({ length: 9 }, (_, k) => [`i${k}`, { sender: 'aim-core', ...(k === 0 ? { join: true } : {}), addressees: [facts.actor],
+      body: `Image ${k}.`, attachments: [{ name: `image-${k}.png`, image: k % 2 ? 'one.png' : 'screen.png' }] }]));
+    const p = await open('reading-img-margin', 'laptop', topic, ids.i8);
+    await into(p, 'laptop', '#inline-writing-body');
+    await p.send('Input.insertText', { text: '#img' });
+    // The list: how many images, which one is chosen, its box against what of the list shows in the window, and
+    // how far the list is and can be scrolled.
+    const LIST = `(()=>{const l=document.getElementById('inline-writing-body-images');if(!l||l.hidden)return null;const o=[...l.querySelectorAll('.image-option')],i=o.findIndex(x=>x.getAttribute('aria-selected')==='true');
+      const s=l.getBoundingClientRect(),top=Math.max(s.top,0),bottom=Math.min(s.bottom,innerHeight),r=o[i]?.getBoundingClientRect();
+      return {n:o.length,i,top:r?r.top-top:null,bottom:r?r.bottom-top:null,h:bottom-top,y:l.scrollTop,max:l.scrollHeight-l.clientHeight}})()`;
+    await until(async () => (await p.evaluate(LIST))?.n === 9, 'the list shows the topic\'s nine images');
+    assert.ok((await p.evaluate(LIST)).max > 0, 'the list scrolls');
+    const walk = async (key, words) => {
+      const ys = [];
+      let before = await p.evaluate(LIST);
+      while (key === 'ArrowDown' ? before.i < before.n - 1 : before.i > 0) {
+        await p.key(key);
+        await until(async () => (await p.evaluate(LIST)).i !== before.i, `${words}: the next image is chosen`);
+        const now = await p.evaluate(LIST), room = now.h * TENTH, moved = now.y - before.y, said = `${words}, onto ${now.i + 1} of ${now.n}: ${JSON.stringify({ before, now })}`;
+        assert.ok(now.top >= -0.5 && now.bottom <= now.h + 0.5, said + ': it shows whole');
+        if (now.y < now.max - 0.5) assert.ok(now.bottom <= now.h - room + 1.5, said + ': a tenth of the list shows below it');
+        if (now.y > 0.5) assert.ok(now.top >= room - 1.5, said + ': a tenth of the list shows above it');
+        if (now.top + moved >= room + 1.5 && now.bottom + moved <= now.h - room - 1.5) assert.equal(moved, 0, said + ': one already a tenth inside scrolls nothing');
+        ys.push(now.y); before = now;
+      }
+      assert.ok(new Set(ys).size >= 3, `${words}: the list scrolled as the keys went: ${JSON.stringify(ys)}`);
+    };
+    await walk('ArrowDown', '↓ down the list');
+    await walk('ArrowUp', '↑ up the list');
+    await p.key('Escape');
+    assert.deepEqual(p.errors, []);
+    await p.close();
   });
 
   await check('reading a cut-off message scrolls in place under the wheel or a finger, and the page does not move', async () => {

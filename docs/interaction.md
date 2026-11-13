@@ -28,6 +28,27 @@ the pointer's way, the keys' and the phone's.
   light go; scrolling keeps it. The bar stays inside the window while any of
   its message is on screen and scrolls away with it. Where a finger presses,
   each of its buttons, and each item of the ⋯ menu, is at least 44px. (`web/message-menu.mjs`)
+- **What the keys select comes into view.** Wherever the keys move what is
+  selected (the messages' light and a stack act's message, a dossier's
+  chevron, the rails' rows, the panes, a deck's cards, an image's choices),
+  the whole of what shows as selected comes into view, at once, with no
+  animation: a message is its card; a dossier's header (its chevron, or its
+  compact header) is the whole dossier, its header and whatever of its body
+  shows, or just the header row when it is closed. One that fits the
+  scrolling area scrolls the least that shows all of it with a gap of a tenth
+  of the area's height on the side it came in from, so what comes next is in
+  sight; one fully in view but inside that gap at an edge still scrolls the
+  little that opens it; one that fits but not with the whole gap shows whole
+  with the gap there is room for; one already a tenth inside does not move.
+  One taller than the area lands with its top a tenth below the area's top.
+  Going up and going down read the same rule. The scrolling area is the
+  nearest box that scrolls (a rail, a drawer), else the window; a page may
+  leave a bar it keeps at an edge out of it with CSS `scroll-padding`, which
+  nothing sets today. A click, a tap or the pointer resting on a message or a
+  dossier selects what it already shows, and the page stays where it is. Scrolls that
+  are not the keys moving a selection, such as a page opening at a message or
+  the phone's drawer opening on the topic being read, keep their own ways.
+  (`web/reveal.mjs`, `shownSelected` in `web/reply-stacks.mjs`)
 - **Return**, or **Reply** on the bar (a phone's way), opens the Reader on the
   lit message with the cursor in the reply and nothing quoted; to quote part of
   it, select that part in the Reader and press Return. Return in writing, on a
@@ -154,7 +175,9 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   them; ← past the first goes to the outline and → past the last to the
   right rail, as from the messages. ↓ selects the first visible card or
   stack in the feed, and Return or Space presses the button. Coming up again finds the
-  button the keys were last on. The pointer is unchanged.
+  button the keys were last on. The pointer is unchanged. The button the keys
+  reach, and the message → or ↓ bring them back to, comes into view by the
+  rule above.
 - **⌘Return** starts a new message in the place the keys are on, in the box
   the ✎ opens, with the cursor in it: on a topic's row in the outline, that
   topic (opened in place first when it is not the one being read); on an
@@ -209,6 +232,19 @@ page painted. Its checks, by rule:
 
 - The light, ↑ ↓, Return and a phone's two taps: "reading ↑ and ↓ move the
   light, …"; Reply on the bar: "reading Reply on the bar opens the Reader …";
+  what the keys select coming into view: "reading ↓ and ↑ down a long feed
+  bring each message fully into view …" (with the click, the tap and the
+  pointer resting near the bottom scrolling nothing) and "reading a dossier
+  taller than the window, its header selected by ↓ or by ↑, …" and "reading
+  a dossier showing its whole first message, its chevron selected by ↓, …", at
+  both widths in both engines; the #img list: "reading #img: ↓ and ↑ through a
+  long list of images …"; the rails, the header's buttons and the way back
+  into the messages: "rail what the keys select comes into view …"
+  (`native-rail`, `native-webkit-rail`); a deck's cards, under every key that
+  leaves a card picked, and a click scrolling nothing: "notebook on the cards
+  page, every key that leaves a card picked …" (`native-notebook`,
+  `native-webkit-notebook`); the rule's geometry, the scrolling area and its
+  `scroll-padding`: `tests/ui_reveal.test.mjs`;
   Tab through the bar and the ⋯ menu: `tests/links_native.mjs` ("header Tab
   reaches a message's ⋯ …", "header a message's ⋯ copies its link …").
 - A cut-off message: "reading a cut-off message scrolls in place …". Safari's

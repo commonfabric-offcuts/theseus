@@ -24,7 +24,8 @@ file chosen with Add image.
   list under the writing of the topic's recent images. Letters typed straight
   after it (`#imgchart`) narrow the list by name. ↑ ↓ move through it, Return
   or Tab picks, Escape closes it, and a tap or click picks one; the writing
-  keeps focus throughout. Picking takes the `#img` words out of the writing as
+  keeps focus throughout. The choice ↑ ↓ reach comes into view by the one rule
+  for what the keys select (docs/interaction.md). Picking takes the `#img` words out of the writing as
   one edit Undo puts back, reads the image's verified bytes through the message
   that carries it, and adds them as a pasted image: a copy of its own in this
   reply, so an image someone else sent can be used as it is.

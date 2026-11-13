@@ -830,18 +830,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     // (a browser that keeps the page's place by a card the reader sees holds that card, and the frame moves by the
     // room a stack's tab takes above a message that was on its own; one that holds what is above the list holds
     // the frame, and the card moves by that room); else 'to the join line at the top' when the page moved just
-    // until the line's top met the window's, or 'to the message at the bottom' when it moved just until the acted
-    // message's bottom met the window's; anything else is how far it moved, which a join that scrolls only as far
-    // as it needs never does.
+    // until the line's top stood a tenth of the window below the window's top, or 'to the message at the bottom'
+    // when it moved just until the acted message's bottom stood a tenth of the window above the window's bottom
+    // (what the keys select comes into view with that room beyond it, docs/interaction.md); anything else is how
+    // far it moved, which a join that scrolls only as far as it needs never does.
     const where = async (p, ids, head, acted, joined, still, from) => {
       const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
       const now = await placeOf(p, ids[still]);
       const at = await p.evaluate(`(()=>{const inWindow=e=>{if(!e)return false;const r=e.getBoundingClientRect();return r.height>0&&r.top>=-1&&r.bottom<=innerHeight+1&&e.contains(document.elementFromPoint(r.left+r.width/2,(r.top+r.bottom)/2))};
         const c=document.querySelector(${JSON.stringify(card(ids[acted]))}),line=[...document.querySelectorAll('#messages .stack-join-line')].find(n=>n.dataset.join===${JSON.stringify(ids[joined])});
-        return {acted:inWindow(c),line:inWindow(line),lineTop:line?.getBoundingClientRect().top,bottom:innerHeight-document.querySelector(${JSON.stringify(entry(ids[acted]))}).getBoundingClientRect().bottom}})()`);
+        return {acted:inWindow(c),line:inWindow(line),lineTop:line?.getBoundingClientRect().top,bottom:innerHeight-document.querySelector(${JSON.stringify(entry(ids[acted]))}).getBoundingClientRect().bottom,tenth:innerHeight*0.1}})()`);
       const went = Math.abs(now.frame - from.frame) < 1 || Math.abs(now.card - from.card) < 1 ? 'kept'
-        : Math.abs(at.lineTop) <= 1 ? 'to the join line at the top'
-          : Math.abs(at.bottom) <= 1 ? 'to the message at the bottom'
+        : Math.abs(at.lineTop - at.tenth) <= 1 ? 'to the join line at the top'
+          : Math.abs(at.bottom - at.tenth) <= 1 ? 'to the message at the bottom'
             : `moved ${Math.round(from.frame - now.frame)}px`;
       const shown = await look(p, ids, head);
       return { fold: shown?.fold, full: shown?.full, rows: shown?.rows, keys: names[await focusedOn(p)] ?? null, acted: at.acted, line: at.line, went };
@@ -907,7 +908,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
 
     // ⇧⌘↓ on a reply of D, into C's stack below it, read against E, on its own above both: with D's reply where
-    // the page opened, then with its card at the window's bottom, where the join carries it below the window.
+    // the page opened, where the join carries it into the window's bottom tenth, then with its card at the window's
+    // bottom, where the join carries it below the window.
     const newest = ['e', { sender: other, addressees: [facts.actor], body: 'On its own, newest.', read: true }];
     topic = 'stack-join-shows-down';
     ids = await seed(topic, [...seeds('c', 'd', 2), newest]);
@@ -919,8 +921,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     from = await placeOf(p, ids.e);
     await p.key('ArrowDown', 12);
     await becomes(() => stacks(p, ids), ['e', 'c'], '⇧⌘↓ joins D\'s stack into C');
-    await becomes(() => where(p, ids, 'c', 'd2', 'd', 'e', from), { fold: 'open', full: true, rows: ['c1', 'c2', line, 'd', 'd1', 'd2'], keys: 'd2', acted: true, line: true, went: 'kept' },
-      '⇧⌘↓: C open, its own message whole and its replies, then D under its join line with every reply; the keys on D\'s reply, in the window with the join line');
+    await becomes(() => where(p, ids, 'c', 'd2', 'd', 'e', from), { fold: 'open', full: true, rows: ['c1', 'c2', line, 'd', 'd1', 'd2'], keys: 'd2', acted: true, line: true, went: 'to the message at the bottom' },
+      '⇧⌘↓: C open, its own message whole and its replies, then D under its join line with every reply; the keys on D\'s reply, which the join carries into the window\'s bottom tenth, so the page scrolls just until a tenth shows below it, with the join line');
     await p.key('z', 4);
     await becomes(() => stacks(p, ids), ['e', 'd', 'c'], '⌘Z puts D\'s stack back');
     assert.equal((await look(p, ids, 'c')).fold, 'folded', '⌘Z puts back how far C was folded');

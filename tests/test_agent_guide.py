@@ -49,7 +49,7 @@ class AgentGuideCommandsCase(unittest.TestCase):
         refused = [command for command in commands if parses(command) is None]
         self.assertEqual(refused, [], "docs/agent-guide.md shows commands the CLI refuses")
         # The guide's verbs are all read, the pipeline's among them, so a block or span the reading misses fails too.
-        self.assertTrue({"watch", "read", "ack", "post", "whisper", "state", "notes", "note", "attachment", "retry",
+        self.assertTrue({"watch", "read", "ack", "post", "reply", "whisper", "state", "notes", "note", "attachment", "retry",
                          "pipeline", "add", "add-source"} <= {parses(command) for command in commands})
 
     def test_a_wrong_verb_flag_or_choice_is_refused(self):

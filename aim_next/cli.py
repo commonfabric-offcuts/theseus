@@ -179,7 +179,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
+         "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
+         "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
@@ -262,22 +263,28 @@ def _parser():
     read.add_argument("--after", type=int, default=0)
     read.add_argument("--limit", type=int, default=LIMITS["page_default"])
     verb("inbox")
-    post = verb("post")
-    post.add_argument("topic")
-    # A message to someone asks or tells them; --to, which said neither, is refused by name.
-    post.add_argument("--asks")
-    post.add_argument("--tells")
-    post.add_argument("--to")
-    post.add_argument("--reply-to")
-    post.add_argument("--part", action="store_true")
-    # An Ask that offers its people ✅ (go ahead) and 🚫 (don't) (docs/thumbs.md).
-    post.add_argument("--go-ahead", action="store_true")
-    # --blocks piece:p-… | release:N: the one piece or release an ask holds until it is answered (item 259).
-    post.add_argument("--blocks")
-    # --operation ID: the write's own operation id, so sending it again returns the same message (a deploy's retry).
-    post.add_argument("--operation")
-    post.add_argument("--attach", action="append", default=[])
-    post.add_argument("text")
+    for name in ("post", "reply"):
+        post = verb(name)
+        if name == "reply":
+            post.add_argument("message")
+            post.set_defaults(topic=None, reply_to=None)
+        else:
+            post.add_argument("topic")
+            post.add_argument("--reply-to")
+        # A message to someone asks or tells them; --to, which said neither, is refused by name.
+        post.add_argument("--asks")
+        post.add_argument("--tells")
+        post.add_argument("--to")
+        post.add_argument("--part", action="store_true")
+        # An Ask that offers its people ✅ (go ahead) and 🚫 (don't) (docs/thumbs.md).
+        post.add_argument("--go-ahead", action="store_true")
+        # --blocks piece:p-… | release:N: the one piece or release an ask holds until it is answered (item 259).
+        post.add_argument("--blocks")
+        # --operation ID: a retry sends the same saved request, not another message.
+        post.add_argument("--operation")
+        post.add_argument("--attach", action="append", default=[])
+        post.add_argument("--subject")
+        post.add_argument("text")
     thumb = verb("thumb")
     thumb.add_argument("message")
     thumb.add_argument("--off", action="store_true")
@@ -335,7 +342,6 @@ def _parser():
     attachment.add_argument("attachment")
     attachment.add_argument("--message", required=True)
     attachment.add_argument("--out", required=True)
-    post.add_argument("--subject")
     # Notebook pages (docs/agent-cli.md, "Notebook pages"). SCOPE is an outcome,
     # or with --topic a topic, whose Notebook holds the pages.
     notes = verb("notes")
@@ -1227,6 +1233,16 @@ class Agent(PipelineVerbs, TargetVerbs):
             self.out.plain(self.delivery_line(item))
         if not items:
             self.out.plain("inbox empty")
+
+    def do_reply(self):
+        if self.options.message.startswith("d-"):
+            self.refuse("INVALID_REPLY", "reply takes a message id (m-...), not a delivery id (d-...); read the topic for its message id, never replace the prefix; nothing was sent")
+        source = self.view("source", {"source_ref": {"kind": "message", "id": self.options.message}})
+        if source.get("whisper"):
+            self.refuse("WHISPER_STAYS_PRIVATE", "Answer a whisper with `whisper TOPIC --to NAME --reply-to MESSAGE -`; nothing was sent")
+        self.options.topic = source["topic_id"]
+        self.options.reply_to = self.options.message
+        self.do_post()
 
     def do_post(self):
         options = self.options
