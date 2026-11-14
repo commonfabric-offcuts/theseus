@@ -25,7 +25,7 @@ const busy = cleanup => cleanup.read(async () => { throw new AttemptError('busy'
 
 // `check` answers each journal call; a check that is not deferred retires its row.
 // The journal holds every row it was asked about, unless `current` says otherwise.
-function fixture({ check, stopped = () => false, paused = () => false, current } = {}) {
+function fixture({ check, stopped = () => false, paused = () => false, current, changed = () => {} } = {}) {
   const rechecks = [], calls = [], checked = [], held = new Map();
   const journal = {
     retireImageCandidate: async (key, row) => { calls.push(row.id); checked.push(row); held.set(row.id, row); await check(cleanup, row); return { retired: true }; },
@@ -33,7 +33,7 @@ function fixture({ check, stopped = () => false, paused = () => false, current }
     own: async () => { calls.push('own'); await check(cleanup, null); return null; },
     current: async (key, ids) => current ? current(ids) : ids.map(id => held.get(id)).filter(Boolean),
   };
-  const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal, runtime: { readTimeoutMs: 5000 }, changed: () => {}, stopped, paused });
+  const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal, runtime: { readTimeoutMs: 5000 }, changed: editor => changed(editor), stopped, paused });
   cleanup.resumeListeners.add((session, ids, page) => rechecks.push({ session, ids, kept: page.items.map(row => row.id) }));
   const session = { editor: { key, context } };
   return { cleanup, session, rechecks, calls, checked };
@@ -64,6 +64,26 @@ test('a row a foreground read interrupts is checked again when that read is rele
   assert.deepEqual(rechecks, [{ session, ids: ['r1'], kept: [] }]);
   const again = cleanup.foreground(); again.release(); await tick();
   assert.equal(rechecks.length, 1);
+});
+
+test('a deferred check is pending until its recheck has settled, and the editor is then reported changed with nothing pending', async () => {
+  const { hold, entered, check } = held(), changes = [];
+  const f = fixture({ check, changed: editor => changes.push([editor, f.cleanup.pending(key)]) }), { cleanup, session } = f;
+  assert.equal(cleanup.pending(key), false, 'nothing deferred, nothing pending');
+  const page = cleanup.candidates(session, { items: [imageRow], nextCursor: null });
+  await entered.promise;
+  const fg = cleanup.foreground();
+  await fg.read(async () => 'opened');
+  hold.resolve(); await page; await tick();
+  assert.equal(cleanup.pending(key), true, 'deferred, its check is still to be made');
+  let during;
+  cleanup.resumeListeners.add(() => { during = cleanup.pending(key); });
+  changes.length = 0;
+  fg.release(); await tick();
+  assert.equal(during, true, 'pending while the recheck is under way');
+  assert.equal(cleanup.pending(key), false);
+  assert.deepEqual(changes.at(-1), [session.editor, false], 'reported changed once nothing is pending');
+  assert.equal(cleanup.pending(editorKey({ ...context, sourceRef: { kind: 'topic', id: 't2' }, topicId: 't2' })), false, 'another editor has nothing pending');
 });
 
 test('a row whose foreground read ended before the deferral settled is still checked again', async () => {

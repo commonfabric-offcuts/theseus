@@ -76,9 +76,12 @@ export class RecoveryCleanup {
     // only by a busy server wait for the next foreground release, and nothing
     // is checked again while a park lasts. A later check
     // of a row answers for it, and a session that is no longer registered
-    // leaves nothing to check.
-    this.waiting = new Map(); this.resumeListeners = new Set();
+    // leaves nothing to check. A recheck under way is in rechecking until it
+    // has settled, and the editor is then reported changed.
+    this.waiting = new Map(); this.rechecking = new Set(); this.resumeListeners = new Set();
   }
+  // Whether a check of the editor's copies that a read deferred is still to be made, or under way.
+  pending(key) { return this.waiting.has(key) || this.rechecking.has(key); }
   deferred(cause) { return Object.assign(Error('Background reading is deferred; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED', ...(cause ? { cause } : {}) }); }
   defer(session, error, row) {
     const key = session.editor.key, held = this.waiting.get(key);
@@ -99,8 +102,8 @@ export class RecoveryCleanup {
     for (const [key, entry] of [...this.waiting]) {
       if (entry.session.registered?.() === false) { this.waiting.delete(key); continue; }
       if (!entry.ready || this.queues.has(key)) continue;
-      this.waiting.delete(key);
-      this.enqueue(key, () => this.recheck(entry)).catch(() => {});
+      this.waiting.delete(key); this.rechecking.add(key);
+      this.enqueue(key, () => this.recheck(entry)).catch(() => {}).finally(() => { this.rechecking.delete(key); this.changed(entry.session.editor); });
     }
   }
   // Only the deferred rows are checked again, as the journal holds them now: a

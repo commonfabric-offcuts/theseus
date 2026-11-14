@@ -345,12 +345,13 @@ test('a recheck replaces only the rechecked rows the page lists, at once, and on
   listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
   assert.equal(candidates.get(f.editor.key).items.length,4,'an editor the registry no longer holds is left as it is');
 });
-// The Reader's data-discovered says the shown source's earlier copies have been looked for and any found is offered
-// (app.mjs present). Choosing Reply or Note keeps the source shown, so its discovery still counts; a discovery for a source no
-// longer shown never marks the one shown now.
+// The Reader's data-discovered says the shown source's earlier copies have been looked for, every check a read deferred has
+// been made, and Review shows what they found (app.mjs markDiscovered). Choosing Reply or Note keeps the source shown, so its
+// discovery still counts; a discovery for a source no longer shown, or overtaken by showing it again, never marks it.
 test('the Reader marks discovery finished for the source it shows, through a Reply or Note choice, and never for one it left',async()=>{
   const f=fixture(),asked=[];
   f.registry.recoveryCandidates=()=>{const d=defer();asked.push(d);return d.promise;};
+  f.registry.cleanup.pending=()=>false;
   f.registry.neighbors=async()=>null;f.registry.activity=()=>{};
   Object.assign(f.reader,{show(){},paintMark(){}});
   const presentation=id=>({surface:'reader',source:{source_ref:{kind:'message',id},topic_id:'t1',seq:1},editors:{reply:f.editor},mode:'reply'});
@@ -369,6 +370,29 @@ test('the Reader marks discovery finished for the source it shows, through a Rep
   assert.equal(mark(),undefined,'a discovery for a source no longer shown does not mark the one shown');
   asked.shift().resolve({items:[],nextCursor:null});await drain();
   assert.equal(mark(),'true');
+  // The same source shown again: only its newer discovery marks it.
+  await shown(third);
+  assert.equal(mark(),undefined,'shown again, the source starts unmarked');
+  await shown(third);
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),undefined,'an overtaken discovery does not mark the source');
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),'true');
+});
+test('the Reader is marked discovered only once every check its discovery deferred has been made',async()=>{
+  const f=fixture(),asked=[],held=new Set([f.editor.key]);
+  f.registry.recoveryCandidates=()=>{const d=defer();asked.push(d);return d.promise;};
+  f.registry.cleanup.pending=key=>held.has(key);
+  f.registry.neighbors=async()=>null;
+  Object.assign(f.reader,{show(){},paintMark(){}});
+  const p={surface:'reader',source:{source_ref:{kind:'message',id:'m1'},topic_id:'t1',seq:1},editors:{reply:f.editor},mode:'reply'};
+  f.registry.current=p;await f.present(p);
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(f.get('reader').dataset.discovered,undefined,'a deferred check still to be made holds the mark');
+  f.changed(f.editor);
+  assert.equal(f.get('reader').dataset.discovered,undefined,'a change while it is held marks nothing');
+  held.clear();f.changed(f.editor);
+  assert.equal(f.get('reader').dataset.discovered,'true','the recheck settled and reported, the source is marked');
 });
 test('More versions adds its page to the listed copies, and a fresh discovery replaces them',async()=>{
   const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id}),asked=[];
