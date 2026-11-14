@@ -26,8 +26,10 @@ on:
 
 permissions: {}
 
+# One controller at a time per head, whatever producer attempt it answers: publication for a head is serial, and the
+# publish job compares producer run and attempt against the check run already standing before it writes.
 concurrency:
-  group: verdict-${{ github.event.workflow_run.head_sha }}-${{ github.event.workflow_run.run_attempt }}
+  group: verdict-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 env:
@@ -54,6 +56,9 @@ jobs:
       head_sha: ${{ steps.record.outputs.head_sha }}
       conclusion: ${{ steps.decide.outputs.conclusion }}
       decided: ${{ steps.decide.outputs.decided }}
+      # The record's artifact id: publish fetches exactly this one, so a publish-only re-run reads the decision judge
+      # made, and a re-run judge names its own.
+      record_id: ${{ steps.keep.outputs.artifact-id }}
     env:
       GH_TOKEN: ${{ github.token }}
       OUT: ${{ github.workspace }}/verdict
@@ -330,7 +335,8 @@ jobs:
               "status": "completed",
               "conclusion": "success" if passed else "failure",
               "details_url": c["url"],
-              "external_id": p["run_id"],
+              # The decision's key on the head: which producer run and attempt it answers.
+              "external_id": "%s-%s" % (p["run_id"], p["run_attempt"]),
               "output": {"title": "green: no unexpected failure" if passed else ("refused" if refusals else "not green"),
                          "summary": "\n".join(lines)[:60000]},
           }
@@ -339,11 +345,11 @@ jobs:
           print("decided=true")
           PY
       - name: Keep the verdict's record
+        id: keep
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Named for this controller attempt as well: a re-run of the controller writes its own record, and the
-          # publish job reads the one from its own attempt, never an earlier attempt's.
+          # Named for this controller attempt as well, since names cannot repeat within a run; publish reads it by id.
           name: verdict-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-c${{ github.run_attempt }}
           path: |
             ${{ github.workspace }}/verdict/producer.json
@@ -368,10 +374,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - id: record
+        # The record judge uploaded, by its id: the one from this run's judge, whichever controller attempt ran it.
+        if: needs.judge.outputs.record_id != ''
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: verdict-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-c${{ github.run_attempt }}
+          artifact-ids: ${{ needs.judge.outputs.record_id }}
           path: verdict
       - name: The check run on the pull request's head
         shell: bash
@@ -396,17 +404,19 @@ jobs:
           controller_url = "%s/%s/actions/runs/%s" % (env["GITHUB_SERVER_URL"], env["GITHUB_REPOSITORY"], env["GITHUB_RUN_ID"])
           # judge's decision counts only when judge made one, recorded it, and the record names the same head and
           # conclusion judge reported; anything else is published as a failure that says what went missing.
+          key = "%s-%s" % (env["PRODUCER_RUN"], env["PRODUCER_ATTEMPT"])
           body = None
           if env.get("JUDGE_DECIDED") == "true" and env.get("RECORD_FOUND") == "success":
               try:
                   recorded = json.load(open("verdict/check-run.json"))
-                  if recorded.get("head_sha") == head and recorded.get("conclusion") == env.get("JUDGE_CONCLUSION") and recorded.get("name") == "Verdict":
+                  if (recorded.get("head_sha") == head and recorded.get("conclusion") == env.get("JUDGE_CONCLUSION")
+                          and recorded.get("name") == "Verdict" and recorded.get("external_id") == key):
                       body = recorded
               except (OSError, ValueError):
                   body = None
           if body is None:
               body = {"name": "Verdict", "head_sha": head, "status": "completed", "conclusion": "failure",
-                      "details_url": controller_url, "external_id": env["PRODUCER_RUN"],
+                      "details_url": controller_url, "external_id": key,
                       "output": {"title": "the controller did not reach a decision",
                                  "summary": "judge ended %s; decided %s; record %s. Producer run %s attempt %s. Controller run %s attempt %s at %s." % (
                                      env.get("JUDGE_RESULT"), env.get("JUDGE_DECIDED") or "no", env.get("RECORD_FOUND"),
@@ -415,18 +425,23 @@ jobs:
           def gh(*args, data=None):
               cmd = ["gh", "api"] + list(args)
               return json.loads(subprocess.run(cmd, input=data, capture_output=True, text=True, check=True).stdout)
-          # One authoritative Verdict per head. A check run already there for this producer run is updated, so a
-          # controller re-run cannot leave two; one there for a newer producer run is left alone, so a late finish
-          # cannot supersede newer evidence.
+          def answers(check):
+              # Which producer run and attempt a standing Verdict answers, from its key; an unreadable key reads as oldest.
+              m = re.match(r"^(\d+)-(\d+)$", check.get("external_id") or "")
+              return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+          # One authoritative Verdict per head. A check run already there for this producer run and attempt is updated,
+          # so a controller re-run cannot leave two; one there for a newer run or attempt is left alone, so a late finish
+          # cannot supersede newer evidence. The concurrency group makes this read-then-write serial per head.
+          mine = (int(env["PRODUCER_RUN"]), int(env["PRODUCER_ATTEMPT"]))
           existing = gh("repos/%s/commits/%s/check-runs?check_name=Verdict&per_page=100" % (env["GITHUB_REPOSITORY"], head)).get("check_runs", [])
-          mine = int(env["PRODUCER_RUN"])
-          newer = [c for c in existing if (c.get("external_id") or "").isdigit() and int(c["external_id"]) > mine]
+          newer = [c for c in existing if answers(c) > mine]
           if newer:
-              print("a Verdict for newer producer run %s already stands on %s; this one for run %s is not published" % (newer[0]["external_id"], head, mine))
+              print("a Verdict answering producer %s already stands on %s; this one for %s is not published" % (newer[0]["external_id"], head, key))
               raise SystemExit(0)
-          same = [c for c in existing if c.get("external_id") == env["PRODUCER_RUN"]]
+          same = [c for c in existing if answers(c) == mine]
           if same:
-              result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], same[0]["id"]), "--input", "-", data=json.dumps(body))
+              update = {k: v for k, v in body.items() if k != "head_sha"}
+              result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], same[0]["id"]), "--input", "-", data=json.dumps(update))
           else:
               result = gh("-X", "POST", "repos/%s/check-runs" % env["GITHUB_REPOSITORY"], "--input", "-", data=json.dumps(body))
           print("check run %s: %s on %s (%s)" % (result.get("id"), result.get("conclusion"), result.get("head_sha"), "updated" if same else "created"))
