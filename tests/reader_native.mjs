@@ -541,7 +541,7 @@ try {
       { name: 'ring-on-the-readers-own-focus', file: 'web/aim.css', index: 9,
         from: '#source-body:focus-visible:not([data-tabbed]){outline:none}', to: '', expected: /no ring when the Reader puts focus on it/ },
       { name: 'tab-not-told-apart', file: 'web/reader.mjs', index: 9,
-        from: "if (event.key === 'Tab') this.tabbing = true;", to: 'void event;', expected: /Tabs onto the message sees the ring/ },
+        from: 'this.tabbing = true;', to: 'this.tabbing = false;', expected: /Tabs onto the message sees the ring/ },
       { name: 'add-note-unlike-add-image', file: 'web/index.html', index: 10,
         from: '<button id="toggle-note" type="button" class="tile">', to: '<button id="toggle-note" type="button">', expected: /Add note has Add image's/ },
       { name: 'done-closes-the-reader', file: 'web/reader.mjs', index: 10,
