@@ -322,6 +322,36 @@ class SharedCase(StackCase):
         self.rejected(self.name(head, "x" * 201, revision=3), "INVALID_ARGUMENT")
         self.rejected(self.name(head, 7, revision=3), "INVALID_ARGUMENT")
 
+    def test_a_dossier_is_named_on_its_first_message_and_every_part_of_it_carries_the_name(self):
+        """Item 470: a name typed where only part of a dossier is loaded names the dossier. Core takes a name on the
+        dossier's first message alone, as the reader's Core resolves it through replies and joins, and every
+        message's position carries the dossier's name and who typed it, however little of it a page holds."""
+        root = self.post("Left siderail: what moves where")
+        parent = root
+        for n in range(3):
+            parent = self.post("Reply %d" % n, reply_to=parent)
+        self.rejected(self.name(parent, "Siderail changes"), "STACK_CHANGED")
+        self.assertEqual(self.rows("name"), [], "a reply is never named apart from its dossier")
+        self.committed(self.name(root, "Siderail changes", actor="agent-a"))
+        page = self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 1})
+        (item,) = page["items"]
+        position = item["stack_position"]
+        self.assertEqual((item["id"], position["root_id"], position["name"]["text"], position["name"]["by"], position["name_revision"]),
+                         (parent, root, "Siderail changes", "agent-a", 1), "the newest reply alone carries its dossier's name")
+        other = self.post("Another stack")
+        child = self.post("Its reply", reply_to=other)
+        self.committed(self.name(other, "Its own name"))
+        self.committed(self.join(other, root))
+        self.rejected(self.name(other, "Late", revision=1), "STACK_CHANGED")
+        joined = self.store.view("owner", "stack_positions", {"topic_id": "t1", "message_ids": [child]})["items"][0]["stack_position"]
+        self.assertEqual((joined["root_id"], joined["name"]["text"]), (root, "Siderail changes"), "a joined stack reads the name of the dossier it joined")
+        self.committed(self.join(other, None, revision=1))
+        split = self.store.view("owner", "stack_positions", {"topic_id": "t1", "message_ids": [child]})["items"][0]["stack_position"]
+        self.assertEqual((split["root_id"], split["name"]["text"], split["name_revision"]), (other, "Its own name", 1), "split back out, it has its own name again")
+        self.committed(self.name(root, "", revision=1))
+        cleared = self.store.view("owner", "stack_positions", {"topic_id": "t1", "message_ids": [parent]})["items"][0]["stack_position"]
+        self.assertEqual((cleared["name"], cleared["name_revision"]), (None, 2), "cleared, the dossier goes back to its first line")
+
     def test_a_join_is_everyones_says_who_and_splits_back_out(self):
         first, second, third = self.post("First stack"), self.post("Second stack"), self.post("Third stack", actor="owner")
         joined = self.committed(self.join(second, first, actor="agent-a"))

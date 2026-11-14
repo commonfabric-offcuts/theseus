@@ -3924,6 +3924,53 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Item 470: a name typed while a dossier's first message is not loaded names the dossier, and it is
+  // still its name once that message loads; another page holding any part of it shows it too.
+  await check('reading stacks a name typed while a dossier\'s first message is not loaded names the dossier, and stays its name once that message loads', async () => {
+    const topic = 'stack-name-partial';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The old dossier root.', read: true }],
+      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Reply ' + i, read: true }])]);
+    const p = await open(topic, 'laptop', topic, ids.r34);
+    const loaded = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(id))}))`);
+    assert.equal(await loaded(ids.root), false, 'the first message is outside the loaded page');
+    const shownHead = await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
+    assert.notEqual(shownHead, ids.root, 'a reply shows as the dossier\'s head');
+    const row = `#messages .reply-stack[data-stack="${ids.root}"] .stack-name, #messages .reply-stack[data-stack="${shownHead}"] .stack-name`;
+    const named = () => p.evaluate(`(n=>n&&{text:n.textContent,title:n.title})(document.querySelector(${JSON.stringify(row)}))`);
+    const input = '#messages .reply-stack .stack-rename-input';
+    await centre(p, `#messages .reply-stack[data-stack="${shownHead}"] .stack-pen`);
+    await p.point(`#messages .reply-stack[data-stack="${shownHead}"] .stack-pen`);
+    await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), 'the shown head opens to rename');
+    await p.evaluate(`document.activeElement.select()`);
+    await p.send('Input.insertText', { text: 'Siderail changes' });
+    await p.key('Enter');
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === 'Siderail changes', 'Core holds the name on the dossier\'s first message');
+    assert.equal((await actsOf(topic, shownHead))?.name ?? null, null, 'and none on the reply that showed as its head');
+    assert.equal((await named()).text, 'Siderail changes', 'the head row shows it');
+    // The first message loads: the dossier keeps the name, and says who typed it.
+    const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+    for (let page = 0; !await loaded(ids.root); page++) {
+      assert.ok(page < 3, 'Earlier messages reaches the first message');
+      const before = await cards();
+      await centre(p, '#more-messages'); await p.point('#more-messages');
+      await until(async () => (await cards()) > before, 'Earlier messages reads an older page');
+    }
+    await until(async () => (await named())?.text === 'Siderail changes', 'with its first message loaded, the dossier keeps the typed name');
+    assert.match((await named()).title, new RegExp(`Named by ${facts.actor}`));
+    // Another page holding only the newest part shows the name too.
+    const q = await open(topic + '-again', 'laptop', topic, ids.r34);
+    const again = () => q.evaluate(`(s=>s?.querySelector('.stack-name')?.textContent)(document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack'))`);
+    assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), false, 'the new page has not loaded the first message');
+    await until(async () => (await again()) === 'Siderail changes', 'a page holding only replies shows the dossier\'s name');
+    // ⌘Z on the first page gives the dossier back its first line, on both pages.
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).focus()`);
+    await p.key('z', 4);
+    await until(async () => (await actsOf(topic, ids.root))?.name === null, '⌘Z clears the dossier\'s name in Core');
+    await until(async () => (await again()) !== 'Siderail changes', 'and the other page no longer shows it');
+    assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
+    await q.close(); await p.close();
+  });
+
   // Item 385: Return on a dossier selected as a whole edits its title, as Rename in ⋯ does.
   await check('reading stacks Return on a selected dossier edits its title: Return saves it, Escape cancels, Return in writing types, and Return on a message still replies', async () => {
     const topic = 'stack-rename-key';
