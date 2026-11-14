@@ -977,6 +977,42 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     await p.close();
   });
 
+  await check('reading edit timing the Reader closed while edit_open is out, with a Save kept on the device and its close lost: the Save stays beside the close, and the next Edit sends the close, then that Save, once', async () => {
+    const topic = 'edit-moved-on-kept-save-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    // A Save journaled on this device whose request never reached Core.
+    const operation = `${topic}-kept-save`;
+    const save = await putRow(p, ids.mine, { v: 1, base: { revision: 1, body: 'My own words, as I sent them.' }, value: 'Saved after all.', conflict: null,
+      holder: 'h-earlier', session_revision: null, kept: null,
+      pending: { v: 1, instance_id: '', operation_id: operation, kind: 'message.edit', target: { message_id: ids.mine },
+        expected: { authority: {}, message_revision: 1 }, args: { body: 'Saved after all.', holder: 'h-earlier' } } });
+    await p.evaluate(`window.faultOf['message.edit_open'] = 'hold'`);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(() => p.evaluate(`typeof window.letOf['message.edit_open'] === 'function'`), 'edit_open is out');
+    await closeReader(p, 'laptop');
+    await p.evaluate(`window.faultOf['message.edit_close'] = 'hold'`);
+    await p.evaluate(`window.letOf['message.edit_open']()`);
+    await until(() => p.evaluate(`typeof window.letOf['message.edit_close'] === 'function'`), 'the abandoned session\'s close leaves');
+    await p.evaluate(`window.letOf['message.edit_close'](true)`);
+    const [, closing] = (await sessionOf(p)).at(-1);
+    await until(async () => (await deviceRow(p, ids.mine))?.closing === closing, 'the lost close is kept on the device');
+    const row = await deviceRow(p, ids.mine);
+    assert.deepEqual(row.pending, save, 'and the kept Save stays beside it');
+    assert.equal(row.value, 'Saved after all.');
+    // The next Edit: the kept close under its operation, edit_open, the kept Save under its own, then one close.
+    const sent = (await sessionOf(p)).length;
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(async () => (await kindsOf(p)).slice(sent).join() === 'edit_close,edit_open,edit,edit_close' && await readerOn(p) === null,
+      'the kept close goes, then edit_open, the kept Save and one close, and the edit ends');
+    const after = (await sessionOf(p)).slice(sent);
+    assert.deepEqual([after[0][1], after[2][1]], [closing, operation], 'the close and the Save each under their own operation');
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved after all.', edited: true }, 'the Save reached Core');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'Saved after all.' });
+    assert.equal(await deviceRow(p, ids.mine), null);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading edit timing slow and lost draft saves: a Save waits for the draft save out and goes once it returns; a lost one goes again under its operation, then the words typed since', async () => {
     const topic = 'edit-slow-draft-laptop', ids = await edited(topic);
     const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
