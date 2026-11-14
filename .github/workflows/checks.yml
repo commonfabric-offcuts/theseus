@@ -50,10 +50,10 @@ jobs:
           from tools import release_check as check
           shards_wanted = int(sys.argv[1])
           native = ["native-" + step.name for step in check.NATIVE_STEPS]
-          shards = [{"name": "browser %d of %d" % (i + 1, shards_wanted), "steps": ",".join(native[i::shards_wanted]), "browsers": "yes"}
+          shards = [{"name": "browser %d of %d" % (i + 1, shards_wanted), "steps": ",".join(native[i::shards_wanted])}
                     for i in range(shards_wanted)]
-          shards.append({"name": "units and deploy refusals", "steps": ",".join(check.UNIT_STEPS + (check.DEPLOY_REFUSALS,)), "browsers": "no"})
-          shards.append({"name": "wake replay", "steps": check.WAKE_REPLAY, "browsers": "no"})
+          shards.append({"name": "units and deploy refusals", "steps": ",".join(check.UNIT_STEPS + (check.DEPLOY_REFUSALS,))})
+          shards.append({"name": "wake replay", "steps": check.WAKE_REPLAY})
           assert sorted(s for shard in shards for s in shard["steps"].split(",")) == sorted(check.REQUIRED), "every required step runs in exactly one shard"
           print("shards=" + json.dumps(shards))
           PY
@@ -78,8 +78,9 @@ jobs:
           set -euo pipefail
           /usr/bin/python3 --version
           node --version
+      # Every job installs them: the check resolves Chrome and Playwright before it
+      # reads --only, and refuses a run that cannot name them (tools/release_check.py).
       - name: Chrome for Testing and Playwright's WebKit
-        if: matrix.browsers == 'yes'
         shell: bash
         run: |
           set -euo pipefail
