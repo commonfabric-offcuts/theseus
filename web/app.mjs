@@ -510,12 +510,14 @@ async function present(presentation) {
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
   // data-discovered says this showing's discovery has finished: the source's
   // earlier copies were looked for, every copy found is listed, and Review is
-  // drawn from them. A lookup that fails also finishes it: the Reader's notice
-  // says so, and Review keeps what was listed before. Later checks (a deferred
-  // copy checked again, a save's cleanup, More versions, Recover) are their own
-  // events and may still change
-  // Review. Showing a source starts it unmarked, and only its latest showing's
-  // discovery marks it; choosing Reply or Note keeps the showing.
+  // drawn from them. A lookup that fails also finishes it. Its failure shows in
+  // the Reader's notice while that writing is still the one shown, and the list
+  // stays as the lookup left it: unchanged if it failed before listing a page,
+  // that page if it failed after (settling image copies). Later checks (a
+  // deferred copy checked again, a save's cleanup, More versions, Recover) are
+  // their own events and may still change Review. Showing a source starts it
+  // unmarked, and only its latest showing's discovery marks it; choosing Reply
+  // or Note keeps the showing.
   const showing = ++readerShowings;
   discovery.then(() => { if (showing === readerShowings) $('reader').dataset.discovered = 'true'; });
   registry.neighbors(presentation).then(neighbors => {
