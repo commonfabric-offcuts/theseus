@@ -310,8 +310,10 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await p.key('Escape');
     await until(async () => !await open(p, 'reader'), 'Escape closes the Reader');
     assert.equal(await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(menuCard)})`), true, 'the focus is on the message\'s card');
+    // The old document is ready too: the reload is waited for by a timeOrigin kept on the window.
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.reload', {});
-    await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'reloaded');
+    await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready === "true" && (window.documentOrigin??=performance.timeOrigin) !== ${loaded}`); } catch { return false; } }, 'reloaded');
     await frame(p);
     assert.equal(await open(p, 'reader'), false, 'a reload opens the topic alone');
     assert.deepEqual(p.errors, []);
