@@ -264,8 +264,10 @@ class FreshnessControls:
 
 
 class CommandGate:
-    """Every command the HTTP adapter takes passes here, so a control can act
-    while no page is writing.
+    """Every command the HTTP adapter takes through /api/command passes here,
+    so a control can read and write drafts while no page's command runs.
+    Media publication (/api/media/upload) and the live feed's own writes do
+    not pass it; neither writes a draft.
 
     A page closed while its save was on the way leaves the server handling
     that save after the browser has gone. A control that reads a draft's
@@ -274,8 +276,10 @@ class CommandGate:
     each Store open, command and view takes the lock shared and drops it on its
     own, so nothing holds it across a request. While a control holds this
     gate, it has waited for the commands under way to finish, and any command
-    that comes in waits until the control is done, then meets what the control
-    wrote (a stale save is refused at its old revision)."""
+    that comes in waits until the control is done. A save that waited is then
+    refused at its old revision only if the control wrote that draft; a save
+    to a draft the control left alone (reset_drafts skips an empty one) lands
+    after it."""
 
     def __init__(self):
         self.changed = threading.Condition()
@@ -1090,7 +1094,9 @@ def main():
                         # revision through the real Store. It keeps its generation,
                         # where a send would also start a new one. A save a closed
                         # page left on its way lands before the revisions are read,
-                        # or waits and is refused at its old one (CommandGate).
+                        # or waits for the reset (CommandGate): refused at its old
+                        # revision if the reset emptied that draft, landing after
+                        # the reset if it skipped the draft as already empty.
                         with gate.hold():
                             with sqlite3.connect(str(path)) as db:
                                 rows = db.execute("SELECT id,revision,generation,topic_id,payload FROM drafts WHERE actor_id=?", (actor,)).fetchall()

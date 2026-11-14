@@ -182,23 +182,38 @@ const noticeOver = p => p.evaluate(() => {
 });
 const noticeWords = p => p.evaluate(() => document.querySelector('#reader-notice').hidden ? '' : document.querySelector('#reader-notice').textContent);
 
+// The case that ended with the drafts not reset, so the next case resets them
+// before it runs.
+let unreset = null;
 async function check(name, action) {
   const full = `${engine} ${name}`;
   if (filter && !filter.split('|').some(part => full.includes(part))) return;
-  const started = Date.now();
-  let failure = null, ms;
-  try { await action(); ms = Date.now() - started; } catch (error) { failure = error.stack ?? String(error); }
-  // The case ends with its browsers closed and the drafts emptied for the
-  // next. A refusal there (the fixture refusing the reset, or gone) is this
-  // case's failure, written with the rest, and the run goes on to the next.
-  try {
-    try { for (const context of contexts) await context.close(); } finally { contexts.clear(); }
-    await control({ method: 'reset_drafts' });
-  } catch (error) {
-    failure = `${failure ? `${failure}\nthen, ending the case: ` : 'Ending the case: '}${error.stack ?? error}`;
+  const failures = [], say = error => error.stack ?? String(error);
+  let ms;
+  // After a case whose reset was refused, this one begins with that reset,
+  // once (its pages are closed, so nothing else writes). Refused again, the
+  // case does not run on the writing the earlier case left, and says so.
+  if (unreset) {
+    try { await control({ method: 'reset_drafts' }); unreset = null; }
+    catch (error) { failures.push(`Drafts not reset after "${unreset}": ${say(error)}`); }
   }
-  if (failure === null) { results.push({ name: full, passed: true, ms }); console.log(`PASS ${full}`); }
-  else { results.push({ name: full, passed: false, error: failure }); console.log(`FAIL ${full}\n${failure}`); }
+  if (!unreset) {
+    const started = Date.now();
+    try { await action(); ms = Date.now() - started; } catch (error) { failures.push(say(error)); }
+    // The case ends with every page closed, each on its own so that one that
+    // throws leaves none open to save into later cases, and the drafts reset.
+    for (const context of contexts) {
+      try { await context.close(); } catch (error) { failures.push(`Ending the case, closing a page: ${say(error)}`); }
+    }
+    contexts.clear();
+    try { await control({ method: 'reset_drafts' }); }
+    catch (error) { failures.push(`Ending the case, the drafts were not reset: ${say(error)}`); unreset = full; }
+  }
+  if (!failures.length) { results.push({ name: full, passed: true, ms }); console.log(`PASS ${full}`); }
+  else { results.push({ name: full, passed: false, error: failures.join('\nthen, ') }); console.log(`FAIL ${full}\n${failures.join('\nthen, ')}`); }
+  // A fixture that has exited answers nothing more: the run stops here, its
+  // evidence written, rather than failing every case left.
+  if (fixture.exitCode !== null || fixture.signalCode !== null) throw Error(`The fixture exited during "${full}": ${fixtureErrors()}`);
 }
 const close = async p => { assert.deepEqual(p.errors, [], 'no page errors'); contexts.delete(p.ctx); await p.ctx.close(); };
 
