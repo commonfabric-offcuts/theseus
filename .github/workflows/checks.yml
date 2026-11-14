@@ -116,6 +116,43 @@ jobs:
         run: |
           set -euo pipefail
           /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}"
+      - name: Write this shard's receipt
+        if: always()
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SHARD_NAME: ${{ matrix.name }}
+          SHARD_STEPS: ${{ matrix.steps }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/check"
+          # The receipt a validator binds this shard to: written here, by the job that ran it, so a shard repackaged from
+          # another run or attempt cannot pass as this one. The profile says what the cases ran on.
+          python3 - "$RUNNER_TEMP/check/run.json" <<'PY'
+          import json, os, platform, subprocess, sys
+          env = os.environ
+          def out(*argv):
+              try:
+                  return subprocess.run(argv, capture_output=True, text=True).stdout.strip()
+              except OSError:
+                  return None
+          receipt = {
+              "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
+                      "job": env.get("GITHUB_JOB"), "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY")},
+              "shard": {"name": env.get("SHARD_NAME"), "steps": (env.get("SHARD_STEPS") or "").split(",")},
+              "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
+              "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
+              "merge": {"sha": env.get("GITHUB_SHA"), "tree": out("git", "rev-parse", "HEAD^{tree}")},
+              "profile": {"runner_os": env.get("RUNNER_OS"), "runner_arch": env.get("RUNNER_ARCH"), "image_os": env.get("ImageOS"),
+                          "image_version": env.get("ImageVersion"), "platform": platform.platform(), "python": sys.version.split()[0],
+                          "node": out("node", "--version"), "chrome": env.get("CHROME_VERSION"), "playwright": env.get("PLAYWRIGHT_VERSION"),
+                          "chrome_path": env.get("AIM_CHROME_FOR_TESTING"), "playwright_core": env.get("AIM_PLAYWRIGHT_CORE")},
+          }
+          json.dump(receipt, open(sys.argv[1], "w"), indent=1)
+          PY
       - name: Keep the evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -152,6 +189,21 @@ jobs:
           shards_dir, out = sys.argv[1], sys.argv[2]
           paths = sorted(glob.glob(os.path.join(shards_dir, "check-*", "summary.json")))
           docs = [json.load(open(p)) for p in paths]
+          # Every shard must carry the receipt its own job wrote, for this run and this attempt; a shard from another
+          # run or attempt, however identical its commit and cases, does not count.
+          env = os.environ
+          receipts = []
+          for p in paths:
+              receipt_path = os.path.join(os.path.dirname(p), "run.json")
+              try:
+                  receipt = json.load(open(receipt_path))
+              except (OSError, ValueError) as error:
+                  sys.exit("no readable receipt beside %s: %s" % (p, error))
+              run = receipt.get("run") or {}
+              if (run.get("id"), run.get("attempt")) != (env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT")):
+                  sys.exit("%s was produced by run %s attempt %s, not this run %s attempt %s" % (
+                      receipt_path, run.get("id"), run.get("attempt"), env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT")))
+              receipts.append(receipt)
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
           if not docs or not timed:
@@ -183,8 +235,9 @@ jobs:
           json.dump(combined, open(out, "w"), indent=1)
           # Beside the summary, what a validator binds to: this run and attempt, the event's base and head, the merge
           # commit and its tree, each shard's own source identity and steps, and the plan the shards were dealt from.
-          env = os.environ
+          profiles = [r.get("profile") for r in receipts]
           provenance = {
+              "profiles": profiles if len({json.dumps(x, sort_keys=True) for x in profiles}) > 1 else profiles[:1],
               "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
                       "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY")},
               "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
@@ -194,8 +247,9 @@ jobs:
               "required": required,
               "plan": json.loads(env.get("PLAN_SHARDS") or "[]"),
               "shards": [{"artifact": os.path.relpath(p, shards_dir).split(os.sep)[0], "commit": d.get("commit"), "tree_unchanged": d.get("tree_unchanged"),
-                          "tools": d.get("tools"), "steps": [step["name"] for step in d.get("steps", [])], "refused": d.get("refused")}
-                         for p, d in zip(paths, docs)],
+                          "tools": d.get("tools"), "steps": [step["name"] for step in d.get("steps", [])], "refused": d.get("refused"),
+                          "receipt": r}
+                         for p, d, r in zip(paths, docs, receipts)],
           }
           json.dump(provenance, open(os.path.join(os.path.dirname(out), "provenance.json"), "w"), indent=1)
           print(json.dumps({"commit": combined["commit"], "steps": len(steps), "missing": missing, "failed": combined["failed"], "passed": combined["passed"]}))
