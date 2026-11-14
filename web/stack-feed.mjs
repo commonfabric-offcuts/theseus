@@ -128,6 +128,7 @@ export class StackFeed {
       let stack_position = item.stack_position;
       for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
         if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null };
+        if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
       }
       return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position } : item;
     } };
@@ -256,7 +257,7 @@ export class StackFeed {
     // 👍's reactions, a page of messages) can have put a new copy of it in the page (item 433).
     for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);
     if (kind === 'message.star') this.starsChanged();
-    if (kind === 'stack.aside') await this.refreshPositions();
+    if (kind === 'stack.aside' || kind === 'stack.name') await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
@@ -322,12 +323,15 @@ export class StackFeed {
     const input = renameInput(this.list, stack.id);
     input?.focus(); input?.select?.();
   }
+  // A name is the dossier's: it goes on its first message, loaded or not
+  // (item 470), fenced on the name Core holds there. A page whose Core sends no
+  // positions names the head it shows.
   rename(stack, text) {
-    const item = this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
+    const item = this.rootOf(stack)?.item ?? this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
     const name = String(text ?? '').replace(/\s+/g, ' ').trim();
     this.arrange();
     // Unchanged, or the first line it is named by already: nothing to record.
-    if (name === typed || !typed && name === firstLine(item.body)) { this.focusOn(stack.id); return; }
+    if (name === typed || !typed && name === firstLine(stack.head.body)) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);
@@ -424,14 +428,25 @@ export class StackFeed {
     const item = this.messages().get(id);
     if (item) this.setFold(item, false);
   }
-  setAside(stack, below, { undoable = true, restoreThrough } = {}) {
+  // A dossier's first message, as Core last said where it is, and the
+  // dossier's position: the loaded message, else one standing in for it that
+  // holds what the position says of its aside and its name. Null where Core
+  // sent no position.
+  rootOf(stack) {
     const root = positionOf(stack)?.root_id;
     const current = this.state.stacks.find(each => positionOf(each)?.root_id === root) ?? stack;
     const position = positionOf(current);
-    if (!position) return false;
+    if (!position) return null;
     if (!this.messages().has(root) && !this.standIns.has(root)) this.standIns.set(root, { id: root, acts: {} });
     const item = this.messages().get(root) ?? this.standIns.get(root);
-    item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision });
+    item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision,
+      ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}) });
+    return { item, position };
+  }
+  setAside(stack, below, { undoable = true, restoreThrough } = {}) {
+    const found = this.rootOf(stack);
+    if (!found) return false;
+    const { item, position } = found, root = item.id;
     // Below More through the newest message of the dossier the page has seen.
     const through = restoreThrough !== undefined ? restoreThrough : below ? [...this.messages().values()]
       .reduce((newest, each) => (each.stack_position?.root_id === root ? Math.max(newest, each.seq) : newest), position.at.messages) : null;

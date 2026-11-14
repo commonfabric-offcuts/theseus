@@ -70,6 +70,11 @@ These rules refuse an act:
   single spaces), and a place that is not a finite number within ±10¹⁵.
 - `INVALID_ARGUMENT` for a join into another topic, into the stack itself, or
   into a stack inside it (a loop, followed through joins and replies).
+- `STACK_CHANGED` for a name on a message that is not the first message of
+  its dossier, as the sender's Core finds it through joins and replies. A
+  name is the dossier's, wherever it was typed: the page sends it to that
+  first message, loaded or not, fenced on the name revision Core sent with
+  the position of each message in the dossier (docs/dossier-below-more.md).
 - `OUTCOME_REACHED` for a name or a join once the topic's outcome is reached;
   a star, a deal, a fold or a place is still the reader's to make.
 
@@ -207,7 +212,9 @@ their acts.
   who began the stack, "New" when the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. On a phone the
   count, who replied and what is new sit on a second short line. The short name is the
-  one someone typed, or else the first line of the first message. Pressing
+  one someone typed for the dossier, or else the first line of the first message
+  shown. A page that holds only some of a dossier's replies shows the name too,
+  and a rename typed there names the whole dossier. Pressing
   the row opens the entire stack; pressing it again returns to latest plus
   unread. The original message has no independent open/closed state.
   A message that stops

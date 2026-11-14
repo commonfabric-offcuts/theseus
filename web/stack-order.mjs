@@ -165,9 +165,13 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, pe
 // message's first line, firstLine), who replied in the order they first did,
 // and what is new: the head itself, or how many replies. folded: the first
 // message is folded, so the row stands for it at every level and its full
-// message does not show.
+// message does not show. The typed name is the dossier's (item 470): its
+// first message's, which Core sends with the position of every message in it,
+// so a page holding only replies shows it too; where the page holds that
+// message, its own acts say it.
 export function headOf(stack, { firstLine = text => String(text ?? '').split('\n')[0], unread = () => false, peeked = () => false } = {}) {
-  const typed = actsOf(stack.head).name;
+  const position = positionOf(stack);
+  const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;
   const repliers = [];
   for (const item of stack.replies) if (!repliers.includes(item.author_id)) repliers.push(item.author_id);
   const headNew = unread(stack.head);

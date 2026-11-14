@@ -24,7 +24,9 @@ fencing prevents a late Undo from reversing another device's change.
 
 `stack_positions`, args `{topic_id, message_ids:[up to 100 ids]}`, returns
 `items:[{message_id, stack_position}]`. Topic-message pages also carry
-`stack_position: {root_id, through, aside_revision, below, at:{messages,acts}}`.
+`stack_position: {root_id, through, aside_revision, below, name, name_revision, at:{messages,acts}}`,
+where `name` and `name_revision` are the dossier's short name as its first
+message holds it (docs/reply-stacks.md), so a page holding only replies shows it.
 Membership follows the latest shared join, otherwise same-topic reply ancestry,
 including ancestors outside the loaded page; inaccessible ancestors terminate
 it. Joined dossiers use the destination root's choice. Splitting restores the
@@ -40,8 +42,8 @@ the dossier, so a page of earlier messages reads the same however the topic
 grows. A later read has more acts, or as many acts and more messages: while
 the acts stand still a dossier only gains messages, and a split, which can
 leave it fewer, is a later act. The page keeps the later of two reads, and
-draws the stacks again only when `root_id`, `through`, `below` or
-`aside_revision` changed: a later `at` alone moves no dossier.
+draws the stacks again only when `root_id`, `through`, `below`,
+`aside_revision` or `name_revision` changed: a later `at` alone moves no dossier.
 
 A root's newer visible messages are checked through indexed reply/join edges,
 not by scanning unrelated topics or by relying on the browser's loaded rows.

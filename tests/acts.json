@@ -11571,6 +11571,77 @@
    "check": {
     "python": "test_message_words.py"
    }
+  },
+  {
+   "item": 470,
+   "act": "Core takes a dossier's name on its first message alone, as the reader's Core finds it through joins and replies",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if kind in (\"aside\", \"name\") and StackRoots(db, actor).root(message[\"id\"]) != message[\"id\"]:",
+     "        if kind == \"aside\" and StackRoots(db, actor).root(message[\"id\"]) != message[\"id\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 470,
+   "act": "Every message's position carries its dossier's name and who typed it, however little of the dossier a page holds",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"],\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A rename typed on a reply showing as the head names the dossier's first message, loaded or not",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const item = this.rootOf(stack)?.item ?? this.messages().get(stack.id) ?? stack.head, typed",
+     "    const item = this.messages().get(stack.id) ?? stack.head, typed"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "name typed while a dossier's first message is not loaded"
+   }
+  },
+  {
+   "item": 470,
+   "act": "The head row shows the dossier's name from the position where the page holds only replies",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;",
+     "  const typed = actsOf(stack.head).name;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A dossier's name changed elsewhere is drawn on a page holding only its replies",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
   }
  ]
 }

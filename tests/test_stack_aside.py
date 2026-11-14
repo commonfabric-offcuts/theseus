@@ -87,7 +87,9 @@ class AsideCase(StackCase):
         before = self.position(root, 'agent-b')
         hidden = self.post('Private answer', actor='owner', reply_to=root, addressees=['agent-a'], whisper=True)
         self.assertEqual(self.position(root, 'agent-b'), before, 'a hidden whisper changes no visible position or watermark')
-        self.committed(self.command('stack.name', {'name': 'A private name'}, target={'message_id': hidden},
+        # A name goes on a dossier's first message (item 470): a whisper heading its own.
+        alone = self.post('Private dossier', actor='owner', addressees=['agent-a'], whisper=True)
+        self.committed(self.command('stack.name', {'name': 'A private name'}, target={'message_id': alone},
                                     expected={'name_revision': 0}, actor='owner'))
         self.assertEqual(self.position(root, 'agent-b'), before, 'a hidden whisper act changes no visible watermark')
         self.rejected(self.aside(root, self.latest(), revision=1, actor='agent-b'), 'INVALID_ARGUMENT')
@@ -113,8 +115,9 @@ class AsideCase(StackCase):
         # A whisper in the dossier, one on its own, and the topic's shared act on a whisper:
         # agent-b is in none of them, so nothing agent-b reads may move.
         asked = self.post('Private question', actor='owner', reply_to=reply, addressees=['agent-a'], whisper=True)
-        self.post('Private aside', actor='owner', addressees=['agent-a'], whisper=True)
-        self.committed(self.name(asked, 'Our secret', actor='agent-a'))
+        alone = self.post('Private aside', actor='owner', addressees=['agent-a'], whisper=True)
+        # A name goes on a dossier's first message (item 470): the whisper heading its own.
+        self.committed(self.name(alone, 'Our secret', actor='agent-a'))
         self.assertEqual(seen(), before)
         # The rule acts where it should: a reply on the record by someone else moves agent-b's page and revives the dossier.
         self.post('An answer on the record', reply_to=reply)

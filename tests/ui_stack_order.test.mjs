@@ -290,6 +290,23 @@ test('a fold line holding unread replies says how many in red; the head says New
   assert.equal(headOf({ ...stack, head: { ...stack.head, acts: { name: null } } }, { firstLine: text => text.split('\n')[0] + '!' }).name, 'Message 1!');
 });
 
+// Item 470: a dossier's name is its first message's. A page holding only replies reads it from the position Core
+// sends with each of them; a name on a reply showing as the head is not the dossier's.
+test('a dossier\'s name is its first message\'s, read from the position where the page holds only replies', () => {
+  const at = (name, revision, acts = 1) => ({ root_id: 'm1', through: null, below: false, aside_revision: 0, name, name_revision: revision, at: { acts, messages: 0 } });
+  const typed = { text: 'Siderail changes', by: 'owner', at_ms: 1 };
+  const replies = [message(3, { reply_to: 'm2', acts: { name: { text: 'On the reply', by: 'owner' } }, stack_position: at(typed, 1) }), message(4, { reply_to: 'm3', stack_position: at(null, 0, 0) })];
+  const [partial] = stacksOf(replies);
+  assert.equal(partial.head.id, 'm3', 'the oldest loaded reply shows as the head');
+  assert.deepEqual([headOf(partial).name, headOf(partial).typed.by], ['Siderail changes', 'owner'], 'the later position names the dossier, not the reply\'s own act');
+  const [unnamed] = stacksOf(replies.map(item => ({ ...item, stack_position: at(null, 2, 2) })));
+  assert.deepEqual([headOf(unnamed).name, headOf(unnamed).typed], ['Message 3', null], 'with no name on the dossier, the first line shown');
+  const [whole] = stacksOf([message(1, { acts: { name: typed }, stack_position: at(null, 0, 0) }), message(2, { reply_to: 'm1' }), ...replies]);
+  assert.equal(headOf(whole).name, 'Siderail changes', 'with the first message loaded, its own acts say it');
+  const [older] = stacksOf([{ ...replies[0], stack_position: undefined }]);
+  assert.equal(headOf(older).name, 'On the reply', 'a page whose Core sends no position reads the head\'s own acts');
+});
+
 test('the one New line goes under the lowest stack holding anything new since its message, never cutting a stack', () => {
   const items = [message(1), message(2), message(3, { reply_to: 'm1' }), message(4)];
   const stacks = stacksOf(items);
