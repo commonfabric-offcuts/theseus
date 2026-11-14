@@ -331,10 +331,11 @@ export class StackFeed {
   // name only where it is the first message's.
   rename(stack, text, { edited = true } = {}) {
     const item = this.rootOf(stack)?.item ?? this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
-    const name = String(text ?? '').replace(/\s+/g, ' ').trim();
+    // A name is one line, its spaces made single, as Core keeps it.
+    const single = words => String(words ?? '').replace(/\s+/g, ' ').trim(), name = single(text);
     this.arrange();
     // Unchanged, or the first line it is named by already: nothing to record.
-    if (!edited || name === typed || !typed && name === firstLine(stack.head.body) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
+    if (!edited || name === typed || !typed && name === single(firstLine(stack.head.body)) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);

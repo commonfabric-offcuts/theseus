@@ -11649,8 +11649,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (!edited || name === typed || !typed && name === firstLine(stack.head.body) && item.id === stack.head.id) {",
-     "    if (!edited || name === typed || !typed && name === firstLine(stack.head.body)) {"
+     "    if (!edited || name === typed || !typed && name === single(firstLine(stack.head.body)) && item.id === stack.head.id) {",
+     "    if (!edited || name === typed || !typed && name === single(firstLine(stack.head.body))) {"
     ]
    ],
    "check": {
