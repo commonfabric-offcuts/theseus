@@ -405,7 +405,7 @@ export class MessageMenu {
       const last = card.querySelectorAll('a[href],button,[tabindex]');
       const stop = [...last].filter(el => el.tabIndex >= 0 && el.getClientRects().length).at(-1);
       (stop ?? card).focus({ preventScroll: true });
-    } else if (!event.shiftKey && at === card) { event.preventDefault(); focusStop(order[0]); }
+    } else if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }
     else if (!event.shiftKey && index === order.length - 1 && inline.length) { event.preventDefault(); focusStop(inline[0]); }
     else if (!event.shiftKey && index === order.length - 1) card.focus({ preventScroll: true });
     else if (!event.shiftKey && index >= 0) { event.preventDefault(); order[index + 1].focus({ preventScroll: true }); }
