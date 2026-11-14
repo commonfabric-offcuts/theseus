@@ -149,7 +149,13 @@ jobs:
               "profile": {"runner_os": env.get("RUNNER_OS"), "runner_arch": env.get("RUNNER_ARCH"), "image_os": env.get("ImageOS"),
                           "image_version": env.get("ImageVersion"), "platform": platform.platform(), "python": sys.version.split()[0],
                           "node": out("node", "--version"), "chrome": env.get("CHROME_VERSION"), "playwright": env.get("PLAYWRIGHT_VERSION"),
-                          "chrome_path": env.get("AIM_CHROME_FOR_TESTING"), "playwright_core": env.get("AIM_PLAYWRIGHT_CORE")},
+                          "chrome_path": env.get("AIM_CHROME_FOR_TESTING"), "playwright_core": env.get("AIM_PLAYWRIGHT_CORE"),
+                          # The settings the cases turned out to depend on: how scroll bars show, whether motion is reduced,
+                          # and how loaded the machine was, which a Mac at a desk never varies.
+                          "scroll_bars": out("defaults", "read", "-g", "AppleShowScrollBars") or "default",
+                          "reduce_motion": out("defaults", "read", "com.apple.universalaccess", "reduceMotion") or "default",
+                          "cpus": out("sysctl", "-n", "hw.ncpu"),
+                          "load_after": out("sysctl", "-n", "vm.loadavg")},
           }
           json.dump(receipt, open(sys.argv[1], "w"), indent=1)
           PY
