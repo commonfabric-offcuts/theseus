@@ -1,13 +1,15 @@
 {
   "version": 1,
-  "source_commit": "b91744bba850306da6d27ca1f73025d96b20a868",
+  "source_commit": "892df45d26b71797db64685eaa07c0edd469d081",
   "source_hashes": {
-    ".github/workflows/checks.yml": "a8440254fd8769d5602621f7177e40ae4f9939d7",
+    ".github/workflows/checks.yml": "dbb2a6d2d96c1b2c60eb36c6d25272ea4204fef1",
     "tests/agent_colors_native.mjs": "91027fe4060a9b4e251c9bcafcc1280969be4bfe",
     "tests/assessment_freshness_probe.mjs": "a079d10a00ca152223ab890400da4313b4c67663",
     "tests/compose-reach.mjs": "e193bc339fe443b5ad43ca560db5b3a5f3dba5a3",
     "tests/conversation_native.mjs": "f28b3ca95922fb9970e40f5c5c69b071cac8aa18",
     "tests/device_native.mjs": "d5844b20472a96334f42eaa820a35750936a77aa",
+    "tests/fixture_control.mjs": "2885c1dd4e74b53997f4f54014a5fe4ddc52dbe7",
+    "tests/fixture_control.test.mjs": "92445eadacc5e10c933608cc3c164c251c9744ce",
     "tests/fixtures/fake_assessment_server.py": "b5ba4323d9578a087b0e84b6f4dfda9c5e70908b",
     "tests/fixtures/fake_codex_app_server.py": "dd4e0f93ddc8c260d5dda3156af205aa3a210071",
     "tests/fixtures/mini_dom.mjs": "ccbf7c7eded508b9b8eef0d60264321162948df0",
@@ -31,7 +33,7 @@
     "tests/press-fell.mjs": "d4167e5307ab6fd5aeac52ee671f05cee8699c82",
     "tests/reader_asks_native.mjs": "e59a790f0631796c01e5418e5de1b0a3479cdc82",
     "tests/reader_colors_native.mjs": "889172c82c8e6b1b8cd6d196f4d378f86e173871",
-    "tests/reader_compose_native.mjs": "1701e6cd62f1c24e51abbc9c570c77a2995365da",
+    "tests/reader_compose_native.mjs": "02830bfd157488aefe35ec7f1e65d7b3b5401588",
     "tests/reader_departure_native.mjs": "2100c53d1df11328e11e5e04850049dffa9c2f6b",
     "tests/reader_fixture.py": "19e463e909ced3f544ab95696e72ab74cfacb2e1",
     "tests/reader_freshness_native.mjs": "286e00a98457168677a6d7fca582691cbe1ae063",
@@ -75,7 +77,7 @@
     "tests/test_between_others.py": "ecf6d1cff61629836549acc31a47e346eb11b91d",
     "tests/test_blocking_asks.py": "42d8760d801a4523a032f8bdad991615cb12d923",
     "tests/test_boundary.py": "9ecd06fc58e970d25cf6db50a03bd2177877c3e7",
-    "tests/test_broker_routes.py": "c52a2c2a875fa5da215ca77ff355791ce45e66c8",
+    "tests/test_broker_routes.py": "a387de17f7e55efa987223742d7e4b96c1c19e27",
     "tests/test_changes.py": "2727491488708b9841ec6e1e3f27a0fd93652645",
     "tests/test_codex_broker.py": "684484aa96375e863cfd7f4734e97a3232819bf9",
     "tests/test_codex_host.py": "88b9fc2d97880000a6f85635072889cecd69da64",
@@ -161,7 +163,7 @@
     "tests/test_thumb_answers.py": "599f3ede7d9fe83fc3c40221a0f85caaac98adc3",
     "tests/test_tools_acts.py": "608b339254c35b991cb0073d1ae80a558fcc075f",
     "tests/test_tools_checks_trial.py": "475fae3305eca561853e65688e57ad161cf08f58",
-    "tests/test_tools_deploy.py": "c76cdb52abd17de3b46a8e6c288f3a2a35b70f79",
+    "tests/test_tools_deploy.py": "9a434a5b8d143320603fac2029a618830c27c315",
     "tests/test_tools_mutant.py": "fa6ebc66db580dcb087009e14123336556ce88c1",
     "tests/test_tools_native.py": "357e333333c620430d229ef359fb9b6756c2a14f",
     "tests/test_tools_pipeline.py": "3be91265c6a3460b7bee2cd41b0e871ec0338fac",
@@ -188,7 +190,7 @@
     "tests/topic_header_native.mjs": "3f415a00576d5c5e30e23de0c433ab1900328ca9",
     "tests/topic_list_native.mjs": "8bc9d818a5214170297b16c055e298b4e45308b8",
     "tests/topic_reading_native.mjs": "da952c078ba8863839c59d8c072fe4c55c956149",
-    "tests/topic_sources_native.mjs": "581f10e42d9fc3552904f9cac9014e599c3997e8",
+    "tests/topic_sources_native.mjs": "a5f0baccae674ebca88f53f2ff6dcd4e67e97325",
     "tests/topic_work_native.mjs": "c73ab853ecd3df51e9c7f5c4ca44733bbd18791e",
     "tests/ui_app.test.mjs": "f88b35662acd2a7ed7e7d8021529317c44c5965e",
     "tests/ui_at_names.test.mjs": "ca15d66cdb8ba2b7f0efa7097f7e0ac9ec749d7e",
@@ -293,7 +295,7 @@
     "tools/acts.py": "30b7b56fadafa9730615f3d0dea50e6d512819a9",
     "tools/checks.py": "93d5ce52f2dd4ff6171c1ed5ee6214a3f833c3bd",
     "tools/deploy.py": "5995e3d1f8599fd523354d0f1e1742cbb1e70793",
-    "tools/known_reds.py": "4c9dbe4cfd0f9506e1a7a319cae04c6baeab3807",
+    "tools/known_reds.py": "b61304cc65f88eb0351a69bb31e19e23b7618ecd",
     "tools/mutant.py": "482c6802fcba344d1864584939a62a337b2d6208",
     "tools/native.py": "f5ec3b320a13502b8fa2832e62ea21d26bd3efe1",
     "tools/pipeline/__init__.py": "9d48db4f9f85e1752cf424c49ee18a6907c3f160",
@@ -12166,6 +12168,12 @@
         "name": "test_a_case_named_loosely_is_not_the_case_that_failed (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
+        "name": "test_a_composer_step_whose_run_did_not_attest_its_end_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
+      },
+      {
+        "name": "test_a_composer_step_whose_run_ended_is_taken (test_tools_deploy.DeployRefusesKnownReds)"
+      },
+      {
         "name": "test_a_failed_case_the_known_reds_do_not_list_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
@@ -12193,10 +12201,10 @@
         "name": "test_a_passed_summary_with_the_flag_deploys_as_before_and_needs_none_of_them (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
-        "name": "test_a_reader_or_composer_step_that_cannot_show_its_run_ended_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
+        "name": "test_a_reader_step_is_taken_when_its_harness_printed_its_results_last (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
-        "name": "test_a_reader_step_is_taken_when_its_harness_printed_its_results_last (test_tools_deploy.DeployRefusesKnownReds)"
+        "name": "test_a_reader_step_that_cannot_show_its_run_ended_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
         "name": "test_a_relative_known_reds_path_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
@@ -12233,6 +12241,9 @@
       },
       {
         "name": "test_main_takes_the_known_reds_file (test_tools_deploy.DeployRefusesKnownReds)"
+      },
+      {
+        "name": "test_the_composers_fields_do_not_stand_for_another_harnesss_last_assertion (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
         "name": "test_without_the_flag_a_red_summary_is_refused_exactly_as_before (test_tools_deploy.DeployRefusesKnownReds)"
@@ -13700,6 +13711,26 @@
       }
     ],
     "node-units": [
+      {
+        "name": "a live fixture answers each request",
+        "phase": null
+      },
+      {
+        "name": "a request open when the fixture exits is refused with how it ended",
+        "phase": null
+      },
+      {
+        "name": "a request after the fixture died is refused at once, not left waiting",
+        "phase": null
+      },
+      {
+        "name": "a line read after the fixture exited is dropped, whole or cut short, since its request was already refused",
+        "phase": null
+      },
+      {
+        "name": "an answer from a running fixture to a request never asked fails loudly",
+        "phase": null
+      },
       {
         "name": "a refusal for a request the page cancelled is excused, and one for a request that failed otherwise is not",
         "phase": null
@@ -21508,6 +21539,12 @@
         "name": "test_a_case_named_loosely_is_not_the_case_that_failed (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
+        "name": "test_a_composer_step_whose_run_did_not_attest_its_end_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
+      },
+      {
+        "name": "test_a_composer_step_whose_run_ended_is_taken (test_tools_deploy.DeployRefusesKnownReds)"
+      },
+      {
         "name": "test_a_failed_case_the_known_reds_do_not_list_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
@@ -21535,10 +21572,10 @@
         "name": "test_a_passed_summary_with_the_flag_deploys_as_before_and_needs_none_of_them (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
-        "name": "test_a_reader_or_composer_step_that_cannot_show_its_run_ended_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
+        "name": "test_a_reader_step_is_taken_when_its_harness_printed_its_results_last (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
-        "name": "test_a_reader_step_is_taken_when_its_harness_printed_its_results_last (test_tools_deploy.DeployRefusesKnownReds)"
+        "name": "test_a_reader_step_that_cannot_show_its_run_ended_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
         "name": "test_a_relative_known_reds_path_is_refused (test_tools_deploy.DeployRefusesKnownReds)"
@@ -21575,6 +21612,9 @@
       },
       {
         "name": "test_main_takes_the_known_reds_file (test_tools_deploy.DeployRefusesKnownReds)"
+      },
+      {
+        "name": "test_the_composers_fields_do_not_stand_for_another_harnesss_last_assertion (test_tools_deploy.DeployRefusesKnownReds)"
       },
       {
         "name": "test_without_the_flag_a_red_summary_is_refused_exactly_as_before (test_tools_deploy.DeployRefusesKnownReds)"

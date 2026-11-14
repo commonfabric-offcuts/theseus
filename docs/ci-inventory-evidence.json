@@ -1,222 +1,115 @@
 {
-  "archive": "checks/release-72/focused3-ee7e51e",
-  "commit": "ee7e51e6d48fd6022c75317dcca4356d847e80f2",
-  "summary_sha256": "5c928a19ddd2c4f00352acb30e2df835a52d821260934eef7ed29ab91ecb1544",
-  "reports": {
-    "native-journal": {
-      "report_sha256": "92a3865dd5705100940fd40446bbb2cd48aa0487e2e0f2e5d64e5be9e6a9e260",
-      "cases": 10
-    },
-    "native-connected": {
-      "report_sha256": "520d006717607184bb8d0cc777b9cfb0dea4e88b8a354a0bc8dea82794768ba7",
-      "cases": 5
-    },
-    "native-correction": {
-      "report_sha256": "49be7516a4ee968331174fe775fc7c5697574bc1789baa9c03c36ed1d8f6655c",
-      "cases": 14
-    },
-    "native-cleanup": {
-      "report_sha256": "7c7f4ce9bb7af2cc16565bd52668c99542108077cace8112ad9ebe28b6c1bccf",
-      "cases": 7
-    },
-    "native-images": {
-      "report_sha256": "cc54261e88deb4876967800c389df012218b57362e5d9e5217b1a25b6b0931de",
-      "cases": 33
-    },
-    "native-freshness": {
-      "report_sha256": "464c339a936334e286c3807ab0e7f0356fe43c27448d69cd9374968302deaefd",
-      "cases": 32
-    },
-    "native-inline": {
-      "report_sha256": "7a81746ab90137182a63ee67df1924b94a90ae5286936d2834f28b1cc2afcbe2",
-      "cases": 15
-    },
-    "native-navigation": {
-      "report_sha256": "59c8c4689b3083857fe092d13a8b666e7af317a8f3d681562bdbf2f131ceb67e",
-      "cases": 18
-    },
-    "native-live": {
-      "report_sha256": "c4e3f0a32d00613a3a2b60bbfdf0b93ead1ccf68dfe32d45b20015929f83054c",
-      "cases": 58
-    },
-    "native-colors": {
-      "report_sha256": "37b4dc11a792612ba7611210135fc6674af978ea94f8c9aca6827d73c3818122",
-      "cases": 16
-    },
-    "native-asks": {
-      "report_sha256": "5bf4359beee0f170d760267d9f3fdddc7188f0d07114e85e80f1e71650ddbe7a",
-      "cases": 4
-    },
-    "native-whispers": {
-      "report_sha256": "75b85cbce0367947858073ddca2cb45689eb5cd81add3de3ef638c286545ddc1",
-      "cases": 7
-    },
-    "native-work": {
-      "report_sha256": "c63dc4511be8d4de53dd605fa49ec41df0ce066dead519c7894fee89d3273a19",
-      "cases": 3
-    },
-    "native-light": {
-      "report_sha256": "8af6a6d2b789d91c89368b03a5bda9b1925845457ea5c61be1ca91325baa8d28",
-      "cases": 6
-    },
-    "native-list": {
-      "report_sha256": "39527df6aef0b505576547b18dc1663ff2a97f70e3845c4a81f10d5e673a4490",
-      "cases": 6
-    },
-    "native-notebook": {
-      "report_sha256": "f802adfdcc7269b04011a934e14886e29ad5f9416e9013d549855f4c0c7c5df0",
-      "cases": 50
-    },
-    "native-duties": {
-      "report_sha256": "ae8872c3dbffb256674bfd694524e0c1dad3d4d374a67f11d1e8b954d4ff7f68",
-      "cases": 2
-    },
-    "native-sources": {
-      "report_sha256": "071414bb4841039dec1e80202c9c4fb48fe1c2f9d9622317ff863bb05ccfabe5",
-      "cases": 2
-    },
-    "native-wakes": {
-      "report_sha256": "91707870608b8b34d4ff02ed574b80f43445f0da29e31fc9c9c3f041c968e1f0",
-      "cases": 3
-    },
-    "native-header": {
-      "report_sha256": "a88c504aecd50757df5a0594f95ffe7b7b23b8d092d311adaf19e40c4a9ee88a",
-      "cases": 54
-    },
-    "native-rail": {
-      "report_sha256": "a09efe120a32c0cd30aba92dff701e194e6b23c2b9d667524d8a2dc9f264e510",
-      "cases": 44
-    },
-    "native-conversation": {
-      "report_sha256": "c25b30f2ac22cd1964725d60d2f75831e8a45e85b802c8d6126f5eaf8f90c6b5",
-      "cases": 40
-    },
-    "native-forms": {
-      "report_sha256": "37f9031e71dfe31d5ab8e3c910a6b38e22099b5e86308b6213bbab4d7709d415",
-      "cases": 6
-    },
-    "native-pipeline": {
-      "report_sha256": "edabfb142960721ddfc483877fa31a0c4bbda39078fad1322d95476fe68e7c64",
-      "cases": 10
-    },
-    "native-targets": {
-      "report_sha256": "1debcc48b1d3a34163fd3549c7f6fded8079d965adf70e86ae9d76d97429561a",
-      "cases": 7
-    },
-    "native-health": {
-      "report_sha256": "a00d73d8132792a1d6845f8adb4f6e7c5cce69b25b39b7ffeb817de3c57213e8",
-      "cases": 10
-    },
-    "native-reading": {
-      "report_sha256": "3125352cedac79974a453f79d32ea95ed255a19908497893f5295dfda2cdcee5",
-      "cases": 153
-    },
-    "native-openings": {
-      "report_sha256": "84b04c718a22cd7b04fc7a0aae3e62aa22838b5a35df9068fa2dc329d37f6316",
-      "cases": 6
-    },
-    "native-reader": {
-      "report_sha256": "2dfe23996c75651dd35f9ac314372c73e628c33798919e6273d5fa2debb40946",
-      "cases": 5
-    },
-    "native-reader-keyboard": {
-      "report_sha256": "47c972f3deee1eca93de2a553d62b642e337e5cae3f82c48cece1a7c9be2087b",
-      "cases": 1
-    },
-    "native-reader-review-gaps": {
-      "report_sha256": "c7fa9005442e2e6289fbb5385d416edf8dfaa646a558774b2546ba3bc4fbba4e",
-      "cases": 12
-    },
-    "native-reader-anchor-control": {
-      "report_sha256": "26964b7482525fb1c571c64e122995c6f939b891547d5608f254f9232c9d3726",
-      "cases": 3
-    },
-    "native-reader-mutations": {
-      "report_sha256": "08c6f5f16f04f3bff94202c138e2058ada93b2bc65fc37f07405ac761da4dd7d",
-      "cases": 14
-    },
-    "native-reader-finished": {
-      "report_sha256": "4d7ccfa14a3097f27cff128cc05ea96221bdad7dacc269d2a3149e105073ade4",
-      "cases": 21
-    },
-    "native-webkit-colors": {
-      "report_sha256": "a4c00a469c6151222e88baabeca83bed4e2f05e451d080ee844e23ce52681871",
-      "cases": 1
-    },
-    "native-webkit-whispers": {
-      "report_sha256": "f60cb7c6bbdc1cc0cee20a107e29c4f3de2cbc83777e14cdcb7760744731bc5b",
-      "cases": 7
-    },
-    "native-webkit-notebook": {
-      "report_sha256": "f4e768d6a599e56bd310ddefea8e74ba6a51f2e018f6bbc63a8abb2e231ea973",
-      "cases": 50
-    },
-    "native-webkit-rail": {
-      "report_sha256": "09533b34aeb8323efb9e03badd44eebee0ebc5cc6a83dabafe6944f22323bd99",
-      "cases": 35
-    },
-    "native-webkit-pipeline": {
-      "report_sha256": "2166047bb51d810cf2c18bcea9f59e713438d51b7a0e0c37d0f9b3369939684a",
-      "cases": 10
-    },
-    "native-webkit-device": {
-      "report_sha256": "c97050be598ad14ad8bed811af7d9cc1ded5ec976902771935f54e9948c67c20",
-      "cases": 2
-    },
-    "native-webkit-new-line": {
-      "report_sha256": "410c14b6c9d416f8f07b93d6c128b4ecdf7f09f8d180517de4d2e74293cfd44c",
-      "cases": 6
-    },
-    "native-webkit-reading": {
-      "report_sha256": "5c8709825d8b9f08e241c489e24f39232a4a5157094ca07bae181aa02e27db3c",
-      "cases": 146
-    },
-    "native-compose": {
-      "report_sha256": "f6d09f6bd7d3a77e0cea883b022ad4e91a7a025c28c8730fe2c71c49e3c4518d",
-      "cases": 120
-    }
-  },
+  "production_source_commit": "892df45d26b71797db64685eaa07c0edd469d081",
   "admissions": 0,
+  "definition_sources": {
+    "python_tests_and_helpers": 141,
+    "mjs_tests_and_helpers": 147,
+    "producer_tools": 20,
+    "producer_workflow": 1
+  },
+  "required_steps": 47,
+  "inventory_cases": {
+    "native-journal": 10,
+    "native-connected": 5,
+    "native-correction": 14,
+    "native-cleanup": 7,
+    "native-images": 33,
+    "native-freshness": 32,
+    "native-inline": 15,
+    "native-navigation": 18,
+    "native-live": 58,
+    "native-colors": 16,
+    "native-asks": 4,
+    "native-whispers": 7,
+    "native-work": 3,
+    "native-light": 6,
+    "native-list": 6,
+    "native-notebook": 50,
+    "native-duties": 2,
+    "native-sources": 2,
+    "native-wakes": 3,
+    "native-header": 54,
+    "native-rail": 44,
+    "native-conversation": 40,
+    "native-forms": 6,
+    "native-pipeline": 10,
+    "native-targets": 7,
+    "native-health": 10,
+    "native-reading": 153,
+    "native-openings": 6,
+    "native-reader": 5,
+    "native-reader-keyboard": 1,
+    "native-reader-review-gaps": 12,
+    "native-reader-anchor-control": 3,
+    "native-reader-mutations": 14,
+    "native-reader-finished": 21,
+    "native-webkit-colors": 1,
+    "native-webkit-whispers": 7,
+    "native-webkit-notebook": 50,
+    "native-webkit-rail": 35,
+    "native-webkit-pipeline": 10,
+    "native-webkit-device": 2,
+    "native-webkit-new-line": 6,
+    "native-webkit-reading": 146,
+    "native-compose": 120,
+    "python-units": 2312,
+    "node-units": 1948,
+    "deploy-refusals": 38
+  },
+  "python_inventory": {
+    "file": "inventory-892-python.json",
+    "sha256": "ca832ba6f7b1b2c8fbb3f8302c01d2d6d238b715fe6abdbe5853c6324e0d8109",
+    "planned_cases": 2312,
+    "method": "CPython3.9 unittest discovery only; cases not executed",
+    "execution_claim": false
+  },
   "unit_logs": {
-    "python-units": {
-      "archive": "release-72/focused3-ee7e51e.python/python-units.log",
-      "sha256": "321e1e925a88106dc3699286bc9bbfb0f5f6f4d54b3c29d802272dc6c78a98f9",
-      "executed_cases": 2309,
-      "summary_sha256": "efa8905d132d18d368bcefd562497f3306937e9acecd66d47ef802fa32d8a935",
-      "source_commit": "ee7e51e6d48fd6022c75317dcca4356d847e80f2",
-      "tree_unchanged": true
-    },
     "node-units": {
-      "archive": "release-72/focused3-ee7e51e/node-units.log",
-      "sha256": "1df79a464537f00e6ac8987367f14248fbb4f8584eda930fad0747383ab84de6",
-      "executed_cases": 1943
+      "file": "inventory-892-node-full.log",
+      "sha256": "787533501b782f89c898e7ce3eccc3aa9af5d95e72e1e9c80548d23e83097a6e",
+      "executed_cases": 1948,
+      "all_passed": true,
+      "source_commit": "892df45d26b71797db64685eaa07c0edd469d081"
     },
     "deploy-refusals": {
-      "archive": "release-72/focused3-ee7e51e/deploy-refusals.log",
-      "sha256": "e9d1b8524622d5d345594ac4be6edc7233b09aab8d52c965213cb95e7e3ff05c",
-      "executed_cases": 35
+      "file": "inventory-892-deploy.log",
+      "sha256": "edf036bb3e98ffb5e31b51fb7459bf81199a18510698f9125cd6f553a8caf0fa",
+      "executed_cases": 38,
+      "all_passed": true,
+      "source_commit": "892df45d26b71797db64685eaa07c0edd469d081"
+    }
+  },
+  "native_inventory": {
+    "method": "Preserved 1,054 identity roster from archived release-72 reports, with unchanged check registrations and current Compose/sources reports compared. No new native run performed for this inventory.",
+    "archival_evidence": "ci-inventory-archival-evidence.json",
+    "updated_reports": {
+      "native-compose": {
+        "evidence": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/compose-attest/native-run/compose-attest-1-1/evidence/native.json",
+        "sha256": "dd5cf0066c015f82254797b4a0d586c8ba68e06b7c09feb2f725ead31185fa1f",
+        "identities_match": true,
+        "cases": 120
+      },
+      "native-sources": {
+        "evidence": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/sources-wait/final/sw-final-2/evidence/native.json",
+        "sha256": "2f26133e6b8c11f193558ebe146bcd867bb0171f8b716af55527b4882bd7c681",
+        "identities_match": true,
+        "cases": 2
+      }
     }
   },
   "replay_plan": {
     "source": "tests/fixtures/replay/wake-2026-11-05.json",
-    "commit": "ee7e51e6d48fd6022c75317dcca4356d847e80f2",
+    "commit": "892df45d26b71797db64685eaa07c0edd469d081",
     "routed": [
       "aim-core",
       "aim-spec",
       "aim-ux"
     ]
   },
-  "reviewed_source_commit": "b91744bba850306da6d27ca1f73025d96b20a868",
-  "definition_sources": {
-    "python_tests_and_helpers": 141,
-    "mjs_tests_and_helpers": 145,
-    "producer_tools": 20,
-    "producer_workflow": 1
-  },
-  "source_equivalence": {
-    "archived_commit": "ee7e51e6d48fd6022c75317dcca4356d847e80f2",
-    "reviewed_commit": "b91744bba850306da6d27ca1f73025d96b20a868",
-    "tests_and_tools_identical": true,
-    "producer_workflow": "reviewed workflow-only b91744bb; absent from archived ee7e51e6"
-  }
+  "bootstrap": "Verifier additions after this commit require a separately reviewed complete transition, including their expected unit identities; no implicit source additions.",
+  "unexpected_failures": [
+    "sources timeout: the Reader is back on the question (:79)",
+    "Notebook :548 and :664",
+    "PR1 two WebKit keyboard quote regressions"
+  ]
 }
