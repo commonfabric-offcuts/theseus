@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -30,11 +34,14 @@ class Evidence(unittest.TestCase):
         self.repo.mkdir()
         self.command('init', '-q')
         paths = set(release_check.harnesses()) | {'tests/reader_inline_native.mjs', 'tools/ci_known_reds.py',
-                                                'tools/known_reds.py', 'tools/release_check.py'}
+                                                'tools/known_reds.py', 'tools/release_check.py',
+                                                'tests/test_example.py', ci.PRODUCER_WORKFLOW}
         for path in paths:
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((ci.ROOT / path).read_bytes() if path.startswith('tools/') or path == release_check.REPLAY_FILE
+                               else b'# stand-in source\nassert actual == expected\n' if path.endswith('.py')
+                               else b'name: Checks\n' if path == ci.PRODUCER_WORKFLOW
                                else b'// stand-in source\nassert.equal(actual, expected);\nawait helper();\n')
         self.source_commit = self.commit('inventory sources')
         self.profile = {'runner_os': 'macOS', 'runner_arch': 'ARM64', 'image_os': 'macos-26', 'image_version': 'v1',
@@ -46,7 +53,7 @@ class Evidence(unittest.TestCase):
                              '    at check (/verified/tests/reader_persistence_native.mjs:3:1)'}
         self.policy = {'version': 1, 'source_commit': self.source_commit,
                        'source_hashes': {p: ci.blob(ci.source(self.repo, self.source_commit, p))
-                                         for p in paths if p.startswith('tests/')},
+                                         for p in paths},
                        'required': list(release_check.REQUIRED),
                        'inventory': {name: [ci.identity(self.row)] for name in ci.NATIVE}, 'reds': []}
         self.policy['inventory'].update({name: [ci.identity({'name': 'test_one (example.Example)'}),
@@ -68,10 +75,10 @@ class Evidence(unittest.TestCase):
         self.tree = ci.git(self.repo, 'rev-parse', 'HEAD^{tree}').decode().strip()
         self.base_receipt = {'ref': 'release/live72', 'sha': self.base_sha}
         self.merge = {'sha': self.sha, 'tree': self.tree}
-        self.run = {'id': 123, 'attempt': 2, 'workflow': 'Checks', 'event': 'pull_request', 'repository': 'owner/repo'}
+        self.run = {'id': 123, 'attempt': 1, 'workflow': 'Checks', 'event': 'pull_request', 'repository': 'owner/repo'}
         write(self.folder / 'event.json', {'pull_request': {'base': self.base_receipt}})
         self.env = {'GITHUB_EVENT_PATH': str(self.folder / 'event.json'), 'GITHUB_EVENT_NAME': 'pull_request',
-                    'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2', 'GITHUB_WORKFLOW': 'Checks',
+                    'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_WORKFLOW': 'Checks',
                     'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_SHA': self.sha}
         self.shards = self.folder / 'shards'
         self.out = self.shards / 'check-0'
@@ -125,6 +132,8 @@ class Evidence(unittest.TestCase):
                            'plan': [{'name': 'all', 'steps': ','.join(release_check.REQUIRED)}],
                            'shards': [{'artifact': 'check-0', 'receipt': self.receipt, 'commit': self.sha,
                                        'tree_unchanged': True, 'tools': tools, 'steps': self.raw['only']}]}
+        self.history = None
+        self.producer = None
         self.flush()
 
     def command(self, *args):
@@ -154,16 +163,97 @@ class Evidence(unittest.TestCase):
         for steps in (self.steps, self.raw['steps']):
             next(s for s in steps if s['name'] == name)['counts'] = counts
 
+    def install_trusted_policy(self, policy):
+        write(self.base / '.github/check-baseline.json', policy)
+        ci.git(self.base, 'add', '.github/check-baseline.json')
+        ci.git(self.base, '-c', 'user.name=ci-test', '-c', 'user.email=ci-test@theseus.invalid',
+               'commit', '-qm', 'independently reviewed plan')
+        self.base_receipt['sha'] = ci.git(self.base, 'rev-parse', 'HEAD').decode().strip()
+        write(self.folder / 'event.json', {'pull_request': {'base': self.base_receipt}})
+
+    def candidate_plan(self):
+        plan = copy.deepcopy(self.policy)
+        plan.pop('transitions', None)
+        plan['source_commit'] = self.sha
+        paths = ci.definition_paths(self.repo, self.sha) | {release_check.REPLAY_FILE}
+        plan['source_hashes'] = {path: ci.blob(ci.source(self.repo, self.sha, path)) for path in paths}
+        return plan
+
     def flush(self):
         write(self.folder / 'summary.json', self.summary)
-        write(self.folder / 'provenance.json', self.provenance)
         write(self.out / 'summary.json', self.raw)
+        self.receipt['summary_sha256'] = hashlib.sha256((self.out / 'summary.json').read_bytes()).hexdigest()
         write(self.out / 'run.json', self.receipt)
+        write(self.folder / 'provenance.json', self.provenance)
+
+    def seal_earlier_summary(self, attempt):
+        out = attempt / 'shards/check-0'
+        receipt = ci.read_json(out / 'run.json')
+        receipt['summary_sha256'] = hashlib.sha256((out / 'summary.json').read_bytes()).hexdigest()
+        write(out / 'run.json', receipt)
+        provenance = ci.read_json(attempt / 'provenance.json')
+        provenance['shards'][0]['receipt'] = receipt
+        write(attempt / 'provenance.json', provenance)
 
     def validate(self):
         self.flush()
         return ci.validate(self.folder / 'summary.json', self.folder / 'provenance.json', self.shards,
-                           self.base / '.github/check-baseline.json', self.base, self.repo, self.env)
+                           self.base / '.github/check-baseline.json', self.base, self.repo, self.env,
+                           history=self.history, producer=self.producer)
+
+    def protected_controller(self):
+        head = self.sha
+        merge = self.command('commit-tree', self.tree, '-p', self.base_sha, '-p', head,
+                             '-m', 'original tested synthetic merge').decode().strip()
+        self.command('reset', '--hard', merge)
+        self.sha = merge
+        self.merge.update(sha=merge, tree=self.tree, first_parent=self.base_sha, second_parent=head)
+        self.provenance['checked']['commit'] = merge
+        self.provenance['shards'][0]['commit'] = merge
+        for summary in (self.summary, self.raw):
+            summary['commit'] = merge
+            summary['tree_after']['head'] = merge
+        self.receipt['head'] = self.provenance['head'] = {'ref': 'feature', 'sha': head}
+        self.receipt['run'].update(workflow_sha=merge,
+                                  workflow_ref='owner/repo/.github/workflows/checks.yml@refs/pull/6/merge')
+        self.env = {'GITHUB_EVENT_PATH': str(self.folder / 'event.json'), 'GITHUB_EVENT_NAME': 'workflow_run',
+                    'GITHUB_RUN_ID': '999', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_WORKFLOW': 'Protected verdict',
+                    'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_SHA': self.base_sha,
+                    'GITHUB_WORKFLOW_SHA': self.base_sha,
+                    'GITHUB_WORKFLOW_REF': 'owner/repo/.github/workflows/verdict.yml@refs/heads/main'}
+        observed = {'id': 123, 'run_attempt': 1, 'event': 'pull_request', 'name': 'Checks',
+                    'path': ci.PRODUCER_WORKFLOW, 'head_sha': head, 'head_branch': 'feature',
+                    'created_at': '2026-11-14T00:00:00Z', 'conclusion': 'failure',
+                    'pull_requests': [{'number': 6, 'head': {'sha': head}, 'base': dict(self.base_receipt)}]}
+        write(self.folder / 'event.json', {'action': 'completed', 'repository': {'default_branch': 'main'},
+                                          'workflow_run': observed})
+        self.producer = self.folder / 'producer.json'
+        write(self.producer, {'producer': {'run_id': 123, 'run_attempt': 1, 'event': 'pull_request',
+                                          'workflow_path': ci.PRODUCER_WORKFLOW, 'workflow_name': 'Checks',
+                                          'head_sha': head, 'head_branch': 'feature', 'created_at': observed['created_at'],
+                                          'conclusion': 'failure', 'pull_request': {'number': 6, 'head_sha': head,
+                                                                                  'base_sha': self.base_sha, 'base_ref': 'release/live72'}},
+                              'controller': {'run_id': 999, 'run_attempt': 1, 'workflow_sha': self.base_sha,
+                                             'workflow_ref': self.env['GITHUB_WORKFLOW_REF'], 'sha': self.base_sha,
+                                             'repository': 'owner/repo'},
+                              'merge': {'sha': merge, 'tree': self.tree, 'first_parent': self.base_sha,
+                                        'second_parent': head, 'fetched': merge, 'rebuilt': self.tree}})
+        return head
+
+    def earlier_attempt(self):
+        self.flush()
+        folder = self.folder / 'history'
+        attempt = folder / 'attempt-1'
+        shutil.copytree(self.shards, attempt / 'shards')
+        write(attempt / 'summary.json', self.summary)
+        write(attempt / 'provenance.json', self.provenance)
+        self.run['attempt'] = 2
+        self.env['GITHUB_RUN_ATTEMPT'] = '2'
+        self.history = folder / 'history.json'
+        write(self.history, {'run': self.run, 'base': self.base_receipt, 'merge': self.merge,
+                             'attempts': [{'attempt': 1, 'summary': 'attempt-1/summary.json',
+                                           'provenance': 'attempt-1/provenance.json', 'shards': 'attempt-1/shards'}]})
+        return attempt
 
     def refused(self, pattern):
         with self.assertRaisesRegex(ci.Refused, pattern):
@@ -178,6 +268,7 @@ class Evidence(unittest.TestCase):
         self.assertEqual(ci.read_json(self.out / 'summary.json'), self.raw)
 
     def test_previous_attempt_at_same_commit_stays_red(self):
+        self.earlier_attempt()
         self.receipt['run'] = dict(self.run, attempt=1)
         self.provenance['shards'][0]['receipt'] = self.receipt
         self.refused('wrong producer run or attempt')
@@ -553,6 +644,340 @@ class Evidence(unittest.TestCase):
     def test_python_test_stdout_can_finish_without_newline(self):
         rows = ci.unit_records('test_one (example.Example) ... {"proof":true}ok\n')
         self.assertEqual(rows, [({'name': 'test_one (example.Example)'}, 'ok')])
+
+    def test_retry_cannot_hide_earlier_unexpected_failure(self):
+        old = self.earlier_attempt()
+        report_path = old / 'shards/check-0/native/colors/native.json'
+        report = ci.read_json(report_path)
+        report['results'][0]['passed'] = False
+        write(report_path, report)
+        counts, _ = release_check.native_counts(ci.NATIVE['native-colors'], report_path.parent)
+        for path in (old / 'summary.json', old / 'shards/check-0/summary.json'):
+            summary = ci.read_json(path)
+            next(s for s in summary['steps'] if s['name'] == 'native-colors').update(counts=counts, passed=False, exit=1)
+            summary['failed'].append('native-colors')
+            write(path, summary)
+        self.seal_earlier_summary(old)
+        result = self.validate()
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['unexpected'][0]['step'], 'native-colors')
+        self.assertEqual(result['unexpected'][0]['attempt'], 1)
+
+    def pass_current_inline_case(self):
+        path = self.out / 'native/inline/native.json'
+        report = ci.read_json(path)
+        report['results'][0]['passed'] = True
+        write(path, report)
+        counts, _ = release_check.native_counts(ci.NATIVE['native-inline'], path.parent)
+        for steps in (self.steps, self.raw['steps']):
+            next(s for s in steps if s['name'] == 'native-inline').update(counts=counts, passed=True, exit=0)
+        self.summary['passed'] = self.raw['passed'] = True
+        self.summary['failed'] = []
+
+    def test_expected_failure_then_retry_pass_is_not_a_clean_heal(self):
+        self.earlier_attempt()
+        self.pass_current_inline_case()
+        result = self.validate()
+        self.assertTrue(result['passed'])  # Only a reviewed expected failure occurred.
+        self.assertFalse(result['raw_passed'])
+        self.assertEqual(result['healed'], [])
+        self.assertEqual(result['passed_on_retry'][0]['failed_attempts'], [1])
+        self.assertEqual(result['expected'][0]['attempt'], 1)
+
+    def test_changed_failure_then_retry_pass_is_red_and_not_a_clean_heal(self):
+        old = self.earlier_attempt()
+        path = old / 'shards/check-0/native/inline/native.json'
+        report = ci.read_json(path)
+        report['results'][0]['error'] = report['results'][0]['error'].replace('2 !== 3', '7 !== 3')
+        write(path, report)
+        self.pass_current_inline_case()
+        result = self.validate()
+        self.assertFalse(result['passed'])
+        self.assertFalse(result['raw_passed'])
+        self.assertEqual(result['healed'], [])
+        self.assertEqual(result['unexpected'][0]['attempt'], 1)
+
+    def test_history_cannot_point_outside_its_directory(self):
+        self.earlier_attempt()
+        data = ci.read_json(self.history)
+        data['attempts'][0]['summary'] = '../summary.json'
+        write(self.history, data)
+        self.refused('history path escapes')
+
+    def test_history_cannot_duplicate_an_attempt(self):
+        self.earlier_attempt()
+        data = ci.read_json(self.history)
+        data['attempts'].append(copy.deepcopy(data['attempts'][0]))
+        write(self.history, data)
+        self.refused('incomplete or duplicate attempt history')
+
+    def test_history_cannot_change_the_original_policy_base(self):
+        self.earlier_attempt()
+        data = ci.read_json(self.history)
+        data['base']['sha'] = 'a' * 40
+        write(self.history, data)
+        self.refused('another event base or tested merge')
+
+    def test_missing_prior_original_evidence_keeps_retry_red(self):
+        old = self.earlier_attempt()
+        (old / 'summary.json').unlink()
+        result = self.validate()
+        self.assertFalse(result['passed'])
+        self.assertIn('unreadable JSON', result['attempts'][0]['refused'])
+
+    def test_genuine_receipt_cannot_vouch_for_replaced_summary_bytes(self):
+        self.flush()
+        path = self.out / 'summary.json'
+        path.write_text(path.read_text() + ' ')
+        with self.assertRaisesRegex(ci.Refused, 'summary digest differs'):
+            ci.validate(self.folder / 'summary.json', self.folder / 'provenance.json', self.shards,
+                        self.base / '.github/check-baseline.json', self.base, self.repo, self.env)
+
+    def test_original_summary_receipt_digest_is_required(self):
+        self.flush()
+        receipt = ci.read_json(self.out / 'run.json')
+        del receipt['summary_sha256']
+        write(self.out / 'run.json', receipt)
+        provenance = ci.read_json(self.folder / 'provenance.json')
+        provenance['shards'][0]['receipt'] = receipt
+        write(self.folder / 'provenance.json', provenance)
+        with self.assertRaisesRegex(ci.Refused, 'summary digest differs'):
+            ci.validate(self.folder / 'summary.json', self.folder / 'provenance.json', self.shards,
+                        self.base / '.github/check-baseline.json', self.base, self.repo, self.env)
+
+    def test_python_assertion_change_with_same_verbose_name_requires_review(self):
+        path = self.repo / 'tests/test_example.py'
+        path.write_text(path.read_text().replace('assert actual == expected', 'assert True'))
+        self.advance_candidate('weaken Python assertion with unchanged identity')
+        self.refused('reviewed test definition changed')
+
+    def test_ordinary_python_header_comment_can_shift(self):
+        path = self.repo / 'tests/test_example.py'
+        path.write_text('# ordinary header\n' + path.read_text())
+        self.advance_candidate('harmless Python header')
+        self.assertTrue(self.validate()['passed'])
+
+    def test_python_encoding_and_shebang_are_not_ignorable_comments(self):
+        for first, second in ((b'# coding: utf-8\n', b'# coding: latin-1\n'),
+                              (b'#!/usr/bin/python3 -I\n', b'#!/usr/bin/python3\n')):
+            with self.subTest(first=first):
+                body = b'assert actual == expected\n'
+                self.assertNotEqual(ci.definition_bytes(first + body, 'tests/test_example.py'),
+                                    ci.definition_bytes(second + body, 'tests/test_example.py'))
+
+    def test_producer_tools_compare_exact_blobs_even_for_headers(self):
+        self.assertNotEqual(ci.definition_bytes(b'# old\nprint(1)\n', 'tools/release_check.py'),
+                            ci.definition_bytes(b'# header\n# old\nprint(1)\n', 'tools/release_check.py'))
+
+    def test_changed_producer_driver_with_unchanged_workflow_is_refused(self):
+        workflow = (self.repo / ci.PRODUCER_WORKFLOW).read_bytes()
+        path = self.repo / 'tools/release_check.py'
+        text = path.read_text()
+        old = 'return counts, bool(results) and not failed and closed'
+        self.assertEqual(text.count(old), 1)
+        path.write_text(text.replace(old, 'return counts, True'))
+        self.advance_candidate('unreviewed producer driver')
+        for summary in (self.summary, self.raw):
+            summary['tools']['release_check'] = ci.blob(ci.source(self.repo, self.sha, 'tools/release_check.py'))
+        self.provenance['shards'][0]['tools'] = self.raw['tools']
+        self.assertEqual((self.repo / ci.PRODUCER_WORKFLOW).read_bytes(), workflow)
+        self.refused('reviewed test definition changed')
+
+    def test_ordinary_product_only_change_can_validate(self):
+        (self.repo / 'web').mkdir()
+        (self.repo / 'web/app.mjs').write_text('export const productFix = true;\n')
+        self.advance_candidate('ordinary product edit')
+        self.assertTrue(self.validate()['passed'])
+
+    def test_separately_reviewed_complete_plan_can_allow_new_definition(self):
+        path = self.repo / 'tests/test_example.py'
+        path.write_text(path.read_text().replace('assert actual == expected', 'assert actual == approved'))
+        self.advance_candidate('proposed reviewed Python assertion')
+        plan = self.candidate_plan()
+        self.install_trusted_policy(dict(self.policy, transitions=[{'review': 'separate-review', 'plan': plan}]))
+        result = self.validate()
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['transition_review'], 'separate-review')
+        self.assertEqual(result['plan_source_commit'], plan['source_commit'])
+
+    def test_old_definition_still_validates_during_reviewed_transition(self):
+        path = self.repo / 'tests/test_example.py'
+        original = path.read_text()
+        path.write_text(original.replace('assert actual == expected', 'assert actual == approved'))
+        self.advance_candidate('proposed new definition')
+        plan = self.candidate_plan()
+        self.install_trusted_policy(dict(self.policy, transitions=[{'review': 'separate-review', 'plan': plan}]))
+        path.write_text(original)
+        self.advance_candidate('old plan remains usable')
+        result = self.validate()
+        self.assertTrue(result['passed'])
+        self.assertIsNone(result['transition_review'])
+
+    def test_partial_mix_of_reviewed_old_and_new_plans_is_refused(self):
+        python = self.repo / 'tests/test_example.py'
+        native = self.repo / 'tests/reader_openings_native.mjs'
+        original = native.read_text()
+        python.write_text(python.read_text().replace('assert actual == expected', 'assert actual == approved'))
+        native.write_text(original.replace('assert.equal(actual, expected)', 'assert.equal(actual, approved)'))
+        self.advance_candidate('complete proposed plan')
+        plan = self.candidate_plan()
+        self.install_trusted_policy(dict(self.policy, transitions=[{'review': 'separate-review', 'plan': plan}]))
+        native.write_text(original)
+        self.advance_candidate('unreviewed partial plan')
+        self.refused('no complete matching plan')
+
+    def test_ambiguous_complete_plans_are_refused(self):
+        self.install_trusted_policy(dict(self.policy, transitions=[{'review': 'overlapping-review', 'plan': self.policy}]))
+        self.refused('ambiguous reviewed plans')
+
+    def test_feature_cannot_approve_its_own_plan_transition(self):
+        path = self.repo / 'tests/test_example.py'
+        path.write_text(path.read_text().replace('assert actual == expected', 'assert True'))
+        self.advance_candidate('unreviewed test edit')
+        write(self.repo / '.github/check-baseline.json',
+              dict(self.policy, transitions=[{'review': 'self-approval', 'plan': self.candidate_plan()}]))
+        self.advance_candidate('candidate claims transition approval')
+        self.refused('no complete matching plan')
+
+    def test_plan_transition_cannot_add_failure_admissions(self):
+        plan = copy.deepcopy(self.policy)
+        extra = copy.deepcopy(self.red)
+        extra['step'] = 'native-colors'
+        plan['reds'].append(extra)
+        policy = dict(self.policy, transitions=[{'review': 'definition-only-review', 'plan': plan}])
+        with self.assertRaisesRegex(ci.Refused, 'cannot add or change failure admissions'):
+            ci.load_policy(policy, self.repo)
+
+    def test_controller_uses_producer_identity_and_reports_intended_pr_head(self):
+        head = self.protected_controller()
+        result = self.validate()
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['run']['id'], 123)
+        self.assertEqual(result['controller']['run_id'], 999)
+        self.assertEqual(result['status_head_sha'], head)
+        self.assertEqual(result['merge']['sha'], self.sha)
+        self.assertNotEqual(result['merge']['sha'], self.env['GITHUB_SHA'])
+
+    def test_controller_record_must_match_actual_controller_environment(self):
+        self.protected_controller()
+        record = ci.read_json(self.producer)
+        record['controller']['run_id'] = 998
+        write(self.producer, record)
+        self.refused('wrong protected controller identity')
+
+    def test_controller_cannot_authenticate_a_foreign_run_from_matching_artifacts(self):
+        self.protected_controller()
+        record = ci.read_json(self.producer)
+        record['producer']['run_id'] = 124
+        self.run['id'] = 124
+        write(self.producer, record)
+        self.refused('producer is not the triggering run/attempt')
+
+    def test_producer_head_must_match_triggering_api_event(self):
+        self.protected_controller()
+        record = ci.read_json(self.producer)
+        record['producer']['pull_request']['head_sha'] = 'a' * 40
+        write(self.producer, record)
+        self.refused('producer PR head differs')
+
+    def test_receipt_parent_cannot_select_a_new_policy_base(self):
+        self.protected_controller()
+        record = ci.read_json(self.producer)
+        record['merge']['first_parent'] = self.source_commit
+        write(self.producer, record)
+        self.refused('original API base/head')
+
+    def test_producer_tree_must_match_independently_rebuilt_tree(self):
+        self.protected_controller()
+        record = ci.read_json(self.producer)
+        record['merge']['tree'] = record['merge']['rebuilt'] = 'a' * 40
+        write(self.producer, record)
+        self.refused('independently rebuilt producer tree')
+
+    def test_rebuilt_commit_cannot_replace_original_tested_commit(self):
+        head = self.protected_controller()
+        rebuilt = self.command('commit-tree', self.tree, '-p', self.base_sha, '-p', head,
+                               '-m', 'different rebuilt commit with identical tree').decode().strip()
+        self.assertNotEqual(rebuilt, self.sha)
+        self.command('reset', '--hard', rebuilt)
+        self.refused('wrong checkout commit')
+
+    def test_protected_controller_refuses_producer_retry_before_artifacts(self):
+        self.protected_controller()
+        record, event = ci.read_json(self.producer), ci.read_json(self.folder / 'event.json')
+        record['producer']['run_attempt'] = event['workflow_run']['run_attempt'] = 2
+        write(self.producer, record)
+        write(self.folder / 'event.json', event)
+        self.refused('protected controller refuses producer retries')
+
+    def test_producer_workflow_commit_and_ref_must_bind_to_producer(self):
+        self.protected_controller()
+        expected = dict(self.receipt['run'])
+        for field, value, reason in [('workflow_sha', self.base_sha, 'workflow commit'),
+                                     ('workflow_ref', 'owner/repo/.github/workflows/checks.yml@refs/pull/99/merge', 'workflow reference')]:
+            with self.subTest(field=field):
+                self.receipt['run'].update(expected)
+                self.receipt['run'][field] = value
+                self.refused('unbound producer ' + reason)
+
+    def test_cancelled_producer_cannot_validate_completed_artifact_claims(self):
+        self.protected_controller()
+        record, event = ci.read_json(self.producer), ci.read_json(self.folder / 'event.json')
+        record['producer']['conclusion'] = event['workflow_run']['conclusion'] = 'cancelled'
+        write(self.producer, record)
+        write(self.folder / 'event.json', event)
+        self.refused('producer is cancelled')
+
+    def test_added_test_module_needs_a_complete_reviewed_plan(self):
+        (self.repo / 'tests/test_added.py').write_text('def test_new():\n    assert True\n')
+        self.advance_candidate('unreviewed added test module')
+        self.refused('no complete matching plan')
+
+    def test_controller_cli_uses_producer_record_from_a_separate_context(self):
+        head = self.protected_controller()
+        self.flush()
+        out = self.folder / 'controller-verdict.json'
+        pyc = str(self.folder / 'cli-pyc')
+        env = dict(os.environ, **self.env, PYTHONPYCACHEPREFIX=pyc)
+        result = subprocess.run([sys.executable, '-I', '-X', 'pycache_prefix=' + pyc,
+                                 str(ci.ROOT / 'tools/ci_known_reds.py'),
+                                 '--summary', str(self.folder / 'summary.json'),
+                                 '--provenance', str(self.folder / 'provenance.json'), '--shards', str(self.shards),
+                                 '--baseline', str(self.base / '.github/check-baseline.json'),
+                                 '--base-checkout', str(self.base), '--candidate-checkout', str(self.repo),
+                                 '--producer', str(self.producer), '--out', str(out)],
+                                cwd=self.repo, env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(ci.read_json(out)['passed'])
+        self.assertEqual(ci.read_json(out)['status_head_sha'], head)
+
+    def test_retry_with_missing_history_cannot_validate(self):
+        self.earlier_attempt()
+        self.history = None
+        self.refused('retry requires complete attempt history')
+
+    def test_retry_cannot_omit_an_earlier_attempt(self):
+        self.earlier_attempt()
+        data = ci.read_json(self.history)
+        data['attempts'] = []
+        write(self.history, data)
+        self.refused('incomplete or duplicate attempt history')
+
+    def test_retry_revalidates_original_producer_receipt(self):
+        old = self.earlier_attempt()
+        path = old / 'shards/check-0/run.json'
+        receipt = ci.read_json(path)
+        receipt['run']['id'] = 999
+        write(path, receipt)
+        result = self.validate()
+        self.assertFalse(result['passed'])
+
+    def test_complete_retry_history_with_only_expected_failures_can_validate(self):
+        self.earlier_attempt()
+        result = self.validate()
+        self.assertTrue(result['passed'])
+        self.assertFalse(result['raw_passed'])
+        self.assertEqual([a['attempt'] for a in result['attempts']], [1, 2])
 
 
 if __name__ == '__main__':

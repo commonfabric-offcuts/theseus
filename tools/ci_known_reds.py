@@ -33,6 +33,7 @@ DIGEST = re.compile(r'[0-9a-f]{64}')
 PROFILE_FIELDS = ('runner_os', 'runner_arch', 'image_os', 'image_version', 'scroll_bars',
                   'reduce_motion', 'cpus', 'python', 'node', 'chrome', 'playwright')
 UNITS = ('python-units', 'node-units', 'deploy-refusals')
+PRODUCER_WORKFLOW = '.github/workflows/checks.yml'
 
 
 class Refused(Exception):
@@ -183,21 +184,53 @@ def definition_bytes(data, path):
     expression can contain comment-looking text that changes the assertion.
     Everything after the first code line remains byte-for-byte reviewed.
     """
-    if not path.endswith(('.mjs', '.py')):
+    if not path.startswith('tests/') or not path.endswith(('.mjs', '.py')) or data.startswith(b'\xef\xbb\xbf'):
         return data
     marker = b'//' if path.endswith('.mjs') else b'#'
     lines = data.splitlines(keepends=True)
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith(marker):
+            # Preserve interpreter/encoding directives, including an inactive
+            # cookie that a shifted header could move into the first two lines.
+            if line.lstrip().startswith(b'#!') or (path.endswith('.py') and re.match(br'^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+', line)):
+                return data
+        else:
+            break
     while lines and (not lines[0].strip() or lines[0].lstrip().startswith(marker)):
         lines.pop(0)
     return b''.join(lines)
 
 
 def reviewed_definitions(policy, root, commit):
+    require(definition_paths(root, commit) == definition_paths(root, policy['source_commit']),
+            'reviewed test definition changed: source set is not a complete matching plan')
     for path in policy['source_hashes']:
         reviewed = source(root, policy['source_commit'], path)
         candidate = source(root, commit, path)
         require(definition_bytes(reviewed, path) == definition_bytes(candidate, path),
                 'reviewed test definition changed: ' + path)
+
+
+@lru_cache(maxsize=4096)
+def definition_paths(root, commit):
+    tests = git(root, 'ls-tree', '-r', '--name-only', commit, 'tests').decode().splitlines()
+    tools = git(root, 'ls-tree', '-r', '--name-only', commit, 'tools').decode().splitlines()
+    return frozenset({path for path in tests if path.endswith(('.mjs', '.py'))} | set(tools) | {PRODUCER_WORKFLOW})
+
+
+def select_plan(policy, root, commit):
+    base = {k: v for k, v in policy.items() if k != 'transitions'}
+    plans = [(base, None)] + [(row['plan'], row['review']) for row in policy.get('transitions', [])]
+    matched = []
+    for plan, review in plans:
+        try:
+            reviewed_definitions(plan, root, commit)
+        except Refused:
+            continue
+        matched.append((plan, review))
+    require(bool(matched), 'reviewed test definition changed: no complete matching plan')
+    require(len(matched) == 1, 'ambiguous reviewed plans; do not combine source definitions')
+    return matched[0]
 
 
 def replay_evidence(step, out, traffic):
@@ -285,7 +318,8 @@ def unit_evidence(step, out, expected):
 
 def load_policy(policy, base_root):
     require(isinstance(policy, dict) and policy.get('version') == 1, 'unsupported baseline schema')
-    require(set(policy) == {'version', 'source_commit', 'source_hashes', 'required', 'inventory', 'reds'},
+    fields = {'version', 'source_commit', 'source_hashes', 'required', 'inventory', 'reds'}
+    require(fields <= set(policy) <= fields | {'transitions'},
             'invalid baseline fields')
     require(unique(policy['required'], 'policy required steps') == set(release_check.REQUIRED), 'incomplete reviewed steps')
     require(set(policy['inventory']) == set(NATIVE) | set(UNITS), 'incomplete reviewed check inventory')
@@ -296,6 +330,8 @@ def load_policy(policy, base_root):
     for path, digest in policy['source_hashes'].items():
         require(blob(source(base_root, policy['source_commit'], path)) == digest, 'inventory source hash differs: ' + path)
     require({s.harness for s in NATIVE.values()} <= set(policy['source_hashes']), 'inventory omits harness sources')
+    require(definition_paths(base_root, policy['source_commit']) <= set(policy['source_hashes']),
+            'reviewed source set omits test or producer definitions')
     require(isinstance(policy['reds'], list), 'invalid admissions')
     seen = set()
     for red in policy['reds']:
@@ -328,6 +364,16 @@ def load_policy(policy, base_root):
         else:
             require(red['completion'] == {'browserClosed': True, 'fixtureExitCode': 0, 'ended': True},
                     'baseline completion unattested')
+    transitions = policy.get('transitions', [])
+    require(isinstance(transitions, list), 'invalid reviewed plan transitions')
+    for row in transitions:
+        require(isinstance(row, dict) and set(row) == {'review', 'plan'}
+                and isinstance(row['review'], str) and bool(row['review'].strip()), 'transition needs its separate review')
+        require(isinstance(row['plan'], dict) and 'transitions' not in row['plan'], 'nested plan transitions forbidden')
+        load_policy(row['plan'], base_root)
+        approved = {json.dumps(red, sort_keys=True) for red in policy['reds']}
+        require({json.dumps(red, sort_keys=True) for red in row['plan']['reds']} <= approved,
+                'plan transition cannot add or change failure admissions')
     return policy
 
 
@@ -391,6 +437,69 @@ def event_binding(environ):
     return run, {'ref': base['ref'], 'sha': base['sha']}, merge_sha
 
 
+def producer_binding(path, environ):
+    """Bind protected API evidence to the workflow_run event, never to artifacts.
+
+    The protected controller authenticates the API record and independently
+    rebuilds its expected merge tree. This consumer verifies that exact record
+    against the current controller context and all original producer evidence.
+    """
+    record = read_json(path)
+    event = read_json(environ.get('GITHUB_EVENT_PATH', ''))
+    require(environ.get('GITHUB_EVENT_NAME') == 'workflow_run' and event.get('action') == 'completed',
+            '--producer requires a protected completed workflow_run controller')
+    controller = record['controller']
+    expected = {'run_id': environ['GITHUB_RUN_ID'], 'run_attempt': environ['GITHUB_RUN_ATTEMPT'],
+                'workflow_sha': environ['GITHUB_WORKFLOW_SHA'], 'workflow_ref': environ['GITHUB_WORKFLOW_REF'],
+                'sha': environ['GITHUB_SHA'], 'repository': environ['GITHUB_REPOSITORY']}
+    require(all(str(controller.get(k)) == str(value) for k, value in expected.items()), 'wrong protected controller identity')
+    repository = expected['repository']
+    default = event['repository']['default_branch']
+    require(controller['workflow_ref'].startswith(repository + '/.github/workflows/')
+            and controller['workflow_ref'].endswith('@refs/heads/' + default), 'controller workflow is not on the default branch')
+    for field in ('workflow_sha', 'sha'):
+        require(isinstance(controller[field], str) and SHA.fullmatch(controller[field]), 'invalid controller source identity')
+    producer, pr, observed = record['producer'], record['producer']['pull_request'], event['workflow_run']
+    require(str(producer['run_id']) == str(observed['id'])
+            and str(producer['run_attempt']) == str(observed['run_attempt']), 'producer is not the triggering run/attempt')
+    require(int(producer['run_attempt']) == 1, 'protected controller refuses producer retries; request a fresh producer run')
+    require(producer['event'] == observed['event'] == 'pull_request', 'producer event is not pull_request')
+    require(producer['workflow_path'] == PRODUCER_WORKFLOW and producer['workflow_name'] == observed['name'],
+            'unexpected producer workflow identity')
+    if observed.get('path') is not None:
+        require(observed['path'] == producer['workflow_path'], 'producer workflow path differs from trigger')
+    require(producer['created_at'] == observed['created_at'] and producer['head_branch'] == observed['head_branch'],
+            'producer run metadata differs from trigger')
+    require(producer['head_sha'] == observed['head_sha'] == pr['head_sha'], 'producer PR head differs from API event')
+    prs = [row for row in observed.get('pull_requests', []) if row.get('number') == pr['number']]
+    require(len(prs) == 1 and prs[0]['head']['sha'] == pr['head_sha'] and prs[0]['base']['sha'] == pr['base_sha'],
+            'producer PR base/head is not authenticated by controller event')
+    require(producer['conclusion'] == observed['conclusion'] and producer['conclusion'] in ('success', 'failure'),
+            'producer is cancelled, incomplete or has an unauthenticated conclusion')
+    merge = record['merge']
+    for value in (pr['head_sha'], pr['base_sha'], merge['sha'], merge['tree'], merge['first_parent'], merge['second_parent']):
+        require(isinstance(value, str) and SHA.fullmatch(value), 'invalid producer source identity')
+    require(merge['first_parent'] == pr['base_sha'] and merge['second_parent'] == pr['head_sha'],
+            'merge parents differ from original API base/head; request a fresh producer run')
+    require(merge.get('fetched') == merge['sha'] and merge.get('rebuilt') == merge['tree'],
+            'producer merge lacks authenticated fetch/rebuilt-tree evidence')
+    run = {'id': int(producer['run_id']), 'attempt': int(producer['run_attempt']),
+           'workflow': producer['workflow_name'], 'event': producer['event'], 'repository': repository}
+    return run, {'ref': pr['base_ref'], 'sha': pr['base_sha']}, merge['sha'], record
+
+
+def producer_workflow(receipt, record, policy, root):
+    data = receipt.get('run') or {}
+    sha = data.get('workflow_sha', receipt.get('workflow_sha'))
+    ref = data.get('workflow_ref', receipt.get('workflow_ref'))
+    require(sha in (record['merge']['sha'], record['producer']['head_sha']), 'unbound producer workflow commit')
+    expected_ref = '%s/%s@refs/pull/%s/merge' % (record['controller']['repository'], PRODUCER_WORKFLOW,
+                                               record['producer']['pull_request']['number'])
+    require(ref == expected_ref, 'unbound producer workflow reference')
+    require(source(root, sha, PRODUCER_WORKFLOW) == source(root, policy['source_commit'], PRODUCER_WORKFLOW),
+            'producer workflow blob differs from separately reviewed plan')
+
+
 def same_run(actual, expected):
     require(isinstance(actual, dict), 'missing producer run receipt')
     require(all(str(actual.get(k)) == str(v) for k, v in expected.items()), 'wrong producer run or attempt')
@@ -405,25 +514,43 @@ def plan_steps(plan):
     return result
 
 
-def validate(summary_path, provenance_path, shards, baseline, base_root, candidate_root, environ=None):
-    run, base, commit = event_binding(os.environ if environ is None else environ)
+def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root, candidate_root, environ=None, producer=None):
+    environ = os.environ if environ is None else environ
+    binding = None
+    if producer is None:
+        run, base, commit = event_binding(environ)
+    else:
+        run, base, commit, binding = producer_binding(producer, environ)
     tree = clean_checkout(candidate_root, commit)
+    expected_merge = {'sha': commit, 'tree': tree}
+    if binding is not None:
+        require(tree == binding['merge']['tree'], 'candidate tree differs from independently rebuilt producer tree')
+        parents = git(candidate_root, 'rev-list', '--parents', '-n', '1', commit).decode().split()[1:]
+        require(parents == [binding['merge']['first_parent'], binding['merge']['second_parent']], 'candidate is not the original producer merge')
+        expected_merge.update(first_parent=parents[0], second_parent=parents[1])
     clean_checkout(base_root, base['sha'])
     baseline = Path(baseline).resolve()
     relative = str(baseline.relative_to(Path(base_root).resolve()))
     require(baseline.read_bytes() == source(base_root, base['sha'], relative), 'policy differs from event base')
     for path in ('tools/ci_known_reds.py', 'tools/known_reds.py', 'tools/release_check.py'):
         require((ROOT / path).read_bytes() == source(base_root, base['sha'], path), 'validator differs from event base: ' + path)
-    policy = load_policy(read_json(baseline), base_root)
-    reviewed_definitions(policy, candidate_root, commit)
+    known = load_policy(read_json(baseline), base_root)
+    policy, transition_review = select_plan(known, candidate_root, commit)
     traffic_bytes = source(base_root, policy['source_commit'], release_check.REPLAY_FILE)
     require(source(candidate_root, commit, release_check.REPLAY_FILE) == traffic_bytes,
             'reviewed replay traffic changed')
     traffic = json.loads(traffic_bytes)
     provenance, summary = read_json(provenance_path), read_json(summary_path)
+    if binding is None and isinstance(provenance.get('merge'), dict) and 'first_parent' in provenance['merge']:
+        parents = git(candidate_root, 'rev-list', '--parents', '-n', '1', commit).decode().split()[1:]
+        require(len(parents) == 2, 'producer merge needs two authenticated parents')
+        expected_merge.update(first_parent=parents[0], second_parent=parents[1])
     same_run(provenance.get('run'), run)
     require(provenance.get('base') == base, 'wrong event base policy')
-    require(provenance.get('merge') == {'sha': commit, 'tree': tree}, 'wrong tested merge or tree')
+    require(provenance.get('merge') == expected_merge, 'wrong tested merge or tree')
+    if binding is not None:
+        require(provenance.get('head') == {'ref': binding['producer']['head_branch'], 'sha': binding['producer']['head_sha']},
+                'combined head differs from authenticated producer')
     require(provenance.get('checked') == {'commit': commit, 'tree_unchanged': True}, 'dirty combined source')
     require(unique(provenance['required'], 'provenance steps') == set(policy['required']), 'incomplete provenance')
     require(summary.get('tool') == release_check.TOOL and summary.get('commit') == commit, 'wrong combined source')
@@ -449,7 +576,12 @@ def validate(summary_path, provenance_path, shards, baseline, base_root, candida
         receipt, raw = read_json(out / 'run.json'), read_json(out / 'summary.json')
         require(not entry.get('refused') and entry.get('receipt') == receipt, 'missing or inconsistent producer receipt')
         same_run(receipt.get('run'), run)
-        require(receipt.get('base') == base and receipt.get('merge') == {'sha': commit, 'tree': tree}, 'stale shard source or base')
+        if binding is not None:
+            require(receipt.get('head') == provenance['head'], 'shard head differs from authenticated producer')
+            producer_workflow(receipt, binding, policy, candidate_root)
+        require(receipt.get('base') == base and receipt.get('merge') == expected_merge, 'stale shard source or base')
+        require(receipt.get('summary_sha256') == hashlib.sha256((out / 'summary.json').read_bytes()).hexdigest(),
+                'original summary digest differs from producer receipt')
         require(raw.get('tool') == release_check.TOOL and raw.get('commit') == commit
                 and raw.get('tree_unchanged') is True and raw.get('tree_after') == {'head': commit, 'changes': ''}, 'dirty or wrong shard source')
         index = int(artifact.split('-')[-1])
@@ -491,8 +623,74 @@ def validate(summary_path, provenance_path, shards, baseline, base_root, candida
             {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
     require(summary.get('passed') is all(s.get('passed') is True for s in combined), 'inconsistent raw aggregate verdict')
     result = classify(policy, observed, candidate_root, commit)
-    result.update(run=run, base=base, merge={'sha': commit, 'tree': tree}, raw_passed=summary['passed'],
-                  policy_sha256=hashlib.sha256(baseline.read_bytes()).hexdigest())
+    if binding is not None:
+        require(not summary['passed'] or binding['producer']['conclusion'] == 'success',
+                'producer failed outside its reported checks')
+        result.update(controller=binding['controller'], producer=binding['producer'], status_head_sha=binding['producer']['head_sha'])
+    result.update(run=run, base=base, merge=expected_merge, raw_passed=summary['passed'],
+                  policy_sha256=hashlib.sha256(baseline.read_bytes()).hexdigest(),
+                  plan_source_commit=policy['source_commit'], transition_review=transition_review)
+    return result
+
+
+def history_path(folder, value):
+    require(isinstance(value, str) and value and not Path(value).is_absolute(), 'invalid attempt history path')
+    path = (folder / value).resolve()
+    try:
+        path.relative_to(folder.resolve())
+    except ValueError:
+        raise Refused('attempt history path escapes its evidence directory')
+    return path
+
+
+def validate(summary_path, provenance_path, shards, baseline, base_root, candidate_root, environ=None, history=None, producer=None):
+    """Revalidate every attempt; a retry cannot erase an observed failure."""
+    environ = dict(os.environ if environ is None else environ)
+    require(producer is None or history is None, 'protected controller accepts only first-attempt producer evidence')
+    current = _validate_attempt(summary_path, provenance_path, shards, baseline, base_root, candidate_root, environ, producer=producer)
+    number = current['run']['attempt']
+    require(type(number) is int and number >= 1, 'invalid producer attempt number')
+    require(history is not None or number == 1, 'retry requires complete attempt history')
+    attempts = []
+    if history is not None:
+        record = read_json(history)
+        require(isinstance(record, dict), 'invalid attempt history manifest')
+        same_run(record.get('run'), current['run'])
+        require(record.get('base') == current['base'] and record.get('merge') == current['merge'],
+                'attempt history has another event base or tested merge')
+        entries = record.get('attempts')
+        require(isinstance(entries, list) and all(isinstance(row, dict) and type(row.get('attempt')) is int for row in entries),
+                'invalid attempt history entries')
+        require(sorted(row['attempt'] for row in entries) == list(range(1, number)),
+                'incomplete or duplicate attempt history')
+        folder = Path(history).resolve().parent
+        for row in sorted(entries, key=lambda item: item['attempt']):
+            prior_env = dict(environ, GITHUB_RUN_ATTEMPT=str(row['attempt']))
+            paths = [history_path(folder, row.get(name)) for name in ('summary', 'provenance', 'shards')]
+            try:
+                result = _validate_attempt(*paths, baseline, base_root, candidate_root, prior_env)
+            except (Refused, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                result = {'passed': False, 'raw_passed': False, 'refused': str(error)}
+            attempts.append(dict(result, attempt=row['attempt']))
+    attempts.append(dict(current, attempt=number))
+    result = dict(current, attempts=attempts,
+                  passed=all(item['passed'] for item in attempts),
+                  raw_passed=all(item['raw_passed'] for item in attempts))
+    for field in ('expected', 'unexpected'):
+        result[field] = [dict(case, attempt=item['attempt']) for item in attempts for case in item.get(field, [])]
+    failed = {}
+    for item in result['expected'] + result['unexpected']:
+        failed.setdefault((item['step'], key(item['case'])), set()).add(item['attempt'])
+    healed, retried = [], []
+    for item in attempts:
+        for case in item.get('healed', []):
+            row = dict(case, attempt=item['attempt'])
+            failed_at = failed.get((case['step'], key(case['case'])))
+            if failed_at:
+                retried.append(dict(row, failed_attempts=sorted(failed_at)))
+            else:
+                healed.append(row)
+    result.update(healed=healed, passed_on_retry=retried)
     return result
 
 
@@ -500,9 +698,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for option in ('summary', 'provenance', 'shards', 'baseline', 'base-checkout', 'candidate-checkout', 'out'):
         parser.add_argument('--' + option, required=True, type=Path)
+    parser.add_argument('--history', type=Path, help='trusted manifest of every earlier attempt; required on retries')
+    parser.add_argument('--producer', type=Path, help='protected controller API/event binding; first producer attempt only')
     args = parser.parse_args(argv)
     try:
-        result = validate(args.summary, args.provenance, args.shards, args.baseline, args.base_checkout, args.candidate_checkout)
+        result = validate(args.summary, args.provenance, args.shards, args.baseline, args.base_checkout, args.candidate_checkout,
+                          history=args.history, producer=args.producer)
     except (Refused, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         result = {'passed': False, 'refused': str(error)}
     args.out.write_text(json.dumps(result, indent=2) + '\n')

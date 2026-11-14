@@ -14,19 +14,101 @@ The workflow supplies the original event JSON and GitHub run environment. A retr
 must use the same event base policy, not a moving branch. Missing evidence refuses
 validation, including when every reported case passed.
 
+The protected `workflow_run` controller additionally passes `--producer
+producer.json`. That file is built from GitHub's attempt-specific API and the
+independent merge rebuild before reading candidate artifacts. It contains:
+
+```json
+{
+  "producer": {"run_id": 123, "run_attempt": 1, "event": "pull_request", "conclusion": "failure", "workflow_path": ".github/workflows/checks.yml", "workflow_name": "Checks", "head_sha": "<PR-head>", "head_branch": "feature", "created_at": "<API-created-at>", "pull_request": {"number": 6, "head_sha": "<PR-head>", "base_sha": "<original-event-base>", "base_ref": "release/live72"}},
+  "controller": {"run_id": 999, "run_attempt": 1, "workflow_sha": "<controller-workflow-sha>", "workflow_ref": "owner/repo/.github/workflows/verdict.yml@refs/heads/main", "sha": "<controller-sha>", "repository": "owner/repo"},
+  "merge": {"sha": "<original-tested-merge>", "tree": "<independently-rebuilt-tree>", "first_parent": "<original-event-base>", "second_parent": "<PR-head>", "fetched": "<original-tested-merge>", "rebuilt": "<independently-rebuilt-tree>"}
+}
+```
+
+The controller identity must match its ambient job and default-branch workflow;
+the producer run/head/base must match the triggering workflow_run event. Its
+original fetched merge, both parents and expected rebuilt tree must match the
+candidate checkout. A newer base refuses pending a fresh producer run. Producer
+receipts and combined provenance carry sha, tree, first_parent and second_parent;
+their workflow commit/ref and reviewed workflow blob are checked too. The
+returned status_head_sha is the authenticated producer PR head, never the
+controller's SHA. The current protected controller refuses producer attempts
+above 1 before reading artifacts: it must get a fresh producer run from a new
+push, and never supplies --history. Controller reruns are a separate identity.
+Constructed CLI integration tests are not a substitute for a real hosted
+controller/status check on the intended head.
+
+Every producer receipt must contain summary_sha256 matching the exact original
+summary bytes. Receipt run/attempt identity alone does not authenticate a
+different summary placed beside it.
+
+For a standalone advisory/diagnostic caller, attempt 2 or later requires
+`--history history/history.json`. This retained history interface is not used by
+the current protected controller. The manifest's paths are relative to its
+directory:
+
+```json
+{
+  "run": {"id": 123, "attempt": 2, "workflow": "Checks", "event": "pull_request", "repository": "owner/repo"},
+  "base": {"ref": "release/live72", "sha": "<original-event-base-sha>"},
+  "merge": {"sha": "<tested-merge-sha>", "tree": "<tested-tree-sha>"},
+  "attempts": [{"attempt": 1, "summary": "attempt-1/summary.json", "provenance": "attempt-1/provenance.json", "shards": "attempt-1/shards"}]
+}
+```
+
+Exactly attempts 1 through N-1 must be present once; absolute or escaping paths
+are refused. Every original attempt is revalidated using its own original
+receipts and complete evidence against the same pinned policy and source.
+Missing or refused earlier evidence keeps the run red. An earlier unexpected
+failure cannot be cleared by a later pass. Expected failures remain visible in
+the attempt union and raw_passed remains false if any attempt failed. A case
+that failed in one attempt and passed in another appears in passed_on_retry,
+with failed_attempts, rather than as a clean healed case. A retry containing
+only reviewed expected failures can validate, while retaining those failures.
+
+The controller must execute only trusted code and independently authenticate
+the producer run, original event base/head, precise tested merge/tree and
+reviewed producer workflow/helpers. Neither a candidate-controlled workflow
+nor this Python tool's self-equality checks establish that outer authority.
+The producer adapter is available; real hosted controller/status integration
+remains under joint review. This draft is not yet the required GitHub verdict.
+
 The reviewed base policy has version 1, source_commit, required (the complete
 release-check step list), source_hashes (Git blob hashes of inventory sources),
 inventory (native/unit/deploy step to check identity lists), and reds. An identity records
 name, phase, engine and expectedFailure, including null/false defaults. This is
 an explicit inventory reviewed against the harness sources, not a count or an
 attempt to parse arbitrary JavaScript names. Changing a test plan requires its
-own reviewed policy update. A candidate cannot edit its own exceptions.
+own reviewed policy update. A candidate cannot edit its own exceptions. The
+frozen source set covers both Python and mjs test definitions/helpers, the
+producer tools, and checks.yml. Product web/ and aim_next/ code remains free to
+change. Source-set additions/deletions also require a reviewed complete plan.
+
+Optional transitions contains `{review, plan}` entries. Each plan is a complete
+six-field policy snapshot (version, source_commit, source_hashes, required,
+inventory, reds), without nested transitions. Validation must select exactly
+one complete matching snapshot; partial old/new mixtures and ambiguous matches
+refuse. A transition cannot add or change failure admissions; it may retire an
+old admission. All referenced source commits must be available in the checked
+out Git history. Required-step protocol changes need a coordinated verifier
+update; source transitions do not add support for an unknown harness mode.
+
+For a legitimate feature test edit: keep the feature pending, independently
+review its exact new test definition/inventory, then merge a separate base-policy
+PR containing that complete snapshot and review reference alongside the old
+snapshot. After the feature adopts that policy base, both the old base and the
+exact reviewed new feature can validate. Retire the old snapshot after landing.
+The feature's own policy edits never authorize its definition change. Producer
+workflow/tool edits also need the protected controller's independent review.
 
 Every listed test source is compared with the candidate before classifying
 ordinary passes as well as failures. Material assertion/helper edits require
 reviewing the policy's source definition. The only automatic source equivalence
 is insertion/removal of leading blank or line-comment lines before the first
-code line; everything after that remains byte-for-byte reviewed. This allows a
+code line; everything after that remains byte-for-byte reviewed. Files with a
+shebang or Python encoding declaration use exact bytes, preserving interpreter
+and encoding semantics. Producer tools/workflows always use exact blobs. This allows a
 harmless header line shift without trying to parse JavaScript or stripping
 comment-looking text inside template literals. Other harmless edits may still
 require review: uncertainty refuses validation.
@@ -35,7 +117,7 @@ Each unit/deploy check has a reviewed identity from the archived verbose Python
 or Node TAP log. Every planned identity must execute with its reviewed
 multiplicity; nested TAP checks include their parent names. Every observed
 check must have an individual successful outcome and agree with the total.
-New passing unit checks may be added alongside the complete reviewed set;
+New passing unit checks may occur within the complete selected reviewed sources;
 substituting a new name for an omitted planned check or duplicating one refuses
 validation. There are no skip exceptions: skipped-only, partially skipped,
 expected-failure, todo or cancelled checks refuse validation.
