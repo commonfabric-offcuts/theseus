@@ -3957,7 +3957,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(async () => (await cards()) > before, 'Earlier messages reads an older page');
     }
     await until(async () => (await named())?.text === 'Siderail changes', 'with its first message loaded, the dossier keeps the typed name');
-    assert.match((await named()).title, new RegExp(`Named by ${facts.actor}`));
+    assert.match((await named()).title, /^Named by You for everyone here/, 'and says the reader named it');
     // Another page holding only the newest part shows the name too.
     const q = await open(topic + '-again', 'laptop', topic, ids.r34);
     const again = () => q.evaluate(`(s=>s?.querySelector('.stack-name')?.textContent)(document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack'))`);
