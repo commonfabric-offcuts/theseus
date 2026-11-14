@@ -101,9 +101,11 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>p.evaluate('document.body?.dataset.ready==="true" && location.search==="?workspace=w1" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
     await control({method:'read_fault',name:'workspace',status:403,body:{error:{code:'FORBIDDEN',message:'Outcome access denied'}},count:1});
     await commitElsewhere(false);
-    await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden'),'denied outcome hides its previous topic choices');
-    assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcome unavailable');
-    assert.equal(await p.evaluate('document.querySelector("#app-status").hidden'),false);
+    // The refused read hides the topics and names the outcome unavailable at once; the page says why
+    // once the commit's other read, the list of outcomes beside it, has landed too. Which of the two the
+    // server answers first varies, so the check waits for the three together.
+    await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden && document.querySelector("#topic-title").textContent==="Outcome unavailable" && !document.querySelector("#app-status").hidden'),'denied outcome hides its previous topic choices and says why');
+    assert.match(await p.evaluate('document.querySelector("#app-status").textContent'),/Outcome access denied/);
     await commitElsewhere(true);
     await until(()=>p.evaluate('!document.querySelector("#topic-navigation").hidden && document.querySelector("#app-status").hidden'),'the next commit restores the permitted outcome');
     await commitElsewhere(false);
