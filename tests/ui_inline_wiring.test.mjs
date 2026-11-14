@@ -35,7 +35,7 @@ import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
 import * as apiExports from '../web/api.mjs';
 import { showLine, lineText } from '../web/lines.mjs';
-const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
+const defer = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 // The page's own scope. Each name app.mjs imports, and each name the modules loaded here import in turn, that the scope does
 // not already hold (a fake below, a test's override, or a module imported natively above) comes from its module's own source:
 // each module once, its dependencies first, with its imports and exports taken off. A module the page newly imports is wired
@@ -376,6 +376,20 @@ test('the Reader marks discovery finished for the source it shows, through a Rep
   assert.equal(mark(),undefined,'an overtaken discovery does not mark the source');
   asked.shift().resolve({items:[],nextCursor:null});await drain();
   assert.equal(mark(),'true');
+});
+test('the Reader marks discovery finished only when every editor\'s lookup has finished, a failed one included',async()=>{
+  const f=fixture(),asked=new Map();
+  f.registry.recoveryCandidates=editor=>{const d=defer();asked.set(editor.key,d);return d.promise;};
+  f.registry.neighbors=async()=>null;f.registry.activity=()=>{};
+  Object.assign(f.reader,{show(){},paintMark(){},notice(){}});
+  const note={...f.editor,key:`${f.editor.key}-note`,kind:'note'};
+  const p={surface:'reader',source:{source_ref:{kind:'message',id:'m1'},topic_id:'t1',seq:1},editors:{reply:f.editor,note},mode:'reply'};
+  f.registry.current=p;await f.present(p);
+  const mark=()=>f.get('reader').dataset.discovered;
+  asked.get(f.editor.key).resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),undefined,'the Reply lookup alone does not finish the showing\'s discovery');
+  asked.get(note.key).reject(Error('journal read failed'));await drain();
+  assert.equal(mark(),'true','the Note lookup failing still finishes it');
 });
 test('More versions adds its page to the listed copies, and a fresh discovery replaces them',async()=>{
   const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id}),asked=[];

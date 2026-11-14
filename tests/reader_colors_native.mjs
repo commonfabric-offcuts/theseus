@@ -169,7 +169,8 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       await shot(p,'reading-colors-'+theme+'-phone-cards');
       await p.open(1);
       expect((await style('.reading-pane')).background===neutral[theme],theme+': phone Reader keeps the neutral page for the person\'s own message');
-      // The laptop steps above left an unsent copy of this reply on this device.
+      // The laptop steps above usually leave an unsent copy of this reply on this
+      // device (unless its idle save went through before the page moved on).
       // The phone Reader looks for earlier copies in the background and offers
       // one it finds, which narrows the writing field. Measure once that search
       // has finished, so the touch alone is compared. WebKit's harness turns
