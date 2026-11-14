@@ -477,36 +477,48 @@ jobs:
           import io, zipfile
           prefix = "published-%s-c" % key
           artifacts = gh("repos/%s/actions/runs/%s/artifacts?per_page=100" % (env["GITHUB_REPOSITORY"], env["GITHUB_RUN_ID"])).get("artifacts", [])
-          records = sorted([a for a in artifacts if str(a.get("name", "")).startswith(prefix) and not a.get("expired")], key=lambda a: int(a["id"]))
+          mine_all = [a for a in artifacts if str(a.get("name", "")).startswith(prefix)]
+          records = sorted([a for a in mine_all if not a.get("expired")], key=lambda a: int(a["id"]))
+          # Why a retry ends in a fresh check run instead of an update is said in the check run itself, where the person
+          # reading the pull request sees it, not only in this job's log.
+          why_fresh = None
           previous = None
+          if mine_all and not records:
+              why_fresh = "the earlier publication record of this controller run has expired"
           if records:
               try:
                   archive = subprocess.run(["gh", "api", "repos/%s/actions/artifacts/%s/zip" % (env["GITHUB_REPOSITORY"], records[-1]["id"])],
                                            capture_output=True, check=True).stdout
                   previous = json.loads(zipfile.ZipFile(io.BytesIO(archive)).read("published.json"))
               except (subprocess.CalledProcessError, zipfile.BadZipFile, KeyError, ValueError) as error:
-                  print("the earlier publication record could not be read: %s" % str(error)[:200])
+                  why_fresh = "the earlier publication record of this controller run could not be read (%s)" % type(error).__name__
           target = None
           if isinstance(previous, dict):
               bound = (previous.get("head_sha") == head and previous.get("name") == name and previous.get("external_id") == key
                        and str(previous.get("controller_run")) == env["GITHUB_RUN_ID"] and isinstance(previous.get("check_run_id"), int))
-              if bound:
+              if not bound:
+                  why_fresh = "the earlier publication record of this controller run does not bind this head, name and key"
+              else:
                   try:
                       standing = gh("repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], previous["check_run_id"]))
                       if standing.get("head_sha") == head and standing.get("name") == name and standing.get("external_id") == key:
                           target = previous["check_run_id"]
+                      else:
+                          why_fresh = "check run %s from the earlier record no longer carries this head, name and key" % previous["check_run_id"]
                   except subprocess.CalledProcessError as error:
-                      print("check run %s from the earlier record could not be read: %s" % (previous["check_run_id"], str(error.stderr or "").strip()[:200]))
-              if target is None:
-                  body["output"]["summary"] = (body["output"]["summary"] + "\nAn earlier publication by this controller run could not be recovered; this is a fresh check run.")[:60000]
+                      why_fresh = "check run %s from the earlier record could not be read" % previous["check_run_id"]
+                      print("%s: %s" % (why_fresh, str(error.stderr or "").strip()[:200]))
           result = None
           if target is not None:
               update = {k: v for k, v in body.items() if k != "head_sha"}
               try:
                   result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], target), "--input", "-", data=json.dumps(update))
               except subprocess.CalledProcessError as error:
-                  print("updating check run %s was refused (%s); creating one instead" % (target, str(error.stderr or "").strip()[:200]))
+                  why_fresh = "GitHub refused the update of check run %s" % target
+                  print("%s: %s" % (why_fresh, str(error.stderr or "").strip()[:200]))
           if result is None:
+              if why_fresh:
+                  body["output"]["summary"] = (body["output"]["summary"] + "\nFresh check run on a retry: %s." % why_fresh)[:60000]
               result = gh("-X", "POST", "repos/%s/check-runs" % env["GITHUB_REPOSITORY"], "--input", "-", data=json.dumps(body))
           json.dump({"check_run_id": result.get("id"), "head_sha": head, "name": name, "external_id": key, "base": base,
                      "controller_run": env["GITHUB_RUN_ID"], "controller_attempt": env["GITHUB_RUN_ATTEMPT"],
