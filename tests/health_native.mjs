@@ -50,7 +50,9 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     await activate(button);
     await until(async()=> (await view('health',{})).agents.find(a=>a.actor_id===agent).execution.desired==='stopped','Stop commits');
     await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(button)})?.textContent==='Continue'`),'Continue replaces Stop');
-    await p.send('Page.reload');await ready(p);
+    // The old document is ready too: the reload is waited for by a timeOrigin kept on the window.
+    const loaded=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+    await p.send('Page.reload');await until(()=>quiet(p,`document.body.dataset.ready === 'true' && (window.documentOrigin??=performance.timeOrigin) !== ${loaded}`),'the page loads again');
     await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(summary)})?.textContent.includes('stopped')`),'reload retains Stop');
     await activate(summary);
     const stopped=(await view('health',{})).agents.find(a=>a.actor_id===agent);

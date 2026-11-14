@@ -585,7 +585,9 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [ids[2]], marked: true });
       const p = await open(topic, 'new-line-reply-' + theme, theme);
       await settle(p, topic, theme + ': the line under the message marked unread');
-      const navigations = await p.evaluate('performance.getEntriesByType("navigation").length');
+      // Which document this is: a timeOrigin kept on the window (a reload has a new one). A count of
+      // navigation entries cannot tell, as every document holds exactly one.
+      const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
       // The reply stacks under the message it answers and brings that stack up (docs/topic-reading.md, "Reply stacks"); the line stays where it was,
       // under the lowest stack holding anything newer than its message, so nothing newer sits below it (docs/reply-stacks.md, "One New line"), keeping its own height.
       const lineHeight = () => p.evaluate(`document.querySelector('#messages .new-line').getBoundingClientRect().height`);
@@ -606,7 +608,7 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.ok(Math.abs(faded.height - before) <= 1, theme + `: it keeps its space (${faded.height} of ${before})`);
       assert.equal(await p.evaluate(`(()=>{const top=document.querySelector('#messages > .reply-stack');return top.dataset.stack===${JSON.stringify(ids[2])}&&top.contains(document.querySelector('#messages [data-id="${reply}"]'))&&Boolean(top.compareDocumentPosition(document.querySelector('#messages .new-line'))&Node.DOCUMENT_POSITION_FOLLOWING)})()`), true, theme + ': the reply is in its message\'s stack, brought up above the line');
       assert.equal(await unread(topic), null, theme + ': the reply, the person\'s own, holds nothing');
-      assert.equal(await p.evaluate('performance.getEntriesByType("navigation").length'), navigations, theme + ': no reload');
+      assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'), loaded, theme + ': no reload');
       assert.equal(await p.evaluate("document.querySelector('#refresh')"), null, theme + ': and no Refresh to press');
       await shot(p, 'new-line-' + theme + '-replied');
       // The fade is a short transition; asked for reduced motion, none.
