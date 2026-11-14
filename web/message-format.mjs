@@ -157,8 +157,7 @@ export function sourcePosition(node, offset, end = false) {
 
 // ---- Blocks
 
-const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})[ \t]*(.*)$/;
-const FENCE_CLOSE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const HEADING = /^ {0,3}(#{1,6})[ \t]+/;
 const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
@@ -169,19 +168,28 @@ const DASHES = /^:?-+:?$/;
 // A quote in a quote nests this deep; deeper, its words are a paragraph.
 const MAX_QUOTE_DEPTH = 8;
 
-// A fence's marker and language, or null: a backtick fence's info has no backtick.
+// A matching run at line end closes a fence, either on its own or immediately
+// after its payload. Scan backwards once, so even long unmatched runs are linear.
+function fenceEnd(text, fence, after = 0) {
+  let end = text.length;
+  while (end > after && (text[end - 1] === ' ' || text[end - 1] === '\t')) end--;
+  let at = end;
+  while (at > after && text[at - 1] === fence.marker) at--;
+  return end - at >= fence.length ? at : -1;
+}
+
+// At block-line start, a same-line pair is literal fenced text. Otherwise the
+// opener's remainder is conventional info, except an address is always payload.
 function fenceOpen(text) {
   const match = FENCE_OPEN.exec(text);
   if (!match) return null;
-  const info = match[2].trim();
+  const info = match[2].trim(), after = match[0].length - match[2].length;
+  const fence = { marker: match[1][0], length: match[1].length, after, info };
+  const end = fenceEnd(text, fence, after);
+  if (end >= 0) return { ...fence, end, payloadAt: after, lang: '' };
   if (match[1][0] === '`' && info.includes('`')) return null;
-  const payloadAt = /^https?:\/\//i.test(info) ? text.indexOf(info) : null;
-  return { marker: match[1][0], length: match[1].length, payloadAt, lang: payloadAt !== null ? '' : /^[\w.+-]{0,40}/.exec(info.split(/\s/, 1)[0])[0] };
-}
-// Only a line of the same marker, at least as long, with nothing after it, closes a fence.
-function fenceCloses(text, fence) {
-  const match = FENCE_CLOSE.exec(text);
-  return !!match && match[1][0] === fence.marker && match[1].length >= fence.length;
+  const payloadAt = /https?:\/\//i.test(info) ? after : null;
+  return { ...fence, end: -1, payloadAt, lang: payloadAt !== null ? '' : /^[\w.+-]{0,40}/.exec(info.split(/\s/, 1)[0])[0] };
 }
 
 // A table row's cells, without the outer bars; an escaped bar stays in its cell.
@@ -265,9 +273,25 @@ function blocksOf(m, partial, depth, meter) {
     if (blank(line)) { i++; continue; }
     const fence = fenceOpen(line.text);
     if (fence) {
+      if (fence.end >= 0) {
+        blocks.push({ kind: 'code', fenced: true, complete: !partial || i < n - 1, lang: '', ...span(i, i), words: m.slice(line.s + fence.after, line.s + fence.end) });
+        i++; continue;
+      }
       let j = i + 1;
-      while (j < n && !fenceCloses(lines[j].text, fence)) tick(meter, lines[j++].text.length + 1);
-      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: fence.lang, ...span(i, Math.min(j, n - 1)), words: fence.payloadAt !== null ? m.slice(line.s + fence.payloadAt, lines[j - 1].e) : words(i + 1, j - 1) });
+      let end = -1;
+      while (j < n) {
+        tick(meter, lines[j].text.length + 1);
+        end = fenceEnd(lines[j].text, fence);
+        if (end >= 0) break;
+        j++;
+      }
+      const ownLine = end >= 0 && !lines[j].text.slice(0, end).trim();
+      // With no payload line, opening text is the payload: ```words\n```.
+      // A blank payload line still keeps conventional info: ```py\n\n```.
+      const payloadAt = fence.payloadAt ?? (ownLine && j === i + 1 && fence.info ? fence.after : null);
+      const from = payloadAt !== null ? line.s + payloadAt : (lines[i + 1]?.s ?? line.e);
+      const to = end < 0 ? m.text.length : ownLine ? lines[j - 1].e : lines[j].s + end;
+      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: payloadAt !== null ? '' : fence.lang, ...span(i, Math.min(j, n - 1)), words: m.slice(from, to) });
       i = j + 1; continue;
     }
     if (boxStart(lines, i)) {

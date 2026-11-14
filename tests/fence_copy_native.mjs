@@ -245,6 +245,43 @@ try {
       assert.equal(await p.locator('.deck-writing .fence-copy').count(), 0);
     });
 
+    await check('all four newline arrangements display and copy exact fenced text on every surface', async () => {
+      const words = 'hixie https://discord.com/channels/1232452732963655720/1539479395180482660/1570832909391106141';
+      const forms = ['', '\n'].flatMap(first => ['', '\n'].map(last => '```' + first + words + last + '```'));
+      const all = forms.map((form, i) => `## reply ${i + 1}\n${form}`).join('\n\n'), id = 'fence-arrangements-' + engine;
+      await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Fence arrangements', body: all });
+      const topicId = (await control({ method: 'agent_message', operation_id: id + '-topic', topic_id: 'fence-topic', source: 'topic', body: all })).result.message_id;
+      const conversationId = (await control({ method: 'agent_message', operation_id: id + '-conversation', topic_id: conversation.topic_id, source: 'topic', body: all, whole_topic: true })).result.message_id;
+      for (const phone of [false, true]) {
+        const surfaces = [
+          ['/?topic=fence-topic', query(topicId)],
+          ['/?conversation=w1', query(conversationId)],
+          ['/?topic=fence-topic&message=' + topicId, '#source-body'],
+          ['/?cards=' + id, '.deck-page'],
+          ['/?topic=t1&page=' + id + '&revision=1', '#source-body'],
+          ['/?workspace=w1&page=' + id + '&revision=1', '.page-here-body'],
+        ];
+        for (const [route, scope] of surfaces) {
+          const p = await open(route, { phone, dark: true, width: 320 });
+          await p.locator(scope + ' .fence-copy').first().waitFor();
+          assert.equal(await p.locator(scope + ' .fence-copy').count(), 4, route);
+          for (let i = 0; i < forms.length; i++) {
+            const fence = p.locator(scope + ' .md-fence').nth(i);
+            assert.equal(await fence.locator('.md-pre').textContent(), words);
+            await fence.locator('.fence-copy').evaluate((button, i) => { button.id = 'copy-arrangement-' + i; }, i);
+            await copy(p, '#copy-arrangement-' + i, words);
+          }
+          assert.equal(await p.locator('.deck-writing').count(), 0);
+          if (scope === '#source-body') {
+            const field = p.locator('#writing-body'); await field.focus(); await p.keyboard.press('Meta+V');
+            await wait(p, words => document.querySelector('#writing-body').value === words, words);
+          }
+          assert.deepEqual(p.errors, []);
+          if (route.startsWith('/?cards')) await picture(p, 'newline-arrangements-' + (phone ? 'phone' : 'desktop'));
+          await p.close();
+        }
+      }
+    });
     await check('glyph, same-line URL, own-message contrast and narrow nested quotes', async () => {
       const url = 'https://discord.com/channels/1232452732963655720/1539479395180482660/1570832909391106141';
       const id = `fence-url-${engine}`;

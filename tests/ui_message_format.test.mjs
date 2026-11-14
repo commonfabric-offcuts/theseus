@@ -784,3 +784,51 @@ test('a URL written directly after a fence opener stays visible and copyable, in
   }
   assert.equal(byClass(render('```javascript\nconst x = 1;\n```'), 'md-pre')[0].textContent, 'const x = 1;');
 });
+
+test('fenced text stays visible and copyable in all four newline arrangements', () => {
+  for (const payload of ['hixie https://discord.com/channels/123/456/789', 'two words', 'hixie']) {
+    for (const marker of ['```', '~~~~']) for (const first of ['', '\n']) for (const last of ['', '\n']) {
+      for (const quote of ['', '> ']) for (const eol of ['\n', '\r\n']) {
+        const raw = marker + first + payload + last + marker;
+        const body = raw.split('\n').map(line => quote + line).join(eol);
+        const host = render(body, { copyFences: true }), blocks = format.parseBlocks(body);
+        const code = byClass(host, 'md-pre')[0];
+        assert.equal(code?.textContent, payload, JSON.stringify(body));
+        assert.equal(byClass(host, 'fence-copy').length, 1, JSON.stringify(body));
+        assert.equal(host.textContent, payload, 'neither delimiter nor control labels enter copied text');
+        const block = quote ? blocks[0].blocks[0] : blocks[0];
+        for (let k = 0; k < payload.length; k++) assert.equal(body[block.words.pos(k)], payload[k], 'each character retains its source position');
+        const text = code.childNodes[0];
+        assert.equal(format.sourcePosition(text, 0), 0, 'whole selection includes opening fence/quote');
+        assert.equal(format.sourcePosition(text, payload.length, true), body.length, 'whole selection includes closing fence');
+        assert.equal(byClass(render(body, { copyFences: true, partial: true }), 'fence-copy').length, 0, 'an excerpt may cut the closing line');
+        assert.equal(byClass(render(body + eol, { copyFences: true, partial: true }), 'fence-copy').length, 1, 'terminated closer proves completeness');
+      }
+    }
+  }
+});
+
+test('compact fence boundaries preserve whitespace, language info, longer delimiters and following prose', () => {
+  const cases = [
+    ['```  two words  ```\nafter', '  two words  ', ''],
+    ['```\n  two words  ```\nafter', '  two words  ', ''],
+    ['```py title\nx```\nafter', 'x', 'py'],
+    ['```python\n```', 'python', ''],
+    ['```python\n\n```', '', 'python'],
+    ['```hixie https://example.com\nmore\n```', 'hixie https://example.com\nmore', ''],
+    ['````two ``` literal````', 'two ``` literal', ''],
+    ['````\ntwo```\nend````', 'two```\nend', ''],
+    ['~~~\ntwo```\nend~~~', 'two```\nend', ''],
+    ['```\ntwo```suffix\nend```', 'two```suffix\nend', ''],
+  ];
+  for (const [body, expected, lang] of cases) {
+    const host = render(body, { copyFences: true });
+    const block = byClass(host, 'md-pre')[0];
+    assert.equal(block?.textContent, expected, body);
+    assert.equal(block.dataset.lang ?? '', lang, body);
+    if (body.endsWith('\nafter')) assert.deepEqual(texts(byClass(host, 'md-p')), ['after']);
+  }
+  for (const body of ['```code``` here\nmore', 'before ```code```', '`code`', '``code``']) {
+    assert.equal(byClass(render(body, { copyFences: true }), 'fence-copy').length, 0, body);
+  }
+});

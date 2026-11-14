@@ -50,7 +50,7 @@ after implementation too.
    the control as a sibling outside the horizontal scroller. Reserve a small
    control lane so no payload is covered and hover never changes geometry.
    No innerHTML. Buttons have no DOM text: aria-label names the action and
-   state, CSS pseudo-content draws Copy/Copied/Copy failed, and live feedback
+  state, SVG paths draw copy/check/failure glyphs, and live feedback
    lives outside rendered words. Thus DeckPage.placeOf inputs (.textContent
    and Range.toString) keep their existing content. Test this in both engines,
    including clicking to edit words AFTER a fence before and after copying.
@@ -153,3 +153,31 @@ deferral protects destructive paints through the native click. Round 2: PASS, no
 - The button has an accessible name and tooltip, no textual DOM descendants,
   and copy/check/failure glyphs. Clipboard state remains separately testable;
   controls never become part of native Copy or Notebook cursor mapping.
+
+## Newline placement in fences
+
+Tony's second preview showed three related cases: a one-line triple-backtick
+pair had no Copy, a closing fence attached to the payload remained visible,
+and `hixie URL` on the opening line disappeared when the closer was on the
+next line. The parser now accepts a matching terminal closing run on the
+opening line or after payload on a later line. All four arrangements of the
+line breaks immediately after/before the fences display and copy the payload.
+Trailing payload spaces remain; only a separate closing line loses its
+separating newline. Shorter marker runs inside longer fences remain literal.
+Single/double inline backticks and a compact pair followed by prose retain
+their inline behavior.
+
+Normal multiline info (including `py title`) remains metadata when a payload
+line follows. An opening remainder containing an HTTP(S) URL is payload, also
+when more lines follow. When a nonempty opening remainder is followed
+immediately by a standalone closer, the remainder is payload: `python` in
+that shape is displayed, not an invisible empty language block. An explicit
+blank payload line keeps an intentionally empty language block. This bounded
+ambiguity is intentional so one-word fenced text does not disappear.
+
+The red team rejected treating every multiword opening remainder as payload
+because it would break existing language/info syntax. The bounded rule above
+passed review before implementation. Node tests cover all four arrangements
+for arbitrary text and URLs, quotes, CRLF, whitespace, language metadata,
+empty blocks, source positions and partial excerpts. Browser checks exercise
+the reported arrangements in every requested surface, on desktop and touch.
