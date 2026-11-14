@@ -169,6 +169,10 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       await shot(p,'reading-colors-'+theme+'-phone-cards');
       await p.open(1);
       expect((await style('.reading-pane')).background===neutral[theme],theme+': phone Reader keeps the neutral page for the person\'s own message');
+      // The laptop steps above left an unsent copy of this reply, and the phone
+      // Reader offers it once background discovery lands, which narrows the
+      // writing field. Measure after that, so the touch alone is compared.
+      await until(()=>p.evaluate("!document.querySelector('#review-versions').hidden"),'the earlier writing is offered for review');
       const phoneBefore=await geometry(),phoneWriting=await field(p),sourceBox=await p.box('#source-body');
       const touch={x:sourceBox.x+10,y:sourceBox.y+10};
       await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[touch]});
