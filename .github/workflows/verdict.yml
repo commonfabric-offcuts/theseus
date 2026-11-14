@@ -395,13 +395,24 @@ jobs:
     if: always() && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04  # the judge's image, so one pin moves both
     timeout-minutes: 5
+    # The verdict environment holds the Theseus Verdict App's key, and it opens only to this default branch, so a
+    # workflow on any other branch of this repository cannot mint the App's token and post a check in its name.
+    environment: verdict
     permissions:
-      checks: write
       # The freshness read, GitHub's record of the producer's runs for the head, is an authenticated Actions read.
+      # The check run itself is written with the App's token, never this workflow's: no checks permission here.
       actions: read
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - id: app
+        # The App's installation token, minted from the environment's key: the check run below is the App's own.
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.VERDICT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.VERDICT_APP_PRIVATE_KEY }}
+          # The installation grants more than this job uses; the token is cut to the check-run calls alone.
+          permission-checks: write
       - id: record
         # The record judge uploaded, by its id: the one from this run's judge, whichever controller attempt ran it.
         if: needs.judge.outputs.record_id != ''
@@ -415,6 +426,10 @@ jobs:
       - name: The check run on the pull request's head
         shell: bash
         env:
+          # The Actions reads (the producer's runs for the head, this run's artifacts, the record) go out with the
+          # job's token; every check-run call, the read of the standing check and the PATCH or POST, with the App's.
+          GH_TOKEN: ${{ github.token }}
+          VERDICT_TOKEN: ${{ steps.app.outputs.token }}
           JUDGE_HEAD: ${{ needs.judge.outputs.head_sha }}
           JUDGE_BASE: ${{ needs.judge.outputs.base_ref }}
           JUDGE_CONCLUSION: ${{ needs.judge.outputs.conclusion }}
@@ -459,9 +474,11 @@ jobs:
                                      env.get("JUDGE_RESULT"), env.get("JUDGE_DECIDED") or "no", env.get("RECORD_FOUND"),
                                      env["PRODUCER_RUN"], env["PRODUCER_ATTEMPT"], env["GITHUB_RUN_ID"], env["GITHUB_RUN_ATTEMPT"], env.get("GITHUB_WORKFLOW_SHA"))}}
           body["output"]["summary"] = (body["output"]["summary"] + "\nPublished by controller run %s attempt %s." % (env["GITHUB_RUN_ID"], env["GITHUB_RUN_ATTEMPT"]))[:60000]
-          def gh(*args, data=None):
+          def gh(*args, data=None, token=None):
               cmd = ["gh", "api"] + list(args)
-              return json.loads(subprocess.run(cmd, input=data, capture_output=True, text=True, check=True).stdout)
+              run_env = dict(os.environ, GH_TOKEN=token) if token else None
+              return json.loads(subprocess.run(cmd, input=data, capture_output=True, text=True, check=True, env=run_env).stdout)
+          verdict_token = env["VERDICT_TOKEN"]
           # One authoritative Verdict per head and base, decided from GitHub's own record of the producer's runs for
           # this head, never from check-run data, which any workflow in the repository can write: a newer producer run
           # for the same base, or a newer attempt of this one, means this decision is stale and is not published. A
@@ -523,7 +540,7 @@ jobs:
                       attempt_of(records[-1]), re.sub(r"\s+", " ", str(previous.get("controller_attempt")))[:20])
               else:
                   try:
-                      standing = gh("repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], previous["check_run_id"]))
+                      standing = gh("repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], previous["check_run_id"]), token=verdict_token)
                       if standing.get("head_sha") == head and standing.get("name") == name and standing.get("external_id") == key:
                           target = previous["check_run_id"]
                       else:
@@ -535,14 +552,14 @@ jobs:
           if target is not None:
               update = {k: v for k, v in body.items() if k != "head_sha"}
               try:
-                  result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], target), "--input", "-", data=json.dumps(update))
+                  result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], target), "--input", "-", data=json.dumps(update), token=verdict_token)
               except subprocess.CalledProcessError as error:
                   why_fresh = "GitHub refused the update of check run %s" % target
                   print("%s: %s" % (why_fresh, str(error.stderr or "").strip()[:200]))
           if result is None:
               if why_fresh:
                   body["output"]["summary"] = (body["output"]["summary"] + "\nFresh check run on a retry: %s." % why_fresh)[:60000]
-              result = gh("-X", "POST", "repos/%s/check-runs" % env["GITHUB_REPOSITORY"], "--input", "-", data=json.dumps(body))
+              result = gh("-X", "POST", "repos/%s/check-runs" % env["GITHUB_REPOSITORY"], "--input", "-", data=json.dumps(body), token=verdict_token)
           json.dump({"check_run_id": result.get("id"), "head_sha": head, "name": name, "external_id": key, "base": base,
                      "controller_run": env["GITHUB_RUN_ID"], "controller_attempt": env["GITHUB_RUN_ATTEMPT"],
                      "producer_run": env["PRODUCER_RUN"], "producer_attempt": env["PRODUCER_ATTEMPT"]}, open("published.json", "w"), indent=1)
