@@ -132,10 +132,20 @@ try {
     clearTimeout(waiter.timer);
     if (packet.error) waiter.reject(Object.assign(Error(JSON.stringify(packet.error)), { cdp: packet.error })); else waiter.resolve(packet.result);
   });
+  // A screenshot is answered once the browser has drawn the page's next frame,
+  // and that frame waits on the GPU process. On a busy runner the GPU can stall
+  // for longer than ten seconds and the frame still comes, so a screenshot waits
+  // for its answer and no clock fails it; every other command keeps its ten
+  // seconds. A browser that goes away ends every wait: the connection closing
+  // rejects whatever is unanswered.
+  socket.addEventListener('close', () => {
+    for (const [id, waiter] of waiting) { waiting.delete(id); clearTimeout(waiter.timer); waiter.reject(Error(`CDP connection closed: ${waiter.method}`)); }
+  });
   cdp = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+    if (socket.readyState !== WebSocket.OPEN) { reject(Error(`CDP connection closed: ${method}`)); return; }
     const id = ++serial;
-    const timer = setTimeout(() => { waiting.delete(id); reject(Error(`CDP timed out: ${method}`)); }, 10000);
-    waiting.set(id, { resolve, reject, timer });
+    const timer = method === 'Page.captureScreenshot' ? undefined : setTimeout(() => { waiting.delete(id); reject(Error(`CDP timed out: ${method}`)); }, 10000);
+    waiting.set(id, { resolve, reject, timer, method });
     socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
   let recoveryContext;
