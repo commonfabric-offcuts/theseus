@@ -395,13 +395,22 @@ jobs:
     if: always() && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04  # the judge's image, so one pin moves both
     timeout-minutes: 5
+    # The verdict environment holds the Theseus Verdict App's key, and it opens only to this default branch, so a
+    # workflow on any other branch of this repository cannot mint the App's token and post a check in its name.
+    environment: verdict
     permissions:
-      checks: write
       # The freshness read, GitHub's record of the producer's runs for the head, is an authenticated Actions read.
+      # The check run itself is written with the App's token, never this workflow's: no checks permission here.
       actions: read
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - id: app
+        # The App's installation token, minted from the environment's key: the check run below is the App's own.
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.VERDICT_APP_ID }}
+          private-key: ${{ secrets.VERDICT_APP_PRIVATE_KEY }}
       - id: record
         # The record judge uploaded, by its id: the one from this run's judge, whichever controller attempt ran it.
         if: needs.judge.outputs.record_id != ''
@@ -415,6 +424,8 @@ jobs:
       - name: The check run on the pull request's head
         shell: bash
         env:
+          # The App's token writes the check run; the job's own token stays for the Actions reads.
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           JUDGE_HEAD: ${{ needs.judge.outputs.head_sha }}
           JUDGE_BASE: ${{ needs.judge.outputs.base_ref }}
           JUDGE_CONCLUSION: ${{ needs.judge.outputs.conclusion }}
