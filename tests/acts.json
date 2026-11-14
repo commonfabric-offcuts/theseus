@@ -11642,6 +11642,36 @@
    "check": {
     "node": "tests/ui_stack_position.test.mjs"
    }
+  },
+  {
+   "item": 470,
+   "act": "A name typed in that matches a reply's shown first line names the dossier; the first line stands without one only on the first message itself",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     " && (item.id === stack.head.id || !edited)) { this.focusOn(stack.id); return; }",
+     ") { this.focusOn(stack.id); return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "name typed while a dossier's first message is not loaded"
+   }
+  },
+  {
+   "item": 470,
+   "act": "The rename field opened on a reply showing as the head and left untouched records no name",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     " && (item.id === stack.head.id || !edited)) { this.focusOn(stack.id); return; }",
+     " && item.id === stack.head.id) { this.focusOn(stack.id); return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "name typed while a dossier's first message is not loaded"
+   }
   }
  ]
 }

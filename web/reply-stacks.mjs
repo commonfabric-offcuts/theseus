@@ -377,8 +377,11 @@ function renameField(section, stack, head, { state, doc }) {
   const field = element(doc, 'div', 'stack-rename'), input = element(doc, 'input', 'stack-rename-input'), hint = element(doc, 'span', 'stack-rename-hint', 'Return saves · Esc cancels');
   input.type = 'text'; input.value = head.name; input.maxLength = 200;
   input.setAttribute('aria-label', 'Short name for this stack, for everyone here; empty gives back its first line');
-  let done = false;
-  const finish = save => { if (done) return; done = true; state.renaming = null; p.rename = null; field.remove(); save ? state.on?.renamed?.(stack, input.value) : state.on?.cancelled?.(stack); };
+  // edited: the person typed in it, so what it saves is theirs, though it
+  // read the same when it opened (item 470).
+  let done = false, edited = false;
+  input.addEventListener('input', () => { edited = true; });
+  const finish = save => { if (done) return; done = true; state.renaming = null; p.rename = null; field.remove(); save ? state.on?.renamed?.(stack, input.value, { edited }) : state.on?.cancelled?.(stack); };
   input.addEventListener('keydown', event => {
     if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); finish(true); }
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }

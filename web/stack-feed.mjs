@@ -135,7 +135,7 @@ export class StackFeed {
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
-      more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
+      more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
@@ -325,13 +325,14 @@ export class StackFeed {
   }
   // A name is the dossier's: it goes on its first message, loaded or not
   // (item 470), fenced on the name Core holds there. A page whose Core sends no
-  // positions names the head it shows.
-  rename(stack, text) {
+  // positions names the head it shows. edited: the person typed the name; the
+  // first line shown stands without one only where it is the first message's.
+  rename(stack, text, { edited = true } = {}) {
     const item = this.rootOf(stack)?.item ?? this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
     const name = String(text ?? '').replace(/\s+/g, ' ').trim();
     this.arrange();
     // Unchanged, or the first line it is named by already: nothing to record.
-    if (name === typed || !typed && name === firstLine(stack.head.body)) { this.focusOn(stack.id); return; }
+    if (name === typed || !typed && name === firstLine(stack.head.body) && (item.id === stack.head.id || !edited)) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);

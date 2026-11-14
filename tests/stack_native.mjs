@@ -3967,6 +3967,21 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.key('z', 4);
     await until(async () => (await actsOf(topic, ids.root))?.name === null, '⌘Z clears the dossier\'s name in Core');
     await until(async () => (await again()) !== 'Siderail changes', 'and the other page no longer shows it');
+    // On the page holding only replies, the field opened and left untouched records nothing, and the
+    // shown reply's first line, typed in, names the dossier: the first message loaded shows it.
+    const shownLine = await again(), qHead = await q.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
+    const qPen = `#messages .reply-stack[data-stack="${qHead}"] .stack-pen`;
+    const qOpen = async what => { await centre(q, qPen); await q.point(qPen); await until(() => q.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), what); };
+    await qOpen('the reply showing as the head opens to rename');
+    await q.key('Enter');
+    await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Return closes the untouched field');
+    await qOpen('it opens again');
+    await q.evaluate(`document.activeElement.select()`);
+    await q.send('Input.insertText', { text: shownLine });
+    await q.key('Enter');
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === shownLine, `the shown first line typed in names the dossier (${shownLine})`);
+    assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 1, 'the untouched field sent no name');
+    await until(async () => (await named())?.text === shownLine, 'the page holding the first message shows the typed name');
     assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
     await q.close(); await p.close();
   });
