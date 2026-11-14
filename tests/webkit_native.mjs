@@ -13,6 +13,7 @@
 // playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
 import assert from 'node:assert/strict';
 import { reachWith } from './compose-reach.mjs';
+import { FELL } from './press-fell.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
@@ -86,7 +87,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
-  'tests/stack_native.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
+  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
@@ -206,18 +207,25 @@ try {
       const now = await box(selector), same = Boolean(last) && ['x', 'y', 'width', 'height'].every(key => now?.[key] === last[key]);
       last = now; return !now || same;
     }, `${selector} holds its place`); };
-    // As in the Chrome harness: a pointer action lands on its target or fails by naming what covers it.
+    // As in the Chrome harness: a pointer action lands on its target or fails by naming what covers it, or, when
+    // the target moved between the hit-test and the press, where the press fell (FELL).
     const point = async (selector, kind = 'click', { covered = false } = {}) => {
       if (kind === 'click' && !covered && await reach(selector)) return;
       await still(selector);
       const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);
       assert.ok(x >= 0 && y >= 0 && x < bounds.viewportWidth && y < bounds.viewportHeight, `target ${selector} is inside the viewport before a native pointer action`);
-      const hit = await evaluate(`(target => { const hit = document.elementFromPoint(${x}, ${y}); return target?.contains(hit) ? '' : hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing'; })(document.querySelector(${JSON.stringify(selector)}))`);
+      const watch = kind === 'click' && !covered;
+      const hit = await evaluate(`(target => { const hit = document.elementFromPoint(${x}, ${y}); if (target?.contains(hit)) { ${watch ? FELL.watch(selector) : ''} return ''; } return hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing'; })(document.querySelector(${JSON.stringify(selector)}))`);
       if (covered) assert.notEqual(hit, '', `${selector} was meant to be covered at the point pressed`);
       else assert.equal(hit, '', `${selector} is covered by ${hit} where it would be pressed`);
       await pw.mouse.move(x, y);
-      if (kind === 'click') { await pw.mouse.down(); await pw.mouse.up(); }
+      if (kind === 'click') {
+        await pw.mouse.down();
+        const fell = watch ? await evaluate(FELL.read) : '';
+        await pw.mouse.up();
+        if (fell) assert.fail(`${selector} moved between the hit-test and the press: the press fell on ${fell}`);
+      }
     };
     // A control the composer or the ⋯ keeps out of sight is reached first, as a person does (compose-reach.mjs).
     const reach = reachWith({ evaluate, point: selector => point(selector), until });

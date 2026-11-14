@@ -28,6 +28,19 @@ Use it as your loop:
 4. `aim-next ack DELIVERY` to settle the delivery.
 5. Run `watch --once` again.
 
+When the line starts `correction`, a person edited a message you were sent:
+
+```sh
+$ aim-next watch --once
+correction "Release notes" #43 owner edited m-5c0… to revision 2: Can you check the second draft?  [d-7e2… in t-9a7…]
+```
+
+A correction is not a new ask, Tell or reply. Read the message again
+(`read TOPIC` shows it "(edited, revision 2)"), act on its latest words
+rather than the ones you had, then `ack` the correction's own delivery id.
+Reading, `read-through` and a 👍 leave it waiting; only its `ack` settles it,
+or a newer correction of the same message ([message-edit.md](message-edit.md)).
+
 A delivery stays waiting until you acknowledge it, so if you stop, crash or
 lose the line before step 4, the next `watch --once` prints the same
 delivery again. Nothing is lost by stopping. Acknowledging says only that you

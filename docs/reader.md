@@ -90,9 +90,23 @@ In, adopting a saved version, its access checked) is no move: the composer,
 an open panel, the focus and the place in the message stay as they were, so
 a phone's keyboard or panel stays up. Writing left in one message's reply is
 kept when the Reader moves to the next, and the notice says "Your reply to
-the last one is kept". After Quote, the quoted passage is scrolled to just
-above the reply, and kept there while the reply and the keyboard change the
-message's room, until the message is scrolled. On a phone the ❝ Quote pill
+the last one is kept". Quoting keeps your place: the quote lands at the
+end of the reply with the cursor after it, as it always has, and the message
+does not move, so the words quoted stay where they were on screen and the
+topic page behind the Reader stays where it was. What is kept in sight is the
+words quoted, as much of them as showed, not the whole passage they are in: a
+code block, a table, a quote or a list item is one passage, and an agent's
+log can be taller than the screen, so a line quoted from near its end, or from
+the middle of a block that runs past both edges, stays where it was. Only
+where the reply opening, or the keyboard coming up, would cover the words does
+the message move, the least that shows them just above the reply, or, when
+they are taller than the room left, that fills it with them from where they
+start. Words quoted from out of sight (from the ⋯, say) come into sight the
+same least way: from below, their end just above the reply; from above, their
+start at the top (their end at the bottom when they are taller than the
+room). So they stay while the reply and the keyboard change the message's
+room, until the message is scrolled; a message scrolled to its end is not
+pulled down as the reply grows with the quote. On a phone the ❝ Quote pill
 takes what is selected as the finger presses it, since the press itself can
 let the selection go.
 
@@ -291,6 +305,27 @@ counting where that part is; on a phone again with the keyboard up. At
 844×390 with touch, a phone turned sideways, the same states hold only that,
 as the keyboard comes up, neither the Reader nor the sheet scrolls and the
 Reader's header stays at its top.
+
+"quoting keeps your place" (`native-compose`, at 390×844 with touch and at
+1280×800 stacked and wide, in both engines) selects words in a passage a third
+of the way down what shows, by a mouse's drag on a laptop, and quotes them by
+Return while reading and again while writing (on the phone by the ❝ pill as
+well): each time the passage's top stays within two pixels, the topic page
+behind the Reader is where it was, the quote is exactly what it always added,
+and the cursor sits after it with the field showing it. Return with nothing
+chosen quotes nothing and moves nothing, on the message and in the writing
+(a new line there); and words the opening reply would cover end just above
+it. "quoting from a passage taller than what shows" (the same shapes and
+engines) quotes from an agent's 70-line log in a code block: words from near
+the top of what shows to near its bottom as the reply opens and, on the
+phone, the keyboard comes up (they fill the room left, their start on the
+screen); a line near the log's end with its top above the screen, the
+message scrolled to its end; a line in the log running past both edges, the
+keyboard then coming up on the phone; on a laptop the log lit whole by a
+press. Each time what showed of the words moves only as far as the reply or
+keyboard covers it, within two pixels. A line quoted from above what shows
+comes into sight at its top, and words taller than the screen quoted from
+above it come into sight with their end at its bottom.
 
 `tests/reader_compose_native.mjs` runs in Chrome for Testing and in
 Playwright's WebKit at 390×844 with touch, and at 1280×800 stacked and wide,

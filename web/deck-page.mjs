@@ -1,5 +1,6 @@
 import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
+import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
@@ -342,6 +343,7 @@ export class DeckPage {
   // and keyCode 229.
   key(event) {
     if (this.host.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+    if (event.target.closest?.('.fence-copy')) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
     // A card's box keeps every key but these: Escape finishes the card, and ⌘Return finishes it and opens a new card
     // below it; Tab, ⇧Tab, ⌘↑ and ⌘↓ move it as they move a picked card; ↑ at the box's very start or ↓ at its very
@@ -780,7 +782,7 @@ export class DeckPage {
     const card = textCard(asking.text), row = this.node('li', 'deck-card deck-asking');
     row.style.setProperty('--depth', String(asking.depth));
     row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'),
-      formatWords(this.node('div', 'deck-words'), cardStacks(card.words, messageOf).words), asking.form);
+      formatWords(this.node('div', 'deck-words'), cardStacks(card.words, messageOf).words, { copyFences: true }), asking.form);
     return row;
   }
 
@@ -792,9 +794,10 @@ export class DeckPage {
   }
 
   paint() {
+    if (deferFencePaint(this.host, () => this.paint())) return;
     const { cards, opening } = this.deck, editing = this.editing, asking = this.asking;
     this.opening.hidden = !/\S/.test(opening);
-    if (!this.opening.hidden) formatWords(this.opening, opening.trim());
+    if (!this.opening.hidden) formatWords(this.opening, opening.trim(), { copyFences: true });
     // A card under a folded one is drawn hidden, so the rows stand where their cards do; a phone shows a child's
     // parent above it, since it shows one card at a time.
     const { shown, parents } = this.layout();
@@ -807,7 +810,7 @@ export class DeckPage {
       row.hidden = !shown[index];
       row.style.setProperty('--depth', String(card.depth));
       if (parents[index] >= 0) row.append(this.node('p', 'deck-under muted', cards[parents[index]].title || 'Untitled'));
-      const shownWords = formatWords(this.node('div', 'deck-words'), words);
+      const shownWords = formatWords(this.node('div', 'deck-words'), words, { copyFences: true });
       row.append(title, shownWords, this.bubbles(index, stacks));
       // A click opens the card in its box with the cursor where it fell. ⌘-click and ⇧-click select, never selecting
       // the page's text, and finish a card being written first, so a click and then a ⌘-click select both cards. A

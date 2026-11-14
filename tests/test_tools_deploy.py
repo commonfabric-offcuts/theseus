@@ -1060,19 +1060,24 @@ class DeployRefuses(DeployCase):
         self.assertEqual(caught.exception.code, 2)
 
 # Item 178: a step of tests/reader_persistence_native.mjs, whose native.json records its fixture's exit, one of
-# tests/reader_native.mjs (results.json, its page served in-process) and the composer's, which records no fixture exit.
+# tests/reader_native.mjs (results.json, its page served in-process) and the composer's, whose native.json records its
+# fixture's exit and signal and which of its planned phases completed.
 RED_STEP, READER_STEP, COMPOSE_STEP = "native-colors", "native-reader-keyboard", "native-compose"
 RED_CASE = "a reply keeps its colour"
+# The composer's planned phases, in order: each of its three runs in Chrome, then in Safari's engine.
+COMPOSE_PHASES = ["run:chromium", "run:webkit", "runAnswering:chromium", "runAnswering:webkit", "runSending:chromium", "runSending:webkit"]
+MISSING = object()
 
 
 def native_run(out, name, failed=(RED_CASE,), passed=("the rail keeps its colours",), exit=1, closed=True, fixture=0,
-               ended=True, cases=None, printed=None, last=None, results=None, log=True):
+               ended=True, cases=None, printed=None, last=None, results=None, log=True, more=None):
     """One native step's evidence as tools/release_check.py leaves it in out (its results file and log), and the step's
     entry in that summary, its counts read from that evidence by the release check's own reader.
 
     printed: fields the reader harness's last printed JSON has in place of its results file's; last: the log's last
     lines as written; results: the results file's text as written, which the release check's reader is not given;
-    log: False leaves no log."""
+    log: False leaves no log; more: fields native.json has beside its results, fixture exit and browser, MISSING
+    leaving one out."""
     step = known_reds.NATIVE[name]
     evidence = out / "native" / step.name
     evidence.mkdir(parents=True)
@@ -1084,7 +1089,8 @@ def native_run(out, name, failed=(RED_CASE,), passed=("the rail keeps its colour
         tail = ("{\n  \"opened\": true\n}\n" + json.dumps(dict(report, **(printed or {})), indent=2) + "\n"
                 + ("" if ended else "TypeError: cannot read properties of undefined\n"))
     else:
-        report = {"results": cases, "fixtureExitCode": fixture, "browserClosed": closed}
+        report = {key: value for key, value in dict({"results": cases, "fixtureExitCode": fixture, "browserClosed": closed},
+                                                    **(more or {})).items() if value is not MISSING}
         tail = (known_reds.END_LINE if ended else "AssertionError [ERR_ASSERTION]: the fixture is ready") + "\n"
     (evidence / step.results).write_text(json.dumps(report) if results is None else results)
     if log:
@@ -1368,19 +1374,83 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
                 self.refused_known(FakeHost(self.config), "the live %s" % RED_STEP)
                 self.assertIn(words, self.evidence_of("00-release-check")["known_reds"]["refused"])
 
-    def test_a_reader_or_composer_step_that_cannot_show_its_run_ended_is_refused(self):
+    def test_a_reader_step_that_cannot_show_its_run_ended_is_refused(self):
         for name, run, words in ((READER_STEP, dict(ended=False), "the harness did not reach its end"),
                                  (READER_STEP, dict(closed=False), "the browser did not close"),
                                  (READER_STEP, dict(printed=dict(closed=False)), "the harness did not reach its end"),
                                  (READER_STEP, dict(printed=dict(results=[])), "the harness did not reach its end"),
                                  (READER_STEP, dict(last="TypeError: cannot read properties of undefined\n"),
-                                  "the harness did not reach its end"),
-                                 (COMPOSE_STEP, {}, "records no fixture exit")):
+                                  "the harness did not reach its end")):
             with self.subTest(name=name, run=run):
                 self.again()
                 self.candidate_fails((name, run))
                 self.listing((name, RED_CASE, self.live_summary("live-check", (name, {}))))
                 self.refused_known(FakeHost(self.config), words)
+
+    # What tests/reader_compose_native.mjs leaves when every planned phase ran, a case failed and its fixture exited 0.
+    # Its log is not read for its end: this one does not hold the other harnesses' last assertion.
+    ATTESTED = {"fixtureExitSignal": None, "harnessCompleted": True, "plannedPhases": COMPOSE_PHASES, "completedPhases": COMPOSE_PHASES}
+    COMPOSED = dict(more=ATTESTED, last="1 passed, 1 failed\n")
+
+    def composed(self, **change):
+        """The composer's evidence with native.json's fields changed (MISSING leaves one out), as native_run takes it."""
+        run = dict(self.COMPOSED, **{key: value for key, value in change.items() if key != "more"})
+        run["more"] = dict(self.ATTESTED, **change.get("more", {}))
+        return run
+
+    def test_a_composer_step_whose_run_ended_is_taken(self):
+        self.candidate_fails((COMPOSE_STEP, self.COMPOSED))
+        self.listing((COMPOSE_STEP, RED_CASE, self.live_summary("live-check", (COMPOSE_STEP, self.COMPOSED))))
+        self.planned(FakeHost(self.config), known_reds=self.known)
+        self.assertEqual([(red["step"], red["case"]) for red in self.evidence_of("02-release")["record"]["measurements"]["known_reds"]],
+                         [(COMPOSE_STEP, RED_CASE)])
+
+    def test_a_composer_step_whose_run_did_not_attest_its_end_is_refused(self):
+        # Cleanup closes the composer's browsers and writes native.json however its run ended; only these fields say
+        # whether every planned phase ran and its fixture exited 0, with no signal.
+        five = COMPOSE_PHASES[:5]
+        fixture, phases, completed = "its fixture exited", "its %s are", "the harness did not complete"
+        for case, run, words in (
+                ("a phase threw after three returned, its browser closed and its fixture exited 0",
+                 self.composed(more={"completedPhases": COMPOSE_PHASES[:3], "harnessCompleted": False}), phases % "completedPhases"),
+                ("the last phase's browser did not close cleanly", self.composed(more={"completedPhases": five, "harnessCompleted": False}),
+                 phases % "completedPhases"),
+                ("seeding the fixture failed", self.composed(cases=[], more={"completedPhases": [], "harnessCompleted": False}), "lists no cases"),
+                ("harnessCompleted false", self.composed(more={"harnessCompleted": False}), completed),
+                ("harnessCompleted missing", self.composed(more={"harnessCompleted": MISSING}), completed),
+                ("harnessCompleted not a boolean", self.composed(more={"harnessCompleted": "true"}), completed),
+                ("its fixture was killed by a signal", self.composed(fixture=None, more={"fixtureExitSignal": "SIGKILL"}), fixture),
+                ("a signal beside exit 0", self.composed(more={"fixtureExitSignal": "SIGTERM"}), fixture),
+                ("fixtureExitSignal missing", self.composed(more={"fixtureExitSignal": MISSING}), fixture),
+                ("its fixture exited 1", self.composed(fixture=1), fixture),
+                ("fixtureExitCode null", self.composed(fixture=None), fixture),
+                ("fixtureExitCode missing", self.composed(more={"fixtureExitCode": MISSING}), fixture),
+                ("fixtureExitCode false", self.composed(fixture=False), fixture),
+                ("fixtureExitCode 0.0", self.composed(fixture=0.0), fixture),
+                ("plannedPhases missing", self.composed(more={"plannedPhases": MISSING}), phases % "plannedPhases"),
+                ("plannedPhases short of one", self.composed(more={"plannedPhases": five, "completedPhases": five}), phases % "plannedPhases"),
+                ("plannedPhases out of order", self.composed(more={"plannedPhases": COMPOSE_PHASES[::-1]}), phases % "plannedPhases"),
+                ("completedPhases missing", self.composed(more={"completedPhases": MISSING}), phases % "completedPhases"),
+                ("completedPhases out of order", self.composed(more={"completedPhases": COMPOSE_PHASES[1:] + COMPOSE_PHASES[:1]}),
+                 phases % "completedPhases"),
+                ("completedPhases with one twice", self.composed(more={"completedPhases": COMPOSE_PHASES + COMPOSE_PHASES[-1:]}),
+                 phases % "completedPhases"),
+                ("the harness was killed", self.composed(exit=-15), "exited -15, not 1"),
+                ("a browser stayed open", self.composed(closed=False), "the browser did not close")):
+            for side in ("candidate", "live"):
+                with self.subTest(case, side=side):
+                    self.again()
+                    self.candidate_fails((COMPOSE_STEP, run if side == "candidate" else self.COMPOSED))
+                    self.listing((COMPOSE_STEP, RED_CASE, self.live_summary("live-check", (COMPOSE_STEP, run if side == "live" else self.COMPOSED))))
+                    refusal = self.refused_known(FakeHost(self.config), words)
+                    self.assertIn("the %s %s" % ("candidate's" if side == "candidate" else "live", COMPOSE_STEP), refusal)
+
+    def test_the_composers_fields_do_not_stand_for_another_harnesss_last_assertion(self):
+        # A native.json harness other than the composer's still has to reach its last assertion.
+        run = dict(more=self.ATTESTED, last="1 passed, 1 failed\n")
+        self.candidate_fails((RED_STEP, run))
+        self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, {}))))
+        self.refused_known(FakeHost(self.config), "the candidate's %s: the harness did not reach its end" % RED_STEP)
 
     def test_counts_the_candidate_summary_does_not_share_with_its_evidence_are_refused(self):
         self.candidate_fails((RED_STEP, {}))

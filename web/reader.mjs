@@ -15,6 +15,7 @@ import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { ComposeBar } from './compose-bar.mjs';
 import { copyText, COPY_REFUSED } from './message-menu.mjs';
+import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -39,6 +40,10 @@ const visible = el => el.getClientRects().length && !el.disabled && !el.hidden;
 // The same message, shown again: its reply sent elsewhere (In), a saved
 // version adopted, its access checked. Your place holds through it.
 const sameSource = (a, b) => Boolean(a && b && a.kind === b.kind && a.id === b.id);
+// What a quote names as its source: a message's quote says which revision of
+// its words it was taken from (docs/message-edit.md), 1 for one never edited;
+// a Notebook page's source names its revision already.
+const quoteSource = source => (source.source_ref.kind === 'message' ? { ...structuredClone(source.source_ref), revision: revisionOf(source) } : structuredClone(source.source_ref));
 
 // The Reader steps as the eye goes down the topic page (docs/reply-stacks.md):
 // ↑ is the message above the one open, Previous, and ↓ the one below, Next,
@@ -98,7 +103,7 @@ export class Reader {
       if (this.pressedBy !== 'touch' || event.target.closest?.('a,button') || window.getSelection()?.isCollapsed === false) return;
       this.compose?.fold();
     });
-    // The passage just quoted stays above the reply while the message's room
+    // The words just quoted keep showing while the message's room
     // changes: the reply growing with the quote, the keyboard coming up.
     new ResizeObserver(() => { if (this.dialog.open) this.alignKept(); }).observe(this.sourceBody);
     for (const forget of ['wheel', 'touchmove', 'keydown']) this.sourceBody.addEventListener(forget, () => { this.kept = null; }, { passive: true });
@@ -197,17 +202,39 @@ export class Reader {
     // from growing beside it, so what lights is what quotes.
     this.sourceBody.addEventListener('pointerdown', event => {
       // A link is only a link: pressing it lights no passage to quote.
-      if (event.target.closest?.('a,.reader-end')) return;
+      if (event.target.closest?.('a,button,.reader-end')) return;
       this.sourceBody.focus({ preventScroll: true });
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey, true);
     });
     this.sourceBody.addEventListener('mousedown', event => { if (event.shiftKey && event.button === 0 && this.hover) event.preventDefault(); });
     // The message wears its focus ring only when a keyboard user Tabs onto it,
     // not when the Reader puts focus there itself (see aim.css).
-    this.dialog.addEventListener('keydown', event => { if (event.key === 'Tab') this.tabbing = true; }, true);
-    this.dialog.addEventListener('pointerdown', () => { this.tabbing = false; }, true);
+    // WebKit can drop the Reader's selected words when Tab moves focus from
+    // the article to a control. Keep the range for this one keyboard move.
+    let tabSelection = null;
+    this.dialog.addEventListener('keydown', event => {
+      if (event.key !== 'Tab') return;
+      this.tabbing = true;
+      const selection = window.getSelection();
+      tabSelection = null;
+      if (!selection?.rangeCount || selection.isCollapsed) return;
+      const range = selection.getRangeAt(0);
+      if (this.sourceBody.contains(range.commonAncestorContainer)) {
+        const backwards = selection.focusNode === range.startContainer && selection.focusOffset === range.startOffset;
+        tabSelection = { range: range.cloneRange(), backwards };
+      }
+    }, true);
+    this.dialog.addEventListener('pointerdown', () => { this.tabbing = false; tabSelection = null; }, true);
     this.sourceBody.addEventListener('focusout', () => this.sourceBody.removeAttribute('data-tabbed'));
     this.dialog.addEventListener('focusin', event => {
+      const saved = tabSelection, selection = window.getSelection();
+      tabSelection = null;
+      if (this.tabbing && saved && !saved.range.collapsed && this.sourceBody.contains(saved.range.commonAncestorContainer) &&
+          !event.target.closest('textarea,input,select,[contenteditable]') && selection?.isCollapsed) {
+        const range = saved.range;
+        if (saved.backwards) selection.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset);
+        else selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
+      }
       if (event.target === this.sourceBody) this.sourceBody.toggleAttribute('data-tabbed', Boolean(this.tabbing));
       this.tabbing = false;
       if (!this.returnQuotes()) this.disarm();
@@ -399,7 +426,7 @@ export class Reader {
 
   // The source as passages, its Markdown shown as written to be read (message-format.mjs).
   drawSource(body) {
-    drawPassages(this.sourceBody, body, document);
+    drawPassages(this.sourceBody, body, document, { copyFences: true });
     this.placeEnd();
   }
 
@@ -411,7 +438,7 @@ export class Reader {
   }
 
   point(event) {
-    if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a')) return;
+    if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a,button')) return;
     // Nothing lights to promise a quote that Return would not make.
     if (!this.returnQuotes()) return;
     const current = { x: event.clientX, y: event.clientY };
@@ -454,7 +481,7 @@ export class Reader {
   // Takes what a press on an offer of Quote (by: its id) would quote, before
   // the press moves the focus or lets the selection go; nothing when nothing is chosen.
   hold(by) {
-    this.held = this.chosen ? { excerpt: this.selectedPassage(), passage: this.lastQuoted(), by } : null;
+    this.held = this.chosen ? { excerpt: this.selectedPassage(), place: this.quotedPlace(), by } : null;
     this.paintQuote();
   }
   paintQuote() {
@@ -501,14 +528,22 @@ export class Reader {
     this.paintQuote();
   }
 
-  // The passage last quoted sits just above the reply, so what is answered
-  // shows while it is answered; kept there as the keyboard comes up, until
-  // the person scrolls the message.
-  keepAbove(passage) { this.kept = passage ?? null; this.alignKept(); }
+  // Quoting keeps your place: what showed of the words quoted stays where it
+  // was on screen, so what is answered shows while it is answered. Only where
+  // the reply or the keyboard comes to cover it does the message move, the
+  // least that shows it just above them (as much of it as the room holds);
+  // words quoted from out of sight come into sight the same least way. Kept
+  // so as the message's room changes, until the person scrolls the message.
+  keepAbove(place) { this.kept = place ?? null; this.alignKept(); }
+  room() {
+    const box = this.sourceBody.getBoundingClientRect(), style = getComputedStyle(this.sourceBody);
+    return { top: box.top + parseFloat(style.paddingTop), bottom: box.bottom - parseFloat(style.paddingBottom) };
+  }
   alignKept() {
-    if (!this.kept?.isConnected) { this.kept = null; return; }
-    const box = this.sourceBody.getBoundingClientRect(), bottom = box.bottom - parseFloat(getComputedStyle(this.sourceBody).paddingBottom);
-    this.sourceBody.scrollTop += this.kept.getBoundingClientRect().bottom - bottom;
+    if (!this.kept?.passage.isConnected) { this.kept = null; return; }
+    const room = this.room(), at = this.kept.passage.getBoundingClientRect().top, top = at + this.kept.top, bottom = at + this.kept.bottom;
+    if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop += Math.min(bottom - room.bottom, top - room.top);
+    else if (top < room.top && bottom < room.bottom) this.sourceBody.scrollTop += Math.max(top - room.top, bottom - room.bottom);
   }
 
   // The source's own words a selection covers, never what the page shows for
@@ -530,16 +565,20 @@ export class Reader {
     const held = this.held; this.held = null;
     const excerpt = this.selectedPassage() || held?.excerpt;
     if (!excerpt || !this.sessions) return;
-    const passage = this.lastQuoted() ?? held?.passage;
+    const place = this.quotedPlace() ?? held?.place;
     // A quote is writing on, so the last notice goes as it starts; what the
     // quote itself does (leaving a note cancels a step that waits) is said
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(excerpt, passage); } finally { this.quoting = false; }
+    try { this.quoteInto(excerpt, place); } finally { this.quoting = false; }
   }
 
-  quoteInto(excerpt, passage) {
+  quoteInto(excerpt, place) {
+    // Measuring the field as it grows gives the message more room for a
+    // moment, and a message scrolled to its end is pulled down by it; the
+    // message is put back where it was before the quote is kept in sight.
+    const scrolled = place && this.sourceBody.scrollTop;
     if (this.mode === 'note') this.switchMode('reply');
     const editor = this.sessions.reply;
     if (!this.writes(editor)) return;
@@ -548,7 +587,7 @@ export class Reader {
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
-    editor.edit({ quotes: [...editor.draft.quotes, { source: structuredClone(this.source.source_ref), excerpt }] });
+    editor.edit({ quotes: [...editor.draft.quotes, { source: quoteSource(this.source), excerpt }] });
     // The message's selection is let go before the field takes focus: once
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
@@ -565,21 +604,33 @@ export class Reader {
     this.field.setSelectionRange(end, end);
     this.field.scrollTop = this.field.scrollHeight;
     this.disarm();
-    this.keepAbove(passage);
+    if (place) this.sourceBody.scrollTop = scrolled;
+    this.keepAbove(place);
   }
 
-  // The last passage a quote takes words from: the lit passages', or the
-  // selection's end.
-  lastQuoted() {
+  // Where the words a quote takes are, as it takes them: the words selected,
+  // or the passages lit, and of them what shows (all of them when none
+  // does), held as heights from the top of the passage they end in, which
+  // scrolls with them. A passage can be taller than the screen: a log in a
+  // code block, a long table.
+  quotedPlace() {
     if (!this.compose) return null;
-    const selection = window.getSelection();
+    const selection = window.getSelection(), lit = [...this.sourceBody.querySelectorAll('.hover-quote')];
+    let passage = null, words = null;
     if (selection?.rangeCount && !selection.isCollapsed) {
-      let at = selection.getRangeAt(0).endContainer;
-      at = at.nodeType === Node.ELEMENT_NODE ? at : at.parentElement;
-      while (at && at.parentElement !== this.sourceBody) at = at.parentElement;
-      if (at) return at;
+      const range = selection.getRangeAt(0);
+      passage = range.endContainer.nodeType === Node.ELEMENT_NODE ? range.endContainer : range.endContainer.parentElement;
+      while (passage && passage.parentElement !== this.sourceBody) passage = passage.parentElement;
+      words = passage && range.getBoundingClientRect();
     }
-    return [...this.sourceBody.querySelectorAll('.hover-quote')].at(-1) ?? null;
+    if (!passage && lit.length) {
+      passage = lit.at(-1);
+      words = { top: lit[0].getBoundingClientRect().top, bottom: passage.getBoundingClientRect().bottom };
+    }
+    if (!passage) return null;
+    const room = this.room(), at = passage.getBoundingClientRect().top;
+    const top = Math.max(words.top, room.top), bottom = Math.min(words.bottom, room.bottom), shows = top < bottom;
+    return { passage, top: (shows ? top : words.top) - at, bottom: (shows ? bottom : words.bottom) - at };
   }
 
   // The reply, with the cursor after what is already written: Reply, or Return,
@@ -864,8 +915,10 @@ export class Reader {
       : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : '';
     this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
+    // A message whose words were changed after it was sent says so (docs/message-edit.md).
+    const edited = source.source_ref.kind === 'message' && wasEdited(source) ? [' · Edited'] : [];
     const author = this.callbacks?.actorName?.(source.author) ?? source.author;
-    this.$('reader-origin').replaceChildren([author, provenance].filter(Boolean).join(' · '), ...sent);
+    this.$('reader-origin').replaceChildren([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
     this.paintTone(source);
   }
   // The page the source is read on: an agent's message wears its color, as
@@ -906,6 +959,43 @@ export class Reader {
       host.append(card);
     }
     this.paintStatus();
+  }
+
+  // The message shown, edited elsewhere (docs/message-edit.md): its new words
+  // drawn where it is read, the place in it held, the reply left as it is.
+  redrawSource() {
+    if (!this.source) return;
+    const place = this.captureVisiblePlace();
+    this.disarm(); this.kept = null;
+    this.drawSource(this.source.body ?? '');
+    this.paintOrigin(this.source);
+    this.restoreVisiblePlace(place);
+  }
+
+  // The edit mode (docs/message-edit.md, message-edit.mjs): the message's
+  // words give way to a field holding them, with Save and Cancel; the reply
+  // beside it stays as it is. editing: { field, save(), leave() }. While it
+  // is on the Reader does not step to another message.
+  startEdit(editing) {
+    this.editing = editing;
+    this.disarm();
+    this.sourceBody.hidden = true;
+    this.endLine?.remove();
+    this.$('message-edit').hidden = false;
+    this.dialog.dataset.editing = 'true';
+    this.stepsBefore = ['previous-message', 'next-message'].map(id => this.$(id).disabled);
+    for (const id of ['previous-message', 'next-message']) this.$(id).disabled = true;
+    editing.field.focus();
+    editing.field.setSelectionRange(editing.field.value.length, editing.field.value.length);
+  }
+  stopEdit() {
+    if (!this.editing) return;
+    this.editing = null;
+    this.sourceBody.hidden = false;
+    this.$('message-edit').hidden = true; this.$('message-edit').replaceChildren();
+    delete this.dialog.dataset.editing;
+    ['previous-message', 'next-message'].forEach((id, n) => { this.$(id).disabled = this.stepsBefore?.[n] ?? this.$(id).disabled; });
+    this.placeEnd();
   }
 
   // A failure goes to the notice as the error itself (lines.mjs).
@@ -972,6 +1062,8 @@ export class Reader {
   }
 
   finishClose() {
+    // An edit under way is left as Escape leaves it: its writing stays on the device.
+    this.editing?.leave({ closing: true });
     ++this.viewToken;
     this.held = null;
     // The naming sheet is a modal of its own: it goes with the Reader.
@@ -986,10 +1078,12 @@ export class Reader {
 
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }
   // Steps to the message above or below the open one, as the page shows them.
-  stepTo(where) { return this.step(neighborAt(where) === 'next' ? 1 : -1); }
+  stepTo(where) { if (this.editing) return; return this.step(neighborAt(where) === 'next' ? 1 : -1); }
   // Escape with no panel of the reply open (compose-bar.mjs heard takes it
   // while one is).
   escape() {
+    // Escape leaves the edit mode and keeps its writing (docs/message-edit.md).
+    if (this.editing) { this.editing.leave(); return; }
     if (this.hover || !window.getSelection()?.isCollapsed) { this.disarm(); window.getSelection()?.removeAllRanges(); return; }
     this.close();
   }
@@ -1012,6 +1106,15 @@ export class Reader {
       if (event.shiftKey && target === stops[0]) { event.preventDefault(); stops.at(-1)?.focus(); }
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }
       return;
+    }
+    // While a message is edited, ⌘↑ and ⌘↓ step nowhere, and in its field
+    // ⌘ Return saves the edit; every other key there is the field's own.
+    if (this.editing) {
+      if (event.metaKey && Object.values(STEPPING).some(step => step.key === event.key)) { event.preventDefault(); return; }
+      if (target === this.editing.field) {
+        if (keyAction(event, { context: 'edit' }) === 'save-edit') { event.preventDefault(); this.editing.save(); }
+        return;
+      }
     }
     // Select All outside a text field takes the message's text, never the
     // Reader's buttons and labels; in a field the browser selects its own text.

@@ -184,9 +184,10 @@ export const marksWords = count => `${count} message${count === 1 ? '' : 's'} ma
 // keeps the pill on its last line, then the time. The name is held in
 // author-name spans, which an agent's card colors as one: split for a pill,
 // its first part is the start and its last character the end. sent is when
-// the message was sent, or null for one from before times were kept.
-export function paintAuthor(author, name, sent, marked) {
-  const shows = JSON.stringify([name, sent, sent === null ? null : shownTime(sent), marked]);
+// the message was sent, or null for one from before times were kept. edited:
+// its words were changed after it was sent (docs/message-edit.md), said last.
+export function paintAuthor(author, name, sent, marked, edited = false) {
+  const shows = JSON.stringify([name, sent, sent === null ? null : shownTime(sent), marked, edited]);
   if (author.dataset.shows === shows) return;
   author.dataset.shows = shows;
   author.replaceChildren();
@@ -203,4 +204,5 @@ export function paintAuthor(author, name, sent, marked) {
     together.append(end, pill, spoken); author.append(together);
   }
   if (sent !== null) { const at = document.createElement('span'); at.className = 'message-time'; at.append(' · ', timeNode(sent, document)); author.append(at); }
+  if (edited) { const mark = document.createElement('span'); mark.className = 'message-edited'; mark.append(' · Edited'); author.append(mark); }
 }

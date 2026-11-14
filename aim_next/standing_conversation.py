@@ -27,6 +27,7 @@ from .contract import READABLE, Refusal, _identifier, _revision
 from .delivery import _now_ms
 from .health import HEALTH_ACTOR
 from . import whispers
+from .message_edit import words
 
 
 # Version 28: a topic's kind, the conversation a replaced topic gave way to,
@@ -164,6 +165,8 @@ class StandingConversation:
         for member in sorted(current - wanted):
             self._cancel_subscription(db, member, conversation["id"], rows[member]["epoch"])
             db.execute("UPDATE topic_participants SET active=0,epoch=epoch+1 WHERE topic_id=? AND actor_id=?", (conversation["id"], member))
+            # Corrections of messages they can no longer read go with them (message_edit.py).
+            self._settle_unreadable_corrections(db, member)
             changed.append(member)
         for member in sorted(wanted - current):
             if member in rows:
@@ -388,7 +391,7 @@ class StandingConversation:
     # Views -------------------------------------------------------------------
 
     def _conversation_waits(self, db, topic_id):
-        rows = db.execute("SELECT q.ask_id,q.actor_id,m.author_id,m.sent_ms,m.body,m.reply_to FROM conversation_waits q "
+        rows = db.execute("SELECT q.ask_id,q.actor_id,m.author_id,m.sent_ms," + words("m") + " AS body,m.reply_to FROM conversation_waits q "
                           "JOIN messages m ON m.id=q.ask_id WHERE m.topic_id=? ORDER BY m.seq,q.actor_id", (topic_id,)).fetchall()
         waits = []
         for row in rows:

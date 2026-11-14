@@ -539,7 +539,10 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .reaction-said{opacity:.8}
 .message-card.scroll-in-place{overflow-y:auto;overflow-x:hidden;overscroll-behavior:auto;scrollbar-gutter:stable}
 .message-preview.scroll-in-place{display:block}
+.message-card.show-full{max-height:none;overflow:visible}
+.message-card.show-full>.message-preview{max-height:none;overflow:visible}
 #thumb-source{flex-shrink:0;min-width:2.75rem}
+.reader-reactions{margin:0;padding:.3rem .2rem 0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
 #thumb-source[aria-pressed=true]{background:var(--soft);font-weight:700}
 .guide-open{min-height:1.6rem;padding:0 .55rem;border-radius:.45rem;color:var(--muted);font-size:.8rem}
 dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;max-height:calc(100dvh - 2rem);padding:1rem 1.25rem 1.25rem;overflow:auto}
@@ -1011,3 +1014,46 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
   .notebook-back{max-width:9rem}
 }
+/* Editing a sent message (docs/message-edit.md): the Reader's edit mode stands where the message's words were, its field the message's own width, Save and Cancel under it in one line. "Edited" on a card's author line is a quiet word after the time. */
+.message-edit{flex:1;min-height:0;display:flex;flex-direction:column;gap:.5rem;padding:.3rem 0 .6rem}
+.message-edit-field{flex:1;min-height:8rem;line-height:1.7}
+.message-edit-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.5rem}
+.message-edit-status{flex:1;min-width:0;font-size:.8rem;color:var(--muted)}
+.message-edit-status[data-state=busy],.message-edit-status[data-state=uncertain],.message-edit-status[data-state=failed],.message-edit-status[data-state=refused]{color:var(--ink)}
+.message-edit-keys{margin-left:.4rem;opacity:.75}
+.message-edit-conflict{border:1px solid var(--line);border-radius:.5rem;background:var(--panel);padding:.6rem .75rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.message-edit-conflict-title{flex-basis:100%;font-weight:600;font-size:.9rem}
+.message-edit-saved{flex-basis:100%;margin:0;font:inherit;font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere;max-height:min(10rem,20dvh);overflow:auto;color:var(--muted)}
+.message-edited{color:var(--muted)}
+
+/* Fenced text in reading views. The action lane is outside the horizontal
+   scroller; hover/focus changes visibility, never the payload's geometry. */
+.md-fence{position:relative;max-width:100%;width:fit-content;min-width:min(3.25rem,100%);padding-top:2rem;border-radius:.4rem}
+.md-fence:not(.hover-quote){background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.hover-quote .md-fence{background:none}
+.md-fence>.md-pre{width:100%;margin:0;background:none;border-radius:0 0 .4rem .4rem}
+.reading-pane article .md-fence>.md-pre{margin:0}
+.fence-copy,.fence-copy-unavailable{position:absolute;right:.25rem;top:0;font:500 .75rem/1.3 ui-sans-serif,system-ui,sans-serif;white-space:normal;text-align:center;user-select:none;-webkit-user-select:none;color:var(--ink)}
+.fence-copy{display:grid;place-items:center;width:2rem;min-width:2rem;min-height:2rem;border:0;border-radius:.25rem;padding:.25rem;color:var(--tip-ink);background:var(--tip-bg);opacity:0;pointer-events:none}
+.fence-copy:hover{color:var(--tip-ink);background:var(--tip-bg)}
+.fence-copy svg{width:1.1rem;height:1.1rem;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.fence-copy-unavailable{max-width:9rem;padding:.2rem .4rem;color:var(--muted)}
+.fence-copy-unavailable::before{content:'Open message to copy'}
+.md-fence:hover>.fence-copy,.md-fence:focus-within>.fence-copy,.fence-copy[data-label="Copy failed"]{opacity:1;pointer-events:auto}
+.fence-copy:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+@media(hover:none),(pointer:coarse){.md-fence{padding-top:2.75rem}.fence-copy{opacity:1;pointer-events:auto;min-width:2.75rem;min-height:2.75rem}.fence-copy-unavailable{padding-top:.6rem}}
+
+.fence-copy-announcement:not(.sr-only){position:fixed;z-index:1000;inset-inline:1rem;bottom:max(1rem,env(safe-area-inset-bottom));width:fit-content;max-width:calc(100% - 2rem);margin-inline:auto;padding:.45rem .75rem;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font:500 .875rem/1.4 ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere;pointer-events:none;user-select:none;-webkit-user-select:none}
+
+.reading-pane>.fence-copy-announcement:not(.sr-only){position:static;display:block;flex:none;max-width:100%;align-self:center;margin:.25rem 0}
+.md-fence:has(>.fence-copy-announcement){display:flex;flex-direction:column}
+.md-fence>.fence-copy-announcement:not(.sr-only){position:static;order:-1;display:block;margin:.25rem;max-width:calc(100% - .5rem);align-self:start;scroll-margin-block:.5rem}
+.md-fence>.fence-copy-announcement[data-feedback]::before{content:attr(data-feedback)}
+
+.feed-fence-controls{position:relative;z-index:2;height:0;pointer-events:none}
+.feed-fence-copy{position:fixed;top:anchor(top);left:anchor(right);right:auto;margin-right:.25rem;transform:translateX(calc(-100% - .25rem));z-index:2}
+.feed-fence-copy[hidden]{display:none}
+.feed-fence-copy:is([data-hover],:hover,:focus-visible),.feed-fence-copy[data-label="Copy failed"]{opacity:1;pointer-events:auto}
+@media(hover:none),(pointer:coarse){.feed-fence-copy{opacity:1;pointer-events:auto}}
+
+.feed-fence-anchor:has(>.fence-copy-announcement){min-width:min(17rem,100%)}
