@@ -3985,8 +3985,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const folded = shownLine.replace(/\s+/g, ' ');
     await until(async () => (await actsOf(topic, ids.root))?.name?.text === folded, `the shown first line typed in names the dossier (${folded})`);
     assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 1, 'the untouched field sent no name');
+    // A page in the background reads nothing new until it is shown again: each page is brought forward to be read live.
+    await p.send('Page.bringToFront');
     await until(async () => (await named())?.text === folded, 'the page holding the first message shows the typed name');
     // Another reader names the dossier while the field is open here, untouched: Return puts nothing back.
+    await q.send('Page.bringToFront');
     await qOpen('it opens once more');
     await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-their-name', args: { name: 'Their name' } });
     await until(async () => (await actsOf(topic, ids.root))?.name?.text === 'Their name', 'Core holds the other reader\'s name');
