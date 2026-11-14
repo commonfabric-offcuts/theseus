@@ -215,10 +215,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-check
-          export MERGE_SHA="$(git rev-parse HEAD)"
-          export MERGE_TREE="$(git rev-parse 'HEAD^{tree}')"
-          export MERGE_FIRST_PARENT="$(git rev-parse --verify -q 'HEAD^1' || true)"
-          export MERGE_SECOND_PARENT="$(git rev-parse --verify -q 'HEAD^2' || true)"
           python3 - shards release-check/summary.json <<'PY'
           import glob, hashlib, json, os, sys
           shards_dir, out = sys.argv[1], sys.argv[2]
@@ -241,6 +237,14 @@ jobs:
               if receipt.get("summary_sha256") != hashlib.sha256(open(p, "rb").read()).hexdigest():
                   sys.exit("%s is not the summary %s vouches for" % (p, receipt_path))
               receipts.append(receipt)
+          # The merge commit, its tree and its parents come from the receipts, each written by a shard with the whole
+          # history; this job's own checkout is shallow and sees no parents. The shards must agree, and name this run's commit.
+          merges = {json.dumps(r.get("merge"), sort_keys=True) for r in receipts}
+          if len(merges) != 1:
+              sys.exit("the shards name different merges: %s" % sorted(merges))
+          merge = receipts[0].get("merge") or {}
+          if merge.get("sha") != env.get("GITHUB_SHA"):
+              sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
           if not docs or not timed:
@@ -280,8 +284,7 @@ jobs:
                       "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
               "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
               "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
-              "merge": {"sha": env.get("MERGE_SHA"), "tree": env.get("MERGE_TREE"),
-                        "first_parent": env.get("MERGE_FIRST_PARENT") or None, "second_parent": env.get("MERGE_SECOND_PARENT") or None},
+              "merge": {key: merge.get(key) for key in ("sha", "tree", "first_parent", "second_parent")},
               "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
               "required": required,
               "plan": json.loads(env.get("PLAN_SHARDS") or "[]"),
