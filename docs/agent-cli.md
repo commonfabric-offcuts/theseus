@@ -488,6 +488,8 @@ are absolute local times.
 - `post --asks A --blocks piece:P` (or `release:N`) names the piece or release
   an ask holds until it is answered (see [Asking and telling](#asking-and-telling));
   `pipeline` shows it under that piece as "held: waiting on A — first line".
+  While its author has the ask open in Edit, that line, and an "asked you"
+  line about an item, print "(held)" in place of its words.
 
 The import from the hand-written page is an operator act:
 `bin/aim-next-admin pipeline-import --profile P --seed S --as ACTOR`.

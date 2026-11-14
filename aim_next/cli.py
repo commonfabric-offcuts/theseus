@@ -33,7 +33,7 @@ class UsageError(ValueError):
     pass
 
 
-from .cli_outcome import PipelineVerbs, register as register_pipeline
+from .cli_outcome import PipelineVerbs, _words as held_words, register as register_pipeline
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 
 
@@ -177,7 +177,6 @@ def _output(stdout, stderr, result, code):
 LEGACY_VERBS = ("binding", "view", "command")
 # What a held message shows in place of its words (docs/message-edit.md): its author has it open in Edit.
 HELD_WORDS = "(held: its author is editing it)"
-HELD = "(held)"
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
@@ -831,7 +830,7 @@ class Agent(PipelineVerbs, TargetVerbs):
         for wait in waits:
             if wait["item_id"] == item["id"] or wait["ask_message_id"] == item["id"]:
                 self.out.plain("  [waiting] on %s %s (ask %s): %s" % (wait["on"], _since(wait["since_ms"]), wait["ask_message_id"],
-                                                                     HELD if wait.get("withheld") else wait["excerpt"]))
+                                                                     held_words(wait, "excerpt")))
 
     def topic_lines(self, items):
         for item in items:
