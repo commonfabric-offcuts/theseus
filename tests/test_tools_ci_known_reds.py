@@ -34,7 +34,7 @@ class Evidence(unittest.TestCase):
         for path in paths:
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes((ci.ROOT / path).read_bytes() if path.startswith('tools/')
+            target.write_bytes((ci.ROOT / path).read_bytes() if path.startswith('tools/') or path == release_check.REPLAY_FILE
                                else b'// stand-in source\nassert.equal(actual, expected);\nawait helper();\n')
         self.source_commit = self.commit('inventory sources')
         self.profile = {'runner_os': 'macOS', 'runner_arch': 'ARM64', 'image_os': 'macos-26', 'image_version': 'v1',
@@ -49,6 +49,10 @@ class Evidence(unittest.TestCase):
                                          for p in paths if p.startswith('tests/')},
                        'required': list(release_check.REQUIRED),
                        'inventory': {name: [ci.identity(self.row)] for name in ci.NATIVE}, 'reds': []}
+        self.policy['inventory'].update({name: [ci.identity({'name': 'test_one (example.Example)'}),
+                                               ci.identity({'name': 'test_two (example.Example)'})]
+                                         for name in ('python-units', 'deploy-refusals')})
+        self.policy['inventory']['node-units'] = [ci.identity({'name': name}) for name in ('one', 'two')]
         self.red = {'step': 'native-inline', 'case': ci.identity(self.row), 'owner': 'test-owner',
                     'why': 'reviewed same assertion', 'review': 'review-message',
                     'observed_profile': self.profile, 'target_profile': self.profile,
@@ -91,15 +95,16 @@ class Evidence(unittest.TestCase):
                 step['counts'], good = release_check.native_counts(native, self.out / 'native' / native.name)
                 step.update(passed=good, exit=0 if good else 1)
             elif name == 'node-units':
-                text = '# tests 2\n# pass 2\n# fail 0\n# cancelled 0\n'
+                text = '# Subtest: one\nok 1 - one\n# Subtest: two\nok 2 - two\n# tests 2\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n'
                 (self.out / (name + '.log')).write_text(text)
                 step['counts'] = release_check.node_counts(text)[0]
             elif name != 'wake-replay':
-                text = 'Ran 2 tests in 0.1s\n\nOK\n'
+                text = 'test_one (example.Example) ... ok\ntest_two (example.Example) ... ok\nRan 2 tests in 0.1s\n\nOK\n'
                 (self.out / (name + '.log')).write_text(text)
                 step['counts'] = release_check.python_counts(text)[0]
             else:
-                agents = {'test-agent': {'median': 1, 'wakes': 2, 'lost': [], 'delays': [1, 1]}}
+                agents = {name: {'median': 1, 'wakes': 2, 'lost': [], 'delays': [1, 1]}
+                          for name in ('aim-core', 'aim-spec', 'aim-ux')}
                 write(self.out / 'replay/candidate-1/replay.json', {'agents': agents})
                 (self.out / 'wake-replay-candidate-1.log').write_text('replay completed\n')
                 run = {'exit': 0, 'passed': True, 'counts': agents, 'log': '/verified/replay.log',
@@ -129,6 +134,25 @@ class Evidence(unittest.TestCase):
         self.command('add', '.')
         self.command('commit', '-qm', message)
         return self.command('rev-parse', 'HEAD').decode().strip()
+
+    def advance_candidate(self, message):
+        self.sha = self.commit(message)
+        self.tree = ci.git(self.repo, 'rev-parse', 'HEAD^{tree}').decode().strip()
+        self.merge.update(sha=self.sha, tree=self.tree)
+        self.env['GITHUB_SHA'] = self.sha
+        self.provenance['checked']['commit'] = self.sha
+        self.provenance['shards'][0]['commit'] = self.sha
+        for summary in (self.summary, self.raw):
+            summary['commit'] = self.sha
+            summary['tree_after']['head'] = self.sha
+            summary['tools']['harnesses'] = {p: ci.blob(ci.source(self.repo, self.sha, p)) for p in release_check.harnesses()}
+        self.provenance['shards'][0]['tools'] = self.raw['tools']
+
+    def replace_unit_log(self, name, text):
+        (self.out / (name + '.log')).write_text(text)
+        counts = (release_check.node_counts(text) if name == 'node-units' else release_check.python_counts(text))[0]
+        for steps in (self.steps, self.raw['steps']):
+            next(s for s in steps if s['name'] == name)['counts'] = counts
 
     def flush(self):
         write(self.folder / 'summary.json', self.summary)
@@ -274,7 +298,7 @@ class Evidence(unittest.TestCase):
     def test_wake_replay_lost_wakes(self):
         path = self.out / 'replay/candidate-1/replay.json'
         data = ci.read_json(path)
-        data['agents']['test-agent']['lost'] = [1200]
+        data['agents']['aim-core']['lost'] = [1200]
         write(path, data)
         self.refused('lost or missing wakes')
 
@@ -434,6 +458,101 @@ class Evidence(unittest.TestCase):
         step = {'name': 'native-reader-mutations', 'counts': counts, 'passed': False, 'exit': 1}
         with self.assertRaisesRegex(ci.Refused, 'escaped mutation'):
             ci.cases(step, self.out, [ci.identity(report['results'][0])])
+
+    def test_replay_completed_actor_cannot_hide_omitted_routed_actor(self):
+        path = self.out / 'replay/candidate-1/replay.json'
+        data = ci.read_json(path)
+        del data['agents']['aim-ux']
+        write(path, data)
+        step = next(s for s in self.steps if s['name'] == 'wake-replay')
+        step['series'].pop('aim-ux')
+        self.raw['steps'][-1] = copy.deepcopy(step)
+        self.refused('routed actor inventory')
+
+    def test_replay_requires_explicit_loss_record(self):
+        path = self.out / 'replay/candidate-1/replay.json'
+        data = ci.read_json(path)
+        del data['agents']['aim-core']['lost']
+        write(path, data)
+        self.refused('explicit loss record')
+
+    def test_zero_admissions_passing_assertion_cannot_materially_change(self):
+        baseline = copy.deepcopy(self.policy)
+        baseline['reds'] = []
+        write(self.base / '.github/check-baseline.json', baseline)
+        ci.git(self.base, 'add', '.github/check-baseline.json')
+        ci.git(self.base, '-c', 'user.name=ci-test', '-c', 'user.email=ci-test@theseus.invalid',
+               'commit', '-qm', 'zero admissions')
+        self.base_receipt['sha'] = ci.git(self.base, 'rev-parse', 'HEAD').decode().strip()
+        write(self.folder / 'event.json', {'pull_request': {'base': self.base_receipt}})
+        path = self.repo / 'tests/reader_openings_native.mjs'
+        path.write_text(path.read_text().replace('assert.equal(actual, expected);', 'assert.ok(true);'))
+        self.advance_candidate('weaken passing test')
+        self.refused('reviewed test definition changed')
+
+    def test_ordinary_passing_source_can_shift_by_leading_comment(self):
+        path = self.repo / 'tests/reader_openings_native.mjs'
+        path.write_text('// harmless header\n' + path.read_text())
+        self.advance_candidate('shift passing test source')
+        self.assertTrue(self.validate()['passed'])
+
+    def test_skipped_only_and_partial_python_checks_are_refused(self):
+        for count in (1, 2):
+            with self.subTest(skipped=count):
+                statuses = ['skipped \'not run\''] * count + ['ok'] * (2 - count)
+                text = '\n'.join('test_%s (example.Example) ... %s' % (name, status)
+                                 for name, status in zip(('one', 'two'), statuses))
+                self.replace_unit_log('python-units', text + '\nRan 2 tests in 0.1s\n\nOK (skipped=%d)\n' % count)
+                self.refused('unapproved skipped')
+
+    def test_skipped_only_partial_and_todo_node_checks_are_refused(self):
+        for skipped, todo in ((2, 0), (1, 0), (0, 1)):
+            with self.subTest(skipped=skipped, todo=todo):
+                text = '# Subtest: one\nok 1 - one # SKIP\n# Subtest: two\nok 2 - two\n'
+                text += '# tests 2\n# pass %d\n# fail 0\n# cancelled 0\n# skipped %d\n# todo %d\n' % (2 - skipped - todo, skipped, todo)
+                self.replace_unit_log('node-units', text)
+                self.refused('unapproved skipped|todo')
+
+    def test_planned_python_check_cannot_be_replaced_at_same_total(self):
+        self.replace_unit_log('python-units', 'test_one (example.Example) ... ok\ntest_replacement (example.Example) ... ok\nRan 2 tests in 0.1s\n\nOK\n')
+        self.refused('reviewed check inventory omitted')
+
+    def test_planned_node_check_cannot_be_replaced_at_same_total(self):
+        self.replace_unit_log('node-units', '# Subtest: one\nok 1 - one\n# Subtest: replacement\nok 2 - replacement\n# tests 2\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n')
+        self.refused('reviewed check inventory omitted')
+
+    def test_unit_summary_without_per_check_evidence_is_refused(self):
+        self.replace_unit_log('python-units', 'Ran 2 tests in 0.1s\n\nOK\n')
+        self.refused('missing individual check outcomes')
+
+    def test_new_unit_checks_can_run_alongside_all_reviewed_checks(self):
+        self.replace_unit_log('python-units', 'test_one (example.Example) ... ok\ntest_two (example.Example) ... ok\ntest_added (example.New) ... ok\nRan 3 tests in 0.1s\n\nOK\n')
+        self.assertTrue(self.validate()['passed'])
+
+    def test_second_replay_repetition_must_cover_all_routed_actors(self):
+        path = self.out / 'replay/candidate-1/replay.json'
+        data = ci.read_json(path)
+        del data['agents']['aim-spec']
+        write(self.out / 'replay/candidate-2/replay.json', data)
+        (self.out / 'wake-replay-candidate-2.log').write_text('finished\n')
+        for steps in (self.steps, self.raw['steps']):
+            step = next(s for s in steps if s['name'] == 'wake-replay')
+            step['runs'].append(copy.deepcopy(step['runs'][0]))
+        self.refused('routed actor inventory')
+
+    def test_leading_comment_normalization_does_not_strip_template_payload(self):
+        before = b'const message = `\n// assertion payload\n`;\nassert.equal(value, message);\n'
+        changed = before.replace(b'assertion payload', b'different payload')
+        self.assertNotEqual(ci.definition_bytes(before, 'tests/example.mjs'), ci.definition_bytes(changed, 'tests/example.mjs'))
+
+    def test_nested_tap_case_identity_includes_parent(self):
+        text = '# Subtest: outer\n    # Subtest: inner\n    ok 1 - inner\nok 1 - outer\n'
+        rows = ci.unit_records(text, node=True)
+        self.assertEqual(rows, [({'name': 'inner', 'phase': '["outer"]'}, 'ok'), ({'name': 'outer', 'phase': None}, 'ok')])
+
+    def test_python_test_stdout_can_finish_without_newline(self):
+        rows = ci.unit_records('test_one (example.Example) ... {"proof":true}ok\n')
+        self.assertEqual(rows, [({'name': 'test_one (example.Example)'}, 'ok')])
 
 
 if __name__ == '__main__':

@@ -16,11 +16,35 @@ validation, including when every reported case passed.
 
 The reviewed base policy has version 1, source_commit, required (the complete
 release-check step list), source_hashes (Git blob hashes of inventory sources),
-inventory (native step to case identity lists), and reds. An identity records
+inventory (native/unit/deploy step to check identity lists), and reds. An identity records
 name, phase, engine and expectedFailure, including null/false defaults. This is
 an explicit inventory reviewed against the harness sources, not a count or an
 attempt to parse arbitrary JavaScript names. Changing a test plan requires its
 own reviewed policy update. A candidate cannot edit its own exceptions.
+
+Every listed test source is compared with the candidate before classifying
+ordinary passes as well as failures. Material assertion/helper edits require
+reviewing the policy's source definition. The only automatic source equivalence
+is insertion/removal of leading blank or line-comment lines before the first
+code line; everything after that remains byte-for-byte reviewed. This allows a
+harmless header line shift without trying to parse JavaScript or stripping
+comment-looking text inside template literals. Other harmless edits may still
+require review: uncertainty refuses validation.
+
+Each unit/deploy check has a reviewed identity from the archived verbose Python
+or Node TAP log. Every planned identity must execute with its reviewed
+multiplicity; nested TAP checks include their parent names. Every observed
+check must have an individual successful outcome and agree with the total.
+New passing unit checks may be added alongside the complete reviewed set;
+substituting a new name for an omitted planned check or duplicating one refuses
+validation. There are no skip exceptions: skipped-only, partially skipped,
+expected-failure, todo or cancelled checks refuse validation.
+
+The replay's routed actors come from the traffic file at the policy's reviewed
+source commit. Each repetition must report exactly that set, with an explicit
+empty lost list for each actor, positive completed wakes and matching delays.
+Missing actors and missing loss records fail even if the actors that appear
+completed successfully. Candidate traffic must match the reviewed traffic.
 
 Each red records step, case identity, owner, why, review, observed_profile,
 target_profile, source_commit, evidence_sha256, fingerprint and completion.

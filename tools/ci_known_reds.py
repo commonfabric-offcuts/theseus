@@ -8,6 +8,7 @@ boundary and admission contract. No third-party modules or candidate code run.
 
 import argparse
 from collections import Counter
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -31,6 +32,7 @@ SHA = re.compile(r'[0-9a-f]{40}')
 DIGEST = re.compile(r'[0-9a-f]{64}')
 PROFILE_FIELDS = ('runner_os', 'runner_arch', 'image_os', 'image_version', 'scroll_bars',
                   'reduce_motion', 'cpus', 'python', 'node', 'chrome', 'playwright')
+UNITS = ('python-units', 'node-units', 'deploy-refusals')
 
 
 class Refused(Exception):
@@ -55,6 +57,7 @@ def git(root, *args):
     return answer.stdout
 
 
+@lru_cache(maxsize=4096)
 def source(root, commit, path):
     require(isinstance(commit, str) and SHA.fullmatch(commit), 'invalid source commit')
     require(isinstance(path, str) and path.startswith(('tests/', 'tools/', '.github/'))
@@ -173,7 +176,33 @@ def profile_identity(profile):
     return {k: profile[k] for k in PROFILE_FIELDS}
 
 
-def replay_evidence(step, out):
+def definition_bytes(data, path):
+    """Only leading blank/line-comment additions are a harmless line shift.
+
+    Do not strip comments inside arbitrary JS: a template literal or regular
+    expression can contain comment-looking text that changes the assertion.
+    Everything after the first code line remains byte-for-byte reviewed.
+    """
+    if not path.endswith(('.mjs', '.py')):
+        return data
+    marker = b'//' if path.endswith('.mjs') else b'#'
+    lines = data.splitlines(keepends=True)
+    while lines and (not lines[0].strip() or lines[0].lstrip().startswith(marker)):
+        lines.pop(0)
+    return b''.join(lines)
+
+
+def reviewed_definitions(policy, root, commit):
+    for path in policy['source_hashes']:
+        reviewed = source(root, policy['source_commit'], path)
+        candidate = source(root, commit, path)
+        require(definition_bytes(reviewed, path) == definition_bytes(candidate, path),
+                'reviewed test definition changed: ' + path)
+
+
+def replay_evidence(step, out, traffic):
+    routed = unique(traffic.get('routed'), 'reviewed routed actors')
+    require(bool(routed), 'wake-replay: empty reviewed routed actor inventory')
     runs = step.get('runs')
     require(isinstance(runs, list) and bool(runs), 'wake-replay: missing runs')
     replay_runs = []
@@ -181,8 +210,10 @@ def replay_evidence(step, out):
         counts, good = release_check.replay_counts(out / 'replay' / ('candidate-%d' % number))
         require(good and run.get('passed') is True and type(run.get('exit')) is int and run['exit'] == 0,
                 'wake-replay: incomplete replay')
+        require(set(counts) == routed, 'wake-replay: routed actor inventory differs')
         for agent in counts.values():
-            require(not agent.get('lost') and type(agent.get('wakes')) is int and agent['wakes'] > 0
+            require(isinstance(agent, dict) and type(agent.get('lost')) is list, 'wake-replay: missing explicit loss record')
+            require(agent['lost'] == [] and type(agent.get('wakes')) is int and agent['wakes'] > 0
                     and len(agent.get('delays') or []) == agent['wakes'], 'wake-replay: lost or missing wakes')
         log = out / ('wake-replay-candidate-%d.log' % number)
         require(log.is_file() and bool(log.read_text().strip()), 'wake-replay: missing log')
@@ -192,12 +223,72 @@ def replay_evidence(step, out):
             'wake-replay: counts or series differ from evidence')
 
 
+def unit_records(text, node=False):
+    """Executed check identities and outcomes from verbose unittest or Node TAP.
+
+    TAP includes nested checks: a child's identity includes its named parents,
+    not its runner-assigned number. No test code is imported to discover a plan.
+    """
+    rows, pending, parents = [], None, {}
+    for line in text.splitlines():
+        if node:
+            start = re.match(r'^( *)# Subtest: (.+)$', line)
+            if start:
+                indent = len(start[1])
+                parents = {n: name for n, name in parents.items() if n < indent}
+                parents[indent] = start[2]
+                continue
+            done = re.match(r'^( *)(ok|not ok) \d+ - (.+)$', line)
+            if not done:
+                continue
+            indent, status, name = len(done[1]), done[2], done[3]
+            directive = re.search(r'\s+#\s+(SKIP|TODO)(?:\s.*)?$', name, re.I)
+            if directive:
+                name, status = name[:directive.start()], directive[1].lower()
+            require(parents.get(indent) == name, 'node-units: missing or mismatched Subtest identity')
+            ancestry = [parents[n] for n in sorted(parents) if n < indent]
+            rows.append(({'name': name, 'phase': json.dumps(ancestry) if ancestry else None}, status))
+            parents = {n: value for n, value in parents.items() if n < indent}
+        else:
+            head = re.match(r'^(\S+ \([^)]+\))(?:\s+\.\.\.\s*(.*))?$', line)
+            rest = line.strip()
+            if head:
+                require(pending is None, 'python-units: check outcome missing')
+                pending, rest = head[1], head[2] or ''
+            # unittest writes its result on stderr; a test's stdout may end
+            # without a newline, leaving e.g. a JSON object immediately }ok.
+            status = re.search(r'(?:^|[^A-Za-z0-9_])(ok|skipped .+|expected failure|unexpected success|FAIL|ERROR)$', rest)
+            if pending and status:
+                rows.append(({'name': pending}, status[1]))
+                pending = None
+    require(pending is None, 'python-units: final check outcome missing')
+    return rows
+
+
+def unit_evidence(step, out, expected):
+    name = step['name']
+    text = (out / (name + '.log')).read_text()
+    counts, good = release_check.node_counts(text) if name == 'node-units' else release_check.python_counts(text)
+    require(good and step.get('counts') == counts, 'non-browser log/count mismatch')
+    require(not any(counts.get(k, 0) for k in ('skipped', 'todo', 'cancelled', 'expected failures', 'unexpected successes')),
+            name + ': unapproved skipped, todo or incomplete checks')
+    if name == 'node-units':
+        require(counts.get('pass', 0) == counts['tests'] > 0, name + ': not every planned check passed')
+    rows = unit_records(text, node=name == 'node-units')
+    require(len(rows) == counts['tests'] and all(status == 'ok' for _, status in rows),
+            name + ': unapproved skipped/todo or missing individual check outcomes')
+    actual, plan = Counter(key(row) for row, _ in rows), Counter(key(row) for row in expected)
+    require(all(actual[k] == count for k, count in plan.items())
+            and all(count == plan.get(k, 1) for k, count in actual.items()),
+            name + ': reviewed check inventory omitted or duplicated')
+
+
 def load_policy(policy, base_root):
     require(isinstance(policy, dict) and policy.get('version') == 1, 'unsupported baseline schema')
     require(set(policy) == {'version', 'source_commit', 'source_hashes', 'required', 'inventory', 'reds'},
             'invalid baseline fields')
     require(unique(policy['required'], 'policy required steps') == set(release_check.REQUIRED), 'incomplete reviewed steps')
-    require(set(policy['inventory']) == set(NATIVE), 'incomplete reviewed native inventory')
+    require(set(policy['inventory']) == set(NATIVE) | set(UNITS), 'incomplete reviewed check inventory')
     for name, rows in policy['inventory'].items():
         require(isinstance(rows, list) and bool(rows), name + ': empty reviewed inventory')
         require(len({key(r) for r in rows}) == len(rows), name + ': duplicate reviewed identity')
@@ -256,10 +347,12 @@ def classify(policy, observed, root, commit):
                     # Passing a materially edited test is not proof the original
                     # failed case healed. Its reviewed harness must still apply.
                     harness = NATIVE[step].harness
-                    require(blob(source(root, commit, harness)) == policy['source_hashes'][harness],
+                    require(definition_bytes(source(root, commit, harness), harness) ==
+                            definition_bytes(source(root, policy['source_commit'], harness), harness),
                             'healed case has changed harness; review inventory first')
                     for path in {frame['path'] for frame in red['fingerprint']['chain']}:
-                        require(source(root, commit, path) == source(root, red['source_commit'], path),
+                        require(definition_bytes(source(root, commit, path), path) ==
+                                definition_bytes(source(root, red['source_commit'], path), path),
                                 'healed case has changed helper/assertion source; review first')
                     result['healed'].append(item)
                 continue
@@ -322,6 +415,11 @@ def validate(summary_path, provenance_path, shards, baseline, base_root, candida
     for path in ('tools/ci_known_reds.py', 'tools/known_reds.py', 'tools/release_check.py'):
         require((ROOT / path).read_bytes() == source(base_root, base['sha'], path), 'validator differs from event base: ' + path)
     policy = load_policy(read_json(baseline), base_root)
+    reviewed_definitions(policy, candidate_root, commit)
+    traffic_bytes = source(base_root, policy['source_commit'], release_check.REPLAY_FILE)
+    require(source(candidate_root, commit, release_check.REPLAY_FILE) == traffic_bytes,
+            'reviewed replay traffic changed')
+    traffic = json.loads(traffic_bytes)
     provenance, summary = read_json(provenance_path), read_json(summary_path)
     same_run(provenance.get('run'), run)
     require(provenance.get('base') == base, 'wrong event base policy')
@@ -384,12 +482,9 @@ def validate(summary_path, provenance_path, shards, baseline, base_root, candida
                 # Recompute unit/deploy verdicts from raw logs; a claimed green
                 # summary alone does not establish that any checks ran.
                 if step['name'] in ('python-units', 'deploy-refusals', 'node-units'):
-                    text = (out / (step['name'] + '.log')).read_text()
-                    counts, good = (release_check.node_counts(text) if step['name'] == 'node-units'
-                                    else release_check.python_counts(text))
-                    require(good and step.get('counts') == counts, 'non-browser log/count mismatch')
+                    unit_evidence(step, out, policy['inventory'][step['name']])
                 elif step['name'] == 'wake-replay':
-                    replay_evidence(step, out)
+                    replay_evidence(step, out, traffic)
         require(raw['required'] == summary['required'], 'shard required plan differs')
     require(Counter(ran) == Counter(policy['required']), 'incomplete whole-run coverage')
     require(unique(summary.get('failed'), 'combined failures') ==
