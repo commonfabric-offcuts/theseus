@@ -1,9 +1,13 @@
 // Item 412: sample real frames of the real feed; actions go through native
 // menus, keys or touches and fixture commands commit to isolated Core records.
 import assert from 'node:assert/strict';
+// Frames are sampled after each animation frame, and also once as an arrival
+// starts: its first pose is set in the same task that marks it, so the face
+// is read above the old floor even when a slow engine paints no frame before
+// contact.
 const PROBE = `window.motionFrames=[];window.motionClock=0;
-addEventListener('DOMContentLoaded',()=>{const sample=()=>{window.motionClock++;
-for(const c of document.querySelectorAll('#messages .message-card[data-stack-motion]')){
+addEventListener('DOMContentLoaded',()=>{const sample=only=>{window.motionClock++;
+for(const c of document.querySelectorAll('#messages .message-card[data-stack-motion]')){if(only&&c.dataset.stackMotion!==only)continue;
  const e=c.closest('.message-fold')||c,s=c.closest('.reply-stack'),r=s?.querySelector('.stack-replies');
  const prior=[...r?.querySelectorAll(':scope>[data-id]')||[]].find(n=>n.dataset.id!==c.dataset.id&&!n.hidden);
  const bar=document.querySelector('.message-bar'),barBox=bar?.getBoundingClientRect(),tab=s?.querySelector(':scope>[data-id] .stack-head')?.getBoundingClientRect();
@@ -13,7 +17,9 @@ for(const c of document.querySelectorAll('#messages .message-card[data-stack-mot
  opacity:+getComputedStyle(e).opacity,transform:getComputedStyle(e).transform,edge:b.bottom-(q?.top||0),floor:q?.height,
  authors:authors.length,authorOffset:a?a.getBoundingClientRect().top-b.top:null,authorOpacity:a?+getComputedStyle(a).opacity:1,sectionBottom:s?.getBoundingClientRect().bottom,
  priorTop:prior?.getBoundingClientRect().top,barId:document.querySelector('#messages .message-card.lit')?.dataset.id,barTop:barBox?.top,barHeight:barBox?.height,tabBottom:tab?.bottom,animations:e.getAnimations().length+c.getAnimations().length});}
- };const tick=()=>{setTimeout(sample,0);requestAnimationFrame(tick)};requestAnimationFrame(tick)});`;
+ };new MutationObserver(records=>{if(records.some(m=>m.target.matches('.message-card[data-stack-motion=arrival]')))sample('arrival')})
+ .observe(document.documentElement,{subtree:true,attributes:true,attributeFilter:['data-stack-motion']});
+ const tick=()=>{setTimeout(sample,0);requestAnimationFrame(tick)};requestAnimationFrame(tick)});`;
 
 export async function motionChecks({ check, until, view, control, shot, facts, observations }, h) {
   const { seed, open, centre, press, card, DEVICES, menuOf, choose, away, keyTo } = h;
