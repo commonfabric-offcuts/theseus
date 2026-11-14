@@ -44,6 +44,14 @@ the acts stand still a dossier only gains messages, and a split, which can
 leave it fewer, is a later act. The page keeps the later of two reads, and
 draws the stacks again only when `root_id`, `through`, `below`,
 `aside_revision` or `name_revision` changed: a later `at` alone moves no dossier.
+A stack takes a position only where the page's own reading of it agrees: the
+position names the stack's first message, or that message hangs under one the
+page has not loaded and the position names none inside the stack. A join or a
+split, before Core answers it and until its messages are read again, leaves
+the positions read before it on the messages it moved, so none of them names
+the stack's dossier or takes its rename. The page reads the positions again
+once Core answers a join or a split, as after an aside or a name, and each
+row of such a read places its own message.
 
 A root's newer visible messages are checked through indexed reply/join edges,
 not by scanning unrelated topics or by relying on the browser's loaded rows.

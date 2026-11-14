@@ -257,7 +257,9 @@ export class StackFeed {
     // 👍's reactions, a page of messages) can have put a new copy of it in the page (item 433).
     for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);
     if (kind === 'message.star') this.starsChanged();
-    if (kind === 'stack.aside' || kind === 'stack.name') await this.refreshPositions();
+    // What places a dossier and names it is read again after an act that changes them: a join or a split moves
+    // messages to another dossier, whose positions they carry from then on (item 470).
+    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join') await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.

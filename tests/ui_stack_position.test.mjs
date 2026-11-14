@@ -16,12 +16,12 @@ test('a split read later wins though it leaves the dossier fewer messages, and a
   const split = position(5,4,{below:true});
   assert.equal(laterPosition(joined, split), split);
   assert.equal(laterPosition(split, joined), split);
-  assert.equal(positionOf({head:{stack_position:joined},replies:[{stack_position:split}]}), split);
+  assert.equal(positionOf({head:{id:'root',stack_position:joined},replies:[{id:'r',stack_position:split}]}), split);
 });
 test('a new reply updates every loaded fragment of its dossier but no unrelated one', () => {
   const views = new TopicViews({ instanceId:'i', topicId:'t' });
-  views.messages.set('a',{id:'a',stack_position:position(4,1)});
-  views.messages.set('b',{id:'b',stack_position:position(4,1)});
+  views.messages.set('a',{id:'a',reply_to:'root',stack_position:position(4,1)});
+  views.messages.set('b',{id:'b',reply_to:'root',stack_position:position(4,1)});
   views.messages.set('c',{id:'c',stack_position:position(4,1,{root_id:'other'})});
   views.learnPositions([{message_id:'b',stack_position:position(5,1,{below:false})}]);
   assert.equal(views.messages.get('a').stack_position.below,false);
@@ -29,6 +29,19 @@ test('a new reply updates every loaded fragment of its dossier but no unrelated 
   views.learnPositions([{message_id:'a',stack_position:position(4,1)}]);
   assert.equal(views.messages.get('a').stack_position.below,false);
   assert.equal(positionOf({head:views.messages.get('a'),replies:[views.messages.get('b')]}).below,false);
+});
+// Item 470: the page reads positions again after a split, old's messages still carrying the dossier they left. The
+// dossier it left, put aside, reads as having a newer message than old: its row, read first, never places old's.
+test('a read of positions is the word on each message it reads: a dossier sharing a stale root never places another read in the same answer', () => {
+  const views = new TopicViews({ instanceId:'i', topicId:'t' });
+  for (const id of ['root', 'o', 'o1']) views.messages.set(id, { id, stack_position: position(9,5) });
+  const own = position(0,6,{ root_id:'o', below:false, through:null, aside_revision:0 });
+  views.learnPositions([{ message_id:'root', stack_position: position(9,6) }, { message_id:'o', stack_position: own }, { message_id:'o1', stack_position: own }]);
+  assert.deepEqual(['root', 'o', 'o1'].map(id => views.messages.get(id).stack_position.root_id), ['root', 'o', 'o'], 'each message as its own row reads it');
+  // The negative: a message the answer did not read still takes its dossier's newer read.
+  views.messages.set('r', { id:'r', stack_position: position(9,5) });
+  views.learnPositions([{ message_id:'root', stack_position: position(9,7) }]);
+  assert.deepEqual(views.messages.get('r').stack_position.at, { messages:9, acts:7 }, 'an unread fragment of the dossier follows it');
 });
 test('an act that moves nothing about where a dossier sits reports no position change and draws nothing again; a move still does', async () => {
   // Each act in the topic raises at.acts in every position Core answers. The page keeps the later read, but only

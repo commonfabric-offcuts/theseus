@@ -353,7 +353,17 @@ export function laterPosition(known, answer) {
   if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages)) return known;
   return answer;
 }
+// The stack's position, from the positions its messages carry. One is the
+// stack's only where the page's own reading of it agrees (item 470): it names
+// the head, or the head hangs under a message the page has not loaded and it
+// names none in the stack. A join or a split, before Core answers it and
+// until its messages are read again, leaves the positions Core sent before it
+// on the messages it moved; such a position is another dossier's, and null
+// where none fits.
 export function positionOf(stack) {
-  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(Boolean)
+  const inside = new Set(stack.replies.map(item => item.id));
+  const hangs = Boolean(actsOf(stack.head).joined?.into || stack.head.reply_to);
+  const fits = position => position.root_id === stack.head.id || hangs && !inside.has(position.root_id);
+  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(position => position && fits(position))
     .reduce((known, next) => laterPosition(known, next), null);
 }
