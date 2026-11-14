@@ -3,6 +3,20 @@
   "source_commit": "892df45d26b71797db64685eaa07c0edd469d081",
   "source_hashes": {
     ".github/workflows/checks.yml": "dbb2a6d2d96c1b2c60eb36c6d25272ea4204fef1",
+    ".gitignore": "0f100ecaf843ab86e2de5057a2ceceed9c91b2b9",
+    "README.md": "00765be3de5d86c00e77a45c7ea99b9c48e41f1c",
+    "bin/aim-next": "d3c2043df1c88f1f8230acd148e1140df380ff79",
+    "bin/aim-next-admin": "9c32329fc512da7d70490fc6a5a6c4e220cced2b",
+    "bin/aim-next-assess": "47e42aaae303324e166a71a83a36a0a25e140a3d",
+    "bin/aim-next-codex-broker": "64b65ef2a32d8d4b511f2e3c3bd9ac48dc563b47",
+    "bin/aim-next-runner": "8de545cca50a3ca3c588e3f33d020d0400f71334",
+    "bin/aim-next-server": "3c4a67873583ec7febfaa999220b3b71f39754e6",
+    "docs/agent-cli.md": "07563fdd1c0a702fbfe0b29aa105d5e8b31d1186",
+    "docs/agent-guide.md": "f64b5baf1d219da03480f18d5cf80ec064da2574",
+    "docs/releases.md": "2abd5ac81933e821e750e145c2d94fd45af6b5c7",
+    "docs/team-assessments.md": "396f6b77fb037b21fc1212a8e69ee97873cf33ed",
+    "docs/tools.md": "7982e16647ed61f5079b4a321c8a2b20da1feb4a",
+    "tests/acts.json": "48fcc72598d4adb6fb235f467ce8750f8570c072",
     "tests/agent_colors_native.mjs": "91027fe4060a9b4e251c9bcafcc1280969be4bfe",
     "tests/assessment_freshness_probe.mjs": "a079d10a00ca152223ab890400da4313b4c67663",
     "tests/compose-reach.mjs": "e193bc339fe443b5ad43ca560db5b3a5f3dba5a3",
@@ -10,11 +24,59 @@
     "tests/device_native.mjs": "d5844b20472a96334f42eaa820a35750936a77aa",
     "tests/fixture_control.mjs": "2885c1dd4e74b53997f4f54014a5fe4ddc52dbe7",
     "tests/fixture_control.test.mjs": "92445eadacc5e10c933608cc3c164c251c9744ce",
+    "tests/fixtures/at_names.json": "72e03e7c7ed25007cb1788bc4a843dec06d760c5",
     "tests/fixtures/fake_assessment_server.py": "b5ba4323d9578a087b0e84b6f4dfda9c5e70908b",
     "tests/fixtures/fake_codex_app_server.py": "dd4e0f93ddc8c260d5dda3156af205aa3a210071",
+    "tests/fixtures/media/README.md": "9aaf5f2642e55a5344c82a7f6f0bcd7a16699c8f",
+    "tests/fixtures/media/animated.png": "ea45151688103507842291a5956ecc167e4f125a",
+    "tests/fixtures/media/animated.webp": "e4709c673d8c4c561ea8d742d1155c14a1fddf51",
+    "tests/fixtures/media/extended.webp": "95a990b64df2f4402e6c9f84544a98d0f7ea86e7",
+    "tests/fixtures/media/invalid-image.png": "a3b10a56ad2027c8af047f50d7d293c0799b3f1f",
+    "tests/fixtures/media/multipicture.jpg": "c0c7b9c3447dd22567d5563b142380a66edfd233",
+    "tests/fixtures/media/one.gif": "f191b280ce91e6cb8c387735c10ef9bc5da6c83b",
+    "tests/fixtures/media/one.jpg": "b0be3c245edf8cbca2a815f42956d6207d176f07",
+    "tests/fixtures/media/one.png": "62a5f8f47fec02344e5bf9061888262f677cf5d6",
+    "tests/fixtures/media/one.webp": "7e7229eb635107465eabdb80b947cc21c080b28f",
+    "tests/fixtures/media/palette.png": "d828b97f9cd8efed74246212759c11fcce6f0334",
+    "tests/fixtures/media/progressive.jpg": "84ab8e51965ab5c487ab2da213264c5f3b8c2042",
+    "tests/fixtures/media/screen.png": "8f1050f222e360362f0d07c1319f4492ff69b26b",
+    "tests/fixtures/media/sixteen.png": "dca6e4417d3e34b209118f80d52379da0d1c9333",
     "tests/fixtures/mini_dom.mjs": "ccbf7c7eded508b9b8eef0d60264321162948df0",
     "tests/fixtures/opening_wire.mjs": "def773dc0cb45610e31fb7916ea5f4c82f568372",
     "tests/fixtures/reader.mjs": "3436a541abac6e5ca41f319f0a7e56fbe8d4ca25",
+    "tests/fixtures/replay/wake-2026-11-05.json": "c24d0e826279daef3652b3f7ca9bea7616390885",
+    "tests/fixtures/schema_10.sql": "5ed7bd0b73a27e817c9d28330e98249fa1ec690f",
+    "tests/fixtures/schema_11.sql": "cfcb88ee5fc52da556c7902545bc2e5bcf61a2b9",
+    "tests/fixtures/schema_12.sql": "7fdfacedc0b658043a74bf1037432342b1667260",
+    "tests/fixtures/schema_12_early.sql": "f57f0159f78d2898376fd6f52a8599f80f449afa",
+    "tests/fixtures/schema_13.sql": "ce806fc1e413b85ef18b1e5c99809d00350e26e6",
+    "tests/fixtures/schema_14.sql": "2b007dba8cb9be2fb96f81df690f629401142f00",
+    "tests/fixtures/schema_15.sql": "8af2e60daa7ff52e4c6407bf814f6345c6bab0fa",
+    "tests/fixtures/schema_16.sql": "a7064f8aa8f83b16a5b7f7d2692d295f24c73e54",
+    "tests/fixtures/schema_17.sql": "d7170b1fc5b7658097801607a59032298b4871ce",
+    "tests/fixtures/schema_18.sql": "cda8f4a95954913169953e079cf42f616dfaf281",
+    "tests/fixtures/schema_19.sql": "cf1f3c6f9544a7438fdec085c482d841ed12f591",
+    "tests/fixtures/schema_20.sql": "71ff644ba25aa4eb1b4b31b32a5de6a11453359e",
+    "tests/fixtures/schema_21.sql": "9f9cd9d3c8c71173ce281e40e1d7b619b883992d",
+    "tests/fixtures/schema_22.sql": "1375e9a12bedd46c1389ef9db5a152712bd52027",
+    "tests/fixtures/schema_23.sql": "5735291f45420c18c0bd55405a23966fb4e812ac",
+    "tests/fixtures/schema_24.sql": "eba6889d6f768f884c30da0ff62752b4f3e1eae6",
+    "tests/fixtures/schema_25.sql": "fd573c727a52662b996f197c0f978c19edb15e28",
+    "tests/fixtures/schema_26.sql": "fd573c727a52662b996f197c0f978c19edb15e28",
+    "tests/fixtures/schema_27.sql": "619507b7f6c47beddc7ff8762e1d3a37f1a48d6d",
+    "tests/fixtures/schema_28.sql": "cf344b7a3c617f2ac6cb4b4fbeff12b8726524e8",
+    "tests/fixtures/schema_29.sql": "6f0139fca18bcaeaf57d3de0f8a31d211229e85c",
+    "tests/fixtures/schema_30.sql": "c4e2e017f56b6d83c1ae234892d66af841810f05",
+    "tests/fixtures/schema_32.sql": "c951082e23b0dfbf7e6c1eaa649ea0673684369a",
+    "tests/fixtures/schema_33.sql": "b099ab2d9946b05fd9cd6fe466eece23b249c628",
+    "tests/fixtures/schema_34.sql": "0b32397f82c7476d90bd9b70af6132ec82bcb2e1",
+    "tests/fixtures/schema_35.sql": "9ffe6a9601ec969ba31856f68cb9db97b6b66e26",
+    "tests/fixtures/schema_36.sql": "5ff35ccd6ba926c8e50e26912672127d498a56a1",
+    "tests/fixtures/schema_37.sql": "f113f9b27766ed6edbc3a7701f23f79d8676bc5b",
+    "tests/fixtures/schema_38.sql": "8a4ffbc2786467a18667d04335fe595ee45645c8",
+    "tests/fixtures/schema_39.sql": "1d02a6d3284fa4e4c4ebaedb7d2f2a7710ffe85e",
+    "tests/fixtures/schema_8.sql": "181a34ca6e59b05c5fd8d594c50a665be76b7c19",
+    "tests/fixtures/schema_9.sql": "0166a0b304c24c78cee22b86fa7484289efc66e6",
     "tests/fixtures/ui_dom.mjs": "c99be2eac5c3bebedfc0624ec95e1016df45606e",
     "tests/fixtures/ui_http.py": "046989c810546fa0bed575f8cf6c98579aa2219b",
     "tests/fixtures/ui_store.py": "5a87fcc999572c05d35726f937b525949272fa3c",
@@ -21624,13 +21686,27 @@
   "reds": [],
   "transitions": [
     {
-      "review": "m-ebb3721ee2864be3955368ecb34f22d3",
+      "review": "PENDING independent re-review of expanded test-input boundary; supersedes m-ebb3721ee2864be3955368ecb34f22d3",
       "retired_sources": [],
       "plan": {
         "version": 1,
-        "source_commit": "81d2eaa98f63f61cf7bf6e51d030f600ae579a99",
+        "source_commit": "bc4665d1ba1cbdd3b87a258e331c3642a1b969a6",
         "source_hashes": {
           ".github/workflows/checks.yml": "dbb2a6d2d96c1b2c60eb36c6d25272ea4204fef1",
+          ".gitignore": "0f100ecaf843ab86e2de5057a2ceceed9c91b2b9",
+          "README.md": "00765be3de5d86c00e77a45c7ea99b9c48e41f1c",
+          "bin/aim-next": "d3c2043df1c88f1f8230acd148e1140df380ff79",
+          "bin/aim-next-admin": "9c32329fc512da7d70490fc6a5a6c4e220cced2b",
+          "bin/aim-next-assess": "47e42aaae303324e166a71a83a36a0a25e140a3d",
+          "bin/aim-next-codex-broker": "64b65ef2a32d8d4b511f2e3c3bd9ac48dc563b47",
+          "bin/aim-next-runner": "8de545cca50a3ca3c588e3f33d020d0400f71334",
+          "bin/aim-next-server": "3c4a67873583ec7febfaa999220b3b71f39754e6",
+          "docs/agent-cli.md": "07563fdd1c0a702fbfe0b29aa105d5e8b31d1186",
+          "docs/agent-guide.md": "f64b5baf1d219da03480f18d5cf80ec064da2574",
+          "docs/releases.md": "2abd5ac81933e821e750e145c2d94fd45af6b5c7",
+          "docs/team-assessments.md": "396f6b77fb037b21fc1212a8e69ee97873cf33ed",
+          "docs/tools.md": "c4cca446420e106c953a6344aa5d8048355a385e",
+          "tests/acts.json": "48fcc72598d4adb6fb235f467ce8750f8570c072",
           "tests/agent_colors_native.mjs": "91027fe4060a9b4e251c9bcafcc1280969be4bfe",
           "tests/assessment_freshness_probe.mjs": "a079d10a00ca152223ab890400da4313b4c67663",
           "tests/compose-reach.mjs": "e193bc339fe443b5ad43ca560db5b3a5f3dba5a3",
@@ -21638,11 +21714,60 @@
           "tests/device_native.mjs": "d5844b20472a96334f42eaa820a35750936a77aa",
           "tests/fixture_control.mjs": "2885c1dd4e74b53997f4f54014a5fe4ddc52dbe7",
           "tests/fixture_control.test.mjs": "92445eadacc5e10c933608cc3c164c251c9744ce",
+          "tests/fixtures/at_names.json": "72e03e7c7ed25007cb1788bc4a843dec06d760c5",
+          "tests/fixtures/ci-run1-refusal.json": "5e52a40eb3a07b0ba34c7e3a51c3558fbb2d9a90",
           "tests/fixtures/fake_assessment_server.py": "b5ba4323d9578a087b0e84b6f4dfda9c5e70908b",
           "tests/fixtures/fake_codex_app_server.py": "dd4e0f93ddc8c260d5dda3156af205aa3a210071",
+          "tests/fixtures/media/README.md": "9aaf5f2642e55a5344c82a7f6f0bcd7a16699c8f",
+          "tests/fixtures/media/animated.png": "ea45151688103507842291a5956ecc167e4f125a",
+          "tests/fixtures/media/animated.webp": "e4709c673d8c4c561ea8d742d1155c14a1fddf51",
+          "tests/fixtures/media/extended.webp": "95a990b64df2f4402e6c9f84544a98d0f7ea86e7",
+          "tests/fixtures/media/invalid-image.png": "a3b10a56ad2027c8af047f50d7d293c0799b3f1f",
+          "tests/fixtures/media/multipicture.jpg": "c0c7b9c3447dd22567d5563b142380a66edfd233",
+          "tests/fixtures/media/one.gif": "f191b280ce91e6cb8c387735c10ef9bc5da6c83b",
+          "tests/fixtures/media/one.jpg": "b0be3c245edf8cbca2a815f42956d6207d176f07",
+          "tests/fixtures/media/one.png": "62a5f8f47fec02344e5bf9061888262f677cf5d6",
+          "tests/fixtures/media/one.webp": "7e7229eb635107465eabdb80b947cc21c080b28f",
+          "tests/fixtures/media/palette.png": "d828b97f9cd8efed74246212759c11fcce6f0334",
+          "tests/fixtures/media/progressive.jpg": "84ab8e51965ab5c487ab2da213264c5f3b8c2042",
+          "tests/fixtures/media/screen.png": "8f1050f222e360362f0d07c1319f4492ff69b26b",
+          "tests/fixtures/media/sixteen.png": "dca6e4417d3e34b209118f80d52379da0d1c9333",
           "tests/fixtures/mini_dom.mjs": "ccbf7c7eded508b9b8eef0d60264321162948df0",
           "tests/fixtures/opening_wire.mjs": "def773dc0cb45610e31fb7916ea5f4c82f568372",
           "tests/fixtures/reader.mjs": "3436a541abac6e5ca41f319f0a7e56fbe8d4ca25",
+          "tests/fixtures/replay/wake-2026-11-05.json": "c24d0e826279daef3652b3f7ca9bea7616390885",
+          "tests/fixtures/schema_10.sql": "5ed7bd0b73a27e817c9d28330e98249fa1ec690f",
+          "tests/fixtures/schema_11.sql": "cfcb88ee5fc52da556c7902545bc2e5bcf61a2b9",
+          "tests/fixtures/schema_12.sql": "7fdfacedc0b658043a74bf1037432342b1667260",
+          "tests/fixtures/schema_12_early.sql": "f57f0159f78d2898376fd6f52a8599f80f449afa",
+          "tests/fixtures/schema_13.sql": "ce806fc1e413b85ef18b1e5c99809d00350e26e6",
+          "tests/fixtures/schema_14.sql": "2b007dba8cb9be2fb96f81df690f629401142f00",
+          "tests/fixtures/schema_15.sql": "8af2e60daa7ff52e4c6407bf814f6345c6bab0fa",
+          "tests/fixtures/schema_16.sql": "a7064f8aa8f83b16a5b7f7d2692d295f24c73e54",
+          "tests/fixtures/schema_17.sql": "d7170b1fc5b7658097801607a59032298b4871ce",
+          "tests/fixtures/schema_18.sql": "cda8f4a95954913169953e079cf42f616dfaf281",
+          "tests/fixtures/schema_19.sql": "cf1f3c6f9544a7438fdec085c482d841ed12f591",
+          "tests/fixtures/schema_20.sql": "71ff644ba25aa4eb1b4b31b32a5de6a11453359e",
+          "tests/fixtures/schema_21.sql": "9f9cd9d3c8c71173ce281e40e1d7b619b883992d",
+          "tests/fixtures/schema_22.sql": "1375e9a12bedd46c1389ef9db5a152712bd52027",
+          "tests/fixtures/schema_23.sql": "5735291f45420c18c0bd55405a23966fb4e812ac",
+          "tests/fixtures/schema_24.sql": "eba6889d6f768f884c30da0ff62752b4f3e1eae6",
+          "tests/fixtures/schema_25.sql": "fd573c727a52662b996f197c0f978c19edb15e28",
+          "tests/fixtures/schema_26.sql": "fd573c727a52662b996f197c0f978c19edb15e28",
+          "tests/fixtures/schema_27.sql": "619507b7f6c47beddc7ff8762e1d3a37f1a48d6d",
+          "tests/fixtures/schema_28.sql": "cf344b7a3c617f2ac6cb4b4fbeff12b8726524e8",
+          "tests/fixtures/schema_29.sql": "6f0139fca18bcaeaf57d3de0f8a31d211229e85c",
+          "tests/fixtures/schema_30.sql": "c4e2e017f56b6d83c1ae234892d66af841810f05",
+          "tests/fixtures/schema_32.sql": "c951082e23b0dfbf7e6c1eaa649ea0673684369a",
+          "tests/fixtures/schema_33.sql": "b099ab2d9946b05fd9cd6fe466eece23b249c628",
+          "tests/fixtures/schema_34.sql": "0b32397f82c7476d90bd9b70af6132ec82bcb2e1",
+          "tests/fixtures/schema_35.sql": "9ffe6a9601ec969ba31856f68cb9db97b6b66e26",
+          "tests/fixtures/schema_36.sql": "5ff35ccd6ba926c8e50e26912672127d498a56a1",
+          "tests/fixtures/schema_37.sql": "f113f9b27766ed6edbc3a7701f23f79d8676bc5b",
+          "tests/fixtures/schema_38.sql": "8a4ffbc2786467a18667d04335fe595ee45645c8",
+          "tests/fixtures/schema_39.sql": "1d02a6d3284fa4e4c4ebaedb7d2f2a7710ffe85e",
+          "tests/fixtures/schema_8.sql": "181a34ca6e59b05c5fd8d594c50a665be76b7c19",
+          "tests/fixtures/schema_9.sql": "0166a0b304c24c78cee22b86fa7484289efc66e6",
           "tests/fixtures/ui_dom.mjs": "c99be2eac5c3bebedfc0624ec95e1016df45606e",
           "tests/fixtures/ui_http.py": "046989c810546fa0bed575f8cf6c98579aa2219b",
           "tests/fixtures/ui_store.py": "5a87fcc999572c05d35726f937b525949272fa3c",
@@ -21791,7 +21916,7 @@
           "tests/test_thumb_answers.py": "599f3ede7d9fe83fc3c40221a0f85caaac98adc3",
           "tests/test_tools_acts.py": "608b339254c35b991cb0073d1ae80a558fcc075f",
           "tests/test_tools_checks_trial.py": "475fae3305eca561853e65688e57ad161cf08f58",
-          "tests/test_tools_ci_known_reds.py": "0d7d646838c9972dd7dc9a4c162640178e0c59a0",
+          "tests/test_tools_ci_known_reds.py": "c769decea74b5882fa2e5abbe91d238f78f20d60",
           "tests/test_tools_deploy.py": "9a434a5b8d143320603fac2029a618830c27c315",
           "tests/test_tools_mutant.py": "fa6ebc66db580dcb087009e14123336556ce88c1",
           "tests/test_tools_native.py": "357e333333c620430d229ef359fb9b6756c2a14f",
@@ -21923,7 +22048,9 @@
           "tools/__init__.py": "75baea9b19201f9a0b56e199a0f7afdb0f609110",
           "tools/acts.py": "30b7b56fadafa9730615f3d0dea50e6d512819a9",
           "tools/checks.py": "93d5ce52f2dd4ff6171c1ed5ee6214a3f833c3bd",
-          "tools/ci_known_reds.py": "7c551d435f537cf6f78f03e569538179152a3a83",
+          "tools/ci-input-reads.json": "03d0a11e8bb9df7d895f1ab92df9b8742dc745a8",
+          "tools/ci_input_reads.py": "d1b8c41dc25d6aa5dd22b8e6962e35d107b60033",
+          "tools/ci_known_reds.py": "3a99fb880a322ff2f1b81dc0899c608a172e78bf",
           "tools/deploy.py": "5995e3d1f8599fd523354d0f1e1742cbb1e70793",
           "tools/known_reds.py": "b61304cc65f88eb0351a69bb31e19e23b7618ecd",
           "tools/mutant.py": "482c6802fcba344d1864584939a62a337b2d6208",
@@ -21940,8 +22067,7 @@
           "tools/release_check.py": "4ac31673e145097421dc03409aeb56fc8c50d9f9",
           "tools/releases.py": "950de67246442430e235a66824f7f81404681c86",
           "tools/wake_replay.py": "2c6f85fae5b1eb135b24ee0cb1a761c73a1d3330",
-          "tools/wake_standin.py": "d1a6140e029b39f7b3351d515f9c95ace7d30a30",
-          "tests/fixtures/ci-run1-refusal.json": "5e52a40eb3a07b0ba34c7e3a51c3558fbb2d9a90"
+          "tools/wake_standin.py": "d1a6140e029b39f7b3351d515f9c95ace7d30a30"
         },
         "required": [
           "python-units",
@@ -33766,6 +33892,9 @@
               "name": "test_added_test_module_needs_a_complete_reviewed_plan (test_tools_ci_known_reds.Evidence)"
             },
             {
+              "name": "test_aliased_python_and_node_file_reads_require_declarations (test_tools_ci_known_reds.Evidence)"
+            },
+            {
               "name": "test_ambiguous_complete_plans_are_refused (test_tools_ci_known_reds.Evidence)"
             },
             {
@@ -33835,7 +33964,19 @@
               "name": "test_cross_profile_requires_runner_evidence_review (test_tools_ci_known_reds.Evidence)"
             },
             {
+              "name": "test_declared_non_product_read_extends_the_frozen_inputs (test_tools_ci_known_reds.Evidence)"
+            },
+            {
+              "name": "test_deeply_nested_json_is_refused_with_a_reason (test_tools_ci_known_reds.Evidence)"
+            },
+            {
               "name": "test_dirty_checkout (test_tools_ci_known_reds.Evidence)"
+            },
+            {
+              "name": "test_documentation_read_by_tests_cannot_be_changed (test_tools_ci_known_reds.Evidence)"
+            },
+            {
+              "name": "test_duplicate_opaque_read_is_a_new_read_obligation (test_tools_ci_known_reds.Evidence)"
             },
             {
               "name": "test_duplicate_step_preserving_total (test_tools_ci_known_reds.Evidence)"
@@ -33851,6 +33992,9 @@
             },
             {
               "name": "test_expected_failure_then_retry_pass_is_not_a_clean_heal (test_tools_ci_known_reds.Evidence)"
+            },
+            {
+              "name": "test_expected_json_fixture_cannot_be_changed_to_hide_a_regression (test_tools_ci_known_reds.Evidence)"
             },
             {
               "name": "test_failed_legacy_fixture_cleanup (test_tools_ci_known_reds.Evidence)"
@@ -33922,7 +34066,16 @@
               "name": "test_missing_step (test_tools_ci_known_reds.Evidence)"
             },
             {
+              "name": "test_nested_json_cli_preserves_a_refusal_result_file (test_tools_ci_known_reds.Evidence)"
+            },
+            {
               "name": "test_nested_tap_case_identity_includes_parent (test_tools_ci_known_reds.Evidence)"
+            },
+            {
+              "name": "test_new_opaque_file_read_requires_a_declaration (test_tools_ci_known_reds.Evidence)"
+            },
+            {
+              "name": "test_new_read_in_a_reviewed_plan_still_needs_a_declaration (test_tools_ci_known_reds.Evidence)"
             },
             {
               "name": "test_new_unit_checks_can_run_alongside_all_reviewed_checks (test_tools_ci_known_reds.Evidence)"
@@ -33965,6 +34118,9 @@
             },
             {
               "name": "test_planned_python_check_cannot_be_replaced_at_same_total (test_tools_ci_known_reds.Evidence)"
+            },
+            {
+              "name": "test_policy_cannot_omit_fixture_or_documentation_inputs (test_tools_ci_known_reds.Evidence)"
             },
             {
               "name": "test_pr_edited_policy (test_tools_ci_known_reds.Evidence)"

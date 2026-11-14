@@ -2,10 +2,28 @@
   "production_source_commit": "892df45d26b71797db64685eaa07c0edd469d081",
   "admissions": 0,
   "definition_sources": {
+    "all_test_files": 337,
     "python_tests_and_helpers": 141,
     "mjs_tests_and_helpers": 147,
+    "test_data_sql_media": 49,
     "producer_tools": 20,
-    "producer_workflow": 1
+    "producer_workflow": 1,
+    "non_product_inputs": [
+      ".gitignore",
+      "README.md",
+      "bin/aim-next",
+      "bin/aim-next-admin",
+      "bin/aim-next-assess",
+      "bin/aim-next-codex-broker",
+      "bin/aim-next-runner",
+      "bin/aim-next-server",
+      "docs/agent-cli.md",
+      "docs/agent-guide.md",
+      "docs/releases.md",
+      "docs/team-assessments.md",
+      "docs/tools.md"
+    ],
+    "total": 371
   },
   "required_steps": 47,
   "inventory_cases": {
@@ -84,13 +102,13 @@
     "archival_evidence": "ci-inventory-archival-evidence.json",
     "updated_reports": {
       "native-compose": {
-        "evidence": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/compose-attest/native-run/compose-attest-1-1/evidence/native.json",
+        "evidence": "checks/compose-attest/native-run/compose-attest-1-1/evidence/native.json",
         "sha256": "dd5cf0066c015f82254797b4a0d586c8ba68e06b7c09feb2f725ead31185fa1f",
         "identities_match": true,
         "cases": 120
       },
       "native-sources": {
-        "evidence": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/sources-wait/final/sw-final-2/evidence/native.json",
+        "evidence": "checks/sources-wait/final/sw-final-2/evidence/native.json",
         "sha256": "2f26133e6b8c11f193558ebe146bcd867bb0171f8b716af55527b4882bd7c681",
         "identities_match": true,
         "cases": 2
@@ -107,27 +125,138 @@
     ]
   },
   "bootstrap": {
-    "source_commit": "81d2eaa98f63f61cf7bf6e51d030f600ae579a99",
-    "review": "m-ebb3721ee2864be3955368ecb34f22d3",
-    "canonical_plan_sha256": "c88df87e6fa7e3215452c6908512a56230f5975948d70eb04d901509333d2376",
-    "source_paths": 312,
-    "extra_fixture": {
-      "path": "tests/fixtures/ci-run1-refusal.json",
-      "blob": "5e52a40eb3a07b0ba34c7e3a51c3558fbb2d9a90"
+    "source_commit": "bc4665d1ba1cbdd3b87a258e331c3642a1b969a6",
+    "review": "PENDING independent re-review of expanded test-input boundary; supersedes m-ebb3721ee2864be3955368ecb34f22d3",
+    "canonical_plan_sha256": "117600a33b0886e949a1046a969a038f09853b373295204866d94fb644659c99",
+    "definition_sources": {
+      "all_test_files": 339,
+      "python_tests_and_helpers": 142,
+      "mjs_tests_and_helpers": 147,
+      "test_data_sql_media": 50,
+      "producer_tools": 23,
+      "producer_workflow": 1,
+      "non_product_inputs": [
+        ".gitignore",
+        "README.md",
+        "bin/aim-next",
+        "bin/aim-next-admin",
+        "bin/aim-next-assess",
+        "bin/aim-next-codex-broker",
+        "bin/aim-next-runner",
+        "bin/aim-next-server",
+        "docs/agent-cli.md",
+        "docs/agent-guide.md",
+        "docs/releases.md",
+        "docs/team-assessments.md",
+        "docs/tools.md"
+      ],
+      "total": 376
     },
-    "python_planned": 2413,
-    "added_classifier_identities": 101,
-    "executed_classifier_cases": 101,
-    "execution_basis": "319 passing classifier/release-check/deploy cases at exact source; full Python discovery is not execution",
-    "total_identities": 5453,
+    "python_planned": 2423,
+    "added_classifier_identities": 111,
+    "executed_classifier_cases": 111,
+    "execution_basis": "329 passing classifier/release-check/deploy tests at the named source; full Python discovery is not execution",
+    "total_identities": 5463,
     "admissions": 0,
     "retired_sources": [],
-    "history_requirement": "Retain exact 81d2eaa9 commit reachable in protected controller Git clone; use merge commit, not squash/rebase for #4",
-    "landing_status": "Pending Fable independent review and landing word"
+    "history_requirement": "Retain the exact source commit reachable by the protected controller; merge #4, do not squash/rebase",
+    "landing_status": "HOLD pending Fable independent review and landing word"
   },
   "unexpected_failures": [
     "sources timeout: the Reader is back on the question (:79)",
     "Notebook :548 and :664",
-    "PR1 two WebKit keyboard quote regressions"
-  ]
+    "PR1 two WebKit keyboard quote regressions",
+    "Compose layout: chromium laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+    "Compose layout: chromium laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+    "Compose layout: chromium phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+    "Compose layout: chromium phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+    "Compose layout: webkit laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+    "Compose layout: webkit laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+    "Compose layout: webkit phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+    "Compose layout: webkit phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px"
+  ],
+  "unexpected_compose_layout_failures": [
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "chromium laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "chromium laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "chromium phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "chromium phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "webkit laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "webkit laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "webkit phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "name": "webkit phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      "status": "unexpected; not admitted"
+    }
+  ],
+  "production_inner_plan_sha256": "49dde2914d1cc73f23d84b950503f82b81be8822ac9bc3246b03cd24b838eb33",
+  "review_status": "PENDING fresh independent approval of both expanded plans; earlier narrower approvals superseded"
 }
