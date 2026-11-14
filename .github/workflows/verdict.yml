@@ -27,10 +27,13 @@ on:
 permissions: {}
 
 # One controller at a time per head, whatever producer attempt it answers: publication for a head is serial, and the
-# publish job compares producer run and attempt against the check run already standing before it writes.
+# publish job compares producer run and attempt against the check run already standing before it writes. The queue
+# keeps every waiting run, in order; the default keeps one and cancels the rest, which would drop a run before it
+# could publish anything.
 concurrency:
   group: verdict-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
+  queue: max
 
 env:
   # The producer this controller judges, by GitHub's own identity for it, so a workflow added under another path or
@@ -381,6 +384,8 @@ jobs:
         with:
           artifact-ids: ${{ needs.judge.outputs.record_id }}
           path: verdict
+          # An artifact chosen by id lands in a folder named for it unless merged; publish reads verdict/check-run.json.
+          merge-multiple: true
       - name: The check run on the pull request's head
         shell: bash
         env:
