@@ -1043,4 +1043,7 @@ article.message-card a{-webkit-user-select:text;user-select:text}
 @media(any-pointer:coarse){
   article.message-card :is(.md-p,.md-pre,.md-heading,.md-item-words,.md-marker,.md-cell,.author-name,.message-preview-cue,.message-reply-to){-webkit-user-select:text;user-select:text}
 }
-:is(.reading-pane,.message-card,.deck-card,.deck-opening) .fence-copy-announcement:not(.sr-only){position:static;display:block;flex:none;max-width:100%;align-self:center;margin:.25rem 0;scroll-margin-block:.5rem}
+.reading-pane>.fence-copy-announcement:not(.sr-only){position:static;display:block;flex:none;max-width:100%;align-self:center;margin:.25rem 0}
+.md-fence:has(>.fence-copy-announcement){display:flex;flex-direction:column}
+.md-fence>.fence-copy-announcement:not(.sr-only){position:static;order:-1;display:block;margin:.25rem;max-width:calc(100% - .5rem);align-self:start;scroll-margin-block:.5rem}
+.md-fence>.fence-copy-announcement[data-feedback]::before{content:attr(data-feedback)}

@@ -14,11 +14,13 @@ function stateOf(doc) {
   state = { held: null, paints: new Map(), serial: 0, release: 0 };
   documents.set(doc, state);
   const clearNotice = () => {
+    if (state.feedback) { state.feedback.remove(); state.feedback = null; }
     if (!state.notice) return;
     state.notice.classList.add('sr-only');
     state.notice.textContent = '';
     state.notice = null;
   };
+  state.clearNotice = clearNotice;
   const flush = () => {
     state.held = null;
     const paints = [...state.paints]; state.paints.clear();
@@ -108,17 +110,15 @@ export function fenceCopyButton(doc, text) {
     button.title = 'Copying fenced text…';
     button.setAttribute('aria-label', button.title);
     const pane = button.closest('.reading-pane');
-    const root = pane ?? button.closest('.message-card,.deck-card,.deck-opening') ?? button.closest('dialog') ?? doc.body;
+    const root = pane ?? button.closest('dialog') ?? doc.body;
+    const fence = !pane && button.closest('.md-fence');
     let notice = root.querySelector(':scope > .fence-copy-announcement');
     if (!notice) {
       notice = doc.createElement('span'); notice.className = 'sr-only fence-copy-announcement';
       notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
       root.append(notice);
     }
-    if (state.notice && state.notice !== notice) {
-      state.notice.classList.add('sr-only');
-      state.notice.textContent = '';
-    }
+    state.clearNotice();
     state.notice = notice;
     notice.classList.add('sr-only');
     notice.textContent = '';
@@ -135,11 +135,18 @@ export function fenceCopyButton(doc, text) {
       path.setAttribute('d', copied ? DONE : FAILED);
       button.title = words; button.setAttribute('aria-label', words + ' Press to copy again.');
       if (state.serial !== serial || state.notice !== notice) return;
-      notice.classList.toggle('sr-only', copied);
+      notice.classList.toggle('sr-only', copied || Boolean(fence));
       notice.textContent = words;
-      // Keep a refusal inside a long card visible without moving keyboard focus.
-      if (!copied && root.matches('.message-card,.deck-card,.deck-opening')) {
-        notice.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      if (!copied && fence) {
+        // The live region carries the accessible words. Its visible counterpart
+        // has no text nodes, so authored text and Notebook caret offsets stay exact.
+        const feedback = doc.createElement('span');
+        feedback.className = 'fence-copy-announcement';
+        feedback.setAttribute('aria-hidden', 'true');
+        feedback.dataset.feedback = words;
+        fence.append(feedback);
+        state.feedback = feedback;
+        feedback.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
       }
     };
     Promise.resolve(writing).then(() => finish(true), () => finish(false));

@@ -67,6 +67,9 @@ async function copy(p, selector, expected = payload, key = null) {
   await wait(p, s => document.querySelector(s)?.dataset.label === 'Copied', selector);
   assert.equal(await p.evaluate(() => copyCalls.at(-1).active), true, 'the real clipboard API was invoked during transient activation');
 }
+// Inline visible feedback is CSS-generated so it does not enter native text selections.
+const feedbackWords = notice => notice.evaluate(el => el.dataset.feedback ?? el.innerText);
+
 async function picture(p, name) {
   await p.screenshot({ path: path.join(evidence, `${engine}-${name}.png`) });
 }
@@ -160,7 +163,7 @@ try {
         await wait(p, sel => document.querySelector(sel).dataset.label === 'Copy failed', selector);
         if (!phone) await p.mouse.move(0, 0);
         const refusal = p.locator('.fence-copy-announcement:not(.sr-only)');
-        assert.equal(await refusal.innerText(), phone ? 'Could not copy. Select the text and use Copy.'
+        assert.equal(await feedbackWords(refusal), phone ? 'Could not copy. Select the text and use Copy.'
           : 'Could not copy. Open the message, select the text, and use Copy.');
         const shown = await refusal.boundingBox();
         assert.ok(shown && shown.width > 2 && shown.x >= 0 && shown.x + shown.width <= width);
@@ -192,6 +195,8 @@ try {
         await press(p, selector);
         const notice = p.locator('.fence-copy-announcement:not(.sr-only)').first();
         await notice.waitFor();
+        const guidance = surface === 'feed' && !phone ? 'Open the message, select the text, and use Copy.' : 'Select the text and use Copy.';
+        assert.equal(await feedbackWords(notice), 'Could not copy. ' + guidance);
         const layout = await notice.evaluate(el => {
           const rect = el.getBoundingClientRect(), modal = el.closest('dialog[open]');
           const controls = [...(modal ?? document).querySelectorAll('button,textarea,input,a[href],[role=button]')];
@@ -210,6 +215,44 @@ try {
         await p.close();
       }
     });
+    await check('copy refusal at the first fence of a tall feed or Notebook card keeps its place and retries', async () => {
+      const lines = Array.from({ length: 70 }, (_, i) => 'Paragraph ' + i + ' has enough words to wrap on a small screen.');
+      const text = 'Before.\n\n~~~\nfirst fenced words\n~~~\n\n' + lines.join('\n\n');
+      const item = await control({ method: 'agent_message', operation_id: 'long-copy-' + engine, topic_id: 'fence-topic', join: true, source: 'topic', body: text });
+      const noteId = 'long-copy-note-' + engine;
+      await control({ method: 'outcome_reference', operation_id: noteId, item_id: noteId, title: 'Long copy note', body: '## Long card\n' + text });
+      for (const phone of [false, true]) for (const [route, selector] of [
+        ['/?topic=fence-topic', query(item.result.message_id) + ' .fence-copy'],
+        ['/?cards=' + noteId, '.deck-card:not(.deck-writing) .fence-copy'],
+      ]) {
+        const p = await open(route, { phone, width: phone ? 375 : 1280 }), button = p.locator(selector).first();
+        await button.scrollIntoViewIfNeeded();
+        await p.evaluate(() => { copyMode = 'reject'; });
+        if (phone) await button.tap();
+        else {
+          const before = await button.elementHandle();
+          await button.focus(); await p.keyboard.press('Enter');
+          assert.ok(await before.evaluate(el => el.isConnected && el === document.activeElement),
+            'Enter activates the same focused glyph through the full-message read');
+          await before.dispose();
+        }
+        await wait(p, s => document.querySelector(s)?.dataset.label === 'Copy failed', selector);
+        const notice = p.locator('.fence-copy-announcement:not(.sr-only)');
+        await notice.waitFor();
+        const visible = el => {
+          const r = el.getBoundingClientRect();
+          return r.width > 1 && r.height > 1 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;
+        };
+        assert.ok(await button.evaluate(visible), route + ' retry control remains in view');
+        assert.ok(await notice.evaluate(visible), route + ' refusal is in view');
+        if (!phone) assert.ok(await button.evaluate(el => el === document.activeElement), 'keyboard focus stays on Copy');
+        assert.equal(await p.locator('[role=status].fence-copy-announcement').innerText(), await feedbackWords(notice));
+        await p.evaluate(() => { copyMode = 'real'; });
+        if (phone) await button.tap(); else await p.keyboard.press('Enter');
+        await wait(p, s => document.querySelector(s)?.dataset.label === 'Copied', selector);
+        await p.close();
+      }
+    });
     await check('a secondary click keeps the native link selection inside a feed card', async () => {
       const address = 'https://example.com/x';
       const item = await control({ method: 'agent_message', operation_id: 'fence-link-' + engine,
@@ -225,7 +268,7 @@ try {
       const selector = query(message) + ' .fence-copy';
       await p.evaluate(() => { copyMode = 'reject'; });
       await press(p, selector);
-      assert.match(await p.locator('.fence-copy-announcement:not(.sr-only)').innerText(), /Open the message/);
+      assert.match(await feedbackWords(p.locator('.fence-copy-announcement:not(.sr-only)')), /Open the message/);
       // The Reader is the desktop fallback: dragging over the feed card itself
       // opens the message on release. It must not select the payload in place.
       const span = p.locator(query(message) + ' .md-pre').first();
@@ -282,7 +325,7 @@ try {
         if (where === 'fence after refusal') {
           await p.evaluate(() => { copyMode = 'reject'; });
           await press(p, query(message) + ' .fence-copy');
-          assert.equal(await p.locator('.fence-copy-announcement:not(.sr-only)').innerText(),
+          assert.equal(await feedbackWords(p.locator('.fence-copy-announcement:not(.sr-only)')),
             'Could not copy. Select the text and use Copy.');
         }
         const point = await card.evaluate((node, { selector, word, previous }) => {

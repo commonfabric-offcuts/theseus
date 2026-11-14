@@ -92,6 +92,13 @@ export class CardScroll {
       // and its click to be over.
       if (this.press) await this.press.over();
       if (!card.isConnected || !preview.getBoundingClientRect().height || card.dataset.full === 'shown') return false;
+      // Lighting a preview fetches the full text. Keep the same Copy button
+      // under keyboard focus until the reader leaves it.
+      const active = preview.ownerDocument?.activeElement;
+      if (active?.matches?.('.fence-copy') && preview.contains(active)) {
+        active.addEventListener('blur', () => this.expand(card, item), { once: true });
+        return false;
+      }
       // Measure only while the message is shown, never a closed stack's zero-
       // height root. Keep the whole card's size, including its header and cue.
       const height = card.getBoundingClientRect().height;
