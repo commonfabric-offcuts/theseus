@@ -339,17 +339,37 @@ class BrokerRouteCase(unittest.TestCase):
         self.assertIs(type(caught.exception),api.BrokerConfigError)
         self.assertEqual(caught.exception.code,'invalid_broker_config')
 
+    def installed_codex(self):
+        # The installed layout in a temporary folder that stands for
+        # /Applications: group-writable 040775, every folder below it 0755.
+        # Running the fake leaves a mark, so acceptance is shown to read metadata only.
+        applications=self.root/'Applications'
+        executable=applications/'ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'
+        executable.parent.mkdir(parents=True)
+        for folder in [*executable.relative_to(applications).parents][:-1]:(applications/folder).chmod(0o755)
+        applications.chmod(0o775)
+        mark=self.root/'executed'
+        executable.write_text('#!/bin/sh\n: > %s\n'%mark)
+        executable.chmod(0o755)
+        info=applications.stat()
+        return str(executable),(str(applications),info.st_uid,info.st_gid),mark
+
     def test_selected_installed_codex_metadata_is_accepted_without_execution(self):
-        # This is the explicitly selected installation on this Mac. A missing
-        # installation is an unavailable test prerequisite, not another binary.
-        executable='/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'
-        self.assertTrue(Path(executable).is_file(),'selected installed Codex prerequisite is missing')
+        api=self.api()
+        executable,applications,mark=self.installed_codex()
         self.save(self.config,dict(self.config_value,codex_executable=executable))
-        with mock.patch('subprocess.Popen',side_effect=AssertionError('metadata check cannot execute')):
-            result=self.api().load_config(self.config,expected_binding=self.expected)
+        try:result=api.load_config(self.config,expected_binding=self.expected,applications=applications)
+        except api.BrokerConfigError as error:self.fail('installed layout refused: %s'%error.code)
         self.assertEqual(result.codex_executable,executable)
-        with self.assertRaises(self.api().BrokerConfigError):
-            self.api()._executable(executable)  # Generic broker policy stays strict.
+        self.assertFalse(mark.exists(),'metadata check cannot execute')
+        with self.assertRaises(api.BrokerConfigError):
+            api._executable(executable)  # Generic broker policy stays strict.
+        # A group-writable folder that is not the reviewed one is refused.
+        with self.assertRaises(api.BrokerConfigError):api.load_config(self.config,expected_binding=self.expected)
+        Path(executable).unlink()
+        with self.assertRaises(api.BrokerConfigError):
+            api.load_config(self.config,expected_binding=self.expected,applications=applications)
+        self.assertFalse(mark.exists(),'metadata check cannot execute')
 
     def test_applications_exception_has_no_other_writable_path_or_identity(self):
         api=self.api()
