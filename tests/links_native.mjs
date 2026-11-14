@@ -310,8 +310,10 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await p.key('Escape');
     await until(async () => !await open(p, 'reader'), 'Escape closes the Reader');
     assert.equal(await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(menuCard)})`), true, 'the focus is on the message\'s card');
+    // The old document is ready too: the reload is waited for by a timeOrigin kept on the window.
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.reload', {});
-    await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'reloaded');
+    await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready === "true" && (window.documentOrigin??=performance.timeOrigin) !== ${loaded}`); } catch { return false; } }, 'reloaded');
     await frame(p);
     assert.equal(await open(p, 'reader'), false, 'a reload opens the topic alone');
     assert.deepEqual(p.errors, []);
@@ -433,6 +435,10 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     // Each selection is quoted with the button; the writing then holds the source's own words for it.
     const quote = async (select, excerpt) => {
       await select();
+      // The Reader shows the pill a paint after the selection is made, from
+      // the selection change or from the editor saving its state, whichever
+      // comes first: it is pressed once shown.
+      await until(() => p.evaluate(`!document.querySelector('#quote-selection').hidden`), 'the quote pill shows for ' + excerpt);
       await p.point('#quote-selection');
       quoted.push(excerpt);
       const writing = quoted.map(words => `> ${words}`).join('\n\n') + '\n\n';
@@ -478,6 +484,8 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
       await p.evaluate(`(()=>{const find=words=>{const walk=document.createTreeWalker(document.querySelector('#source-body'),NodeFilter.SHOW_TEXT);
         for(let node;(node=walk.nextNode());)if(node.data===words)return node;throw new Error('no text '+words)};
         getSelection().setBaseAndExtent(find(${JSON.stringify(from)}),${fromAt},find(${JSON.stringify(to)}),${toAt});return true})()`);
+      // Selection changes reach the Reader as a later task; press once its pill shows.
+      await until(() => p.evaluate(`!document.querySelector('#quote-selection').hidden`), 'the quote pill shows for ' + excerpt);
       await p.point('#quote-selection');
       quoted.push(excerpt);
       const writing = quoted.map(words => words.split('\n').map(line => `> ${line}`).join('\n')).join('\n\n') + '\n\n';

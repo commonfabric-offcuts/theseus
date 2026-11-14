@@ -38,6 +38,9 @@ if sys.argv[1:]==['--warm']:
 PARAMS = json.loads(Path(sys.argv[0]).with_name('fixture.json').read_text())
 SCENARIO = PARAMS['scenario']
 TRACE = Path(PARAMS['trace'])
+# Model the process-specific monotonic origin in CPython 3.9 on macOS.
+original_monotonic = time.monotonic
+time.monotonic = lambda: original_monotonic() + SCENARIO.get('monotonic_offset', 0.0)
 def record(kind, **fields):
     with TRACE.open('a') as out:
         out.write(json.dumps(dict(kind=kind, at_ns=time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW), **fields))+'\n')
@@ -50,7 +53,7 @@ def send(value):
         sys.stdout.write(raw[half:]);sys.stdout.flush()
     else:
         sys.stdout.write(raw);sys.stdout.flush()
-record('start', argv=sys.argv[1:], pid=os.getpid(), ppid=os.getppid(), pgid=os.getpgrp(),
+record('start', monotonic=time.monotonic(), monotonic_offset=SCENARIO.get('monotonic_offset', 0.0), argv=sys.argv[1:], pid=os.getpid(), ppid=os.getppid(), pgid=os.getpgrp(),
        home=os.environ.get('CODEX_HOME'), env_keys=sorted(os.environ))
 page = 0
 for line in sys.stdin:
@@ -84,12 +87,12 @@ for line in sys.stdin:
     elif method == 'thread/queue/list':
         if 'list_answer_left' in SCENARIO:
             # Answer when this much of the broker's RPC budget is left, measured
-            # from the broker's own recorded start, whatever startup took.
-            started=next(row['started'] for row in map(json.loads,TRACE.read_text().splitlines())
-                         if row['kind']=='broker-started')
-            target=started+PARAMS['rpc_seconds']-SCENARIO['list_answer_left']
-            time.sleep(max(0.0,target-time.monotonic()))
-            record('list-answered',left=started+PARAMS['rpc_seconds']-time.monotonic())
+            # from its deadline on a clock shared by both processes.
+            deadline_ns=next(row['rpc_deadline_ns'] for row in map(json.loads,TRACE.read_text().splitlines())
+                             if row['kind']=='broker-started')
+            target_ns=deadline_ns-int(SCENARIO['list_answer_left']*1000000000)
+            time.sleep(max(0.0,(target_ns-time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW))/1000000000))
+            record('list-answered',left=(deadline_ns-time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW))/1000000000)
         if SCENARIO.get('partial'):
             sys.stdout.write('{"id":');sys.stdout.flush()
             # No newline or response: wait for broker EOF, not a private retry.
@@ -162,9 +165,23 @@ def record(kind,**fields):
 record('broker-env',home=os.environ.get('CODEX_HOME'),marker=os.environ.get('THESEUS_TEST_MUST_NOT_INHERIT'))
 broker_main=codex_broker.main
 def main(argv=None,*,started=None):
-    record('broker-started',started=started)
+    # CPython 3.9 macOS monotonic origins differ by process. Translate the
+    # broker's remaining budget to the same raw clock already used by the trace.
+    raw_ns=time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+    now=time.monotonic()
+    entry=now if started is None else started
+    rpc_left=entry+codex_broker.TOTAL_SECONDS-codex_broker.CLEANUP_SECONDS-now
+    record('broker-started',started=started,monotonic=now,
+           rpc_deadline_ns=raw_ns+int(rpc_left*1000000000))
     return broker_main(argv,started=started)
 codex_broker.main=main
+original_call=codex_broker._RPC.call
+def call(self,method,params):
+    result=original_call(self,method,params)
+    if method=='thread/queue/list':
+        record('list-received',left=codex_broker._remaining(self.deadline))
+    return result
+codex_broker._RPC.call=call
 after_pin=PARAMS['after_pin']
 original_pin=Store.read_route_pin
 if after_pin is not None:
@@ -629,10 +646,12 @@ class CodexBrokerCase(unittest.TestCase):
 
     def test_late_valid_list_does_not_erase_the_reserved_add_budget(self):
         # The list answers with half the add reserve left of the broker's budget,
-        # counted from the broker's start, however long startup took.
+        # measured on the shared raw clock, however long startup took.
         result,rows=self.dispatch(dict(list_answer_left=ADD_SECONDS/2))
         answered=next(r for r in rows if r['kind']=='list-answered')
         self.assertTrue(0<answered['left']<ADD_SECONDS,answered)
+        received=next(r for r in rows if r['kind']=='list-received')
+        self.assertTrue(0<received['left']<ADD_SECONDS,received)
         self.assertEqual(result.outcome,'error')
         self.assertEqual(result.reason,'codex_no_answer')
         self.assertEqual(len(self.requests(rows,'thread/queue/list')),1)
@@ -644,10 +663,15 @@ class CodexBrokerCase(unittest.TestCase):
 
     def test_a_list_answered_with_the_add_reserve_left_still_adds(self):
         # The same late answer, with half a second more than the reserve left.
-        result,rows=self.dispatch(dict(list_answer_left=ADD_SECONDS+0.5))
-        answered=next(r for r in rows if r['kind']=='list-answered')
-        self.assertGreater(answered['left'],ADD_SECONDS,answered)
-        self.assertAccepted(result,rows)
+        for offset in (0.0, -0.75):
+            with self.subTest(api_monotonic_offset=offset):
+                result,rows=self.dispatch(dict(list_answer_left=ADD_SECONDS+0.5,
+                                               monotonic_offset=offset))
+                answered=next(r for r in rows if r['kind']=='list-answered')
+                self.assertGreater(answered['left'],ADD_SECONDS,answered)
+                received=next(r for r in rows if r['kind']=='list-received')
+                self.assertGreaterEqual(received['left'],ADD_SECONDS,received)
+                self.assertAccepted(result,rows)
 
     def test_valid_receipt_does_not_hide_nonzero_or_unconfirmed_api_exit(self):
         for scenario in (dict(exit_code=9),dict(late_exit=True)):

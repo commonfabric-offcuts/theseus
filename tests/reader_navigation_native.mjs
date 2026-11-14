@@ -10,7 +10,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   const topics = [{ id: 't2', title: 'Design discussion' }, { id: 't3', title: 'Greenlight discussion' }];
   // Which run of the page is up: a load, or a move in place between topics
   // (in-place-navigation.mjs), each puts back a fresh page, marked when first seen.
-  const run = p => p.evaluate(`(main=>performance.timeOrigin+':'+(main.dataset.run??=String(Math.random())))(document.getElementById('main'))`);
+  // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+  const run = p => p.evaluate(`(main=>(window.documentOrigin??=performance.timeOrigin)+':'+(main.dataset.run??=String(Math.random())))(document.getElementById('main'))`);
   // A wait that spans a document replacement can probe the new document after
   // it commits and before its body is parsed. Readiness probes read
   // document.body?.dataset, so that moment reads as not ready yet.
@@ -100,9 +101,11 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>p.evaluate('document.body?.dataset.ready==="true" && location.search==="?workspace=w1" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
     await control({method:'read_fault',name:'workspace',status:403,body:{error:{code:'FORBIDDEN',message:'Outcome access denied'}},count:1});
     await commitElsewhere(false);
-    await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden'),'denied outcome hides its previous topic choices');
-    assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcome unavailable');
-    assert.equal(await p.evaluate('document.querySelector("#app-status").hidden'),false);
+    // The refused read hides the topics and names the outcome unavailable at once; the page says why
+    // once the commit's other read, the list of outcomes beside it, has landed too. Which of the two the
+    // server answers first varies, so the check waits for the three together.
+    await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden && document.querySelector("#topic-title").textContent==="Outcome unavailable" && !document.querySelector("#app-status").hidden'),'denied outcome hides its previous topic choices and says why');
+    assert.match(await p.evaluate('document.querySelector("#app-status").textContent'),/Outcome access denied/);
     await commitElsewhere(true);
     await until(()=>p.evaluate('!document.querySelector("#topic-navigation").hidden && document.querySelector("#app-status").hidden'),'the next commit restores the permitted outcome');
     await commitElsewhere(false);

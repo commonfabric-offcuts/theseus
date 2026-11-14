@@ -279,9 +279,10 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
       const j=await (await import('/journal.mjs')).openJournal(context);
       try { await j.save(previous.snapshot()); } finally { j.close(); }
     })()`);
-    const beforeRecoveryReload = await p.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const beforeRecoveryReload = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.reload');
-    await until(() => p.evaluate(`performance.timeOrigin !== ${beforeRecoveryReload} && document.body?.dataset.ready === "true"`), 'fresh inline document for saved-copy discovery');
+    await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${beforeRecoveryReload} && document.body?.dataset.ready === "true"`), 'fresh inline document for saved-copy discovery');
     await until(() => p.evaluate('!document.querySelector("#inline-review-versions").hidden'), 'retained inline writing exposes Review versions');
     await p.evaluate('document.querySelector("#inline-review-versions").scrollIntoView({block:"center"})');
     await p.point('#inline-review-versions');
@@ -289,9 +290,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(await inlineBody(), '', 'discovery does not adopt or overwrite current writing');
     assert.equal(await p.evaluate('document.querySelector("#reader").open'), false, 'inline recovery never manufactures a source Reader');
     await p.point('#review-close'); noSend();
-    const afterReview = await p.evaluate('performance.timeOrigin');
+    const afterReview = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.reload');
-    await until(() => p.evaluate(`performance.timeOrigin !== ${afterReview} && document.body?.dataset.ready === "true"`), 'inline document after review');
+    await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${afterReview} && document.body?.dataset.ready === "true"`), 'inline document after review');
     const tabLimit = await p.evaluate('document.querySelectorAll("a[href],button,input,textarea,select,[tabindex]").length + 2');
     for (let count = 0; count < tabLimit && await p.evaluate('document.activeElement?.id') !== 'inline-writing-body'; ++count) await p.key('Tab');
     assert.equal(await p.evaluate('document.activeElement.id'), 'inline-writing-body', 'normal Tab finds writing with no programmatic focus');
@@ -307,9 +308,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     const modalDraft = (await view('editor_state', { source_ref: facts.sources[1], topic_id: facts.topic_id })).draft;
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'modal closed');
     assert.equal(await inlineBody(), expected); noSend();
-    const documentStart = await p.evaluate('performance.timeOrigin');
+    const documentStart = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.reload');
-    await until(() => p.evaluate(`performance.timeOrigin !== ${documentStart} && document.body?.dataset.ready === "true" && Boolean(document.querySelector('#inline-writing-body'))`), 'new inline document ready');
+    await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${documentStart} && document.body?.dataset.ready === "true" && Boolean(document.querySelector('#inline-writing-body'))`), 'new inline document ready');
     assert.equal(await inlineBody(), expected, 'reload returns to the independent topic draft');
 
     await p.evaluate('document.querySelector("#inline-add-image").scrollIntoView({block:"center"})');

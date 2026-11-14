@@ -169,6 +169,14 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       await shot(p,'reading-colors-'+theme+'-phone-cards');
       await p.open(1);
       expect((await style('.reading-pane')).background===neutral[theme],theme+': phone Reader keeps the neutral page for the person\'s own message');
+      // The laptop steps above usually leave an unsent copy of this reply on this
+      // device (unless its idle save went through before the page moved on).
+      // The phone Reader looks for earlier copies in the background and offers
+      // one it finds, which narrows the writing field. Measure once that search
+      // has finished, so the touch alone is compared. WebKit's harness turns
+      // touch on in a fresh browser context, whose device keeps no copy.
+      await until(()=>p.evaluate("document.querySelector('#reader').dataset.discovered==='true'"),'the Reader has looked for earlier writing');
+      const offered=await p.evaluate("!document.querySelector('#review-versions').hidden");
       const phoneBefore=await geometry(),phoneWriting=await field(p),sourceBox=await p.box('#source-body');
       const touch={x:sourceBox.x+10,y:sourceBox.y+10};
       await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[touch]});
@@ -178,7 +186,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       assert.deepEqual(await geometry(),phoneBefore,'source touch keeps phone writing geometry');
       assert.equal(await p.evaluate('document.querySelector("#reader").scrollWidth<=innerWidth'),true,'phone Reader does not overflow horizontally');
       await shot(p,'reading-colors-'+theme+'-phone-reader');
-      observations.push({name:'reading colors',theme,initialOwn,initialOther,ownRest,ownHover,otherRest,secondary,topicHover,agentSource,agentSample,agentHint,source,backgroundPoint,sourcePixel,hint,hintContrast,writing,hovered,coverage,selection,bands});
+      observations.push({name:'reading colors',theme,offered,initialOwn,initialOther,ownRest,ownHover,otherRest,secondary,topicHover,agentSource,agentSample,agentHint,source,backgroundPoint,sourcePixel,hint,hintContrast,writing,hovered,coverage,selection,bands});
       assert.deepEqual(p.errors,[]);
       await p.close();
     }

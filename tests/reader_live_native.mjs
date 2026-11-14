@@ -733,8 +733,10 @@ export async function liveChecks({ check, page, until, control, observations, or
     await home.send('Page.bringToFront');
     await until(async () => await titleCount(home) === before.title + 1 && await rowCount(home, outcomeRow) === before.outcome + 1, 'the outcome row on the home counts one more');
     await p.send('Page.bringToFront');
+    // The old document is ready too: the new one is waited for by a timeOrigin kept on the window.
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.navigate', { url: topic.url });
-    await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'the page is read again');
+    await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready === "true" && (window.documentOrigin??=performance.timeOrigin) !== ${loaded}`); } catch { return false; } }, 'the page is read again');
     await until(async () => await pill(p, topic.message) && await line(p) === '1 message marked unread' && await titleCount(p) === before.title + 1, 'the mark survives a reload');
     assert.deepEqual(markCalls(p).length, 1, 'loading the topic clears nothing');
     for (const each of [p, second, home]) { assert.deepEqual(each.errors, []); await each.close(); }
