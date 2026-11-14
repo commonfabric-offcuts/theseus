@@ -213,6 +213,10 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
       await tap(p, `[data-key="${build}"] [data-role=try-again]`);
       await until(async () => (await stages()).join() === 'Build it,Review', 'Try again saves the name typed');
       await until(() => p.evaluate(`[...document.querySelectorAll('[data-role=stage-name]')].map(i=>i.value).join()==='Build it,Review'`), 'the page shows both stages');
+      // The name's field showed its words before they were sent, so the page is drawn again from the read after the
+      // save only when the stage says Saved. A press is made on that page: a repaint landing while a button is held
+      // down takes the button away under it, and the press does nothing.
+      await until(async () => (await said(p, build)).join() === 'Saved.', 'the page read after the name is saved says so on its stage');
       // The kept title's Try again adds the words it shows, once; the line keeps what was typed on it.
       assert.deepEqual((await lines()).held, ['Ship'], 'a repaint keeps the title as corrected');
       await tap(p, `${held} input`);
