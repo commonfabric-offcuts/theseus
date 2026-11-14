@@ -433,6 +433,10 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     // Each selection is quoted with the button; the writing then holds the source's own words for it.
     const quote = async (select, excerpt) => {
       await select();
+      // The Reader shows the pill a paint after the selection is made, from
+      // the selection change or from the editor saving its state, whichever
+      // comes first: it is pressed once shown.
+      await until(() => p.evaluate(`!document.querySelector('#quote-selection').hidden`), 'the quote pill shows for ' + excerpt);
       await p.point('#quote-selection');
       quoted.push(excerpt);
       const writing = quoted.map(words => `> ${words}`).join('\n\n') + '\n\n';
