@@ -23959,7 +23959,7 @@
   ],
   "transitions": [
     {
-      "review": "PENDING paired exact-plan review for restacked plan2, source eb07402dd41c424146b903792de45a6652aad9d2; ruling m-2ed04fe627034553bd0619d44e41b30f",
+      "review": "Theseus paired exact-plan approval m-07fee31d86a44555905b0526a3cb1525 (#4175), reviewed source eb07402dd41c424146b903792de45a6652aad9d2 and policy 33d3565e; generation ruling m-2ed04fe627034553bd0619d44e41b30f",
       "retired_sources": [],
       "plan": {
         "version": 1,
@@ -47974,7 +47974,7 @@
       }
     },
     {
-      "review": "PENDING paired exact-plan review for restacked plan3, source 4091d95bbc68146fe589858fc54e7588f78039e0; ruling m-2ed04fe627034553bd0619d44e41b30f",
+      "review": "Theseus paired exact-plan approval m-07fee31d86a44555905b0526a3cb1525 (#4175), reviewed source 4091d95bbc68146fe589858fc54e7588f78039e0 and policy 33d3565e; generation ruling m-2ed04fe627034553bd0619d44e41b30f",
       "retired_sources": [],
       "plan": {
         "version": 1,
