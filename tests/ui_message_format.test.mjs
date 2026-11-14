@@ -741,3 +741,34 @@ test('the Reader draws plain words as written, whitespace at the end aside, and 
     assert.deepEqual([host.childNodes[0].dataset.start, host.childNodes.at(-1).dataset.end], ['0', String(body.length)], JSON.stringify(body));
   }
 });
+
+test('fence copy is opt-in, preserves payload and quote mapping, and excludes inline code and box tables', () => {
+  const body = '> ~~~~ text\r\n> \t  α <tag> & `literal`  \r\n> \r\n> end\r\n> ~~~~\r\n\r\nAfter `inline`.';
+  assert.equal(byClass(render(body), 'fence-copy').length, 0);
+  const host = render(body, { copyFences: true });
+  const buttons = byClass(host, 'fence-copy');
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].textContent, '', 'control labels never enter selection or notebook cursor mapping');
+  assert.equal(byClass(host, 'md-pre')[0].textContent, '\t  α <tag> & `literal`  \n\nend');
+  assert.equal(host.textContent, render(body).textContent);
+  const code = byClass(host, 'md-pre')[0], text = code.childNodes[0];
+  const oldCode = byClass(render(body), 'md-pre')[0];
+  for (let n = 0; n <= text.data.length; n++) {
+    for (const end of [false, true]) assert.equal(format.sourcePosition(text, n, end), format.sourcePosition(oldCode.childNodes[0], n, end));
+  }
+  assert.equal(byClass(render(BOX_TABLE, { copyFences: true }), 'fence-copy').length, 0);
+});
+
+test('only a terminated closing line proves a fence complete in an excerpt, including quoted fences', () => {
+  for (const marker of ['```', '~~~~']) {
+    for (const quote of ['', '> ']) {
+      const lines = [marker, 'one', marker].map(line => quote + line).join('\n');
+      assert.equal(byClass(render(lines, { partial: true, copyFences: true }), 'fence-copy').length, 0, 'last delimiter may be a truncated non-closing line');
+      assert.equal(byClass(render(lines + '\n', { partial: true, copyFences: true }), 'fence-copy').length, 1);
+      assert.equal(byClass(render(lines, { copyFences: true }), 'fence-copy').length, 1);
+      assert.equal(byClass(render(quote + marker + '\n' + quote + 'one', { partial: true, copyFences: true }), 'fence-copy').length, 0);
+      assert.equal(byClass(render(quote + marker + '\n' + quote + 'one', { copyFences: true }), 'fence-copy').length, 1);
+    }
+  }
+  assert.equal(byClass(render('```\n```', { copyFences: true }), 'fence-copy').length, 1, 'empty fence');
+});

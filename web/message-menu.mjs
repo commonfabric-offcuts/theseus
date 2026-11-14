@@ -62,6 +62,7 @@ export class MessageMenu {
     // names who (the bar's 👍 thumbs it).
     // On a phone, the first tap on a card lights it; the next opens it.
     host.addEventListener('click', event => {
+      if (event.target.closest?.('.fence-copy')) return;
       const entry = this.entryOf(event.target);
       if (!entry) return;
       const react = event.target.closest?.('[data-react]');
@@ -82,7 +83,7 @@ export class MessageMenu {
     // A click or tap in a message or a dossier also moves the keys' place there
     // (item 386): it runs before the control pressed acts, so whatever that
     // control focuses itself (a menu, the Reader, a field) still takes the focus.
-    host.addEventListener('click', event => this.claim(event.target), true);
+    host.addEventListener('click', event => { if (!event.target.closest?.('.fence-copy')) this.claim(event.target); }, true);
     // A tap anywhere but a message, its bar, its menu or a pop-up lets the light go. A
     // finger lifted after a scroll ends in pointercancel, so scrolling keeps it.
     // Where the tap landed is read from the path the release was sent along: a
@@ -189,6 +190,7 @@ export class MessageMenu {
   // Writing keeps the focus (claim), and so do an open menu, the Reader or any
   // other dialog, so typing and their keys never go elsewhere.
   hover(event) {
+    if (event.target.closest?.('.fence-copy')) return;
     if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]')) return;
     this.claim(event.target);
   }
@@ -351,11 +353,14 @@ export class MessageMenu {
     if (!this.lit?.isConnected) return;
     const card = cardIn(this.lit), at = this.doc.activeElement;
     const star = card.querySelector(':scope > .message-author > .card-star'), folded = card.querySelector(':scope > .message-folded > .folded-thumb');
-    const order = [folded, star, ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
+    const order = [folded, star, ...card.querySelectorAll('.fence-copy'), ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
     if (!order.length) return;
     const index = order.indexOf(at);
     if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }
-    else if (!event.shiftKey && index === order.length - 1) card.focus({ preventScroll: true });
+    else if (!event.shiftKey && index === order.length - 1) {
+      const copies = [...card.querySelectorAll('.fence-copy')];
+      (copies.at(-1) ?? card).focus({ preventScroll: true });
+    }
     else if (!event.shiftKey && index >= 0) { event.preventDefault(); order[index + 1].focus({ preventScroll: true }); }
     else if (event.shiftKey && index === 0) { event.preventDefault(); card.focus({ preventScroll: true }); }
     else if (event.shiftKey && index > 0) { event.preventDefault(); order[index - 1].focus({ preventScroll: true }); }

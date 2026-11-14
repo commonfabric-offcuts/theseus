@@ -759,7 +759,14 @@ function paintViews(kind) {
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
-      card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
+      card = node('article'); card.tabIndex = 0;
+      card.onclick = () => run(() => openSource(ref, card, marks.capture(item.id)));
+      // Enter belongs to MessageMenu; Space keeps the old card button's activation.
+      card.addEventListener('keydown', event => { if (event.target === card && event.key === ' ') event.preventDefault(); });
+      card.addEventListener('keyup', event => {
+        if (event.target === card && event.key === ' ' && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); card.click(); }
+      });
+      card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
       // An agent's name on its card opens its color picker instead of the message.
       const open = card.onclick;
       card.onclick = event => {
@@ -778,7 +785,7 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: true }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
@@ -1388,7 +1395,7 @@ function repaintEdited(ids, edits) {
     if (line && answers) linkWords(line, answers, { partial: true });
     const preview = card.querySelector(':scope > .message-preview');
     if (preview) {
-      formatWords(preview, item.body, { partial: item.preview === true });
+      formatWords(preview, item.body, { partial: item.preview === true, copyFences: true });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));

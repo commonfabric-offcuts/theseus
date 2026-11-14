@@ -12,6 +12,7 @@
 // moves forward, and every search for where a mark or code closes remembers
 // where it stopped.
 import { addressAt, addressStarts, lastWords, linkNode, topicAt, topicStarts, wordNodes, writtenLink } from './links.mjs';
+import { deferFencePaint, fenceCopyButton } from './fence-copy.mjs';
 import { charAt, charBefore, isEscapable, isPunctuation, isSpace } from './characters.mjs';
 
 // ---- Words and where each of their characters is in the message
@@ -265,7 +266,7 @@ function blocksOf(m, partial, depth, meter) {
     if (fence) {
       let j = i + 1;
       while (j < n && !fenceCloses(lines[j].text, fence)) tick(meter, lines[j++].text.length + 1);
-      blocks.push({ kind: 'code', lang: fence.lang, ...span(i, Math.min(j, n - 1)), words: words(i + 1, j - 1) });
+      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: fence.lang, ...span(i, Math.min(j, n - 1)), words: words(i + 1, j - 1) });
       i = j + 1; continue;
     }
     if (boxStart(lines, i)) {
@@ -681,7 +682,7 @@ const MARKS = { open: '☐', done: '☑' };
 // One block as nodes. Inside a card (a button), every block is a span shown
 // as a block, but for a table, which needs its own elements. cut: the block
 // ends an excerpt, so its last words may be cut.
-function blockNode(block, doc, cut, meter) {
+function blockNode(block, doc, cut, meter, copyFences = false) {
   const inline = (words, last = cut) => inlineNodes(words, { doc, partial: last, meter });
   const span = { start: block.start, end: block.end };
   if (block.kind === 'heading') return el(doc, 'span', `md-block md-heading md-h${Math.min(block.level, 4)}`, inline(block.words), span);
@@ -691,10 +692,18 @@ function blockNode(block, doc, cut, meter) {
     if (block.lang) code.dataset.lang = block.lang;
     if (block.words.text) code.append(placed(doc.createTextNode(block.words.text), { words: block.words }));
     if (block.box) edgeFades(code);
-    return code;
+    if (!copyFences || !block.fenced) return code;
+    const wrap = el(doc, 'span', 'md-block md-fence', [code], span);
+    if (block.complete) wrap.append(placed(fenceCopyButton(doc, block.words.text), { start: span.end, end: span.end }));
+    else {
+      const cue = el(doc, 'span', 'fence-copy-unavailable');
+      cue.setAttribute('aria-label', 'Open message to copy');
+      wrap.append(placed(cue, { start: span.end, end: span.end }));
+    }
+    return wrap;
   }
   if (block.kind === 'quote') {
-    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter)) : inline(block.words);
+    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter, copyFences)) : inline(block.words);
     return el(doc, 'span', 'md-block md-quote', inner, span);
   }
   if (block.kind === 'list') {
@@ -740,14 +749,15 @@ function tableNode(block, doc, meter) {
 }
 
 // text as nodes for a card or any other place that shows a message's words.
-export function formatNodes(text, { doc = globalThis.document, partial = false, meter } = {}) {
+export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false } = {}) {
   const blocks = parseBlocks(text, { partial, meter });
   if (!blocks.length) return wordNodes(String(text ?? ''), { doc, partial });
-  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter));
+  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences));
 }
 
 // Puts text, formatted, in host in place of what host held.
 export function formatWords(host, text, options = {}) {
+  if (deferFencePaint(host, () => formatWords(host, text, options))) return host;
   host.replaceChildren();
   for (const node of formatNodes(text, { doc: host.ownerDocument ?? globalThis.document, ...options })) host.append(node);
   host.classList.add('formatted');
@@ -761,7 +771,8 @@ export function formatWords(host, text, options = {}) {
 // before; a heading, a list item, a quote, a code block and a table are each
 // one passage, shown as a block. A passage never cuts a link, code or a
 // mark: the sentences one spans join, as the line's own reading says.
-export function drawPassages(host, body, doc = globalThis.document, { meter } = {}) {
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences }))) return;
   body = String(body ?? '');
   host.replaceChildren();
   const blocks = blocksOf(Mapped.of(body), false, 0, meter), drawn = [];
@@ -804,7 +815,7 @@ export function drawPassages(host, body, doc = globalThis.document, { meter } = 
       });
       return;
     }
-    drawn.push({ node: blockNode(block, doc, false, meter), start: block.start });
+    drawn.push({ node: blockNode(block, doc, false, meter, copyFences), start: block.start });
   });
   drawn.forEach(({ node, start, tail, from }, k) => {
     const end = k + 1 < drawn.length ? drawn[k + 1].start : body.length;

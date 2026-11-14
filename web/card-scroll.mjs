@@ -65,7 +65,7 @@ export class CardScroll {
     // The words the reader had scrolled to inside the box hold their place:
     // the page scrolls by as much as the box's own scroll gives back.
     const top = preview.getBoundingClientRect().top;
-    formatWords(preview, body);
+    formatWords(preview, body, { copyFences: true });
     preview.classList.add('scroll-in-place');
     card.dataset.whole = 'shown'; card.dataset.full = 'shown';
     card.classList.remove('scroll-in-place'); card.classList.add('show-full');
@@ -96,7 +96,7 @@ export class CardScroll {
       // height root. Keep the whole card's size, including its header and cue.
       const height = card.getBoundingClientRect().height;
       card.style.maxHeight = `${Math.ceil(height)}px`;
-      formatWords(preview, body);
+      formatWords(preview, body, { copyFences: true });
       preview.classList.add('scroll-in-place');
       card.classList.add('scroll-in-place');
       edges(card);

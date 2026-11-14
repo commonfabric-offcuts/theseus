@@ -202,7 +202,7 @@ export class Reader {
     // from growing beside it, so what lights is what quotes.
     this.sourceBody.addEventListener('pointerdown', event => {
       // A link is only a link: pressing it lights no passage to quote.
-      if (event.target.closest?.('a,.reader-end')) return;
+      if (event.target.closest?.('a,button,.reader-end')) return;
       this.sourceBody.focus({ preventScroll: true });
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey, true);
     });
@@ -404,7 +404,7 @@ export class Reader {
 
   // The source as passages, its Markdown shown as written to be read (message-format.mjs).
   drawSource(body) {
-    drawPassages(this.sourceBody, body, document);
+    drawPassages(this.sourceBody, body, document, { copyFences: true });
     this.placeEnd();
   }
 
@@ -416,7 +416,7 @@ export class Reader {
   }
 
   point(event) {
-    if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a')) return;
+    if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a,button')) return;
     // Nothing lights to promise a quote that Return would not make.
     if (!this.returnQuotes()) return;
     const current = { x: event.clientX, y: event.clientY };
