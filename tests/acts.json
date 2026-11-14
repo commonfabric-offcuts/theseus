@@ -10423,11 +10423,11 @@
     [
      "aim_next/message_edit.py",
      "and self._actor_kind(db, reader) == \"agent\"]",
-     "]"
+     "] "
     ]
    ],
    "check": {
-    "python": "test_message_edit.py"
+    "python": "test_message_exposure.py"
    }
   },
   {
@@ -10507,7 +10507,7 @@
     [
      "aim_next/message_edit.py",
      "        for reader in readers:\n            self._change",
-     "        for reader in agents:\n            self._change"
+     "        for reader in reader_agents:\n            self._change"
     ]
    ],
    "check": {
@@ -10549,7 +10549,7 @@
     [
      "aim_next/conversation.py",
      "words(\"p\", chars=120) + \" AS reply_to_excerpt",
-     "p.body AS reply_to_excerpt"
+     "\"substr(p.body,1,120)\" + \" AS reply_to_excerpt"
     ]
    ],
    "check": {
@@ -10689,7 +10689,7 @@
     [
      "aim_next/stacks.py",
      "words(\"m\", chars=160) + \" AS excerpt",
-     "substr(m.body,1,160) AS excerpt"
+     "\"substr(m.body,1,160)\" + \" AS excerpt"
     ]
    ],
    "check": {
@@ -10982,8 +10982,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "if (receipt.status === 'retryable') { this.state = 'busy'; return receipt; }",
-     "if (receipt.status === 'retryable') { this.pending = null; this.state = 'busy'; return receipt; }"
+     "if (receipt.status === 'retryable') { this.state = 'busy'; this.settle(null); return receipt; }",
+     "if (receipt.status === 'retryable') { this.pending = null; this.state = 'busy'; this.settle(null); return receipt; }"
     ]
    ],
    "check": {
@@ -10996,8 +10996,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "if (code === 'REVISION_CONFLICT') {",
-     "if (false) {"
+     "    if (code === 'REVISION_CONFLICT') {\n      // Someone saved",
+     "    if (false) {\n      // Someone saved"
     ]
    ],
    "check": {
@@ -11038,8 +11038,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "    if (!this.dirty) { await this.end('unchanged'); return null; }\n    this.pending = this.envelope();",
-     "    this.pending = this.envelope();"
+     "    if (!this.dirty) { await this.end('unchanged'); return null; }\n    // A Save never waits on the debounce.",
+     "    // A Save never waits on the debounce."
     ]
    ],
    "check": {
@@ -11052,8 +11052,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "try { await this.serial; await this.store.delete(); }",
-     "try { await this.serial; }"
+     "try { await (row ? this.persist(row) : this.clearDevice()); } catch (error) { this.journalError = error.message; }\n    this.value = value;",
+     "try { await (row ? this.persist(row) : this.persist()); } catch (error) { this.journalError = error.message; }\n    this.value = value;"
     ]
    ],
    "check": {
@@ -11066,7 +11066,7 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "    if (this.pending) { this.state = 'uncertain'; return this.retry(); }\n",
+     "    if (this.pending) { this.resumed = true; this.state = 'uncertain'; return this.retry(); }\n",
      ""
     ]
    ],
@@ -11080,8 +11080,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "if (this.closed || this.sending || this.pending || this.readOnly",
-     "if (this.closed || this.sending || this.readOnly"
+     "if (this.closed || this.over || this.sending || this.pending || this.readOnly",
+     "if (this.closed || this.over || this.sending || this.readOnly"
     ]
    ],
    "check": {
@@ -11178,8 +11178,8 @@
    "break": [
     [
      "web/message-edit.mjs",
-     "|| w.readOnly || w.empty;",
-     "|| w.readOnly;"
+     "|| w.readOnly || w.empty || w.over;",
+     "|| w.readOnly || w.over;"
     ]
    ],
    "check": {
@@ -11621,7 +11621,7 @@
     [
      "aim_next/delivery.py",
      "            self._release(db, row[\"message_id\"], now)\n            row = db.execute",
-     "            row = db.execute"
+     "            raise held_refusal(row[\"message_id\"])\n            row = db.execute"
     ]
    ],
    "check": {
@@ -11746,8 +11746,8 @@
    "break": [
     [
      "aim_next/message_edit.py",
-     "next_due_ms=CASE WHEN claim_token IS NOT NULL AND claim_until_ms>? THEN claim_until_ms ELSE ? END",
-     "next_due_ms=CASE WHEN ? IS NULL THEN 0 ELSE ? END"
+     "THEN claim_until_ms ELSE ? END",
+     "THEN claim_until_ms+1000 ELSE ? END"
     ]
    ],
    "check": {
@@ -12396,6 +12396,370 @@
    ],
    "check": {
     "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Opening Edit takes the session in Core before the edit mode shows",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "async open() { await this.load(); await this.start(); return this.resume(); }",
+     "async open() { await this.load(); return this.resume(); }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The holder is on the device before edit_open leaves",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      this.holder = crypto.randomUUID();\n      await this.persist();\n",
+     "      this.holder = crypto.randomUUID();\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An Edit Core refuses opens nothing and says why",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (receipt.status !== 'committed') throw startFailure(",
+     "if (false) throw startFailure("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Device words other than Core's draft become the draft at once",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (deviceWords && !this.pending && this.value !== r.draft) this.flushDraft();",
+     "void deviceWords;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "With nothing unconfirmed on the device the field opens on Core's draft and its base",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "this.base = { revision: r.base_revision, body: r.base_words }; this.value = r.draft; this.kept = r.draft;",
+     "this.kept = r.draft;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Typing saves the draft in Core, debounced, on the session revision",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.live) this.scheduleDraft();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save with no answer goes again under its own operation",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "const sent = this.lostDraft ?? this.sessionEnvelope(",
+     "const sent = this.sessionEnvelope("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save answered EDIT_TAKEN shows the edit open on the other device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (code === 'EDIT_TAKEN') { this.goElsewhere(); return; }",
+     "if (false) { this.goElsewhere(); return; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save answered EDIT_CLOSED stops draft saves",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (code === 'EDIT_CLOSED') this.draftClosed = true;",
+     "if (code === 'EDIT_CLOSED') void 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Draft saves pause while the words are too long for Core",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.tooLong !== null && !this.lostDraft && bytes(this.value) >= this.tooLong) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save that meets REVISION_CONFLICT goes once more on the current session revision",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (!again && integer(current)) { this.settle(null); return this.draftOnce(true); }",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Save waits for a draft save in flight until its request returns",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      await this.draftRequest;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A touch renews the hold once a quarter of it has passed, and not sooner",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (this.timers.now() - this.lastRenewal < this.holdMs / 4) return false;",
+     "if (this.timers.now() - this.lastRenewal < 0) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Every ending sends one edit_close",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (close && this.started && typeof this.holder === 'string') {\n      const operation",
+     "    if (false) {\n      const operation"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A close with no answer is sent again first by the next Edit",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.closing) {\n      const answer",
+     "    if (false) {\n      const answer"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A Save resumed from the device closes the session after it commits",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "close: this.resumed || !said ||",
+     "close: !said ||"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A holder's Save that Core closed sends no close",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "(result.session_closed === false && !this.elsewhere)",
+     "(!this.elsewhere)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Another device's session change shows the edit open on that device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (version > this.sessionRevision) this.goElsewhere();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A session change read while a command is out is compared once it answers",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.inFlight > 0 || this.unknown) { this.seen = Math.max(this.seen ?? 0, version); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Escape sends nothing to Core, not even a scheduled draft save",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    return this.started && !this.over && !this.closed && !this.elsewhere",
+     "    return this.started && !this.over && !this.elsewhere"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Edit here takes the edit back to this device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    this.elsewhere = false; this.draftClosed = false; this.error = null;\n",
+     "    this.draftClosed = false; this.error = null;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Edit here shows only while another device holds the edit",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "this.here.hidden = !w.elsewhere || w.readOnly;",
+     "this.here.hidden = !w.readOnly;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The status reads Kept once Core confirmed the words",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "(w.confirmed ? SAY.confirmed : SAY.kept)",
+     "SAY.kept"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The status reads Open on your other device",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     ": w.elsewhere ? SAY.elsewhere",
+     ": false ? SAY.elsewhere"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A key, a press or the focus in the field renews the hold",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "for (const name of ['keydown', 'focus', 'pointerdown']) this.field.addEventListener(name, () => writing.touch());",
+     "void writing;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An actor-scope edit_session change asks the editing page to compare it",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "this.invalidate('edit_session:' + item.resource_id, item.version);",
+     "void item;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
    }
   }
  ]

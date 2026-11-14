@@ -2,7 +2,11 @@
 // words, a field holding them, with Save (⌘Return) and Cancel under it. The
 // reply beside it is left as it is. What the field says and which controls
 // it offers follow the writing's state (message-edit-writing.mjs):
-// - editing: the words, kept on this device as they are written;
+// - editing: the words, saved in Core as the edit's draft as they are written
+//   ("Kept"), and on this device until Core confirms them ("Kept on this
+//   device");
+// - elsewhere: another device took the edit, "Open on your other device", and
+//   Edit here takes it back; Save still saves;
 // - saving: the field reads only, "Saving…";
 // - conflict: "This message was edited elsewhere", the saved words, and
 //   Save mine or Use saved;
@@ -21,6 +25,8 @@ export const SAY = {
   uncertain: 'Not known whether this was saved: Theseus did not confirm it.',
   busy: 'Not saved: Theseus was busy.',
   kept: 'Kept on this device',
+  confirmed: 'Kept',
+  elsewhere: 'Open on your other device',
 };
 
 export class MessageEdit {
@@ -34,7 +40,9 @@ export class MessageEdit {
     this.field.id = 'message-edit-field';
     this.field.setAttribute('aria-label', 'Your message');
     this.field.value = writing.value;
-    this.field.addEventListener('input', () => writing.edit(this.field.value));
+    this.field.addEventListener('input', () => { writing.edit(this.field.value); writing.touch(); });
+    // A touch of the field renews Core's hold on the message (message-edit-writing.mjs, touch).
+    for (const name of ['keydown', 'focus', 'pointerdown']) this.field.addEventListener(name, () => writing.touch());
     this.conflictBox = node('div', 'message-edit-conflict');
     this.conflictBox.setAttribute('role', 'group');
     this.conflictTitle = node('p', 'message-edit-conflict-title', SAY.conflict);
@@ -48,6 +56,9 @@ export class MessageEdit {
     this.status.setAttribute('role', 'status');
     this.retry = control('Try again', 'retry');
     this.retry.onclick = () => writing.retry();
+    this.here = control('Edit here', 'here', 'quiet');
+    this.here.title = 'Take the edit back to this device';
+    this.here.onclick = () => writing.retake();
     this.cancel = control('Cancel', 'cancel');
     this.cancel.title = 'Cancel the edit: the message stays as it was';
     this.cancel.onclick = () => writing.cancel();
@@ -58,7 +69,7 @@ export class MessageEdit {
     this.save.title = 'Save the edit (⌘ Return)';
     this.save.onclick = () => writing.save();
     const bar = node('div', 'message-edit-bar');
-    bar.append(this.status, this.retry, this.cancel, this.save);
+    bar.append(this.status, this.here, this.retry, this.cancel, this.save);
     host.replaceChildren(this.field, this.conflictBox, bar);
     this.ended = false;
     writing.changed = () => this.paint();
@@ -82,15 +93,17 @@ export class MessageEdit {
     }
     const pendingAgain = state === 'uncertain' || state === 'busy' || state === 'failed';
     this.retry.hidden = !pendingAgain;
+    this.here.hidden = !w.elsewhere || w.readOnly;
     this.status.textContent = state === 'saving' ? SAY.saving : state === 'uncertain' ? SAY.uncertain : state === 'busy' ? SAY.busy
       : state === 'failed' ? `Not saved: ${w.error}` : state === 'refused' ? w.error
-      : w.journalError ? `This device could not keep the edit: ${w.journalError}` : state === 'editing' && w.dirty ? SAY.kept : '';
-    this.status.dataset.state = state;
+      : w.journalError ? `This device could not keep the edit: ${w.journalError}` : w.elsewhere ? SAY.elsewhere
+      : state === 'editing' && w.dirty ? (w.confirmed ? SAY.confirmed : SAY.kept) : '';
+    this.status.dataset.state = w.elsewhere && state === 'editing' ? 'elsewhere' : state;
     // Save is the one way to send: off while sending, while the words are
     // blank, in a conflict (its own choices stand in), after a refusal that
     // will not change, and while a send waits for Try again.
-    this.save.disabled = state === 'saving' || state === 'conflict' || pendingAgain || w.readOnly || w.empty;
-    this.cancel.disabled = state === 'saving';
-    this.host.dataset.state = state;
+    this.save.disabled = state === 'saving' || state === 'conflict' || pendingAgain || w.readOnly || w.empty || w.over;
+    this.cancel.disabled = state === 'saving' || w.over;
+    this.host.dataset.state = this.status.dataset.state;
   }
 }

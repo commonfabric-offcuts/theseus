@@ -201,7 +201,7 @@ class HandedCase(test_message_hold.HoldCase):
         m3 = self.post("Agreed.", quotes=quote)
         self.open()
         held = self.saw("agent-b", m3)
-        self.assertEqual([(q["excerpt"], q["withheld"]) for q in held["quotes"]], [("", True)])
+        self.assertEqual([(q["excerpt"], q.get("withheld")) for q in held["quotes"]], [("", True)])
         self.assertEqual(self.exposures(self.m), [])
         self.committed(self.save("Deploy at 6"))
         after = self.saw("agent-b", m3)
@@ -255,8 +255,11 @@ class HandedCase(test_message_hold.HoldCase):
         self.ask_m()
         self.sql("UPDATE message_edit_horizon SET seq=(SELECT max(seq) FROM messages)")
         later = self.post("After the upgrade")
+        # A person among the readers counts as handed too, and is never sent a correction.
+        self.member("other-reader", True)
         self.assertEqual(self.committed(self.save("Deploy at 6", holder=None))["corrections"], 2)
         self.assertEqual((self.corrected("agent-a"), self.corrected("agent-b")), ([2], [2]))
+        self.assertEqual(self.corrections("other-reader"), [], "people are never corrected")
         self.committed(self.command("message.edit", {"body": "After the upgrade, fixed"}, target={"message_id": later}, expected={"message_revision": 1}))
         self.assertEqual(self.corrections(message=later), [], "a message above it needs a read")
 
