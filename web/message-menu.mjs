@@ -1,3 +1,4 @@
+import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // The topic page's light and message bar (docs/interaction.md).
 //
 // The message under the pointer lights, as a passage lights in the Reader,
@@ -25,6 +26,35 @@ import { revealSelection } from './reveal.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
+// External Copy buttons take the place of their fences among a card's links.
+function inlineStops(card) {
+  const stops = [];
+  for (const node of card.querySelectorAll('a[href],button,[tabindex],.feed-fence-anchor')) {
+    if (!node.getClientRects().length) continue;
+    const external = feedControl(node);
+    if (external) stops.push(external);
+    else if (node.tabIndex >= 0 && !node.disabled) stops.push(node);
+  }
+  return stops;
+}
+
+function focusStop(target) {
+  const anchor = feedFence(target);
+  if (anchor) {
+    const card = anchor.closest('.message-card').getBoundingClientRect();
+    const top = anchor.getBoundingClientRect().top;
+    const win = anchor.ownerDocument.defaultView;
+    const height = parseFloat(win.getComputedStyle(anchor).paddingTop);
+    // The Copy button occupies the top lane. 'nearest' may leave that lane
+    // clipped when the fence spans both edges of an inner scrolling card.
+    if (top < Math.max(0, card.top) || top + height > Math.min(win.innerHeight, card.bottom)) {
+      anchor.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+    }
+    target.hidden = false;
+  }
+  target.focus({ preventScroll: true });
+}
+
 export class MessageMenu {
   // host: #messages. item(id): its loaded topic_messages item. viewer, kind:
   // who reads. reply(id, card): the Reader on it, the cursor in the reply.
@@ -39,7 +69,7 @@ export class MessageMenu {
     // Scrolling or a repaint can put another card under a stationary pointer
     // and fire pointerover. Only actual pointer movement takes the light from
     // the keyboard; otherwise repeated arrows can bounce between stacks.
-    let pointer = null;
+    let pointer = null, reverseTab = null;
     doc.addEventListener('pointermove', event => {
       if (event.pointerType === 'touch') return;
       // WebKit also emits pointermove after a scroll with unchanged screen
@@ -56,7 +86,7 @@ export class MessageMenu {
     });
     // What was lit when the press began: the press itself focuses the card,
     // which lights it, before its click arrives.
-    doc.addEventListener('pointerdown', event => { this.touch = event.pointerType === 'touch'; this.before = this.lit; }, true);
+    doc.addEventListener('pointerdown', event => { reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit; }, true);
     // A press on a word of the card's own reaction line acts, and opens nothing,
     // but for a tap on the 👍 count: on a phone that lights the card, which
     // names who (the bar's 👍 thumbs it).
@@ -95,16 +125,28 @@ export class MessageMenu {
       if (!this.entryOf(at) && !this.bar.contains(at) && !at?.closest?.('dialog, .message-menu-list')) this.light(null);
     });
     doc.addEventListener('focusin', event => {
-      const entry = this.entryOf(event.target);
+      const entry = this.entryOf(event.target), reverse = reverseTab;
+      reverseTab = null;
       if (entry && entry !== this.lit) this.light(entry);
       // Safari may focus the page itself when a clicked stack unfolds. That
       // is not a move to another control and must keep the selected message.
       else if (!entry && !pageItself(event.target, doc) && !this.ownsControls(event.target)) this.light(null);
+      // On backward entry the browser lands on this card's last native stop.
+      // A Copy button after it in the message lives outside native tab order.
+      if (reverse && !reverse.defaultPrevented && entry && this.entryOf(reverse.target) !== entry) {
+        const card = cardIn(entry);
+        if (card.contains(event.target)) {
+          const last = inlineStops(card).at(-1);
+          if (feedFence(last)) focusStop(last);
+        }
+      }
     });
+    doc.addEventListener('keyup', event => { if (event.key === 'Tab') reverseTab = null; });
     // Pointer selection need not move DOM focus. When the person uses keys
     // again, the focused pane owns the light before its key handler runs.
     doc.addEventListener('keydown', event => {
       if (event.isComposing || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab', 'Enter', ' '].includes(event.key)) return;
+      reverseTab = event.key === 'Tab' && event.shiftKey && !event.ctrlKey && !event.metaKey ? event : null;
       const at = doc.activeElement, entry = this.entryOf(at);
       if (entry && !this.lit) this.light(entry);
       else if (!entry && !pageItself(at, doc) && !this.ownsControls(at)) this.light(null);
@@ -153,7 +195,7 @@ export class MessageMenu {
   }
   // The list entry a target is in: a card, or a fold holding its card, on its
   // own or in a reply stack (reply-stacks.mjs).
-  entryOf(target) { return entryOf(this.host, target); }
+  entryOf(target) { return entryOf(this.host, feedFence(target?.closest?.('.feed-fence-copy')) ?? target); }
   ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list')); }
   // The entries on show, in the page's order; a stack's folded replies are not.
   entries() {
@@ -280,7 +322,7 @@ export class MessageMenu {
   // but in writing, in a pop-up, or on another control.
   key(event) {
     if (this.copies(event)) return;
-    if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || (event.altKey && event.key !== 'Tab')) return;
     if (event.key === 'Tab') return this.tab(event);
     // Nor under a drawer or sheet open over the page, which makes the page inert.
     if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
@@ -353,8 +395,18 @@ export class MessageMenu {
     const star = card.querySelector(':scope > .message-author > .card-star'), folded = card.querySelector(':scope > .message-folded > .folded-thumb');
     const order = [folded, star, ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
     if (!order.length) return;
-    const index = order.indexOf(at);
-    if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }
+    const inline = inlineStops(card);
+    const index = order.indexOf(at), position = inline.indexOf(at);
+    if (event.shiftKey && position === 0) { event.preventDefault(); focusStop(order.at(-1)); }
+    else if (position >= 0 && inline[position + (event.shiftKey ? -1 : 1)]) {
+      event.preventDefault(); focusStop(inline[position + (event.shiftKey ? -1 : 1)]);
+    } else if (!event.shiftKey && feedFence(at)) {
+      // Resume native Tab order from this message rather than the overlay.
+      const last = card.querySelectorAll('a[href],button,[tabindex]');
+      const stop = [...last].filter(el => el.tabIndex >= 0 && el.getClientRects().length).at(-1);
+      (stop ?? card).focus({ preventScroll: true });
+    } else if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }
+    else if (!event.shiftKey && index === order.length - 1 && inline.length) { event.preventDefault(); focusStop(inline[0]); }
     else if (!event.shiftKey && index === order.length - 1) card.focus({ preventScroll: true });
     else if (!event.shiftKey && index >= 0) { event.preventDefault(); order[index + 1].focus({ preventScroll: true }); }
     else if (event.shiftKey && index === 0) { event.preventDefault(); card.focus({ preventScroll: true }); }
