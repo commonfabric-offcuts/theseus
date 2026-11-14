@@ -1035,3 +1035,12 @@ article.message-card:hover{background:var(--soft)}
 @media(hover:none),(pointer:coarse){.md-fence{padding-top:2.75rem}.fence-copy{opacity:1;pointer-events:auto;min-width:2.75rem;min-height:2.75rem}.fence-copy-unavailable{padding-top:.6rem}}
 
 .fence-copy-announcement:not(.sr-only){position:fixed;z-index:1000;inset-inline:1rem;bottom:max(1rem,env(safe-area-inset-bottom));width:fit-content;max-width:calc(100% - 2rem);margin-inline:auto;padding:.45rem .75rem;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font:500 .875rem/1.4 ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere;pointer-events:none;user-select:none;-webkit-user-select:none}
+
+/* Keep a feed card's background out of native selection. Touch can select the
+   displayed words; a mouse drag on the card retains the usual open gesture. */
+article.message-card,article.message-card .message-preview{-webkit-user-select:none;user-select:none}
+article.message-card a{-webkit-user-select:text;user-select:text}
+@media(any-pointer:coarse){
+  article.message-card :is(.md-p,.md-pre,.md-heading,.md-item-words,.md-marker,.md-cell,.author-name,.message-preview-cue,.message-reply-to){-webkit-user-select:text;user-select:text}
+}
+:is(.reading-pane,.message-card,.deck-card,.deck-opening) .fence-copy-announcement:not(.sr-only){position:static;display:block;flex:none;max-width:100%;align-self:center;margin:.25rem 0;scroll-margin-block:.5rem}

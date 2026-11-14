@@ -107,7 +107,8 @@ export function fenceCopyButton(doc, text) {
     button.dataset.label = 'Copying…'; path.setAttribute('d', COPY);
     button.title = 'Copying fenced text…';
     button.setAttribute('aria-label', button.title);
-    const root = button.closest('dialog') ?? doc.body;
+    const pane = button.closest('.reading-pane');
+    const root = pane ?? button.closest('.message-card,.deck-card,.deck-opening') ?? button.closest('dialog') ?? doc.body;
     let notice = root.querySelector(':scope > .fence-copy-announcement');
     if (!notice) {
       notice = doc.createElement('span'); notice.className = 'sr-only fence-copy-announcement';
@@ -127,7 +128,7 @@ export function fenceCopyButton(doc, text) {
     const finish = copied => {
       if (attempt !== current || !button.isConnected) return;
       let words = 'Copied fenced text.';
-      if (!copied) words = button.closest('.message-card')
+      if (!copied) words = button.closest('.message-card') && !doc.defaultView.matchMedia('(any-pointer:coarse)').matches
         ? 'Could not copy. Open the message, select the text, and use Copy.'
         : 'Could not copy. Select the text and use Copy.';
       button.dataset.label = copied ? 'Copied' : 'Copy failed';
@@ -136,6 +137,10 @@ export function fenceCopyButton(doc, text) {
       if (state.serial !== serial || state.notice !== notice) return;
       notice.classList.toggle('sr-only', copied);
       notice.textContent = words;
+      // Keep a refusal inside a long card visible without moving keyboard focus.
+      if (!copied && root.matches('.message-card,.deck-card,.deck-opening')) {
+        notice.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      }
     };
     Promise.resolve(writing).then(() => finish(true), () => finish(false));
   });
