@@ -813,6 +813,8 @@ test('compact fence boundaries preserve whitespace, language info, longer delimi
     ['```  two words  ```\nafter', '  two words  ', ''],
     ['```\n  two words  ```\nafter', '  two words  ', ''],
     ['```py title\nx```\nafter', 'x', 'py'],
+    ['```\nsee ```x``` done```\nafter', 'see ```x``` done', ''],
+    ['~~~py ~~~ extra\ncode\n~~~\nafter', 'code', 'py'],
     ['```python\n```', 'python', ''],
     ['```python\n\n```', '', 'python'],
     ['```hixie https://example.com\nmore\n```', 'hixie https://example.com\nmore', ''],

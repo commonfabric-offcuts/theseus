@@ -246,3 +246,8 @@ test('a pasted inline pair in a fence preserves the next Notebook card', () => {
   assert.equal(titles(deck), 'A,B');
   assert.equal(deckBody(deck), body);
 });
+
+test('a tilde fence with tildes in its info keeps headings in their own cards', () => {
+  const body = '## A\n~~~py ~~~ extra\n## literal\n~~~\n## B\nwords';
+  assert.equal(titles(parseDeck(body)), 'A,B');
+});

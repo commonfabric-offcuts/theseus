@@ -173,7 +173,9 @@ try {
       for (const key of ['Space', 'Enter']) {
         const p = await open('/?topic=fence-topic'), card = p.locator(query(message));
         await card.focus();
-        await p.evaluate(() => {
+        await card.evaluate(element => {
+          window.cardActivations = 0;
+          element.addEventListener('click', () => { window.cardActivations++; });
           window.readerOpens = 0;
           new MutationObserver(records => {
             readerOpens += records.filter(record => record.oldValue === null).length;
@@ -182,6 +184,7 @@ try {
         await p.keyboard.press(key);
         await wait(p, () => document.querySelector('#reader').open && readerOpens > 0);
         assert.equal(await p.evaluate(() => readerOpens), 1);
+        if (key === 'Space') assert.equal(await p.evaluate(() => cardActivations), 1);
         assert.equal(await p.locator('#source-body .md-pre').textContent(), payload);
         assert.equal(await p.evaluate(() => copyCalls.length), 0);
         await p.close();
@@ -215,6 +218,9 @@ try {
       await press(p, selector);
       await wait(p, () => document.querySelector('#source-body .fence-copy').dataset.label === 'Copy failed');
       assert.equal(await field.inputValue(), payload, 'failure keeps unsent writing');
+      await field.focus(); await p.keyboard.press('End'); await p.keyboard.type('!');
+      assert.ok((await field.inputValue()).includes('!'), 'the keyboard still types into the open composer');
+      assert.equal(await p.locator('.fence-copy-announcement:not(.sr-only)').count(), 0, 'resuming writing clears the refusal');
       await p.evaluate(() => { copyMode = 'real'; });
       await copy(p, selector);
       // Select All and a real native Copy must not acquire the pseudo-labels.

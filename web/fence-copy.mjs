@@ -1,6 +1,7 @@
 // Reading controls have no DOM text: native selection, Reader quotations and
 // Notebook click-to-edit mapping must see only the author's words.
 import { listen, shell } from './in-place-navigation.mjs';
+import { typingField } from './writing-input.mjs';
 
 const documents = new WeakMap();
 const COPY = 'M8 8h12v12H8z M16 8V4H4v12h4';
@@ -58,6 +59,7 @@ function stateOf(doc) {
   }, true);
   add(doc, 'keyup', event => { if (state.held?.space && event.key === ' ') release(true); }, true);
   add(doc, 'focusout', event => { if (state.held?.space && event.target === state.held.button) release(false); }, true);
+  add(doc, 'input', event => { if (state.notice && typingField(event.target)) clearNotice(); }, true);
   add(doc, 'contextmenu', () => release(false), true);
   add(doc.defaultView, 'blur', () => release(false));
   return state;

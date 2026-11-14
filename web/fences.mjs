@@ -2,8 +2,7 @@
 // Inputs are lines without their CRLF ending; offsets refer to those lines.
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
-// Only the first delimiter-sized run on a line can close the block. A
-// pasted inline pair such as "user: ```npm i```" is part of the payload.
+// Find complete marker runs without counting the shorter runs inside a longer fence.
 function firstRun(text, fence, from) {
   let at = text.indexOf(fence.marker, from);
   while (at !== -1) {
@@ -18,8 +17,16 @@ function firstRun(text, fence, from) {
 const endsLine = (text, run) => run && /^[ \t]*$/.test(text.slice(run.end));
 
 export function fenceEnd(text, fence) {
-  const run = firstRun(text, fence, 0);
-  return endsLine(text, run) ? run.at : -1;
+  // A pasted inline span owns its closing run. A subsequent unmatched
+  // terminal run still closes the outer block ("see ```x``` done```").
+  let inlineLength = 0;
+  for (let run = firstRun(text, fence, 0); run; run = firstRun(text, fence, run.end)) {
+    const length = run.end - run.at;
+    if (endsLine(text, run)) return inlineLength === length ? -1 : run.at;
+    if (!inlineLength) inlineLength = length;
+    else if (inlineLength === length) inlineLength = 0;
+  }
+  return -1;
 }
 
 // At block-line start, a same-line pair is literal fenced text. Otherwise the
@@ -32,7 +39,9 @@ export function fenceOpen(text, next = '') {
   const run = firstRun(text, fence, after);
   if (run) {
     // A compact pair followed by prose stays inline, even if more pairs follow.
-    return endsLine(text, run) ? { ...fence, end: run.at, payloadAt: after, lang: '' } : null;
+    if (endsLine(text, run)) return { ...fence, end: run.at, payloadAt: after, lang: '' };
+    // Backtick info cannot contain backticks. Tilde info can contain tildes.
+    if (fence.marker === '`') return null;
   }
   const payloadAt = /https?:\/\//i.test(info) ? after : null;
   const nextEnd = info.includes('`') ? fenceEnd(next, fence) : -1;
