@@ -911,18 +911,31 @@ async function run() {
     if (shape === 'wide') return;
     const q = await page(shape);
     await open(q, second);
-    await q.evaluate(() => { const body = document.querySelector('#source-body'), box = body.getBoundingClientRect(), style = getComputedStyle(body);
-      body.scrollTop += body.children[30].getBoundingClientRect().bottom - (Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) - 4); });
-    await q.evaluate(() => { const text = document.querySelector('#source-body').children[30].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20); getSelection().removeAllRanges(); getSelection().addRange(range); document.querySelector('#source-body').focus({ preventScroll: true }); });
+    // The words are the first passage's that end below where the reply opens,
+    // brought to end just above it: which passage that is depends on how wide
+    // the Reader sets the message, so it is found, not named, and placed exactly.
+    const set = await q.evaluate(() => {
+      const body = document.querySelector('#source-body'), box = body.getBoundingClientRect(), style = getComputedStyle(body);
+      const end = () => Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) - 4;
+      const words = part => { const range = document.createRange(); range.setStart(part.firstChild, 2); range.setEnd(part.firstChild, 20); return range; };
+      const at = [...body.children].findIndex(part => part.firstChild?.nodeType === Node.TEXT_NODE && part.firstChild.length >= 20 && words(part).getBoundingClientRect().bottom > end());
+      if (at < 0) return { at };
+      const range = words(body.children[at]);
+      body.scrollTop += range.getBoundingClientRect().bottom - end();
+      getSelection().removeAllRanges(); getSelection().addRange(range); body.focus({ preventScroll: true });
+      return { at, off: Math.round(range.getBoundingClientRect().bottom - end()), scrolled: body.scrollTop };
+    });
+    assert.ok(set.at >= 0 && Math.abs(set.off) <= 1, `words placed to end just above where the reply opens: ${JSON.stringify(set)}`);
     await q.keyboard.press('Enter');
     await until(q, () => document.querySelector('#writing-body').value.startsWith('> ') && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted');
     await q.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    const covered = await q.evaluate(() => {
+    const covered = await q.evaluate(at => {
       const body = document.querySelector('#source-body'), style = getComputedStyle(body), box = body.getBoundingClientRect();
       const bottom = Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top);
-      const words = document.createRange(); words.setStart(body.children[30].firstChild, 2); words.setEnd(body.children[30].firstChild, 20);
-      return { gap: Math.round(bottom - words.getBoundingClientRect().bottom), lineHeight: parseFloat(style.lineHeight) };
-    });
+      const words = document.createRange(); words.setStart(body.children[at].firstChild, 2); words.setEnd(body.children[at].firstChild, 20);
+      return { gap: Math.round(bottom - words.getBoundingClientRect().bottom), lineHeight: parseFloat(style.lineHeight), scrolled: body.scrollTop };
+    }, set.at);
+    assert.ok(covered.scrolled > set.scrolled, `the reply came to cover the words, and the message moved (${set.scrolled} to ${covered.scrolled})`);
     assert.ok(covered.gap >= -2 && covered.gap <= covered.lineHeight, `words the reply would cover are shown just above it (${covered.gap}px above it)`);
     await close(q);
   });
