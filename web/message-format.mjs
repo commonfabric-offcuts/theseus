@@ -180,15 +180,17 @@ function fenceEnd(text, fence, after = 0) {
 
 // At block-line start, a same-line pair is literal fenced text. Otherwise the
 // opener's remainder is conventional info, except an address is always payload.
-function fenceOpen(text) {
+function fenceOpen(text, next = '') {
   const match = FENCE_OPEN.exec(text);
   if (!match) return null;
   const info = match[2].trim(), after = match[0].length - match[2].length;
   const fence = { marker: match[1][0], length: match[1].length, after, info };
   const end = fenceEnd(text, fence, after);
   if (end >= 0) return { ...fence, end, payloadAt: after, lang: '' };
-  if (match[1][0] === '`' && info.includes('`')) return null;
   const payloadAt = /https?:\/\//i.test(info) ? after : null;
+  const nextEnd = info.includes('`') ? fenceEnd(next, fence) : -1;
+  const immediateClose = nextEnd >= 0 && !next.slice(0, nextEnd).trim();
+  if (match[1][0] === '`' && info.includes('`') && !immediateClose && payloadAt === null) return null;
   return { ...fence, end: -1, payloadAt, lang: payloadAt !== null ? '' : /^[\w.+-]{0,40}/.exec(info.split(/\s/, 1)[0])[0] };
 }
 
@@ -243,7 +245,7 @@ const nextRow = (lines, i, width) => {
   return k < lines.length && looseWidth(lines[k]) === width ? k : -1;
 };
 const looseStart = (lines, i) => { const width = looseWidth(lines[i]); return width > 0 && nextRow(lines, i, width) >= 0; };
-const startsBlock = (lines, i) => fenceOpen(lines[i].text) || HEADING.test(lines[i].text) || RULE.test(lines[i].text) || ITEM.test(lines[i].text) ||
+const startsBlock = (lines, i) => fenceOpen(lines[i].text, lines[i + 1]?.text) || HEADING.test(lines[i].text) || RULE.test(lines[i].text) || ITEM.test(lines[i].text) ||
   QUOTE.test(lines[i].text) || tableStart(lines, i) || boxStart(lines, i) || looseStart(lines, i);
 
 // A heading's words, without its marks or a closing run of #s.
@@ -271,7 +273,7 @@ function blocksOf(m, partial, depth, meter) {
     const line = lines[i];
     tick(meter, line.text.length + 1);
     if (blank(line)) { i++; continue; }
-    const fence = fenceOpen(line.text);
+    const fence = fenceOpen(line.text, lines[i + 1]?.text);
     if (fence) {
       if (fence.end >= 0) {
         blocks.push({ kind: 'code', fenced: true, complete: !partial || i < n - 1, lang: '', ...span(i, i), words: m.slice(line.s + fence.after, line.s + fence.end) });

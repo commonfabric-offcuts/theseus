@@ -786,7 +786,7 @@ test('a URL written directly after a fence opener stays visible and copyable, in
 });
 
 test('fenced text stays visible and copyable in all four newline arrangements', () => {
-  for (const payload of ['hixie https://discord.com/channels/123/456/789', 'two words', 'hixie']) {
+  for (const payload of ['hixie https://discord.com/channels/123/456/789', 'two words', 'hixie', 'say `hi` aloud']) {
     for (const marker of ['```', '~~~~']) for (const first of ['', '\n']) for (const last of ['', '\n']) {
       for (const quote of ['', '> ']) for (const eol of ['\n', '\r\n']) {
         const raw = marker + first + payload + last + marker;
@@ -816,6 +816,7 @@ test('compact fence boundaries preserve whitespace, language info, longer delimi
     ['```python\n```', 'python', ''],
     ['```python\n\n```', '', 'python'],
     ['```hixie https://example.com\nmore\n```', 'hixie https://example.com\nmore', ''],
+    ['```say `hi` https://example.com\nmore\n```', 'say `hi` https://example.com\nmore', ''],
     ['````two ``` literal````', 'two ``` literal', ''],
     ['````\ntwo```\nend````', 'two```\nend', ''],
     ['~~~\ntwo```\nend~~~', 'two```\nend', ''],

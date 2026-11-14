@@ -245,6 +245,45 @@ try {
       assert.equal(await p.locator('.deck-writing .fence-copy').count(), 0);
     });
 
+    await check('a live feed message revision waits for the held Copy gesture', async () => {
+      const id = (await control({ method: 'agent_message', operation_id: 'fence-edit-' + engine, topic_id: 'fence-topic', source: 'topic', sender: 'person', body })).result.message_id;
+      const p = await open('/?topic=fence-topic'), card = query(id), selector = card + ' .fence-copy';
+      await p.locator(selector).locator('..').hover(); const box = await p.locator(selector).boundingBox();
+      await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down();
+      const revised = p.waitForResponse(async response => response.url().includes('/api/') && (await response.text().catch(() => '')).includes('replacement from another device'));
+      const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
+      const boot = await (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
+      const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: boot.instance_id,
+        operation_id: 'fence-live-edit-' + engine, kind: 'message.edit', target: { message_id: id },
+        expected: { authority: { authority_id: boot.authority.authority_id, authority_epoch: boot.authority.authority_epoch }, message_revision: 1 },
+        args: { body: '```\nreplacement from another device\n```' } }) })).json();
+      assert.equal(receipt.status, 'committed');
+      await revised;
+      assert.equal(await p.locator(card + ' .md-pre').textContent(), payload);
+      await p.mouse.up(); await wait(p, () => copyCalls.length === 1);
+      assert.equal(await p.evaluate(() => copyCalls[0].text), payload);
+      await wait(p, card => document.querySelector(card + ' .md-pre').textContent === 'replacement from another device', card);
+      await copy(p, selector, 'replacement from another device');
+      assert.equal(await p.locator('#reader').evaluate(d => d.open), false);
+    });
+    if (engine === 'chromium') await check('native touch scrolling cancels Copy and releases a queued paint', async () => {
+      const p = await open('/?topic=fence-topic&message=' + message, { phone: true });
+      await p.locator('#source-body .fence-copy').waitFor();
+      await p.evaluate(() => { window.cancelledPointers = 0; document.addEventListener('pointercancel', () => cancelledPointers++); });
+      const box = await p.locator('#source-body .fence-copy').boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+      const cdp = await p.context().newCDPSession(p);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await p.evaluate(async () => { const m = await import('/message-format.mjs'); m.drawPassages(document.querySelector('#source-body'), '```\nafter cancelled scroll\n```', document, { copyFences: true }); });
+      assert.equal(await p.locator('#source-body .md-pre').textContent(), payload);
+      for (const dy of [20, 45, 70]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - dy }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await wait(p, () => cancelledPointers > 0);
+      await wait(p, () => document.querySelector('#source-body .md-pre').textContent === 'after cancelled scroll');
+      assert.equal(await p.evaluate(() => copyCalls.length), 0);
+      await cdp.detach();
+      await copy(p, '#source-body .fence-copy', 'after cancelled scroll');
+    });
+
     await check('all four newline arrangements display and copy exact fenced text on every surface', async () => {
       const words = 'hixie https://discord.com/channels/1232452732963655720/1539479395180482660/1570832909391106141';
       const forms = ['', '\n'].flatMap(first => ['', '\n'].map(last => '```' + first + words + last + '```'));
