@@ -34,7 +34,7 @@ const body = 'Before the fence.\n\n~~~~ text\n' + payload + '\n~~~~\n\nAfter the
 const note = 'Opening.\n\n' + body + '\n\n## First card\n' + body + '\n\nTarget after fence.\n\n## Second card\nOther words.';
 const wait = (p, fn, arg) => p.waitForFunction(fn, arg, { timeout: 10000 });
 const query = id => `.message-card[data-id="${id}"]`;
-const copySelector = '.fence-copy';
+const feedCopy = card => '.feed-fence-copy[data-message="' + card.match(/data-id="([^"]+)"/)[1] + '"]';
 
 async function open(url, { phone = false, dark = false, width = 390 } = {}) {
   const ctx = await browser.newContext({ viewport: phone ? { width, height: 844 } : { width: 1280, height: 900 }, hasTouch: phone, isMobile: phone, colorScheme: dark ? 'dark' : 'light' });
@@ -55,9 +55,13 @@ async function open(url, { phone = false, dark = false, width = 390 } = {}) {
   await wait(p, () => document.body.dataset.ready === 'true');
   return p;
 }
+async function hoverFence(p, button) {
+  const anchor = await button.getAttribute('aria-controls');
+  if (anchor) await p.locator('#' + anchor).hover(); else await button.locator('..').hover();
+}
 async function press(p, selector) {
   const target = p.locator(selector).first();
-  if (p.phone) await target.tap(); else { await target.locator('..').hover(); await target.click(); }
+  if (p.phone) await target.tap(); else { await hoverFence(p, target); await target.click(); }
 }
 async function copy(p, selector, expected = payload, key = null) {
   const before = await p.evaluate(() => copyCalls.length), button = p.locator(selector).first();
@@ -104,7 +108,7 @@ try {
       const label = `${options.phone ? options.width ?? 390 : 'desktop'} ${options.dark ? 'dark' : 'light'}`;
       await check(`surfaces ${label}`, async () => {
         for (const [route, id] of [['/?topic=fence-topic', message], ['/?conversation=w1', conversationMessage]]) {
-          const p = await open(route, options), card = query(id), button = card + ' ' + copySelector;
+          const p = await open(route, options), card = query(id), button = feedCopy(card);
           await p.locator(card).scrollIntoViewIfNeeded();
           if (options.phone) {
             assert.equal(await p.locator(button).evaluate(b => getComputedStyle(b).opacity), '1');
@@ -115,7 +119,7 @@ try {
           }
           await copy(p, button);
           assert.equal(await p.locator('#reader').evaluate(d => d.open), false, 'one Copy tap never opens a message');
-          assert.equal(await p.locator(card).evaluate(c => c.tagName), 'ARTICLE');
+          assert.equal(await p.locator(card).evaluate(c => c.tagName), 'BUTTON');
           assert.equal(await p.locator('button button').count(), 0, 'no nested button semantics');
           assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
           await picture(p, `${id === message ? 'topic' : 'conversation'}-${label.replaceAll(' ', '-')}`);
@@ -148,7 +152,7 @@ try {
         const truncated = p.locator(query(longMessage));
         const cue = truncated.locator('.fence-copy-unavailable');
         await cue.waitFor();
-        assert.equal(await truncated.locator('.fence-copy').count(), 0);
+        assert.equal(await p.locator(feedCopy(query(longMessage))).count(), 0);
         assert.equal(await cue.getAttribute('aria-label'), 'Open message to copy');
         const fits = await cue.evaluate(element => {
           const pre = element.parentElement.querySelector('.md-pre'), first = document.createRange();
@@ -159,7 +163,7 @@ try {
             (hint.bottom <= line.top || hint.right <= line.left);
         });
         assert.ok(fits, 'partial hint stays inside its card and clear of the payload');
-        const selector = query(message) + ' .fence-copy', button = p.locator(selector);
+        const selector = feedCopy(query(message)), button = p.locator(selector);
         await button.scrollIntoViewIfNeeded();
         const box = await button.boundingBox();
         if (phone) assert.ok(box.width >= 44 && box.height >= 44);
@@ -169,8 +173,7 @@ try {
         await wait(p, sel => document.querySelector(sel).dataset.label === 'Copy failed', selector);
         if (!phone) await p.mouse.move(0, 0);
         const refusal = p.locator('.fence-copy-announcement:not(.sr-only)');
-        assert.equal(await feedbackWords(refusal), phone ? 'Could not copy. Select the text and use Copy.'
-          : 'Could not copy. Open the message, select the text, and use Copy.');
+        assert.equal(await feedbackWords(refusal), 'Could not copy. Open the message, select the text, and use Copy.');
         const shown = await refusal.boundingBox();
         assert.ok(shown && shown.width > 2 && shown.x >= 0 && shown.x + shown.width <= width);
         assert.equal(await button.evaluate(b => getComputedStyle(b).opacity), '1');
@@ -183,7 +186,7 @@ try {
       ['Reader', '/?topic=fence-topic&message=' + message, '#source-body .fence-copy'],
       ['Notebook card', '/?cards=fence-note', '.deck-card:not(.deck-writing) .fence-copy'],
       ['Notebook view', '/?workspace=w1&page=fence-note&revision=1', '.page-here-body .fence-copy'],
-      ['feed', '/?topic=fence-topic', query(message) + ' .fence-copy'],
+      ['feed', '/?topic=fence-topic', feedCopy(query(message))],
     ]) await check('pending and refused copy leaves visible controls clear in ' + surface, async () => {
       for (const width of [320, 375, 390, 1280]) for (const dark of [false, true]) {
         const phone = width < 1280, p = await open(route, { width, dark, phone });
@@ -201,12 +204,17 @@ try {
         await press(p, selector);
         const notice = p.locator('.fence-copy-announcement:not(.sr-only)').first();
         await notice.waitFor();
-        const guidance = surface === 'feed' && !phone ? 'Open the message, select the text, and use Copy.' : 'Select the text and use Copy.';
+        const guidance = surface === 'feed' ? 'Open the message, select the text, and use Copy.' : 'Select the text and use Copy.';
         assert.equal(await feedbackWords(notice), 'Could not copy. ' + guidance);
         const layout = await notice.evaluate(el => {
           const rect = el.getBoundingClientRect(), modal = el.closest('dialog[open]');
           const controls = [...(modal ?? document).querySelectorAll('button,textarea,input,a[href],[role=button]')];
           const covered = controls.filter(control => {
+            if (control.matches('button.message-card') && control.contains(el)) {
+              // The button is the card's entire background. Its reserved
+              // feedback line can overlap the background, never a child control.
+              return false;
+            }
             const r = control.getBoundingClientRect();
             if (!r.width || !r.height || getComputedStyle(control).visibility === 'hidden') return false;
             const x = (Math.max(rect.left, r.left) + Math.min(rect.right, r.right)) / 2;
@@ -228,7 +236,7 @@ try {
       const noteId = 'long-copy-note-' + engine;
       await control({ method: 'outcome_reference', operation_id: noteId, item_id: noteId, title: 'Long copy note', body: '## Long card\n' + text });
       for (const phone of [false, true]) for (const [route, selector] of [
-        ['/?topic=fence-topic', query(item.result.message_id) + ' .fence-copy'],
+        ['/?topic=fence-topic', feedCopy(query(item.result.message_id))],
         ['/?cards=' + noteId, '.deck-card:not(.deck-writing) .fence-copy'],
       ]) {
         const p = await open(route, { phone, width: phone ? 375 : 1280 }), button = p.locator(selector).first();
@@ -268,7 +276,7 @@ try {
           if (keyboardFeed) {
             await requested; release();
             await wait(p, () => window.tallReadProcessed === true);
-            assert.equal(await before.evaluate(el => el.closest('.message-card').dataset.whole), undefined);
+            assert.equal(await p.locator(query(item.result.message_id)).getAttribute('data-whole'), null);
           }
           await p.keyboard.press('Enter');
           assert.ok(await before.evaluate(el => el.isConnected && el === document.activeElement),
@@ -308,13 +316,14 @@ try {
     });
     await check('after a feed clipboard refusal the message opens with selectable fenced text', async () => {
       const p = await open('/?topic=fence-topic');
-      const selector = query(message) + ' .fence-copy';
+      const selector = feedCopy(query(message));
       await p.evaluate(() => { copyMode = 'reject'; });
       await press(p, selector);
       assert.match(await feedbackWords(p.locator('.fence-copy-announcement:not(.sr-only)')), /Open the message/);
       // The Reader is the desktop fallback: dragging over the feed card itself
       // opens the message on release. It must not select the payload in place.
       const span = p.locator(query(message) + ' .md-pre').first();
+      await span.scrollIntoViewIfNeeded();
       const line = await span.evaluate(node => {
         const text = node.firstChild, i = text.data.indexOf('last');
         const range = document.createRange();
@@ -367,9 +376,9 @@ try {
         if (!selector && width !== 375) continue;
         if (where === 'fence after refusal') {
           await p.evaluate(() => { copyMode = 'reject'; });
-          await press(p, query(message) + ' .fence-copy');
+          await press(p, feedCopy(query(message)));
           assert.equal(await feedbackWords(p.locator('.fence-copy-announcement:not(.sr-only)')),
-            'Could not copy. Select the text and use Copy.');
+            'Could not copy. Open the message, select the text, and use Copy.');
         }
         const point = await card.evaluate((node, { selector, word, previous }) => {
           const selection = getSelection();
@@ -477,13 +486,13 @@ try {
       const p = await open('/?topic=fence-topic', { phone: true });
       const card = query(longMessage);
       await p.locator(card).scrollIntoViewIfNeeded();
-      assert.equal(await p.locator(card + ' .fence-copy').count(), 0);
+      assert.equal(await p.locator(feedCopy(card)).count(), 0);
       await p.locator(card + ' .md-pre').tap();
-      await p.locator(card + ' .fence-copy').waitFor();
-      await copy(p, card + ' .fence-copy', longPayload);
-      const before = await p.locator(card + ' .fence-copy').boundingBox();
+      await p.locator(feedCopy(card)).waitFor();
+      await copy(p, feedCopy(card), longPayload);
+      const before = await p.locator(feedCopy(card)).boundingBox();
       await p.locator(card + ' .md-pre').evaluate(e => { e.scrollLeft = 500; });
-      const after = await p.locator(card + ' .fence-copy').boundingBox();
+      const after = await p.locator(feedCopy(card)).boundingBox();
       assert.equal(after.x, before.x); assert.ok(await p.locator(card + ' .md-pre').evaluate(e => e.scrollLeft > 0));
       assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       const text = await open('/?cards=fence-note&view=text');
@@ -508,7 +517,7 @@ try {
             ? m.formatWords(document.querySelector('#source-body'), '```\nreplacement\n```', { copyFences: true })
             : m.drawPassages(document.querySelector('#source-body'), '```\nreplacement\n```', document, { copyFences: true });
         }, { body, kind });
-        const button = p.locator(selector); await button.locator('..').hover();
+        const button = p.locator(selector); await hoverFence(p, button);
         const before = await p.evaluate(() => copyCalls.length);
         if (kind === 'space') { await button.focus(); await p.keyboard.down('Space'); }
         else { const box = await button.boundingBox(); await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down(); }
@@ -530,7 +539,7 @@ try {
       await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Held card', body: '## Card\n' + body });
       const p = await open('/?cards=' + id);
       const selector = '.deck-card .fence-copy'; await p.locator(selector).waitFor();
-      await p.locator(selector).locator('..').hover(); const box = await p.locator(selector).boundingBox();
+      await hoverFence(p, p.locator(selector)); const box = await p.locator(selector).boundingBox();
       await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down();
       const revised = p.waitForResponse(async response => response.url().includes('/api/') && (await response.text().catch(() => '')).includes('Revised held card'));
       await control({ method: 'memory_revise', operation_id: id + '-revision', item_id: id, expected_revision: 1, title: 'Revised held card', body: '## Card\n```\nnew revision\n```\n\nTarget after fence.' });
@@ -559,8 +568,8 @@ try {
 
     await check('a live feed message revision waits for the held Copy gesture', async () => {
       const id = (await control({ method: 'agent_message', operation_id: 'fence-edit-' + engine, topic_id: 'fence-topic', source: 'topic', sender: 'person', body })).result.message_id;
-      const p = await open('/?topic=fence-topic'), card = query(id), selector = card + ' .fence-copy';
-      await p.locator(selector).locator('..').hover(); const box = await p.locator(selector).boundingBox();
+      const p = await open('/?topic=fence-topic'), card = query(id), selector = feedCopy(card);
+      await hoverFence(p, p.locator(selector)); const box = await p.locator(selector).boundingBox();
       await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down();
       const revised = p.waitForResponse(async response => response.url().includes('/api/') && (await response.text().catch(() => '')).includes('replacement from another device'));
       const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
@@ -614,13 +623,14 @@ try {
         ];
         for (const [route, scope] of surfaces) {
           const p = await open(route, { phone, dark: true, width: 320 });
-          await p.locator(scope + ' .fence-copy').first().waitFor();
-          assert.equal(await p.locator(scope + ' .fence-copy').count(), 4, route);
+          const controls = p.locator(scope.startsWith('.message-card') ? feedCopy(scope) : scope + ' .fence-copy');
+          await controls.first().waitFor();
+          assert.equal(await controls.count(), 4, route);
           if (route.startsWith('/?cards')) assert.equal(await p.locator('.deck-card').count(), 4, 'a compact fence never swallows the next card');
           for (let i = 0; i < forms.length; i++) {
             const fence = p.locator(scope + ' .md-fence').nth(i);
             assert.equal(await fence.locator('.md-pre').textContent(), words);
-            await fence.locator('.fence-copy').evaluate((button, i) => { button.id = 'copy-arrangement-' + i; }, i);
+            await controls.nth(i).evaluate((button, i) => { button.id = 'copy-arrangement-' + i; }, i);
             await copy(p, '#copy-arrangement-' + i, words);
           }
           assert.equal(await p.locator('.deck-writing').count(), 0);
@@ -653,8 +663,8 @@ try {
       for (const dark of [false, true]) {
         const p = await open('/?topic=fence-topic', { phone: true, width: 320, dark });
         const card = query(own); await p.locator(card).scrollIntoViewIfNeeded();
-        await copy(p, card + ' .fence-copy');
-        const colors = await p.locator(card + ' .fence-copy').first().evaluate(button => {
+        await copy(p, feedCopy(card));
+        const colors = await p.locator(feedCopy(card)).first().evaluate(button => {
           const s = getComputedStyle(button); return [s.color, s.backgroundColor];
         });
         const lum = color => color.match(/[\d.]+/g).slice(0,3).map(Number).map(c => { c /= 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((a,c,i) => a + c * [.2126,.7152,.0722][i], 0);
@@ -665,6 +675,94 @@ try {
         await picture(p, `own-nested-${dark ? 'dark' : 'light'}`);
       }
     });
+    await check('each feed glyph follows its own fence inside a scrolling card', async () => {
+      const gap = Array.from({ length: 9 }, (_, i) => 'Line ' + i + ' has enough words to wrap on a phone.').join('\n\n');
+      const words = ['Before.', '~~~\nfirst copy\n~~~', gap, '~~~\nsecond copy\n~~~', gap.repeat(10)].join('\n\n');
+      const message = (await control({ method: 'agent_message', operation_id: 'geometry-' + engine,
+        topic_id: 'fence-topic', source: 'topic', body: words })).result.message_id;
+      for (const width of [320, 375, 390, 1280]) for (const dark of [false, true]) {
+        const p = await open('/?topic=fence-topic', { phone: width !== 1280, width, dark });
+        const selector = query(message), card = p.locator(selector);
+        await card.focus();
+        await wait(p, sel => document.querySelector(sel).dataset.whole === 'shown', selector);
+        assert.ok(await card.evaluate(el => el.scrollHeight > el.clientHeight + 100));
+        await card.evaluate(el => el.scrollIntoView({ block: 'center' }));
+        const anchors = card.locator('.feed-fence-anchor');
+        assert.equal(await anchors.count(), 2);
+        for (let index = 0; index < 2; index++) {
+          const anchor = anchors.nth(index), id = await anchor.getAttribute('id');
+          const button = p.locator('.feed-fence-copy[aria-controls="' + id + '"]');
+          const aligned = await anchor.evaluate(async node => {
+            const card = node.closest('.message-card'), button = document.querySelector('[aria-controls="' + node.id + '"].feed-fence-copy');
+            card.scrollTop += node.getBoundingClientRect().top - card.getBoundingClientRect().top - 25;
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            const a = node.getBoundingClientRect(), b = button.getBoundingClientRect();
+            return { hidden: button.hidden, top: Math.round(b.top - a.top), right: Math.round(b.right - a.right + 4),
+              coarse: matchMedia('(pointer:coarse)').matches,
+              hit: button.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)) };
+          });
+          assert.ok(!aligned.hidden && Math.abs(aligned.top) <= 1 && Math.abs(aligned.right) <= 1 && (!aligned.coarse || aligned.hit),
+            engine + ' ' + width + ' fence ' + index + ': ' + JSON.stringify(aligned));
+          if (!p.phone) {
+            const line = anchor.locator('.md-pre');
+            await line.hover();
+            assert.equal(await button.evaluate(b => getComputedStyle(b).opacity), '1');
+            const other = await anchors.nth(1 - index).getAttribute('id');
+            assert.equal(await p.locator('.feed-fence-copy[aria-controls="' + other + '"]').evaluate(b => b.hasAttribute('data-hover')), false);
+          }
+          await copy(p, '.feed-fence-copy[aria-controls="' + id + '"]', index ? 'second copy' : 'first copy');
+          await card.evaluate(el => { el.scrollTop += 120; });
+          await wait(p, id => document.querySelector('.feed-fence-copy[aria-controls="' + id + '"]').hidden, id);
+          assert.equal(await p.locator('#reader').evaluate(el => el.open), false);
+        }
+        await p.close();
+      }
+    });
+    await check('select all and a drag from the topic title include feed words', async () => {
+      const p = await open('/?topic=fence-topic'), card = p.locator(query(message));
+      await card.scrollIntoViewIfNeeded();
+      const points = await card.evaluate(node => {
+        const title = [...document.querySelectorAll('h1,h2')].find(el => el.offsetParent && el.textContent.trim());
+        const head = title.getBoundingClientRect(), words = node.querySelector('.md-p').firstChild;
+        const r = document.createRange(); r.setStart(words, 10); r.setEnd(words, 11);
+        const end = r.getBoundingClientRect();
+        return [head.left + 2, head.top + head.height / 2, end.left + 1, end.top + end.height / 2];
+      });
+      const [x, y, toX, toY] = points;
+      await p.mouse.move(x, y); await p.mouse.down();
+      await p.mouse.move((x + toX) / 2, toY, { steps: 5 }); await p.mouse.move(toX, toY, { steps: 5 }); await p.mouse.up();
+      assert.match(await p.evaluate(() => getSelection().toString()), /Before the/);
+      await card.focus(); await p.keyboard.press('ControlOrMeta+A');
+      const selection = await p.evaluate(() => getSelection().toString());
+      assert.ok(selection.includes('Before the fence.') && selection.includes(payload));
+      await p.keyboard.press('ControlOrMeta+C');
+      const edit = p.locator('#inline-writing-body');
+      await edit.focus(); await p.keyboard.press('ControlOrMeta+V');
+      await wait(p, text => document.querySelector('#inline-writing-body').value.includes(text), payload);
+      assert.ok((await edit.inputValue()).includes('Before the fence.'));
+    });
+    await check('backward entry reaches a trailing external Copy button', async () => {
+      for (const [shape, source] of [['only', ''], ['linked', '[before](https://example.com/before)\n\n']]) {
+        const id = (await control({ method: 'agent_message', operation_id: 'tab-reentry-' + shape + engine, topic_id: 'fence-topic', source: 'topic', body: source + '```\nlast payload\n```' })).result.message_id;
+        const p = await open('/?topic=fence-topic'), card = p.locator(query(id)), glyph = p.locator(feedCopy(query(id)));
+        const tab = engine === 'webkit' ? 'Alt+Tab' : 'Tab', back = engine === 'webkit' ? 'Alt+Shift+Tab' : 'Shift+Tab';
+        await glyph.waitFor({ state: 'attached' });
+        await card.focus();
+        for (let n = 0; n < 15 && !(await glyph.evaluate(e => e === document.activeElement)); n++) await p.keyboard.press(tab);
+        assert.ok(await glyph.evaluate(e => e === document.activeElement), shape + ' forward entry');
+        await p.keyboard.press(tab);
+        assert.ok(await p.evaluate(id => {
+          const el = document.activeElement;
+          return el !== document.body && !el.closest('.message-bar') && el.closest('.message-card')?.dataset.id !== id && el.dataset.message !== id;
+        }, id), shape + ' Tab exits the card');
+        await p.keyboard.press(back);
+        assert.ok(await glyph.evaluate(e => e === document.activeElement), shape + ' backward re-entry');
+        await p.keyboard.press(back);
+        assert.equal(await p.evaluate(() => document.activeElement.textContent === 'before' ? 'before' : document.activeElement.dataset.act), shape === 'linked' ? 'before' : 'more');
+        await p.close();
+      }
+    });
+
     await check('all inline controls stay in forward and reverse Tab order', async () => {
       const id = (await control({ method: 'agent_message', operation_id: 'fence-tabs-' + engine, topic_id: 'fence-topic', source: 'topic',
         body: '[before](https://example.com/before)\n\n```\none\n```\n\n[middle](https://example.com/middle)\n\n```\ntwo\n```\n\n[after](https://example.com/after)' })).result.message_id;
@@ -686,25 +784,25 @@ try {
     });
     await check('press guard survives actual in-place navigation and cancelled presses', async () => {
       const p = await open('/?topic=fence-topic');
-      await p.locator(query(message) + ' .fence-copy').waitFor();
+      await p.locator(feedCopy(query(message))).waitFor();
       await p.evaluate(() => { window.sameDocument = true; });
       await p.locator('#outline .ol-name[data-conversation-of="w1"]').click();
       await wait(p, () => location.search === '?conversation=w1' && document.body.dataset.ready === 'true');
       assert.equal(await p.evaluate(() => sameDocument), true);
-      const card = query(conversationMessage), selector = card + ' .fence-copy';
+      const card = query(conversationMessage), selector = feedCopy(card);
       await p.locator(selector).waitFor();
       await p.evaluate(() => { window.copyMode = 'real'; });
       for (const cancel of [false, true]) {
         await p.evaluate(async ({ card, body }) => {
           const m = await import('/message-format.mjs');
-          m.formatWords(document.querySelector(card + ' .message-preview'), body, { copyFences: true });
+          m.formatWords(document.querySelector(card + ' .message-preview'), body, { copyFences: 'feed' });
         }, { card, body });
-        const button = p.locator(selector); await button.locator('..').hover();
+        const button = p.locator(selector); await hoverFence(p, button);
         const box = await button.boundingBox(), before = await p.evaluate(() => copyCalls.length);
         await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down();
         await p.evaluate(async card => {
           const m = await import('/message-format.mjs');
-          m.formatWords(document.querySelector(card + ' .message-preview'), '```\nnew after move\n```', { copyFences: true });
+          m.formatWords(document.querySelector(card + ' .message-preview'), '```\nnew after move\n```', { copyFences: 'feed' });
         }, card);
         assert.equal(await p.locator(card + ' .md-pre').textContent(), payload, 'pressed control survives a paint after in-place navigation');
         if (cancel) await p.mouse.move(1, 1);

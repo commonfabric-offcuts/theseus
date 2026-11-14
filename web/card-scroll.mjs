@@ -1,3 +1,4 @@
+import { feedFence } from './feed-fence-copy.mjs';
 // A message cut off on the topic page reads on in place (docs/interaction.md).
 //
 // A card shows at most the first 1,024 bytes of a message (item.preview). When
@@ -65,7 +66,7 @@ export class CardScroll {
     // The words the reader had scrolled to inside the box hold their place:
     // the page scrolls by as much as the box's own scroll gives back.
     const top = preview.getBoundingClientRect().top;
-    formatWords(preview, body, { copyFences: true });
+    formatWords(preview, body, { copyFences: 'feed' });
     preview.classList.add('scroll-in-place');
     card.dataset.whole = 'shown'; card.dataset.full = 'shown';
     card.classList.remove('scroll-in-place'); card.classList.add('show-full');
@@ -95,7 +96,7 @@ export class CardScroll {
       // Lighting a preview fetches the full text. Keep the same Copy button
       // under keyboard focus until the reader leaves it.
       const active = preview.ownerDocument?.activeElement;
-      if (active?.matches?.('.fence-copy') && preview.contains(active)) {
+      if (active?.matches?.('.fence-copy') && preview.contains(feedFence(active) ?? active)) {
         active.addEventListener('blur', () => this.expand(card, item), { once: true });
         return false;
       }
@@ -103,7 +104,7 @@ export class CardScroll {
       // height root. Keep the whole card's size, including its header and cue.
       const height = card.getBoundingClientRect().height;
       card.style.maxHeight = `${Math.ceil(height)}px`;
-      formatWords(preview, body, { copyFences: true });
+      formatWords(preview, body, { copyFences: 'feed' });
       preview.classList.add('scroll-in-place');
       card.classList.add('scroll-in-place');
       edges(card);

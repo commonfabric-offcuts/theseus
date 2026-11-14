@@ -1,3 +1,4 @@
+import { pairFeedFence } from './feed-fence-copy.mjs';
 // A message's words as they were written to be read: headings, lists and task
 // lists, tables (with a dash row, as an agent types them without one, or drawn
 // in box lines), quotes holding blocks, code and rules, with bold, italics,
@@ -695,7 +696,11 @@ function blockNode(block, doc, cut, meter, copyFences = false) {
     if (block.box) edgeFades(code);
     if (!copyFences || !block.fenced) return code;
     const wrap = el(doc, 'span', 'md-block md-fence', [code], span);
-    if (block.complete) wrap.append(placed(fenceCopyButton(doc, block.words.text), { start: span.end, end: span.end }));
+    if (block.complete) {
+      const control = fenceCopyButton(doc, block.words.text);
+      if (copyFences === 'feed' && wrap.style?.setProperty) pairFeedFence(wrap, control);
+      else wrap.append(placed(control, { start: span.end, end: span.end }));
+    }
     else {
       const cue = el(doc, 'span', 'fence-copy-unavailable');
       cue.setAttribute('role', 'note');

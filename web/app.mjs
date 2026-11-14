@@ -1,3 +1,4 @@
+import { mountFeedFences } from './feed-fence-copy.mjs';
 import { Api, notAnswering, unreached, answeredSince, heard, follow } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
@@ -760,14 +761,7 @@ function paintViews(kind) {
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
-      card = node('article'); card.tabIndex = 0;
-      card.setAttribute('aria-description', 'Press Enter or Space to open this message.');
-      card.onclick = () => run(() => openSource(ref, card, marks.capture(item.id)));
-      // Enter belongs to MessageMenu; Space keeps the old card button's activation.
-      card.addEventListener('keydown', event => { if (event.target === card && event.key === ' ') event.preventDefault(); });
-      card.addEventListener('keyup', event => {
-        if (event.target === card && event.key === ' ' && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); card.click(); }
-      });
+      card = button('', () => openSource(ref, card, marks.capture(item.id)));
       card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
       // An agent's name on its card opens its color picker instead of the message.
       const open = card.onclick;
@@ -787,7 +781,7 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: true }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed' }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
@@ -1398,7 +1392,7 @@ function repaintEdited(ids, edits) {
     if (line && answers) linkWords(line, answers, { partial: true });
     const preview = card.querySelector(':scope > .message-preview');
     if (preview) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: true });
+      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed' });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -1962,6 +1956,7 @@ async function initialize() {
     // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
     cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  mountFeedFences($('messages'));
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
@@ -2013,12 +2008,6 @@ async function initialize() {
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
-  // An article's native secondary press can collapse an existing selection
-  // before contextmenu fires. Keep those words selected for the browser menu.
-  $('messages').addEventListener('mousedown', event => {
-    if ((event.button === 2 || (event.button === 0 && event.ctrlKey)) &&
-        event.target.closest('.message-card') && window.getSelection()?.isCollapsed === false) event.preventDefault();
-  });
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();

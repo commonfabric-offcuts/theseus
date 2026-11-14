@@ -60,16 +60,15 @@ after implementation too.
    Announce results through a polite live region outside the message payload,
    within the active dialog when present. Async completion is tied to the
    pressed element/version; detached controls cannot update a replacement.
-3. Feed message cards are currently native buttons with content inside. Do not
-   nest new buttons in them: make the message container a focusable article,
-   retaining its class, data, click behavior, keyboard opening and explicit
-   message actions. Preserve button-derived border/font/background styles and
-   native-equivalent Space activation on the card itself; MessageMenu already
-   owns Enter. Audit selectors, folding, stacks and focus ownership. Keep the
-   copy button a real, independently focusable button. Teach MessageMenu's
-   capture-phase first-touch/claim handlers to leave copy controls alone and
-   include them in its explicit Tab order. Do not cancel touch pointerdown
-   (WebKit can then suppress click). Stop copy click propagation at the control.
+3. Feed messages keep their native button card. Each complete fence owns an
+   external Copy button beside the feed list. CSS anchors position the glyph
+   at its fence. When a browser resolves a fixed anchor against a different
+   scroll origin, use the measured fence corner and follow scrolling, clipping
+   and resizes. The message toolbar inserts external buttons in source order
+   alongside existing links. Keyboard entry from the following card also
+   reaches a trailing fence. Clipboard refusal feedback sits within the fence
+   and offers the Reader as a recovery route for either pointer type.
+
 4. Reader pointer lighting/focusing and DeckPage keyboard selection/editing
    must ignore copy controls, including modified clicks/Enter and Space.
    Normal Tab/Shift-Tab stays available, including Safari Option-Tab. No broad

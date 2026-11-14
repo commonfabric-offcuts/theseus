@@ -1017,8 +1017,6 @@ dialog.composer-home.notebook-mode[open]{height:calc(var(--vv-height,100dvh) - 3
 
 /* Fenced text in reading views. The action lane is outside the horizontal
    scroller; hover/focus changes visibility, never the payload's geometry. */
-article.message-card{font:inherit;color:inherit;min-height:2.75rem;border:1px solid var(--line);background:var(--panel);cursor:pointer}
-article.message-card:hover{background:var(--soft)}
 .md-fence{position:relative;max-width:100%;width:fit-content;min-width:min(3.25rem,100%);padding-top:2rem;border-radius:.4rem}
 .md-fence:not(.hover-quote){background:color-mix(in srgb,var(--ink) 6%,transparent)}
 .hover-quote .md-fence{background:none}
@@ -1036,14 +1034,15 @@ article.message-card:hover{background:var(--soft)}
 
 .fence-copy-announcement:not(.sr-only){position:fixed;z-index:1000;inset-inline:1rem;bottom:max(1rem,env(safe-area-inset-bottom));width:fit-content;max-width:calc(100% - 2rem);margin-inline:auto;padding:.45rem .75rem;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font:500 .875rem/1.4 ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere;pointer-events:none;user-select:none;-webkit-user-select:none}
 
-/* Keep a feed card's background out of native selection. Touch can select the
-   displayed words; a mouse drag on the card retains the usual open gesture. */
-article.message-card,article.message-card .message-preview{-webkit-user-select:none;user-select:none}
-article.message-card a{-webkit-user-select:text;user-select:text}
-@media(any-pointer:coarse){
-  article.message-card :is(.md-p,.md-pre,.md-heading,.md-item-words,.md-marker,.md-cell,.author-name,.message-preview-cue,.message-reply-to){-webkit-user-select:text;user-select:text}
-}
 .reading-pane>.fence-copy-announcement:not(.sr-only){position:static;display:block;flex:none;max-width:100%;align-self:center;margin:.25rem 0}
 .md-fence:has(>.fence-copy-announcement){display:flex;flex-direction:column}
 .md-fence>.fence-copy-announcement:not(.sr-only){position:static;order:-1;display:block;margin:.25rem;max-width:calc(100% - .5rem);align-self:start;scroll-margin-block:.5rem}
 .md-fence>.fence-copy-announcement[data-feedback]::before{content:attr(data-feedback)}
+
+.feed-fence-controls{position:relative;z-index:2;height:0;pointer-events:none}
+.feed-fence-copy{position:fixed;top:anchor(top);left:anchor(right);right:auto;margin-right:.25rem;transform:translateX(calc(-100% - .25rem));z-index:2}
+.feed-fence-copy[hidden]{display:none}
+.feed-fence-copy:is([data-hover],:hover,:focus-visible),.feed-fence-copy[data-label="Copy failed"]{opacity:1;pointer-events:auto}
+@media(hover:none),(pointer:coarse){.feed-fence-copy{opacity:1;pointer-events:auto}}
+
+.feed-fence-anchor:has(>.fence-copy-announcement){min-width:min(17rem,100%)}

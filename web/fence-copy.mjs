@@ -1,3 +1,4 @@
+import { feedFence } from './feed-fence-copy.mjs';
 // Reading controls have no DOM text: native selection, Reader quotations and
 // Notebook click-to-edit mapping must see only the author's words.
 import { listen, shell } from './in-place-navigation.mjs';
@@ -14,13 +15,17 @@ function stateOf(doc) {
   state = { held: null, paints: new Map(), serial: 0, release: 0 };
   documents.set(doc, state);
   const clearNotice = () => {
-    if (state.feedback) { state.feedback.remove(); state.feedback = null; }
+    state.feedback?.remove(); state.feedback = null; state.feedbackFence = null;
     if (!state.notice) return;
     state.notice.classList.add('sr-only');
     state.notice.textContent = '';
     state.notice = null;
   };
   state.clearNotice = clearNotice;
+  const dismissAfterTouch = () => {
+    if (state.dismissAfterTouch && state.notice === state.dismissAfterTouch) clearNotice();
+    state.dismissAfterTouch = null;
+  };
   const flush = () => {
     state.held = null;
     const paints = [...state.paints]; state.paints.clear();
@@ -41,10 +46,18 @@ function stateOf(doc) {
     channel.port2.postMessage(null);
   };
   add(doc, 'pointerdown', event => {
+    state.dismissAfterTouch = null;
     const button = event.target.closest?.('.fence-copy');
     // Removing an inline message here would move the words under a finger
     // before the browser selects them on a long press.
-    if (!button && !state.feedback?.parentElement?.contains(event.target)) clearNotice();
+    if (!button && !state.feedbackFence?.contains(event.target)) {
+      const card = state.feedbackFence?.closest('.message-card');
+      if (card?.contains(event.target) && event.pointerType === 'touch') {
+        // Let the native click or context menu choose its target before the
+        // inline notice is removed and the words move.
+        state.dismissAfterTouch = state.notice;
+      } else clearNotice();
+    }
     if (button && event.isPrimary && event.button === 0) {
       ++state.release; state.held = { button, pointer: event.pointerId };
     }
@@ -64,7 +77,9 @@ function stateOf(doc) {
   add(doc, 'keyup', event => { if (state.held?.space && event.key === ' ') release(true); }, true);
   add(doc, 'focusout', event => { if (state.held?.space && event.target === state.held.button) release(false); }, true);
   add(doc, 'input', event => { if (state.notice && typingField(event.target)) clearNotice(); }, true);
+  add(doc, 'click', dismissAfterTouch);
   add(doc, 'contextmenu', () => release(false), true);
+  add(doc, 'contextmenu', dismissAfterTouch);
   add(doc.defaultView, 'blur', () => release(false));
   return state;
 }
@@ -73,7 +88,7 @@ function stateOf(doc) {
 // Latest paint per host wins. This never defers the clipboard call itself.
 export function deferFencePaint(host, paint) {
   const state = documents.get(host.ownerDocument);
-  if (!state?.held || !host.contains?.(state.held.button)) return false;
+  if (!state?.held || !host.contains?.(feedFence(state.held.button) ?? state.held.button)) return false;
   state.paints.set(host, paint);
   return true;
 }
@@ -113,7 +128,8 @@ export function fenceCopyButton(doc, text) {
     button.setAttribute('aria-label', button.title);
     const pane = button.closest('.reading-pane');
     const root = pane ?? button.closest('dialog') ?? doc.body;
-    const fence = !pane && button.closest('.md-fence');
+    const anchor = feedFence(button);
+    const fence = !pane && (anchor ?? button.closest('.md-fence'));
     let notice = root.querySelector(':scope > .fence-copy-announcement');
     if (!notice) {
       notice = doc.createElement('span'); notice.className = 'sr-only fence-copy-announcement';
@@ -130,7 +146,7 @@ export function fenceCopyButton(doc, text) {
     const finish = copied => {
       if (attempt !== current || !button.isConnected) return;
       let words = 'Copied fenced text.';
-      if (!copied) words = button.closest('.message-card') && !doc.defaultView.matchMedia('(any-pointer:coarse)').matches
+      if (!copied) words = anchor
         ? 'Could not copy. Open the message, select the text, and use Copy.'
         : 'Could not copy. Select the text and use Copy.';
       button.dataset.label = copied ? 'Copied' : 'Copy failed';
@@ -146,8 +162,9 @@ export function fenceCopyButton(doc, text) {
         feedback.className = 'fence-copy-announcement';
         feedback.setAttribute('aria-hidden', 'true');
         feedback.dataset.feedback = words;
-        fence.append(feedback);
         state.feedback = feedback;
+        state.feedbackFence = fence;
+        fence.append(feedback);
         feedback.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
       }
     };

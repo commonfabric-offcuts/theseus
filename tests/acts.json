@@ -8613,7 +8613,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "host.addEventListener('click', event => { if (!event.target.closest?.('.fence-copy')) this.claim(event.target); }, true);",
+     "host.addEventListener('click', event => this.claim(event.target), true);",
      "host.addEventListener('click', event => {}, true);"
     ]
    ],
