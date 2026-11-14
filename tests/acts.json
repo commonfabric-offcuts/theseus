@@ -11837,17 +11837,92 @@
   },
   {
    "item": 412,
-   "act": "A face still arriving takes no press: a press aimed at a card or head it passes over reaches that, as on the still page",
+   "act": "While a new message slides onto the deck, a press on its face does nothing and nothing under it is pressed; once it lands it takes presses, and a press held on it pauses the slide",
    "break": [
     [
-     "web/stack-look.css",
-     ".stack-replies>[data-stack-motion=arrival],.stack-replies>[data-stack-motion=arrival] *{pointer-events:none!important}",
-     "/* an arriving face takes presses */"
+     "web/stack-motion.mjs",
+     "eaten = down = arriving(e) ? e.pointerId : null;",
+     "eaten = down = null;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading ✅ and 🚫 on a go-ahead ask record the person's answer in Core and tell the agent by a reply"
+    "case": "reading dossier motion a press on a reply still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A pointer passing over a new message still sliding onto the deck, or moving while a press begun on it is held, does not light it or move the keys there",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (e.isTrusted && (down !== null ? name === 'mousemove' || e.pointerId === down : !e.buttons && arriving(e))) e.stopImmediatePropagation();",
+     "void e;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on a reply still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A press on the Copy of a code block on a new message still sliding onto the deck does nothing either; once it lands, the Copy takes presses",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "(this.list.contains(e.target) ? e.target : feedFence(e.target.closest?.('.feed-fence-copy')))?.closest",
+     "(this.list.contains(e.target) ? e.target : null)?.closest"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on the Copy of a code block on a reply still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A press held on a new message still sliding onto the deck holds back the next live message until it is released, as any held press does",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "win.addEventListener('pointerdown',",
+     "doc.addEventListener('pointerdown',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press held on a reply still sliding in holds back the next live message until release"
+   }
+  },
+  {
+   "item": 412,
+   "act": "After a press falls on a new message still sliding onto the deck, a script's click, the keys and the pointer act as before",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "on(win, 'keydown', () => { eaten = null; }, true);",
+     "on(win, 'keydown', () => {}, true);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion after a press falls on a sliding reply, a script click, the keys and the pointer act as before"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A right press on a new message still sliding onto the deck opens nothing; once it lands, a right press reaches it",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "'auxclick', 'contextmenu', 'selectstart']",
+     "'auxclick', 'selectstart']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a right press on a reply still sliding in opens nothing, and once landed it reaches the page"
    }
   }
  ]

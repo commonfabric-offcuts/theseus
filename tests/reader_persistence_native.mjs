@@ -201,8 +201,12 @@ try {
       const now = await box(selector), same = Boolean(last) && ['x', 'y', 'width', 'height'].every(key => now?.[key] === last[key]);
       last = now; return !now || same;
     }, `${selector} holds its place`); };
+    // A reply sliding onto its deck takes no press (item 412), so a person waits
+    // for it to land before pressing what it passes over, and so does this.
+    const landed = selector => until(() => evaluate(`(t => { const b = t?.getBoundingClientRect(); return !b || !document.elementFromPoint(b.x + Math.min(12, b.width / 2), b.y + Math.min(12, b.height / 2))?.closest('[data-stack-motion=arrival]'); })(document.querySelector(${JSON.stringify(selector)}))`), `no reply slides over ${selector}`);
     const point = async (selector, kind = 'click', { covered = false } = {}) => {
       if (kind === 'click' && !covered && await reach(selector)) return;
+      await landed(selector);
       await still(selector);
       const bounds = await box(selector);
       if (!(bounds && bounds.width > 0 && bounds.height > 0)) assert.fail(`visible target ${selector}: ${JSON.stringify(bounds)}, ${await evaluate(`JSON.stringify({ messages: document.querySelectorAll('#messages [data-id]').length, ids: [...document.querySelectorAll('#messages [data-id]')].slice(0, 4).map(e => e.dataset.id), status: document.querySelector('#app-status')?.textContent, ready: document.body.dataset.ready })`)}`);

@@ -47,7 +47,7 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
   };
   const frames = (p,id,kind) => p.evaluate(`window.motionFrames.filter(f=>f.id===${JSON.stringify(id)}&&f.kind===${JSON.stringify(kind)})`);
   const settled = p => until(()=>p.evaluate(`!document.querySelector('#messages [data-stack-motion]')`),'motion restores natural geometry');
-  const add = async ({topic,ids}, label='new') => (await control({method:'agent_message',operation_id:topic+'-'+label,topic_id:topic,source:'topic',sender:'aim-core',reply_to:ids.root,addressees:[facts.actor],body:'A new live reply.\n\n'+('The boundary follows this moving edge. '.repeat(9))})).result.message_id;
+  const add = async ({topic,ids}, label='new', body='A new live reply.\n\n'+('The boundary follows this moving edge. '.repeat(9))) => (await control({method:'agent_message',operation_id:topic+'-'+label,topic_id:topic,source:'topic',sender:'aim-core',reply_to:ids.root,addressees:[facts.actor],body})).result.message_id;
   const folded = async ctx => {
     await menuOf(ctx.p,ctx.device,ctx.ids.one); await choose(ctx.p,ctx.device,'Fold');
     await settled(ctx.p);
@@ -133,6 +133,167 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
       await p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1}); await settled(p);
       assert.ok((await frames(p,id,'arrival')).some(f=>f.opacity>.95),'release resumes the current arrival');
     });
+  });
+  // Item 412, Tony's rule: during a slide, presses are ignored. A press on the
+  // face still arriving reaches neither it nor what it passes over, and once
+  // it lands it takes a press as any card does. Holding the press pauses it,
+  // and the pointer moving onto it does not light it.
+  await check('reading dossier motion a press on a reply still sliding in does nothing, and once landed it takes the press', async()=>{
+    await atWidths('slide-press',async ctx=>{
+      const {p,device}=ctx, id=await add(ctx), sel=JSON.stringify(card(id));
+      await p.evaluate(`(()=>{window.slidePresses=[];for(const name of ['pointerdown','pointerup','mousedown','mouseup','click','focusin','pointermove'])document.addEventListener(name,()=>slidePresses.push(name),true)})()`);
+      await until(()=>p.evaluate(`(()=>{const c=document.querySelector(${sel});return c?.dataset.stackMotion==='arrival'&&+getComputedStyle(c).opacity>.1&&+getComputedStyle(c).opacity<.5})()`),'the arrival is early in its flight');
+      const state=()=>p.evaluate(`(()=>{const c=document.querySelector(${sel});return {lit:document.querySelector('#messages .message-card.lit')?.dataset.id??null,reader:document.querySelector('#reader').open,focus:document.activeElement?.closest?.('[data-id]')?.dataset.id??null,motion:c.dataset.stackMotion??null}})()`);
+      const before=await state();
+      const {x,y,under}=await p.evaluate(`(()=>{const c=document.querySelector(${sel}),r=c.getBoundingClientRect(),top=Math.max(r.top,0),bottom=Math.min(r.bottom,innerHeight),x=r.left+Math.min(24,r.width/2),y=(top+bottom)/2;
+        return {x,y,on:c.contains(document.elementFromPoint(x,y)),under:document.elementsFromPoint(x,y).find(e=>!c.contains(e))?.closest('[data-id]')?.dataset.id??null}})()`).then(at=>{assert.ok(at.on,'the sliding face is what the point hits');return at;});
+      if (device==='phone') { await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]}); await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}); }
+      else {
+        // The pointer moves across the face before it presses, as a hand does.
+        await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:x-8,y});
+        await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+        await p.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
+        const look=()=>p.evaluate(`(()=>{const c=document.querySelector(${sel}),r=c.getBoundingClientRect();return [r.top,r.bottom,getComputedStyle(c).transform,getComputedStyle(c).opacity]})()`);
+        const held=await look();
+        await p.evaluate(`new Promise(done=>{const start=performance.now();const tick=()=>performance.now()-start>170?done():requestAnimationFrame(tick);requestAnimationFrame(tick)})`);
+        assert.deepEqual(await look(),held,'a press held on the sliding face pauses it, as any held press does');
+        await p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});
+      }
+      assert.equal((await state()).motion,'arrival','the press fell while the reply was still sliding in');
+      await settled(p);
+      assert.deepEqual(await p.evaluate('window.slidePresses'),[],`no part of the press reached the page, neither the face nor ${under??'what it passes over'}`);
+      assert.deepEqual({...await state(),motion:null},{...before,motion:null},'nothing was lit, focused or opened by the pointer or the press');
+      await press(p,device,card(id));
+      await until(async()=>{const now=await state();return now.lit===id||now.reader;},'the landed reply takes a press');
+      assert.ok((await p.evaluate('window.slidePresses')).includes('click'),'the landed press reaches the page');
+    });
+  });
+  // What of a press reaches the page, as the page's own listeners hear it.
+  const listen = p => p.evaluate(`(()=>{window.heard=[];if(window.listening)return;window.listening=true;for(const name of ['pointerdown','pointerup','pointercancel','mousedown','mouseup','click','dblclick','auxclick','contextmenu','focusin','selectstart','dragstart'])document.addEventListener(name,()=>heard.push(name),true)})()`);
+  const heard = p => p.evaluate('window.heard');
+  const motionOf = (p,sel) => p.evaluate(`document.querySelector(${sel})?.dataset.stackMotion??null`);
+  const early = (p,sel) => until(()=>p.evaluate(`(()=>{const c=document.querySelector(${sel});return c?.dataset.stackMotion==='arrival'&&+getComputedStyle(c).opacity>.1&&+getComputedStyle(c).opacity<.5})()`),'the arrival is early in its flight');
+  // A reply early in its slide, and a point on its face.
+  const sliding = async (ctx,label,body) => {
+    const {p}=ctx, id=await add(ctx,label,body), sel=JSON.stringify(card(id));
+    await early(p,sel);
+    const at=await p.evaluate(`(()=>{const c=document.querySelector(${sel}),r=c.getBoundingClientRect(),top=Math.max(r.top,0),bottom=Math.min(r.bottom,innerHeight),x=r.left+Math.min(24,r.width/2),y=(top+bottom)/2;return {x,y,on:c.contains(document.elementFromPoint(x,y))}})()`);
+    assert.ok(at.on,'the sliding face is what the point hits');
+    return {id,sel,x:at.x,y:at.y};
+  };
+  const mouse = (p,type,x,y,button='left',buttons=0) => p.send('Input.dispatchMouseEvent',{type,x,y,button,buttons,clickCount:1});
+  const tap = async (p,device,x,y,button='left') => {
+    if (device==='phone') { await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]}); await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}); return; }
+    await mouse(p,'mousePressed',x,y,button,button==='left'?1:2); await mouse(p,'mouseReleased',x,y,button);
+  };
+  const drawn = (p,id) => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}))`);
+  await check('reading dossier motion after a press falls on a sliding reply, a script click, the keys and the pointer act as before', async()=>{
+    await atWidths('slide-after',async ctx=>{
+      const {p}=ctx;
+      await p.evaluate(`(()=>{const b=document.createElement('button');b.id='after-press';b.textContent='After';b.style.cssText='position:fixed;left:0;bottom:0;z-index:99';window.afterClicks=[];b.addEventListener('click',e=>afterClicks.push(e.isTrusted));document.body.append(b)})()`);
+      const s=await sliding(ctx,'after'); await tap(p,'laptop',s.x,s.y);
+      assert.equal(await motionOf(p,s.sel),'arrival','the press fell while the reply was still sliding in');
+      await p.evaluate(`document.getElementById('after-press').click()`);
+      assert.deepEqual(await p.evaluate('window.afterClicks'),[false],"a script's click still reaches the page");
+      await p.evaluate(`document.getElementById('after-press').focus()`); await p.key('Enter');
+      assert.deepEqual(await p.evaluate('window.afterClicks'),[false,true],'Enter on a focused button still presses it');
+      await settled(p); await centre(p,card(s.id));
+      const b=await p.box(card(s.id)), x=b.x+Math.min(24,b.width/2), y=b.y+b.height/2;
+      await mouse(p,'mouseMoved',x,Math.max(1,b.y-30)); await mouse(p,'mouseMoved',x,y);
+      await until(()=>p.evaluate(`document.querySelector('#messages .message-card.lit')?.dataset.id===${JSON.stringify(s.id)}`),'the landed reply lights under the pointer');
+    },[1280]);
+  });
+  await check('reading dossier motion a press begun elsewhere and released over a reply still sliding in is heard whole and holds nothing after', async()=>{
+    await atWidths('slide-elsewhere',async ctx=>{
+      const {p}=ctx, s=await sliding(ctx,'elsewhere'); await listen(p);
+      const b=await p.box('#topic-title'), x=b.x+10, y=b.y+b.height/2;
+      await mouse(p,'mousePressed',x,y,'left',1);
+      for (const f of [.33,.66,1]) await mouse(p,'mouseMoved',x+(s.x-x)*f,y+(s.y-y)*f,'left',1);
+      await mouse(p,'mouseReleased',s.x,s.y);
+      assert.equal(await motionOf(p,s.sel),'arrival','the release fell while the reply was still sliding in');
+      const h=await heard(p);
+      assert.ok(h.includes('pointerdown')&&h.includes('pointerup'),'the page hears both ends of a press begun elsewhere');
+      await settled(p);
+      // A press left held would hold back every later live message.
+      const next=await add(ctx,'elsewhere-next');
+      await until(()=>drawn(p,next),'the next live message is drawn: no press is left held');
+      await settled(p);
+    },[1280]);
+  });
+  await check('reading dossier motion a right press on a reply still sliding in opens nothing, and once landed it reaches the page', async()=>{
+    await atWidths('slide-right',async ctx=>{
+      const {p}=ctx, menu=()=>p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`);
+      const s=await sliding(ctx,'right'); await listen(p);
+      await tap(p,'laptop',s.x,s.y,'right');
+      assert.equal(await motionOf(p,s.sel),'arrival','the right press fell while the reply was still sliding in');
+      assert.deepEqual(await heard(p),[],'no part of the right press reached the page');
+      assert.equal(await menu(),false,'no message menu opened');
+      await settled(p); await centre(p,card(s.id));
+      const b=await p.box(card(s.id)); await listen(p);
+      await tap(p,'laptop',b.x+Math.min(24,b.width/2),b.y+b.height/2,'right');
+      assert.ok((await heard(p)).includes('contextmenu'),'a right press on the landed reply reaches the page');
+      if (await menu()) { await p.key('Escape'); await until(async()=>!await menu(),'the menu closes'); }
+    },[1280]);
+  });
+  await check('reading dossier motion a drag begun on a reply still sliding in selects nothing', async()=>{
+    await atWidths('slide-drag',async ctx=>{
+      const {p}=ctx, s=await sliding(ctx,'drag'); await listen(p); await p.evaluate('getSelection().removeAllRanges()');
+      await mouse(p,'mousePressed',s.x,s.y,'left',1);
+      for (const dx of [40,80,160]) await mouse(p,'mouseMoved',s.x+dx,s.y+6,'left',1);
+      await mouse(p,'mouseReleased',s.x+160,s.y+6);
+      assert.equal(await motionOf(p,s.sel),'arrival','the drag ended while the reply was still sliding in');
+      assert.equal(await p.evaluate('getSelection().toString()'),'','a drag begun on the sliding face selects no text');
+      assert.deepEqual(await heard(p),[],'nothing of the drag reached the page');
+      await settled(p);
+    },[1280]);
+  });
+  await check('reading dossier motion a press held on a reply still sliding in holds back the next live message until release', async()=>{
+    await atWidths('slide-hold',async ctx=>{
+      const {p}=ctx, s=await sliding(ctx,'first'); await listen(p);
+      await mouse(p,'mousePressed',s.x,s.y,'left',1);
+      const words='A second live reply, sent while a press is held on the first.';
+      await p.evaluate(`(window.watched=false,window.watchFor=${JSON.stringify({read:'topic_messages',words})})`);
+      const next=await add(ctx,'second',words);
+      await until(()=>p.evaluate('window.watched'),'the page has read the next message while the press is held');
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      assert.equal(await drawn(p,next),false,'a press held on the sliding face holds back the next live message, as any held press does');
+      await mouse(p,'mouseReleased',s.x,s.y);
+      await until(()=>drawn(p,next),'released, the next message is drawn');
+      assert.deepEqual(await heard(p),[],'nothing of the held press reached the page');
+      await settled(p);
+    },[1280]);
+  });
+  // A fence's Copy is drawn over its card from a layer of its own; it belongs
+  // to the card it sits on.
+  await check('reading dossier motion a press on the Copy of a code block on a reply still sliding in does nothing, and once landed it takes the press', async()=>{
+    await atWidths('slide-fence',async ctx=>{
+      const {p,device}=ctx;
+      const id=await add(ctx,'fence','A reply with code.\n\n```\nconst copied = true;\nline two\nline three\n```\n\nAfter the code. '+'More words follow the code here. '.repeat(6));
+      const sel=JSON.stringify(card(id)), copy=`[...document.querySelectorAll('.feed-fence-copy')].find(b=>b.dataset.message===${JSON.stringify(id)})`;
+      // The layer places its Copy on the frame after the card moves or the
+      // page scrolls; it is aimed at once it sits on its fence.
+      const fence=card(id)+' .feed-fence-anchor';
+      const at=()=>p.evaluate(`(()=>{const c=${copy},a=document.querySelector(${JSON.stringify(fence)});if(!c||c.hidden||!a)return null;const r=c.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;return {x,y,on:Math.abs(r.top-a.getBoundingClientRect().top)<1.5&&c.contains(document.elementFromPoint(x,y))}})()`);
+      // A mouse shows the Copy by passing over its fence; a touch screen always shows it.
+      const over=async()=>{ if(device==='phone')return; const b=await p.box(fence); await mouse(p,'mouseMoved',b.x+b.width/2,b.y+b.height/2); };
+      await early(p,sel); await over();
+      let point=null;
+      await until(async()=>(point=await at())?.on||await motionOf(p,sel)!=='arrival','the Copy of the sliding face is placed');
+      assert.ok(point?.on,'the Copy of the sliding face is shown and is what the point hits');
+      // The page draws the Copy afresh when the card lands, so its clicks are
+      // heard on the document, and stop there to leave the clipboard alone.
+      await listen(p); await p.evaluate(`(()=>{window.copies=[];document.addEventListener('click',e=>{if(e.target.closest?.('.feed-fence-copy')?.dataset.message===${JSON.stringify(id)}){copies.push(e.isTrusted);e.stopImmediatePropagation()}},true)})()`);
+      await tap(p,device,point.x,point.y);
+      assert.equal(await motionOf(p,sel),'arrival','the press fell while the reply was still sliding in');
+      await settled(p);
+      assert.deepEqual(await p.evaluate('window.copies'),[],'a press on the Copy of a code block on a sliding face does nothing');
+      assert.deepEqual(await heard(p),[],'no part of the press reached the page');
+      await centre(p,card(id)); await over();
+      let landed=null;
+      await until(async()=>(landed=await at())?.on,'the landed Copy is shown on its fence and is what the point hits');
+      await tap(p,device,landed.x,landed.y);
+      await until(()=>p.evaluate('window.copies.length===1'),'the landed Copy takes the press');
+    },[375,1280]);
   });
   await check('reading dossier motion cancelling an arrival mid-flight restores styles and accepts its successor', async()=>{
     await atWidths('cancel',async ctx=>{

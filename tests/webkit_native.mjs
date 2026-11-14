@@ -213,8 +213,12 @@ try {
     }, `${selector} holds its place`); };
     // As in the Chrome harness: a pointer action lands on its target or fails by naming what covers it, or, when
     // the target moved between the hit-test and the press, where the press fell (FELL).
+    // A reply sliding onto its deck takes no press (item 412), so a person waits
+    // for it to land before pressing what it passes over, and so does this.
+    const landed = selector => until(() => evaluate(`(t => { const b = t?.getBoundingClientRect(); return !b || !document.elementFromPoint(b.x + Math.min(12, b.width / 2), b.y + Math.min(12, b.height / 2))?.closest('[data-stack-motion=arrival]'); })(document.querySelector(${JSON.stringify(selector)}))`), `no reply slides over ${selector}`);
     const point = async (selector, kind = 'click', { covered = false } = {}) => {
       if (kind === 'click' && !covered && await reach(selector)) return;
+      await landed(selector);
       await still(selector);
       const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);

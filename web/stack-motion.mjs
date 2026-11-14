@@ -3,6 +3,7 @@
 import { entries } from './reply-stacks.mjs';
 import { cardIn } from './fold.mjs';
 import { landWith } from './reveal.mjs';
+import { feedFence } from './feed-fence-copy.mjs';
 
 const rect = node => node.getBoundingClientRect();
 const put = (node, key, value, priority) => value ? node.style.setProperty(key, value, priority) : node.style.removeProperty(key);
@@ -41,10 +42,38 @@ export class StackMotion {
     this.handled = new Set(); this.next = []; this.active = new Set(); this.paused = false; this.disposed = false; this.awaitingAttention = false; this.staged = null; this.reserved = null;
     this.off = [];
     const on = (host, name, fn, options) => { host.addEventListener(name, fn, options); this.off.push(() => host.removeEventListener(name, fn, options)); };
-    on(this.doc, 'pointerdown', e => { if (e.isPrimary && e.button === 0) { this.awaitingAttention = false; this.pause(); } }, true);
+    const held = e => { if (e.isPrimary && e.button === 0) { this.awaitingAttention = false; this.pause(); } };
+    on(this.doc, 'pointerdown', held, true);
     on(this.doc, 'keydown', () => { this.awaitingAttention = false; }, true);
     for (const name of ['pointerup', 'pointercancel', 'contextmenu']) on(this.doc, name, () => this.resume(), true);
-    on(win, 'blur', () => this.resume());
+    // A face still arriving takes no press, and nothing it passes over is
+    // pressed (item 412): every event of a press begun on it stops at the
+    // window, before the page hears it, until the next press or key. Its
+    // compatibility mouse events and click can come after it lands, so the
+    // press is followed, not the face. Holding it still pauses the motion.
+    let eaten = null, down = null;
+    const eat = e => { e.stopImmediatePropagation(); if (e.type !== 'pointerdown') e.preventDefault(); };
+    // A fence's Copy button is drawn over its card from a layer of its own
+    // (feed-fence-copy.mjs), and belongs to the card it sits on.
+    const arriving = e => e.isTrusted && (this.list.contains(e.target) ? e.target : feedFence(e.target.closest?.('.feed-fence-copy')))?.closest('[data-stack-motion=arrival]');
+    on(win, 'pointerdown', e => {
+      eaten = down = arriving(e) ? e.pointerId : null;
+      if (eaten !== null) { eat(e); held(e); }
+    }, true);
+    on(win, 'keydown', () => { eaten = null; }, true);
+    for (const name of ['pointerup', 'pointercancel']) on(win, name, e => { if (e.pointerId === down) down = null; }, true);
+    // Nor does a pointer passing over it light it or move the keys there,
+    // which would bring a face still in flight into view; nor does one moving
+    // while a press begun on it is held.
+    for (const name of ['pointermove', 'mousemove']) on(win, name, e => {
+      if (e.isTrusted && (down !== null ? name === 'mousemove' || e.pointerId === down : !e.buttons && arriving(e))) e.stopImmediatePropagation();
+    }, true);
+    for (const name of ['pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu', 'selectstart']) on(win, name, e => {
+      if (eaten === null || !e.isTrusted || (name === 'pointerup' && e.pointerId !== eaten)) return;
+      eat(e);
+      if (name === 'pointerup' || name === 'contextmenu') this.resume();
+    }, true);
+    on(win, 'blur', () => { down = null; this.resume(); });
     on(win, 'resize', () => this.finish());
     on(this.doc, 'load', event => { for (const effect of [...this.active]) if (effect.faces.some(face => face.card.contains(event.target))) effect.finish(); }, true);
     on(this.doc, 'visibilitychange', () => { if (this.doc.visibilityState !== 'visible') { this.awaitingAttention = true; this.finish(); } });

@@ -627,9 +627,12 @@ scroll as far as the still page would. The room goes when the motion does.
 A cut-off reply the keys light while it moves keeps the height it lands at
 when its whole words come in, and they end its motion as any changed body does.
 A primary press
-pauses running geometry until release/cancel. A face still arriving takes
-no press or pointer of its own: one aimed at a card or head it passes over
-reaches that, as on the still page. Superseding acts, resize, hidden
+pauses running geometry until release/cancel. While a new message slides
+onto the deck, a press on its face does nothing, and nothing under it is pressed;
+the face takes presses again when it lands. The Copy on a code block in it
+is part of its face. Holding a press on it still pauses the slide, and holds
+back the next live message until release, as any held press does. A pointer
+passing over it does not light it either. Superseding acts, resize, hidden
 pages and navigation cancel temporary geometry and restore natural layout.
 After a hidden visit, catch-up stays static until a pointer or key resumes
 attention; later live additions can animate again.
