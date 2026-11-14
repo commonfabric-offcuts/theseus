@@ -1,167 +1,67 @@
 {
-  "production_source_commit": "892df45d26b71797db64685eaa07c0edd469d081",
+  "status": "Auditor approved both exact plan digests and the declaration; Fable independent verdict and landing decision pending",
+  "production_source_commit": "72be35bc8bb511189e0e67c2eebb783ec52a3182",
+  "transition_source_commit": "a3846b8c7ad7582c90dc367bab50c3b04b2c48ab",
+  "requested_input_commit": "ec10b919d27eb94c333599bff3fa89a3c2bf1bdf",
+  "required_steps": 48,
+  "native_steps": 44,
+  "base_plan_sha256": "759295529dd9f4004c9a1042e233ce230e129f396ab232f7fa8fab669e77105c",
+  "transition_plan_sha256": "59fe176ab8c2cae6a755db812fe1b70e0073230745ac8ce194ebcad580ca46df",
+  "source_paths": {
+    "base": 377,
+    "transition": 379
+  },
+  "inventory_counts": {
+    "python": 2423,
+    "node_base": 1959,
+    "node_transition": 1971,
+    "deploy": 38,
+    "native": 1126,
+    "base_total": 5546,
+    "transition_total": 5558
+  },
+  "python_discovery": {
+    "source_commit": "a3846b8c7ad7582c90dc367bab50c3b04b2c48ab",
+    "file": "artifacts/ci-inventory-live73/python-discovery-a3846b8c.json",
+    "sha256": "62f1d519dcc6eff4c67e92d250dcfdbf18ea9dfef34f6dff82bbcec490bd10a1",
+    "method": "CPython 3.9 unittest discovery only; no full-suite execution claim"
+  },
+  "node_execution": {
+    "source_commit": "ec10b919d27eb94c333599bff3fa89a3c2bf1bdf",
+    "file": "artifacts/ci-inventory-live73/node-ec10b919.log",
+    "sha256": "6f4d655143f0432bec157a9cd46af4d1fbaecde95aea3b8d3fff174c17943ed4",
+    "passed": 1971,
+    "skipped": 0,
+    "new_file_run": {
+      "file": "artifacts/ci-inventory-live73/devtools-12.log",
+      "sha256": "400eac858a701523aff5e952d1c248dd004e6501763c7e59049721066a02f6af",
+      "passed": 12
+    },
+    "base_roster_method": "Exact source diff contains only the new devtools unit file; base identities equal full roster minus the isolated 12-case roster. No separate full base Node run claimed."
+  },
+  "native_fence_copy": {
+    "report": "checks/release-74/review-r10/rv10-native-fence-copy-wt/rv10-native-fence-copy-wt-1/evidence/native.json",
+    "sha256": "60cc6cae3db8ce8959533c919fdb45d3155bf267b98ce77b7fe2a6af66540116",
+    "executed_source_commit": "03108ba53eddab5b0cf4830571188c970807eed8",
+    "harness_blob": "177775dc659ec6793aed01c2ad282dd18a7098ca",
+    "cases": 72,
+    "method": "Retained clean report; identical harness blob at base, requested input and transition source; no new native execution claimed."
+  },
+  "preserved_native": {
+    "cases": 1054,
+    "basis": "ci-live72-inventory-evidence.json and retained reports; reader check registration lines unchanged despite shutdown implementation change"
+  },
+  "declaration": {
+    "test_file": "tests/test_recovery_activation.py",
+    "signature": "1cd090b6ae2fa912ce18ae4141ab61f3562af0cf6b05dd2780c1a8ec5d68619e",
+    "scope": "generated/system/product",
+    "inputs": [],
+    "basis": "Fixture-only write probe, confirmed by m-b54a106428264b50a16689c09c932271 and m-285c17ce8f4a4972ba0cb3b11d9d0b68"
+  },
+  "protocol_migration": "Replace obsolete 47-step snapshots with current 48-step base and one transition; old evidence remains archival. Exact source commits must remain reachable.",
   "admissions": 0,
-  "definition_sources": {
-    "all_test_files": 337,
-    "python_tests_and_helpers": 141,
-    "mjs_tests_and_helpers": 147,
-    "test_data_sql_media": 49,
-    "producer_tools": 20,
-    "producer_workflow": 1,
-    "non_product_inputs": [
-      ".gitignore",
-      "README.md",
-      "bin/aim-next",
-      "bin/aim-next-admin",
-      "bin/aim-next-assess",
-      "bin/aim-next-codex-broker",
-      "bin/aim-next-runner",
-      "bin/aim-next-server",
-      "docs/agent-cli.md",
-      "docs/agent-guide.md",
-      "docs/releases.md",
-      "docs/team-assessments.md",
-      "docs/tools.md"
-    ],
-    "total": 371
-  },
-  "required_steps": 47,
-  "inventory_cases": {
-    "native-journal": 10,
-    "native-connected": 5,
-    "native-correction": 14,
-    "native-cleanup": 7,
-    "native-images": 33,
-    "native-freshness": 32,
-    "native-inline": 15,
-    "native-navigation": 18,
-    "native-live": 58,
-    "native-colors": 16,
-    "native-asks": 4,
-    "native-whispers": 7,
-    "native-work": 3,
-    "native-light": 6,
-    "native-list": 6,
-    "native-notebook": 50,
-    "native-duties": 2,
-    "native-sources": 2,
-    "native-wakes": 3,
-    "native-header": 54,
-    "native-rail": 44,
-    "native-conversation": 40,
-    "native-forms": 6,
-    "native-pipeline": 10,
-    "native-targets": 7,
-    "native-health": 10,
-    "native-reading": 153,
-    "native-openings": 6,
-    "native-reader": 5,
-    "native-reader-keyboard": 1,
-    "native-reader-review-gaps": 12,
-    "native-reader-anchor-control": 3,
-    "native-reader-mutations": 14,
-    "native-reader-finished": 21,
-    "native-webkit-colors": 1,
-    "native-webkit-whispers": 7,
-    "native-webkit-notebook": 50,
-    "native-webkit-rail": 35,
-    "native-webkit-pipeline": 10,
-    "native-webkit-device": 2,
-    "native-webkit-new-line": 6,
-    "native-webkit-reading": 146,
-    "native-compose": 120,
-    "python-units": 2312,
-    "node-units": 1948,
-    "deploy-refusals": 38
-  },
-  "python_inventory": {
-    "file": "inventory-892-python.json",
-    "sha256": "ca832ba6f7b1b2c8fbb3f8302c01d2d6d238b715fe6abdbe5853c6324e0d8109",
-    "planned_cases": 2312,
-    "method": "CPython3.9 unittest discovery only; cases not executed",
-    "execution_claim": false
-  },
-  "unit_logs": {
-    "node-units": {
-      "file": "inventory-892-node-full.log",
-      "sha256": "787533501b782f89c898e7ce3eccc3aa9af5d95e72e1e9c80548d23e83097a6e",
-      "executed_cases": 1948,
-      "all_passed": true,
-      "source_commit": "892df45d26b71797db64685eaa07c0edd469d081"
-    },
-    "deploy-refusals": {
-      "file": "inventory-892-deploy.log",
-      "sha256": "edf036bb3e98ffb5e31b51fb7459bf81199a18510698f9125cd6f553a8caf0fa",
-      "executed_cases": 38,
-      "all_passed": true,
-      "source_commit": "892df45d26b71797db64685eaa07c0edd469d081"
-    }
-  },
-  "native_inventory": {
-    "method": "Preserved 1,054 identity roster from archived release-72 reports, with unchanged check registrations and current Compose/sources reports compared. No new native run performed for this inventory.",
-    "archival_evidence": "ci-inventory-archival-evidence.json",
-    "updated_reports": {
-      "native-compose": {
-        "evidence": "checks/compose-attest/native-run/compose-attest-1-1/evidence/native.json",
-        "sha256": "dd5cf0066c015f82254797b4a0d586c8ba68e06b7c09feb2f725ead31185fa1f",
-        "identities_match": true,
-        "cases": 120
-      },
-      "native-sources": {
-        "evidence": "checks/sources-wait/final/sw-final-2/evidence/native.json",
-        "sha256": "2f26133e6b8c11f193558ebe146bcd867bb0171f8b716af55527b4882bd7c681",
-        "identities_match": true,
-        "cases": 2
-      }
-    }
-  },
-  "replay_plan": {
-    "source": "tests/fixtures/replay/wake-2026-11-05.json",
-    "commit": "892df45d26b71797db64685eaa07c0edd469d081",
-    "routed": [
-      "aim-core",
-      "aim-spec",
-      "aim-ux"
-    ]
-  },
-  "bootstrap": {
-    "source_commit": "bc4665d1ba1cbdd3b87a258e331c3642a1b969a6",
-    "review": "m-dcf62834f9544be58a383119a22592be",
-    "canonical_plan_sha256": "117600a33b0886e949a1046a969a038f09853b373295204866d94fb644659c99",
-    "definition_sources": {
-      "all_test_files": 339,
-      "python_tests_and_helpers": 142,
-      "mjs_tests_and_helpers": 147,
-      "test_data_sql_media": 50,
-      "producer_tools": 23,
-      "producer_workflow": 1,
-      "non_product_inputs": [
-        ".gitignore",
-        "README.md",
-        "bin/aim-next",
-        "bin/aim-next-admin",
-        "bin/aim-next-assess",
-        "bin/aim-next-codex-broker",
-        "bin/aim-next-runner",
-        "bin/aim-next-server",
-        "docs/agent-cli.md",
-        "docs/agent-guide.md",
-        "docs/releases.md",
-        "docs/team-assessments.md",
-        "docs/tools.md"
-      ],
-      "total": 376
-    },
-    "python_planned": 2423,
-    "added_classifier_identities": 111,
-    "executed_classifier_cases": 111,
-    "execution_basis": "329 passing classifier/release-check/deploy tests at the named source; full Python discovery is not execution",
-    "total_identities": 5463,
-    "admissions": 0,
-    "retired_sources": [],
-    "history_requirement": "Retain the exact source commit reachable by the protected controller; merge #4, do not squash/rebase",
-    "landing_status": "HOLD pending Fable independent review and landing word"
-  },
+  "retired_sources": [],
+  "review": "m-8ef452934cf24fa48d185ec6c5085987",
   "unexpected_failures": [
     "sources timeout: the Reader is back on the question (:79)",
     "Notebook :548 and :664",
@@ -256,7 +156,5 @@
       },
       "status": "unexpected; not admitted"
     }
-  ],
-  "production_inner_plan_sha256": "49dde2914d1cc73f23d84b950503f82b81be8822ac9bc3246b03cd24b838eb33",
-  "review_status": "Auditor approved both exact inner-plan digests in m-dcf62834f9544be58a383119a22592be; Fable independent review and paired landing decision remain pending"
+  ]
 }
