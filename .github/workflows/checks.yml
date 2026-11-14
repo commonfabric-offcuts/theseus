@@ -158,7 +158,7 @@ jobs:
               sys.exit("a step ran in two shards: %s" % sorted(n for n in set(names) if names.count(n) > 1))
           required = sorted(set().union(*[set(d.get("required") or []) for d in docs]))
           missing = [name for name in required if name not in names]
-          first = docs[0]
+          first = timed[0]
           # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
           # commit: no `only`, every required step present, the tree unchanged in every shard.
           combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
@@ -166,7 +166,7 @@ jobs:
               "started_at": min(d["started_at"] for d in timed),
               "finished_at": max(d["finished_at"] for d in timed),
               "steps": steps,
-              "tree_unchanged": all(d.get("tree_unchanged") is True for d in docs),
+              "tree_unchanged": all(d.get("tree_unchanged") is True for d in timed),
               "tree_after": first.get("tree_after"),
               "skipped": None,
               "passed": all(step["passed"] for step in steps) and not missing,
