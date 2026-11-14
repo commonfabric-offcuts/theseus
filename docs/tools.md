@@ -137,6 +137,13 @@ The record is written after the verify, not before the stop, because it states t
 
 ### Known reds: `--known-reds FILE`
 
+GitHub's aggregate classifier is a separate, stricter consumer of complete
+evidence: see [CI expected browser failures](ci-known-reds.md). It uses policy
+and validator code from the PR event's exact base SHA, verifies producer
+run/attempt receipts and case identities, and preserves raw failures. Its
+initial inventory has zero failure admissions; step-wide deploy acceptances do
+not populate it.
+
 A release ships with its own regressions fixed. A browser case that already fails on the live release is not this release's regression, so it does not hold the release, but it is never counted as a pass either: it stays a failed case in the summary, in the release check's step evidence and in the record's counts, and the record names it as a known red. `FILE` is an absolute path to a JSON object:
 
 ```json
