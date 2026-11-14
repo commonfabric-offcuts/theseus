@@ -3148,9 +3148,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     };
     // A new document is a new gesture: what the page heard of the last one goes with it.
     const reload = async () => {
-      const origin = await p.evaluate('performance.timeOrigin');
+      // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+      const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
       await p.send('Page.reload');
-      await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(card(ids.kept))}))`).catch(() => false), 'the page loads again');
+      await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(card(ids.kept))}))`).catch(() => false), 'the page loads again');
       await fullyOpen();
     };
 

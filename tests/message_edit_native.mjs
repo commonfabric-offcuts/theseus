@@ -326,11 +326,12 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     const line = () => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.reply) + ' > .message-reply-to')})?.textContent ?? null`);
     await until(async () => (await line())?.includes('Ship it at 5.'), 'the reply\'s line shows the words it answers');
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.mine))}))`), false, 'the message it answers is not loaded');
-    const loaded = await p.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await editElsewhere(ids.mine, 1, 'Ship it at 6.', `${topic}-elsewhere`);
     await until(async () => (await line())?.includes('Ship it at 6.'), 'the reply\'s line reads the latest words');
     assert.equal((await line()).includes('Ship it at 5.'), false, 'and not the old ones');
-    assert.equal(await p.evaluate('performance.timeOrigin'), loaded, 'without a reload');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'), loaded, 'without a reload');
     assert.equal(await p.evaluate('window.edits'), 0, 'this page sent nothing');
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -579,11 +580,11 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
       previews:[...t.querySelectorAll('[data-key=previews] a.row')].map(a=>a.getAttribute('href'))}})()`);
     await until(async () => (await things()).prs.length === 1, 'the right rail lists the pull request in the person\'s message');
     assert.deepEqual(await things(), { prs: ['https://github.com/acme/field/pull/1'], previews: ['http://bench.example.ts.net:5192/preview/one'] });
-    const loaded = await p.evaluate('performance.timeOrigin');
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await editElsewhere(ids.mine, 1, 'The fix is [Second try](https://github.com/acme/field/pull/2); see http://bench.example.ts.net:5192/preview/two.', `${topic}-elsewhere`);
     await until(async () => JSON.stringify(await things()) === JSON.stringify({ prs: ['https://github.com/acme/field/pull/2'], previews: ['http://bench.example.ts.net:5192/preview/two'] }),
       'the right rail shows the edited message\'s links, and not the old ones');
-    assert.equal(await p.evaluate('performance.timeOrigin'), loaded, 'without a reload');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'), loaded, 'without a reload');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
