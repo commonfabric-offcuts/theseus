@@ -202,17 +202,39 @@ export class Reader {
     // from growing beside it, so what lights is what quotes.
     this.sourceBody.addEventListener('pointerdown', event => {
       // A link is only a link: pressing it lights no passage to quote.
-      if (event.target.closest?.('a,.reader-end')) return;
+      if (event.target.closest?.('a,button,.reader-end')) return;
       this.sourceBody.focus({ preventScroll: true });
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey, true);
     });
     this.sourceBody.addEventListener('mousedown', event => { if (event.shiftKey && event.button === 0 && this.hover) event.preventDefault(); });
     // The message wears its focus ring only when a keyboard user Tabs onto it,
     // not when the Reader puts focus there itself (see aim.css).
-    this.dialog.addEventListener('keydown', event => { if (event.key === 'Tab') this.tabbing = true; }, true);
-    this.dialog.addEventListener('pointerdown', () => { this.tabbing = false; }, true);
+    // WebKit can drop the Reader's selected words when Tab moves focus from
+    // the article to a control. Keep the range for this one keyboard move.
+    let tabSelection = null;
+    this.dialog.addEventListener('keydown', event => {
+      if (event.key !== 'Tab') return;
+      this.tabbing = true;
+      const selection = window.getSelection();
+      tabSelection = null;
+      if (!selection?.rangeCount || selection.isCollapsed) return;
+      const range = selection.getRangeAt(0);
+      if (this.sourceBody.contains(range.commonAncestorContainer)) {
+        const backwards = selection.focusNode === range.startContainer && selection.focusOffset === range.startOffset;
+        tabSelection = { range: range.cloneRange(), backwards };
+      }
+    }, true);
+    this.dialog.addEventListener('pointerdown', () => { this.tabbing = false; tabSelection = null; }, true);
     this.sourceBody.addEventListener('focusout', () => this.sourceBody.removeAttribute('data-tabbed'));
     this.dialog.addEventListener('focusin', event => {
+      const saved = tabSelection, selection = window.getSelection();
+      tabSelection = null;
+      if (this.tabbing && saved && !saved.range.collapsed && this.sourceBody.contains(saved.range.commonAncestorContainer) &&
+          !event.target.closest('textarea,input,select,[contenteditable]') && selection?.isCollapsed) {
+        const range = saved.range;
+        if (saved.backwards) selection.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset);
+        else selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
+      }
       if (event.target === this.sourceBody) this.sourceBody.toggleAttribute('data-tabbed', Boolean(this.tabbing));
       this.tabbing = false;
       if (!this.returnQuotes()) this.disarm();
@@ -404,7 +426,7 @@ export class Reader {
 
   // The source as passages, its Markdown shown as written to be read (message-format.mjs).
   drawSource(body) {
-    drawPassages(this.sourceBody, body, document);
+    drawPassages(this.sourceBody, body, document, { copyFences: true });
     this.placeEnd();
   }
 
@@ -416,7 +438,7 @@ export class Reader {
   }
 
   point(event) {
-    if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a')) return;
+    if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a,button')) return;
     // Nothing lights to promise a quote that Return would not make.
     if (!this.returnQuotes()) return;
     const current = { x: event.clientX, y: event.clientY };

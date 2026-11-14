@@ -2,6 +2,7 @@
 // This fixture proves UI interactions only; it has no Store or HTTP adapter.
 import assert from 'node:assert/strict';
 import { reachWith } from './compose-reach.mjs';
+import { devtoolsControl, endRun } from './devtools_control.mjs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -43,30 +44,21 @@ let chrome, socket, cdp, exitPromise;
 const results = [], pageErrors = [];
 const mutations = [], sourceHashes = {};
 const hash = text => createHash('sha256').update(text).digest('hex');
-for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/lines.mjs', 'web/api.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'web/message-menu.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
+for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/lines.mjs', 'web/api.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'web/message-menu.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs', 'tests/devtools_control.mjs']) {
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {
   chrome = spawn(chromePath, ['--headless=new', '--use-mock-keychain', '--password-store=basic', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
     '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
-  exitPromise = new Promise(resolve => chrome.once('exit', resolve));
+  exitPromise = new Promise(resolve => chrome.once('exit', (code, signal) => resolve({ code, signal })));
   const active = await until(async () => { try { return await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8'); } catch { return null; } }, 'Chrome DevTools endpoint');
   const [port, endpoint] = active.trim().split('\n');
   socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`);
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
-  let serial = 0;
-  const waiting = new Map();
-  socket.addEventListener('message', event => {
-    const packet = JSON.parse(event.data);
-    if (packet.id) {
-      const waiter = waiting.get(packet.id); waiting.delete(packet.id);
-      if (packet.error) waiter?.reject(new Error(JSON.stringify(packet.error))); else waiter?.resolve(packet.result);
-    } else if (packet.method === 'Runtime.exceptionThrown') pageErrors.push(packet.params.exceptionDetails);
-  });
-  cdp = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
-    const id = ++serial; waiting.set(id, { resolve, reject });
-    socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-  });
+  // Each command is bounded, and refused at once when the socket, the page or this Chrome goes (devtools_control.mjs).
+  const control = devtoolsControl(socket, { event: packet => { if (packet.method === 'Runtime.exceptionThrown') pageErrors.push(packet.params.exceptionDetails); } });
+  cdp = control.cdp;
+  exitPromise.then(({ code, signal }) => control.end(`Chrome exited ${code ?? signal}`));
   const { targetId } = await cdp('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
   const send = (method, params) => cdp(method, params, sessionId);
@@ -75,7 +67,8 @@ try {
     if (answer.exceptionDetails) throw new Error(JSON.stringify(answer.exceptionDetails));
     return answer.result.value;
   };
-  await send('Page.enable'); await send('Runtime.enable');
+  // Inspector reports the page's crash on its session.
+  await send('Page.enable'); await send('Runtime.enable'); await send('Inspector.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   const box = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()`);
   const point = async (selector, kind = 'click') => {
@@ -157,6 +150,8 @@ try {
       assert.equal(pageErrors.length, 0, 'no browser exceptions');
       results.push({ phase, name, passed: true, observations });
     } catch (error) { results.push({ phase, name, passed: false, error: error.stack, observations }); }
+    // One line per case as it ends, so a log cut short names the last case that ran.
+    console.log(JSON.stringify({ phase, case: name, passed: results.at(-1).passed }));
     await until(() => evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation => animation.playState !== "running")'), 'settled screenshot');
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     await writeFile(path.join(evidencePath, `${results.length}.png`), Buffer.from(shot.data, 'base64'));
@@ -541,7 +536,7 @@ try {
       { name: 'ring-on-the-readers-own-focus', file: 'web/aim.css', index: 9,
         from: '#source-body:focus-visible:not([data-tabbed]){outline:none}', to: '', expected: /no ring when the Reader puts focus on it/ },
       { name: 'tab-not-told-apart', file: 'web/reader.mjs', index: 9,
-        from: "if (event.key === 'Tab') this.tabbing = true;", to: 'void event;', expected: /Tabs onto the message sees the ring/ },
+        from: 'this.tabbing = true;', to: 'this.tabbing = false;', expected: /Tabs onto the message sees the ring/ },
       { name: 'add-note-unlike-add-image', file: 'web/index.html', index: 10,
         from: '<button id="toggle-note" type="button" class="tile">', to: '<button id="toggle-note" type="button">', expected: /Add note has Add image's/ },
       { name: 'done-closes-the-reader', file: 'web/reader.mjs', index: 10,
@@ -602,19 +597,14 @@ try {
     for (const item of selectedCases) await runCase(item);
   }
 } finally {
-  let closed = false;
-  if (cdp) {
-    try { await Promise.race([cdp('Browser.close'), sleep(2000)]); } catch { /* socket can close with its browser */ }
-    if (chrome) {
-      closed = await Promise.race([exitPromise.then(() => true), sleep(5000).then(() => false)]);
-    }
-  }
-  // Never signal a Chrome. An unexpected launch/close failure leaves the owned
-  // profile named in evidence for an explicit graceful-cleanup follow-up.
-  if (socket) socket.close();
-  await new Promise(resolve => server.close(resolve));
-  if (closed) await rm(profile, { recursive: true, force: true });
-  await writeFile(path.join(evidencePath, 'results.json'), JSON.stringify({ origin, profile, closed, sourceHashes, mutations, pageErrors, results }, null, 2));
-  console.log(JSON.stringify({ closed, results }, null, 2));
-  if (!closed || results.some(result => result.expectedFailure ? !result.mutationCaught : !result.passed)) process.exitCode = 1;
+  // Browser.close only, never a signal; a Chrome still running after it is
+  // recorded as left, and the run still ends (devtools_control.mjs).
+  // A run whose Chrome did not close is not closed, and leaves the owned profile
+  // named in evidence.
+  await endRun({ child: chrome, exited: exitPromise, close: cdp && (() => cdp('Browser.close')), socket, server }, async ({ closed, left }) => {
+    if (closed) await rm(profile, { recursive: true, force: true });
+    await writeFile(path.join(evidencePath, 'results.json'), JSON.stringify({ origin, profile, closed, left, sourceHashes, mutations, pageErrors, results }, null, 2));
+    if (!closed || results.some(result => result.expectedFailure ? !result.mutationCaught : !result.passed)) process.exitCode = 1;
+    return JSON.stringify({ closed, results }, null, 2);
+  });
 }

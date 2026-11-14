@@ -1,3 +1,4 @@
+import { mountFeedFences } from './feed-fence-copy.mjs';
 import { Api, notAnswering, unreached, answeredSince, heard, follow } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
@@ -64,6 +65,7 @@ import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, 
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
+import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
@@ -759,7 +761,8 @@ function paintViews(kind) {
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
-      card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
+      card = button('', () => openSource(ref, card, marks.capture(item.id)));
+      card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
       // An agent's name on its card opens its color picker instead of the message.
       const open = card.onclick;
       card.onclick = event => {
@@ -778,7 +781,7 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed' }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
@@ -1388,12 +1391,13 @@ function repaintEdited(ids, edits) {
     const item = views.messages.get(id), entry = messageEntries.get(id);
     if (!item || !entry) continue;
     const card = cardIn(entry);
+    if (deferFencePaint(card, () => repaintEdited([id], edits))) continue;
     paintCardAuthor(card.querySelector(':scope > .message-author'), item);
     const line = card.querySelector(':scope > .message-reply-to'), answers = replyLine(item);
     if (line && answers) linkWords(line, answers, { partial: true });
     const preview = card.querySelector(':scope > .message-preview');
     if (preview) {
-      formatWords(preview, item.body, { partial: item.preview === true });
+      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed' });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -1959,6 +1963,7 @@ async function initialize() {
     // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
     cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  mountFeedFences($('messages'));
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it

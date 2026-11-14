@@ -99,12 +99,13 @@ def _executable(value):
     return path
 
 
-def _codex_executable(value):
+def _codex_executable(value, applications=None):
     """Selected installed child only; generic broker invocation stays strict.
 
     This installation trusts local administrators as well as root/the owner.
     The one reviewed writable ancestor is exactly root:admin /Applications
     with mode 040775. A firmlink spelling does not inherit that exception.
+    applications=(path, uid, gid) names that ancestor in place of the real one.
     """
     path = _path(value)
     try:
@@ -117,8 +118,9 @@ def _codex_executable(value):
             _require(stat.S_ISDIR(info.st_mode) and info.st_uid in (0,os.getuid())
                      and not info.st_mode & 0o002,'invalid_executable')
             if info.st_mode & 0o020:
-                _require(str(parent)=='/Applications' and info.st_mode==stat.S_IFDIR|0o775
-                         and info.st_uid==0 and info.st_gid==grp.getgrnam('admin').gr_gid,
+                folder,owner,group = applications or ('/Applications',0,grp.getgrnam('admin').gr_gid)
+                _require(str(parent)==folder and info.st_mode==stat.S_IFDIR|0o775
+                         and info.st_uid==owner and info.st_gid==group,
                          'invalid_executable')
     except (OSError,KeyError) as error:
         raise BrokerConfigError('invalid_executable') from error
@@ -158,14 +160,20 @@ def load_config(path, *, expected_binding=None, profile_path=None):
 
     Core/Profile exceptions intentionally propagate with their typing/cause.
     The caller owns startup, post-claim and child-specific failure handling.
+    The installed Codex is always checked against the real /Applications.
     """
+    return _load_config(path, expected_binding=expected_binding, profile_path=profile_path)
+
+
+def _load_config(path, *, expected_binding=None, profile_path=None, applications=None):
+    """load_config, with applications=(path, uid, gid) standing for /Applications; tests only."""
     path,value = _private(path)
     _require(set(value)=={'v','profile','codex_executable','destination'}
              and type(value['v']) is int and value['v']==1)
     selected_profile = _path(value['profile'])
     if profile_path is not None and selected_profile != profile_path:
         raise BrokerBindingError()
-    executable = _codex_executable(value['codex_executable'])
+    executable = _codex_executable(value['codex_executable'],applications)
     destination = _destination(value['destination'])
     profile = load_profile(selected_profile)
     if expected_binding is not None and profile_binding(profile) != expected_binding:
