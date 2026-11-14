@@ -6975,8 +6975,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision'];",
-     "const PLACING = ['root_id'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
+     "const PLACING = ['root_id', 'name_revision'];"
     ]
    ],
    "check": {
