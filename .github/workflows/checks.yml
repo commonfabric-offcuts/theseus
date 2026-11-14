@@ -12,6 +12,15 @@
 #
 # A red shard is a red check. Cases that fail on live today fail here too until
 # they are fixed or recorded as expected; this workflow does not hide them.
+#
+# This workflow is the producer, and nothing more: it runs the candidate's own
+# code, from the merge commit's copy of this file, and publishes the evidence.
+# It cannot be trusted with the verdict, since a pull request can edit it. The
+# verdict comes from the Verdict workflow on the default branch, which runs
+# when this one completes, reads these artifacts as untrusted data, checks them
+# against GitHub's record of this run, and runs the validator and the baseline
+# from the pull request's base. The candidate's code runs here, so the token is
+# read-only.
 name: Checks
 
 on:
@@ -21,6 +30,9 @@ on:
       - 'release/**'
       - codex/aim-next
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: checks-${{ github.ref }}
@@ -132,20 +144,34 @@ jobs:
           # The receipt a validator binds this shard to: written here, by the job that ran it, so a shard repackaged from
           # another run or attempt cannot pass as this one. The profile says what the cases ran on.
           /usr/bin/python3 -I - "$RUNNER_TEMP/check/run.json" <<'PY'
-          import json, os, platform, subprocess, sys
+          import hashlib, json, os, platform, subprocess, sys
           env = os.environ
           def out(*argv):
               try:
                   return subprocess.run(argv, capture_output=True, text=True).stdout.strip()
               except OSError:
                   return None
+          def digest(path):
+              try:
+                  return hashlib.sha256(open(path, "rb").read()).hexdigest()
+              except OSError:
+                  return None
           receipt = {
               "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
-                      "job": env.get("GITHUB_JOB"), "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY")},
+                      "job": env.get("GITHUB_JOB"), "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
+                      # The commit this workflow file was read from: the proof of whose workflow judged the run.
+                      "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
               "shard": {"name": env.get("SHARD_NAME"), "steps": (env.get("SHARD_STEPS") or "").split(",")},
               "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
               "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
-              "merge": {"sha": env.get("GITHUB_SHA"), "tree": out("git", "rev-parse", "HEAD^{tree}")},
+              # The commit the check ran, read from the checkout. On a pull request it is the merge commit: its first
+              # parent is the base GitHub merged onto, which can be newer than the event's base, and its second is the
+              # pull request's head; on a push it has one parent and the second reads as none.
+              "merge": {"sha": out("git", "rev-parse", "HEAD"), "tree": out("git", "rev-parse", "HEAD^{tree}"),
+                        "first_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^1") or None,
+                        "second_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^2") or None},
+              # The summary this receipt vouches for, so a summary swapped in beside a genuine receipt does not count.
+              "summary_sha256": digest(os.path.join(os.path.dirname(sys.argv[1]), "summary.json")),
               "profile": {"runner_os": env.get("RUNNER_OS"), "runner_arch": env.get("RUNNER_ARCH"), "image_os": env.get("ImageOS"),
                           "image_version": env.get("ImageVersion"), "platform": platform.platform(), "python": sys.version.split()[0],
                           "node": out("node", "--version"), "chrome": env.get("CHROME_VERSION"), "playwright": env.get("PLAYWRIGHT_VERSION"),
@@ -189,14 +215,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-check
-          export MERGE_TREE="$(git rev-parse 'HEAD^{tree}')"
           python3 - shards release-check/summary.json <<'PY'
-          import glob, json, os, sys
+          import glob, hashlib, json, os, sys
           shards_dir, out = sys.argv[1], sys.argv[2]
           paths = sorted(glob.glob(os.path.join(shards_dir, "check-*", "summary.json")))
           docs = [json.load(open(p)) for p in paths]
-          # Every shard must carry the receipt its own job wrote, for this run and this attempt; a shard from another
-          # run or attempt, however identical its commit and cases, does not count.
+          # Every shard must carry the receipt its own job wrote, for this run and this attempt, naming this summary;
+          # a shard from another run or attempt, however identical its commit and cases, does not count.
           env = os.environ
           receipts = []
           for p in paths:
@@ -209,7 +234,17 @@ jobs:
               if (run.get("id"), run.get("attempt")) != (env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT")):
                   sys.exit("%s was produced by run %s attempt %s, not this run %s attempt %s" % (
                       receipt_path, run.get("id"), run.get("attempt"), env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT")))
+              if receipt.get("summary_sha256") != hashlib.sha256(open(p, "rb").read()).hexdigest():
+                  sys.exit("%s is not the summary %s vouches for" % (p, receipt_path))
               receipts.append(receipt)
+          # The merge commit, its tree and its parents come from the receipts, each written by a shard with the whole
+          # history; this job's own checkout is shallow and sees no parents. The shards must agree, and name this run's commit.
+          merges = {json.dumps(r.get("merge"), sort_keys=True) for r in receipts}
+          if len(merges) != 1:
+              sys.exit("the shards name different merges: %s" % sorted(merges))
+          merge = receipts[0].get("merge") or {}
+          if merge.get("sha") != env.get("GITHUB_SHA"):
+              sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
           if not docs or not timed:
@@ -245,10 +280,11 @@ jobs:
           provenance = {
               "profiles": profiles if len({json.dumps(x, sort_keys=True) for x in profiles}) > 1 else profiles[:1],
               "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
-                      "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY")},
+                      "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
+                      "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
               "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
               "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
-              "merge": {"sha": env.get("GITHUB_SHA"), "tree": env.get("MERGE_TREE")},
+              "merge": {key: merge.get(key) for key in ("sha", "tree", "first_parent", "second_parent")},
               "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
               "required": required,
               "plan": json.loads(env.get("PLAN_SHARDS") or "[]"),
