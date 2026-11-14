@@ -232,14 +232,15 @@ class SaveCase(HoldCase):
     def test_a_held_delivery_is_never_listed_counted_or_given_and_people_are_never_held(self):
         self.member("other-reader", True)
         self.participation("other-reader", True)
-        self.ask_m()
-        people = self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id IN ('owner','other-reader')", (self.m,))
-        self.assertTrue(people)
+        self.m = self.post("Deploy at 5", addressees=["agent-a", "other-reader"], intent="ask")
+        self.d = self.delivery("agent-a", self.m)
+        people = self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='other-reader' AND state='pending'", (self.m,))
+        self.assertEqual(len(people), 1, "other-reader, a person, is sent M and has not acknowledged it")
         attention = self.store.view("agent-a", "attention", {})
         self.assertIn(self.d, [item["id"] for item in attention["latest_addressed"]])
         self.open()
         for (person,) in people:
-            self.assertNotEqual(self.state(person), "held")
+            self.assertEqual(self.state(person), "pending")
         self.assertNotIn(self.d, [item["id"] for item in self.listed("agent-a")])
         self.assertNotIn(self.d, [item["id"] for item in self.store.view("agent-a", "attention", {})["latest_addressed"]])
         held = self.store.view("agent-a", "delivery", {"delivery_id": self.d})
@@ -648,6 +649,71 @@ class SessionCommandCase(HoldCase):
         self.now = 1000 + HOLD + 5
         self.open(holder="h-phone")
         self.assertEqual((self.state(self.d), self.sql("SELECT count(*) FROM deliveries WHERE state='held'")), ("held", [(1,)]))
+
+
+class ReleaseCase(HoldCase):
+    """Release restores each row's own count, hands back work a turn was told of, and settles nothing; corrections
+    queued held are settled by a newer one, or when their agent can no longer read the message."""
+
+    def test_release_hands_back_work_a_live_turn_was_told_of(self):
+        self.ask_m()
+        w = self.delivery("agent-a", self.post("Check the logs", addressees=["agent-a"], intent="tell"))
+        self.ack_the_rest(keep=(self.d, w))
+        [claim] = self.claims()["claims"]
+        text = self.notice(claim)
+        self.assertIn(self.d, text)
+        self.assertIn(w, text)
+        self.hand(claim)
+        self.open()
+        schedule = self.full_schedule()
+        self.assertEqual((schedule["pending_count"], schedule["handed_seq"], schedule["next_due_ms"]), (1, claim["captured_seq"], None),
+                         "W is still with the turn")
+        self.now = 4000
+        self.close()
+        schedule = self.full_schedule()
+        self.assertEqual((schedule["pending_count"], schedule["handed_seq"], schedule["next_due_ms"]), (2, None, 4000),
+                         "the turn was told of D before the hold: it is told again, now")
+        [again] = self.claims()["claims"]
+        self.assertIn(self.d, self.notice(again))
+
+    def test_a_row_whose_group_closed_while_held_is_released_pending_and_uncounted(self):
+        self.m = self.post("Deploy at 5")
+        self.d = self.delivery("agent-a", self.m)
+        self.ack_the_rest(keep=(self.d,))
+        group = self.group(self.d)[0]
+        self.assertEqual(self.sql("SELECT kind,active FROM delivery_groups WHERE id=?", (group,)), [("subscription", 1)])
+        self.open()
+        self.participation("agent-a", False)
+        self.invariant()
+        self.assertEqual(self.sql("SELECT active,pending_count FROM delivery_groups WHERE id=?", (group,)), [(0, 0)])
+        self.close()
+        self.assertEqual(self.state(self.d), "pending", "like the rows a cancelled subscription leaves")
+        self.assertEqual(self.sql("SELECT active,pending_count FROM delivery_groups WHERE id=?", (group,)), [(0, 0)])
+        self.assertEqual((self.full_schedule()["pending_count"], self.due()), (0, None))
+
+    def test_a_second_save_by_another_device_settles_the_held_correction(self):
+        self.ask_m()
+        self.saw("agent-a")
+        self.open(holder="h-phone")
+        self.committed(self.save("L", holder="h-laptop"))
+        self.committed(self.save("L2", revision=2, holder="h-laptop"))
+        self.invariant()
+        self.assertEqual([row[2:] for row in self.corrections("agent-a", self.m)], [(2, "acknowledged"), (3, "held")])
+        self.close(holder="h-phone")
+        self.assertEqual([row[2:] for row in self.corrections("agent-a", self.m)], [(2, "acknowledged"), (3, "pending")])
+
+    def test_an_agent_that_can_no_longer_read_keeps_no_held_correction(self):
+        self.ask_m()
+        self.saw("agent-b")
+        self.open(holder="h-phone")
+        self.committed(self.save("L", holder="h-laptop"))
+        self.assertEqual([row[2:] for row in self.corrections("agent-b", self.m)], [(2, "held")])
+        self.member("agent-b", False)
+        self.committed(self.save("L2", revision=2, holder="h-laptop"))
+        self.invariant()
+        self.assertEqual([row[2:] for row in self.corrections("agent-b", self.m)], [(2, "acknowledged")])
+        self.close(holder="h-phone")
+        self.assertEqual([row[2:] for row in self.corrections("agent-b", self.m)], [(2, "acknowledged")])
 
 
 class AccessThroughHeldCase(HoldCase):
