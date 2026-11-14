@@ -191,7 +191,8 @@ async function check(name, action) {
   const failures = [], say = error => error.stack ?? String(error);
   let ms;
   // After a case whose reset was refused, this one begins with that reset,
-  // once (its pages are closed, so nothing else writes). Refused again, the
+  // once (its pages are closed; only a save a closed page left on its way
+  // can still land, as CommandGate in ui_http.py says). Refused again, the
   // case does not run on the writing the earlier case left, and says so.
   if (unreset) {
     try { await control({ method: 'reset_drafts' }); unreset = null; }

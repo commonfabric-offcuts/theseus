@@ -1096,7 +1096,8 @@ def main():
                         # page left on its way lands before the revisions are read,
                         # or waits for the reset (CommandGate): refused at its old
                         # revision if the reset emptied that draft, landing after
-                        # the reset if it skipped the draft as already empty.
+                        # the reset if it skipped the draft as already empty or
+                        # the draft had no row yet (a first save inserts one).
                         with gate.hold():
                             with sqlite3.connect(str(path)) as db:
                                 rows = db.execute("SELECT id,revision,generation,topic_id,payload FROM drafts WHERE actor_id=?", (actor,)).fetchall()
