@@ -64,6 +64,7 @@ import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, 
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
+import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
@@ -1390,6 +1391,7 @@ function repaintEdited(ids, edits) {
     const item = views.messages.get(id), entry = messageEntries.get(id);
     if (!item || !entry) continue;
     const card = cardIn(entry);
+    if (deferFencePaint(card, () => repaintEdited([id], edits))) continue;
     paintCardAuthor(card.querySelector(':scope > .message-author'), item);
     const line = card.querySelector(':scope > .message-reply-to'), answers = replyLine(item);
     if (line && answers) linkWords(line, answers, { partial: true });

@@ -38,7 +38,7 @@ class Element {
   set textContent(value) { this.childNodes = []; if (String(value)) this.append(new Text(value)); }
   get ownerDocument() { return doc; }
 }
-const doc = { createElement: tag => new Element(tag), createTextNode: data => new Text(data) };
+const doc = { createElementNS: (_, tag) => new Element(tag), createElement: tag => new Element(tag), createTextNode: data => new Text(data) };
 
 // Every node under node, in document order.
 const walk = (node, out = []) => { out.push(node); for (const child of node.childNodes ?? []) walk(child, out); return out; };
@@ -771,4 +771,16 @@ test('only a terminated closing line proves a fence complete in an excerpt, incl
     }
   }
   assert.equal(byClass(render('```\n```', { copyFences: true }), 'fence-copy').length, 1, 'empty fence');
+});
+
+
+test('a URL written directly after a fence opener stays visible and copyable, including in a quote', () => {
+  const url = 'https://discord.com/channels/123/456/789';
+  for (const prefix of ['', '> ']) {
+    const body = [prefix + '```' + url, prefix + '```'].join('\n');
+    const host = render(body, { copyFences: true });
+    assert.equal(byClass(host, 'md-pre')[0].textContent, url);
+    assert.equal(byClass(host, 'fence-copy').length, 1);
+  }
+  assert.equal(byClass(render('```javascript\nconst x = 1;\n```'), 'md-pre')[0].textContent, 'const x = 1;');
 });

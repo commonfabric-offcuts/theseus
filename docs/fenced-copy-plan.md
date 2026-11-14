@@ -135,3 +135,21 @@ Round 1: NOT PASS. Resolved three findings in this revision: only a terminated
 closing line counts in partial input; non-text control labels protect Notebook
 cursor mapping as well as Reader source mapping; explicit shared press
 deferral protects destructive paints through the native click. Round 2: PASS, no blocking findings. Implementation authorized by Tony.
+
+## Implementation review and preview feedback
+
+- The first implementation review found a Tab-order regression, own-card glyph
+  contrast, nested-quote minimum width, and press-guard listeners removed by
+  in-place navigation. The revised implementation preserves native inline
+  control order, uses the theme's paired tooltip colors, clamps fence width,
+  and uses persistent shell listeners with queued paints discarded on navigation.
+- Tony tried the first preview: Copy worked in the composer and feed. He
+  requested a glyph rather than a word button, and showed a Notebook card
+  written as an opening fence immediately followed by a Discord URL, then a
+  closing fence on the next line. The parser now treats an opener whose info
+  begins http:// or https:// as same-line payload, keeping its entire remainder
+  and any following payload lines. Other language/info syntax is unchanged.
+  The reviewer approved this narrow parsing extension and the SVG glyph design.
+- The button has an accessible name and tooltip, no textual DOM descendants,
+  and copy/check/failure glyphs. Clipboard state remains separately testable;
+  controls never become part of native Copy or Notebook cursor mapping.

@@ -282,7 +282,7 @@ export class MessageMenu {
   // but in writing, in a pop-up, or on another control.
   key(event) {
     if (this.copies(event)) return;
-    if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || (event.altKey && event.key !== 'Tab')) return;
     if (event.key === 'Tab') return this.tab(event);
     // Nor under a drawer or sheet open over the page, which makes the page inert.
     if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
@@ -353,14 +353,13 @@ export class MessageMenu {
     if (!this.lit?.isConnected) return;
     const card = cardIn(this.lit), at = this.doc.activeElement;
     const star = card.querySelector(':scope > .message-author > .card-star'), folded = card.querySelector(':scope > .message-folded > .folded-thumb');
-    const order = [folded, star, ...card.querySelectorAll('.fence-copy'), ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
+    const order = [folded, star, ...(this.bar.hidden ? [] : Object.values(this.buttons))].filter(each => each && !each.hidden && each.getClientRects().length);
     if (!order.length) return;
+    const inline = [...card.querySelectorAll('a[href],button,[tabindex]')].filter(each => each.tabIndex >= 0 && !each.disabled && each.getClientRects().length);
     const index = order.indexOf(at);
-    if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }
-    else if (!event.shiftKey && index === order.length - 1) {
-      const copies = [...card.querySelectorAll('.fence-copy')];
-      (copies.at(-1) ?? card).focus({ preventScroll: true });
-    }
+    if (event.shiftKey && at === inline[0]) { event.preventDefault(); order.at(-1).focus({ preventScroll: true }); }
+    else if (!event.shiftKey && at === card) { event.preventDefault(); order[0].focus({ preventScroll: true }); }
+    else if (!event.shiftKey && index === order.length - 1) card.focus({ preventScroll: true });
     else if (!event.shiftKey && index >= 0) { event.preventDefault(); order[index + 1].focus({ preventScroll: true }); }
     else if (event.shiftKey && index === 0) { event.preventDefault(); card.focus({ preventScroll: true }); }
     else if (event.shiftKey && index > 0) { event.preventDefault(); order[index - 1].focus({ preventScroll: true }); }

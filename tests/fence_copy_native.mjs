@@ -57,7 +57,7 @@ async function open(url, { phone = false, dark = false, width = 390 } = {}) {
 }
 async function press(p, selector) {
   const target = p.locator(selector).first();
-  if (p.phone) await target.tap(); else { await target.hover(); await target.click(); }
+  if (p.phone) await target.tap(); else { await target.locator('..').hover(); await target.click(); }
 }
 async function copy(p, selector, expected = payload, key = null) {
   const before = await p.evaluate(() => copyCalls.length), button = p.locator(selector).first();
@@ -74,7 +74,7 @@ async function check(name, run) {
   const title = `${engine} ${name}`;
   if (filter && !filter.split('|').some(part => title.includes(part))) return;
   try { await run(); results.push({ name: title, passed: true }); console.log('PASS', title); }
-  catch (error) { results.push({ name: title, passed: false, error: String(error.stack) }); console.log('FAIL', title, String(error)); }
+  catch (error) { for (const ctx of contexts) for (const p of ctx.pages()) await p.screenshot({ path: path.join(evidence, 'failure-' + results.length + '.png') }).catch(() => {}); results.push({ name: title, passed: false, error: String(error.stack) }); console.log('FAIL', title, String(error)); }
   finally { for (const ctx of contexts.splice(0)) await ctx.close(); }
   await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, observations }, null, 2));
 }
@@ -196,7 +196,7 @@ try {
             ? m.formatWords(document.querySelector('#source-body'), '```\nreplacement\n```', { copyFences: true })
             : m.drawPassages(document.querySelector('#source-body'), '```\nreplacement\n```', document, { copyFences: true });
         }, { body, kind });
-        const button = p.locator(selector); await button.hover();
+        const button = p.locator(selector); await button.locator('..').hover();
         const before = await p.evaluate(() => copyCalls.length);
         if (kind === 'space') { await button.focus(); await p.keyboard.down('Space'); }
         else { const box = await button.boundingBox(); await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down(); }
@@ -218,11 +218,12 @@ try {
       await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Held card', body: '## Card\n' + body });
       const p = await open('/?cards=' + id);
       const selector = '.deck-card .fence-copy'; await p.locator(selector).waitFor();
-      await p.locator(selector).hover(); const box = await p.locator(selector).boundingBox();
+      await p.locator(selector).locator('..').hover(); const box = await p.locator(selector).boundingBox();
       await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down();
-      await control({ method: 'memory_revise', operation_id: id + '-revision', item_id: id, expected_revision: 1, title: 'Held card', body: '## Card\n```\nnew revision\n```\n\nTarget after fence.' });
+      const revised = p.waitForResponse(async response => response.url().includes('/api/') && (await response.text().catch(() => '')).includes('Revised held card'));
+      await control({ method: 'memory_revise', operation_id: id + '-revision', item_id: id, expected_revision: 1, title: 'Revised held card', body: '## Card\n```\nnew revision\n```\n\nTarget after fence.' });
       // Wait for the live revision to be read, while the old pressed row stays.
-      await p.waitForTimeout(500);
+      await revised;
       assert.equal(await p.locator('.deck-card .md-pre').textContent(), payload);
       await p.mouse.up();
       await wait(p, () => copyCalls.length === 1);
@@ -242,6 +243,86 @@ try {
       await p.keyboard.type('INSERT ');
       assert.ok((await field.inputValue()).includes('Target INSERT after fence.'));
       assert.equal(await p.locator('.deck-writing .fence-copy').count(), 0);
+    });
+
+    await check('glyph, same-line URL, own-message contrast and narrow nested quotes', async () => {
+      const url = 'https://discord.com/channels/1232452732963655720/1539479395180482660/1570832909391106141';
+      const id = `fence-url-${engine}`;
+      await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Same-line URL', body: '## reply to hixie\n```' + url + '\n```' });
+      for (const phone of [false, true]) {
+        const p = await open('/?cards=' + id, { phone, dark: true, width: 320 });
+        await p.locator('.deck-card .fence-copy').waitFor();
+        assert.equal(await p.locator('.deck-card .md-pre').textContent(), url);
+        await copy(p, '.deck-card .fence-copy', url);
+        assert.equal(await p.locator('.fence-copy').first().textContent(), '');
+        assert.equal(await p.locator('.fence-copy svg').count(), 1);
+        await picture(p, `url-glyph-${phone ? 'phone' : 'desktop'}`);
+        await p.close();
+      }
+      const ownBody = body + '\n\n' + ['```', 'nested words', '```'].map(line => '> '.repeat(8) + line).join('\n');
+      const own = (await control({ method: 'agent_message', operation_id: id + '-own', topic_id: 'fence-topic', source: 'topic', sender: 'person', body: ownBody })).result.message_id;
+      for (const dark of [false, true]) {
+        const p = await open('/?topic=fence-topic', { phone: true, width: 320, dark });
+        const card = query(own); await p.locator(card).scrollIntoViewIfNeeded();
+        await copy(p, card + ' .fence-copy');
+        const colors = await p.locator(card + ' .fence-copy').first().evaluate(button => {
+          const s = getComputedStyle(button); return [s.color, s.backgroundColor];
+        });
+        const lum = color => color.match(/[\d.]+/g).slice(0,3).map(Number).map(c => { c /= 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((a,c,i) => a + c * [.2126,.7152,.0722][i], 0);
+        const [lo, hi] = colors.map(lum).sort((a,b) => a-b); assert.ok((hi + .05) / (lo + .05) >= 4.5, colors.join(' on '));
+        assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        const contained = await p.locator(card + ' .md-fence').last().evaluate(f => f.getBoundingClientRect().right <= f.parentElement.getBoundingClientRect().right + 1);
+        assert.ok(contained, 'a nested fence fits its quote');
+        await picture(p, `own-nested-${dark ? 'dark' : 'light'}`);
+      }
+    });
+    await check('all inline controls stay in forward and reverse Tab order', async () => {
+      const id = (await control({ method: 'agent_message', operation_id: 'fence-tabs-' + engine, topic_id: 'fence-topic', source: 'topic',
+        body: '[before](https://example.com/before)\n\n```\none\n```\n\n[middle](https://example.com/middle)\n\n```\ntwo\n```\n\n[after](https://example.com/after)' })).result.message_id;
+      const p = await open('/?topic=fence-topic'), card = query(id);
+      await p.locator(card).focus();
+      const tab = engine === 'webkit' ? 'Alt+Tab' : 'Tab', back = engine === 'webkit' ? 'Alt+Shift+Tab' : 'Shift+Tab';
+      const name = () => p.evaluate(() => {
+        const e = document.activeElement;
+        return e.matches('.message-preview a') ? e.textContent : e.matches('.fence-copy') ? 'copy' : null;
+      });
+      const forward = [];
+      for (let i = 0; i < 15 && forward.at(-1) !== 'after'; i++) { await p.keyboard.press(tab); const at = await name(); if (at) forward.push(at); }
+      assert.deepEqual(forward, ['before', 'copy', 'middle', 'copy', 'after']);
+      const backward = [];
+      for (let i = 0; i < 4; i++) { await p.keyboard.press(back); backward.push(await name()); }
+      assert.deepEqual(backward, ['copy', 'middle', 'copy', 'before']);
+      await p.keyboard.press(back);
+      assert.equal(await p.evaluate(() => document.activeElement.dataset.act), 'more', 'back across the inline/toolbar seam');
+    });
+    await check('press guard survives actual in-place navigation and cancelled presses', async () => {
+      const p = await open('/?topic=fence-topic');
+      await p.locator(query(message) + ' .fence-copy').waitFor();
+      await p.evaluate(() => { window.sameDocument = true; });
+      await p.locator('#outline .ol-name[data-conversation-of="w1"]').click();
+      await wait(p, () => location.search === '?conversation=w1' && document.body.dataset.ready === 'true');
+      assert.equal(await p.evaluate(() => sameDocument), true);
+      const card = query(conversationMessage), selector = card + ' .fence-copy';
+      await p.locator(selector).waitFor();
+      await p.evaluate(() => { window.copyMode = 'real'; });
+      for (const cancel of [false, true]) {
+        await p.evaluate(async ({ card, body }) => {
+          const m = await import('/message-format.mjs');
+          m.formatWords(document.querySelector(card + ' .message-preview'), body, { copyFences: true });
+        }, { card, body });
+        const button = p.locator(selector); await button.locator('..').hover();
+        const box = await button.boundingBox(), before = await p.evaluate(() => copyCalls.length);
+        await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down();
+        await p.evaluate(async card => {
+          const m = await import('/message-format.mjs');
+          m.formatWords(document.querySelector(card + ' .message-preview'), '```\nnew after move\n```', { copyFences: true });
+        }, card);
+        assert.equal(await p.locator(card + ' .md-pre').textContent(), payload, 'pressed control survives a paint after in-place navigation');
+        if (cancel) await p.mouse.move(1, 1);
+        await p.mouse.up();
+        await wait(p, card => document.querySelector(card + ' .md-pre').textContent === 'new after move', card);
+        assert.equal(await p.evaluate(() => copyCalls.length), before + (cancel ? 0 : 1));
+      }
     });
     await browser.close(); browser = null;
   }

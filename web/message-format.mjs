@@ -175,7 +175,8 @@ function fenceOpen(text) {
   if (!match) return null;
   const info = match[2].trim();
   if (match[1][0] === '`' && info.includes('`')) return null;
-  return { marker: match[1][0], length: match[1].length, lang: /^[\w.+-]{0,40}/.exec(info.split(/\s/, 1)[0])[0] };
+  const payloadAt = /^https?:\/\//i.test(info) ? text.indexOf(info) : null;
+  return { marker: match[1][0], length: match[1].length, payloadAt, lang: payloadAt !== null ? '' : /^[\w.+-]{0,40}/.exec(info.split(/\s/, 1)[0])[0] };
 }
 // Only a line of the same marker, at least as long, with nothing after it, closes a fence.
 function fenceCloses(text, fence) {
@@ -266,7 +267,7 @@ function blocksOf(m, partial, depth, meter) {
     if (fence) {
       let j = i + 1;
       while (j < n && !fenceCloses(lines[j].text, fence)) tick(meter, lines[j++].text.length + 1);
-      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: fence.lang, ...span(i, Math.min(j, n - 1)), words: words(i + 1, j - 1) });
+      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: fence.lang, ...span(i, Math.min(j, n - 1)), words: fence.payloadAt !== null ? m.slice(line.s + fence.payloadAt, lines[j - 1].e) : words(i + 1, j - 1) });
       i = j + 1; continue;
     }
     if (boxStart(lines, i)) {
