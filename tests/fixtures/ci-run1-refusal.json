@@ -1,0 +1,6 @@
+{
+ "tool": "theseus-release-check",
+ "refused": "name Chrome for Testing with --chrome or AIM_CHROME_FOR_TESTING; /Users/runner/Library/Caches/aim-chrome-for-testing/chrome holds 0: []",
+ "passed": false,
+ "at": "2026-11-14T05:13:28.364864+00:00"
+}
