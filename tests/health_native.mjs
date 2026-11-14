@@ -108,10 +108,11 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     // The Health page, in the tab behind, reads nothing while hidden; brought
     // back, it says it at once, with no reload.
     assert.equal(await p.evaluate('document.visibilityState'), 'hidden', 'the Health page is the tab behind');
-    const loaded = await p.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.bringToFront');
     const shown = await until(async () => { const s = await readPage(p); return s.bad && s; }, 'the Health page says it');
-    assert.equal(await p.evaluate('performance.timeOrigin'), loaded, 'the Health page was not reloaded');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'), loaded, 'the Health page was not reloaded');
     assert.equal(shown.top.length, 1);
     assert.match(shown.top[0], new RegExp(`^${agent} can't be woken: every wake since \\d+:\\d\\d [AP]M failed \\(3 times\\)\\. Why: the helper that puts a wake in the Codex app's queue failed \\(it exited with an error\\)\\. 1 message is waiting for ${agent}\\. Its wakes go through the Codex app's queue, so look there first: is the ChatGPT app open\\?$`));
     const mine = line(shown, `agent:${agent}`);

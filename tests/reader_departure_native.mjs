@@ -104,11 +104,12 @@ export async function departureChecks({check,page,until,facts,view,control,obser
   // page heard the fragment as it was made, it would have loaded then, and
   // what the case did on it before (revealing t2) would be gone.
   const foreignEntry=async p=>{
-    const origin=await p.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const origin=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.evaluate("history.pushState(null,'','#not-the-pages-own')");
     await p.evaluate("history.back()");
     await until(()=>p.evaluate("location.hash===''"),'back on the page\'s own entry');
-    assert.equal(await p.evaluate('performance.timeOrigin'),origin,'making the entry and going back to the page\'s own loaded nothing');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'),origin,'making the entry and going back to the page\'s own loaded nothing');
   };
   // The page's topic list shows all Theseus holds now: the live feed has
   // named the current commit (health_light's commit_seq), a read of the topics
@@ -135,10 +136,10 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(payload=>payload?.kind==='submission.prepare');
     await write(p,body);await p.key('Enter',4);
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'the reply\'s prepare is held');
-    const origin=await p.evaluate('performance.timeOrigin');
+    const origin=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.evaluate("history.forward()");
     await until(()=>p.events.some(e=>e.method==='Page.javascriptDialogOpening'&&e.params.type==='beforeunload'),'the browser asks the person, who stays');
-    assert.equal(await p.evaluate('performance.timeOrigin'),origin,'the person stayed on the same page');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'),origin,'the person stayed on the same page');
     p.intercept(null);await p.release(preparing);
     const sent=await until(()=>p.calls.find(c=>c.payload?.kind==='message.send'),'after the person stayed, the reply is sent');
     await until(async()=>(await view('operation',{operation_id:sent.payload.operation_id})).status==='committed','the reply is recorded');
@@ -157,12 +158,12 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await foreignEntry(p);
     await p.send('Fetch.enable',{patterns:[{urlPattern:facts.origin+'/api/*',requestStage:'Response'},{urlPattern:facts.origin+'/?*',requestStage:'Request'}]});
     p.intercept((payload,event)=>event.resourceType==='Document');
-    const origin=await p.evaluate('performance.timeOrigin');
+    const origin=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.evaluate("history.forward()");
     await until(()=>p.held.find(h=>h.event.resourceType==='Document'),'the page\'s load is on its way');
     await p.send('Page.stopLoading');
     p.intercept(null);
-    assert.equal(await p.evaluate('performance.timeOrigin'),origin,'the load was stopped: the page is still up');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'),origin,'the load was stopped: the page is still up');
     await write(p,body);await p.key('Enter',4);
     const sent=await until(()=>p.calls.find(c=>c.payload?.kind==='message.send'),'the reply written once the person is back on the page is sent');
     await until(async()=>(await view('operation',{operation_id:sent.payload.operation_id})).status==='committed','the reply is recorded');
@@ -191,9 +192,9 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     assert.deepEqual([whileSending.button,whileSending.paints,whileSending.height],[null,0,whilePreparing.height],'nor while its send is out, and the composer keeps its height: '+JSON.stringify(whileSending));
     await choose(p);await until(async()=>/send/i.test(await notice(p)),'active publication keeps page with guidance');
     assert.match(await notice(p),/send/i);
-    const origin=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
+    const origin=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');await p.send('Page.reload');
     await until(()=>p.events.some(e=>e.method==='Page.javascriptDialogOpening'&&e.params.type==='beforeunload'),'headless reload protection');
-    assert.equal(await p.evaluate('performance.timeOrigin'),origin,'CDP dismisses reload and keeps document');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'),origin,'CDP dismisses reload and keeps document');
     p.intercept(null);await p.release(sending);await exact(p,sending,body);
     // A reply that went leaves no Review button behind (item 118).
     await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'publication confirmed, so no Review button');
@@ -313,9 +314,9 @@ export async function departureChecks({check,page,until,facts,view,control,obser
       assert.doesNotMatch(await notice(p),/Review/,stage+': the wait names no Review button, as none shows');
       assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
       const before=p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length;
-      const origin=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
+      const origin=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');await p.send('Page.reload');
       await until(()=>p.events.filter(e=>e.method==='Page.javascriptDialogOpening'&&e.params.type==='beforeunload').length>before,stage+' reload protection');
-      assert.equal(await p.evaluate('performance.timeOrigin'),origin,'CDP immediately dismissed correction reload');
+      assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'),origin,'CDP immediately dismissed correction reload');
     };
     await stay('correction prepare');await p.release(preparing);
     const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held corrected publication');

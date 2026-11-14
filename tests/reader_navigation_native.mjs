@@ -10,7 +10,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   const topics = [{ id: 't2', title: 'Design discussion' }, { id: 't3', title: 'Greenlight discussion' }];
   // Which run of the page is up: a load, or a move in place between topics
   // (in-place-navigation.mjs), each puts back a fresh page, marked when first seen.
-  const run = p => p.evaluate(`(main=>performance.timeOrigin+':'+(main.dataset.run??=String(Math.random())))(document.getElementById('main'))`);
+  // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+  const run = p => p.evaluate(`(main=>(window.documentOrigin??=performance.timeOrigin)+':'+(main.dataset.run??=String(Math.random())))(document.getElementById('main'))`);
   // A wait that spans a document replacement can probe the new document after
   // it commits and before its body is parsed. Readiness probes read
   // document.body?.dataset, so that moment reads as not ready yet.

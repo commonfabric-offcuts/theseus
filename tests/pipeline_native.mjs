@@ -29,7 +29,8 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     if (SIZES[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
   } });
   const ready = p => until(() => p.evaluate('document.body?.dataset.ready==="true"').catch(() => false), 'the page is ready');
-  const loaded = p => p.evaluate('performance.timeOrigin');
+  // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+  const loaded = p => p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
   // A pointer press on a control that may be below the fold: brought into view first, as a person scrolls to it.
   const tap = async (p, selector) => {
     assert.ok(await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e?.scrollIntoView({block:'center'});return Boolean(e)})()`), `${selector} is on the page`);

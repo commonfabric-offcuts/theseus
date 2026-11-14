@@ -103,14 +103,15 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
   await check('targets a run of the checks shows with no reload, grouped, and each group and check opens from the keyboard; Measurements lists every reading', async () => {
     const p = await open('targets-checks', '/?workspace=w1');
     await ready(p);
-    const loaded = await p.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await act('check.define', { check: { check_id: 'units', group_name: 'Checks', position: 1, name: 'Unit checks', kind: 'pass', source: 'release-check:units' } });
     await act('check.define', { check: { check_id: 'duration', group_name: 'Measures', position: 2, name: 'Release check time', kind: 'measure', source: 'release-check:duration',
       unit: 'min', better: 'lower', target_value: 20, tolerance: 0.25, proves: 'Releases are quick' } });
     await act('record_checks', null, { run: { commit: COMMIT, started_at: '2026-11-06T05:00:00-08:00', finished_at: '2026-11-06T05:18:00-08:00', tools: { 'release-check': 't-1' },
       steps: [], note: '', readings: [{ check_id: 'units', result: 'passed', value: 1846, words: '1,846 pass' }, { check_id: 'duration', result: 'measured', value: 18, words: '18 minutes' }] } });
     await until(async () => (await panel(p)).groups.length === 2, 'the checks show, live');
-    assert.equal(await p.evaluate('performance.timeOrigin'), loaded, 'with no reload');
+    assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'), loaded, 'with no reload');
     assert.deepEqual((await panel(p)).groups, [['Checks', false], ['Measures', false]], 'every group closed while nothing fails or waits');
     // A run that lands while the group is pressed changes what the panel shows, its group's line among it.
     await pressAcross(p, '[data-fold="group:Checks"] > summary', () => act('record_checks', null, { run: { commit: COMMIT, started_at: '2026-11-06T06:00:00-08:00',
