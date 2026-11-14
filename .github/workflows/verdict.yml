@@ -51,7 +51,10 @@ jobs:
     # A pull request's producer run gets a verdict, a cancelled one included: its head gets a terminal result that
     # says so, since a cancellation by hand has no successor to speak for it. A push run's evidence is the deploy's.
     if: github.event.workflow_run.event == 'pull_request'
-    runs-on: ubuntu-latest
+    # ubuntu-24.04 by name, not ubuntu-latest. The validator's read-expression signatures are hashes of
+    # ast.dump's text, which Python 3.13 changed, and the declarations are signed on Macs running 3.9. The
+    # 26.04 image's Python read every declaration as missing. The classify step checks the interpreter too.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -301,6 +304,12 @@ jobs:
             echo "the base $(git -C base rev-parse HEAD) carries no validator or no baseline, so there is nothing to classify" >> refusals
             exit 0
           fi
+          # The signatures in tools/ci-input-reads.json are sha256 of ast.dump's text, which Python 3.13 changed:
+          # a later interpreter reads every declaration as missing and refuses everything. Refuse the interpreter.
+          if ! python3 -c 'import sys; sys.exit(0 if (3, 9) <= sys.version_info[:2] <= (3, 12) else 1)'; then
+            echo "the controller's python3 is $(python3 -c 'import sys; print(sys.version.split()[0])'), outside 3.9 to 3.12: its ast.dump text differs from the one the declarations were signed with, so the validator cannot be trusted on this image" >> refusals
+            exit 0
+          fi
           # The validator's exit is the verdict; it writes what it decided and why beside it.
           if ! python3 base/tools/ci_known_reds.py \
                 --summary release-check/summary.json \
@@ -384,7 +393,7 @@ jobs:
     # an explicit failure otherwise. The head is the one judge authenticated, or failing that the one GitHub's event
     # named, which is the same commit GitHub itself ran the producer for.
     if: always() && github.event.workflow_run.event == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # the judge's image, so one pin moves both
     timeout-minutes: 5
     permissions:
       checks: write
