@@ -95,7 +95,7 @@ let here = null;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
+let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
@@ -494,6 +494,7 @@ async function present(presentation) {
     retainRevisionTargets(presentation);
     offerAuthor(presentation);
     revokeMedia(); reader.presentation = presentation;
+    delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
     const shown = presentation.source.source_ref;
@@ -507,6 +508,18 @@ async function present(presentation) {
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
+  // data-discovered says this showing's discovery has finished: the source's
+  // earlier copies were looked for, every copy found is listed, and Review is
+  // drawn from them. A lookup that fails also finishes it. Its failure shows in
+  // the Reader's notice while that writing is still the one shown, and the list
+  // stays as the lookup left it: unchanged if it failed before listing a page,
+  // that page if it failed after (settling image copies). Later checks (a
+  // deferred copy checked again, a save's cleanup, More versions, Recover) are
+  // their own events and may still change Review. Showing a source starts it
+  // unmarked, and only its latest showing's discovery marks it; choosing Reply
+  // or Note keeps the showing.
+  const showing = ++readerShowings;
+  discovery.then(() => { if (showing === readerShowings) $('reader').dataset.discovered = 'true'; });
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
     takeNeighbors(registry.current, neighbors);

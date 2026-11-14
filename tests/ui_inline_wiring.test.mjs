@@ -35,7 +35,7 @@ import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
 import * as apiExports from '../web/api.mjs';
 import { showLine, lineText } from '../web/lines.mjs';
-const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
+const defer = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 // The page's own scope. Each name app.mjs imports, and each name the modules loaded here import in turn, that the scope does
 // not already hold (a fake below, a test's override, or a module imported natively above) comes from its module's own source:
 // each module once, its dependencies first, with its imports and exports taken off. A module the page newly imports is wired
@@ -196,7 +196,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   loadPageScope(context, 'app.mjs');
   let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -344,6 +344,52 @@ test('a recheck replaces only the rechecked rows the page lists, at once, and on
   holds=false;
   listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
   assert.equal(candidates.get(f.editor.key).items.length,4,'an editor the registry no longer holds is left as it is');
+});
+// The Reader's data-discovered says the showing's discovery has finished (app.mjs present). Choosing Reply or Note keeps the
+// showing, so its discovery still counts; a discovery for a source no longer shown, or overtaken by showing it again, never marks it.
+test('the Reader marks discovery finished for the source it shows, through a Reply or Note choice, and never for one it left',async()=>{
+  const f=fixture(),asked=[];
+  f.registry.recoveryCandidates=()=>{const d=defer();asked.push(d);return d.promise;};
+  f.registry.neighbors=async()=>null;f.registry.activity=()=>{};
+  Object.assign(f.reader,{show(){},paintMark(){}});
+  const presentation=id=>({surface:'reader',source:{source_ref:{kind:'message',id},topic_id:'t1',seq:1},editors:{reply:f.editor},mode:'reply'});
+  const shown=async p=>{f.registry.current=p;await f.present(p);};
+  const mark=()=>f.get('reader').dataset.discovered;
+  const first=presentation('m1');await shown(first);
+  assert.equal(mark(),undefined,'not before its discovery finishes');
+  f.reader.presentation=EditorRegistry.prototype.setMode.call(f.registry,'note');
+  assert.notEqual(f.reader.presentation,first);assert.equal(f.reader.presentation.source,first.source);
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),'true','a Reply or Note choice keeps the source, so its finished discovery marks it');
+  const second=presentation('m2');await shown(second);
+  assert.equal(mark(),undefined,'a newly shown source starts unmarked');
+  const third=presentation('m3');await shown(third);
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),undefined,'a discovery for a source no longer shown does not mark the one shown');
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),'true');
+  // The same source shown again: only its newer discovery marks it.
+  await shown(third);
+  assert.equal(mark(),undefined,'shown again, the source starts unmarked');
+  await shown(third);
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),undefined,'an overtaken discovery does not mark the source');
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),'true');
+});
+test('the Reader marks discovery finished only when every editor\'s lookup has finished, a failed one included',async()=>{
+  const f=fixture(),asked=new Map();
+  f.registry.recoveryCandidates=editor=>{const d=defer();asked.set(editor.key,d);return d.promise;};
+  f.registry.neighbors=async()=>null;f.registry.activity=()=>{};
+  Object.assign(f.reader,{show(){},paintMark(){},notice(){}});
+  const note={...f.editor,key:`${f.editor.key}-note`,kind:'note'};
+  const p={surface:'reader',source:{source_ref:{kind:'message',id:'m1'},topic_id:'t1',seq:1},editors:{reply:f.editor,note},mode:'reply'};
+  f.registry.current=p;await f.present(p);
+  const mark=()=>f.get('reader').dataset.discovered;
+  asked.get(f.editor.key).resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),undefined,'the Reply lookup alone does not finish the showing\'s discovery');
+  asked.get(note.key).reject(Error('journal read failed'));await drain();
+  assert.equal(mark(),'true','the Note lookup failing still finishes it');
 });
 test('More versions adds its page to the listed copies, and a fresh discovery replaces them',async()=>{
   const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id}),asked=[];
