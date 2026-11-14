@@ -495,7 +495,19 @@ async function run() {
         const span = p.locator('#source-body > span').nth(3), box = await span.boundingBox();
         let words;
         if (way === 'drag') {
-          await p.mouse.move(box.x + 5, box.y + 5); await p.mouse.down(); await p.mouse.move(box.x + 120, box.y + 8, { steps: 5 }); await p.mouse.up();
+          // A passage's box changes with line wrapping and reserved scrollbars.
+          // Measure actual characters, then select between them with the native mouse.
+          const points = await span.evaluate(el => {
+            const node = el.firstChild;
+            if (node?.nodeType !== Node.TEXT_NODE || node.length <= 25) return null;
+            const point = offset => {
+              const range = document.createRange(); range.setStart(node, offset); range.setEnd(node, offset + 1);
+              const r = range.getBoundingClientRect(); return r.width > 0 && r.height > 0 && { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+            };
+            return { start: point(8), end: point(25) };
+          });
+          assert.ok(points?.start && points.end, 'two rendered text characters for the native drag');
+          await p.mouse.move(points.start.x, points.start.y); await p.mouse.down(); await p.mouse.move(points.end.x, points.end.y, { steps: 5 }); await p.mouse.up();
           words = await p.evaluate(() => getSelection().toString());
         } else if (way === 'press') {
           await p.mouse.click(box.x + 5, box.y + 5);
