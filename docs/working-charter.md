@@ -95,6 +95,19 @@ requires the corresponding runtime; a Codex helper is not automatically Claude.
    harmless changes need not trigger another whole-job investigation. A blocking
    finding names a plausible scenario, its harm, and the evidence that clears it.
 
+   For a Theseus PR, open the draft at the first working preview. While the
+   person tries it, challenge the actual diff with a plausible counterexample.
+   If a shared parser changed, run the same existing input on live and on the
+   draft in each affected reader. Check what people see and can do. A pasted
+   message can retain every character while the Notebook loses its next card.
+
+   Before handing off a changed interaction, prove the test can see its failure.
+   For example, disable Space on the parent card in an isolated checkout, observe
+   the focused check fail, then restore it and see it pass. Run cheap checks of
+   shared test fixtures early. Give the independent reviewer the commit, the
+   counterexample, the result and any untested paths in the draft PR. If preview
+   feedback changes the diff, revisit the affected paths before marking it ready.
+
 8. **Deliver and verify the result.** Use the established deployment or execution
    protections, then verify what the recipient actually receives. The owner
    remains accountable through that check. For Theseus, retain one live deployer,
