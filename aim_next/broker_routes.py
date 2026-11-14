@@ -155,12 +155,18 @@ def _destination(value, kind=QUEUE_KIND):
     return dict(value,codex_home=root)
 
 
-def load_config(path, *, expected_binding=None, profile_path=None, applications=None):
+def load_config(path, *, expected_binding=None, profile_path=None):
     """Compare once and capture Core's returned pin; performs no effects.
 
     Core/Profile exceptions intentionally propagate with their typing/cause.
     The caller owns startup, post-claim and child-specific failure handling.
+    The installed Codex is always checked against the real /Applications.
     """
+    return _load_config(path, expected_binding=expected_binding, profile_path=profile_path)
+
+
+def _load_config(path, *, expected_binding=None, profile_path=None, applications=None):
+    """load_config, with applications=(path, uid, gid) standing for /Applications; tests only."""
     path,value = _private(path)
     _require(set(value)=={'v','profile','codex_executable','destination'}
              and type(value['v']) is int and value['v']==1)

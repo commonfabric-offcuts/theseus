@@ -358,17 +358,25 @@ class BrokerRouteCase(unittest.TestCase):
         api=self.api()
         executable,applications,mark=self.installed_codex()
         self.save(self.config,dict(self.config_value,codex_executable=executable))
-        try:result=api.load_config(self.config,expected_binding=self.expected,applications=applications)
+        try:result=api._load_config(self.config,expected_binding=self.expected,applications=applications)
         except api.BrokerConfigError as error:self.fail('installed layout refused: %s'%error.code)
         self.assertEqual(result.codex_executable,executable)
         self.assertFalse(mark.exists(),'metadata check cannot execute')
         with self.assertRaises(api.BrokerConfigError):
             api._executable(executable)  # Generic broker policy stays strict.
-        # A group-writable folder that is not the reviewed one is refused.
+        # A group-writable folder that is not the reviewed one is refused, and
+        # the broker's own entry takes no stand-in for /Applications.
         with self.assertRaises(api.BrokerConfigError):api.load_config(self.config,expected_binding=self.expected)
+        with self.assertRaises(TypeError):
+            api.load_config(self.config,expected_binding=self.expected,applications=applications)
+        # The stand-in is honoured only for exactly that folder, owner and group.
+        folder,uid,gid=applications
+        for other in [(folder,uid,gid+1),(folder,uid+1,gid),(str(Path(folder).parent),uid,gid)]:
+            with self.subTest(policy=other),self.assertRaises(api.BrokerConfigError):
+                api._load_config(self.config,expected_binding=self.expected,applications=other)
         Path(executable).unlink()
         with self.assertRaises(api.BrokerConfigError):
-            api.load_config(self.config,expected_binding=self.expected,applications=applications)
+            api._load_config(self.config,expected_binding=self.expected,applications=applications)
         self.assertFalse(mark.exists(),'metadata check cannot execute')
 
     def test_applications_exception_has_no_other_writable_path_or_identity(self):
