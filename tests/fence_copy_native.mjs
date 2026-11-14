@@ -68,7 +68,13 @@ async function copy(p, selector, expected = payload, key = null) {
   assert.equal(await p.evaluate(() => copyCalls.at(-1).active), true, 'the real clipboard API was invoked during transient activation');
 }
 // Inline visible feedback is CSS-generated so it does not enter native text selections.
-const feedbackWords = notice => notice.evaluate(el => el.dataset.feedback ?? el.innerText);
+const feedbackWords = notice => notice.evaluate(el => {
+  if (!el.hasAttribute('data-feedback')) return el.innerText;
+  const before = getComputedStyle(el, '::before');
+  if (before.display === 'none' || before.visibility !== 'visible' || before.opacity === '0') return '';
+  // WebKit may retain the attribute expression; Chromium resolves its text.
+  return before.content === 'attr(data-feedback)' ? el.dataset.feedback : before.content.replace(/^"|"$/g, '');
+});
 
 async function picture(p, name) {
   await p.screenshot({ path: path.join(evidence, `${engine}-${name}.png`) });
@@ -228,10 +234,43 @@ try {
         const p = await open(route, { phone, width: phone ? 375 : 1280 }), button = p.locator(selector).first();
         await button.scrollIntoViewIfNeeded();
         await p.evaluate(() => { copyMode = 'reject'; });
+        const keyboardFeed = !phone && route.startsWith('/?topic=');
+        let release;
+        if (keyboardFeed) {
+          const held = new Promise(resolve => { release = resolve; });
+          await p.route('**/api/view', async route => {
+            const body = route.request().postDataJSON();
+            if (body.name === 'source' && body.args?.source_ref?.id === item.result.message_id) {
+              const response = await route.fetch();
+              await held;
+              await route.fulfill({ response });
+            } else await route.continue();
+          });
+          // Observe settlement of the application's expansion after processing
+          // the controlled reply. The real focus and keyboard events trigger it.
+          await p.evaluate(async id => {
+            const { CardScroll } = await import('/card-scroll.mjs');
+            const expand = CardScroll.prototype.expand;
+            CardScroll.prototype.expand = async function(card, item) {
+              const result = await expand.call(this, card, item);
+              if (item?.id === id && this.known(id) !== undefined) window.tallReadProcessed = true;
+              return result;
+            };
+          }, item.result.message_id);
+        }
         if (phone) await button.tap();
         else {
           const before = await button.elementHandle();
-          await button.focus(); await p.keyboard.press('Enter');
+          const requested = keyboardFeed && p.waitForRequest(req => req.url().endsWith('/api/view') &&
+            req.method() === 'POST' && req.postDataJSON()?.name === 'source' &&
+            req.postDataJSON()?.args?.source_ref?.id === item.result.message_id);
+          await button.focus();
+          if (keyboardFeed) {
+            await requested; release();
+            await wait(p, () => window.tallReadProcessed === true);
+            assert.equal(await before.evaluate(el => el.closest('.message-card').dataset.whole), undefined);
+          }
+          await p.keyboard.press('Enter');
           assert.ok(await before.evaluate(el => el.isConnected && el === document.activeElement),
             'Enter activates the same focused glyph through the full-message read');
           await before.dispose();
@@ -250,6 +289,10 @@ try {
         await p.evaluate(() => { copyMode = 'real'; });
         if (phone) await button.tap(); else await p.keyboard.press('Enter');
         await wait(p, s => document.querySelector(s)?.dataset.label === 'Copied', selector);
+        if (keyboardFeed) {
+          await p.keyboard.press(engine === 'webkit' ? 'Alt+Tab' : 'Tab');
+          await wait(p, s => document.querySelector(s).dataset.whole === 'shown', query(item.result.message_id));
+        }
         await p.close();
       }
     });
