@@ -37,16 +37,16 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
   // A started topic opens in place, and the page stays ready while it moves, so the topic it opens is the one the
   // publish reply names. Return here holds that reply at the network first, as a slow runner delivers it: until it
   // is released the page still shows the topic it was on, so no wait can take that topic for the new one.
-  const shown = p => quiet(p, `new URLSearchParams(location.search).get('topic')`);
+  const address = p => quiet(p, `new URLSearchParams(location.search).get('topic')`);
   const enterHeld = async p => {
-    const from = await shown(p), before = p.held.length;
+    const from = await address(p), before = p.held.length;
     p.intercept(payload => payload?.kind === 'opening.publish');
     const publish = await enter(p);
     const entry = await until(() => p.held.slice(before).find(held => held.payload?.kind === 'opening.publish'), 'the publish reply, held');
     p.intercept(null);
     const topic = (await p.response(entry.event)).result.topic.id;
     assert.ok(topic && topic !== from, 'the reply names a new topic');
-    assert.equal(await shown(p), from, 'while the reply is held, the page still shows the topic it was on');
+    assert.equal(await address(p), from, 'while the reply is held, the page still shows the topic it was on');
     await p.release(entry);
     await until(() => quiet(p, `document.body.dataset.ready==='true' && new URLSearchParams(location.search).get('topic')===${JSON.stringify(topic)}`), 'the new topic opens');
     return { publish, topic };
