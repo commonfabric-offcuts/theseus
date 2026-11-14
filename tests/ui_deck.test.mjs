@@ -24,6 +24,27 @@ test('the cards are the headings of two to six #s outside fenced blocks, each wi
   assert.equal(parseDeck('## A\n```\n## code\n```').cards[0].words, '```\n## code\n```');
 });
 
+test('every fence newline arrangement keeps the next card and reply stack outside it', () => {
+  const address = 'https://here.example/?topic=t&message=m1', stack = stackLine(address);
+  for (const marker of ['```', '~~~~']) for (const first of ['', '\n']) for (const last of ['', '\n']) {
+    const fenced = marker + first + 'say `hi` aloud' + last + marker;
+    const body = '## First\n' + fenced + '\n\n## Second\nnext\n';
+    assert.equal(titles(parseDeck(body)), 'First,Second', body);
+    assert.equal(deckBody(parseDeck(body)), body);
+    const crlf = body.replaceAll('\n', '\r\n');
+    assert.equal(titles(parseDeck(crlf)), 'First,Second', crlf);
+    assert.equal(deckBody(parseDeck(crlf)), crlf);
+    assert.deepEqual(cardStacks(fenced + '\n' + stack, a => a === address ? 'm1' : null), { words: fenced, stacks: ['m1'] });
+    assert.deepEqual(cardStacks((fenced + '\n' + stack).replaceAll('\n', '\r\n'), a => a === address ? 'm1' : null), { words: fenced.replaceAll('\n', '\r\n'), stacks: ['m1'] });
+  }
+  const body = '## First\n````md\n## Literal\n```\n## Still literal\nend````\n## Second\n';
+  assert.equal(titles(parseDeck(body)), 'First,Second');
+  assert.equal(deckBody(parseDeck(body)), body);
+  const fenced = '```\n' + address + '\nend```';
+  assert.deepEqual(cardStacks(fenced + '\n' + stack, a => a === address ? 'm1' : null), { words: fenced, stacks: ['m1'] });
+  assert.equal(titles(parseDeck('## First\n```inline``` after\n## Second\n')), 'First,Second');
+});
+
 test('a card moves one place, keeps its exact words, and moving back gives the page it came from', () => {
   const moved = after(PAGE, { kind: 'move', text: 'Gamma', step: -1, near: 2 });
   assert.equal(moved, '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Gamma\n\n## Beta\n\nsecond words\nmore\n');

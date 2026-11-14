@@ -114,8 +114,9 @@ try {
         }
         const reader = await open('/?topic=fence-topic&message=' + message, options);
         await reader.locator('#source-body .fence-copy').waitFor();
+        const writingBefore = await reader.locator('#writing-body').inputValue();
         await copy(reader, '#source-body .fence-copy');
-        assert.equal(await reader.locator('#writing-body').inputValue().catch(() => ''), '');
+        assert.equal(await reader.locator('#writing-body').inputValue(), writingBefore, 'Copy leaves existing writing untouched');
         await picture(reader, 'reader-' + label.replaceAll(' ', '-'));
         await reader.close();
         for (const route of ['/?cards=fence-note', '/?topic=t1&page=fence-note&revision=1', '/?workspace=w1&page=fence-note&revision=1']) {
@@ -143,7 +144,7 @@ try {
       await copy(p, selector, payload, 'Space');
       // The app's reply field is a genuine editable paste destination.
       const field = p.locator('#writing-body');
-      await field.focus(); await p.keyboard.press('Meta+V');
+      await field.focus(); await p.keyboard.press('Meta+A'); await p.keyboard.press('Meta+V');
       await wait(p, value => document.querySelector('#writing-body').value === value, payload);
       assert.equal(await field.inputValue(), payload, 'native paste sees exactly the real clipboard contents');
       await p.evaluate(() => { copyMode = 'reject'; });
@@ -304,6 +305,7 @@ try {
           const p = await open(route, { phone, dark: true, width: 320 });
           await p.locator(scope + ' .fence-copy').first().waitFor();
           assert.equal(await p.locator(scope + ' .fence-copy').count(), 4, route);
+          if (route.startsWith('/?cards')) assert.equal(await p.locator('.deck-card').count(), 4, 'a compact fence never swallows the next card');
           for (let i = 0; i < forms.length; i++) {
             const fence = p.locator(scope + ' .md-fence').nth(i);
             assert.equal(await fence.locator('.md-pre').textContent(), words);

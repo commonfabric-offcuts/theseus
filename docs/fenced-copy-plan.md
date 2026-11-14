@@ -181,3 +181,10 @@ passed review before implementation. Node tests cover all four arrangements
 for arbitrary text and URLs, quotes, CRLF, whitespace, language metadata,
 empty blocks, source positions and partial excerpts. Browser checks exercise
 the reported arrangements in every requested surface, on desktop and touch.
+
+The final screenshot check caught a second parser in Notebook card/stack
+splitting: it did not recognize compact closures and could absorb the next
+card. Both parsers now use the pure helpers in fences.mjs. Notebook detection
+normalizes CRLF without changing source slices, and tests assert separate
+cards, protected stack links, and exact roundtrips. The red team approved
+this shared-parser plan before implementation.
