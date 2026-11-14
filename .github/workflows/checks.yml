@@ -11,7 +11,9 @@
 # (docs/tools.md), published as the release-check artifact.
 #
 # A red shard is a red check. Cases that fail on live today fail here too until
-# they are fixed or recorded as expected; this workflow does not hide them.
+# they are fixed or recorded as expected; this workflow does not hide them. The
+# validate job, once the base carries tools/ci_known_reds.py and its reviewed
+# baseline, is the one verdict that tells an expected failure from a new one.
 name: Checks
 
 on:
@@ -267,4 +269,57 @@ jobs:
         with:
           name: release-check
           path: release-check
+          if-no-files-found: ignore
+
+  validate:
+    name: the verdict against the reviewed baseline
+    needs: [plan, check, combine]
+    # combine exits red on a raw expected failure, which is the case this job exists to classify.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: The base, at the event's exact commit
+        uses: actions/checkout@v4
+        with:
+          # The policy, the validator and the baseline come from here, never from the candidate.
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: base
+      - name: The tested commit, with its history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: candidate
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: check-*
+          path: shards
+      - uses: actions/download-artifact@v4
+        # combine writes nothing when no shard ran; the validator then reads the absence as red.
+        continue-on-error: true
+        with:
+          name: release-check
+          path: release-check
+      - name: Classify the run with the base's own validator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f base/tools/ci_known_reds.py ] || [ ! -f base/.github/check-baseline.json ]; then
+            echo "This base carries no validator or no baseline yet, so there is nothing to classify; the shards' own verdicts stand."
+            exit 0
+          fi
+          python3 base/tools/ci_known_reds.py \
+            --summary release-check/summary.json \
+            --provenance release-check/provenance.json \
+            --shards shards \
+            --baseline base/.github/check-baseline.json \
+            --base-checkout base \
+            --candidate-checkout candidate \
+            --out validation.json
+      - name: Keep the verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation
+          path: validation.json
           if-no-files-found: ignore
