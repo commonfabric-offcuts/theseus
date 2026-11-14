@@ -3135,12 +3135,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     // Fingers that come back to the left before they lift, in the same swipe, further than a swipe left goes.
     const BACK = Array.from({ length: 8 }, () => [30, 0]);
     // Fingers on the trackpad over a target, the pointer resting on it; done when the window has heard every delta.
-    // Given `at` (seconds since the epoch), the events are stamped from it 16 ms apart, which Chrome hands on as their timeStamp.
-    const fingers = async (selector, steps, modifiers = 0, at = null) => {
+    // A trackpad stamps its events 16 ms apart however busy the page is, so each event is stamped so, which Chrome hands
+    // on as its timeStamp: stamped as each is sent, a page or runner busy between two sends (as with the fold the
+    // swipe's third event makes) splits one swipe into two, and the fingers coming back unfold the reply. Each gesture
+    // starts 300 ms after the last event of the one before by those stamps, or now if that is later: a new swipe.
+    let stamped = 0;
+    const fingers = async (selector, steps, modifiers = 0) => {
       await centre(p, selector);
       const b = await p.box(selector), x = b.x + b.width / 2, y = b.y + Math.min(b.height / 2, 20);
       await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-      for (const [n, [deltaX, deltaY]] of steps.entries()) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY, modifiers, ...at === null ? {} : { timestamp: at + 0.016 * n } });
+      const at = Math.max(await p.evaluate('performance.timeOrigin + performance.now()') / 1000, stamped + 0.3);
+      stamped = at + 0.016 * (steps.length - 1);
+      for (const [n, [deltaX, deltaY]] of steps.entries()) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY, modifiers, timestamp: at + 0.016 * n });
       const sum = steps.reduce((s, [dx, dy]) => [s[0] + dx, s[1] + dy], [0, 0]);
       const got = [];
       await until(async () => { got.push(...await wheels()); return got.reduce((s, w) => s + w.x, 0) === sum[0] && got.reduce((s, w) => s + w.y, 0) === sum[1]; }, `the window heard the gesture over ${selector}`);
@@ -3166,16 +3172,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await p.evaluate(`getComputedStyle(document.documentElement).overscrollBehaviorX`), 'none', 'over the feed a sideways overscroll goes back to no page');
     assert.equal(await p.evaluate('JSON.stringify([location.href, history.length])'), where, 'the page went nowhere');
     // One page hears many swipes: a pause of 250 ms or more between wheel events, by the events' own times, starts the next.
-    // Chrome stamps each event as CDP says, so on this same page a swipe left begins 300 ms after the last event of the
-    // swipe right and unfolds reply one, and a swipe right 300 ms after that folds it again. Safari's engine in this harness
-    // stamps the wheel itself.
+    // Chrome stamps each event as CDP says, so on this same page a swipe left begins 300 ms or more after the last event of
+    // the swipe right and unfolds reply one, and a swipe right as long after that folds it again. Safari's engine in this
+    // harness stamps the wheel itself.
     if (engine === 'chrome') {
-      // Now is after every event the window heard of the swipe right, which Chrome stamped as it sent them.
-      const unfoldAt = await p.evaluate('performance.timeOrigin + performance.now()') / 1000 + 0.3, foldAt = unfoldAt + 0.016 * (LEFT.length - 1) + 0.3;
-      await fingers(card(ids.one), LEFT, 0, unfoldAt);
+      await fingers(card(ids.one), LEFT);
       await until(async () => !await foldOf(topic, ids.one), 'a second swipe, left, on the same page unfolds reply one, in Core');
       await becomes(async () => (await folded(p, ids.one)).whole, true, 'and it reads whole');
-      await fingers(card(ids.one), RIGHT, 0, foldAt);
+      await fingers(card(ids.one), RIGHT);
       await until(async () => await foldOf(topic, ids.one), 'a third swipe, right, on the same page folds it again, in Core');
       await becomes(async () => (await folded(p, ids.one)).row, true, 'and it is its one row again');
       await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
