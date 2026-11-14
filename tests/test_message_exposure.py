@@ -549,6 +549,8 @@ for _case in (HeldTopicCase, HandedCase, HeldOutcomeCase, HeldAccountCase):
     for _name in dir(_case):
         if _name.startswith("test_") and _name not in vars(_case):
             setattr(_case, _name, None)
+# Unbound, so the loader does not find the last case a second time under this name.
+del _case, _name
 
 
 if __name__ == "__main__":
