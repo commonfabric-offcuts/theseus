@@ -630,6 +630,31 @@ class SessionCommandCase(HoldCase):
         self.assertEqual(self.committed(self.session("close"))["closed"], False)
         self.assertEqual(self.sql("SELECT count(*) FROM changes WHERE resource_kind='edit_session'"), [(3,)], "a close with nothing open writes none")
 
+    def test_a_new_session_goes_on_from_the_last_sessions_revision(self):
+        # A page compares edit_session versions: they only grow, across sessions too.
+        self.ask_m()
+        self.assertEqual(self.open()["session_revision"], 1)
+        self.assertEqual(self.close()["session_revision"], 2)
+        self.assertEqual(self.open()["session_revision"], 3)
+        self.assertEqual(self.sql("SELECT version FROM changes WHERE resource_kind='edit_session' AND resource_id=? ORDER BY seq", (self.m,)),
+                         [(1,), (2,), (3,)])
+
+    def test_between_a_lapse_and_its_release_views_show_the_words_and_before_it_they_do_not(self):
+        self.ask_m()
+        self.open()
+        self.now = 1000 + HOLD - 1
+        held = self.saw("agent-b")
+        self.assertEqual((held["withheld"], held["body"]), (True, ""))
+        self.assertEqual(self.store.view("agent-b", "topic_messages", {"topic_id": "t1", "message_ids": [self.m]})["items"][0]["withheld"], True)
+        # Lapsed, and no write has released it yet: still holding, no longer held.
+        self.now = 1000 + HOLD
+        self.assertEqual(self.sql("SELECT released_ms FROM message_edit_sessions WHERE message_id=?", (self.m,)), [(None,)])
+        self.assertEqual(self.state(self.d), "held")
+        shown = self.saw("agent-b")
+        self.assertEqual((shown["withheld"], shown["body"]), (False, "Deploy at 5"))
+        [item] = self.store.view("agent-b", "topic_messages", {"topic_id": "t1", "message_ids": [self.m]})["items"]
+        self.assertEqual((item["withheld"], item["body"]), (False, "Deploy at 5"))
+
     def test_a_draft_after_a_released_lapse_holds_again(self):
         self.ask_m()
         self.ack_the_rest(keep=(self.d,))
@@ -675,6 +700,23 @@ class ReleaseCase(HoldCase):
                          "the turn was told of D before the hold: it is told again, now")
         [again] = self.claims()["claims"]
         self.assertIn(self.d, self.notice(again))
+
+    def test_a_row_released_into_a_closed_group_hands_nothing_back(self):
+        # D's group closes while it is held; then other work is handed to a live turn. Releasing D hands none of it back.
+        self.m = self.post("Deploy at 5")
+        self.d = self.delivery("agent-a", self.m)
+        self.ack_the_rest(keep=(self.d,))
+        self.open()
+        self.participation("agent-a", False)
+        self.participation("agent-a", True)
+        self.delivery("agent-a", self.post("Check the logs", addressees=["agent-a"], intent="tell"))
+        [claim] = self.claims()["claims"]
+        self.hand(claim)
+        before = self.full_schedule()
+        self.assertIsNotNone(before["handed_seq"])
+        self.close()
+        self.assertEqual(self.state(self.d), "pending")
+        self.assertEqual(self.full_schedule(), before, "handed_seq and next_due_ms stay as the turn left them")
 
     def test_a_row_whose_group_closed_while_held_is_released_pending_and_uncounted(self):
         self.m = self.post("Deploy at 5")
@@ -745,6 +787,41 @@ class AccessThroughHeldCase(HoldCase):
         self.assertEqual(self.state(d5), "pending")
         self.assertEqual(self.saw("outsider", m5)["body"], "Outsider: rotate the key")
         self.assertEqual(refused("source", {"source_ref": {"kind": "message", "id": self.opening["id"]}}), "FORBIDDEN")
+
+
+class PublishHeldCase(HoldCase):
+    """An agent cannot start a topic from the words of a message its author has open in Edit (opening.publish with
+    nothing written quotes them); a person can, and so can an agent that writes its own first words."""
+
+    def opening_from_m(self, opening, actor="agent-a", body=""):
+        writing = {"workspace_id": "w1", "topic_id": "t-" + opening, "title": "From M", "participants": [], "body": body, "attachments": [],
+                   "source_message_id": self.m}
+        self.committed(self.command("opening.save", writing, {"opening_id": opening}, {"opening_revision": 0}, actor=actor))
+        return self.command("opening.publish", {}, {"opening_id": opening}, {"opening_revision": 1}, actor=actor)
+
+    def test_an_agents_publish_quoting_a_held_message_is_refused_until_the_save(self):
+        self.ask_m()
+        self.open()
+        refused = self.opening_from_m("o-held")
+        self.assertEqual((refused.get("error", {}).get("code"), refused.get("recorded")), ("MESSAGE_HELD", False), refused)
+        self.assertIn(self.m, refused["error"]["message"])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE id='t-o-held'"), [(0,)], "no topic was started")
+        self.committed(self.save("Deploy at 6"))
+        self.committed(self.command("opening.publish", {}, {"opening_id": "o-held"}, {"opening_revision": 1}, actor="agent-a"))
+        [body] = [row[0] for row in self.sql("SELECT body FROM messages WHERE topic_id='t-o-held'")]
+        self.assertIn("Deploy at 6", body, "the topic opens on the saved words, never the held ones")
+
+    def test_a_person_publishes_from_a_held_message(self):
+        self.ask_m()
+        self.open()
+        self.committed(self.opening_from_m("o-owner", actor="owner"))
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE id='t-o-owner'"), [(1,)])
+
+    def test_an_agent_with_its_own_words_publishes_from_a_held_message(self):
+        self.ask_m()
+        self.open()
+        self.committed(self.opening_from_m("o-written", body="A topic of my own about the deploy"))
+        self.assertEqual(self.sql("SELECT body FROM messages WHERE topic_id='t-o-written'"), [("A topic of my own about the deploy",)])
 
 
 if __name__ == "__main__":

@@ -145,6 +145,35 @@ class HandedCase(test_message_hold.HoldCase):
     def corrected(self, agent, message=None):
         return [row[2] for row in self.corrections(agent, message or self.m) if row[3] in ("pending", "held")]
 
+    def test_an_agents_read_of_an_agents_message_records_nothing_and_writes_nothing(self):
+        # Only people edit, so only a person's message is recorded: an agent's read of an agent's words commits nothing.
+        self.store.view("agent-b", "topic_messages", {"topic_id": "t1"})
+        theirs = self.post("Agent words on the plan", actor="agent-a")
+        before = self.commit_seq()
+        self.assertEqual(self.saw("agent-b", theirs)["body"], "Agent words on the plan")
+        self.store.view("agent-b", "topic_messages", {"topic_id": "t1"})
+        self.assertEqual((self.exposures(theirs), self.commit_seq()), ([], before), "no record and no write")
+        # A person's message, read the same way, is recorded, in one write.
+        mine = self.post("Owner words on the plan")
+        before = self.commit_seq()
+        self.saw("agent-b", mine)
+        self.assertEqual((self.exposures(mine), self.commit_seq()), ([("agent-b", mine, 1)], before + 1))
+
+    def test_a_long_quote_counts_by_its_first_lines_head_in_a_reply_line(self):
+        # The reply line holds 120 characters: the quote's whole excerpt is not in it, but its first line's head is.
+        first = "Ship the cache change on Thursday after the p95 check"
+        excerpt = first + "\nThen tell the on-call rota and update the runbook with the new limits and owners."
+        m = self.post(excerpt)
+        m2 = self.post(excerpt + "\n\nAgreed.", quotes=[{"source": {"kind": "message", "id": m, "revision": 1}, "excerpt": excerpt}])
+        reply = self.post("On it", reply_to=m2)
+        self.store.view("agent-b", "topic_messages", {"topic_id": "t1", "message_ids": [reply]})
+        self.assertEqual(self.exposures(m), [("agent-b", m, 1)], "the reply line holds the quote's first-line head")
+        # A quote whose first line is not in the line counts for nothing.
+        other = self.post("Something else entirely")
+        m3 = self.post("Unrelated words " * 10, quotes=[{"source": {"kind": "message", "id": other, "revision": 1}, "excerpt": "Something else entirely"}])
+        self.store.view("agent-b", "topic_messages", {"topic_id": "t1", "message_ids": [self.post("Noted", reply_to=m3)]})
+        self.assertEqual(self.exposures(other), [])
+
     def test_a_never_handed_agent_gets_no_correction_and_reads_the_new_words(self):
         self.ask_m()
         self.committed(self.save("Deploy at 6", holder=None))
