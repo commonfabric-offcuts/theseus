@@ -2,6 +2,7 @@ import { checkedView, RevisionTargets } from './freshness.mjs';
 import { oldestUnreadOf } from './unanswered.mjs';
 import { learnReactions, reactionsOf } from './reactions.mjs';
 import { laterActs, laterPosition } from './stack-order.mjs';
+import { revisionOf } from './message-edit-writing.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 // What places a dossier for the reader (docs/dossier-below-more.md): its first
@@ -11,11 +12,32 @@ const PLACING = ['root_id', 'through', 'below', 'aside_revision'];
 const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
 const behind = () => Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });
+// A reply's line reads how the message it answers begins: its first 120
+// characters, as Core cuts it (aim_next/conversation.py, reply_to_excerpt).
+const excerptOf = body => Array.from(body).slice(0, 120).join('');
+// What else on the page holds messages' words (the conversation's own items,
+// keyed by id) follows each edited message: its later revision, and the line
+// of each reply to it that shows one. edits: id -> the message as read.
+export function followEdits(items, edits) {
+  for (const edited of edits.values()) {
+    // Held at this revision or a later one, read since: what holds it, and the lines answering it, are as new.
+    const held = items.get(edited.id);
+    if (held && revisionOf(held) >= revisionOf(edited)) continue;
+    if (held) {
+      const { body, preview, revision, edited_ms } = edited;
+      items.set(edited.id, { ...held, body, preview, revision, edited_ms });
+    }
+    for (const [id, other] of items) {
+      if (other.reply_to === edited.id && typeof other.reply_to_excerpt === 'string') items.set(id, { ...other, reply_to_excerpt: excerptOf(edited.body) });
+    }
+  }
+}
 // A bounded cache of what this topic has actually loaded. Feed position and
 // older-message/Notebook paging frontiers are deliberately independent.
 export class TopicViews {
-  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {} }) {
-    Object.assign(this, { instanceId, topicId, reader, paint, invalidate });
+  // holds(id): whether something else on the page shows message id or a reply's line to it (followEdits).
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false }) {
+    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds });
     this.scope = { kind: 'topic', id: topicId };
     this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
     // Loaded messages form runs, each holding every topic message between its
@@ -45,6 +67,41 @@ export class TopicViews {
     // from a link to an older message): { id, seq, acts }, its acts read with
     // the loaded messages' (readActs), absent until first read.
     this.alone = null;
+    // Loaded messages whose words changed since they were painted: an edited
+    // message, and each loaded reply whose line reads its words (takeRevised).
+    // edits: each edited message as read since, loaded or not (takeEdits); quoted:
+    // the latest revision read of each edited message only a loaded reply's line shows.
+    this.revised = new Set(); this.edits = new Map(); this.quoted = new Map();
+  }
+  // The ids repainted for an edit since the last call, once.
+  takeRevised() { const ids = this.revised; this.revised = new Set(); return ids; }
+  takeEdits() { const edits = this.edits; this.edits = new Map(); return edits; }
+  // A loaded reply's line shows how message id begins.
+  quotes(id) { for (const other of this.messages.values()) if (other.reply_to === id && typeof other.reply_to_excerpt === 'string') return true; return false; }
+  // The reply line of each loaded reply to an edited message reads its latest words.
+  requote(item) {
+    this.edits.set(item.id, item);
+    for (const other of this.messages.values()) {
+      if (other.reply_to !== item.id || typeof other.reply_to_excerpt !== 'string') continue;
+      other.reply_to_excerpt = excerptOf(item.body); this.revised.add(other.id);
+    }
+  }
+  // A message's later revision replaces the one held (docs/message-edit.md),
+  // and a loaded reply to it reads its new first words. An answer read before
+  // the edit, at a lower revision, changes nothing. True when one was taken.
+  learnRevision(item, known = this.messages.get(item.id)) {
+    if (!known || revisionOf(item) <= revisionOf(known)) return false;
+    if (known.acts) item.acts = laterActs(known.acts, item.acts);
+    item.stack_position = laterPosition(known.stack_position, item.stack_position);
+    this.messages.set(item.id, item); this.revised.add(item.id);
+    this.requote(item);
+    return true;
+  }
+  // An edited message no loaded page holds: the lines that show it read its words, unless a later revision was read.
+  learnQuoted(item) {
+    if (revisionOf(item) <= (this.quoted.get(item.id) ?? 1)) return false;
+    this.quoted.set(item.id, revisionOf(item)); this.requote(item);
+    return true;
   }
   // The Reader shows message id, at seq in the topic: when no loaded page holds
   // it, its acts are kept as the loaded messages' are. True when that asks for
@@ -93,7 +150,10 @@ export class TopicViews {
           live && item.seq <= cursor || !initial && !live && item.seq >= cursor) throw invalid('The message page belongs to another frontier.');
       previous = item.seq; ids.add(item.id);
       const known = this.messages.get(item.id);
-      if (known && (known.seq !== item.seq || known.body !== item.body || known.author_id !== item.author_id)) throw invalid('An immutable message changed.');
+      // What makes a message itself never changes. Its words change only by
+      // an edit, which a later revision carries (docs/message-edit.md).
+      if (known && (known.seq !== item.seq || known.author_id !== item.author_id ||
+          revisionOf(known) === revisionOf(item) && known.body !== item.body)) throw invalid('An immutable message changed.');
     }
     // A page is contiguous in the topic. It extends the run it continues (the
     // newest message for a live page, the oldest for an older page) and joins
@@ -104,9 +164,14 @@ export class TopicViews {
     joined.delete(undefined);
     const run = joined.size ? joined.values().next().value : ++this.runCount;
     for (const [id, other] of this.runs) if (joined.has(other)) this.runs.set(id, run);
-    // A message read again keeps any act the page heard of after this page was read.
+    // A message read again keeps any act the page heard of after this page
+    // was read, and the latest revision of its words the page has seen.
     for (const item of answer.items) {
       const known = this.messages.get(item.id);
+      if (known && revisionOf(item) !== revisionOf(known)) {
+        if (!this.learnRevision(item, known) && (known.acts || item.acts)) known.acts = laterActs(known.acts, item.acts);
+        this.runs.set(item.id, run); continue;
+      }
       if (known?.acts) item.acts = laterActs(known.acts, item.acts);
       item.stack_position = laterPosition(known?.stack_position, item.stack_position);
       this.messages.set(item.id, item); this.runs.set(item.id, run);
@@ -117,7 +182,9 @@ export class TopicViews {
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live) this.olderCursor = answer.next_cursor;
-    this.paint('messages'); return true;
+    this.paint('messages');
+    if (this.revised.size) this.paint('edited');
+    return true;
   }
   // Whether the line holds: a message at or above it (its own or a newer one)
   // is unread, as the answer that drives the counts and the Unread pills says,
@@ -360,6 +427,29 @@ export class TopicViews {
       if (answer.message_id !== id) throw invalid('The reactions answer is for another message.');
       if (reactionsOf(answer).version < version) throw behind();
       if (learnReactions(this.messages, answer)) this.paint('reactions');
+      return true;
+    }
+    if (key.startsWith('edit:')) {
+      // A message edited (an actor-scope change, docs/message-edit.md): one this page
+      // shows, or whose words a loaded reply's line or another holder shows, is read
+      // again, alone, in the shape of a page's item.
+      const id = key.slice(5), known = this.messages.get(id);
+      if (!known && !this.quotes(id) && !this.holds(id)) return true;
+      // Refused (the reader can no longer read it, or the topic), as an answer or as the read's error: the card
+      // is left as it is, and the page goes on. Busy and the like are read again.
+      const refused = value => ['FORBIDDEN', 'INVALID_ARGUMENT'].includes((value?.details ?? value)?.error?.code);
+      let named;
+      try { named = await read('topic_messages', { topic_id: this.topicId, message_ids: [id] }); }
+      catch (error) { if (refused(error)) return current() ? true : false; throw error; }
+      if (!current()) return false;
+      if (refused(named)) return true;
+      const answer = checkedView(named, this.instanceId);
+      if (!Array.isArray(answer.items) || answer.items.length > 1 || answer.items.some(item => item?.id !== id || item.topic_id !== this.topicId ||
+          typeof item.body !== 'string' || known && (item.seq !== known.seq || item.author_id !== known.author_id))) throw invalid('The edited message answer is for another message.');
+      // No longer readable here: what is shown stays until the topic is read again.
+      if (!answer.items.length) return true;
+      if (revisionOf(answer.items[0]) < version) throw behind();
+      if (known ? this.learnRevision(answer.items[0]) : this.learnQuoted(answer.items[0])) this.paint('edited');
       return true;
     }
     if (key === 'acts') return this.readActs(version, read, current);

@@ -34,7 +34,14 @@ class RecoveryActivationCase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='aim-next-recovery-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
-        self.assertEqual(self.root.stat().st_dev, 16777229, 'allocated full-flush fixture volume')
+        # The fixture's volume must honor a full flush, as recovery_io.full_flush requires; F_FULLFSYNC raises
+        # where it is refused or unsupported, so a volume that cannot confirm one stops every case here.
+        probe = os.open(self.root / 'full-flush-probe', os.O_CREAT | os.O_WRONLY, 0o600)
+        try:
+            self.assertEqual(fcntl.fcntl(probe, fcntl.F_FULLFSYNC), 0, 'fixture volume confirms a full flush')
+        finally:
+            os.close(probe)
+        os.unlink(self.root / 'full-flush-probe')
         self.path = self.root / 'original' / 'data.sqlite3'
         self.anchor = self.root / 'control' / 'authority.json'
         self.info = initialize(self.path, 'recovery-fixture', [

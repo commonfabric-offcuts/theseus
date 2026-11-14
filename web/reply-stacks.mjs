@@ -117,8 +117,9 @@ export function levelOf(state, id) {
   return level === 'head' && !state.coordination.has(id) ? 'folded' : level;
 }
 
-// An explicit choice starts a fresh partial view. Replies that were unread
-// when drawn stay put while read, until the person changes the stack state.
+// An explicit choice starts a fresh partial view. Replies that were unread or
+// starred when drawn stay put while read or unstarred, until the person
+// changes the stack state.
 // A message opened for that view folds to its row again; the reader's folds
 // themselves are theirs in Core, and no state choice changes them. A dossier
 // a link drew where it sits stays drawn there (here).
@@ -416,6 +417,8 @@ function paintStack(section, stack, byId, context) {
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
   const rows = single ? [] : rowsOf(stack, { level, kept, unread, peeked: item => state.peeked.has(item.id) });
+  // A reply drawn starred stays as an unread one does: its star taken off, here or elsewhere, never folds it away under the reader (item 413).
+  for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);
   for (const row of rows) {
     if (row.kind === 'reply') { const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry); continue; }
     if (row.kind === 'join') {
@@ -436,6 +439,19 @@ function paintStack(section, stack, byId, context) {
   const used = new Set(desired);
   for (const [key, node] of p.lines) if (!used.has(node)) { node.remove(); p.lines.delete(key); }
   reconcile(p.replies, desired);
+  // Presentation only: overlap adjacent visible faces, never a provenance
+  // line. Hidden replies neither consume an edge nor separate two faces.
+  for (const entry of [head, ...desired]) if (entry.dataset.id) {
+    entry.dataset.stackOverlap = 'false'; entry.dataset.stackCovered = 'false';
+  }
+  let previousFace = open ? head : null;
+  for (const entry of desired) {
+    if (entry.hidden) continue;
+    if (!entry.dataset.id) { previousFace = null; continue; }
+    entry.dataset.stackOverlap = String(Boolean(previousFace));
+    if (previousFace) previousFace.dataset.stackCovered = 'true';
+    previousFace = entry;
+  }
   if (stack.placed !== null && !p.placed) {
     p.placed = element(doc, 'p', 'stack-placed-line');
     const words = element(doc, 'span', 'stack-placed-words', 'Placed here by you'), free = element(doc, 'button', 'stack-unplace', 'Let new replies move it');

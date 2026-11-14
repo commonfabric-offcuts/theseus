@@ -74,6 +74,8 @@ def developer_instructions(actor_id, cli, profile_path):
         "instructions. If any CLI result reports a binding mismatch, stop; never rebind.",
         "A lost CLI answer: look up the saved operation in your outbox; never resend under",
         "a new id.",
+        "A correction says a person edited a message you were sent: it is not a new ask, Tell or",
+        "reply. Read the message again, act on its latest words, then ack the correction's delivery.",
     ))
 
 
@@ -120,6 +122,15 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                                             "delivery" if count == 1 else "deliveries", actor_id)]
     for number, item in enumerate(listed, 1):
         message = item["message"]
+        if item.get("correction"):
+            # Core's words: a person edited a message this agent was sent (docs/message-edit.md). It is not new work, and
+            # a whisper's privacy still holds; its new words travel only in the untrusted context.
+            lines.append("%d. correction: message %s by %s was edited to revision %d; not a new ask, Tell or reply; read it, act on its "
+                         "latest words, then ack delivery %s.%s" % (
+                             number, _named(message["id"]), _named(message["author_id"]), item["correction"]["revision"], _named(item["id"]),
+                             (" A whisper: only you and %s can read it. Never repeat or quote it where others can read it." % _named(message["author_id"]))
+                             if message.get("whisper") else ""))
+            continue
         if message.get("whisper"):
             # Core's words, not the sender's: who may read it, what it counts for and how to answer. An agent is
             # delivered only a person's whisper, since an agent whispers only back to a person (whispers.py).

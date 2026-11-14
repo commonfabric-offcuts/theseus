@@ -56,6 +56,7 @@ and the writing. Focus stays visible and follows what the person did.
   rail". `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
+- `tests/fence_copy_native.mjs` (`native-fence-copy`) checks keyboard activation on the copy glyph and its feed card in Chromium and WebKit.
 - Touch: see "A phone by touch" below.
 
 ## Dismiss without losing work
@@ -80,12 +81,19 @@ starts or ends inside the pop-up is not an outside press.
 
 ## Your place holds
 
-A message arriving never moves what is being read or written. Loading older
-messages shows them where they were asked for.
+A message arriving never moves what is being read or written, and nor does
+quoting from it. Loading older messages shows them where they were asked for.
 
+- `tests/reader_compose_native.mjs` (`native-compose`): "quoting keeps your
+  place: the quoted passage stays where it was on screen, …" and "quoting from
+  a passage taller than what shows keeps the words quoted where they were, …",
+  in Chrome and Safari's engine, on a phone and a laptop, stacked and wide.
 - `tests/reader_live_native.mjs` (`native-live`): "live a message arriving
   leaves the card being read in place, and a field scrolled away holds nothing",
   "live with no card on the screen, a message arriving scrolls nothing".
+- `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading Show full message on a card scrolled inside keeps the words being
+  read where they were".
 - `tests/reader_freshness_native.mjs` (`native-freshness`): the F-series. Reads
   continue through retries, resyncs and failures, and a "caught up" state is
   claimed only after a pass of reads has run to its end
@@ -175,6 +183,7 @@ on a copy of the live data, over the tailnet, so trying it changes nothing real.
 Everything is reachable by touch on a phone. Touch targets are big enough,
 nothing scrolls sideways, and nothing depends on hover.
 
+- `tests/fence_copy_native.mjs` (`native-fence-copy`) checks touch targets, partial fences and visible clipboard refusals at 320, 375 and 390 pixels in both themes.
 - `tests/reader_navigation_native.mjs` (`native-navigation`): "navigation
   paging workspace denial retry and narrow touch targets".
 - `tests/reader_openings_native.mjs` (`native-openings`): "openings 390px touch

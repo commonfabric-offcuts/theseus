@@ -942,6 +942,8 @@ class Agent(PipelineVerbs, TargetVerbs):
             heading += {"ask": " asks ", "tell": " tells "}.get(item.get("intent"), " to ") + ", ".join(item["addressees"])
         if item["reply_to"]:
             heading += " replying to " + item["reply_to"]
+        if item.get("revision", 1) > 1:
+            heading += " (edited, revision %d)" % item["revision"]
         self.out.plain("")
         self.out.plain(heading)
         if item.get("blocks"):
@@ -1227,6 +1229,11 @@ class Agent(PipelineVerbs, TargetVerbs):
     @staticmethod
     def delivery_line(item):
         message = item["message"]
+        if item.get("correction"):
+            # A person edited a message this agent was sent: read it again, act on its latest words, then ack this line's id.
+            return 'correction "%s" #%s %s edited %s to revision %s: %s  [%s in %s]' % (
+                _one_line(item["topic"]["title"], 60), message["seq"], message["author_id"], message["id"], item["correction"]["revision"],
+                _one_line(message["body"]), item["id"], message["topic_id"])
         return '%s "%s" #%s %s: %s  [%s in %s]' % (
             "whisper" if message.get("whisper") else "delivery",
             _one_line(item["topic"]["title"], 60), message["seq"], message["author_id"],

@@ -108,6 +108,14 @@ SCHEMA_37 = (Path(__file__).parent / "fixtures" / "schema_37.sql").read_text().s
 # only these two and the fixture's file name.
 BEFORE_DRAFT, DRAFT_VERSION = str(int(FOLD_VERSION) + 1), str(int(FOLD_VERSION) + 2)
 SCHEMA_BEFORE_DRAFT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_DRAFT)).read_text().splitlines()
+# The step that lets a person edit their own message (item 228) follows the draft's, so the layout before it is
+# version 39's, read from a fresh instance of release 71's code (7d706c7d). Named here once, so a renumbering of the
+# step changes only these two and the fixture's file name.
+BEFORE_EDIT, EDIT_VERSION = DRAFT_VERSION, str(int(DRAFT_VERSION) + 1)
+SCHEMA_BEFORE_EDIT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_EDIT)).read_text().splitlines()
+DELIVERIES_BEFORE_EDIT = ("CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), "
+                          "recipient_id TEXT NOT NULL REFERENCES actors(id), group_id INTEGER NOT NULL REFERENCES delivery_groups(id), "
+                          "state TEXT NOT NULL DEFAULT 'pending', topic_id TEXT, UNIQUE(message_id,recipient_id))")
 OLD_ACTS = ("CREATE TABLE message_acts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "kind TEXT NOT NULL CHECK(kind IN ('star','deal','place','name','join')), "
             "message_id TEXT NOT NULL REFERENCES messages(id), topic_id TEXT NOT NULL REFERENCES topics(id), seq INTEGER NOT NULL, "
@@ -132,6 +140,26 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The edit's version keeps each message's later revisions and each delivery's revision: before it, a
+        # message is delivered to someone once.
+        db.execute("DROP TABLE message_revisions")
+        db.execute("CREATE TABLE kept AS SELECT seq,id,message_id,recipient_id,group_id,state,topic_id FROM deliveries")
+        db.execute("CREATE TABLE kept_sequence AS SELECT seq FROM sqlite_sequence WHERE name='deliveries'")
+        db.execute("DROP TABLE deliveries")
+        db.execute(DELIVERIES_BEFORE_EDIT)
+        db.execute("INSERT INTO deliveries SELECT * FROM kept")
+        db.execute("DELETE FROM sqlite_sequence WHERE name='deliveries'")
+        db.execute("INSERT INTO sqlite_sequence(name,seq) SELECT 'deliveries',seq FROM kept_sequence")
+        db.execute("DROP TABLE kept")
+        db.execute("DROP TABLE kept_sequence")
+        db.execute("CREATE INDEX recipient_deliveries ON deliveries(recipient_id,state,seq)")
+        db.execute("CREATE INDEX pending_group_deliveries ON deliveries(group_id,seq) WHERE state='pending'")
+        db.execute("CREATE INDEX pending_group_topic_deliveries ON deliveries(group_id,topic_id,seq) WHERE state='pending'")
+        db.execute("CREATE TRIGGER delivery_topic_required BEFORE INSERT ON deliveries WHEN NEW.topic_id IS NULL "
+                   "BEGIN SELECT RAISE(ABORT, 'a delivery names its topic'); END")
+        if version == BEFORE_EDIT:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The draft's version marks a Notebook revision a draft: before it, a revision has no mark.
         db.execute("ALTER TABLE memory_revisions DROP COLUMN draft")
         if version == BEFORE_DRAFT:
@@ -1898,7 +1926,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_STACKS, SCHEMA_BEFORE_STACKS),
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
                      (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37),
-                     (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT))
+                     (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2481,8 +2509,9 @@ class Schema27Case(MigrationCase):
         # comes from the operator, never from the upgrade.
         self.assertEqual(self.sql("SELECT kind,replaced_by,count(*) FROM topics GROUP BY kind,replaced_by"), [("topic", None, 1)])
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE about_id IS NOT NULL"), [(0,)])
-        # Messages gain what they are about, and the reactions' step whether they ask for a go-ahead.
-        widened = {"messages": 2, "topics": 2}
+        # Messages gain what they are about, and the reactions' step whether they ask for a go-ahead; deliveries
+        # gain their revision (the edit's step).
+        widened = {"messages": 2, "topics": 2, "deliveries": 1}
         self.assertEqual({table: [row[:-widened[table]] if table in widened else row for row in kept]
                           for table, kept in everything(self.path).items() if table in rows},
                          rows, "only the new columns are added, to messages and topics")
@@ -3072,7 +3101,8 @@ class ReactionStepCase(MigrationCase):
         upgraded = everything(self.path)
         # Each message gains whether it asks for a go-ahead, and none does.
         self.assertEqual([row[-1] for row in upgraded["messages"]], [0] * len(stored["messages"]))
-        self.assertEqual({table: [row[:-1] for row in kept] if table == "messages" else kept
+        # Each delivery also gains its revision (the edit's step), the last column.
+        self.assertEqual({table: [row[:-1] for row in kept] if table in ("messages", "deliveries") else kept
                           for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
         self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new table starts empty")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
@@ -3143,7 +3173,9 @@ class OrderStepCase(MigrationCase):
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
-        self.assertEqual({table: kept for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
+        # Each delivery gains its revision (the edit's step), the last column.
+        self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
+                          for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
         self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new table starts empty")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         workspace = self.sql("SELECT workspace_id FROM workspace_members WHERE actor_id='owner' ORDER BY workspace_id LIMIT 1")[0][0]
@@ -3201,7 +3233,9 @@ class StacksStepCase(MigrationCase):
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
-        self.assertEqual({table: kept for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
+        # Each delivery gains its revision (the edit's step), the last column.
+        self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
+                          for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
         self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new table starts empty")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         message = self.star()
@@ -3268,7 +3302,9 @@ class BlocksStepCase(MigrationCase):
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
-        self.assertEqual({table: kept for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
+        # Each delivery gains its revision (the edit's step), the last column.
+        self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
+                          for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
         self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new table starts empty")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         # A message from before reads as it did: it names nothing it blocks, and nothing waits as blocking.
@@ -3341,7 +3377,11 @@ class FoldStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_FOLD,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        self.assertEqual(everything(self.path), stored, "every row is kept, sqlite_sequence's place for the acts included")
+        upgraded = everything(self.path)
+        # Each delivery gains its revision (the edit's step), the last column, and the edit's table starts empty.
+        upgraded["deliveries"] = [row[:-1] for row in upgraded["deliveries"]]
+        self.assertEqual(upgraded.pop("message_revisions"), [])
+        self.assertEqual(upgraded, stored, "every row is kept, sqlite_sequence's place for the acts included")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         folded = self.fold(message)
         self.assertEqual((folded["folded"], folded["fold_revision"], folded["acts_version"]), (True, 1, 4), "the next act's id follows the gone one")
@@ -3394,19 +3434,21 @@ class DraftStepCase(MigrationCase):
                                {"item_id": "page"}, {"item_revision": revision})
         self.assertEqual(receipt["status"], "committed", receipt)
 
-    def test_the_step_follows_355s_and_the_head_is_its_version(self):
+    def test_the_step_follows_355s_and_the_edits_step_follows_it(self):
         self.assertIn((BEFORE_DRAFT, DRAFT_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, DRAFT_VERSION)
+        self.assertIn((DRAFT_VERSION, EDIT_VERSION), [step[:2] for step in migrations.STEPS])
 
     def test_upgrade_keeps_every_revision_unmarked_and_matches_a_fresh_instance(self):
         self.written()
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_DRAFT,
-                                          "schema_version": DRAFT_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         after = everything(self.path)
         self.assertEqual(after["memory_revisions"], sorted((row + (0,) for row in stored["memory_revisions"]), key=repr))
-        self.assertEqual({k: v for k, v in after.items() if k != "memory_revisions"},
+        # Each delivery gains its revision (the edit's step), the last column.
+        self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr))
+        self.assertEqual({k: v for k, v in after.items() if k not in ("memory_revisions", "message_revisions")},
                          {k: v for k, v in stored.items() if k != "memory_revisions"})
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         page = self.store.view("agent-a", "memory_current", {"item_id": "page"})
@@ -3435,7 +3477,82 @@ class DraftStepCase(MigrationCase):
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST", "a cleared page still keeps the revision that marked it")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], DRAFT_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
+class EditStepCase(MigrationCase):
+    """An instance at the draft's version holding a message delivered to an agent: the edit's step keeps
+    every delivery, its id and seq and where the next goes on from, matches a fresh instance, and steps back
+    only while no message has been edited."""
+
+    VERSION, FIXTURE = BEFORE_EDIT, SCHEMA_BEFORE_EDIT
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_EDIT)
+
+    def delivered(self):
+        """The topic's first message, from owner, with agent-a's delivery of it, and a delivery whose row is gone,
+        so the table's seq has gone further than its rows: a rebuilt table must go on from there."""
+        with sqlite3.connect(str(self.path)) as db:
+            message, topic = db.execute("SELECT id,topic_id FROM messages ORDER BY seq LIMIT 1").fetchone()
+            group = db.execute("SELECT group_id FROM deliveries WHERE recipient_id='agent-a' ORDER BY seq LIMIT 1").fetchone()[0]
+            db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,state,topic_id) VALUES ('d-gone',?,'agent-b',?,'acknowledged',?)",
+                       (message, group, topic))
+            db.execute("DELETE FROM deliveries WHERE id='d-gone'")
+            return message
+
+    def edit(self, message, body, revision):
+        receipt = self.command("message.edit", {"body": body}, {"message_id": message}, {"message_revision": revision})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_follows_the_drafts_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_EDIT, EDIT_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, EDIT_VERSION)
+
+    def test_upgrade_keeps_every_delivery_its_seq_and_reasons_and_matches_a_fresh_instance(self):
+        message = self.delivered()
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_EDIT,
+                                          "schema_version": EDIT_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        after = everything(self.path)
+        self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr),
+                         "every delivery keeps its seq and id, at revision 1")
+        after.pop("message_revisions")
+        self.assertEqual({k: v for k, v in after.items() if k != "metadata"}, {k: v for k, v in stored.items() if k != "metadata"},
+                         "every reason and sqlite_sequence's place for the deliveries are kept")
+        with sqlite3.connect(str(self.path)) as db, self.assertRaisesRegex(sqlite3.IntegrityError, "a delivery names its topic"):
+            db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,state,revision) SELECT 'd-x',message_id,recipient_id,group_id,state,9 "
+                       "FROM deliveries LIMIT 1")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        gone = self.sql("SELECT seq FROM sqlite_sequence WHERE name='deliveries'")[0][0]
+        self.assertEqual(self.edit(message, "Fixed words", 1)["revision"], 2)
+        self.assertGreater(self.sql("SELECT min(seq) FROM deliveries WHERE revision=2")[0][0], gone, "the next seq follows the gone one")
+        self.assertEqual(self.sql("SELECT recipient_id,revision,state FROM deliveries WHERE message_id=? ORDER BY recipient_id,revision", (message,)),
+                         [("agent-a", 1, "pending"), ("agent-a", 2, "pending"), ("agent-b", 2, "pending")],
+                         "a message from before the step is corrected to each agent that reads it, delivered before or not")
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_edited(self):
+        self.delivered()
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_EDIT))
+        self.assertEqual(everything(self.path), stored, "every delivery, reason and the deliveries' place in sqlite_sequence come back")
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_a_message_is_edited_and_changes_nothing(self):
+        message = self.delivered()
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.edit(message, "Fixed words", 1)
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], EDIT_VERSION)
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.
@@ -3496,6 +3613,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(FoldStepCase, _name, None)
     if _name.startswith("test_") and _name not in DraftStepCase.__dict__:
         setattr(DraftStepCase, _name, None)
+    if _name.startswith("test_") and _name not in EditStepCase.__dict__:
+        setattr(EditStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

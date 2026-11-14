@@ -1,3 +1,4 @@
+import { pairFeedFence } from './feed-fence-copy.mjs';
 // A message's words as they were written to be read: headings, lists and task
 // lists, tables (with a dash row, as an agent types them without one, or drawn
 // in box lines), quotes holding blocks, code and rules, with bold, italics,
@@ -12,6 +13,8 @@
 // moves forward, and every search for where a mark or code closes remembers
 // where it stopped.
 import { addressAt, addressStarts, lastWords, linkNode, topicAt, topicStarts, wordNodes, writtenLink } from './links.mjs';
+import { deferFencePaint, fenceCopyButton } from './fence-copy.mjs';
+import { fenceEnd, fenceOpen } from './fences.mjs';
 import { charAt, charBefore, isEscapable, isPunctuation, isSpace } from './characters.mjs';
 
 // ---- Words and where each of their characters is in the message
@@ -156,8 +159,6 @@ export function sourcePosition(node, offset, end = false) {
 
 // ---- Blocks
 
-const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})[ \t]*(.*)$/;
-const FENCE_CLOSE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
 const HEADING = /^ {0,3}(#{1,6})[ \t]+/;
 const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
@@ -167,20 +168,6 @@ const BOX = /^[ \t]*[─-╿]/;
 const DASHES = /^:?-+:?$/;
 // A quote in a quote nests this deep; deeper, its words are a paragraph.
 const MAX_QUOTE_DEPTH = 8;
-
-// A fence's marker and language, or null: a backtick fence's info has no backtick.
-function fenceOpen(text) {
-  const match = FENCE_OPEN.exec(text);
-  if (!match) return null;
-  const info = match[2].trim();
-  if (match[1][0] === '`' && info.includes('`')) return null;
-  return { marker: match[1][0], length: match[1].length, lang: /^[\w.+-]{0,40}/.exec(info.split(/\s/, 1)[0])[0] };
-}
-// Only a line of the same marker, at least as long, with nothing after it, closes a fence.
-function fenceCloses(text, fence) {
-  const match = FENCE_CLOSE.exec(text);
-  return !!match && match[1][0] === fence.marker && match[1].length >= fence.length;
-}
 
 // A table row's cells, without the outer bars; an escaped bar stays in its cell.
 function cellsOf(row) {
@@ -233,7 +220,7 @@ const nextRow = (lines, i, width) => {
   return k < lines.length && looseWidth(lines[k]) === width ? k : -1;
 };
 const looseStart = (lines, i) => { const width = looseWidth(lines[i]); return width > 0 && nextRow(lines, i, width) >= 0; };
-const startsBlock = (lines, i) => fenceOpen(lines[i].text) || HEADING.test(lines[i].text) || RULE.test(lines[i].text) || ITEM.test(lines[i].text) ||
+const startsBlock = (lines, i) => fenceOpen(lines[i].text, lines[i + 1]?.text) || HEADING.test(lines[i].text) || RULE.test(lines[i].text) || ITEM.test(lines[i].text) ||
   QUOTE.test(lines[i].text) || tableStart(lines, i) || boxStart(lines, i) || looseStart(lines, i);
 
 // A heading's words, without its marks or a closing run of #s.
@@ -261,11 +248,27 @@ function blocksOf(m, partial, depth, meter) {
     const line = lines[i];
     tick(meter, line.text.length + 1);
     if (blank(line)) { i++; continue; }
-    const fence = fenceOpen(line.text);
+    const fence = fenceOpen(line.text, lines[i + 1]?.text);
     if (fence) {
+      if (fence.end >= 0) {
+        blocks.push({ kind: 'code', fenced: true, complete: !partial || i < n - 1, lang: '', ...span(i, i), words: m.slice(line.s + fence.after, line.s + fence.end) });
+        i++; continue;
+      }
       let j = i + 1;
-      while (j < n && !fenceCloses(lines[j].text, fence)) tick(meter, lines[j++].text.length + 1);
-      blocks.push({ kind: 'code', lang: fence.lang, ...span(i, Math.min(j, n - 1)), words: words(i + 1, j - 1) });
+      let end = -1;
+      while (j < n) {
+        tick(meter, lines[j].text.length + 1);
+        end = fenceEnd(lines[j].text, fence);
+        if (end >= 0) break;
+        j++;
+      }
+      const ownLine = end >= 0 && !lines[j].text.slice(0, end).trim();
+      // With no payload line, opening text is the payload: ```words\n```.
+      // A blank payload line still keeps conventional info: ```py\n\n```.
+      const payloadAt = fence.payloadAt ?? (ownLine && j === i + 1 && fence.info ? fence.after : null);
+      const from = payloadAt !== null ? line.s + payloadAt : (lines[i + 1]?.s ?? line.e);
+      const to = end < 0 ? m.text.length : ownLine ? lines[j - 1].e : lines[j].s + end;
+      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: payloadAt !== null ? '' : fence.lang, ...span(i, Math.min(j, n - 1)), words: m.slice(from, to) });
       i = j + 1; continue;
     }
     if (boxStart(lines, i)) {
@@ -681,7 +684,7 @@ const MARKS = { open: '☐', done: '☑' };
 // One block as nodes. Inside a card (a button), every block is a span shown
 // as a block, but for a table, which needs its own elements. cut: the block
 // ends an excerpt, so its last words may be cut.
-function blockNode(block, doc, cut, meter) {
+function blockNode(block, doc, cut, meter, copyFences = false) {
   const inline = (words, last = cut) => inlineNodes(words, { doc, partial: last, meter });
   const span = { start: block.start, end: block.end };
   if (block.kind === 'heading') return el(doc, 'span', `md-block md-heading md-h${Math.min(block.level, 4)}`, inline(block.words), span);
@@ -691,10 +694,23 @@ function blockNode(block, doc, cut, meter) {
     if (block.lang) code.dataset.lang = block.lang;
     if (block.words.text) code.append(placed(doc.createTextNode(block.words.text), { words: block.words }));
     if (block.box) edgeFades(code);
-    return code;
+    if (!copyFences || !block.fenced) return code;
+    const wrap = el(doc, 'span', 'md-block md-fence', [code], span);
+    if (block.complete) {
+      const control = fenceCopyButton(doc, block.words.text);
+      if (copyFences === 'feed' && wrap.style?.setProperty) pairFeedFence(wrap, control);
+      else wrap.append(placed(control, { start: span.end, end: span.end }));
+    }
+    else {
+      const cue = el(doc, 'span', 'fence-copy-unavailable');
+      cue.setAttribute('role', 'note');
+      cue.setAttribute('aria-label', 'Open message to copy');
+      wrap.append(placed(cue, { start: span.end, end: span.end }));
+    }
+    return wrap;
   }
   if (block.kind === 'quote') {
-    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter)) : inline(block.words);
+    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter, copyFences)) : inline(block.words);
     return el(doc, 'span', 'md-block md-quote', inner, span);
   }
   if (block.kind === 'list') {
@@ -740,14 +756,36 @@ function tableNode(block, doc, meter) {
 }
 
 // text as nodes for a card or any other place that shows a message's words.
-export function formatNodes(text, { doc = globalThis.document, partial = false, meter } = {}) {
+export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false } = {}) {
   const blocks = parseBlocks(text, { partial, meter });
   if (!blocks.length) return wordNodes(String(text ?? ''), { doc, partial });
-  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter));
+  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences));
+}
+
+// A Notebook revision opened in place shows its source verbatim, with links.
+// Replace only fence lines. Raw gaps keep even quote prefixes and CRLFs.
+export function linkedFenceNodes(text, doc) {
+  const nodes = [];
+  let at = 0;
+  const emit = blocks => {
+    for (const block of blocks) {
+      if (block.fenced) {
+        // A quoted block may start after its opening line's quote prefix.
+        const start = text.lastIndexOf('\n', block.start - 1) + 1;
+        if (at < start) nodes.push(...wordNodes(text.slice(at, start), { doc }));
+        nodes.push(blockNode(block, doc, false, undefined, true));
+        at = block.end;
+      } else if (block.blocks) emit(block.blocks);
+    }
+  };
+  emit(parseBlocks(text));
+  if (at < text.length || !nodes.length) nodes.push(...wordNodes(text.slice(at), { doc }));
+  return nodes;
 }
 
 // Puts text, formatted, in host in place of what host held.
 export function formatWords(host, text, options = {}) {
+  if (deferFencePaint(host, () => formatWords(host, text, options))) return host;
   host.replaceChildren();
   for (const node of formatNodes(text, { doc: host.ownerDocument ?? globalThis.document, ...options })) host.append(node);
   host.classList.add('formatted');
@@ -761,7 +799,8 @@ export function formatWords(host, text, options = {}) {
 // before; a heading, a list item, a quote, a code block and a table are each
 // one passage, shown as a block. A passage never cuts a link, code or a
 // mark: the sentences one spans join, as the line's own reading says.
-export function drawPassages(host, body, doc = globalThis.document, { meter } = {}) {
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences }))) return;
   body = String(body ?? '');
   host.replaceChildren();
   const blocks = blocksOf(Mapped.of(body), false, 0, meter), drawn = [];
@@ -804,7 +843,7 @@ export function drawPassages(host, body, doc = globalThis.document, { meter } = 
       });
       return;
     }
-    drawn.push({ node: blockNode(block, doc, false, meter), start: block.start });
+    drawn.push({ node: blockNode(block, doc, false, meter, copyFences), start: block.start });
   });
   drawn.forEach(({ node, start, tail, from }, k) => {
     const end = k + 1 < drawn.length ? drawn[k + 1].start : body.length;

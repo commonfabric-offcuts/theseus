@@ -207,6 +207,17 @@ invocation adapter. They record received requests, environment, process group,
 EOF and exit, and verify that pending delivery state is unchanged. They do not
 prove persistence or consumption in the installed Codex app.
 
+The fixture executables (the stand-in app-server, and the bootstrap that runs
+the actual broker script) are written once per test process and run once to
+completion before any case dispatches. macOS assesses an executable file the
+first time it runs: a newly written script took 0.6 to 3.1 s to start on the
+bench Mac under load, a repeat run 25 ms. Written fresh for each case, that
+first run fell inside the broker's own four-second budget, and a correct broker
+refused with `codex_no_answer`. The case for a late but valid list answers at a
+point measured from the broker's recorded start (half a second of the RPC
+budget left, and, as its control, one and a half seconds left), so its outcome
+does not depend on how long startup took.
+
 Before activation, the selected real recipient must explicitly enter a
 non-consuming interval. A single exact hint must survive confirmed API-child
 exit and be found by a fresh child. Actual desktop consumption, an attributed

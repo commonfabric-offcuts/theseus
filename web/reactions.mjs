@@ -74,12 +74,24 @@ export function paintReaderThumb(button, item, viewer, busy = false) {
   const can = Boolean(item) && mayThumb(item, viewer);
   button.hidden = !can;
   if (!can) return;
-  const value = reactionsOf(item), on = thumbed(item, viewer);
-  button.textContent = value.thumbs.length ? `👍 ${value.thumbs.length}` : '👍';
+  const on = thumbed(item, viewer);
+  // This is the reader's own action; the message carries the shared count.
+  button.textContent = '👍';
   button.setAttribute('aria-pressed', String(on)); button.disabled = busy;
-  const names = value.thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id);
-  button.title = on ? 'You said you read and understood it. Press to take it back.' : 'Thumbs-up: read and understood' + (names.length ? ` (👍 ${names.join(', ')})` : '');
+  button.title = on ? 'You said you read and understood it. Press to take it back.' : 'Thumbs-up: read and understood';
   button.setAttribute('aria-label', button.title);
+}
+
+// The Reader's quiet line under the message it shows: how many thumbed it up
+// and who, whether or not a loaded page holds its card (item 406); its 👍
+// beside Send is the reader's own.
+export function paintReaderReactions(line, item, viewer) {
+  const thumbs = item ? reactionsOf(item).thumbs : [];
+  line.hidden = !thumbs.length;
+  if (!thumbs.length) { line.replaceChildren(); line.removeAttribute('title'); return; }
+  const names = thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id).join(', ');
+  line.textContent = `👍 ${thumbs.length} ${names}`;
+  line.title = `👍 ${names}: read and understood`;
 }
 
 // What Core answered of one message's reactions, kept on its loaded item.

@@ -544,7 +544,7 @@
    ],
    "check": {
     "native": "header",
-    "case": "header a message the reader wrote offers Copy Link alone"
+    "case": "header a message the reader wrote offers Copy Link"
    }
   },
   {
@@ -2441,8 +2441,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return kept(item) || item.seq === newestReply(stack);",
-     "  return item.seq === newestReply(stack);"
+     "  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
+     "  return actsOf(item).starred === true || item.seq === newestReply(stack);"
     ]
    ],
    "check": {
@@ -9487,6 +9487,2089 @@
    "check": {
     "native": "reading",
     "case": "reading coordination ← and → move along the filters' row"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only an outcome organizer may request an assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not organises(topic, actor):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Private source evidence cannot be widened into an assessment report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if source['private_to']:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Concurrent or differently identified retries keep one active assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if previous['state'] not in ('reported', 'abandoned'):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A completed assessment cannot post a second report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if record['report_message_id']:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A lost native completion is recovered without a second model turn",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if previous and previous['status'] == 'completed':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The child retains per-request exclusion if the dispatcher parent exits",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "subprocess.DEVNULL,inherited_fds=(lock_fd,)))",
+     "subprocess.DEVNULL,inherited_fds=()))"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The same request cannot resume under another runtime binding",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if record['thread_id'] and record['runtime_digest'] != fingerprint:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The assessment read capability refuses private evidence and other topics",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if source.get('topic_id') != record['topic_id'] or source.get('whisper'):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Native source reads work before the turn-start receipt without granting writes",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "if message.get('method') == 'item/tool/call' and self.read_scope is not None:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The intervention operator must organise the outcome",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not organises(topic, operator):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Request evidence belongs to the named topic",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if source['topic_id'] != topic_id:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Every report citation is public evidence in the named topic",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "evidence = [] if args['evidence_message_ids'] == [] else self._assessment_sources(\n            db, (actor,record['requested_by'],record['operator_id']), record['topic_id'], args['evidence_message_ids'])",
+     "evidence = list(args['evidence_message_ids'])"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "An active request refuses changed assessor operator or sources",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if not same:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Renewal follows an actual report",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if record['state'] != 'reported':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The native runtime must actually apply read-only sandbox",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "or result.get('sandbox',{}).get('type') != 'readOnly'",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The standing Conversation cannot hold a named assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if topic['kind'] == 'conversation':",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The assessor is independent of the named team",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if assessor in team:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only the named operator records the renewal",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if actor != record['operator_id'] or not organises(topic, actor):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A standing pinned native thread cannot become a fresh assessor",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if pinned:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Assessment metadata never stops the topic feed",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._change(db, 'actor', record['assessor_id'], 'assessment', record['id'], record['version'])",
+     "self._change(db, 'topic', record['topic_id'], 'assessment', record['id'], record['version'])"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A report preserves done state and does not wake assessed subscribers",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "snapshot, record_only=True)",
+     "snapshot, record_only=False)"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A confirmed refusal of a completed native report is durably terminal",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "except ReportRefused as error:\n        core.command",
+     "except ReportRefused as error:\n        raise\n        core.command"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Abandonment requires assessor or authorized operator",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if actor != record['assessor_id'] and not (actor in (record['operator_id'], record['requested_by']) and organises(topic, actor)):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "An abandoned assignment can be explicitly requested afresh",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "if previous['state'] not in ('reported', 'abandoned'):",
+     "if previous['state'] != 'reported':"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Fresh and resumed native contexts request read-only execution without approvals",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "'sandbox':'read-only',",
+     "'sandbox':'workspace-write',"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A reached outcome refuses a new assessment request",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._assessment_open(db, topic['workspace_id'])\n        if topic['kind'] == 'conversation':",
+     "if topic['kind'] == 'conversation':"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "A reached outcome refuses attaching, reporting, abandoning or renewing an earlier assessment",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "self._assessment_open(db, record['workspace_id'])\n        return record",
+     "return record"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "Only the assessment's own outcome being reached closes it",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "'WHERE r.workspace_id=?', (workspace_id,)",
+     "'WHERE 1 OR r.workspace_id=?', (workspace_id,)"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The dispatcher starts no native context for a reached outcome",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "    record = core.record(identity,open_outcome=True)\n    if not record['thread_id']:",
+     "    if not record['thread_id']:"
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 405,
+   "act": "The dispatcher starts no model turn in an outcome reached while it resumed",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "            record = core.record(identity,open_outcome=True)\n            prompt =",
+     "            prompt ="
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoting keeps your place: what showed of the words quoted stays where it was on screen, the topic page behind the Reader too, and the quote lands after the writing with the cursor after it",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
+     "if (bottom !== room.bottom) this.sourceBody.scrollTop"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words the opening reply would cover are shown the least way, just above the reply",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
+     "if (false) this.sourceBody.scrollTop"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "What a quote keeps showing is the words it takes, not the whole passage they are in: a line of a log taller than the screen stays where it was",
+   "break": [
+    [
+     "web/reader.mjs",
+     "words = passage && range.getBoundingClientRect();",
+     "words = passage && passage.getBoundingClientRect();"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A passage lit whole and taller than the screen keeps what showed of it where it was",
+   "break": [
+    [
+     "web/reader.mjs",
+     "shows = top < bottom;",
+     "shows = false;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words taller than the room the reply leaves fill it, their start kept on the screen",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.min(bottom - room.bottom, top - room.top)",
+     "(bottom - room.bottom)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Measuring the reply as a quote grows it does not pull a message scrolled to its end down",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (place) this.sourceBody.scrollTop = scrolled;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A line quoted from above what shows comes into sight at its top, the least way",
+   "break": [
+    [
+     "web/reader.mjs",
+     "else if (top < room.top && bottom < room.bottom) this.sourceBody.scrollTop",
+     "else if (false) this.sourceBody.scrollTop"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Words taller than the room quoted from above it come into sight with their end at its bottom, the least way",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.max(top - room.top, bottom - room.bottom)",
+     "(top - room.top)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 429,
+   "act": "Later dossier faces overlap by 12px without covering the words",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-overlap:12px;",
+     "--stack-overlap:0px;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look overlaps"
+   }
+  },
+  {
+   "item": 429,
+   "act": "The first author letter aligns with the body words",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}",
+     ".agent-card>.message-author>.author-name:first-child{margin-left:0}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look aligns"
+   }
+  },
+  {
+   "item": 429,
+   "act": "Folded words remain readable in quiet agent cards",
+   "break": [
+    [
+     "web/stack-look.css",
+     "align-items:center;padding-block:0;opacity:1;transition:none}",
+     "align-items:center;padding-block:0;opacity:.62;transition:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look keeps folded words"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A phone exposes 44px of a folded dossier face with a reachable thumbs-up",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:56px}",
+     "--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:44px}"
+    ],
+    [
+     "web/stack-look.css",
+     ":root{--stack-folded-height:56px}",
+     ":root{--stack-folded-height:44px}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look exposes"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A saved fold in a dossier uses read material before its read marker catches up",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=none]{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives a saved fold"
+   }
+  },
+  {
+   "item": 429,
+   "act": "The reader's own thumbs-up leaves a card's unread material, in a dossier or out",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)){"
+    ],
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card){",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card:is([data-folded=true],:has(>.message-reactions>.reaction-count.mine)):not(.own-message):not(.agent-card){"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A fold outside a dossier keeps the feed's read state",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".message-card.agent-card[data-folded=true]{"
+    ],
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card[data-folded=true]:not(.own-message):not(.agent-card){",
+     ".message-card[data-folded=true]:not(.own-message):not(.agent-card){"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A placed single message is no dossier: its fold keeps the feed's read state",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .message-card.agent-card[data-folded=true]{",
+     ".reply-stack:not(.only-new *) .message-card.agent-card[data-folded=true]{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives read material to no"
+   }
+  },
+  {
+   "item": 429,
+   "act": "At latest and unread, hidden replies take no overlap and separate no visible faces",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (entry.hidden) continue;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look at latest and unread"
+   }
+  },
+  {
+   "item": 429,
+   "act": "A join line keeps its gap from the cards outside its box, so a join that reveals the line a tenth inside the window leaves the page where it was",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-join-line{margin-block:var(--stack-sheet-gap)}",
+     ".stack-join-line{padding-block:var(--stack-sheet-gap)}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a join you make shows where it went"
+   }
+  },
+  {
+   "item": 401,
+   "act": "Show full message grows one clipped feed card without opening the Reader, preserving it across updates only on this page",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "    card.style.maxHeight = 'none'; card.scrollTop = 0;",
+     "    card.style.maxHeight = '100px'; card.scrollTop = 0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Show full message removes clipping"
+   }
+  },
+  {
+   "item": 406,
+   "act": "The composer thumb shows only your own state while the message keeps the shared count and names",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "  button.textContent = '👍';",
+     "  button.textContent = '👍 ' + reactionsOf(item).thumbs.length;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading the composer thumb represents only"
+   }
+  },
+  {
+   "item": 406,
+   "act": "The Reader shows under the message how many thumbed it up and who, also when no loaded page holds its card",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "  line.textContent = `👍 ${thumbs.length} ${names}`;",
+     "  line.textContent = '👍';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a message opened from an About link"
+   }
+  },
+  {
+   "item": 401,
+   "act": "Show full message on a card scrolled inside keeps the words being read where they were on the screen",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "    if (moved) card.ownerDocument.defaultView.scrollBy({ top: moved, behavior: 'instant' });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Show full message on a card scrolled inside"
+   }
+  },
+  {
+   "item": 413,
+   "act": "The reader's starred read replies stay visible at latest and unread until unstarred, including after reload",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
+     "return kept(item) || item.seq === newestReply(stack);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks starred read replies remain visible"
+   }
+  },
+  {
+   "item": 413,
+   "act": "Unstarring a reply in view, here or on another device, leaves it, the keys and the light in place until the stack's state changes",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks unstarring a reply in view"
+   }
+  },
+  {
+   "item": 433,
+   "act": "An act's answer goes to the message the page holds when it lands: x on a folded message whose 👍's reactions read lands while the unfold is out never folds it again, and a second x is fenced on the answer's revision",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);",
+     "    for (const each of new Set([item, current])) each.acts = laterActs(each.acts, answer);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks x unfolds a folded message while its"
+   }
+  },
+  {
+   "item": 433,
+   "act": "The same for a star: Star for me on a folded message whose 👍's reactions read lands while the star is out stays starred",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);",
+     "    for (const each of new Set([item, current])) each.acts = laterActs(each.acts, answer);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Star for me on a folded message while its"
+   }
+  },
+  {
+   "item": 433,
+   "act": "The harness's point() fails by naming where a press fell when a redraw moves its target between the hit-test and the press",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "        if (fell) assert.fail(`${selector} moved between the hit-test and the press: the press fell on ${fell}`);\n",
+     "        if (false) assert.fail(`${selector} moved between the hit-test and the press: the press fell on ${fell}`);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a press whose target a redraw moves between the aim and the press"
+   }
+  },
+  {
+   "item": 108,
+   "act": "A cut-off card's whole words wait for a press held on its excerpt and the click that press ends in, so the press still opens the Reader",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "      if (this.press) await this.press.over();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a press held on a cut-off card"
+   }
+  },
+  {
+   "item": 325,
+   "act": "⌘C reads a cut-off message whole as the person's act, so a busy background lane never refuses the copy",
+   "break": [
+    [
+     "web/app.mjs",
+     "cardScroll.whole(item.id, 'foreground')",
+     "cardScroll.whole(item.id)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "⌘C with nothing selected"
+   }
+  },
+  {
+   "item": 401,
+   "act": "Show full reads a cut-off message whole as the person's act, so a lit card's slow read ahead on the background lane never refuses it",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "await this.whole(item.id, 'foreground') : item.body;",
+     "await this.whole(item.id) : item.body;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Show full message shows the whole message while"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit sends each agent that can read the message, other than the editor, one correction",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "delivery_id = self._queue_delivery(db, message[\"id\"], agent, message[\"topic_id\"], {\"correction\": None}, revision=number)\n            self._change(db, \"actor\", agent, \"delivery\", delivery_id, 1)",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A correction goes in the agent's correction group, so it is never unread, addressed or counted",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "kind = \"correction\" if \"correction\" in reasons else \"direct\" if direct else \"subscription\"",
+     "kind = \"direct\" if direct else \"subscription\""
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A newer correction of a message settles the agent's older one",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            for row in self._pending_corrections(db, agent, message[\"id\"]):\n                self._acknowledge(db, agent, row)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "People are never sent a correction of an edited message",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "and self._actor_kind(db, reader) == \"agent\"]",
+     "]"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Leaving an outcome's team settles the agent's corrections of messages it can no longer read",
+   "break": [
+    [
+     "aim_next/store.py",
+     "self._settle_unreadable_corrections(db, member)",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Leaving a topic settles the agent's corrections of messages it can no longer read",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "self._settle_unreadable_corrections(db, member)",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A correction of a message the agent can no longer read is never listed, even when nothing settled it",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "if not self._correction_readable(db, actor, row):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A thumb settles the message's own delivery, never a correction",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "d.recipient_id=? AND d.revision=1 AND d.state='pending'",
+     "d.recipient_id=? AND d.state='pending'"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A read-through never settles a correction",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "d.recipient_id=a.actor_id AND d.revision=1 ",
+     "d.recipient_id=a.actor_id "
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Every reader of an edited message, people included, is told with an edit change",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        for reader in readers:\n            self._change",
+     "        for reader in agents:\n            self._change"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A quote's excerpt is checked against the revision its source names",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if \"revision\" in quote_source:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Every read shows a message's latest words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "SELECT r.body FROM message_revisions r WHERE r.message_id=%s.id ORDER BY r.revision DESC LIMIT 1",
+     "SELECT r.body FROM message_revisions r WHERE r.message_id=%s.id AND 0 LIMIT 1"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A reply's line shows the latest words of the message it answers",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "substr(\" + words(\"p\") + \",1,120)",
+     "substr(p.body,1,120)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Only people edit messages",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if self._actor(db, actor)[\"kind\"] != \"human\":",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A reached outcome's messages are not edited",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        if reached is not None:\n",
+     "        if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit to the words already there is refused and records nothing",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if body == now_words:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A correction previews the words of its own revision",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "        if row[\"revision\"] == 1:\n            body,",
+     "        if True:\n            body,"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A whisper's correction notice says only the two of them can read it",
+   "break": [
+    [
+     "aim_next/hosted_notice.py",
+     "(\" A whisper: only you and %s can read it. Never repeat",
+     "(\" %s can read it. Never repeat"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "topic_messages by id refuses a whisper outside the reader as an unknown id",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "row = self._message_access(db, actor, mid)",
+     "row = db.execute(\"SELECT topic_id FROM messages WHERE id=?\", (mid,)).fetchone() or self._message_access(db, actor, mid)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "topic_messages returns exactly the messages it was asked for by id",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "if args.get(\"message_ids\") is not None:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The agent's inbox and watch print a correction as one, naming its revision",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "        if item.get(\"correction\"):\n            # A person edited",
+     "        if False:\n            # A person edited"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "read marks an edited message with its revision",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "heading += \" (edited, revision %d)\" % item[\"revision\"]",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "No module but the words helper reads a message's first words",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "substr(\" + words(\"m\") + \",1,160) AS excerpt",
+     "substr(m.body,1,160) AS excerpt"
+    ]
+   ],
+   "check": {
+    "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A page of deliveries reads on past corrections it leaves out, so a readable one behind them is still listed",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "                if len(rows) < wanted:\n                    break\n",
+     "                break\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A held ask's line in the pipeline's row is its latest words",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "\"waiting_on\": waiting, \"line\": first_line(current_words(db, row[\"id\"])[0])})",
+     "\"waiting_on\": waiting, \"line\": first_line(db.execute(\"SELECT body FROM messages WHERE id=?\", (row[\"id\"],)).fetchone()[0])})"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A page's later revision of a message replaces the words it held, instead of stopping the page",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "revisionOf(known) === revisionOf(item) && known.body !== item.body)) throw invalid",
+     "known.body !== item.body)) throw invalid"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An answer read before an edit, at a lower revision, leaves the later words in place",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (!known || revisionOf(item) <= revisionOf(known)) return false;",
+     "if (!known) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A loaded reply's line reads the edited message's new first words",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "other.reply_to_excerpt = excerptOf(item.body); this.revised.add(other.id);",
+     "this.revised.add(other.id);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A page that took an edited message paints its edit",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "    if (this.revised.size) this.paint('edited');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The edit:<id> refresh reads that message alone by its id",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "read('topic_messages', { topic_id: this.topicId, message_ids: [id] })",
+     "read('topic_messages', { topic_id: this.topicId })"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An actor-scope edit change asks for its message to be read again",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "this.invalidate('edit:' + item.resource_id, item.version)",
+     "void item"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A card's author line says Edited",
+   "break": [
+    [
+     "web/marks.mjs",
+     "if (edited) { const mark",
+     "if (false) { const mark"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Edited is part of what an author line shows, so an edit repaints it",
+   "break": [
+    [
+     "web/marks.mjs",
+     "marked, edited]);",
+     "marked]);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The Reader's provenance says Edited",
+   "break": [
+    [
+     "web/reader.mjs",
+     "wasEdited(source) ? [' · Edited'] : []",
+     "false ? [' · Edited'] : []"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A quote names the revision of the message it was taken from",
+   "break": [
+    [
+     "web/reader.mjs",
+     "{ ...structuredClone(source.source_ref), revision: revisionOf(source) }",
+     "structuredClone(source.source_ref)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "While a message is edited, ⌘↑ and ⌘↓ do not step",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      if (event.metaKey && Object.values(STEPPING).some(step => step.key === event.key)) { event.preventDefault(); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Escape leaves the edit mode and keeps the Reader open",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    if (this.editing) { this.editing.leave(); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "⌘Return in the edit field saves the edit, not the reply",
+   "break": [
+    [
+     "web/reader.mjs",
+     "        if (keyAction(event, { context: 'edit' }) === 'save-edit') { event.preventDefault(); this.editing.save(); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "In the edit field ⌘Return is Save and Return a new line",
+   "break": [
+    [
+     "web/editor.mjs",
+     "  if (context === 'edit') return event.metaKey ? 'save-edit' : 'newline';\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A folded line's words follow the message's latest words",
+   "break": [
+    [
+     "web/fold.mjs",
+     "if (fold) linkWords(fold.words, foldWords(item), { partial: cutShort(item) });",
+     "void fold;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A card read whole forgets its old whole words once edited",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "    this.wholes.delete(id);\n    if (!card) return;",
+     "    if (!card) return;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The frozen envelope is on the device before the Save is sent",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    try { await this.persist(); }\n    catch (error) { this.pending = null;",
+     "    try { void 0; }\n    catch (error) { this.pending = null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "After no answer, Try again asks Core what it recorded before sending",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (this.state === 'uncertain') {\n      this.state = 'saving'; this.notify();",
+     "if (false) {\n      this.state = 'saving'; this.notify();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A busy answer keeps the same operation for Try again",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (receipt.status === 'retryable') { this.state = 'busy'; return receipt; }",
+     "if (receipt.status === 'retryable') { this.pending = null; this.state = 'busy'; return receipt; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A conflict reads the saved words and offers the choice",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (code === 'REVISION_CONFLICT') {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Save mine saves on the newer revision",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    this.base = { revision: this.conflict.revision, body: this.conflict.body ?? this.base.body };\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Blank words send nothing",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.empty) return null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Words the same as the saved ones end the edit unsent",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (!this.dirty) { await this.end('unchanged'); return null; }\n    this.pending = this.envelope();",
+     "    this.pending = this.envelope();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Save, Cancel and Use saved clear the device copy",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "try { await this.serial; await this.store.delete(); }",
+     "try { await this.serial; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A Save whose answer never came goes again when the edit is opened",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.pending) { this.state = 'uncertain'; return this.retry(); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The words of an unconfirmed Save stay as sent until Try again",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (this.closed || this.sending || this.pending || this.readOnly",
+     "if (this.closed || this.sending || this.readOnly"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Edit shows only to a person",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "actorKind === 'human' && ",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Edit is hidden once the topic's outcome is reached",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     " && !reached",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Edit is hidden in a topic the person cannot read",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     " && !unavailable",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The field reads only while a Save is out or unconfirmed",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "this.field.readOnly = state === 'saving' || w.readOnly || Boolean(w.pending);",
+     "this.field.readOnly = w.readOnly;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Uncertain says it is not known whether the edit was saved",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     ": state === 'uncertain' ? SAY.uncertain :",
+     ": state === 'uncertain' ? '' :"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Words kept from an earlier Edit come back into the field",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "if (this.field.value !== w.value) {\n      this.field.value = w.value;",
+     "if (false) {\n      this.field.value = w.value;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Save is off while the words are blank",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "|| w.readOnly || w.empty;",
+     "|| w.readOnly;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Edit is in the ⋯ of the person's own message",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit'",
+     "if (false) items.push({ label: 'Edit'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit mode is offered"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Edit is in the Reader's ⋯ on the person's own message",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push",
+     "if (false) items.push"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit mode from the Reader"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A Reader opened for an edit closes when the edit ends, giving the focus back to the card",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (session.opened && registry.isSourceCurrent(session.presentation)) { run(() => reader.close()); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit mode is offered"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit chosen from a row's ⋯ gives the focus back to that row",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (card?.isConnected && !card.hidden) return card;\n  return entry?.querySelector('.fold-line')",
+     "  return entry?.querySelector('.fold-line')"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit mode from a dossier row"
+   }
+  },
+  {
+   "item": 228,
+   "act": "topic_messages message_ids goes with topic_id alone: with a cursor, direction, limit, items or audience it is INVALID_ARGUMENT",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "if args.get(\"message_ids\") is not None and set(args)",
+     "if False and set(args)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "topic_messages message_ids checks each id's reach first, so a message the reader cannot read in another topic is refused as an unknown id",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "row = self._message_access(db, actor, mid)",
+     "row = db.execute(\"SELECT topic_id,author_id,private_to FROM messages WHERE id=?\", (mid,)).fetchone()\n            if row is None or not whispers.visible(row, actor):\n                raise Refusal(\"FORBIDDEN\", \"No readable source\")"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The wake's claim settles a correction its agent can no longer read before it hands work, and claims nothing for it",
+   "break": [
+    [
+     "aim_next/runner.py",
+     "if self._settle_unreadable_corrections(db, row[\"recipient_id\"]):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit's words over the body limit are a recorded BODY_TOO_LARGE that the same operation returns again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "body = _body(args[\"body\"])",
+     "body = args[\"body\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A quote naming a revision that is not an integer (1.0) is INVALID_QUOTE",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "isinstance(number, bool) or not isinstance(number, int) or",
+     "isinstance(number, bool) or"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An agent that reads the message only as its topic's creator is sent a correction",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "UNION SELECT creator_id FROM topics WHERE id=?1 ",
+     "UNION SELECT creator_id FROM topics WHERE id=?1 AND 0 "
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An agent that reads the message only as its outcome's owner is sent a correction",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?1 ",
+     "SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?1 AND 0 "
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A disabled agent among the readers keeps its correction pending, and is woken for it once enabled",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "agents = [reader for reader in readers if reader != actor and self._actor_kind(db, reader) == \"agent\"]",
+     "agents = [reader for reader in readers if reader != actor and self._actor_kind(db, reader) == \"agent\" and db.execute(\"SELECT enabled FROM actors WHERE id=?\", (reader,)).fetchone()[0]]"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A Save refused BODY_TOO_LARGE says \"Not saved: too long\", keeping the words in the field and on the device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "code === 'BODY_TOO_LARGE' ?",
+     "code === 'BODY_TOO_LARGE!' ?"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit refresh Core answers with a refusal leaves the card as it is and the page going",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (refused(named)) return true;",
+     "if (false) return true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit refresh whose read throws Core's refusal leaves the card as it is and the page going",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "catch (error) { if (refused(error))",
+     "catch (error) { if (false)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The right rail reads again each place that holds an edited message",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (kept.value.messages.some(message => message.id === id))",
+     "if (false)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A whole message read in \"Sent to you by name\" is read again once it is edited",
+   "break": [
+    [
+     "web/attention.mjs",
+     "revisionOf(item.message) > revisionOf(entry.source)",
+     "false"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_attention.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A draft kept on the device and resumed keeps the base it was written on, so a moved message makes its Save a conflict",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "Object.assign(this, copy({ base: held.base, value: held.value",
+     "Object.assign(this, copy({ value: held.value"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Save mine moves the base to the saved words, so the saved words again end the edit unchanged and send nothing",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "body: this.conflict.body ?? this.base.body",
+     "body: this.base.body"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A page told of an edit has the right rail read the edited message's links again",
+   "break": [
+    [
+     "web/app.mjs",
+     "shell.messageEdited(id);",
+     "void id;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit save elsewhere changes the right rail"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A quote made in the Reader names the revision the Reader shows",
+   "break": [
+    [
+     "web/reader.mjs",
+     "revision: revisionOf(source) }",
+     "revision: 1 }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit quote made in the Reader"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The edit mode says \"Not saved: too long\" at every width, the words kept",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "code === 'BODY_TOO_LARGE' ?",
+     "code === 'BODY_TOO_LARGE!' ?"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit save each state"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit of a message the page has not loaded rewrites the line of each loaded reply to it, without a reload",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (!known && !this.quotes(id) && !this.holds(id)) return true;",
+     "if (!known) return true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "older than the loaded page"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A reply's line to a message the page has not loaded is not put back to older words by an answer read before a later edit",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (revisionOf(item) <= (this.quoted.get(item.id) ?? 1)) return false;",
+     "if (revisionOf(item) < 2) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The conversation's own copy of an edited message, and of each reply to it, follows the edit",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (other.reply_to === edited.id && typeof other.reply_to_excerpt === 'string') items.set(id, { ...other, reply_to_excerpt: excerptOf(edited.body) });",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The words check finds a read of messages.body in a column list built in one statement and joined to the table in another",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "substr(\" + words(\"m\") + \",1,1024) AS body",
+     "substr(m.body,1,1024) AS body"
+    ]
+   ],
+   "check": {
+    "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The words check finds a read of messages.body in a column constant joined to the table where it is used",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "ASK_COLUMNS = \"m.id,",
+     "ASK_COLUMNS = \"m.id,m.body,"
+    ]
+   ],
+   "check": {
+    "python": "test_message_words.py"
    }
   },
   {

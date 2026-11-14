@@ -789,6 +789,8 @@ class WhisperCLICase(verbs.AgentVerbCase):
 # Every view, and how a whisper is kept from anyone outside it (spec §6). A new
 # view is classified here before it ships; until then this audit fails.
 VIEW_PATHS = {
+    "assessment": "request/report metadata scoped by readable topic; all cited messages validated public in that topic",
+    "assessments": "paged readable-topic or own-assessor metadata; private citations refused before recording",
     "topic_messages": "VISIBLE in each of its queries; a hidden parent's excerpt is blanked",
     "topic_images": "VISIBLE in its window over each topic's newest messages",
     "source": "_message_access applies visible(); quotes are redacted",
@@ -832,7 +834,10 @@ VIEW_PATHS = {
 MESSAGE_READS = {
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
-    "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations", 21),
+    "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
+                                 "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE", 22),
+    "aim_next/message_edit.py": ("one message's words, a revision of them or every revision, and its attachments, each read for a message "
+                                 "the caller reached through _message_access", 4),
     "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
                                           "a pipeline item's message sources, which _source_rows read through _message_access, the message a person's "
                                           "whisper replies to, to see that it goes to that message's author, and an answer take's reply, "
