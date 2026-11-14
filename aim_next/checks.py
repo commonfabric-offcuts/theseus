@@ -27,7 +27,7 @@ from .delivery import _now_ms
 from . import check_reading, outcome_rules
 from .outcome_asks import release_held
 from .whispers import private_source_refused
-from .message_edit import words
+from .message_edit import words, withheld
 from .work import work_by_topic
 
 
@@ -285,7 +285,7 @@ class Checks:
 
     def _check_asks(self, db, workspace):
         """{check_id: ask} open asks to the owner whose subject is one of this outcome's checks."""
-        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq,substr(" + words("m") + ",1,280) AS excerpt,"
+        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq," + words("m", chars=280) + " AS excerpt,"
                           "substr(CAST(t.title AS BLOB),1,257) AS title_prefix FROM topic_waiting q "
                           "JOIN message_subjects s ON s.message_id=q.ask_message_id AND s.kind='check' "
                           "JOIN messages m ON m.id=q.ask_message_id JOIN topics t ON t.id=q.topic_id "
@@ -294,7 +294,8 @@ class Checks:
         for row in rows:
             title, _ = _prefix(row["title_prefix"], 256)
             asks.setdefault(row["ref"], {"message_id": row["ask_message_id"], "seq": row["seq"], "topic_id": row["topic_id"],
-                                         "topic_title": title, "by": row["author_id"], "since_ms": row["sent_ms"], "excerpt": row["excerpt"]})
+                                         "topic_title": title, "by": row["author_id"], "since_ms": row["sent_ms"], "excerpt": row["excerpt"],
+                                         "withheld": withheld(row["ask_message_id"])})
         return asks
 
     def _check_statuses(self, db, actor, workspace):
@@ -944,12 +945,12 @@ class Checks:
             fix_topics = sorted({item["fix_topic"]["id"] for item in worse if item.get("fix_topic")})
             if fix_topics:
                 # The whole outcome reads the account, so it is a message on the record, never a whisper.
-                account = db.execute("SELECT m.id,m.topic_id,m.author_id,m.sent_ms,substr(" + words("m") + ",1,400) AS excerpt FROM message_subjects s "
+                account = db.execute("SELECT m.id,m.topic_id,m.author_id,m.sent_ms," + words("m", chars=400) + " AS excerpt FROM message_subjects s "
                                      "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.kind='check' AND m.private_to IS NULL AND m.topic_id IN "
                                      "(SELECT value FROM json_each(?)) ORDER BY m.seq DESC LIMIT 1", (workspace["id"], _json(fix_topics))).fetchone()
                 if account is not None:
                     candidate["account"] = {"message_id": account["id"], "topic_id": account["topic_id"], "by": account["author_id"],
-                                            "ms": account["sent_ms"], "excerpt": account["excerpt"]}
+                                            "ms": account["sent_ms"], "excerpt": account["excerpt"], "withheld": withheld(account["id"])}
             if piece_id is not None:
                 returned = []
                 # An item that left because a record says it shipped did not go back to building.

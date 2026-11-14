@@ -12,7 +12,7 @@ from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups
 from .stacks import act_fields
-from .message_edit import current_words, edited, quoted_revision, revision, words
+from .message_edit import current_words, edited, is_held, mark, plain, quoted_revision, reading, revision, words, withheld
 
 
 CONVERSATION_SCHEMA = [
@@ -490,18 +490,47 @@ class Conversation:
             return self._memory_source(db, actor, ref)
         if not isinstance(ref, dict) or ref.get("kind") != "message":
             raise Refusal("INVALID_SOURCE", "Unsupported source reference")
+        # Reach comes first, so a reader who may not read it is refused FORBIDDEN, held or not.
         identity = self._message_access(db, actor, ref.get("id"))
         row = db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.attachments,m.quotes,m.addressees,m.reply_to,m.exchange_id,m.sent_ms,m.intent,"
                          "m.private_to,m.go_ahead,a.kind AS author_kind FROM messages m JOIN actors a ON a.id=m.author_id WHERE m.id=?", (identity["id"],)).fetchone()
+        # A message its author has open in Edit is held from agents: its words, attachments and quotes are left out
+        # (docs/message-edit.md). The hold is decided here, before any words are read, so commands and open_media,
+        # which run outside a view, are held too.
+        if reading.get() is not None:
+            held = withheld(row["id"])
+        else:
+            from .delivery import _now_ms
+            held = self._actor(db, actor)["kind"] == "agent" and is_held(db, row["id"], _now_ms())
         # The latest words, their revision (1 when never edited) and when they were edited (message_edit.py).
         body, current, edited_ms = current_words(db, row["id"])
+        quotes = [] if held else self._source_quotes(db, actor, json.loads(row["quotes"]))
         return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
-                "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": body, "attachments": json.loads(row["attachments"]),
-                "quotes": whispers.redact_quotes(db, actor, json.loads(row["quotes"])), "addressees": json.loads(row["addressees"]),
+                "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": "" if held else body,
+                "attachments": [] if held else json.loads(row["attachments"]), "withheld": held,
+                "quotes": quotes, "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
                 "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms,
                 "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+
+    def _source_quotes(self, db, actor, stored):
+        """A message's stored quotes as the actor reads them (whispers.redact_quotes), each carrying withheld. A quote of a
+        message is marked as that message's words at the revision it names (1 when it names none), from its source as
+        stored, before redaction, so handing it records the quoted message; a quote of a held message comes with no
+        excerpt."""
+        quotes = []
+        for kept, quote in zip(stored, whispers.redact_quotes(db, actor, stored)):
+            source = kept.get("source") if isinstance(kept, dict) else None
+            if not isinstance(quote, dict) or not isinstance(source, dict) or source.get("kind") != "message":
+                quotes.append(dict(quote, withheld=False) if isinstance(quote, dict) else quote)
+            elif withheld(source.get("id")):
+                quotes.append(dict(quote, excerpt="", withheld=True))
+            else:
+                number = source.get("revision")
+                number = number if isinstance(number, int) and not isinstance(number, bool) and number > 0 else 1
+                quotes.append(dict(quote, excerpt=mark(source.get("id"), number, quote.get("excerpt")), withheld=False))
+        return quotes
 
     def _view_source(self, db, actor, args):
         return self._source(db, actor, args.get("source_ref", args))
@@ -543,9 +572,11 @@ class Conversation:
         # every message says whether a person or an agent wrote it, and what it carries.
         # Every message reads as its latest words, with their revision and when they were edited, and so does the
         # beginning of the message a reply answers (message_edit.py).
-        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(" + words("m") + ",1,1024) AS body,length(CAST(" + words("m") + " AS BLOB)) AS body_bytes,"
+        # The body is read plain, cut and measured here, and only the cut is marked as handed (message_edit.py); the
+        # beginning of the message a reply answers is cut and marked by the helper.
+        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind," + words("m", plain=True) + " AS body,"
                    + revision("m") + " AS revision," + edited("m") + " AS edited_ms,m.reply_to,m.exchange_id,m.addressees,m.attachments,m.sent_ms,m.intent,m.private_to,"
-                   "p.author_id AS reply_to_author,substr(" + words("p") + ",1,120) AS reply_to_excerpt,p.private_to AS reply_to_private")
+                   "p.author_id AS reply_to_author," + words("p", chars=120) + " AS reply_to_excerpt,p.private_to AS reply_to_private")
         parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
         # Every form reads only what the reader may see (whispers.VISIBLE), so a
         # page never stalls on, counts or folds a whisper between others.
@@ -575,16 +606,24 @@ class Conversation:
             hidden = item.pop("reply_to_private") not in (None, actor) and item["reply_to_author"] != actor
             if hidden:
                 item["reply_to_author"] = item["reply_to_excerpt"] = None
+            # A message its author has open in Edit is held from agents: its item stays, without its words or images,
+            # and a reply to it says so in place of its line (docs/message-edit.md).
+            item["withheld"] = withheld(item["id"])
+            item["reply_to_withheld"] = not hidden and item["reply_to"] is not None and withheld(item["reply_to"])
+            if item["reply_to_withheld"]:
+                item["reply_to_excerpt"] = None
             item.update(whispers.whisper_fields(row))
             if not item["whisper"]:
                 item.pop("private_to")
             elif item["author_id"] == actor:
                 item["no_answer"] = whispers.no_answer(db, item)
             item["addressees"] = json.loads(item["addressees"])
-            item["attachments"] = json.loads(item["attachments"])
-            item["body"] = _preview(item["body"])
-            item["preview"] = len(item["body"].encode("utf-8")) < item.pop("body_bytes")
-            encoded = len(_json(item).encode("utf-8")) + 1
+            item["attachments"] = [] if item["withheld"] else json.loads(item["attachments"])
+            whole = item["body"]
+            cut = _preview(whole)
+            item["preview"] = len(cut.encode("utf-8")) < len(whole.encode("utf-8"))
+            item["body"] = mark(item["id"], item["revision"], cut)
+            encoded = len(_json(plain(item)).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
                 break
             items.append(item)
@@ -637,6 +676,9 @@ class Conversation:
                               "WHERE m.attachments<>'[]' ORDER BY m.seq DESC",
                               {"topic": place["id"], "actor": actor, "window": IMAGE_WINDOW}).fetchall()
             for row in rows:
+                # A held message's images are left out for agents, as its words are (docs/message-edit.md).
+                if withheld(row["id"]):
+                    continue
                 for attachment in json.loads(row["attachments"]):
                     if attachment.get("inline") is True and attachment.get("content_type") in IMAGE_TYPES:
                         found.append((row["seq"], {"source_ref": {"kind": "message", "id": row["id"]}, "topic_id": row["topic_id"],

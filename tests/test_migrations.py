@@ -113,6 +113,10 @@ SCHEMA_BEFORE_DRAFT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % B
 # step changes only these two and the fixture's file name.
 BEFORE_EDIT, EDIT_VERSION = DRAFT_VERSION, str(int(DRAFT_VERSION) + 1)
 SCHEMA_BEFORE_EDIT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_EDIT)).read_text().splitlines()
+# The step that keeps each message's edit session, what agents were handed and the horizon (item 452) follows the
+# edit's, so the layout before it is version 40's, read from a fresh instance of release 72's code (ee7e51e6).
+BEFORE_SESSION, SESSION_VERSION = EDIT_VERSION, str(int(EDIT_VERSION) + 1)
+SCHEMA_BEFORE_SESSION = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_SESSION)).read_text().splitlines()
 DELIVERIES_BEFORE_EDIT = ("CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), "
                           "recipient_id TEXT NOT NULL REFERENCES actors(id), group_id INTEGER NOT NULL REFERENCES delivery_groups(id), "
                           "state TEXT NOT NULL DEFAULT 'pending', topic_id TEXT, UNIQUE(message_id,recipient_id))")
@@ -140,6 +144,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The session's version keeps each message's edit session, what each agent was handed of a person's message,
+        # and the horizon: before it, none of them exists.
+        db.execute("DROP TABLE message_edit_sessions")
+        db.execute("DROP TABLE message_exposures")
+        db.execute("DROP TABLE message_edit_horizon")
+        if version == BEFORE_SESSION:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The edit's version keeps each message's later revisions and each delivery's revision: before it, a
         # message is delivered to someone once.
         db.execute("DROP TABLE message_revisions")
@@ -1926,7 +1938,8 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_STACKS, SCHEMA_BEFORE_STACKS),
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
                      (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37),
-                     (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT))
+                     (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
+                     (BEFORE_SESSION, SCHEMA_BEFORE_SESSION))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3506,20 +3519,23 @@ class EditStepCase(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
-    def test_the_step_follows_the_drafts_and_the_head_is_its_version(self):
-        self.assertIn((BEFORE_EDIT, EDIT_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, EDIT_VERSION)
+    def test_the_step_follows_the_drafts_and_comes_just_before_the_sessions(self):
+        steps = [step[:2] for step in migrations.STEPS]
+        self.assertIn((BEFORE_EDIT, EDIT_VERSION), steps)
+        self.assertEqual(steps[steps.index((BEFORE_EDIT, EDIT_VERSION)) + 1], (EDIT_VERSION, SESSION_VERSION),
+                         "39->40 is the step before 40->41")
 
     def test_upgrade_keeps_every_delivery_its_seq_and_reasons_and_matches_a_fresh_instance(self):
         message = self.delivered()
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_EDIT,
-                                          "schema_version": EDIT_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         after = everything(self.path)
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr),
                          "every delivery keeps its seq and id, at revision 1")
-        after.pop("message_revisions")
+        for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon"):
+            after.pop(table)
         self.assertEqual({k: v for k, v in after.items() if k != "metadata"}, {k: v for k, v in stored.items() if k != "metadata"},
                          "every reason and sqlite_sequence's place for the deliveries are kept")
         with sqlite3.connect(str(self.path)) as db, self.assertRaisesRegex(sqlite3.IntegrityError, "a delivery names its topic"):
@@ -3552,8 +3568,117 @@ class EditStepCase(MigrationCase):
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], EDIT_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
+
+class SessionStepCase(MigrationCase):
+    """An instance at the edit's version (40) holding a person's messages delivered to agents, an edited one and a
+    correction: the session's step (40->41) keeps every row, sets the horizon to the last message at the upgrade,
+    matches a fresh instance (and names no SQL function in the schema), and steps back only while no edit session is
+    open and no delivery is held (item 452, docs/message-edit.md)."""
+
+    VERSION, FIXTURE = BEFORE_SESSION, SCHEMA_BEFORE_SESSION
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_SESSION)
+
+    def first(self):
+        return self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
+
+    def session(self, verb, message, holder="h-laptop", **args):
+        receipt = self.command("message.edit_" + verb, dict({"holder": holder}, **args), {"message_id": message}, args.pop("expected", None))
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_follows_the_edits_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_SESSION, SESSION_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, SESSION_VERSION)
+
+    def test_upgrade_keeps_every_row_sets_the_horizon_and_matches_a_fresh_instance(self):
+        stored = everything(self.path)
+        top = self.sql("SELECT max(seq) FROM messages")[0][0]
+        self.assertGreater(top, 0)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_SESSION,
+                                          "schema_version": SESSION_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        self.assertFalse([sql for sql in schema(self.path) if "marked_words" in sql], "no schema object names the SQL function")
+        after = everything(self.path)
+        self.assertEqual(after.pop("message_edit_horizon"), [(top,)], "the horizon is the last message at the upgrade")
+        self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures")), ([], []))
+        self.assertEqual(after, stored, "every row of every table is kept")
+        # A fresh instance has horizon 0.
+        fresh = Path(self.temp.name) / "fresh"
+        with sqlite3.connect(str(fresh / "fresh.sqlite3")) as db:
+            self.assertEqual(db.execute("SELECT seq FROM message_edit_horizon").fetchall(), [(0,)])
+        # Each schema object and trigger refuses what it should.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO message_exposures VALUES ('agent-a',?,2)", (self.first(),))
+            for statement, text in (("UPDATE message_exposures SET revision=1", "an exposure only grows"),
+                                    ("DELETE FROM message_exposures", "an exposure is kept")):
+                with self.subTest(statement=statement), self.assertRaisesRegex(sqlite3.IntegrityError, text):
+                    db.execute(statement)
+            db.execute("UPDATE message_exposures SET revision=3")
+            self.assertEqual(db.execute("SELECT revision FROM message_exposures").fetchall(), [(3,)], "it grows")
+
+    def test_step_back_is_refused_while_a_session_is_open_held_or_lapsed_or_a_delivery_is_held(self):
+        message = self.first()
+        stored = everything(self.path)
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.session("open", message)
+        self.assertTrue(self.sql("SELECT count(*) FROM deliveries WHERE state='held'")[0][0], "agent-a's delivery is held")
+        for state, statement in (("held", None), ("lapsed", "UPDATE message_edit_sessions SET renewed_ms=renewed_ms-1000000"),
+                                 ("lapsed and released", "UPDATE message_edit_sessions SET released_ms=renewed_ms")):
+            with self.subTest(state=state):
+                if statement:
+                    self.sql(statement)
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    self.step_back()
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(self.unchanged(), before)
+                self.assertEqual(self.metadata()["schema_version"], SESSION_VERSION)
+        # The open session is ended by its holder (a released lapse is not holding, so nothing is moved by the close).
+        self.sql("UPDATE message_edit_sessions SET released_ms=NULL,renewed_ms=?", (store_module._delivery._now_ms(),))
+        self.assertEqual(self.session("close", message)["closed"], True)
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='held'"), [(0,)], "with every session ended, no row is held")
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_SESSION))
+        back = everything(self.path)
+        # The session commands write their operations and changes, and the hold and its release move the schedule
+        # (its generation and when it is due); every other row comes back as it was, every delivery the same row.
+        written = ("changes", "operations", "recipient_schedule", "sqlite_sequence")
+        self.assertEqual({k: v for k, v in back.items() if k not in written}, {k: v for k, v in stored.items() if k not in written},
+                         "every row the session commands did not write comes back as it was")
+        self.assertEqual([row for row in back["sqlite_sequence"] if row[0] != "changes"], [row for row in stored["sqlite_sequence"] if row[0] != "changes"])
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_a_saved_or_closed_session_does_not_hold_the_step_back_and_a_held_row_alone_does(self):
+        message = self.first()
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.session("open", message)
+        self.session("close", message)
+        self.assertEqual(self.sql("SELECT state FROM message_edit_sessions"), [("closed",)])
+        # A held delivery with no open session is outside the invariant; the step back still refuses it.
+        self.sql("UPDATE deliveries SET state='held' WHERE id=(SELECT id FROM deliveries WHERE recipient_id='agent-a' ORDER BY seq LIMIT 1)")
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.sql("UPDATE deliveries SET state='pending' WHERE state='held'")
+        self.sql("UPDATE message_edit_sessions SET state='saved'")
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_SESSION))
+
+    def test_the_horizon_is_set_again_by_the_next_step_up(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        later = self.command("message.post", {"body": "After the first upgrade"}, {"topic_id": "t1"})
+        self.assertEqual(later["status"], "committed", later)
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT seq FROM message_edit_horizon"), self.sql("SELECT max(seq) FROM messages"),
+                         "every message before the second upgrade counts as handed: over-correcting, never missing one")
 
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
@@ -3615,6 +3740,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(DraftStepCase, _name, None)
     if _name.startswith("test_") and _name not in EditStepCase.__dict__:
         setattr(EditStepCase, _name, None)
+    if _name.startswith("test_") and _name not in SessionStepCase.__dict__:
+        setattr(SessionStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

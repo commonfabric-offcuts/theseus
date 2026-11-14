@@ -30,8 +30,8 @@ from .delivery import _now_ms
 from . import outcome_rules, pipeline_state
 from .work import work_by_topic
 from .standing_conversation import partial
-from .whispers import private_source_refused
-from .message_edit import words as message_words
+from .whispers import actor_kind, private_source_refused
+from .message_edit import held_refusal, is_held, words as message_words, withheld
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -899,6 +899,14 @@ class Pipeline:
             raise Refusal("FORBIDDEN", "You can't read a message %s, so it is not a word to move on. Nothing moved." % message_id)
         private_source_refused(db, actor, row["id"], "%s is an agent's whisper, and it stays private: it is never the word a move is "
                                                      "made on. Nothing moved." % row["id"])
+        if actor_kind(db, actor) == "agent":
+            # An agent never moves on a word its author has open in Edit, nor on one that replies to it (docs/message-edit.md).
+            from . import delivery
+            now = delivery._now_ms()
+            parent = db.execute("SELECT reply_to FROM messages WHERE id=?", (row["id"],)).fetchone()[0]
+            for word in (row["id"], parent):
+                if word is not None and is_held(db, word, now):
+                    raise held_refusal(word)
         return row
 
     def _go_ahead(self, db, pipeline, workspace, number, section, placed, message, what="this item"):
@@ -907,7 +915,7 @@ class Pipeline:
         message that proposes moving the item to this section."""
         owner = workspace["owner_id"]
         # The word is read as it stands when the move is made: its latest words (message_edit.py).
-        row = db.execute("SELECT m.author_id,m.sent_ms," + message_words("m") + " AS body,m.reply_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id "
+        row = db.execute("SELECT m.author_id,m.sent_ms," + message_words("m", plain=True) + " AS body,m.reply_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id "
                          "WHERE m.id=?", (message["id"],)).fetchone()
         words = dict(SECTION_WORDS, **_loads(pipeline["section_words"], {}), dropped="Dropped")
         if row["workspace_id"] != workspace["id"]:
@@ -936,7 +944,7 @@ class Pipeline:
         """Whether the message a go-ahead replies to proposed this move: it names the item and the section it goes to."""
         if message_id is None:
             return False
-        row = db.execute("SELECT m.id," + message_words("m") + " AS body FROM messages m WHERE m.id=? AND m.private_to IS NULL", (message_id,)).fetchone()
+        row = db.execute("SELECT m.id," + message_words("m", plain=True) + " AS body FROM messages m WHERE m.id=? AND m.private_to IS NULL", (message_id,)).fetchone()
         if row is None or not self._names_item(db, workspace_id, row["id"], row["body"], number):
             return False
         names = {section, word.lower()} | {"dropped": {"drop"}, "candidates": {"candidate"}}.get(section, set())
@@ -1183,7 +1191,7 @@ class Pipeline:
 
     def _asks_about(self, db, actor, workspace_id):
         """{number: [ask]} open asks to the reader whose subject is an item of this outcome."""
-        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq,substr(" + message_words("m") + ",1,240) AS excerpt,"
+        rows = db.execute("SELECT s.ref,q.topic_id,q.ask_message_id,m.author_id,m.sent_ms,m.seq," + message_words("m", chars=240) + " AS excerpt,"
                           "substr(CAST(t.title AS BLOB),1,257) AS title_prefix FROM topic_waiting q "
                           "JOIN message_subjects s ON s.message_id=q.ask_message_id AND s.kind='item' "
                           "JOIN messages m ON m.id=q.ask_message_id JOIN topics t ON t.id=q.topic_id "
@@ -1193,7 +1201,7 @@ class Pipeline:
             title, _ = _prefix(row["title_prefix"], 256)
             asks.setdefault(int(row["ref"]), []).append({
                 "message_id": row["ask_message_id"], "seq": row["seq"], "topic_id": row["topic_id"], "topic_title": title,
-                "by": row["author_id"], "since_ms": row["sent_ms"], "excerpt": row["excerpt"]})
+                "by": row["author_id"], "since_ms": row["sent_ms"], "excerpt": row["excerpt"], "withheld": withheld(row["ask_message_id"])})
         return asks
 
     def _typical(self, db, workspace_id, stage, size, round_number, cache):
