@@ -12761,6 +12761,93 @@
    "check": {
     "node": "tests/ui_message_edit.test.mjs"
    }
+  },
+  {
+   "item": 452,
+   "act": "A close slow to answer turns Save and Cancel off at once",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "this.over = true; this.cancelDraft(); this.notify();",
+     "this.over = true; this.cancelDraft();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Words typed while a lost draft save was out go as the next draft save once it is resent",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (this.value !== this.kept && this.live && !this.timer) this.scheduleDraft();",
+     "void this.timer;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save's own edit_session change is never taken for another device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      if (integer(revision) && revision > (this.sessionRevision ?? 0)) this.sessionRevision = revision;\n      this.kept = sent.args.body;",
+     "      this.kept = sent.args.body;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The edit mode paints only once Core opened the edit session",
+   "break": [
+    [
+     "web/app.mjs",
+     "try { await writing.load(); await writing.start(); }",
+     "try { await writing.load(); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit hold: Edit sends edit_open"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A page told its edit session moved learns another device took the edit",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true;",
+     "return true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit hold Edit here"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A session opened after the Reader moved on is closed again, once",
+   "break": [
+    [
+     "web/app.mjs",
+     "{ messageEdit = null; await writing.abandon(); writing.close(); return; }",
+     "{ messageEdit = null; writing.close(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit timing the Reader closed while edit_open is out"
+   }
   }
  ]
 }

@@ -677,7 +677,7 @@ test('a close slow to answer: Save and Cancel go off at once, nothing more is se
   const doc = withDocument(t);
   const { w, core } = await opened();
   const view = new MessageEdit({ host: doc.createElement('div'), writing: w, doc });
-  w.edit('Half a thought');
+  w.edit('Half a thought'); await settle();
   assert.equal(view.cancel.disabled, false); assert.equal(view.save.disabled, false);
   const held = heldBack(core);
   core.nextOf['message.edit_close'] = held.gate;
