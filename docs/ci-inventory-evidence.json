@@ -176,5 +176,34 @@
       "cases": 120
     }
   },
-  "admissions": 0
+  "admissions": 0,
+  "unit_logs": {
+    "python-units": {
+      "archive": "release-72/focused3-ee7e51e.python/python-units.log",
+      "sha256": "321e1e925a88106dc3699286bc9bbfb0f5f6f4d54b3c29d802272dc6c78a98f9",
+      "executed_cases": 2309,
+      "summary_sha256": "efa8905d132d18d368bcefd562497f3306937e9acecd66d47ef802fa32d8a935",
+      "source_commit": "ee7e51e6d48fd6022c75317dcca4356d847e80f2",
+      "tree_unchanged": true
+    },
+    "node-units": {
+      "archive": "release-72/focused3-ee7e51e/node-units.log",
+      "sha256": "1df79a464537f00e6ac8987367f14248fbb4f8584eda930fad0747383ab84de6",
+      "executed_cases": 1943
+    },
+    "deploy-refusals": {
+      "archive": "release-72/focused3-ee7e51e/deploy-refusals.log",
+      "sha256": "e9d1b8524622d5d345594ac4be6edc7233b09aab8d52c965213cb95e7e3ff05c",
+      "executed_cases": 35
+    }
+  },
+  "replay_plan": {
+    "source": "tests/fixtures/replay/wake-2026-11-05.json",
+    "commit": "ee7e51e6d48fd6022c75317dcca4356d847e80f2",
+    "routed": [
+      "aim-core",
+      "aim-spec",
+      "aim-ux"
+    ]
+  }
 }
