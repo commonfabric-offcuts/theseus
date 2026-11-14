@@ -72297,7 +72297,7 @@
       }
     },
     {
-      "review": "PENDING exact-plan auditor approval; source e77c95e2; generation ruling m-d4fa58863c0a42a7b7345fdd7bb91f8c",
+      "review": "Theseus exact-plan and policy approval m-a83d086675b3486099fbf781defd0fa4 (#4148), reviewed source e77c95e2 and policy 3d370295; generation ruling m-d4fa58863c0a42a7b7345fdd7bb91f8c",
       "retired_sources": [],
       "plan": {
         "version": 1,
