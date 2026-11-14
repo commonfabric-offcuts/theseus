@@ -11,19 +11,20 @@
 # (docs/tools.md), published as the release-check artifact.
 #
 # A red shard is a red check. Cases that fail on live today fail here too until
-# they are fixed or recorded as expected; this workflow does not hide them. The
-# validate job, once the base carries tools/ci_known_reds.py and its reviewed
-# baseline, is the one verdict that tells an expected failure from a new one.
+# they are fixed or recorded as expected; this workflow does not hide them.
 #
-# A pull request runs under pull_request_target, so this file, the validator and
-# the baseline are read from the base branch and the candidate can edit none of
-# them; under pull_request the workflow file would come from the merge commit,
-# and a candidate could rewrite the verdict it is judged by. The candidate's own
-# code still runs here, in the check jobs, so the token is read-only.
+# This workflow is the producer, and nothing more: it runs the candidate's own
+# code, from the merge commit's copy of this file, and publishes the evidence.
+# It cannot be trusted with the verdict, since a pull request can edit it. The
+# verdict comes from the Verdict workflow on the default branch, which runs
+# when this one completes, reads these artifacts as untrusted data, checks them
+# against GitHub's record of this run, and runs the validator and the baseline
+# from the pull request's base. The candidate's code runs here, so the token is
+# read-only.
 name: Checks
 
 on:
-  pull_request_target:
+  pull_request:
   push:
     branches:
       - 'release/**'
@@ -34,13 +35,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: checks-${{ github.event.pull_request.number || github.ref }}
+  group: checks-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # The commit under test: a pull request's merge commit, which GitHub keeps at this ref; on a push,
-  # empty, so checkout takes the pushed commit. Under pull_request_target github.sha is the base.
-  CANDIDATE_REF: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || '' }}
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
@@ -56,9 +54,6 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The candidate's own step list, so a mode it adds is run; the validator holds it to the base's required list.
-          ref: ${{ env.CANDIDATE_REF }}
       - id: plan
         shell: bash
         run: |
@@ -99,7 +94,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.CANDIDATE_REF }}
           # The navigation step's shipped-editor case reads an older commit with git ls-tree, so the whole history.
           fetch-depth: 0
       - uses: actions/setup-node@v4
@@ -164,12 +158,18 @@ jobs:
                   return None
           receipt = {
               "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
-                      "job": env.get("GITHUB_JOB"), "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY")},
+                      "job": env.get("GITHUB_JOB"), "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
+                      # The commit this workflow file was read from: the proof of whose workflow judged the run.
+                      "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
               "shard": {"name": env.get("SHARD_NAME"), "steps": (env.get("SHARD_STEPS") or "").split(",")},
               "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
               "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
-              # The commit the check ran, read from the checkout: GITHUB_SHA is the base under pull_request_target.
-              "merge": {"sha": out("git", "rev-parse", "HEAD"), "tree": out("git", "rev-parse", "HEAD^{tree}")},
+              # The commit the check ran, read from the checkout. On a pull request it is the merge commit: its first
+              # parent is the base GitHub merged onto, which can be newer than the event's base, and its second is the
+              # pull request's head; on a push it has one parent and the second reads as none.
+              "merge": {"sha": out("git", "rev-parse", "HEAD"), "tree": out("git", "rev-parse", "HEAD^{tree}"),
+                        "first_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^1") or None,
+                        "second_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^2") or None},
               # The summary this receipt vouches for, so a summary swapped in beside a genuine receipt does not count.
               "summary_sha256": digest(os.path.join(os.path.dirname(sys.argv[1]), "summary.json")),
               "profile": {"runner_os": env.get("RUNNER_OS"), "runner_arch": env.get("RUNNER_ARCH"), "image_os": env.get("ImageOS"),
@@ -200,8 +200,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.CANDIDATE_REF }}
       - uses: actions/download-artifact@v4
         with:
           pattern: check-*
@@ -219,6 +217,8 @@ jobs:
           mkdir -p release-check
           export MERGE_SHA="$(git rev-parse HEAD)"
           export MERGE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          export MERGE_FIRST_PARENT="$(git rev-parse --verify -q 'HEAD^1' || true)"
+          export MERGE_SECOND_PARENT="$(git rev-parse --verify -q 'HEAD^2' || true)"
           python3 - shards release-check/summary.json <<'PY'
           import glob, hashlib, json, os, sys
           shards_dir, out = sys.argv[1], sys.argv[2]
@@ -276,10 +276,12 @@ jobs:
           provenance = {
               "profiles": profiles if len({json.dumps(x, sort_keys=True) for x in profiles}) > 1 else profiles[:1],
               "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
-                      "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY")},
+                      "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
+                      "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
               "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
               "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
-              "merge": {"sha": env.get("MERGE_SHA"), "tree": env.get("MERGE_TREE")},
+              "merge": {"sha": env.get("MERGE_SHA"), "tree": env.get("MERGE_TREE"),
+                        "first_parent": env.get("MERGE_FIRST_PARENT") or None, "second_parent": env.get("MERGE_SECOND_PARENT") or None},
               "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
               "required": required,
               "plan": json.loads(env.get("PLAN_SHARDS") or "[]"),
@@ -298,61 +300,4 @@ jobs:
         with:
           name: release-check
           path: release-check
-          if-no-files-found: ignore
-
-  validate:
-    name: the verdict against the reviewed baseline
-    needs: [plan, check, combine]
-    # combine exits red on a raw expected failure, which is the case this job exists to classify.
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: The base, at the event's exact commit, with its history
-        uses: actions/checkout@v4
-        with:
-          # The policy, the validator and the baseline come from here, never from the candidate; the baseline names
-          # the commit its sources were read at, which the validator reads from this history.
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
-          path: base
-          fetch-depth: 0
-      - name: The tested commit, with its history
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.CANDIDATE_REF }}
-          path: candidate
-          fetch-depth: 0
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: check-*
-          path: shards
-      - uses: actions/download-artifact@v4
-        # combine writes nothing when no shard ran; the validator then reads the absence as red.
-        continue-on-error: true
-        with:
-          name: release-check
-          path: release-check
-      - name: Classify the run with the base's own validator
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -f base/tools/ci_known_reds.py ] || [ ! -f base/.github/check-baseline.json ]; then
-            # Not a validated run: the verdict says so explicitly, so a green shell exit here cannot read as one.
-            echo "This base carries no validator or no baseline yet, so there is nothing to classify; the shards' own verdicts stand."
-            printf '{"passed": false, "refused": "no validator or baseline on this base", "base": "%s"}\n' "$(git -C base rev-parse HEAD)" > validation.json
-            exit 0
-          fi
-          python3 base/tools/ci_known_reds.py \
-            --summary release-check/summary.json \
-            --provenance release-check/provenance.json \
-            --shards shards \
-            --baseline base/.github/check-baseline.json \
-            --base-checkout base \
-            --candidate-checkout candidate \
-            --out validation.json
-      - name: Keep the verdict
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: validation
-          path: validation.json
           if-no-files-found: ignore
