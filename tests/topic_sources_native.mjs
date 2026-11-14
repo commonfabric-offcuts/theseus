@@ -40,6 +40,7 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
   const address = p => quiet(p, `new URLSearchParams(location.search).get('topic')`);
   const enterHeld = async p => {
     const from = await address(p), before = p.held.length;
+    assert.ok(from, 'the page shows a topic before Return');
     p.intercept(payload => payload?.kind === 'opening.publish');
     const publish = await enter(p);
     const entry = await until(() => p.held.slice(before).find(held => held.payload?.kind === 'opening.publish'), 'the publish reply, held');
@@ -47,8 +48,11 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     const topic = (await p.response(entry.event)).result.topic.id;
     assert.ok(topic && topic !== from, 'the reply names a new topic');
     assert.equal(await address(p), from, 'while the reply is held, the page still shows the topic it was on');
+    // The wait is named once, so the condition shown not to take the starting topic is the one waited on.
+    const opened = () => quiet(p, `document.body.dataset.ready==='true' && new URLSearchParams(location.search).get('topic')===${JSON.stringify(topic)}`);
+    assert.equal(await opened(), false, 'while the reply is held, the starting topic does not satisfy the wait');
     await p.release(entry);
-    await until(() => quiet(p, `document.body.dataset.ready==='true' && new URLSearchParams(location.search).get('topic')===${JSON.stringify(topic)}`), 'the new topic opens');
+    await until(opened, 'the new topic opens');
     return { publish, topic };
   };
 
