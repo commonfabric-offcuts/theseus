@@ -469,23 +469,55 @@ jobs:
               print("producer run %s attempt %s is newer evidence for %s on %s; this decision for %s is not published" % (
                   newer[0]["id"], newer[0].get("run_attempt"), head, base or "no approved base", key))
               raise SystemExit(0)
-          # A check run already standing for this key is updated rather than doubled, but only one this controller
-          # run created: its details link is this run's own, the same across the run's attempts, so a publish-only
-          # re-run finds its predecessor and anything else is somebody else's and gets no write from here. A refused
-          # update falls back to a check run of our own.
-          import urllib.parse
-          existing = gh("repos/%s/commits/%s/check-runs?check_name=%s&per_page=100" % (
-              env["GITHUB_REPOSITORY"], head, urllib.parse.quote(body["name"], safe=""))).get("check_runs", [])
-          same = [c for c in existing if re.fullmatch(r"\d+-\d+", c.get("external_id") or "") and c.get("external_id") == key
-                  and (c.get("app") or {}).get("slug") == "github-actions" and c.get("details_url") == controller_url]
+          # The check run to update, if any, comes from this controller run's own record of what it published, kept
+          # as an artifact of this run, never from check-run data, whose details link and external id are whatever
+          # their creator wrote. A later attempt of this run finds the newest record, verifies that it binds this head,
+          # name and key, and that the check run GitHub returns for its id still carries them, and updates that id;
+          # with no record, or a binding that does not hold, it creates a fresh check run and says so.
+          import io, zipfile
+          prefix = "published-%s-c" % key
+          artifacts = gh("repos/%s/actions/runs/%s/artifacts?per_page=100" % (env["GITHUB_REPOSITORY"], env["GITHUB_RUN_ID"])).get("artifacts", [])
+          records = sorted([a for a in artifacts if str(a.get("name", "")).startswith(prefix) and not a.get("expired")], key=lambda a: int(a["id"]))
+          previous = None
+          if records:
+              try:
+                  archive = subprocess.run(["gh", "api", "repos/%s/actions/artifacts/%s/zip" % (env["GITHUB_REPOSITORY"], records[-1]["id"])],
+                                           capture_output=True, check=True).stdout
+                  previous = json.loads(zipfile.ZipFile(io.BytesIO(archive)).read("published.json"))
+              except (subprocess.CalledProcessError, zipfile.BadZipFile, KeyError, ValueError) as error:
+                  print("the earlier publication record could not be read: %s" % str(error)[:200])
+          target = None
+          if isinstance(previous, dict):
+              bound = (previous.get("head_sha") == head and previous.get("name") == name and previous.get("external_id") == key
+                       and str(previous.get("controller_run")) == env["GITHUB_RUN_ID"] and isinstance(previous.get("check_run_id"), int))
+              if bound:
+                  try:
+                      standing = gh("repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], previous["check_run_id"]))
+                      if standing.get("head_sha") == head and standing.get("name") == name and standing.get("external_id") == key:
+                          target = previous["check_run_id"]
+                  except subprocess.CalledProcessError as error:
+                      print("check run %s from the earlier record could not be read: %s" % (previous["check_run_id"], str(error.stderr or "").strip()[:200]))
+              if target is None:
+                  body["output"]["summary"] = (body["output"]["summary"] + "\nAn earlier publication by this controller run could not be recovered; this is a fresh check run.")[:60000]
           result = None
-          if same:
+          if target is not None:
               update = {k: v for k, v in body.items() if k != "head_sha"}
               try:
-                  result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], same[0]["id"]), "--input", "-", data=json.dumps(update))
+                  result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], target), "--input", "-", data=json.dumps(update))
               except subprocess.CalledProcessError as error:
-                  print("updating check run %s was refused (%s); creating one instead" % (same[0]["id"], (error.stderr or "").strip()[:200]))
+                  print("updating check run %s was refused (%s); creating one instead" % (target, str(error.stderr or "").strip()[:200]))
           if result is None:
               result = gh("-X", "POST", "repos/%s/check-runs" % env["GITHUB_REPOSITORY"], "--input", "-", data=json.dumps(body))
-          print("check run %s: %s on %s (%s)" % (result.get("id"), result.get("conclusion"), result.get("head_sha"), "updated" if same and result.get("id") == same[0]["id"] else "created"))
+          json.dump({"check_run_id": result.get("id"), "head_sha": head, "name": name, "external_id": key, "base": base,
+                     "controller_run": env["GITHUB_RUN_ID"], "controller_attempt": env["GITHUB_RUN_ATTEMPT"],
+                     "producer_run": env["PRODUCER_RUN"], "producer_attempt": env["PRODUCER_ATTEMPT"]}, open("published.json", "w"), indent=1)
+          print("check run %s: %s on %s (%s)" % (result.get("id"), result.get("conclusion"), result.get("head_sha"), "updated" if target is not None and result.get("id") == target else "created"))
           PY
+      - name: Keep the publication record
+        # What this attempt published, for a later attempt of this run to find and update rather than double.
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: published-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-c${{ github.run_attempt }}
+          path: published.json
+          if-no-files-found: ignore
