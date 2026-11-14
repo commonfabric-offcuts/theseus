@@ -257,6 +257,15 @@ class WordsHelperCase(unittest.TestCase):
                  for line, what in reads]
         self.assertEqual(found, [], "read a message's words with words()/current_words() from aim_next/message_edit.py")
 
+    def test_the_helper_reads_the_words_only_through_marked_words(self):
+        # Slice 2 (item 452): marked_words is where a held message reads as "" for an agent and every other message's
+        # words are marked as handed, so the helper's own reads of a body column go through it, each one.
+        source = (PACKAGE / (HELPER + ".py")).read_text(encoding="utf-8")
+        self.assertGreater(len(body_reads(source)), 3)
+        self.assertEqual(unmarked_body_reads(source), [])
+        planted = source + '\n\ndef planted(db):\n    return db.execute("SELECT r.body FROM message_revisions r").fetchall()\n'
+        self.assertEqual(len(unmarked_body_reads(planted)), 1, "a read outside marked_words is found")
+
     def test_the_scan_finds_each_way_of_reading_the_column_and_passes_the_helper(self):
         cases = {
             'db.execute("SELECT m.body FROM messages m WHERE m.id=?")\n': ["m.body"],
@@ -316,6 +325,20 @@ class WordsHelperCase(unittest.TestCase):
         for source, expected in cases.items():
             with self.subTest(source=source):
                 self.assertEqual([what for _, what in reads_of_the_column(source, sources)], expected)
+
+
+def body_reads(source):
+    """(line, text) of each SQL string constant in source that reads a body column by its alias."""
+    return [(node.lineno, node.value) for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and "SELECT" in node.value
+            and re.search(r"\b\w+\.body\b", node.value)]
+
+
+def unmarked_body_reads(source):
+    """The body reads in source that are not arguments of marked_words on their own line."""
+    lines = source.splitlines()
+    return [(line, text) for line, text in body_reads(source)
+            if not re.search(r"marked_words\([^\n]*\b\w+\.body\b", lines[line - 1])]
 
 
 if __name__ == "__main__":

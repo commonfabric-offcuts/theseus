@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Editing a message (item 228, docs/message-edit.md).
+"""Editing a message (items 228 and 452, docs/message-edit.md).
 
 A message's row never changes. An edit by its author, a person, appends the
 message's next revision to `message_revisions`; revision 1 is the row's own
@@ -9,13 +9,22 @@ goes through the one words helper below (words, words_at, current_words), so
 everything that shows a message shows its latest words, and
 tests/test_message_words.py fails on any other read of messages.body.
 
-Each agent that can read the message when it is edited, other than the
-editor, is sent a correction: a delivery of the message at the new revision,
-in a delivery group of its own kind ('correction'), so it is never unread,
-addressed, read through or thumbed away. Only an ack of its own id, a newer
-correction of the same message, or the agent losing the message settles it.
-People never get one. Every reader, people and agents, gets an actor-scoped
-`edit` change keyed by the message at its new revision.
+The helper is also where an agent view marks the words it hands out: the
+boundary (Store._hand_over) takes the marks out and records, per agent, the
+highest revision of each person's message it was handed (message_exposures).
+An edit sends a correction only to an agent reader that was handed the words
+before (or any agent reader of a message sent before exposures were kept):
+a delivery of the message at the new revision, in a delivery group of its own
+kind ('correction'), so it is never unread, addressed, read through or
+thumbed away. Only an ack of its own id, a newer correction of the same
+message, or the agent losing the message settles it. People never get one.
+Every reader, people and agents, gets an actor-scoped `edit` change keyed by
+the message at its new revision.
+
+While its author has it open in Edit (its one edit session), a message is
+held from agents: their views show it without its words, and their
+unsettled deliveries of it wait in the state 'held' until the holder saves
+or closes the edit, or the hold lapses.
 """
 
 import contextvars
