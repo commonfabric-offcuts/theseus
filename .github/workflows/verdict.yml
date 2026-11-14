@@ -500,10 +500,14 @@ jobs:
           target = None
           if isinstance(previous, dict):
               bound = (previous.get("head_sha") == head and previous.get("name") == name and previous.get("external_id") == key
-                       and str(previous.get("controller_run")) == env["GITHUB_RUN_ID"] and isinstance(previous.get("check_run_id"), int)
-                       and str(previous.get("controller_attempt")) == str(attempt_of(records[-1])))
+                       and str(previous.get("controller_run")) == env["GITHUB_RUN_ID"] and isinstance(previous.get("check_run_id"), int))
+              named = str(previous.get("controller_attempt")) == str(attempt_of(records[-1]))
               if not bound:
                   why_fresh = "the earlier publication record of this controller run does not bind this head, name and key"
+              elif not named:
+                  why_fresh = "the earlier publication record named for attempt %s says it was written by attempt %s" % (
+                      attempt_of(records[-1]), str(previous.get("controller_attempt"))[:20])
+              bound = bound and named
               else:
                   try:
                       standing = gh("repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], previous["check_run_id"]))
