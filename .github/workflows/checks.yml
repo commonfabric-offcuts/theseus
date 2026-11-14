@@ -305,7 +305,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f base/tools/ci_known_reds.py ] || [ ! -f base/.github/check-baseline.json ]; then
+            # Not a validated run: the verdict says so explicitly, so a green shell exit here cannot read as one.
             echo "This base carries no validator or no baseline yet, so there is nothing to classify; the shards' own verdicts stand."
+            printf '{"passed": false, "refused": "no validator or baseline on this base", "base": "%s"}\n' "$(git -C base rev-parse HEAD)" > validation.json
             exit 0
           fi
           python3 base/tools/ci_known_reds.py \
