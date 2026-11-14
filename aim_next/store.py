@@ -159,8 +159,10 @@ class StoreOpenError(StoreError):
 
 class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit):
-    def __init__(self, db_path, expected_instance_id, *, expected_binding):
+    def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None):
         self.path = Path(db_path).resolve()
+        # What reads the Mac's load for the Health view (health.machine_load when None).
+        self._machine = machine
         self.instance_id = _identifier(expected_instance_id, "instance_id")
         self._authority = Authority(self.path, self.instance_id, expected_binding)
         opening_error = None

@@ -846,7 +846,7 @@ class Health:
                        "check": _release_check(None if latest["measurements"] is None else json.loads(latest["measurements"]))}
         schema = db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()[0]
         return {"instance_id": self.instance_id, "read_ms": now, "commit_seq": self._commit_seq(db), "red": sorted(reds), "runner": runner, "agents": agents,
-                "failing_after": FAILING_AFTER, "release": release, "machine": machine_load(), "schema_version": schema}
+                "failing_after": FAILING_AFTER, "release": release, "machine": (self._machine or machine_load)(), "schema_version": schema}
 
 
 def report_lines(answer, at):
