@@ -549,10 +549,15 @@ test('a draft save with no answer goes again under its own operation, and Core a
   assert.equal(drafts.length, 2);
   assert.deepEqual(drafts[1], drafts[0], 'the lost one goes again, the same');
   assert.equal(w.kept, 'Ship 228 tomorrow');
-  await timers.advance(450);
-  assert.equal(core.of('message.edit_draft').length, 2, 'the newer words wait for the next edit');
-  w.edit('Ship 228 tomorrow!'); await timers.advance(450);
-  assert.equal(core.of('message.edit_draft')[2].args.body, 'Ship 228 tomorrow!');
+  await timers.advance(449);
+  assert.equal(core.of('message.edit_draft').length, 2, 'the newer words wait for the debounce');
+  await timers.advance(1);
+  assert.equal(core.of('message.edit_draft').length, 3, 'and then go, the words typed since the lost save');
+  assert.equal(core.of('message.edit_draft')[2].args.body, 'Ship 228 tomorrow.');
+  assert.notEqual(core.of('message.edit_draft')[2].operation_id, drafts[0].operation_id, 'under a new operation');
+  assert.equal(w.kept, 'Ship 228 tomorrow.');
+  await timers.advance(5000);
+  assert.equal(core.of('message.edit_draft').length, 3, 'and nothing more while the words stay');
 });
 
 test('draft refusals: EDIT_CLOSED stops them, BODY_TOO_LARGE pauses them until the words fit, FORBIDDEN makes the edit read-only', async t => {
@@ -584,6 +589,23 @@ test('draft refusals: EDIT_CLOSED stops them, BODY_TOO_LARGE pauses them until t
   assert.equal(forbidden.w.edit('More'), false);
   await forbidden.w.cancel();
   assert.deepEqual(forbidden.core.kinds, ['edit_open', 'edit_draft', 'edit_close'], 'the read-only Cancel closes the session once');
+});
+
+test('a draft save\'s own edit_session change, read while its answer is being kept on the device, is not another device', async () => {
+  const { w, core, store, timers } = await opened();
+  w.edit('Ship 228 tomorrow'); await settle();
+  let release = null;
+  const put = store.put;
+  store.put = value => new Promise(done => { release = () => done(put(value)); });
+  await timers.advance(450);
+  assert.deepEqual(core.kinds, ['edit_open', 'edit_draft']);
+  assert.equal(typeof release, 'function', 'the draft save\'s answer waits on the device write');
+  w.sessionChanged(core.sessionRevision);
+  assert.equal(w.elsewhere, false, 'the change is the page\'s own draft save');
+  release(); await settle();
+  assert.equal(w.elsewhere, false); assert.equal(w.kept, 'Ship 228 tomorrow');
+  w.sessionChanged(core.sessionRevision + 1);
+  assert.equal(w.elsewhere, true, 'a change above it is another device');
 });
 
 test('a draft save that meets REVISION_CONFLICT on the session revision goes once more, on the current one, as a new operation', async () => {
@@ -649,6 +671,24 @@ test('saved: the frozen envelope, with the holder, is on the device before it is
   assert.equal(save.expected.message_revision, 1, 'on the base revision fixed when Edit opened');
   assert.equal(w.state, 'saved'); assert.equal(w.result.revision, 2); assert.equal(store.held, null, 'the journal is cleared');
   assert.deepEqual(core.kinds, ['edit_open', 'edit'], 'no close: Core closed it');
+});
+
+test('a close slow to answer: Save and Cancel go off at once, nothing more is sent, and the edit ends when it answers', async t => {
+  const doc = withDocument(t);
+  const { w, core } = await opened();
+  const view = new MessageEdit({ host: doc.createElement('div'), writing: w, doc });
+  w.edit('Half a thought');
+  assert.equal(view.cancel.disabled, false); assert.equal(view.save.disabled, false);
+  const held = heldBack(core);
+  core.nextOf['message.edit_close'] = held.gate;
+  const ending = w.cancel(); await settle();
+  assert.deepEqual(core.kinds, ['edit_open', 'edit_close']);
+  assert.equal(w.state, 'editing', 'the close has not answered');
+  assert.deepEqual([view.cancel.disabled, view.save.disabled], [true, true], 'Save and Cancel are off while the close is out');
+  assert.equal(await w.cancel(), false); assert.equal(await w.save(), null);
+  assert.deepEqual(core.kinds, ['edit_open', 'edit_close'], 'a second Cancel or a Save sends nothing');
+  held.release.answer(); await ending;
+  assert.equal(w.state, 'cancelled'); assert.equal(core.session.state, 'closed');
 });
 
 test('every ending sends one close: Cancel, unchanged, Use saved, and a Save that left the session open', async () => {

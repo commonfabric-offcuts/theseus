@@ -5,31 +5,46 @@
 // (topic_reading_native.mjs), so it runs in the reader persistence harness's
 // reading mode.
 //
-// The cases named "reading edit mode" need nothing from Core but the message
-// and its reader: the menus, the mode opening and closing, the keys it holds,
-// and blank words. The cases named "reading edit save" need Core's
-// message.edit command, topic_messages by message_ids and the actor-scope
-// edit change.
+// The cases named "reading edit mode" need Core's edit session (item 452:
+// message.edit_open, edit_draft and edit_close) and the message: the menus,
+// the mode opening and closing, the keys it holds, and blank words. The cases
+// named "reading edit save" also need Core's message.edit command,
+// topic_messages by message_ids and the actor-scope edit change. The cases
+// named "reading edit hold" and "reading edit timing" are the session's own:
+// an agent's read of a message held while it is edited, draft saves, another
+// device, a kept close, a reload, a slice-1 row, and each session command
+// answered late or never.
 import assert from 'node:assert/strict';
 
-// Before the page's own code, after HEARD: a message.edit the page sends can
-// be held until window.letEdit() (saving), answered with nothing although Core
-// took it (window.dropEdit: uncertain), or answered busy without reaching Core
-// (window.busyEdit), or refused with window.refuseEdit's {code, message} without reaching Core.
-// window.edits counts the message.edit requests that reached Core.
-export const EDIT_FAULTS = `(()=>{window.edits=0;const g=window.fetch;window.fetch=function(input,init){
+// Before the page's own code, after HEARD. Each session command the page sends (message.edit_open, message.edit_draft,
+// message.edit_close and message.edit, the Save) is listed in window.session as [kind, operation_id, holder], as it
+// leaves. window.faultOf[kind] says what happens to the next one of that kind: 'hold' keeps it unsent until
+// window.letOf[kind](lose) sends it (lose: Core takes it and its answer is lost); 'drop' sends it and loses its answer;
+// 'busy' answers DATABASE_BUSY without reaching Core. For a Save, as in slice 1: window.holdEdit (held until
+// window.letEdit()), window.dropEdit (no answer, though Core took it), window.busyEdit, and window.refuseEdit's
+// {code, message} answered without reaching Core. window.edits counts the Saves that reached Core.
+// window.clock, when a number, is the page's clock (Date.now): a check holds the time the hold's renewal reads, and moves it.
+export const EDIT_FAULTS = `(()=>{window.edits=0;window.session=[];window.faultOf={};window.letOf={};window.clock=null;
+  const now=Date.now;Date.now=()=>typeof window.clock==='number'?window.clock:now.call(Date);
+  const KINDS=['message.edit','message.edit_open','message.edit_draft','message.edit_close'];
+  const g=window.fetch;window.fetch=function(input,init){
   let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null}catch(e){}
-  if(!b||b.kind!=='message.edit')return g.call(this,input,init);
-  if(window.refuseEdit){const e=window.refuseEdit;window.refuseEdit=null;return Promise.resolve(new Response(JSON.stringify({v:1,instance_id:b.instance_id,operation_id:b.operation_id,kind:b.kind,
-    status:'rejected',recorded:true,error:{code:e.code,message:e.message}}),{status:200,headers:{'Content-Type':'application/json'}}))}
-  if(window.busyEdit){window.busyEdit=false;return Promise.resolve(new Response(JSON.stringify({v:1,instance_id:b.instance_id,operation_id:b.operation_id,kind:b.kind,
-    status:'retryable',recorded:false,error:{code:'DATABASE_BUSY',message:'Theseus is busy.'}}),{status:200,headers:{'Content-Type':'application/json'}}))}
-  if(window.holdEdit){window.holdEdit=false;return new Promise(go=>{window.letEdit=()=>{window.edits++;go(g.call(this,input,init))}})}
-  window.edits++;
-  if(window.dropEdit){window.dropEdit=false;return g.call(this,input,init).then(()=>{throw new TypeError('Failed to fetch')})}
-  return g.call(this,input,init)};})()`;
+  if(!b||!KINDS.includes(b.kind))return g.call(this,input,init);
+  window.session.push([b.kind,b.operation_id,b.args&&typeof b.args.holder==='string'?b.args.holder:null]);
+  const answer=(status,recorded,error)=>Promise.resolve(new Response(JSON.stringify({v:1,instance_id:b.instance_id,operation_id:b.operation_id,kind:b.kind,
+    status,recorded,error}),{status:200,headers:{'Content-Type':'application/json'}}));
+  let fault=window.faultOf[b.kind]||null;delete window.faultOf[b.kind];
+  if(b.kind==='message.edit'){
+    if(window.refuseEdit){const e=window.refuseEdit;window.refuseEdit=null;return answer('rejected',true,{code:e.code,message:e.message})}
+    if(window.busyEdit){window.busyEdit=false;fault='busy'}
+    else if(window.holdEdit){window.holdEdit=false;fault='hold'}
+    else if(window.dropEdit){window.dropEdit=false;fault='drop'}}
+  if(fault==='busy')return answer('retryable',false,{code:'DATABASE_BUSY',message:'Theseus is busy.'});
+  const go=lose=>{if(b.kind==='message.edit')window.edits++;const sent=g.call(this,input,init);return lose?sent.then(()=>{throw new TypeError('Failed to fetch')}):sent};
+  if(fault==='hold')return new Promise(ok=>{window.letOf[b.kind]=lose=>{delete window.letOf[b.kind];ok(go(lose))};if(b.kind==='message.edit')window.letEdit=()=>window.letOf[b.kind]()});
+  return go(fault==='drop')};})()`;
 
-export async function editChecks({ check, until, view, facts, shot = async () => {}, engine = 'chrome' }, helpers) {
+export async function editChecks({ check, until, view, control, facts, shot = async () => {}, engine = 'chrome' }, helpers) {
   const { seed, open, centre, tap, press, lit, light, openReader, closeReader, readerOn, into, valueOf, card, words, DEVICES } = helpers;
   const FIELD = '#message-edit-field', EDIT = '#message-edit';
   const button = act => `${EDIT} button[data-act=${act}]`;
@@ -64,6 +79,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     IDBObjectStore.prototype.get = function (...args) { if (this.transaction.db.name === 'theseus-message-edit-v1' && this.transaction.mode === 'readonly') window.keptRead = true; return get.apply(this, args); };
     window.keptRead = false; window.keptHeld = true;
     const open = indexedDB.open('theseus-message-edit-v1', 1);
+    open.onupgradeneeded = () => { if (!open.result.objectStoreNames.contains('writing')) open.result.createObjectStore('writing'); };
     open.onerror = () => failed(open.error);
     open.onsuccess = () => {
       const db = open.result, store = db.transaction('writing', 'readwrite').objectStore('writing');
@@ -85,22 +101,60 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     assert.equal(await valueOf(p, FIELD), text);
   };
   // What Core holds of a message, read as the person.
-  const held = async (topic, id) => {
+  const coreItem = async (topic, id) => {
     const page = await view('topic_messages', { topic_id: topic, message_ids: [id] });
     const item = (page.items ?? page.messages ?? []).find(m => m.id === id);
     assert.ok(item, `Core gives ${id} by its id`);
     return { revision: item.revision, body: item.body, edited: Number.isSafeInteger(item.edited_ms) };
   };
-  // A Save of the person's from somewhere else (another device): message.edit through Core, as the person.
-  const editElsewhere = async (id, revision, body, operation) => {
-    const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
-    const boot = await (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
-    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: boot.instance_id,
-      operation_id: operation, kind: 'message.edit', target: { message_id: id },
-      expected: { authority: { authority_id: boot.authority.authority_id, authority_epoch: boot.authority.authority_epoch }, message_revision: revision },
-      args: { body } }) })).json();
-    assert.equal(receipt.status, 'committed', 'the edit elsewhere is saved: ' + JSON.stringify(receipt.error ?? null));
+  // A command of the person's from somewhere else (another device), through Core.
+  const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
+  const boot = async () => (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
+  const elsewhere = async (kind, id, expected, args, operation) => {
+    const b = await boot();
+    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: b.instance_id,
+      operation_id: operation, kind, target: { message_id: id },
+      expected: { authority: { authority_id: b.authority.authority_id, authority_epoch: b.authority.authority_epoch }, ...expected }, args }) })).json();
+    assert.equal(receipt.status, 'committed', `${kind} elsewhere commits: ` + JSON.stringify(receipt.error ?? null));
+    return receipt.result;
   };
+  // A Save from another device, which holds no edit session: it commits by revision.
+  const editElsewhere = (id, revision, body, operation) => elsewhere('message.edit', id, { message_revision: revision }, { body }, operation);
+  // Edit opened on another device: it takes the session, and Core answers with the session's draft.
+  const OTHER = 'h-another-device';
+  const openElsewhere = (id, operation) => elsewhere('message.edit_open', id, {}, { holder: OTHER }, operation);
+  // What an agent reading the topic (aim-core, which takes part in it) is given of a message.
+  const agentItem = async (topic, id) => {
+    const page = await control({ method: 'agent_view', actor: 'aim-core', name: 'topic_messages', args: { topic_id: topic, message_ids: [id] } });
+    const item = (page?.items ?? []).find(m => m.id === id);
+    assert.ok(item, `an agent is given ${id} by its id: ` + JSON.stringify(page).slice(0, 300));
+    return { withheld: item.withheld, body: item.body };
+  };
+  const closes = p => p.evaluate(`window.sent.filter(kind => kind === 'message.edit_close').length`);
+  // The session commands the page sent, in order: [kind without "message.", operation, holder].
+  const sessionOf = async p => (await p.evaluate('window.session')).map(([kind, op, holder]) => [kind.replace('message.', ''), op, holder]);
+  const kindsOf = async p => (await sessionOf(p)).map(([kind]) => kind);
+  // The row this device keeps of a message's edit (messageEditStore), read beside the page's own connection.
+  const bindingOf = async id => { const b = await boot(); return { instance_id: b.instance_id, actor_id: b.actor, message_id: id }; };
+  const deviceRow = async (p, id) => p.evaluate(`(async()=>{const key=${JSON.stringify(JSON.stringify(await bindingOf(id)))};
+    return await new Promise((done,failed)=>{const open=indexedDB.open('theseus-message-edit-v1',1);
+      open.onupgradeneeded=()=>{if(!open.result.objectStoreNames.contains('writing'))open.result.createObjectStore('writing')};
+      open.onerror=()=>failed(open.error);
+      open.onsuccess=()=>{const db=open.result,get=db.transaction('writing','readonly').objectStore('writing').get(key);
+        get.onsuccess=()=>{db.close();done(get.result??null)};get.onerror=()=>{db.close();failed(get.error)}}})})()`);
+  // Puts a row on this device as an earlier page kept it, before the page's Edit reads it.
+  const putRow = async (p, id, kept) => {
+    const b = await boot(), binding = await bindingOf(id), row = { ...kept, binding };
+    if (row.pending) row.pending = { ...row.pending, instance_id: b.instance_id,
+      expected: { ...row.pending.expected, authority: { authority_id: b.authority.authority_id, authority_epoch: b.authority.authority_epoch } } };
+    return p.evaluate(`(async()=>{const key=${JSON.stringify(JSON.stringify(binding))},row=${JSON.stringify(row)};
+    return await new Promise((done,failed)=>{const open=indexedDB.open('theseus-message-edit-v1',1);
+      open.onupgradeneeded=()=>{if(!open.result.objectStoreNames.contains('writing'))open.result.createObjectStore('writing')};
+      open.onerror=()=>failed(open.error);
+      open.onsuccess=()=>{const db=open.result,tx=db.transaction('writing','readwrite');tx.objectStore('writing').put(row,key);
+        tx.oncomplete=()=>{db.close();done(row.pending?row.pending:true)};tx.onerror=()=>{db.close();failed(tx.error)}}})})()`);
+  };
+  const notice = p => p.evaluate(`document.querySelector('#reader-notice')?.textContent ?? ''`);
   // A topic with an agent's message and the person's own message after it; answered: and an agent's reply to
   // the person's, which makes theirs the head of a stack, shown as one row (docs/reply-stacks.md).
   const edited = async (topic, answered = false) => seed(topic, [
@@ -115,7 +169,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     return p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].map(b=>b.firstChild.textContent)`);
   };
 
-  await check('reading edit mode is offered in the ⋯ of the person\'s own message only; from a card it opens the Reader on it, and Cancel sends nothing and leaves the page as it was', async () => {
+  await check('reading edit mode is offered in the ⋯ of the person\'s own message only; from a card it opens the Reader on it, and Cancel saves nothing, closes the edit once and leaves the page as it was', async () => {
     const topic = 'edit-card-laptop', ids = await edited(topic);
     const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
     assert.equal((await menuOf(p, 'laptop', ids.theirs)).includes('Edit'), false, 'an agent\'s message offers no Edit');
@@ -138,7 +192,8 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await p.point(button('cancel'));
     await until(async () => await readerOn(p) === null, 'Cancel ends the edit, and the Reader opened for it closes');
     await until(async () => await focusOn(p) === ids.mine, 'the focus goes back to the card');
-    assert.equal(await edits(p), 0, 'Cancel sends nothing');
+    assert.equal(await edits(p), 0, 'Cancel saves nothing');
+    assert.equal(await closes(p), 1, 'and closes the edit session once');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent`), 'My own words, as I sent them.', 'the card shows the words as sent');
     assert.deepEqual({ top: await top(p, ids.mine), lit: await lit(p) }, before, 'the card stays where it was, and lit as it was');
     assert.equal(await valueOf(p, '#inline-writing-body'), 'A line in the composer.', 'the composer keeps its words');
@@ -146,6 +201,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
     await editing(p, 'laptop', 'My own words, as I sent them.');
     await p.point(button('cancel')); await until(async () => await readerOn(p) === null, 'Cancel again');
+    assert.equal(await closes(p), 2, 'each Cancel closes once');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -174,7 +230,8 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await notEditing(p);
     assert.ok((await readerOn(p))?.startsWith('My own words, as I sent them.'), 'the Reader stays open on the message, as sent');
     await until(async () => await focusOn(p) === 'reader-menu', 'the focus goes back to the Reader\'s ⋯');
-    assert.equal(await edits(p), 0, 'Escape sends nothing');
+    assert.equal(await edits(p), 0, 'Escape saves nothing');
+    assert.equal(await closes(p), 0, 'and sends no close: the session stays for the next Edit');
     // The words were kept on the device: the next Edit brings them back, and
     // its edit mode shows only once they are read. A write of the page's own
     // holds the device store, so Edit's read of them waits until it is let go.
@@ -211,7 +268,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await p.key('Escape');
     await until(async () => await readerOn(p) === null, 'Escape ends the edit, and the Reader opened for it closes');
     await until(async () => await focusOn(p) === ids.mine, 'the focus goes back to the row');
-    assert.equal(await edits(p), 0);
+    assert.equal(await edits(p), 0); assert.equal(await closes(p), 0, 'Escape closes nothing');
     // Escape kept the words; Cancel lets them go.
     await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
     await editing(p, 'laptop', 'My reply in the stack.');
@@ -232,7 +289,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     assert.ok(await p.evaluate(`(()=>{const f=document.querySelector('${FIELD}').getBoundingClientRect();return f.left>=0&&f.right<=innerWidth})()`), 'phone: the field fits the width');
     await centre(p, button('cancel')); await tap(p, button('cancel'));
     await until(async () => await readerOn(p) === null, 'phone: Cancel ends the edit and the Reader closes');
-    assert.equal(await edits(p), 0, 'phone: Cancel sends nothing');
+    assert.equal(await edits(p), 0, 'phone: Cancel saves nothing'); assert.equal(await closes(p), 1, 'phone: and closes once');
     assert.equal(await top(p, ids.mine), before, 'phone: the card is where it was');
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -266,7 +323,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await p.key('Enter', 4);
     await until(async () => await readerOn(p) === null, '⌘Return saves, and the Reader opened for the edit closes');
     await until(async () => await focusOn(p) === ids.mine, 'the focus goes back to the card');
-    assert.deepEqual(await held(topic, ids.mine), { revision: 2, body: 'My words, corrected.', edited: true });
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'My words, corrected.', edited: true });
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent === 'My words, corrected.'
       && document.querySelector(${JSON.stringify(card(ids.mine) + ' .message-edited')})?.textContent.includes('Edited')`), 'the card shows the new words, and Edited');
     // Save by its button, from the Reader's ⋯: the Reader stays open, with the new words and Edited beside its author.
@@ -279,7 +336,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await notEditing(p);
     await until(async () => (await readerOn(p)) === 'My words, corrected twice.', 'the Reader shows the saved words');
     assert.ok(await p.evaluate(`document.querySelector('#reader').textContent.includes('Edited')`), 'the Reader says Edited');
-    assert.deepEqual(await held(topic, ids.mine), { revision: 3, body: 'My words, corrected twice.', edited: true });
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 3, body: 'My words, corrected twice.', edited: true });
     assert.equal(await p.evaluate('window.edits'), 2, 'one message.edit for each Save');
     await closeReader(p, 'laptop');
     assert.deepEqual(p.errors, []);
@@ -340,7 +397,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     const topic = 'edit-conflict-laptop', ids = await edited(topic);
     const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
     for (const [choice, revision] of [['mine', 2], ['saved', 4]]) {
-      const body = (await held(topic, ids.mine)).body;
+      const body = (await coreItem(topic, ids.mine)).body;
       await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
       await editing(p, 'laptop', body);
       await replaceWords(p, `Mine, written here for ${choice}.`);
@@ -353,7 +410,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
       assert.equal(await off(p, 'save'), true, 'Save is off: the choice stands in for it');
       await p.point(button(choice));
       await until(async () => await readerOn(p) === null, `${choice}: the edit ends`);
-      assert.deepEqual(await held(topic, ids.mine), choice === 'mine'
+      assert.deepEqual(await coreItem(topic, ids.mine), choice === 'mine'
         ? { revision: revision + 1, body: `Mine, written here for ${choice}.`, edited: true }
         : { revision, body: 'Saved elsewhere ' + revision + '.', edited: true }, `${choice}: what Core holds`);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent === ${JSON.stringify(choice === 'mine' ? `Mine, written here for ${choice}.` : 'Saved elsewhere ' + revision + '.')}`), `${choice}: the card shows it`);
@@ -376,7 +433,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await p.point(button('retry'));
     await until(async () => await readerOn(p) === null, 'Try again finds it saved, and the edit ends');
     assert.equal(await p.evaluate('window.edits'), 1, 'Try again read the operation and did not send it again');
-    assert.deepEqual(await held(topic, ids.mine), { revision: 2, body: 'Saved, though no answer came.', edited: true });
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved, though no answer came.', edited: true });
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -392,10 +449,10 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await until(async () => await state(p) === 'busy', 'busy');
     assert.equal(await status(p), 'Not saved: Theseus was busy.');
     assert.equal(await valueOf(p, FIELD), 'Saved after a busy moment.', 'the words are kept');
-    assert.deepEqual(await held(topic, ids.mine), { revision: 1, body: 'My own words, as I sent them.', edited: false }, 'Core took nothing');
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 1, body: 'My own words, as I sent them.', edited: false }, 'Core took nothing');
     await p.point(button('retry'));
     await until(async () => await readerOn(p) === null, 'Try again saves');
-    assert.deepEqual(await held(topic, ids.mine), { revision: 2, body: 'Saved after a busy moment.', edited: true });
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved after a busy moment.', edited: true });
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -416,7 +473,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     await p.evaluate('window.letEdit()');
     await until(async () => await readerOn(p) === null, 'the answer comes and the edit ends');
     assert.equal(await p.evaluate('window.edits'), 1, 'one Save');
-    assert.deepEqual(await held(topic, ids.mine), { revision: 2, body: 'Saved slowly.', edited: true });
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved slowly.', edited: true });
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -460,7 +517,21 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
       await editFrom(p, device, ids.mine, 'My own words, as I sent them.');
       assert.deepEqual(await laid(p, device, 'editing'), ['cancel', 'save'], `${device} ${width}: editing offers Cancel and Save`);
       await replaceWords(p, 'Kept as I write.');
-      await until(async () => await status(p) === 'Kept on this device', 'editing: the words are kept on this device');
+      await until(async () => await status(p) === 'Kept', 'editing: Core keeps the words as they are written');
+      await laid(p, device, 'kept');
+      // Another device opens the edit: this one says so, with Edit here, and takes it back by it.
+      await openElsewhere(ids.mine, `${topic}-other-open`);
+      await until(async () => await state(p) === 'elsewhere' && await status(p) === 'Open on your other device', 'elsewhere: another device holds the edit');
+      assert.deepEqual(await laid(p, device, 'elsewhere'), ['here', 'cancel', 'save'], `${device} ${width}: elsewhere offers Edit here`);
+      assert.equal(await p.evaluate(`document.querySelector('${button('here')}').title`), 'Take the edit back to this device');
+      for (const scheme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+        await shot(p, `edit-states-${width}-elsewhere-${scheme}`);
+        await laid(p, device, 'elsewhere ' + scheme);
+      }
+      await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+      await press(p, device, button('here'));
+      await until(async () => await state(p) === 'editing' && await off(p, 'here') === true, 'Edit here: this device holds the edit again');
       // Empty: Save is off.
       await replaceWords(p, '');
       await until(async () => await off(p, 'save') === true, 'empty: Save is off');
@@ -502,7 +573,7 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent === 'Saved after busy and a wait.'
         && Boolean(document.querySelector(${JSON.stringify(card(ids.mine) + ' .message-edited')})?.getClientRects().length)`), 'saved: the card shows the new words, and Edited');
       assert.ok(await p.evaluate(`(e=>{const b=e.getBoundingClientRect();return b.right<=innerWidth&&b.left>=0})(document.querySelector(${JSON.stringify(card(ids.mine) + ' .message-edited')}))`), 'Edited is inside the window');
-      assert.deepEqual(await held(topic, ids.mine), { revision: 2, body: 'Saved after busy and a wait.', edited: true });
+      assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved after busy and a wait.', edited: true });
       // No answer: Try again asks Core first.
       await editFrom(p, device, ids.mine, 'Saved after busy and a wait.');
       await replaceWords(p, 'Saved with no answer.');
@@ -527,7 +598,8 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
       }
       await press(p, device, button('saved'));
       await until(async () => await readerOn(p) === null, 'Use saved ends the edit');
-      assert.deepEqual(await held(topic, ids.mine), { revision: 4, body: 'Saved on another device.', edited: true }, 'Use saved sends nothing');
+      assert.deepEqual(await coreItem(topic, ids.mine), { revision: 4, body: 'Saved on another device.', edited: true }, 'Use saved saves nothing');
+      assert.equal((await kindsOf(p)).at(-1), 'edit_close', 'and closes the edit');
       assert.deepEqual(p.errors, []);
       await p.close();
     }
@@ -548,14 +620,14 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
       await editFrom(p, device, ids.mine, 'A draft written on revision 1.');
       await saveBy(p, device);
       await until(async () => await state(p) === 'conflict', 'the resumed draft meets the newer revision: a conflict, never an overwrite');
-      assert.deepEqual(await held(topic, ids.mine), { revision: 2, body: 'Saved on another device.', edited: true });
+      assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved on another device.', edited: true });
       // Use the saved words as mine: Save mine with words equal to the current revision ends the edit unchanged.
       await replaceWords(p, 'Saved on another device.');
       const before = await p.evaluate('window.edits');
       await press(p, device, button('mine'));
       await until(async () => await readerOn(p) === null, 'Save mine with the saved words ends the edit');
       assert.equal(await p.evaluate('window.edits'), before, 'and sends nothing');
-      assert.deepEqual(await held(topic, ids.mine), { revision: 2, body: 'Saved on another device.', edited: true });
+      assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved on another device.', edited: true });
       // Cancel lets a draft go: the next Edit starts from the saved words.
       await editFrom(p, device, ids.mine, 'Saved on another device.');
       await replaceWords(p, 'A draft to let go.');
@@ -609,6 +681,353 @@ export async function editChecks({ check, until, view, facts, shot = async () =>
     }, 'the reply lands');
     assert.deepEqual(sent.quotes.map(q => [q.source, q.excerpt]), [[{ kind: 'message', id: ids.mine, revision: 2 }, 'Words of the second']],
       'the quote names revision 2, the one the Reader showed');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // From here, item 452: the edit session in Core.
+  await check('reading edit hold: Edit sends edit_open before the field shows, an agent then reads the message without its words, and Cancel closes once and gives them back', async () => {
+    const topic = 'edit-hold-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    const words = 'My own words, as I sent them.';
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: words }, 'before Edit an agent reads the words');
+    await p.evaluate(`window.faultOf['message.edit_open'] = 'hold'`);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(() => p.evaluate(`typeof window.letOf['message.edit_open'] === 'function'`), 'edit_open leaves');
+    assert.deepEqual(await p.evaluate(`({ editing: document.querySelector('#reader').dataset.editing ?? null, shown: !document.querySelector('${EDIT}').hidden })`),
+      { editing: null, shown: false }, 'the field waits for Core\'s answer');
+    await p.evaluate(`window.letOf['message.edit_open']()`);
+    await editing(p, 'laptop', words);
+    const [[kind, , holder]] = await sessionOf(p);
+    assert.equal(kind, 'edit_open'); assert.equal(typeof holder, 'string');
+    assert.equal((await deviceRow(p, ids.mine))?.holder, holder, 'the device keeps the holder it named');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: true, body: '' }, 'while Edit is open an agent is given the message without its words');
+    assert.equal((await coreItem(topic, ids.mine)).body, words, 'the person still reads their words');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel ends the edit');
+    assert.deepEqual(await kindsOf(p), ['edit_open', 'edit_close'], 'one close, and nothing saved');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: words }, 'Cancel gives the agent the words back');
+    assert.equal(await deviceRow(p, ids.mine), null, 'the device row goes');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit hold draft: typing saves the words to Core, Kept; another device opening Edit gets them, and this one says Open on your other device, its Save commits by revision and closes nothing', async () => {
+    for (const device of ['laptop', 'phone']) {
+      const topic = `edit-draft-${device}`, ids = await edited(topic);
+      const p = await open(topic, device, topic, ids.mine, EDIT_FAULTS);
+      await menuOf(p, device, ids.mine); await choose(p, device, 'Edit');
+      await editing(p, device, 'My own words, as I sent them.');
+      await replaceWords(p, 'Words to carry to another device.');
+      await until(async () => await status(p) === 'Kept', `${device}: Core confirms the words`);
+      const drafts = (await sessionOf(p)).filter(([kind]) => kind === 'edit_draft');
+      assert.ok(drafts.length >= 1, 'a draft save went');
+      const other = await openElsewhere(ids.mine, `${topic}-other-open`);
+      assert.deepEqual([other.draft, other.taken], ['Words to carry to another device.', true], 'another device opens on this one\'s Core draft');
+      await until(async () => await status(p) === 'Open on your other device', `${device}: this page learns another device holds the edit`);
+      assert.equal(await off(p, 'here'), false, 'Edit here is offered');
+      await replaceWords(p, 'Saved from the device that let go.');
+      const before = (await sessionOf(p)).length;
+      await (device === 'phone' ? press(p, device, button('save')) : p.key('Enter', 4));
+      await until(async () => await readerOn(p) === null, `${device}: Save commits by revision and the edit ends`);
+      assert.deepEqual((await sessionOf(p)).slice(before).map(([kind]) => kind), ['edit'], 'a Save, and no close: this device does not hold the edit');
+      assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved from the device that let go.', edited: true });
+      assert.deepEqual(await agentItem(topic, ids.mine), { withheld: true, body: '' }, 'the other device still holds the message from agents');
+      await elsewhere('message.edit_close', ids.mine, {}, { holder: OTHER }, `${topic}-other-close`);
+      assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'Saved from the device that let go.' }, 'its close gives them the new words');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading edit hold Edit here: a device that lost the edit takes it back, saves its words as the draft, and its Cancel closes once', async () => {
+    const topic = 'edit-here-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    const [[, , holder]] = await sessionOf(p);
+    await openElsewhere(ids.mine, `${topic}-other-open`);
+    await until(async () => await state(p) === 'elsewhere', 'another device holds the edit');
+    await replaceWords(p, 'Taken back to this device.');
+    const before = (await sessionOf(p)).length;
+    await p.point(button('here'));
+    await until(async () => await state(p) === 'editing' && await off(p, 'here') === true, 'Edit here takes it back');
+    await until(async () => await status(p) === 'Kept', 'and Core confirms this device\'s words as the draft');
+    const after = (await sessionOf(p)).slice(before);
+    assert.deepEqual(after.slice(0, 2).map(([kind, , h]) => [kind, h]), [['edit_open', holder], ['edit_draft', holder]], 'edit_open with this page\'s holder, then its words');
+    const reopened = await openElsewhere(ids.mine, `${topic}-other-again`);
+    assert.equal(reopened.draft, 'Taken back to this device.', 'Core holds this device\'s words as the draft');
+    await until(async () => await state(p) === 'elsewhere', 'the other device takes it again');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel ends the edit here');
+    assert.equal(await closes(p), 0, 'Cancel on a device that does not hold the edit closes nothing');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: true, body: '' }, 'the other device still holds it');
+    await elsewhere('message.edit_close', ids.mine, {}, { holder: OTHER }, `${topic}-other-close`);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit hold another device resumes: a device with no row of its own opens Edit on the Core draft written elsewhere', async () => {
+    const topic = 'edit-resume-core-laptop', ids = await edited(topic);
+    let p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    await replaceWords(p, 'A draft begun on the laptop.');
+    await until(async () => await status(p) === 'Kept', 'Core keeps the draft');
+    const [[, , first]] = await sessionOf(p);
+    await p.key('Escape'); await notEditing(p);
+    assert.equal(await closes(p), 0, 'Escape sends no close');
+    // Another device: this device's row is let go, as a device that never held it has none.
+    await p.evaluate(`new Promise((done, failed) => { const d = indexedDB.deleteDatabase('theseus-message-edit-v1'); d.onsuccess = () => done(true); d.onerror = () => failed(d.error); })`);
+    await p.close();
+    p = await open(topic + '-again', 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'A draft begun on the laptop.');
+    const [[kind, , holder]] = await sessionOf(p);
+    assert.equal(kind, 'edit_open'); assert.notEqual(holder, first, 'a new holder: another device');
+    assert.equal(await state(p), 'editing'); assert.equal(await status(p), 'Kept', 'Core\'s draft, which Core keeps');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel');
+    assert.deepEqual(await kindsOf(p), ['edit_open', 'edit_close']);
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'My own words, as I sent them.' });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit hold Escape and reload: Escape sends nothing and the message stays held; a reload\'s Edit rejoins the session with the same holder and the words', async () => {
+    const topic = 'edit-reload-laptop', ids = await edited(topic);
+    let p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    await replaceWords(p, 'Half a thought, kept.');
+    await until(async () => await status(p) === 'Kept', 'Core keeps the words');
+    const sent = (await sessionOf(p)).length, [[, , holder]] = await sessionOf(p);
+    await p.key('Escape'); await notEditing(p);
+    assert.equal((await sessionOf(p)).length, sent, 'Escape sends nothing to Core');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: true, body: '' }, 'the session stays open, and holds the message until it lapses');
+    assert.equal((await deviceRow(p, ids.mine))?.holder, holder, 'the device row stays');
+    await p.close();
+    p = await open(topic + '-reload', 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'Half a thought, kept.');
+    assert.deepEqual((await sessionOf(p))[0].filter((_, n) => n !== 1), ['edit_open', holder], 'the reload rejoins with the same holder');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel');
+    assert.deepEqual(await kindsOf(p), ['edit_open', 'edit_close']);
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'My own words, as I sent them.' });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit hold resumed Save: a reload while saving replays the Save as it was made, then closes once; Core holds revision 2 and an agent reads it', async () => {
+    const topic = 'edit-replay-laptop', ids = await edited(topic);
+    let p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    await replaceWords(p, 'Saved across a reload.');
+    await p.evaluate('window.holdEdit = true');
+    await p.key('Enter', 4);
+    await until(async () => await state(p) === 'saving', 'the Save is out');
+    const save = (await sessionOf(p)).find(([kind]) => kind === 'edit');
+    await p.close();
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 1, body: 'My own words, as I sent them.', edited: false }, 'the Save never reached Core');
+    p = await open(topic + '-reload', 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(async () => (await kindsOf(p)).includes('edit_close') && await readerOn(p) === null, 'the kept Save goes, a close follows, and the edit ends');
+    const again = await sessionOf(p);
+    assert.deepEqual(again.map(([kind]) => kind), ['edit_open', 'edit', 'edit_close'], 'edit_open, the Save, and one close');
+    assert.deepEqual(again[1], save, 'the Save is the one made before the reload, under its operation');
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved across a reload.', edited: true });
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'Saved across a reload.' }, 'the session is not open: an agent reads revision 2');
+    assert.equal(await deviceRow(p, ids.mine), null);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit hold kept close: a Cancel whose close gets no answer keeps it on the device; the next Edit sends it again first under the same operation, and not at all past a busy one', async () => {
+    const topic = 'edit-kept-close-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    await replaceWords(p, 'Words to let go.');
+    // The close is slow: Save and Cancel go off at once, and then its answer is lost.
+    await p.evaluate(`window.faultOf['message.edit_close'] = 'hold'`);
+    await p.point(button('cancel'));
+    await until(() => p.evaluate(`typeof window.letOf['message.edit_close'] === 'function'`), 'the close leaves');
+    assert.deepEqual([await off(p, 'save'), await off(p, 'cancel')], [true, true], 'Save and Cancel are off while the close is out');
+    await p.evaluate(`window.letOf['message.edit_close'](true)`);
+    await until(async () => await readerOn(p) === null, 'with no answer the edit still ends');
+    const [, , holder] = (await sessionOf(p))[0], [kind, operation] = (await sessionOf(p)).at(-1);
+    assert.equal(kind, 'edit_close');
+    const row = await deviceRow(p, ids.mine);
+    assert.deepEqual({ holder: row?.holder, closing: row?.closing, value: row?.value }, { holder, closing: operation, value: undefined },
+      'the device keeps only the holder and the close\'s operation');
+    // The next Edit sends the kept close first; busy, nothing opens and the row stays.
+    let sent = (await sessionOf(p)).length;
+    await p.evaluate(`window.faultOf['message.edit_close'] = 'busy'`);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(async () => await notice(p) === 'Edit could not start: Theseus was busy', 'busy: Edit could not start, and says why');
+    assert.deepEqual((await sessionOf(p)).slice(sent).map(([k, op]) => [k, op]), [['edit_close', operation]], 'the kept close, and no edit_open');
+    assert.equal(await p.evaluate(`document.querySelector('#reader').dataset.editing ?? null`), null, 'nothing opens');
+    assert.equal((await deviceRow(p, ids.mine))?.closing, operation, 'the row stays');
+    await closeReader(p, 'laptop');
+    sent = (await sessionOf(p)).length;
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    const next = (await sessionOf(p)).slice(sent);
+    assert.deepEqual(next.map(([k, op]) => [k, op === operation]), [['edit_close', true], ['edit_open', false]], 'the kept close again, under its operation, then edit_open');
+    assert.notEqual(next[1][2], holder, 'a fresh row, with a new holder');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'My own words, as I sent them.' });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit hold slice-1 row: a row kept before sessions opens on its words, which become the draft; a kept slice-1 Save replays as it was made and then closes once', async () => {
+    const topic = 'edit-slice1-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await putRow(p, ids.mine, { v: 1, base: { revision: 1, body: 'My own words, as I sent them.' }, value: 'Words kept before sessions.', pending: null, conflict: null });
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'Words kept before sessions.');
+    await until(async () => (await kindsOf(p)).join() === 'edit_open,edit_draft' && await status(p) === 'Kept', 'its words become the draft');
+    const [[, , holder], [, , draftHolder]] = await sessionOf(p);
+    assert.equal(draftHolder, holder);
+    await p.key('Escape'); await notEditing(p);
+    // A slice-1 Save kept on the device: {body} alone, replayed byte for byte, then one close.
+    const operation = `${topic}-slice1-save`;
+    const envelope = await putRow(p, ids.mine, { v: 1, base: { revision: 1, body: 'My own words, as I sent them.' }, value: 'Saved by a page of slice 1.', conflict: null,
+      pending: { v: 1, instance_id: '', operation_id: operation, kind: 'message.edit', target: { message_id: ids.mine },
+        expected: { authority: {}, message_revision: 1 }, args: { body: 'Saved by a page of slice 1.' } } });
+    assert.deepEqual(Object.keys(envelope.args), ['body']);
+    const sent = (await sessionOf(p)).length;
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(async () => (await kindsOf(p)).slice(sent).includes('edit_close') && await readerOn(p) === null, 'the kept Save goes, a close follows, and the edit ends');
+    const after = (await sessionOf(p)).slice(sent);
+    assert.deepEqual(after.map(([kind, op, h]) => [kind, kind === 'edit' ? op : null, kind === 'edit' ? h : null]),
+      [['edit_open', null, null], ['edit', operation, null], ['edit_close', null, null]], 'edit_open, the slice-1 Save with no holder, then one close');
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved by a page of slice 1.', edited: true });
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'Saved by a page of slice 1.' });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Early timing: each step answered late, or never.
+  await check('reading edit timing slow device store: edit_open waits until the device row is read, the holder is on the device while it is out, and the field waits for Core', async () => {
+    const topic = 'edit-slow-store-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await holdKept(p);
+    await p.evaluate(`window.faultOf['message.edit_open'] = 'hold'`);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(() => p.evaluate('window.keptRead === true'), 'Edit reads the device row');
+    assert.deepEqual(await sessionOf(p), [], 'nothing goes to Core while the device row is unread');
+    await p.evaluate('window.keptHeld = false');
+    await until(() => p.evaluate(`typeof window.letOf['message.edit_open'] === 'function'`), 'then edit_open leaves');
+    const [[, , holder]] = await sessionOf(p);
+    assert.equal((await deviceRow(p, ids.mine))?.holder, holder, 'the holder is on the device while edit_open is out');
+    assert.equal(await p.evaluate(`document.querySelector('#reader').dataset.editing ?? null`), null, 'the field waits for Core');
+    await p.evaluate(`window.letOf['message.edit_open']()`);
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit timing lost and busy edit_open: Edit could not start and says why, nothing opens, and the next Edit opens with the same holder', async () => {
+    const topic = 'edit-lost-open-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await p.evaluate(`window.faultOf['message.edit_open'] = 'busy'`);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(async () => await notice(p) === 'Edit could not start: Theseus was busy', 'busy: it says so');
+    assert.equal(await p.evaluate(`document.querySelector('#reader').dataset.editing ?? null`), null, 'busy: nothing opens');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'My own words, as I sent them.' }, 'busy: Core took nothing');
+    await closeReader(p, 'laptop');
+    // Core takes it and the answer is lost: the message is held, though nothing opened here, until the next Edit's own.
+    await p.evaluate(`window.faultOf['message.edit_open'] = 'drop'`);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(async () => await notice(p) === 'Edit could not start: Theseus did not answer', 'no answer: it says so');
+    assert.equal(await p.evaluate(`document.querySelector('#reader').dataset.editing ?? null`), null, 'no answer: nothing opens');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: true, body: '' }, 'Core opened it');
+    await closeReader(p, 'laptop');
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    const opens = (await sessionOf(p)).filter(([kind]) => kind === 'edit_open');
+    assert.equal(opens.length, 3); assert.equal(new Set(opens.map(([, , h]) => h)).size, 1, 'every edit_open names the one holder the device keeps');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'My own words, as I sent them.' }, 'its close lets the agent read again');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit timing the Reader closed while edit_open is out: nothing opens, and once Core answers, the session it opened is closed again, once', async () => {
+    const topic = 'edit-moved-on-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await p.evaluate(`window.faultOf['message.edit_open'] = 'hold'`);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(() => p.evaluate(`typeof window.letOf['message.edit_open'] === 'function'`), 'edit_open is out');
+    await closeReader(p, 'laptop');
+    await p.evaluate(`window.letOf['message.edit_open']()`);
+    await until(async () => (await kindsOf(p)).join() === 'edit_open,edit_close', 'once Core answers, its session is closed again');
+    assert.equal(await p.evaluate(`document.querySelector('#reader').open || Boolean(document.querySelector('#reader').dataset.editing)`), false, 'nothing opens');
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'My own words, as I sent them.' }, 'the agent reads the words');
+    assert.equal(await deviceRow(p, ids.mine), null, 'nothing unconfirmed: the device row goes');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit timing slow and lost draft saves: a Save waits for the draft save out and goes once it returns; a lost one goes again under its operation, then the words typed since', async () => {
+    const topic = 'edit-slow-draft-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    // Lost: the next draft save goes again, the same, then one of the words typed since.
+    await p.evaluate(`window.faultOf['message.edit_draft'] = 'drop'`);
+    await replaceWords(p, 'A first draft.');
+    await until(async () => (await kindsOf(p)).includes('edit_draft'), 'a draft save goes, and its answer is lost');
+    const [, lost] = (await sessionOf(p)).find(([kind]) => kind === 'edit_draft');
+    assert.equal(await status(p), 'Kept on this device', 'not confirmed');
+    await p.send('Input.insertText', { text: ' More.' });
+    await until(async () => await status(p) === 'Kept', 'the words typed since are confirmed');
+    const drafts = (await sessionOf(p)).filter(([kind]) => kind === 'edit_draft').map(([, op]) => op);
+    assert.equal(drafts[1], lost, 'the lost one went again under its operation');
+    assert.ok(drafts.length >= 3 && !drafts.slice(2).includes(lost), 'then the words typed since, as a new operation');
+    // Slow: Save waits only for the draft save out.
+    await p.evaluate(`window.faultOf['message.edit_draft'] = 'hold'`);
+    await replaceWords(p, 'Saved behind a slow draft.');
+    await until(() => p.evaluate(`typeof window.letOf['message.edit_draft'] === 'function'`), 'a draft save is out');
+    await p.key('Enter', 4);
+    await until(async () => await state(p) === 'saving', 'Save waits');
+    assert.equal((await kindsOf(p)).includes('edit'), false, 'the Save has not left while the draft save is out');
+    await p.evaluate(`window.letOf['message.edit_draft'](true)`);
+    await until(async () => await readerOn(p) === null, 'once it returns, with no answer, the Save goes and commits');
+    assert.equal((await kindsOf(p)).at(-1), 'edit', 'the holder\'s Save closes the session: no close after it');
+    assert.deepEqual(await coreItem(topic, ids.mine), { revision: 2, body: 'Saved behind a slow draft.', edited: true });
+    assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'Saved behind a slow draft.' });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit timing renewal on a clock the check sets: a key in the field 30 s after Core last renewed sends one draft save, and one sooner sends none', async () => {
+    const topic = 'edit-renewal-laptop', ids = await edited(topic);
+    const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
+    // The page's clock stands still from before Edit: Core's answer to edit_open is the last renewal, at 0 s.
+    const at = await p.evaluate('window.clock = Date.now()');
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    await p.evaluate(`window.clock = ${at} + 29999`);
+    await p.key('ArrowLeft');
+    await p.evaluate(`window.clock = ${at} + 30000`);
+    await p.key('ArrowLeft');
+    await until(async () => (await kindsOf(p)).includes('edit_draft'), 'the key at 30 s renews the hold');
+    assert.deepEqual(await kindsOf(p), ['edit_open', 'edit_draft'], 'one renewal: the key at 29.999 s sent none');
+    assert.equal((await sessionOf(p))[1][2], (await sessionOf(p))[0][2]);
+    await until(async () => await status(p) === '', 'the words are as sent, so nothing to say');
+    await p.key('ArrowLeft');
+    await p.point(button('cancel'));
+    await until(async () => await readerOn(p) === null, 'Cancel');
+    assert.deepEqual(await kindsOf(p), ['edit_open', 'edit_draft', 'edit_close'], 'a key just after a renewal sends none');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

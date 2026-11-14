@@ -243,9 +243,13 @@ export class MessageEditWriting {
     let revision = null;
     if (receipt.status === 'committed') {
       revision = receipt.result?.session_revision ?? null;
+      // Taken at once, before the device write below: this save's own edit_session change may be read meanwhile.
+      if (integer(revision) && revision > (this.sessionRevision ?? 0)) this.sessionRevision = revision;
       this.kept = sent.args.body; this.lastRenewal = this.timers.now(); this.tooLong = null;
       if (this.state === 'refused' && !this.readOnly && !this.pending) { this.state = 'editing'; this.error = null; }
       await this.persist().catch(() => {});
+      // A resend carried the words of its first send: words typed since go as the next draft save.
+      if (this.value !== this.kept && this.live && !this.timer) this.scheduleDraft();
     } else {
       const code = receipt.error?.code;
       if (code === 'EDIT_TAKEN') { this.goElsewhere(); return; }
@@ -416,7 +420,8 @@ export class MessageEditWriting {
   // edit (close is false). Closed or refused, the device row goes; with no answer it keeps only the holder and the
   // close's operation, which the next Edit of this message sends again first.
   async end(state, { close = !this.elsewhere } = {}) {
-    this.over = true; this.cancelDraft();
+    // Save and Cancel go off at once: the close may be slow to answer.
+    this.over = true; this.cancelDraft(); this.notify();
     const value = state === 'saved' || state === 'unchanged' ? this.value : this.base.body;
     this.pending = null; this.conflict = null;
     let row = null;
