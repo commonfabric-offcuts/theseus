@@ -196,7 +196,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   loadPageScope(context, 'app.mjs');
   let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -344,6 +344,31 @@ test('a recheck replaces only the rechecked rows the page lists, at once, and on
   holds=false;
   listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
   assert.equal(candidates.get(f.editor.key).items.length,4,'an editor the registry no longer holds is left as it is');
+});
+// The Reader's data-discovered says the shown source's earlier copies have been looked for and any found is offered
+// (app.mjs present). Choosing Reply or Note keeps the source shown, so its discovery still counts; a discovery for a source no
+// longer shown never marks the one shown now.
+test('the Reader marks discovery finished for the source it shows, through a Reply or Note choice, and never for one it left',async()=>{
+  const f=fixture(),asked=[];
+  f.registry.recoveryCandidates=()=>{const d=defer();asked.push(d);return d.promise;};
+  f.registry.neighbors=async()=>null;f.registry.activity=()=>{};
+  Object.assign(f.reader,{show(){},paintMark(){}});
+  const presentation=id=>({surface:'reader',source:{source_ref:{kind:'message',id},topic_id:'t1',seq:1},editors:{reply:f.editor},mode:'reply'});
+  const shown=async p=>{f.registry.current=p;await f.present(p);};
+  const mark=()=>f.get('reader').dataset.discovered;
+  const first=presentation('m1');await shown(first);
+  assert.equal(mark(),undefined,'not before its discovery finishes');
+  f.reader.presentation=EditorRegistry.prototype.setMode.call(f.registry,'note');
+  assert.notEqual(f.reader.presentation,first);assert.equal(f.reader.presentation.source,first.source);
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),'true','a Reply or Note choice keeps the source, so its finished discovery marks it');
+  const second=presentation('m2');await shown(second);
+  assert.equal(mark(),undefined,'a newly shown source starts unmarked');
+  const third=presentation('m3');await shown(third);
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),undefined,'a discovery for a source no longer shown does not mark the one shown');
+  asked.shift().resolve({items:[],nextCursor:null});await drain();
+  assert.equal(mark(),'true');
 });
 test('More versions adds its page to the listed copies, and a fresh discovery replaces them',async()=>{
   const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id}),asked=[];

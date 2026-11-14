@@ -495,7 +495,8 @@ async function present(presentation) {
     offerAuthor(presentation);
     revokeMedia(); reader.presentation = presentation;
     // data-discovered says this source's earlier copies have been looked for,
-    // and any found is offered; until then Review may still appear.
+    // and any found is offered; until then Review may still appear. Choosing
+    // Reply or Note keeps the source shown, so its discovery still counts.
     delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
@@ -510,7 +511,7 @@ async function present(presentation) {
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
-  discovery.then(() => { if (reader.presentation === presentation) $('reader').dataset.discovered = 'true'; });
+  discovery.then(() => { if (registry.current?.source === presentation.source) $('reader').dataset.discovered = 'true'; });
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
     takeNeighbors(registry.current, neighbors);
