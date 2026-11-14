@@ -833,3 +833,14 @@ test('compact fence boundaries preserve whitespace, language info, longer delimi
     assert.equal(byClass(render(body, { copyFences: true }), 'fence-copy').length, 0, body);
   }
 });
+
+test('two inline pairs stay inline and a pasted pair inside a fence stays literal', () => {
+  const pair = '```npm i```';
+  const inline = render(pair + ' then ```npm test```', { copyFences: true });
+  assert.equal(byClass(inline, 'fence-copy').length, 0);
+  assert.equal(inline.textContent, 'npm i then npm test');
+  const paste = 'user: ' + pair + '\nnext line';
+  const message = render('Pasted:\n\n```\n' + paste + '\n```\n\nThat is all.', { copyFences: true });
+  assert.deepEqual(texts(byClass(message, 'md-pre')), [paste]);
+  assert.deepEqual(texts(byClass(message, 'md-p')), ['Pasted:', 'That is all.']);
+});

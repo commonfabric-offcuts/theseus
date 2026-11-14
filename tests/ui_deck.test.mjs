@@ -239,3 +239,10 @@ test('a place in a card\'s words as shown falls at the same words as written, pa
   assert.equal(writtenAt('abc', 'abc', 0), 0);
   assert.equal(writtenAt('abc', 'abc', 9), 3);
 });
+
+test('a pasted inline pair in a fence preserves the next Notebook card', () => {
+  const body = '## A\n```\nuser: ```npm i```\n```\n\n## B\nwords';
+  const deck = parseDeck(body);
+  assert.equal(titles(deck), 'A,B');
+  assert.equal(deckBody(deck), body);
+});

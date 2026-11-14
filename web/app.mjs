@@ -761,6 +761,7 @@ function paintViews(kind) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
       card = node('article'); card.tabIndex = 0;
+      card.setAttribute('aria-description', 'Press Enter or Space to open this message.');
       card.onclick = () => run(() => openSource(ref, card, marks.capture(item.id)));
       // Enter belongs to MessageMenu; Space keeps the old card button's activation.
       card.addEventListener('keydown', event => { if (event.target === card && event.key === ' ') event.preventDefault(); });

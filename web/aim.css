@@ -1030,6 +1030,8 @@ article.message-card:hover{background:var(--soft)}
 .fence-copy svg{width:1.1rem;height:1.1rem;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .fence-copy-unavailable{max-width:9rem;padding:.2rem .4rem;color:var(--muted)}
 .fence-copy-unavailable::before{content:'Open message to copy'}
-.md-fence:hover>.fence-copy,.md-fence:focus-within>.fence-copy{opacity:1;pointer-events:auto}
+.md-fence:hover>.fence-copy,.md-fence:focus-within>.fence-copy,.fence-copy[data-label="Copy failed"]{opacity:1;pointer-events:auto}
 .fence-copy:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 @media(hover:none),(pointer:coarse){.md-fence{padding-top:2.75rem}.fence-copy{opacity:1;pointer-events:auto;min-width:2.75rem;min-height:2.75rem}.fence-copy-unavailable{padding-top:.6rem}}
+
+.fence-copy-announcement:not(.sr-only){position:fixed;z-index:1000;inset-inline:1rem;bottom:max(1rem,env(safe-area-inset-bottom));width:fit-content;max-width:calc(100% - 2rem);margin-inline:auto;padding:.45rem .75rem;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font:500 .875rem/1.4 ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere;pointer-events:none;user-select:none;-webkit-user-select:none}

@@ -132,6 +132,61 @@ try {
         }
       });
     }
+    for (const width of [320, 375, 390, 1280]) for (const dark of [false, true]) {
+      await check(`copy, partial hint and refusal at ${width}px ${dark ? 'dark' : 'light'}`, async () => {
+        const phone = width < 1280;
+        const p = await open('/?topic=fence-topic', { phone, width, dark });
+        const truncated = p.locator(query(longMessage));
+        const cue = truncated.locator('.fence-copy-unavailable');
+        await cue.waitFor();
+        assert.equal(await truncated.locator('.fence-copy').count(), 0);
+        assert.equal(await cue.getAttribute('aria-label'), 'Open message to copy');
+        const fits = await cue.evaluate(element => {
+          const pre = element.parentElement.querySelector('.md-pre'), first = document.createRange();
+          first.setStart(pre.firstChild, 0); first.setEnd(pre.firstChild, 1);
+          const line = first.getBoundingClientRect(), hint = element.getBoundingClientRect();
+          const card = element.closest('.message-card').getBoundingClientRect();
+          return hint.width > 0 && hint.left >= card.left && hint.right <= card.right &&
+            (hint.bottom <= line.top || hint.right <= line.left);
+        });
+        assert.ok(fits, 'partial hint stays inside its card and clear of the payload');
+        const selector = query(message) + ' .fence-copy', button = p.locator(selector);
+        await button.scrollIntoViewIfNeeded();
+        const box = await button.boundingBox();
+        if (phone) assert.ok(box.width >= 44 && box.height >= 44);
+        await copy(p, selector);
+        await p.evaluate(() => { copyMode = 'reject'; });
+        await press(p, selector);
+        await wait(p, sel => document.querySelector(sel).dataset.label === 'Copy failed', selector);
+        if (!phone) await p.mouse.move(0, 0);
+        const refusal = p.locator('.fence-copy-announcement:not(.sr-only)');
+        assert.equal(await refusal.innerText(), 'Could not copy. Select the text and use Copy.');
+        const shown = await refusal.boundingBox();
+        assert.ok(shown && shown.width > 2 && shown.x >= 0 && shown.x + shown.width <= width);
+        assert.equal(await button.evaluate(b => getComputedStyle(b).opacity), '1');
+        assert.equal(await p.locator('#reader').evaluate(d => d.open), false);
+        assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await picture(p, `refusal-${width}-${dark ? 'dark' : 'light'}`);
+      });
+    }
+    await check('Space and Enter open the focused feed card once', async () => {
+      for (const key of ['Space', 'Enter']) {
+        const p = await open('/?topic=fence-topic'), card = p.locator(query(message));
+        await card.focus();
+        await p.evaluate(() => {
+          window.readerOpens = 0;
+          new MutationObserver(records => {
+            readerOpens += records.filter(record => record.oldValue === null).length;
+          }).observe(document.querySelector('#reader'), { attributes: true, attributeOldValue: true, attributeFilter: ['open'] });
+        });
+        await p.keyboard.press(key);
+        await wait(p, () => document.querySelector('#reader').open && readerOpens > 0);
+        assert.equal(await p.evaluate(() => readerOpens), 1);
+        assert.equal(await p.locator('#source-body .md-pre').textContent(), payload);
+        assert.equal(await p.evaluate(() => copyCalls.length), 0);
+        await p.close();
+      }
+    });
     await check('keyboard, actual clipboard paste, refusal, and text selection', async () => {
       const p = await open('/?topic=fence-topic&message=' + message);
       const selector = '#source-body .fence-copy';
@@ -142,6 +197,15 @@ try {
       assert.equal(await p.evaluate(() => document.activeElement.className), 'fence-copy');
       await copy(p, selector, payload, 'Enter');
       await copy(p, selector, payload, 'Space');
+      await p.evaluate(() => { copyMode = 'pending'; });
+      await p.keyboard.press('Space');
+      await wait(p, () => copyResolves.length === 1);
+      const button = p.locator(selector);
+      assert.equal(await button.getAttribute('data-label'), 'Copying…');
+      assert.equal(await button.getAttribute('aria-label'), 'Copying fenced text…');
+      assert.equal(await button.getAttribute('title'), 'Copying fenced text…');
+      await p.evaluate(() => { copyResolves.shift()(); copyMode = 'real'; });
+      await wait(p, s => document.querySelector(s).dataset.label === 'Copied', selector);
       // The app's reply field is a genuine editable paste destination.
       const field = p.locator('#writing-body');
       await field.focus(); await p.keyboard.press('Meta+A'); await p.keyboard.press('Meta+V');
@@ -409,6 +473,6 @@ try {
   if (browser) await browser.close();
   fixture.stdin.end();
   const code = await exited;
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, observations, fixtureExit: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, observations, fixtureExitCode: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
 }
-assert.ok(results.length && results.every(r => r.passed), 'every offered fence-copy check passed');
+assert.ok(results.length && results.every(r => r.passed), 'see native.json for exact failing assertions');

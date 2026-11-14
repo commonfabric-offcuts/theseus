@@ -698,6 +698,7 @@ function blockNode(block, doc, cut, meter, copyFences = false) {
     if (block.complete) wrap.append(placed(fenceCopyButton(doc, block.words.text), { start: span.end, end: span.end }));
     else {
       const cue = el(doc, 'span', 'fence-copy-unavailable');
+      cue.setAttribute('role', 'note');
       cue.setAttribute('aria-label', 'Open message to copy');
       wrap.append(placed(cue, { start: span.end, end: span.end }));
     }

@@ -12,13 +12,19 @@ function stateOf(doc) {
   if (state) return state;
   state = { held: null, paints: new Map(), serial: 0, release: 0 };
   documents.set(doc, state);
+  const clearNotice = () => {
+    if (!state.notice) return;
+    state.notice.classList.add('sr-only');
+    state.notice.textContent = '';
+    state.notice = null;
+  };
   const flush = () => {
     state.held = null;
     const paints = [...state.paints]; state.paints.clear();
     for (const [host, paint] of paints) if (host.isConnected) paint();
   };
   const add = (target, name, fn, options) => { if (target instanceof EventTarget) listen(target, name, fn, options); };
-  shell.follow({ begin() { ++state.release; state.held = null; state.paints.clear(); ++state.serial; } });
+  shell.follow({ begin() { ++state.release; state.held = null; state.paints.clear(); ++state.serial; clearNotice(); } });
   const release = afterClick => {
     if (!state.held) return;
     const revision = ++state.release;
@@ -33,6 +39,7 @@ function stateOf(doc) {
   };
   add(doc, 'pointerdown', event => {
     const button = event.target.closest?.('.fence-copy');
+    if (!button) clearNotice();
     if (button && event.isPrimary && event.button === 0) {
       ++state.release; state.held = { button, pointer: event.pointerId };
     }
@@ -81,11 +88,11 @@ export function fenceCopyButton(doc, text) {
   // pointerdown instead would suppress WebKit's tap-generated click.
   button.addEventListener('mousedown', event => event.preventDefault());
   button.addEventListener('keydown', event => {
-    if (event.key === 'Tab') return;
+    if (!['Enter', ' '].includes(event.key) || event.metaKey || event.ctrlKey || event.altKey) return;
     event.stopPropagation();
     if (event.repeat && (event.key === 'Enter' || event.key === ' ')) event.preventDefault();
   });
-  button.addEventListener('keyup', event => { if (event.key !== 'Tab') event.stopPropagation(); });
+  button.addEventListener('keyup', event => { if (['Enter', ' '].includes(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation(); });
   button.addEventListener('click', event => {
     event.preventDefault(); event.stopPropagation();
     if (button.isContentEditable) return;
@@ -96,6 +103,8 @@ export function fenceCopyButton(doc, text) {
     try { writing = doc.defaultView.navigator.clipboard.writeText(text); }
     catch { writing = Promise.reject(); }
     button.dataset.label = 'Copying…'; path.setAttribute('d', COPY);
+    button.title = 'Copying fenced text…';
+    button.setAttribute('aria-label', button.title);
     const root = button.closest('dialog') ?? doc.body;
     let notice = root.querySelector(':scope > .fence-copy-announcement');
     if (!notice) {
@@ -103,6 +112,12 @@ export function fenceCopyButton(doc, text) {
       notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
       root.append(notice);
     }
+    if (state.notice && state.notice !== notice) {
+      state.notice.classList.add('sr-only');
+      state.notice.textContent = '';
+    }
+    state.notice = notice;
+    notice.classList.add('sr-only');
     notice.textContent = '';
     // The status is mounted empty before a result arrives; a fresh result is
     // announced even when the previous press also succeeded.
@@ -113,7 +128,8 @@ export function fenceCopyButton(doc, text) {
       button.dataset.label = copied ? 'Copied' : 'Copy failed';
       path.setAttribute('d', copied ? DONE : FAILED);
       button.title = words; button.setAttribute('aria-label', words + ' Press to copy again.');
-      if (state.serial !== serial) return;
+      if (state.serial !== serial || state.notice !== notice) return;
+      notice.classList.toggle('sr-only', copied);
       notice.textContent = words;
     };
     Promise.resolve(writing).then(() => finish(true), () => finish(false));

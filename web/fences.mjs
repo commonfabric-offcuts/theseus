@@ -2,14 +2,24 @@
 // Inputs are lines without their CRLF ending; offsets refer to those lines.
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
-// A matching run at line end closes a fence, either on its own or immediately
-// after its payload. Scan backwards once, so even long unmatched runs are linear.
-export function fenceEnd(text, fence, after = 0) {
-  let end = text.length;
-  while (end > after && (text[end - 1] === ' ' || text[end - 1] === '\t')) end--;
-  let at = end;
-  while (at > after && text[at - 1] === fence.marker) at--;
-  return end - at >= fence.length ? at : -1;
+// Only the first delimiter-sized run on a line can close the block. A
+// pasted inline pair such as "user: ```npm i```" is part of the payload.
+function firstRun(text, fence, from) {
+  let at = text.indexOf(fence.marker, from);
+  while (at !== -1) {
+    let end = at + 1;
+    while (text[end] === fence.marker) end++;
+    if (end - at >= fence.length) return { at, end };
+    at = text.indexOf(fence.marker, end);
+  }
+  return null;
+}
+
+const endsLine = (text, run) => run && /^[ \t]*$/.test(text.slice(run.end));
+
+export function fenceEnd(text, fence) {
+  const run = firstRun(text, fence, 0);
+  return endsLine(text, run) ? run.at : -1;
 }
 
 // At block-line start, a same-line pair is literal fenced text. Otherwise the
@@ -19,8 +29,11 @@ export function fenceOpen(text, next = '') {
   if (!match) return null;
   const info = match[2].trim(), after = match[0].length - match[2].length;
   const fence = { marker: match[1][0], length: match[1].length, after, info };
-  const end = fenceEnd(text, fence, after);
-  if (end >= 0) return { ...fence, end, payloadAt: after, lang: '' };
+  const run = firstRun(text, fence, after);
+  if (run) {
+    // A compact pair followed by prose stays inline, even if more pairs follow.
+    return endsLine(text, run) ? { ...fence, end: run.at, payloadAt: after, lang: '' } : null;
+  }
   const payloadAt = /https?:\/\//i.test(info) ? after : null;
   const nextEnd = info.includes('`') ? fenceEnd(next, fence) : -1;
   const immediateClose = nextEnd >= 0 && !next.slice(0, nextEnd).trim();
