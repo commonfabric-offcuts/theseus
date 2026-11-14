@@ -22504,7 +22504,7 @@
   "reds": [],
   "transitions": [
     {
-      "review": "PENDING joint review by auditor and Fable: release/live73 recovery and reader inventory",
+      "review": "m-8ef452934cf24fa48d185ec6c5085987",
       "retired_sources": [],
       "plan": {
         "version": 1,

@@ -1,5 +1,5 @@
 {
-  "status": "PENDING joint review; not landed",
+  "status": "Auditor approved both exact plan digests and the declaration; Fable independent verdict and landing decision pending",
   "production_source_commit": "72be35bc8bb511189e0e67c2eebb783ec52a3182",
   "transition_source_commit": "a3846b8c7ad7582c90dc367bab50c3b04b2c48ab",
   "requested_input_commit": "ec10b919d27eb94c333599bff3fa89a3c2bf1bdf",
@@ -61,7 +61,7 @@
   "protocol_migration": "Replace obsolete 47-step snapshots with current 48-step base and one transition; old evidence remains archival. Exact source commits must remain reachable.",
   "admissions": 0,
   "retired_sources": [],
-  "review": "PENDING joint review by auditor and Fable: release/live73 recovery and reader inventory",
+  "review": "m-8ef452934cf24fa48d185ec6c5085987",
   "unexpected_failures": [
     "sources timeout: the Reader is back on the question (:79)",
     "Notebook :548 and :664",
