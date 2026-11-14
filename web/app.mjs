@@ -426,15 +426,16 @@ async function showPending(key, opener) {
 // notice about writing it no longer holds changes nothing else.
 function changed(editor) {
   paintReview();
-  if (registry.sessions.get(editor.key)?.editor !== editor) return;
-  if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
-    reader.paintStatus();
-    $('review-versions').hidden = !needsReview(reader.editor);
+  if (registry.sessions.get(editor.key)?.editor === editor) {
+    if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
+      reader.paintStatus();
+      $('review-versions').hidden = !needsReview(reader.editor);
+    }
+    if (inline?.editor === editor) inline.paintStatus();
+    invalidateComparison(editor);
+    const version = registry.localTopicVersion(editor);
+    if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
   }
-  if (inline?.editor === editor) inline.paintStatus();
-  invalidateComparison(editor);
-  const version = registry.localTopicVersion(editor);
-  if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
   markDiscovered();
 }
 // What the person sees is read: while the page is visible and has focus, and
@@ -609,7 +610,8 @@ function discover(presentation, editor) {
 // exactly those rows is replaced, a copy that moved is added, and every other
 // listed copy stays.
 // It runs inside the cleanup task that rechecked them, so no discovery or
-// image change lands between the recheck and this patch.
+// image change lands between the recheck and this patch. It answers with the
+// image settle the patch started, which the recheck counts as its own.
 function rechecked(session, ids, page) {
   const editor = session.editor, validated = registry.applyRecheck(editor, ids, page);
   if (!validated) return;
@@ -620,7 +622,7 @@ function rechecked(session, ids, page) {
     candidates.set(editor.key, { ...known, items: [...items, ...page.items.filter(row => !listed.has(row.id))] });
   }
   changed(editor);
-  validated.catch(error => {
+  return validated.catch(error => {
     const presentation = presentationFor(editor);
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });

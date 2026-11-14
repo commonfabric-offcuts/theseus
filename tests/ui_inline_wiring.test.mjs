@@ -327,20 +327,24 @@ test('the rail\'s reads begin after the primary composer is initialized, and a t
   assert.equal(order.includes('workspaces'),false,'inside an outcome the rail shows only that outcome');
 });
 test('a recheck replaces only the rechecked rows the page lists, at once, and only for an editor the registry still holds',async()=>{
-  const f=fixture(),applied=[],validation=new Promise(()=>{});let holds=true;
+  const f=fixture(),applied=[],validation=defer();let holds=true;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
   f.registry.recoveryCandidates=async()=>({items:[],nextCursor:null});
-  f.registry.applyRecheck=(editor,ids,page)=>{applied.push([editor.key,ids,page.items.map(row=>row.id)]);return holds?validation:null;};
+  f.registry.applyRecheck=(editor,ids,page)=>{applied.push([editor.key,ids,page.items.map(row=>row.id)]);return holds?validation.promise:null;};
   await f.initialize();await new Promise(resolve=>setImmediate(resolve));
   const listeners=[...f.registry.cleanup.resumeListeners];assert.equal(listeners.length,1);
   const {candidates}=f.owners(),row=id=>({id,stamp:id});
   candidates.set(f.editor.key,{items:[row('a'),row('r2'),row('u2'),row('r3')],nextCursor:'c3'});
   // The patch lands inside the listener call, before the image validation that follows it settles.
   // r2 moved to m2 when another tab recovered it.
-  listeners[0]({editor:f.editor},['r2','r3'],{items:[{...row('r3'),stamp:'released'},row('m2')],nextCursor:null});
+  let settled=false;
+  const started=listeners[0]({editor:f.editor},['r2','r3'],{items:[{...row('r3'),stamp:'released'},row('m2')],nextCursor:null});
+  started.then(()=>{settled=true;});
   assert.deepEqual(applied,[['inline',['r2','r3'],['r3','m2']]]);
   assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('u2'),{...row('r3'),stamp:'released'},row('m2')],nextCursor:'c3'},
     'retired rows leave, rechecked rows are replaced, a moved copy is added, and other rows and the next page stay');
+  await drain();assert.equal(settled,false,'the listener answers with the image settle it started, still under way');
+  validation.resolve();await drain();assert.equal(settled,true,'and it settles with that settle');
   holds=false;
   listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
   assert.equal(candidates.get(f.editor.key).items.length,4,'an editor the registry no longer holds is left as it is');
@@ -391,8 +395,8 @@ test('the Reader is marked discovered only once every check its discovery deferr
   assert.equal(f.get('reader').dataset.discovered,undefined,'a deferred check still to be made holds the mark');
   f.changed(f.editor);
   assert.equal(f.get('reader').dataset.discovered,undefined,'a change while it is held marks nothing');
-  held.clear();f.changed(f.editor);
-  assert.equal(f.get('reader').dataset.discovered,'true','the recheck settled and reported, the source is marked');
+  held.clear();f.changed({key:'replaced-writing'});
+  assert.equal(f.get('reader').dataset.discovered,'true','the recheck settled and reported, even for writing no longer registered, the source is marked');
 });
 test('More versions adds its page to the listed copies, and a fresh discovery replaces them',async()=>{
   const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id}),asked=[];
