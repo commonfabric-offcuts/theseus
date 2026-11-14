@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "source_commit": "892df45d26b71797db64685eaa07c0edd469d081",
+  "source_commit": "72be35bc8bb511189e0e67c2eebb783ec52a3182",
   "source_hashes": {
     ".github/workflows/checks.yml": "dbb2a6d2d96c1b2c60eb36c6d25272ea4204fef1",
     ".gitignore": "0f100ecaf843ab86e2de5057a2ceceed9c91b2b9",
@@ -15,16 +15,18 @@
     "docs/agent-guide.md": "f64b5baf1d219da03480f18d5cf80ec064da2574",
     "docs/releases.md": "2abd5ac81933e821e750e145c2d94fd45af6b5c7",
     "docs/team-assessments.md": "396f6b77fb037b21fc1212a8e69ee97873cf33ed",
-    "docs/tools.md": "7982e16647ed61f5079b4a321c8a2b20da1feb4a",
+    "docs/tools.md": "c4cca446420e106c953a6344aa5d8048355a385e",
     "tests/acts.json": "48fcc72598d4adb6fb235f467ce8750f8570c072",
     "tests/agent_colors_native.mjs": "91027fe4060a9b4e251c9bcafcc1280969be4bfe",
     "tests/assessment_freshness_probe.mjs": "a079d10a00ca152223ab890400da4313b4c67663",
     "tests/compose-reach.mjs": "e193bc339fe443b5ad43ca560db5b3a5f3dba5a3",
     "tests/conversation_native.mjs": "f28b3ca95922fb9970e40f5c5c69b071cac8aa18",
     "tests/device_native.mjs": "d5844b20472a96334f42eaa820a35750936a77aa",
+    "tests/fence_copy_native.mjs": "177775dc659ec6793aed01c2ad282dd18a7098ca",
     "tests/fixture_control.mjs": "2885c1dd4e74b53997f4f54014a5fe4ddc52dbe7",
     "tests/fixture_control.test.mjs": "92445eadacc5e10c933608cc3c164c251c9744ce",
     "tests/fixtures/at_names.json": "72e03e7c7ed25007cb1788bc4a843dec06d760c5",
+    "tests/fixtures/ci-run1-refusal.json": "5e52a40eb3a07b0ba34c7e3a51c3558fbb2d9a90",
     "tests/fixtures/fake_assessment_server.py": "b5ba4323d9578a087b0e84b6f4dfda9c5e70908b",
     "tests/fixtures/fake_codex_app_server.py": "dd4e0f93ddc8c260d5dda3156af205aa3a210071",
     "tests/fixtures/media/README.md": "9aaf5f2642e55a5344c82a7f6f0bcd7a16699c8f",
@@ -102,7 +104,7 @@
     "tests/reader_images_native.mjs": "ad55163774571cfb485bb6778278b7c1916f3238",
     "tests/reader_inline_native.mjs": "60efc21a09564799a4bf3de09c94c4c79c5e0f0b",
     "tests/reader_live_native.mjs": "ef9a7f21e553f829bf80088ed03b5c0c4138e9d5",
-    "tests/reader_native.mjs": "0d2784437e799bf8e957d5a5d8de7f82d7957fe2",
+    "tests/reader_native.mjs": "cc2ed4a3d60c5db1d7643412f9b9439ab491f8fb",
     "tests/reader_navigation_native.mjs": "3aa276eb108fd0ec85d0bee6623e20e27935af90",
     "tests/reader_openings_native.mjs": "40731a201642e6db12b15dcb1f3bce0f695f0651",
     "tests/reader_persistence_native.mjs": "601a094f35b53eedc897884f17c378d9e1022ee6",
@@ -225,6 +227,7 @@
     "tests/test_thumb_answers.py": "599f3ede7d9fe83fc3c40221a0f85caaac98adc3",
     "tests/test_tools_acts.py": "608b339254c35b991cb0073d1ae80a558fcc075f",
     "tests/test_tools_checks_trial.py": "475fae3305eca561853e65688e57ad161cf08f58",
+    "tests/test_tools_ci_known_reds.py": "c769decea74b5882fa2e5abbe91d238f78f20d60",
     "tests/test_tools_deploy.py": "9a434a5b8d143320603fac2029a618830c27c315",
     "tests/test_tools_mutant.py": "fa6ebc66db580dcb087009e14123336556ce88c1",
     "tests/test_tools_native.py": "357e333333c620430d229ef359fb9b6756c2a14f",
@@ -268,7 +271,7 @@
     "tests/ui_coordination_stacks.test.mjs": "7d644f8b63c6819c4bfb770bec78a1f089643cd8",
     "tests/ui_creation.test.mjs": "5f20abd00390d9bbf0ebb0ba50636834406ed906",
     "tests/ui_creation_claim.test.mjs": "56d4cb91bfd5bf6bb98e7f2adc43f757e2817a46",
-    "tests/ui_deck.test.mjs": "d363d31ad85db6563dfcaf55137f14dbe99796bb",
+    "tests/ui_deck.test.mjs": "cab592d9bfad73b3d30b6f19519895d9cc93986e",
     "tests/ui_depart.test.mjs": "37fae9e80b3e31aa2ed4731b1c5f7a0e820f87f3",
     "tests/ui_departure_guard.test.mjs": "08c2063989f707157483917374ebf456cecbe81d",
     "tests/ui_freshness.test.mjs": "237d7afda6dba54a6c769286c5e292a6e29e30d0",
@@ -287,7 +290,7 @@
     "tests/ui_local_effects.test.mjs": "67bc8e31625c250fb25ab8c7f2395b90079e52ed",
     "tests/ui_marks.test.mjs": "af624e7285f972f6ab729ee0fe9e2ca257bf78a4",
     "tests/ui_message_edit.test.mjs": "6c501312fd797af047a1a61bac50840cf23721f2",
-    "tests/ui_message_format.test.mjs": "16662337aec1747bace45a78933ecb9562b6ff3a",
+    "tests/ui_message_format.test.mjs": "5a45bdd24c53b1ebd912865560550b962ed03269",
     "tests/ui_message_menu.test.mjs": "3f26946eec67c3f3254d788456b32dc8f5c1c105",
     "tests/ui_native_mutant_patterns.test.mjs": "823f26c531ee1d1c1dd5d770ffd43618015bd266",
     "tests/ui_notebook_card_merges.test.mjs": "5c9501927510d46f6c0564adbe52e2dbd93e840e",
@@ -303,7 +306,7 @@
     "tests/ui_outline_order.test.mjs": "94a5cb796d1411382199642c1b02ee1a0a5cf6da",
     "tests/ui_own_hover.test.mjs": "66fee085f68b13a6523fc854a54e371545934ec5",
     "tests/ui_page_changes.test.mjs": "b330a3ba6da78072472fbdfe7a14f11813354878",
-    "tests/ui_page_here.test.mjs": "2f7cfe2bebb46c669e217d4e353b41debe142262",
+    "tests/ui_page_here.test.mjs": "450f6036ef4a38ab6e3142067f250897447ced2c",
     "tests/ui_page_reads.test.mjs": "58d87bcf0d8777a13fa348ca1f93ad0cd192afe4",
     "tests/ui_people.test.mjs": "5ed22fc183126a7de10b7cb8436cba031bcef45a",
     "tests/ui_phone_check.test.mjs": "d63c99f7ccbd1b1182889d1bc398823c0d7f3c9e",
@@ -356,6 +359,9 @@
     "tools/__init__.py": "75baea9b19201f9a0b56e199a0f7afdb0f609110",
     "tools/acts.py": "30b7b56fadafa9730615f3d0dea50e6d512819a9",
     "tools/checks.py": "93d5ce52f2dd4ff6171c1ed5ee6214a3f833c3bd",
+    "tools/ci-input-reads.json": "03d0a11e8bb9df7d895f1ab92df9b8742dc745a8",
+    "tools/ci_input_reads.py": "d1b8c41dc25d6aa5dd22b8e6962e35d107b60033",
+    "tools/ci_known_reds.py": "3a99fb880a322ff2f1b81dc0899c608a172e78bf",
     "tools/deploy.py": "5995e3d1f8599fd523354d0f1e1742cbb1e70793",
     "tools/known_reds.py": "b61304cc65f88eb0351a69bb31e19e23b7618ecd",
     "tools/mutant.py": "482c6802fcba344d1864584939a62a337b2d6208",
@@ -369,7 +375,7 @@
     "tools/pipeline/releases/release-19.json": "516ccf2121d21d0768dfca1dbcef883e5bf2c5f3",
     "tools/probe_codex_host.py": "e07cf0fe4651239070ab2021160e9c4ca489f0f8",
     "tools/probe_hosted_delivery.py": "19ff83e3fada3abf780660b1512606ca47decdc6",
-    "tools/release_check.py": "4ac31673e145097421dc03409aeb56fc8c50d9f9",
+    "tools/release_check.py": "70314f14a1e8f2d45fa62680ff7a2cff77a46766",
     "tools/releases.py": "950de67246442430e235a66824f7f81404681c86",
     "tools/wake_replay.py": "2c6f85fae5b1eb135b24ee0cb1a761c73a1d3330",
     "tools/wake_standin.py": "d1a6140e029b39f7b3351d515f9c95ace7d30a30"
@@ -421,6 +427,7 @@
     "native-webkit-new-line",
     "native-webkit-reading",
     "native-compose",
+    "native-fence-copy",
     "wake-replay"
   ],
   "inventory": {
@@ -12191,6 +12198,339 @@
         "name": "test_the_command_line_prints_what_it_found (test_tools_checks_trial.Trials)"
       },
       {
+        "name": "test_added_duplicate_source_statement_is_ambiguous (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_added_test_module_needs_a_complete_reviewed_plan (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_aliased_python_and_node_file_reads_require_declarations (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_ambiguous_complete_plans_are_refused (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_base_added_verifier_test_identity_cannot_be_omitted (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_base_additions_need_a_complete_reviewed_inventory_transition (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_base_policy_cannot_be_edited (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_benign_source_line_shift_keeps_fingerprint (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_browser_closed_with_abnormal_exit (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_cancelled_producer_cannot_validate_completed_artifact_claims (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_candidate_cannot_delete_a_base_addition_to_match_old_snapshot (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_case_values_changed_same_name_remains_unexpected (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_changed_checkout_tree_stays_red (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_changed_failure_then_retry_pass_is_red_and_not_a_clean_heal (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_changed_producer_driver_with_unchanged_workflow_is_refused (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_changed_source_cannot_claim_healed (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_combined_verdict_cannot_be_synthetic_green (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_committed_pr_policy_cannot_admit_its_own_new_failure (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_complete_retry_history_with_only_expected_failures_can_validate (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_compose_cleanup_is_not_completion (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_controller_cannot_authenticate_a_foreign_run_from_matching_artifacts (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_controller_cli_uses_producer_record_from_a_separate_context (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_controller_record_must_match_actual_controller_environment (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_controller_uses_producer_identity_and_reports_intended_pr_head (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_counts_cannot_disagree_with_evidence (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_cross_profile_requires_runner_evidence_review (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_declared_non_product_read_extends_the_frozen_inputs (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_deeply_nested_json_is_refused_with_a_reason (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_dirty_checkout (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_documentation_read_by_tests_cannot_be_changed (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_duplicate_opaque_read_is_a_new_read_obligation (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_duplicate_step_preserving_total (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_escaped_mutant_never_counts_as_expected_failure (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_escaped_mutant_with_reviewed_inventory_remains_red (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_exact_reviewed_failure_green_but_raw_red (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_expected_failure_then_retry_pass_is_not_a_clean_heal (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_expected_json_fixture_cannot_be_changed_to_hide_a_regression (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_failed_legacy_fixture_cleanup (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_failure_union_cannot_drop_raw_failure (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_feature_cannot_approve_its_own_plan_transition (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_feature_cannot_modify_an_addition_from_the_authenticated_base (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_first_github_run_real_setup_refusal_remains_red (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_first_run_without_admissions_remains_red (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_focused_aggregate (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_frame_less_failure_cannot_match (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_genuine_receipt_cannot_vouch_for_replaced_summary_bytes (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_green_whole_run_reports_expected_case_healed (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_healed_case (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_history_cannot_change_the_original_policy_base (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_history_cannot_duplicate_an_attempt (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_history_cannot_point_outside_its_directory (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_leading_comment_normalization_does_not_strip_template_payload (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_legacy_compose_baseline_cannot_be_admitted (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_load_sample_and_paths_are_diagnostic_only (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_measured_runtime_differs_from_receipt (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_missing_expected_case_is_not_healed (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_missing_prior_original_evidence_keeps_retry_red (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_missing_shard (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_missing_stable_setting_cannot_match (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_missing_step (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_nested_json_cli_preserves_a_refusal_result_file (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_nested_tap_case_identity_includes_parent (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_new_opaque_file_read_requires_a_declaration (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_new_read_in_a_reviewed_plan_still_needs_a_declaration (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_new_unit_checks_can_run_alongside_all_reviewed_checks (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_non_browser_failure (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_normalization_preserves_ids_relationships_and_numbers (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_old_definition_still_validates_during_reviewed_transition (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_old_transition_cannot_implicitly_retire_a_later_base_addition (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_omitted_case_with_duplicate_preserving_total (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_ordinary_passing_source_can_shift_by_leading_comment (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_ordinary_product_only_change_can_validate (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_ordinary_python_header_comment_can_shift (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_original_summary_receipt_digest_is_required (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_partial_mix_of_reviewed_old_and_new_plans_is_refused (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_plan_transition_cannot_add_failure_admissions (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_planned_node_check_cannot_be_replaced_at_same_total (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_planned_python_check_cannot_be_replaced_at_same_total (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_policy_cannot_omit_fixture_or_documentation_inputs (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_pr_edited_policy (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_previous_attempt_at_same_commit_stays_red (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_producer_head_must_match_triggering_api_event (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_producer_tools_compare_exact_blobs_even_for_headers (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_producer_tree_must_match_independently_rebuilt_tree (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_producer_workflow_commit_and_ref_must_bind_to_producer (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_profile_mismatch_remains_unexpected (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_protected_controller_refuses_producer_retry_before_artifacts (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_python_assertion_change_with_same_verbose_name_requires_review (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_python_encoding_and_shebang_are_not_ignorable_comments (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_python_test_stdout_can_finish_without_newline (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_rebuilt_commit_cannot_replace_original_tested_commit (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_receipt_parent_cannot_select_a_new_policy_base (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_renamed_case (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_renamed_passing_case_cannot_hide_omission (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_replay_completed_actor_cannot_hide_omitted_routed_actor (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_replay_requires_explicit_loss_record (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_retry_cannot_hide_earlier_unexpected_failure (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_retry_cannot_omit_an_earlier_attempt (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_retry_cannot_use_new_base (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_retry_revalidates_original_producer_receipt (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_retry_with_missing_history_cannot_validate (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_same_throw_different_callsite (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_second_replay_repetition_must_cover_all_routed_actors (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_separately_reviewed_complete_plan_can_allow_new_definition (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_skipped_only_and_partial_python_checks_are_refused (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_skipped_only_partial_and_todo_node_checks_are_refused (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_unit_summary_without_per_check_evidence_is_refused (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_wake_replay_lost_wakes (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_wake_replay_missing_evidence (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_wrong_source_hash (test_tools_ci_known_reds.Evidence)"
+      },
+      {
+        "name": "test_zero_admissions_passing_assertion_cannot_materially_change (test_tools_ci_known_reds.Evidence)"
+      },
+      {
         "name": "test_a_malformed_config_is_refused (test_tools_deploy.Config)"
       },
       {
@@ -14958,6 +15298,10 @@
         "phase": null
       },
       {
+        "name": "every fence newline arrangement keeps the next card and reply stack outside it",
+        "phase": null
+      },
+      {
         "name": "a card moves one place, keeps its exact words, and moving back gives the page it came from",
         "phase": null
       },
@@ -15019,6 +15363,14 @@
       },
       {
         "name": "a place in a card's words as shown falls at the same words as written, past the markup",
+        "phase": null
+      },
+      {
+        "name": "a pasted inline pair in a fence preserves the next Notebook card",
+        "phase": null
+      },
+      {
+        "name": "a tilde fence with tildes in its info keeps headings in their own cards",
         "phase": null
       },
       {
@@ -16638,6 +16990,30 @@
         "phase": null
       },
       {
+        "name": "fence copy is opt-in, preserves payload and quote mapping, and excludes inline code and box tables",
+        "phase": null
+      },
+      {
+        "name": "only a terminated closing line proves a fence complete in an excerpt, including quoted fences",
+        "phase": null
+      },
+      {
+        "name": "a URL written directly after a fence opener stays visible and copyable, including in a quote",
+        "phase": null
+      },
+      {
+        "name": "fenced text stays visible and copyable in all four newline arrangements",
+        "phase": null
+      },
+      {
+        "name": "compact fence boundaries preserve whitespace, language info, longer delimiters and following prose",
+        "phase": null
+      },
+      {
+        "name": "two inline pairs stay inline and a pasted pair inside a fence stays literal",
+        "phase": null
+      },
+      {
         "name": "a message's menu lists its items in order as a menu, takes the focus, and one tap does that item and closes it, giving the focus back",
         "phase": null
       },
@@ -17307,6 +17683,14 @@
       },
       {
         "name": "a Notebook page shows its web addresses as links, and its other words are kept as they are",
+        "phase": null
+      },
+      {
+        "name": "a revision keeps its unfenced words, links and trailing newline around a copyable fence",
+        "phase": null
+      },
+      {
+        "name": "only a quoted fence changes; surrounding source keeps quote prefixes, links and CRLF",
         "phase": null
       },
       {
@@ -21681,16 +22065,450 @@
       {
         "name": "test_without_the_flag_a_red_summary_is_refused_exactly_as_before (test_tools_deploy.DeployRefusesKnownReds)"
       }
+    ],
+    "native-fence-copy": [
+      {
+        "name": "chromium surfaces desktop light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium surfaces desktop dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium surfaces 390 light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium surfaces 320 dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 320px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 320px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 375px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 375px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 390px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 390px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 1280px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy, partial hint and refusal at 1280px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium pending and refused copy leaves visible controls clear in Reader",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium pending and refused copy leaves visible controls clear in Notebook card",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium pending and refused copy leaves visible controls clear in Notebook view",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium pending and refused copy leaves visible controls clear in feed",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium copy refusal at the first fence of a tall feed or Notebook card keeps its place and retries",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium a secondary click keeps the native link selection inside a feed card",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium after a feed clipboard refusal the message opens with selectable fenced text",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium the inline composer keeps its selected text when the feed menu opens",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium phone long-press distinguishes words, a fence, and card space at 320",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium phone long-press distinguishes words, a fence, and card space at 375",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium phone long-press distinguishes words, a fence, and card space at 390",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium Space and Enter open the focused feed card once",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium keyboard, actual clipboard paste, refusal, and text selection",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium partial fences, horizontal scroll and untouched editors",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium held pointer and Space retain the visible payload through redraw",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium Notebook held press and click-to-edit mapping after copying",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium a live feed message revision waits for the held Copy gesture",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium native touch scrolling cancels Copy and releases a queued paint",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium all four newline arrangements display and copy exact fenced text on every surface",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium glyph, same-line URL, own-message contrast and narrow nested quotes",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium each feed glyph follows its own fence inside a scrolling card",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium select all and a drag from the topic title include feed words",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium Tab reveals the Copy corner when a long fence spans its card scroller",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium backward entry reaches a trailing external Copy button",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium all inline controls stay in forward and reverse Tab order",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "chromium press guard survives actual in-place navigation and cancelled presses",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit surfaces desktop light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit surfaces desktop dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit surfaces 390 light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit surfaces 320 dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 320px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 320px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 375px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 375px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 390px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 390px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 1280px light",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy, partial hint and refusal at 1280px dark",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit pending and refused copy leaves visible controls clear in Reader",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit pending and refused copy leaves visible controls clear in Notebook card",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit pending and refused copy leaves visible controls clear in Notebook view",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit pending and refused copy leaves visible controls clear in feed",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit copy refusal at the first fence of a tall feed or Notebook card keeps its place and retries",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit a secondary click keeps the native link selection inside a feed card",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit after a feed clipboard refusal the message opens with selectable fenced text",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit the inline composer keeps its selected text when the feed menu opens",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit Space and Enter open the focused feed card once",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit keyboard, actual clipboard paste, refusal, and text selection",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit partial fences, horizontal scroll and untouched editors",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit held pointer and Space retain the visible payload through redraw",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit Notebook held press and click-to-edit mapping after copying",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit a live feed message revision waits for the held Copy gesture",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit all four newline arrangements display and copy exact fenced text on every surface",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit glyph, same-line URL, own-message contrast and narrow nested quotes",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit each feed glyph follows its own fence inside a scrolling card",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit select all and a drag from the topic title include feed words",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit Tab reveals the Copy corner when a long fence spans its card scroller",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit backward entry reaches a trailing external Copy button",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit all inline controls stay in forward and reverse Tab order",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      },
+      {
+        "name": "webkit press guard survives actual in-place navigation and cancelled presses",
+        "phase": null,
+        "engine": null,
+        "expectedFailure": false
+      }
     ]
   },
   "reds": [],
   "transitions": [
     {
-      "review": "m-dcf62834f9544be58a383119a22592be",
+      "review": "PENDING joint review by auditor and Fable: release/live73 recovery and reader inventory",
       "retired_sources": [],
       "plan": {
         "version": 1,
-        "source_commit": "bc4665d1ba1cbdd3b87a258e331c3642a1b969a6",
+        "source_commit": "a3846b8c7ad7582c90dc367bab50c3b04b2c48ab",
         "source_hashes": {
           ".github/workflows/checks.yml": "dbb2a6d2d96c1b2c60eb36c6d25272ea4204fef1",
           ".gitignore": "0f100ecaf843ab86e2de5057a2ceceed9c91b2b9",
@@ -21712,6 +22530,9 @@
           "tests/compose-reach.mjs": "e193bc339fe443b5ad43ca560db5b3a5f3dba5a3",
           "tests/conversation_native.mjs": "f28b3ca95922fb9970e40f5c5c69b071cac8aa18",
           "tests/device_native.mjs": "d5844b20472a96334f42eaa820a35750936a77aa",
+          "tests/devtools_control.mjs": "30ba67d5061fe2dda175b8350335dc3670fb6a23",
+          "tests/devtools_control.test.mjs": "325f294f3386275e054a07ff2077c7cf78d2fdab",
+          "tests/fence_copy_native.mjs": "177775dc659ec6793aed01c2ad282dd18a7098ca",
           "tests/fixture_control.mjs": "2885c1dd4e74b53997f4f54014a5fe4ddc52dbe7",
           "tests/fixture_control.test.mjs": "92445eadacc5e10c933608cc3c164c251c9744ce",
           "tests/fixtures/at_names.json": "72e03e7c7ed25007cb1788bc4a843dec06d760c5",
@@ -21793,7 +22614,7 @@
           "tests/reader_images_native.mjs": "ad55163774571cfb485bb6778278b7c1916f3238",
           "tests/reader_inline_native.mjs": "60efc21a09564799a4bf3de09c94c4c79c5e0f0b",
           "tests/reader_live_native.mjs": "ef9a7f21e553f829bf80088ed03b5c0c4138e9d5",
-          "tests/reader_native.mjs": "0d2784437e799bf8e957d5a5d8de7f82d7957fe2",
+          "tests/reader_native.mjs": "735db65a703d77f5497c230211dd35affb09eace",
           "tests/reader_navigation_native.mjs": "3aa276eb108fd0ec85d0bee6623e20e27935af90",
           "tests/reader_openings_native.mjs": "40731a201642e6db12b15dcb1f3bce0f695f0651",
           "tests/reader_persistence_native.mjs": "601a094f35b53eedc897884f17c378d9e1022ee6",
@@ -21891,7 +22712,7 @@
           "tests/test_reader_integrity.py": "00013b9ff402cc6205aa2698d3ebc345868741a8",
           "tests/test_reader_stepping.py": "cc6c1c149ba071903eeb35720842f4855db3d553",
           "tests/test_recovery.py": "c0c2381f5491be2b6b9fe83ad6bfe3619ebc1bcc",
-          "tests/test_recovery_activation.py": "f55bc348bc4e0b1953bf559aa4b611417e8335d4",
+          "tests/test_recovery_activation.py": "c2e8c1f4dd3b9a1cdad3ebed3ba7824e588272e0",
           "tests/test_releases.py": "f25b866c4ca1eb2620aeb2ed7257f2a87fae3b14",
           "tests/test_replies_in_doubt.py": "6db4576bdc9486ff283decef8a583019a5c96397",
           "tests/test_reply_path.py": "975157f3406acc34807a1557934405d8de6d4bcd",
@@ -21960,7 +22781,7 @@
           "tests/ui_coordination_stacks.test.mjs": "7d644f8b63c6819c4bfb770bec78a1f089643cd8",
           "tests/ui_creation.test.mjs": "5f20abd00390d9bbf0ebb0ba50636834406ed906",
           "tests/ui_creation_claim.test.mjs": "56d4cb91bfd5bf6bb98e7f2adc43f757e2817a46",
-          "tests/ui_deck.test.mjs": "d363d31ad85db6563dfcaf55137f14dbe99796bb",
+          "tests/ui_deck.test.mjs": "cab592d9bfad73b3d30b6f19519895d9cc93986e",
           "tests/ui_depart.test.mjs": "37fae9e80b3e31aa2ed4731b1c5f7a0e820f87f3",
           "tests/ui_departure_guard.test.mjs": "08c2063989f707157483917374ebf456cecbe81d",
           "tests/ui_freshness.test.mjs": "237d7afda6dba54a6c769286c5e292a6e29e30d0",
@@ -21979,7 +22800,7 @@
           "tests/ui_local_effects.test.mjs": "67bc8e31625c250fb25ab8c7f2395b90079e52ed",
           "tests/ui_marks.test.mjs": "af624e7285f972f6ab729ee0fe9e2ca257bf78a4",
           "tests/ui_message_edit.test.mjs": "6c501312fd797af047a1a61bac50840cf23721f2",
-          "tests/ui_message_format.test.mjs": "16662337aec1747bace45a78933ecb9562b6ff3a",
+          "tests/ui_message_format.test.mjs": "5a45bdd24c53b1ebd912865560550b962ed03269",
           "tests/ui_message_menu.test.mjs": "3f26946eec67c3f3254d788456b32dc8f5c1c105",
           "tests/ui_native_mutant_patterns.test.mjs": "823f26c531ee1d1c1dd5d770ffd43618015bd266",
           "tests/ui_notebook_card_merges.test.mjs": "5c9501927510d46f6c0564adbe52e2dbd93e840e",
@@ -21995,7 +22816,7 @@
           "tests/ui_outline_order.test.mjs": "94a5cb796d1411382199642c1b02ee1a0a5cf6da",
           "tests/ui_own_hover.test.mjs": "66fee085f68b13a6523fc854a54e371545934ec5",
           "tests/ui_page_changes.test.mjs": "b330a3ba6da78072472fbdfe7a14f11813354878",
-          "tests/ui_page_here.test.mjs": "2f7cfe2bebb46c669e217d4e353b41debe142262",
+          "tests/ui_page_here.test.mjs": "450f6036ef4a38ab6e3142067f250897447ced2c",
           "tests/ui_page_reads.test.mjs": "58d87bcf0d8777a13fa348ca1f93ad0cd192afe4",
           "tests/ui_people.test.mjs": "5ed22fc183126a7de10b7cb8436cba031bcef45a",
           "tests/ui_phone_check.test.mjs": "d63c99f7ccbd1b1182889d1bc398823c0d7f3c9e",
@@ -22048,7 +22869,7 @@
           "tools/__init__.py": "75baea9b19201f9a0b56e199a0f7afdb0f609110",
           "tools/acts.py": "30b7b56fadafa9730615f3d0dea50e6d512819a9",
           "tools/checks.py": "93d5ce52f2dd4ff6171c1ed5ee6214a3f833c3bd",
-          "tools/ci-input-reads.json": "03d0a11e8bb9df7d895f1ab92df9b8742dc745a8",
+          "tools/ci-input-reads.json": "a6ad33fd68ed479eedd4fb0f0a5f8390b12cc9d7",
           "tools/ci_input_reads.py": "d1b8c41dc25d6aa5dd22b8e6962e35d107b60033",
           "tools/ci_known_reds.py": "3a99fb880a322ff2f1b81dc0899c608a172e78bf",
           "tools/deploy.py": "5995e3d1f8599fd523354d0f1e1742cbb1e70793",
@@ -22064,7 +22885,7 @@
           "tools/pipeline/releases/release-19.json": "516ccf2121d21d0768dfca1dbcef883e5bf2c5f3",
           "tools/probe_codex_host.py": "e07cf0fe4651239070ab2021160e9c4ca489f0f8",
           "tools/probe_hosted_delivery.py": "19ff83e3fada3abf780660b1512606ca47decdc6",
-          "tools/release_check.py": "4ac31673e145097421dc03409aeb56fc8c50d9f9",
+          "tools/release_check.py": "70314f14a1e8f2d45fa62680ff7a2cff77a46766",
           "tools/releases.py": "950de67246442430e235a66824f7f81404681c86",
           "tools/wake_replay.py": "2c6f85fae5b1eb135b24ee0cb1a761c73a1d3330",
           "tools/wake_standin.py": "d1a6140e029b39f7b3351d515f9c95ace7d30a30"
@@ -22116,6 +22937,7 @@
           "native-webkit-new-line",
           "native-webkit-reading",
           "native-compose",
+          "native-fence-copy",
           "wake-replay"
         ],
         "inventory": {
@@ -35802,6 +36624,54 @@
           ],
           "node-units": [
             {
+              "name": "a command whose reply never comes is refused within its bound, naming its method",
+              "phase": null
+            },
+            {
+              "name": "a reply that comes resolves its command, clears its bound, and leaves the others open",
+              "phase": null
+            },
+            {
+              "name": "closing the socket refuses every open command at once, and every later one as it is sent",
+              "phase": null
+            },
+            {
+              "name": "the browser's exit refuses every open command at once",
+              "phase": null
+            },
+            {
+              "name": "a page that crashes or detaches refuses the commands sent on its session at once, and only those",
+              "phase": null
+            },
+            {
+              "name": "a browser that exits on Browser.close is closed, and nothing is left",
+              "phase": null
+            },
+            {
+              "name": "a browser that exits a second after Browser.close is closed within the default grace",
+              "phase": null
+            },
+            {
+              "name": "a browser already gone before the close is not closed, and nothing is left",
+              "phase": null
+            },
+            {
+              "name": "a run whose browser outlives Browser.close and holds its socket still ends, leaving the browser running, never signalled",
+              "phase": null
+            },
+            {
+              "name": "a run whose browser closed ends on its own, not cut short",
+              "phase": null
+            },
+            {
+              "name": "a run that ends by throwing still prints its whole last line",
+              "phase": null
+            },
+            {
+              "name": "a browser whose DevTools never came up is left at once, never signalled",
+              "phase": null
+            },
+            {
               "name": "a live fixture answers each request",
               "phase": null
             },
@@ -36986,6 +37856,10 @@
               "phase": null
             },
             {
+              "name": "every fence newline arrangement keeps the next card and reply stack outside it",
+              "phase": null
+            },
+            {
               "name": "a card moves one place, keeps its exact words, and moving back gives the page it came from",
               "phase": null
             },
@@ -37047,6 +37921,14 @@
             },
             {
               "name": "a place in a card's words as shown falls at the same words as written, past the markup",
+              "phase": null
+            },
+            {
+              "name": "a pasted inline pair in a fence preserves the next Notebook card",
+              "phase": null
+            },
+            {
+              "name": "a tilde fence with tildes in its info keeps headings in their own cards",
               "phase": null
             },
             {
@@ -38666,6 +39548,30 @@
               "phase": null
             },
             {
+              "name": "fence copy is opt-in, preserves payload and quote mapping, and excludes inline code and box tables",
+              "phase": null
+            },
+            {
+              "name": "only a terminated closing line proves a fence complete in an excerpt, including quoted fences",
+              "phase": null
+            },
+            {
+              "name": "a URL written directly after a fence opener stays visible and copyable, including in a quote",
+              "phase": null
+            },
+            {
+              "name": "fenced text stays visible and copyable in all four newline arrangements",
+              "phase": null
+            },
+            {
+              "name": "compact fence boundaries preserve whitespace, language info, longer delimiters and following prose",
+              "phase": null
+            },
+            {
+              "name": "two inline pairs stay inline and a pasted pair inside a fence stays literal",
+              "phase": null
+            },
+            {
               "name": "a message's menu lists its items in order as a menu, takes the focus, and one tap does that item and closes it, giving the focus back",
               "phase": null
             },
@@ -39335,6 +40241,14 @@
             },
             {
               "name": "a Notebook page shows its web addresses as links, and its other words are kept as they are",
+              "phase": null
+            },
+            {
+              "name": "a revision keeps its unfenced words, links and trailing newline around a copyable fence",
+              "phase": null
+            },
+            {
+              "name": "only a quoted fence changes; surrounding source keeps quote prefixes, links and CRLF",
               "phase": null
             },
             {
@@ -43708,6 +44622,440 @@
             },
             {
               "name": "test_without_the_flag_a_red_summary_is_refused_exactly_as_before (test_tools_deploy.DeployRefusesKnownReds)"
+            }
+          ],
+          "native-fence-copy": [
+            {
+              "name": "chromium surfaces desktop light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium surfaces desktop dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium surfaces 390 light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium surfaces 320 dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 320px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 320px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 375px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 375px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 390px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 390px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 1280px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy, partial hint and refusal at 1280px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium pending and refused copy leaves visible controls clear in Reader",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium pending and refused copy leaves visible controls clear in Notebook card",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium pending and refused copy leaves visible controls clear in Notebook view",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium pending and refused copy leaves visible controls clear in feed",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium copy refusal at the first fence of a tall feed or Notebook card keeps its place and retries",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium a secondary click keeps the native link selection inside a feed card",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium after a feed clipboard refusal the message opens with selectable fenced text",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium the inline composer keeps its selected text when the feed menu opens",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium phone long-press distinguishes words, a fence, and card space at 320",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium phone long-press distinguishes words, a fence, and card space at 375",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium phone long-press distinguishes words, a fence, and card space at 390",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium Space and Enter open the focused feed card once",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium keyboard, actual clipboard paste, refusal, and text selection",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium partial fences, horizontal scroll and untouched editors",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium held pointer and Space retain the visible payload through redraw",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium Notebook held press and click-to-edit mapping after copying",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium a live feed message revision waits for the held Copy gesture",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium native touch scrolling cancels Copy and releases a queued paint",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium all four newline arrangements display and copy exact fenced text on every surface",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium glyph, same-line URL, own-message contrast and narrow nested quotes",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium each feed glyph follows its own fence inside a scrolling card",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium select all and a drag from the topic title include feed words",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium Tab reveals the Copy corner when a long fence spans its card scroller",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium backward entry reaches a trailing external Copy button",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium all inline controls stay in forward and reverse Tab order",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "chromium press guard survives actual in-place navigation and cancelled presses",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit surfaces desktop light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit surfaces desktop dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit surfaces 390 light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit surfaces 320 dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 320px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 320px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 375px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 375px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 390px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 390px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 1280px light",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy, partial hint and refusal at 1280px dark",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit pending and refused copy leaves visible controls clear in Reader",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit pending and refused copy leaves visible controls clear in Notebook card",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit pending and refused copy leaves visible controls clear in Notebook view",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit pending and refused copy leaves visible controls clear in feed",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit copy refusal at the first fence of a tall feed or Notebook card keeps its place and retries",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit a secondary click keeps the native link selection inside a feed card",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit after a feed clipboard refusal the message opens with selectable fenced text",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit the inline composer keeps its selected text when the feed menu opens",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit Space and Enter open the focused feed card once",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit keyboard, actual clipboard paste, refusal, and text selection",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit partial fences, horizontal scroll and untouched editors",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit held pointer and Space retain the visible payload through redraw",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit Notebook held press and click-to-edit mapping after copying",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit a live feed message revision waits for the held Copy gesture",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit all four newline arrangements display and copy exact fenced text on every surface",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit glyph, same-line URL, own-message contrast and narrow nested quotes",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit each feed glyph follows its own fence inside a scrolling card",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit select all and a drag from the topic title include feed words",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit Tab reveals the Copy corner when a long fence spans its card scroller",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit backward entry reaches a trailing external Copy button",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit all inline controls stay in forward and reverse Tab order",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
+            },
+            {
+              "name": "webkit press guard survives actual in-place navigation and cancelled presses",
+              "phase": null,
+              "engine": null,
+              "expectedFailure": false
             }
           ]
         },
