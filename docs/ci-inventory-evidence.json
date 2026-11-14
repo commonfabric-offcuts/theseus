@@ -205,5 +205,18 @@
       "aim-spec",
       "aim-ux"
     ]
+  },
+  "reviewed_source_commit": "b91744bba850306da6d27ca1f73025d96b20a868",
+  "definition_sources": {
+    "python_tests_and_helpers": 141,
+    "mjs_tests_and_helpers": 145,
+    "producer_tools": 20,
+    "producer_workflow": 1
+  },
+  "source_equivalence": {
+    "archived_commit": "ee7e51e6d48fd6022c75317dcca4356d847e80f2",
+    "reviewed_commit": "b91744bba850306da6d27ca1f73025d96b20a868",
+    "tests_and_tools_identical": true,
+    "producer_workflow": "reviewed workflow-only b91744bb; absent from archived ee7e51e6"
   }
 }
