@@ -42,7 +42,9 @@ function stateOf(doc) {
   };
   add(doc, 'pointerdown', event => {
     const button = event.target.closest?.('.fence-copy');
-    if (!button) clearNotice();
+    // Removing an inline message here would move the words under a finger
+    // before the browser selects them on a long press.
+    if (!button && !state.feedback?.parentElement?.contains(event.target)) clearNotice();
     if (button && event.isPrimary && event.button === 0) {
       ++state.release; state.held = { button, pointer: event.pointerId };
     }
