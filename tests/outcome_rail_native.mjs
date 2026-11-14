@@ -68,7 +68,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const drawer = p => p.evaluate(`(()=>{const control=document.getElementById('rail-open');return {open:document.getElementById('rail').classList.contains('open'),
     backdrop:!document.getElementById('rail-backdrop').hidden,inert:document.getElementById('main').inert,expanded:control.getAttribute('aria-expanded'),
     focus:document.activeElement===control?'control':document.activeElement?.dataset?.topicId??document.activeElement?.id??null}})()`);
-  const loaded = p => p.evaluate('performance.timeOrigin');
+  // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+  const loaded = p => p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
   // The outline as drawn: its totals, and each outcome shown with whether it is
   // open, its count, its light, whether it is the page, where its name goes,
   // and the topics shown under it.
@@ -482,7 +483,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // The rail's scroll, its folds, the window and the outline element itself
   // are what a load would lose; each move below keeps them.
   const placeOf = p => p.evaluate(`({search:location.search,title:document.getElementById('topic-title').textContent,ready:document.body.dataset.ready==='true',
-    origin:performance.timeOrigin,same:window.railKept===document.getElementById('outline'),mark:window.railMark,history:history.length})`);
+    origin:(window.documentOrigin??=performance.timeOrigin),same:window.railKept===document.getElementById('outline'),mark:window.railMark,history:history.length})`);
   const arrived = (p, search, title, what) => until(async () => { const at = await placeOf(p); return at.ready && at.search === search && (title === null || at.title === title) && at; }, what);
 
   await check('rail outcome to topic to Conversation and back moves in place: the outline stays the same element with its scroll, tidied to the place reached, the address follows, and back, forward and reload work', async () => {
@@ -1937,7 +1938,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const conversation = (await view('conversation', { workspace_id: oid })).conversation;
     await control({ method: 'agent_message', operation_id: oid + '-ask-c1', body: 'OLDEST question in C', topic_id: conversation.topic_id, addressees: [facts.actor], intent: 'ask' });
     await control({ method: 'agent_message', operation_id: oid + '-ask-c2', body: 'NEWER question in C', topic_id: conversation.topic_id, addressees: [facts.actor], intent: 'ask' });
-    const shown = p => p.evaluate(`(r=>({open:Boolean(r?.open),text:r?.textContent??'',origin:performance.timeOrigin}))(document.querySelector('#reader'))`).catch(() => null);
+    const shown = p => p.evaluate(`(r=>({open:Boolean(r?.open),text:r?.textContent??'',origin:(window.documentOrigin??=performance.timeOrigin)}))(document.querySelector('#reader'))`).catch(() => null);
     // A press, the question the Reader shows (on a page loaded since the press, when it says so), then Escape.
     const asked = async (p, selector, words, { loads = true } = {}) => {
       const before = (await shown(p)).origin;

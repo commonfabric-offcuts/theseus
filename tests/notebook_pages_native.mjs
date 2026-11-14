@@ -91,9 +91,10 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await until(async()=>(await view('memory_current',{item_id:item})).attachments.length===1,'image is associated and confirmed');
     const held=()=>p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('theseus-notebook-writing-v1',2);r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,tx=db.transaction('writing','readonly'),q=tx.objectStore('writing').getAll();q.onsuccess=()=>resolve(q.result.filter(v=>v.binding.item_id===${JSON.stringify(item)}).length);tx.oncomplete=()=>db.close();};})`);
     await until(async()=>await held()===0,'confirmed journal is deleted');
-    const before=await p.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const before=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.evaluate("dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))");
-    await until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true'&&performance.timeOrigin!==${before}`)}catch{return false;}},'a cached-page restore reloads a live writer');
+    await until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true'&&(window.documentOrigin??=performance.timeOrigin)!==${before}`)}catch{return false;}},'a cached-page restore reloads a live writer');
     await p.point('#notebook-text');await p.send('Input.insertText',{text:' Still saving.'});
     await until(async()=>(await view('memory_current',{item_id:item})).body.includes('Still saving.'),'writing after the restored-page event still saves');
     assert.deepEqual(p.errors,[]);await p.close();

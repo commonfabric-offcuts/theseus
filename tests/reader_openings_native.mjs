@@ -337,9 +337,10 @@ try {
 
     // 2. Reload: the writing comes back from Core (no device copy is held).
     assert.deepEqual(await deviceRows(a), [], 'a Saved opening keeps no device copy');
-    const before = await a.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const before = await a.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await a.send('Page.reload', {});
-    await until(() => a.evaluate(`performance.timeOrigin!==${before}`).catch(() => false), 'a new document after reload');
+    await until(() => a.evaluate(`(window.documentOrigin??=performance.timeOrigin)!==${before}`).catch(() => false), 'a new document after reload');
     await openingReady(a);
     await until(async () => (await fields(a)).title === title1, 'restored after reload');
     assert.deepEqual(await fields(a), { title: title1, body: body1, checked: [agent], chips: [facts.actor, agent] });
