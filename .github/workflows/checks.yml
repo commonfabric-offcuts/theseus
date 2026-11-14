@@ -81,6 +81,9 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.shards) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The navigation step's shipped-editor case reads an older commit with git ls-tree, so the whole history.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
@@ -142,8 +145,10 @@ jobs:
           shards_dir, out = sys.argv[1], sys.argv[2]
           paths = sorted(glob.glob(os.path.join(shards_dir, "check-*", "summary.json")))
           docs = [json.load(open(p)) for p in paths]
-          if not docs:
-              sys.exit("no shard wrote a summary")
+          # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
+          timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
+          if not docs or not timed:
+              sys.exit("no shard wrote a summary with a run in it")
           commits = {d.get("commit") for d in docs}
           if len(commits) != 1:
               sys.exit("the shards checked different commits: %s" % sorted(commits))
@@ -158,8 +163,8 @@ jobs:
           # commit: no `only`, every required step present, the tree unchanged in every shard.
           combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
           combined.update({
-              "started_at": min(d["started_at"] for d in docs),
-              "finished_at": max(d["finished_at"] for d in docs),
+              "started_at": min(d["started_at"] for d in timed),
+              "finished_at": max(d["finished_at"] for d in timed),
               "steps": steps,
               "tree_unchanged": all(d.get("tree_unchanged") is True for d in docs),
               "tree_after": first.get("tree_after"),
