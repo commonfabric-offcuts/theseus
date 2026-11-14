@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import hashlib
 import io
@@ -262,6 +263,66 @@ class FreshnessControls:
             assert not self.fatal, "Private fixture hold failure: " + ", ".join(self.fatal)
 
 
+class CommandGate:
+    """Every command the HTTP adapter takes passes here, so a control can act
+    while no page is writing.
+
+    A page closed while its save was on the way leaves the server handling
+    that save after the browser has gone. A control that reads a draft's
+    revision and then writes at it (reset_drafts) would lose to that save
+    landing in between, and be refused. The authority lock cannot keep it out:
+    each Store open, command and view takes the lock shared and drops it on its
+    own, so nothing holds it across a request. While a control holds this
+    gate, it has waited for the commands under way to finish, and any command
+    that comes in waits until the control is done, then meets what the control
+    wrote (a stale save is refused at its old revision)."""
+
+    def __init__(self):
+        self.changed = threading.Condition()
+        self.running = 0
+        self.held = False
+
+    def command(self, store, actor, envelope):
+        with self.changed:
+            while self.held:
+                self.changed.wait()
+            self.running += 1
+        try:
+            return store.command(actor, envelope)
+        finally:
+            with self.changed:
+                self.running -= 1
+                self.changed.notify_all()
+
+    @contextlib.contextmanager
+    def hold(self):
+        with self.changed:
+            assert not self.held, "The command gate is already held"
+            self.held = True
+        try:
+            with self.changed:
+                while self.running:
+                    self.changed.wait()
+            yield
+        finally:
+            with self.changed:
+                self.held = False
+                self.changed.notify_all()
+
+
+class GatedStore:
+    """The server's Store for one request, its commands through the gate."""
+
+    def __init__(self, base, gate):
+        self.base, self.gate = base, gate
+
+    def __getattr__(self, name):
+        return getattr(self.base, name)
+
+    def command(self, actor, envelope):
+        return self.gate.command(self.base, actor, envelope)
+
+
 # Isolated wiring fixture. Actual Store and HTTP; stdin is a private fixture
 # control channel, never a product endpoint. EOF shuts down this server only.
 def main():
@@ -353,6 +414,8 @@ def main():
         server_events = []
         server_module._stderr = server_events.append
         controls = FreshnessControls() if freshness else None
+        # One for the instance, kept across a server restart.
+        gate = CommandGate()
 
         def serve(port=0):
             """The real server, with a session of its own: a restart (server_stop,
@@ -369,6 +432,8 @@ def main():
                 assert getattr(server, "read_admission", None) is None, "Baseline flag requires the actual old server"
             if controls is not None:
                 controls.install(server, store)
+            factory = server.store_factory
+            server.store_factory = lambda: GatedStore(factory(), gate)
             return server
         server = serve()
 
@@ -1023,19 +1088,22 @@ def main():
                         # Each image case starts from the seeded writing. Every
                         # draft the person left holding anything is emptied at its
                         # revision through the real Store. It keeps its generation,
-                        # where a send would also start a new one.
-                        with sqlite3.connect(str(path)) as db:
-                            rows = db.execute("SELECT id,revision,generation,topic_id,payload FROM drafts WHERE actor_id=?", (actor,)).fetchall()
-                        answer = []
-                        for draft_id, revision, generation, topic_id, payload in rows:
-                            payload = json.loads(payload)
-                            if not payload["body"] and not payload["attachments"] and not payload["quotes"] and not payload["addressees"] and all(
-                                    payload.get(name) is None for name in ("reply_to", "exchange_id", "opening", "caret")):
-                                continue
-                            command("draft.save", "fixture-reset-%s-%d" % (draft_id, revision), {
-                                "source_ref": payload["source_ref"], "topic_id": topic_id,
-                                "generation": generation, "body": ""}, {"draft_id": draft_id}, {"draft_revision": revision})
-                            answer.append(draft_id)
+                        # where a send would also start a new one. A save a closed
+                        # page left on its way lands before the revisions are read,
+                        # or waits and is refused at its old one (CommandGate).
+                        with gate.hold():
+                            with sqlite3.connect(str(path)) as db:
+                                rows = db.execute("SELECT id,revision,generation,topic_id,payload FROM drafts WHERE actor_id=?", (actor,)).fetchall()
+                            answer = []
+                            for draft_id, revision, generation, topic_id, payload in rows:
+                                payload = json.loads(payload)
+                                if not payload["body"] and not payload["attachments"] and not payload["quotes"] and not payload["addressees"] and all(
+                                        payload.get(name) is None for name in ("reply_to", "exchange_id", "opening", "caret")):
+                                    continue
+                                command("draft.save", "fixture-reset-%s-%d" % (draft_id, revision), {
+                                    "source_ref": payload["source_ref"], "topic_id": topic_id,
+                                    "generation": generation, "body": ""}, {"draft_id": draft_id}, {"draft_revision": revision})
+                                answer.append(draft_id)
                     elif request["method"] == "epoch":
                         # Test-only controlled history boundary. No activation
                         # claim: the real runtime cutover is lead-owned.

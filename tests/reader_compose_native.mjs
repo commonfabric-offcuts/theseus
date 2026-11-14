@@ -186,11 +186,19 @@ async function check(name, action) {
   const full = `${engine} ${name}`;
   if (filter && !filter.split('|').some(part => full.includes(part))) return;
   const started = Date.now();
-  try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }
-  catch (error) { results.push({ name: full, passed: false, error: error.stack ?? String(error) }); console.log(`FAIL ${full}\n${error.stack ?? error}`); }
-  for (const context of contexts) await context.close();
-  contexts.clear();
-  await control({ method: 'reset_drafts' });
+  let failure = null, ms;
+  try { await action(); ms = Date.now() - started; } catch (error) { failure = error.stack ?? String(error); }
+  // The case ends with its browsers closed and the drafts emptied for the
+  // next. A refusal there (the fixture refusing the reset, or gone) is this
+  // case's failure, written with the rest, and the run goes on to the next.
+  try {
+    try { for (const context of contexts) await context.close(); } finally { contexts.clear(); }
+    await control({ method: 'reset_drafts' });
+  } catch (error) {
+    failure = `${failure ? `${failure}\nthen, ending the case: ` : 'Ending the case: '}${error.stack ?? error}`;
+  }
+  if (failure === null) { results.push({ name: full, passed: true, ms }); console.log(`PASS ${full}`); }
+  else { results.push({ name: full, passed: false, error: failure }); console.log(`FAIL ${full}\n${failure}`); }
 }
 const close = async p => { assert.deepEqual(p.errors, [], 'no page errors'); contexts.delete(p.ctx); await p.ctx.close(); };
 
