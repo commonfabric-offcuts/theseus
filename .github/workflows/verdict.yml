@@ -43,7 +43,7 @@ env:
   # The branches whose pull requests are judged, named exactly: the validator and the baseline are executable code read
   # from the base, so a base is approved by being listed here, never by matching a shape. A new release branch is added
   # by a reviewed change to this file.
-  APPROVED_BASES: release/live72,codex/aim-next
+  APPROVED_BASES: release/live72,codex/aim-next,release/live73
 
 jobs:
   judge:
