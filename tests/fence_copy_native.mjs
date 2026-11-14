@@ -160,7 +160,7 @@ try {
         await wait(p, sel => document.querySelector(sel).dataset.label === 'Copy failed', selector);
         if (!phone) await p.mouse.move(0, 0);
         const refusal = p.locator('.fence-copy-announcement:not(.sr-only)');
-        assert.equal(await refusal.innerText(), 'Could not copy. Select the text and use Copy.');
+        assert.equal(await refusal.innerText(), 'Could not copy. Open the message, select the text, and use Copy.');
         const shown = await refusal.boundingBox();
         assert.ok(shown && shown.width > 2 && shown.x >= 0 && shown.x + shown.width <= width);
         assert.equal(await button.evaluate(b => getComputedStyle(b).opacity), '1');
@@ -169,6 +169,24 @@ try {
         await picture(p, `refusal-${width}-${dark ? 'dark' : 'light'}`);
       });
     }
+    await check('after a feed clipboard refusal the message opens with selectable fenced text', async () => {
+      const p = await open('/?topic=fence-topic');
+      const selector = query(message) + ' .fence-copy';
+      await p.evaluate(() => { copyMode = 'reject'; });
+      await press(p, selector);
+      assert.match(await p.locator('.fence-copy-announcement:not(.sr-only)').innerText(), /Open the message/);
+      await p.locator(query(message) + ' .md-p').first().click();
+      const source = p.locator('#source-body');
+      await source.locator('.md-pre').waitFor();
+      await source.focus();
+      await p.keyboard.press('Meta+A');
+      assert.ok((await p.evaluate(() => getSelection().toString())).includes(payload));
+      await p.keyboard.press('Meta+C');
+      const writing = p.locator('#writing-body');
+      await writing.focus();
+      await p.keyboard.press('Meta+V');
+      await wait(p, text => document.querySelector('#writing-body').value.includes(text), payload);
+    });
     await check('the inline composer keeps its selected text when the feed menu opens', async () => {
       const p = await open('/?topic=fence-topic');
       const field = p.locator('#inline-writing-body');

@@ -126,7 +126,10 @@ export function fenceCopyButton(doc, text) {
 
     const finish = copied => {
       if (attempt !== current || !button.isConnected) return;
-      const words = copied ? 'Copied fenced text.' : 'Could not copy. Select the text and use Copy.';
+      let words = 'Copied fenced text.';
+      if (!copied) words = button.closest('.message-card')
+        ? 'Could not copy. Open the message, select the text, and use Copy.'
+        : 'Could not copy. Select the text and use Copy.';
       button.dataset.label = copied ? 'Copied' : 'Copy failed';
       path.setAttribute('d', copied ? DONE : FAILED);
       button.title = words; button.setAttribute('aria-label', words + ' Press to copy again.');
