@@ -302,3 +302,6 @@
 .stack-replies>[data-id]{flex-shrink:0}
 .message-card[data-stack-motion=fold]{display:block!important;align-items:initial!important}
 .message-card[data-stack-motion=fold]>.message-folded{display:none!important}
+/* A face still arriving is not yet where it lands: a press or a pointer aimed
+   at what it passes over reaches that, not the face in flight. */
+.stack-replies>[data-stack-motion=arrival],.stack-replies>[data-stack-motion=arrival] *{pointer-events:none!important}

@@ -241,6 +241,9 @@ export async function motionChecks({ check, until, view, control, shot, facts, o
     const keyed=await p.evaluate(`[document.querySelector(${JSON.stringify(card(id))}).dataset.stackMotion??null,window.motionClock,document.querySelector('#messages .message-card.lit')?.dataset.id??null,scrollY]`);
     assert.deepEqual([keyed[0],keyed[2]],[still?null:kind,id],`ArrowDown lit the reply ${still?'drawn still':'while it was still moving ('+kind+')'}`);
     await settled(p);
+    // A cut-off reply the keys lit reads its whole words in place once they come (card-scroll.mjs):
+    // the still page and the moving one are compared once that read has landed, however long it takes.
+    await until(()=>p.evaluate(`(c=>!c.querySelector(':scope > .message-preview-cue')||c.dataset.whole==='shown')(document.querySelector(${JSON.stringify(card(id))}))`),'a cut-off reply the keys lit reads on in place');
     await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
     const box=await p.evaluate(`(c=>(r=>({top:r.top,bottom:r.bottom,height:r.height,screen:innerHeight,y:scrollY,minHeight:document.documentElement.style.minHeight,inPlace:c.classList.contains('scroll-in-place'),maxHeight:c.style.maxHeight}))(c.getBoundingClientRect()))(document.querySelector(${JSON.stringify(card(id))}))`);
     const seen={before,keyed:keyed[3],...box};

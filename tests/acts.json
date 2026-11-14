@@ -11834,6 +11834,21 @@
     "native": "reading",
     "case": "reading dossier motion the keys onto a long reply"
    }
+  },
+  {
+   "item": 412,
+   "act": "A face still arriving takes no press: a press aimed at a card or head it passes over reaches that, as on the still page",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-replies>[data-stack-motion=arrival],.stack-replies>[data-stack-motion=arrival] *{pointer-events:none!important}",
+     "/* an arriving face takes presses */"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading ✅ and 🚫 on a go-ahead ask record the person's answer in Core and tell the agent by a reply"
+   }
   }
  ]
 }
