@@ -126,7 +126,7 @@
   },
   "bootstrap": {
     "source_commit": "bc4665d1ba1cbdd3b87a258e331c3642a1b969a6",
-    "review": "PENDING independent re-review of expanded test-input boundary; supersedes m-ebb3721ee2864be3955368ecb34f22d3",
+    "review": "m-dcf62834f9544be58a383119a22592be",
     "canonical_plan_sha256": "117600a33b0886e949a1046a969a038f09853b373295204866d94fb644659c99",
     "definition_sources": {
       "all_test_files": 339,
@@ -258,5 +258,5 @@
     }
   ],
   "production_inner_plan_sha256": "49dde2914d1cc73f23d84b950503f82b81be8822ac9bc3246b03cd24b838eb33",
-  "review_status": "PENDING fresh independent approval of both expanded plans; earlier narrower approvals superseded"
+  "review_status": "Auditor approved both exact inner-plan digests in m-dcf62834f9544be58a383119a22592be; Fable independent review and paired landing decision remain pending"
 }
