@@ -169,6 +169,47 @@ try {
         await picture(p, `refusal-${width}-${dark ? 'dark' : 'light'}`);
       });
     }
+    await check('the inline composer keeps its selected text when the feed menu opens', async () => {
+      const p = await open('/?topic=fence-topic');
+      const field = p.locator('#inline-writing-body');
+      await field.fill('hello composer');
+      await field.evaluate(t => t.setSelectionRange(0, 5));
+      const card = p.locator(query(message));
+      await card.scrollIntoViewIfNeeded();
+      await card.click({ button: 'right', position: { x: 8, y: 8 } });
+      await p.locator('.message-menu-list').waitFor();
+      assert.deepEqual(await field.evaluate(t => [t.value, t.selectionStart, t.selectionEnd]), ['hello composer', 0, 5]);
+      assert.equal(await p.evaluate(() => getSelection().toString()), engine === 'chromium' ? 'hello' : '');
+    });
+    if (engine === 'chromium') await check('phone long-press opens the feed menu and respects an existing selection', async () => {
+      const p = await open('/?topic=fence-topic', { phone: true, width: 375 });
+      const card = p.locator(query(message));
+      const cdp = await p.context().newCDPSession(p);
+      await card.scrollIntoViewIfNeeded();
+      const word = await card.locator('.md-p').first().evaluate(node => {
+        const r = document.createRange();
+        r.setStart(node.firstChild, 0); r.setEnd(node.firstChild, 5);
+        const b = r.getBoundingClientRect(); return { x: Math.round(b.left + 2), y: Math.round(b.top + b.height / 2) };
+      });
+      for (const selected of [false, true]) {
+        await card.evaluate((node, selected) => {
+          getSelection().removeAllRanges();
+          if (selected) {
+            const t = node.querySelector('.md-p').firstChild;
+            getSelection().setBaseAndExtent(t, 0, t, 5);
+          }
+          window.lastFeedContext = null;
+          document.addEventListener('contextmenu', e => { window.lastFeedContext = e.defaultPrevented; }, { once: true });
+        }, selected);
+        await cdp.send('Input.synthesizeTapGesture', { ...word, duration: 1200, tapCount: 1, gestureSourceType: 'touch' });
+        await wait(p, () => lastFeedContext !== null);
+        assert.equal(await p.evaluate(() => lastFeedContext), !selected);
+        assert.equal(await p.locator('.message-menu-list').count(), selected ? 0 : 1);
+        assert.equal(await p.evaluate(() => getSelection().toString()), selected ? 'Befor' : '');
+        if (!selected) await p.keyboard.press('Escape');
+      }
+      await cdp.detach();
+    });
     await check('Space and Enter open the focused feed card once', async () => {
       for (const key of ['Space', 'Enter']) {
         const p = await open('/?topic=fence-topic'), card = p.locator(query(message));

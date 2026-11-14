@@ -2013,11 +2013,15 @@ async function initialize() {
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
-  // An article's native secondary press can collapse an existing selection
-  // before contextmenu fires. Keep those words selected for the browser menu.
+  // Opening the card used to be a native button gesture. Preserve an existing
+  // selection on secondary press, and let a long press open the message menu.
+  $('messages').addEventListener('selectstart', event => {
+    const target = event.target.nodeType === 1 ? event.target : event.target.parentElement;
+    if (target?.closest('.message-card') && !typingField(target)) event.preventDefault();
+  });
   $('messages').addEventListener('mousedown', event => {
     if ((event.button === 2 || (event.button === 0 && event.ctrlKey)) &&
-        event.target.closest('.message-card') && window.getSelection()?.isCollapsed === false) event.preventDefault();
+        event.target.closest('.message-card') && !typingField(event.target)) event.preventDefault();
   });
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
