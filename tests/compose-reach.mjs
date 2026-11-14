@@ -16,7 +16,7 @@ const WAY = `(selector => {
   // What to press is brought into view first, as a person scrolls to it.
   const mark = node => { if (!node) return null; node.scrollIntoView({ block: 'nearest' }); node.setAttribute('data-reach-way', ''); return { press: '[data-reach-way]' }; };
   // The ⋯ names the mark by what choosing it does: a message marked unread offers Mark read.
-  if (el.classList.contains('menu-source')) return el.hidden ? null : { menu: el.id === 'mark-unread' && el.getAttribute('aria-pressed') === 'true' ? 'Mark read' : el.textContent.trim() };
+  if (el.classList.contains('menu-source')) return el.hidden ? null : el.id === 'mark-unread' ? { mark: true } : { menu: el.textContent.trim() };
   const panel = el.closest('.compose-panel'), composer = el.closest('.composer'), row = el.closest('.image-choice');
   // Hidden for a reason of its own: not offered now.
   const hiddenBy = el.closest('[hidden]');
@@ -43,9 +43,11 @@ export function reachWith({ evaluate, point, until }) {
     if (depth > 3) throw Error(`could not reach ${selector}`);
     if (way.press) { await point(way.press); return reach(selector, depth + 1); }
     await point('#reader-menu');
-    const label = JSON.stringify(way.menu);
-    await until(() => evaluate(`Boolean([...document.querySelectorAll('[role=menu] [role=menuitem]')].find(item => item.textContent === ${label}))`), `${way.menu} in the ⋯`);
-    await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find(item => item.textContent === ${label}).setAttribute('data-reach-way', '')`);
+    // The hidden toggle can still show the previous mark while its receipt paints.
+    // Reach the current act the visible menu offers, as a person does.
+    const labels = way.mark ? ['Mark read', 'Mark unread'] : [way.menu], choices = JSON.stringify(labels);
+    await until(() => evaluate(`Boolean([...document.querySelectorAll('[role=menu] [role=menuitem]')].find(item => ${choices}.includes(item.textContent)))`), `${labels.join(' or ')} in the ⋯`);
+    await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find(item => ${choices}.includes(item.textContent)).setAttribute('data-reach-way', '')`);
     await point('[role=menu] [data-reach-way]');
     return true;
   };
