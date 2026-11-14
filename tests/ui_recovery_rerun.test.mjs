@@ -25,7 +25,7 @@ const busy = cleanup => cleanup.read(async () => { throw new AttemptError('busy'
 
 // `check` answers each journal call; a check that is not deferred retires its row.
 // The journal holds every row it was asked about, unless `current` says otherwise.
-function fixture({ check, stopped = () => false, paused = () => false, current, changed = () => {} } = {}) {
+function fixture({ check, stopped = () => false, paused = () => false, current } = {}) {
   const rechecks = [], calls = [], checked = [], held = new Map();
   const journal = {
     retireImageCandidate: async (key, row) => { calls.push(row.id); checked.push(row); held.set(row.id, row); await check(cleanup, row); return { retired: true }; },
@@ -33,7 +33,7 @@ function fixture({ check, stopped = () => false, paused = () => false, current, 
     own: async () => { calls.push('own'); await check(cleanup, null); return null; },
     current: async (key, ids) => current ? current(ids) : ids.map(id => held.get(id)).filter(Boolean),
   };
-  const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal, runtime: { readTimeoutMs: 5000 }, changed: editor => changed(editor), stopped, paused });
+  const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal, runtime: { readTimeoutMs: 5000 }, changed: () => {}, stopped, paused });
   cleanup.resumeListeners.add((session, ids, page) => rechecks.push({ session, ids, kept: page.items.map(row => row.id) }));
   const session = { editor: { key, context } };
   return { cleanup, session, rechecks, calls, checked };
@@ -64,84 +64,6 @@ test('a row a foreground read interrupts is checked again when that read is rele
   assert.deepEqual(rechecks, [{ session, ids: ['r1'], kept: [] }]);
   const again = cleanup.foreground(); again.release(); await tick();
   assert.equal(rechecks.length, 1);
-});
-
-test('a deferred check is pending until its recheck has settled, and the editor is then reported changed with nothing pending', async () => {
-  const { hold, entered, check } = held(), changes = [];
-  const f = fixture({ check, changed: editor => changes.push([editor, f.cleanup.pending(key)]) }), { cleanup, session } = f;
-  assert.equal(cleanup.pending(key), false, 'nothing deferred, nothing pending');
-  const page = cleanup.candidates(session, { items: [imageRow], nextCursor: null });
-  await entered.promise;
-  const fg = cleanup.foreground();
-  await fg.read(async () => 'opened');
-  hold.resolve(); await page; await tick();
-  assert.equal(cleanup.pending(key), true, 'deferred, its check is still to be made');
-  let during;
-  cleanup.resumeListeners.add(() => { during = cleanup.pending(key); });
-  changes.length = 0;
-  fg.release(); await tick();
-  assert.equal(during, true, 'pending while the recheck is under way');
-  assert.equal(cleanup.pending(key), false);
-  assert.deepEqual(changes.at(-1), [session.editor, false], 'reported changed once nothing is pending');
-  assert.equal(cleanup.pending(editorKey({ ...context, sourceRef: { kind: 'topic', id: 't2' }, topicId: 't2' })), false, 'another editor has nothing pending');
-});
-
-test('a recheck that a foreground read defers again keeps the editor pending until the recheck after it has settled', async () => {
-  const later = deferred(), changes = []; let calls = 0, fg;
-  const f = fixture({ changed: () => changes.push(f.cleanup.pending(key)), check: async cleanup => {
-    calls++;
-    // Discovery: a foreground read defers the check.
-    if (calls === 1) { fg = cleanup.foreground(); return cleanup.read(async () => null); }
-    // The first recheck: another foreground read defers it again, and ends before this recheck does.
-    if (calls === 2) { const again = cleanup.foreground(); try { return await cleanup.read(async () => null); } finally { again.release(); } }
-    await later.promise; return cleanup.read(async () => null);
-  } }), { cleanup, session } = f;
-  await cleanup.candidates(session, { items: [imageRow], nextCursor: null });
-  fg.release(); await tick();
-  assert.equal(calls, 3, 'the row deferred again is checked once more');
-  assert.equal(cleanup.pending(key), true, 'the first recheck settling leaves the second pending');
-  assert.ok(!changes.includes(false), 'and reports nothing quiet while it runs');
-  later.resolve(); await tick();
-  assert.equal(cleanup.pending(key), false);
-  assert.equal(changes.at(-1), false, 'reported changed once nothing is pending');
-});
-
-test('what a recheck listener starts keeps the editor pending until it settles', async () => {
-  const { hold, entered, check } = held(), settle = deferred(), changes = [];
-  const f = fixture({ check, changed: () => changes.push(f.cleanup.pending(key)) }), { cleanup, session } = f;
-  cleanup.resumeListeners.add(() => settle.promise);
-  const page = cleanup.candidates(session, { items: [imageRow], nextCursor: null });
-  await entered.promise;
-  const fg = cleanup.foreground();
-  await fg.read(async () => 'opened');
-  hold.resolve(); await page;
-  changes.length = 0; fg.release(); await tick();
-  assert.equal(cleanup.pending(key), true, 'the recheck has settled, what its listener started has not');
-  assert.ok(!changes.includes(false));
-  settle.resolve(); await tick();
-  assert.equal(cleanup.pending(key), false);
-  assert.equal(changes.at(-1), false, 'reported changed once it settles');
-});
-
-test('a deferral that ends without a recheck reports the editor changed once nothing is pending', async () => {
-  // Answered by a later check of the row.
-  let answer = busy; const changes = [];
-  const f = fixture({ check: cleanup => answer(cleanup), changed: () => changes.push(f.cleanup.pending(key)) });
-  await f.cleanup.candidates(f.session, { items: [imageRow], nextCursor: null });
-  assert.equal(f.cleanup.pending(key), true);
-  answer = cleanup => cleanup.read(async () => null); changes.length = 0;
-  await f.cleanup.candidates(f.session, { items: [imageRow], nextCursor: null });
-  assert.equal(f.cleanup.pending(key), false);
-  assert.ok(changes.includes(false), 'a later check that answers the row reports it');
-  // Dropped because its session is no longer registered.
-  let registered = true; answer = busy; const dropped = [];
-  const g = fixture({ check: cleanup => answer(cleanup), changed: () => dropped.push(g.cleanup.pending(key)) });
-  const session = { editor: { key, context }, registered: () => registered };
-  await g.cleanup.candidates(session, { items: [imageRow], nextCursor: null });
-  registered = false; dropped.length = 0;
-  g.cleanup.foreground().release(); await tick();
-  assert.equal(g.cleanup.pending(key), false);
-  assert.deepEqual(dropped, [false], 'the dropped deferral reports it');
 });
 
 test('a row whose foreground read ended before the deferral settled is still checked again', async () => {

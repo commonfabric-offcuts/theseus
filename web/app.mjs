@@ -95,7 +95,7 @@ let here = null;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
+let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
@@ -426,17 +426,15 @@ async function showPending(key, opener) {
 // notice about writing it no longer holds changes nothing else.
 function changed(editor) {
   paintReview();
-  if (registry.sessions.get(editor.key)?.editor === editor) {
-    if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
-      reader.paintStatus();
-      $('review-versions').hidden = !needsReview(reader.editor);
-    }
-    if (inline?.editor === editor) inline.paintStatus();
-    invalidateComparison(editor);
-    const version = registry.localTopicVersion(editor);
-    if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
+  if (registry.sessions.get(editor.key)?.editor !== editor) return;
+  if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
+    reader.paintStatus();
+    $('review-versions').hidden = !needsReview(reader.editor);
   }
-  markDiscovered();
+  if (inline?.editor === editor) inline.paintStatus();
+  invalidateComparison(editor);
+  const version = registry.localTopicVersion(editor);
+  if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
 }
 // What the person sees is read: while the page is visible and has focus, and
 // no modal other than the Reader covers it, the message the Reader shows (an
@@ -510,8 +508,14 @@ async function present(presentation) {
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
-  const looked = readerDiscovery = { presentation, settled: false };
-  discovery.then(() => { looked.settled = true; markDiscovered(); });
+  // data-discovered says this showing's discovery has finished: the source's
+  // earlier copies were looked for, every copy found is listed, and Review is
+  // drawn from them. Later checks (a deferred copy checked again, a save's
+  // cleanup, More versions, Recover) are their own events and may still change
+  // Review. Showing a source starts it unmarked, and only its latest showing's
+  // discovery marks it; choosing Reply or Note keeps the showing.
+  const showing = ++readerShowings;
+  discovery.then(() => { if (showing === readerShowings) $('reader').dataset.discovered = 'true'; });
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
     takeNeighbors(registry.current, neighbors);
@@ -594,14 +598,6 @@ function listCandidates(editor, page, continued) {
   candidates.set(editor.key, known ? { items: [...known.items, ...page.items], nextCursor: page.nextCursor } : page);
   changed(editor);
 }
-// The Reader's data-discovered says the source it shows had its earlier
-// copies looked for, every check of them a read deferred has been made, and
-// Review shows what they found. A newly shown source starts unmarked; choosing
-// Reply or Note keeps the source and its writing, so its discovery still counts.
-function markDiscovered() {
-  const looked = readerDiscovery;
-  if (looked?.settled && Object.values(looked.presentation.editors).every(editor => !registry.cleanup.pending(editor.key))) $('reader').dataset.discovered = 'true';
-}
 function discover(presentation, editor) {
   return registry.recoveryCandidates(editor, { limit: 10 }, (page, continued) => listCandidates(editor, page, continued))
     .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error); });
@@ -610,8 +606,7 @@ function discover(presentation, editor) {
 // exactly those rows is replaced, a copy that moved is added, and every other
 // listed copy stays.
 // It runs inside the cleanup task that rechecked them, so no discovery or
-// image change lands between the recheck and this patch. It answers with the
-// image settle the patch started, which the recheck counts as its own.
+// image change lands between the recheck and this patch.
 function rechecked(session, ids, page) {
   const editor = session.editor, validated = registry.applyRecheck(editor, ids, page);
   if (!validated) return;
@@ -622,7 +617,7 @@ function rechecked(session, ids, page) {
     candidates.set(editor.key, { ...known, items: [...items, ...page.items.filter(row => !listed.has(row.id))] });
   }
   changed(editor);
-  return validated.catch(error => {
+  validated.catch(error => {
     const presentation = presentationFor(editor);
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });

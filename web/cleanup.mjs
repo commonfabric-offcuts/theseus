@@ -76,13 +76,9 @@ export class RecoveryCleanup {
     // only by a busy server wait for the next foreground release, and nothing
     // is checked again while a park lasts. A later check
     // of a row answers for it, and a session that is no longer registered
-    // leaves nothing to check. Rechecks under way are counted per editor in
-    // rechecking, each until it and whatever its listeners started have settled.
-    // A deferral that ends, rechecked, answered or dropped, reports the editor changed.
-    this.waiting = new Map(); this.rechecking = new Map(); this.resumeListeners = new Set();
+    // leaves nothing to check.
+    this.waiting = new Map(); this.resumeListeners = new Set();
   }
-  // Whether a check of the editor's copies that a read deferred is still to be made, or under way.
-  pending(key) { return this.waiting.has(key) || this.rechecking.has(key); }
   deferred(cause) { return Object.assign(Error('Background reading is deferred; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED', ...(cause ? { cause } : {}) }); }
   defer(session, error, row) {
     const key = session.editor.key, held = this.waiting.get(key);
@@ -95,37 +91,31 @@ export class RecoveryCleanup {
     const key = session.editor.key, entry = this.waiting.get(key);
     if (!entry) return;
     if (rowId === undefined) entry.own = false; else entry.ids.delete(rowId);
-    if (!entry.own && !entry.ids.size) { this.waiting.delete(key); this.changed(session.editor); }
+    if (!entry.own && !entry.ids.size) this.waiting.delete(key);
   }
   // A recheck of a stopped cleanup does nothing, so only foreground reads and a park hold this.
   resume() {
     if (this.foregroundCount || this.paused()) return;
     for (const [key, entry] of [...this.waiting]) {
-      if (entry.session.registered?.() === false) { this.waiting.delete(key); this.changed(entry.session.editor); continue; }
+      if (entry.session.registered?.() === false) { this.waiting.delete(key); continue; }
       if (!entry.ready || this.queues.has(key)) continue;
-      this.waiting.delete(key); this.rechecking.set(key, (this.rechecking.get(key) ?? 0) + 1);
-      this.enqueue(key, () => this.recheck(entry)).then(started => Promise.allSettled(started ?? [])).catch(() => {}).finally(() => {
-        const left = this.rechecking.get(key) - 1;
-        if (left) this.rechecking.set(key, left); else this.rechecking.delete(key);
-        this.changed(entry.session.editor);
-      });
+      this.waiting.delete(key);
+      this.enqueue(key, () => this.recheck(entry)).catch(() => {});
     }
   }
   // Only the deferred rows are checked again, as the journal holds them now: a
   // row that changed is checked at its current stamp, and one that left the
   // journal is absent from the page. Listeners patch what the editor shows for
-  // exactly those IDs inside this task, leaving every loaded page in place; it
-  // answers with what they started that settles after it (a listener's promise).
+  // exactly those IDs inside this task, leaving every loaded page in place.
   async recheck({ session, ids, own }) {
     if (own) await this.retireOwn(session);
     if (!ids.size || this.stopped()) return;
     let items;
     try { items = await this.journal.current(session.editor.key, [...ids]); } catch (error) { this.report(session, error); return; }
-    const page = await this.check(session, { items, nextCursor: null }), started = [];
+    const page = await this.check(session, { items, nextCursor: null });
     for (const listener of this.resumeListeners) {
-      try { started.push(listener(session, [...ids], page)); } catch (error) { this.report(session, error); }
+      try { listener(session, [...ids], page); } catch (error) { this.report(session, error); }
     }
-    return started;
   }
   read(operation, own = false) {
     if (this.foregroundCount) return Promise.reject(this.deferred());
