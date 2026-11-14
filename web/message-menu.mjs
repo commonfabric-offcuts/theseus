@@ -41,7 +41,15 @@ function inlineStops(card) {
 function focusStop(target) {
   const anchor = feedFence(target);
   if (anchor) {
-    anchor.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const card = anchor.closest('.message-card').getBoundingClientRect();
+    const top = anchor.getBoundingClientRect().top;
+    const win = anchor.ownerDocument.defaultView;
+    const height = parseFloat(win.getComputedStyle(anchor).paddingTop);
+    // The Copy button occupies the top lane. 'nearest' may leave that lane
+    // clipped when the fence spans both edges of an inner scrolling card.
+    if (top < Math.max(0, card.top) || top + height > Math.min(win.innerHeight, card.bottom)) {
+      anchor.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+    }
     target.hidden = false;
   }
   target.focus({ preventScroll: true });

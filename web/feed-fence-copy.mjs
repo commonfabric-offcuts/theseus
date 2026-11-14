@@ -22,7 +22,7 @@ export function pairFeedFence(anchor, control) {
 
 export function mountFeedFences(host) {
   const doc = host?.ownerDocument, win = doc?.defaultView;
-  if (!win?.MutationObserver || !win.ResizeObserver) return;
+  if (!win?.requestAnimationFrame || !win.MutationObserver || !win.ResizeObserver) return;
   const layer = doc.createElement('div');
   layer.className = 'feed-fence-controls';
   host.after(layer);

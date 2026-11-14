@@ -741,6 +741,34 @@ try {
       await wait(p, text => document.querySelector('#inline-writing-body').value.includes(text), payload);
       assert.ok((await edit.inputValue()).includes('Before the fence.'));
     });
+    await check('Tab reveals the Copy corner when a long fence spans its card scroller', async () => {
+      const content = Array.from({ length: 200 }, (_, n) => 'line ' + n + ' of the same tall fenced payload').join('\n');
+      const id = (await control({ method: 'agent_message', operation_id: 'focus-tall-' + engine,
+        topic_id: 'fence-topic', source: 'topic', body: '```\n' + content + '\n```\n\n[following link](https://example.com/after)' })).result.message_id;
+      const p = await open('/?topic=fence-topic'), card = p.locator(query(id)), glyph = p.locator(feedCopy(query(id)));
+      await card.focus();
+      await wait(p, id => document.querySelector('.message-card[data-id="' + id + '"]').classList.contains('scroll-in-place'), id);
+      await card.evaluate(c => {
+        c.querySelector('.message-preview a').focus({ preventScroll: true });
+        c.scrollTop = (c.scrollHeight - c.clientHeight) / 2;
+      });
+      const spanning = await card.evaluate(el => {
+        const fence = el.querySelector('.feed-fence-anchor').getBoundingClientRect();
+        const bounds = el.getBoundingClientRect();
+        return fence.top < bounds.top - 88 && fence.bottom > bounds.bottom + 88;
+      });
+      assert.equal(spanning, true, 'one fence extends past both edges of the native card scroller');
+      await p.keyboard.press(engine === 'webkit' ? 'Alt+Shift+Tab' : 'Shift+Tab');
+      await p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const reached = await glyph.evaluate(button => {
+        const box = button.getBoundingClientRect();
+        const card = document.getElementById(button.getAttribute('aria-controls')).closest('.message-card').getBoundingClientRect();
+        return { focused: button === document.activeElement, hidden: button.hidden,
+          inside: box.height > 0 && box.top >= Math.max(card.top, 0) - 1 && box.bottom <= Math.min(card.bottom, innerHeight) + 1 };
+      });
+      assert.deepEqual(reached, { focused: true, hidden: false, inside: true }, 'keyboard focus exposes the top corner');
+      await p.close();
+    });
     await check('backward entry reaches a trailing external Copy button', async () => {
       for (const [shape, source] of [['only', ''], ['linked', '[before](https://example.com/before)\n\n']]) {
         const id = (await control({ method: 'agent_message', operation_id: 'tab-reentry-' + shape + engine, topic_id: 'fence-topic', source: 'topic', body: source + '```\nlast payload\n```' })).result.message_id;
