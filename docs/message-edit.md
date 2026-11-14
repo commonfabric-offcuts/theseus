@@ -189,6 +189,13 @@ correction "Release notes" #43 owner edited m-5c0… to revision 2: Can you chec
 and `read` prints an edited message's latest words with
 "(edited, revision N)" after its heading.
 
+A message its author has open in Edit is held from agents (below). `read` and
+`source` print "(held: its author is editing it)" in place of its words, an
+excerpt or line of it prints "(held)", `ack` of its delivery prints the
+`MESSAGE_HELD` refusal, and `watch` prints
+`delivery held while its author edits it  [d-…]` and waits on past it, until
+the release's delivery change prints it as a delivery.
+
 ## Reads
 
 - `topic_messages` items, in every form, carry `revision` (1 when never
@@ -360,21 +367,52 @@ written beside it is left as it is, and ⌘↑, ⌘↓ and the step buttons do
 nothing while it edits. When the edit ends the focus goes back to where Edit
 was chosen: a Reader opened for the edit closes onto the card.
 
-The base revision and its words are fixed when Edit opens. The draft is kept
-on this device, in IndexedDB under a Web Lock (one tab edits a message at a
-time), and the whole request of a Save is kept there before it is sent
-(`web/message-edit-writing.mjs`).
+Opening Edit takes the message's edit session in Core
+(`web/message-edit-writing.mjs`): the page names this device by a holder, an
+identifier it keeps on the device (in IndexedDB, under a Web Lock, so one tab
+edits a message at a time) before `message.edit_open` leaves, and the edit
+mode shows only once Core answers. If Core refuses, is busy or does not
+answer, nothing opens and the Reader says "Edit could not start: …"; the
+device row stays as it was. The field opens on Core's draft and its base, so
+an edit begun on another device resumes here; words on this device that Core
+never confirmed open as they are, on their own base, and become the draft at
+once. A row kept from before sessions has no holder: its words open as
+unconfirmed and become the draft.
 
-- **Cancel** lets the draft go: the device copy is cleared and the message
-  shows its saved words.
-- **Escape**, or closing the Reader, keeps the draft with its base revision.
-  The next Edit of the message brings it back on that base; if the message was
-  edited since, its Save meets `REVISION_CONFLICT`.
-- **Unchanged**: words equal to the base end the edit and send nothing.
+- **Draft saves.** Typing saves the words to Core as the session's draft
+  (`message.edit_draft`), 450 ms after the last key and at most 2 seconds
+  after the first, one at a time, on the session revision Core last gave.
+  One with no answer goes again under its own operation. `EDIT_CLOSED` stops
+  them; `BODY_TOO_LARGE` pauses them until the words are shorter; a refusal
+  that will not change makes the edit read-only.
+- **The hold.** Each draft save renews Core's hold on the message. A key, a
+  press or the focus in the field renews it once a quarter of `edit_hold_ms`
+  has passed since Core last did; no timer runs, so a field left alone
+  lapses.
+- **Save** sends the whole request with the holder, kept on the device before
+  it is sent, after any draft save already out returns. The holder's Save
+  ends the session in Core.
+- **Every other ending** (Cancel, words equal to the base, Use saved) sends
+  one `message.edit_close` and clears the device row. A close with no answer
+  keeps only the holder and that close's operation on the device; the next
+  Edit of the message sends it again first.
+- **Escape**, closing the Reader or leaving the page sends nothing: the words
+  stay on the device with their base, the session stays open in Core, and its
+  hold lapses `edit_hold_ms` after the last renewal. The next Edit rejoins the
+  session with the same holder. If the message was edited since, its Save
+  meets `REVISION_CONFLICT`.
+- **Another device.** Opening Edit on a second device takes the session; the
+  first hears the `edit_session` change above its own session revision and
+  shows "Open on your other device", with Edit here. It saves no drafts, and
+  its Save still commits by revision but does not end the other device's
+  session; neither it nor Cancel closes. Edit here takes the session back and
+  saves its words as the draft. A change read while one of the page's own
+  session commands is out is compared once that command answers.
 
 What the edit mode shows (`web/message-edit.mjs`):
 
-- **editing**: the draft, and "Kept on this device" once it differs.
+- **editing**: the draft, and once it differs "Kept on this device" until
+  Core confirms the words, then "Kept".
 - **empty**: Save is off while a message with no images is blank; if Core still
   answers `EMPTY_MESSAGE`, the words stay.
 - **saving**: the field reads only, and "Saving…"; Save and Cancel wait.
@@ -425,19 +463,72 @@ many are unread, never words, and are read afresh on every load. A page started
 from a message (`web/opening.mjs`) reads its source once when it opens, as it
 always has, and its quote names no revision.
 
-## Stated limits of slice 1
+## Stated limits
 
-- **The edit draft lives on one device.** It cannot be resumed on another
-  device, short of "any device can resume it" (docs/VISION.md); slice 2 keeps
-  it in Core.
 - **Old tabs need a reload.** No deploy reloads an open page, so a tab loaded
-  before this release stops its live updates for a topic once a message in it
-  is edited, until it is reloaded. A page of this release takes a later
+  before slice 1 stops its live updates for a topic once a message in it is
+  edited, until it is reloaded. A page of a later release takes a later
   revision and goes on.
 - **A delivery is not a page.** A person whose only way to the message is a
   delivery sent to them by name, without the topic, sees the new words the
   next time they open it; live only where a page of theirs already lists it
   under "Sent to you by name".
-- **Every agent reader is corrected.** Until slice 2 every agent that can read
-  the message gets a correction, whether or not it was ever handed the old
-  words.
+- **The hold starts when Edit opens.** An agent handed the words before that
+  keeps them, and gets a correction if the words change.
+- **An abandoned Edit holds agents for up to `edit_hold_ms`** (2 minutes)
+  after its last renewal, and a field left untouched that long lapses too.
+  Agents may then be handed the old words, and the Save corrects them.
+- **A page loaded before slice 2** opens no session, so its Edit holds
+  nothing. Its Save still commits by revision and corrects exposed agents.
+- **During holding, the message's deliveries leave the agent's counts.**
+  Unread and addressed counts, attention, the inbox and Health's waiting work
+  leave them out until release, as if settled. If they were all the agent had
+  pending, its unanswered-wake count is cleared.
+- **Words of a message inside another message's own words** are that
+  message's words and are not held, as in a topic started from it. They record
+  exposure only when the other message's part of the answer holds the head of
+  its own stored quote of it.
+- **A topic started from a message records revision 1**, since the opening's
+  quote names no revision. Any row makes the agent exposed, so the correction
+  still comes; only the recorded revision can understate.
+- **Very short quotes can over-record**: a stored quote whose head is "ok"
+  records the message whenever the quoting message's part holds that text. It
+  errs toward a correction.
+- **A message with no words** (attachments only) is never marked, so handing
+  it records nothing, and a later edit that adds words corrects nobody.
+- **The boundary is the store's answer.** The hosted notice previews 20 of the
+  deliveries it reads, and the assessment read tool passes on only some
+  fields; every marker in what they read counts, so both over-correct and
+  never miss a correction.
+- **When two devices hold writing**, the device where Edit opens last opens on
+  its own unconfirmed words and saves them as the draft at once. The other
+  keeps its words on that device until it ends its edit.
+- **A hold opened between a claim and its notice read** can leave that one
+  notice empty: it finishes `unavailable`, `nothing_pending`, which Health
+  counts as one wake that did not get through.
+- **Duplicate notices are accepted**: release hands work back even when a
+  notice named it before the hold; a hold released inside one claim is a stale
+  start and names the delivery again; and a parked agent is woken once by
+  each release of its own work.
+- **Between a lapse and the write that releases it**, views show the words but
+  the deliveries stay held. With a running runner that write comes at the hold
+  end; without one, it is the next claim, the next `ack` of that delivery, or
+  the next session command that ends the session. `watch` learns of the
+  release through its delivery change.
+- **Exposure writes cost a commit.** An agent's first read of a person's
+  message above the horizon, the hosted notice's included, is a short
+  `BEGIN IMMEDIATE` write that waits at most 250 ms on another writer and wakes
+  every live stream. A busy notice read finishes `unavailable` and the agent is
+  due again a minute later, so new work can wait behind a burst of draft saves.
+  A CLI read that meets such a write is `DATABASE_BUSY`, before anything else
+  is done (`reply` reads its target first, so it saves nothing to send).
+- **The step back waits on every open session**, lapsed ones included. Escape
+  and leaving the page keep a session open until a device ends that edit, and
+  no operator command lists or closes one.
+- **`edit_draft`'s size refusal is recorded before access**, as a Save's is:
+  someone who is not the author can get a recorded `BODY_TOO_LARGE`.
+- **A leftover marker stops the hosted loop.** A view whose answer still
+  holds a cut or rewritten marker of its run fails as a store error and
+  returns nothing, rather than hand a marker out; in the hosted runner that
+  error is a loop fault. No view cuts or rewrites marked words, so only a bug
+  can cause it.
