@@ -14,7 +14,9 @@
 // text, near where it stood, so the same act can be made again on a newer
 // revision of the page, and it answers the act that takes it back.
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})/, CARD = /^ {0,3}(#{2,6})(?:[ \t]+(.*?))?[ \t]*$/;
+import { fenceEnd, fenceOpen } from './fences.mjs';
+
+const CARD = /^ {0,3}(#{2,6})(?:[ \t]+(.*?))?[ \t]*$/;
 // The deepest a card can be, since a heading has at most six #s.
 export const DEEPEST = 4;
 
@@ -24,15 +26,18 @@ const write = card => (card.title ? `${heading(card.depth)} ${card.title}` : hea
 const atDepth = (card, depth) => card.depth === depth ? card
   : card.written ? { ...card, depth } : { ...card, depth, raw: card.raw.replace(/^( {0,3})#{2,6}/, `$1${heading(depth)}`) };
 const words = text => text.replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
+const lineText = line => (line ?? '').replace(/\r$/, '');
 
 export const cardText = card => card.words ? `${card.title}\n${card.words}` : card.title;
 
 // The fence a line leaves open: the one it opens, none when it closes the one
 // open, or the one open still.
-function fenceAfter(fence, line) {
-  const open = FENCE.exec(line);
-  if (fence) return open && open[1][0] === fence[0] && open[1].length >= fence.length && !/\S/.test(line.slice(open[0].length)) ? null : fence;
-  return open ? open[1] : null;
+function fenceAfter(fence, line, next = '') {
+  // Detection normalizes CRLF; the deck's raw source and offsets stay intact.
+  line = lineText(line); next = lineText(next);
+  if (fence) return fenceEnd(line, fence) >= 0 ? null : fence;
+  const open = fenceOpen(line, next);
+  return open && open.end < 0 ? open : null;
 }
 
 // A card's reply stacks: each line of its words, outside a fenced block, that
@@ -41,12 +46,13 @@ function fenceAfter(fence, line) {
 // named for each line, in order.
 const LINK_LINE = /^[ \t]*(?:\[[^\]\n]*\]\([ \t]*<?([^\s<>()]+)>?[ \t]*\)|<?(https?:\/\/[^\s<>]+)>?)[ \t]*$/;
 export function cardStacks(text, stackOf) {
-  const kept = [], stacks = [];
+  const kept = [], stacks = [], lines = text.split('\n');
   let fence = null;
-  for (const line of text.split('\n')) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const before = fence;
-    fence = fenceAfter(fence, line);
-    const link = !before && !fence && LINK_LINE.exec(line), stack = link && stackOf(link[1] ?? link[2]);
+    fence = fenceAfter(fence, line, lines[i + 1]);
+    const link = !before && !fence && LINK_LINE.exec(lineText(line)), stack = link && stackOf(link[1] ?? link[2]);
     if (stack) stacks.push(stack); else kept.push(line);
   }
   return { words: words(kept.join('\n')), stacks };
@@ -67,12 +73,12 @@ export function parseDeck(body) {
   let fence = null;
   for (let i = 0, offset = 0; i < lines.length; offset += lines[i].length + 1, i++) {
     const before = fence;
-    fence = fenceAfter(fence, lines[i]);
-    if (!before && !fence && CARD.test(lines[i])) starts.push(offset);
+    fence = fenceAfter(fence, lines[i], lines[i + 1]);
+    if (!before && !fence && CARD.test(lineText(lines[i]))) starts.push(offset);
   }
   const cards = starts.map((start, at) => {
     const raw = body.slice(start, starts[at + 1] ?? body.length), end = raw.indexOf('\n');
-    const [, marks, title = ''] = CARD.exec(end < 0 ? raw : raw.slice(0, end));
+    const [, marks, title = ''] = CARD.exec(lineText(end < 0 ? raw : raw.slice(0, end)));
     return { raw, at, last: at === starts.length - 1, depth: marks.length - 2, title: title.replace(/(?:^|[ \t]+)#+$/, '').trim(), words: end < 0 ? '' : words(raw.slice(end + 1)) };
   });
   return { opening: body.slice(0, starts[0] ?? body.length), cards };

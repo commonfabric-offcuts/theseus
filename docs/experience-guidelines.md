@@ -56,6 +56,7 @@ and the writing. Focus stays visible and follows what the person did.
   rail". `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
+- `tests/fence_copy_native.mjs` (`native-fence-copy`) checks keyboard activation on the copy glyph and its feed card in Chromium and WebKit.
 - Touch: see "A phone by touch" below.
 
 ## Dismiss without losing work
@@ -182,6 +183,7 @@ on a copy of the live data, over the tailnet, so trying it changes nothing real.
 Everything is reachable by touch on a phone. Touch targets are big enough,
 nothing scrolls sideways, and nothing depends on hover.
 
+- `tests/fence_copy_native.mjs` (`native-fence-copy`) checks touch targets, partial fences and visible clipboard refusals at 320, 375 and 390 pixels in both themes.
 - `tests/reader_navigation_native.mjs` (`native-navigation`): "navigation
   paging workspace denial retry and narrow touch targets".
 - `tests/reader_openings_native.mjs` (`native-openings`): "openings 390px touch

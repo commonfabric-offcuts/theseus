@@ -50,6 +50,8 @@ export function keyAction(event, { context, menuActive = false, quoteArmed = fal
   if (event.isComposing || event.keyCode === 229 || menuActive || event.key !== 'Enter') return 'native';
   if (event.repeat && (event.metaKey || event.altKey)) return 'native';
   if (context === 'note') return event.metaKey ? 'save-note' : 'newline';
+  // Editing a sent message (docs/message-edit.md): ⌘ Return saves the edit.
+  if (context === 'edit') return event.metaKey ? 'save-edit' : 'newline';
   if (event.metaKey && event.shiftKey && writingEmpty && ['reader', 'reply'].includes(context)) return 'return-gallery';
   if (event.metaKey) return event.shiftKey ? 'send-stay' : 'send-return';
   if (event.altKey && context === 'reply') return 'send-stay';

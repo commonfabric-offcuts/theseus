@@ -18,6 +18,7 @@
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
+import { editChecks } from './message_edit_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 const entry = id => `#messages [data-id="${id}"]`;
@@ -631,7 +632,11 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const say = async (n, text, reply_to = null) => (await control({ method: 'agent_message', operation_id: `${name}-${n}`, topic_id: topic, source: 'topic', sender: 'fable', join: !conversation && n === 0, addressees: [facts.actor], body: text, ...(reply_to ? { reply_to } : {}) })).result.message_id;
       const root = await say(0, 'A short stack root.'), reply = await say(1, body, root), alone = await say(2, body);
       const p = await open(name, device, topic, alone, 'window.holdReads = true;');
-      const geometry = id => p.evaluate(`(c=>({height:c.getBoundingClientRect().height,overflow:c.scrollHeight-c.clientHeight,words:c.querySelector('.message-preview').textContent,excerpt:c.querySelector('.message-preview-cue')?.getClientRects().length??0}))(document.querySelector(${JSON.stringify(card(id))}))`);
+      // The card's box, the words' own box inside it, and what the dossier's look adds below the words: a card a
+      // later face overlaps takes that overlap as padding under its words (docs/reply-stacks.md, "The look").
+      const geometry = id => p.evaluate(`(c=>({height:c.getBoundingClientRect().height,overflow:c.scrollHeight-c.clientHeight,words:c.querySelector('.message-preview').textContent,
+        wordsHeight:c.querySelector('.message-preview').getBoundingClientRect().height,padding:parseFloat(getComputedStyle(c).paddingBottom),covered:c.dataset.stackCovered==='true',
+        overlap:parseFloat(getComputedStyle(c).getPropertyValue('--stack-overlap')),excerpt:c.querySelector('.message-preview-cue')?.getClientRects().length??0}))(document.querySelector(${JSON.stringify(card(id))}))`);
       const show = async id => {
         await light(p, device, id);
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.whole==='shown'`), name + ': the complete source is loaded into the clipped card');
@@ -652,16 +657,30 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await show(alone);
       assert.equal((await geometry(reply)).height, replyHeight, name + ': the other card has not expanded');
       await show(reply);
-      const height = (await geometry(reply)).height;
+      const shown = await geometry(reply), height = shown.height;
+      assert.equal(shown.covered, false, name + ': the long reply is the dossier\'s last face, overlapped by nothing');
       // A real new reply causes live rearrangement; the choice remains on the same card.
       await say(3, 'Another reply arriving while the long message is shown.', root);
       await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes('Another reply arriving')`), name + ': the live reply arrived');
-      assert.equal((await geometry(reply)).height, height, name + ': a live update preserves full height');
+      // The new reply's face overlaps the long one's foot (item 429), which takes exactly that overlap as padding
+      // under its words. The words themselves keep their whole height, nothing scrolls inside the card, and the
+      // card grows by that padding and nothing else, so what shows of it above the new face is what showed before.
+      const after = await geometry(reply);
+      assert.equal(after.covered, true, name + ': the reply that arrived overlaps the long one');
+      assert.equal(after.wordsHeight, shown.wordsHeight, name + ': a live update keeps the whole message\'s height');
+      assert.ok(after.overflow <= 1 && after.words === shown.words && after.excerpt === 0, name + ': a live update keeps the full message, unclipped: ' + JSON.stringify({ shown, after }));
+      assert.ok(after.overlap > 0, name + ': the look names its overlap: ' + JSON.stringify(after));
+      // Layout rounds a box to a 64th of a pixel.
+      assert.ok(Math.abs(after.padding - shown.padding - after.overlap) < 0.02, name + ': the card takes the overlap as padding under its words: ' + JSON.stringify({ shown, after }));
+      assert.ok(Math.abs(after.height - height - after.overlap) < 0.02, name + ': the card grows by that padding alone: ' + JSON.stringify({ shown, after }));
       await shot(p, name);
       assert.deepEqual(p.errors, []); await p.close();
       const q = await open(name + '-new-page', device, topic, alone, 'window.holdReads = true;');
       assert.ok(await q.evaluate(`(c=>c.getBoundingClientRect().height<${height}-100)(document.querySelector(${JSON.stringify(card(reply))}))`), name + ': a new page has the ordinary clipped card');
       assert.deepEqual(q.errors, []); await q.close();
+      // The person reads the topic to its end, so the outcome a Conversation run made has nothing new in it: on a
+      // phone the cases after this one would otherwise show "new in other outcomes" under their header.
+      await control({ method: 'agent_message', operation_id: `${name}-read`, topic_id: topic, source: 'topic', sender: 'fable', addressees: [facts.actor], body: 'Read to the end.', read: true });
     }
   });
 
@@ -807,6 +826,42 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
+  // Lighting a cut-off card reads its whole message and puts it in place of the excerpt's words. That read can
+  // be answered while a press on those words is held: the browser sends no click for a press whose element went
+  // from under it, so the words wait for the press and its click to be over, and the press still opens the Reader.
+  await check('reading a press held on a cut-off card while its whole message arrives still opens it in the Reader, and the card then reads on in place', async () => {
+    const topic = 'reading-press-whole';
+    const body = Array.from({ length: 60 }, (_, i) => `Line ${i} of a long message that a press opens.`).join('\n');
+    const ids = await seed(topic, [['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }],
+      ['after', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A short message after it.' }]]);
+    const opened = (await control({ method: 'admission_events', after: Number.MAX_SAFE_INTEGER })).next;
+    const p = await open(topic, 'laptop', topic, ids.long, 'window.holdReads = true;');
+    await centre(p, card(ids.long));
+    await away(p);
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the page has its answers');
+    const since = (await control({ method: 'admission_events', after: Number.MAX_SAFE_INTEGER })).next;
+    assert.deepEqual((await control({ method: 'admission_events', after: opened })).events.filter(e => e.event === 'callback-enter' && e.name === 'source'), [],
+      'nothing has read the long message whole yet');
+    const hold = topic + '-hold';
+    // The lit card's read of its whole is held in the server, as a slow answer is.
+    await control({ method: 'read_hold', hold_id: hold, name: 'source', phase: 'callback', read_class: 'background', count: 1 });
+    await p.evaluate(`(window.watched=false,window.watchFor={read:'source',words:'Line 59 of a long message'},true)`);
+    const [x, y] = await within(p, words(ids.long));
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await until(async () => (await lit(p)).includes(ids.long), 'the pointer lights the cut-off card');
+    await until(async () => (await control({ method: 'admission_events', after: since })).events.some(e => e.event === 'hold-enter' && e.hold_id === hold), 'its read of the whole message is held');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.long))}).dataset.whole`), undefined, 'the card still shows its excerpt');
+    // The press goes down on the excerpt's words, and the whole message arrives while it is held.
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    await control({ method: 'read_release', hold_id: hold });
+    await until(() => p.evaluate('window.watched === true'), 'the whole message reaches the page while the press is held');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await until(async () => (await readerOn(p))?.startsWith('Line 0'), 'the press opens the card\'s message in the Reader');
+    await closeReader(p, 'laptop');
+    await until(() => p.evaluate(`(c=>c.dataset.whole==='shown'&&c.classList.contains('scroll-in-place'))(document.querySelector(${JSON.stringify(card(ids.long))}))`), 'once the press is over, the card holds the whole message and reads on in place');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('reading ? and the rail\'s "? Pointer, keys and taps" open the guide, and ? in the writing opens none', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-guide-' + device;
@@ -821,7 +876,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.evaluate('document.activeElement?.blur()');
         await p.key('?');
         await until(async () => (await guide())?.open === true, 'laptop: ? opens the guide');
-        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 15 }, 'laptop: the guide, every rule');
+        assert.deepEqual(await guide(), { open: true, title: 'Pointer, keys and taps', rules: 16 }, 'laptop: the guide, every rule');
         await shot(p, 'reading-guide-laptop');
         await p.key('Escape');
         await until(async () => (await guide())?.open === false, 'laptop: Escape closes it');
@@ -1570,60 +1625,96 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const ids = await seed(topic, [['short', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A short message\nwith a second line, *as written*.' }],
       ['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: long }],
       ['newest', { sender: 'aim-core', addressees: [facts.actor], body: 'The newest message.' }]]);
-    const p = await open('reading-copy', 'laptop', topic, ids.short);
-    const written = async id => (await view('source', { source_ref: { kind: 'message', id } })).body;
-    // The page's own clipboard: what it is handed is kept on the page, and the Mac's pasteboard is never touched.
-    // Each ⌘C heard is recorded with whether the page took it (prevented its default) and then kept from the
-    // browser, so a ⌘C the page leaves alone copies nothing to the Mac either.
-    await p.evaluate(`(()=>{window.copied=[];window.keyed=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{window.copied.push(text)}});
-      addEventListener('keydown',e=>{if(e.metaKey&&!e.altKey&&!e.ctrlKey&&e.key.toLowerCase()==='c'){window.keyed.push(e.defaultPrevented);e.preventDefault()}});return true})()`);
-    const copy = async (modifiers = 4) => {
-      const heard = await p.evaluate('window.keyed.length');
-      await p.key('c', modifiers);
-      await until(() => p.evaluate(`window.keyed.length > ${heard}`), 'the page heard ⌘C');
-      return p.evaluate('window.keyed.at(-1)');
-    };
-    const copied = () => p.evaluate('window.copied.slice()');
-    // Nothing lit: ⌘C is the browser's.
-    await away(p);
-    await p.evaluate('document.activeElement?.blur()');
-    assert.deepEqual(await lit(p), [], 'nothing is lit');
-    assert.equal(await copy(), false, 'with nothing lit the page leaves ⌘C alone');
-    assert.deepEqual(await copied(), [], 'and copies nothing');
-    // The pointer rests on a message: ⌘C copies its words as written.
-    await light(p, 'laptop', ids.short);
-    assert.equal(await copy(), true, 'the page takes ⌘C on the lit message');
-    const short = await written(ids.short);
-    await becomes(copied, [short], 'the lit message\'s words, as written, are on the clipboard');
-    // The keys move the light from under the resting pointer: the message they light is the one ⌘C copies, as Return answers it.
-    await p.key('ArrowUp');
-    await until(async () => (await lit(p)).join() === ids.long, 'the keys light the cut-off message above');
-    assert.equal(await copy(), true, 'the page takes ⌘C on it');
-    const whole = await written(ids.long);
-    await becomes(copied, [short, whole], 'the whole message is on the clipboard, not its excerpt');
-    // The Reader's ⇧⌘C gives the same words.
-    await p.point(words(ids.long));
-    await until(async () => (await readerOn(p))?.startsWith('Line 0'), 'a click opens the lit message in the Reader');
-    assert.equal(await copy(12), true, 'the Reader takes ⇧⌘C');
-    await becomes(copied, [short, whole, whole], 'the Reader copies the same words');
-    await closeReader(p, 'laptop');
-    // Words selected on the page: ⌘C copies them as the browser does, not the lit message.
-    await light(p, 'laptop', ids.short);
-    await p.evaluate(`(()=>{const r=document.createRange();r.selectNodeContents(document.querySelector(${JSON.stringify(words(ids.short))}));getSelection().removeAllRanges();getSelection().addRange(r);return true})()`);
-    assert.equal(await copy(), false, 'with words selected the page leaves ⌘C to the browser');
-    assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
-    await p.evaluate('getSelection().removeAllRanges()');
-    // In the writing ⌘C is the writing's, with a message lit. The press that puts the cursor there takes the
-    // feed's light (docs/interaction.md); the pointer resting on a message again lights it, the cursor staying put.
-    await into(p, 'laptop', '#inline-writing-body');
-    await p.send('Input.insertText', { text: 'Words in the composer.' });
-    await light(p, 'laptop', ids.short);
-    assert.equal(await p.evaluate('document.activeElement?.id'), 'inline-writing-body', 'the cursor is still in the composer');
-    assert.deepEqual(await lit(p), [ids.short], 'a message is lit');
-    assert.equal(await copy(), false, 'in the composer the page leaves ⌘C to the writing');
-    assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
-    assert.deepEqual(p.errors, []);
-    await p.close();
+    // Background reads share one bounded lane, which refuses a read when it is busy (aim_next/server.py,
+    // ReadAdmission), as it is while a page loads. ⌘C is the person's own act, and its read of the whole message
+    // never waits on that lane: here the lane refuses every background read of a message's source.
+    const busy = { error: { code: 'SERVER_BUSY', message: 'This read could not enter its bounded lane.', retryable: true } };
+    await control({ method: 'read_fault', name: 'source', read_class: 'background', status: 503, body: busy, count: 50 });
+    try {
+      const p = await open('reading-copy', 'laptop', topic, ids.short);
+      const written = async id => (await view('source', { source_ref: { kind: 'message', id } })).body;
+      // The page's own clipboard: what it is handed is kept on the page, and the Mac's pasteboard is never touched.
+      // Each ⌘C heard is recorded with whether the page took it (prevented its default) and then kept from the
+      // browser, so a ⌘C the page leaves alone copies nothing to the Mac either.
+      await p.evaluate(`(()=>{window.copied=[];window.keyed=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{window.copied.push(text)}});
+        addEventListener('keydown',e=>{if(e.metaKey&&!e.altKey&&!e.ctrlKey&&e.key.toLowerCase()==='c'){window.keyed.push(e.defaultPrevented);e.preventDefault()}});return true})()`);
+      const copy = async (modifiers = 4) => {
+        const heard = await p.evaluate('window.keyed.length');
+        await p.key('c', modifiers);
+        await until(() => p.evaluate(`window.keyed.length > ${heard}`), 'the page heard ⌘C');
+        return p.evaluate('window.keyed.at(-1)');
+      };
+      const copied = () => p.evaluate('window.copied.slice()');
+      // Nothing lit: ⌘C is the browser's.
+      await away(p);
+      await p.evaluate('document.activeElement?.blur()');
+      assert.deepEqual(await lit(p), [], 'nothing is lit');
+      assert.equal(await copy(), false, 'with nothing lit the page leaves ⌘C alone');
+      assert.deepEqual(await copied(), [], 'and copies nothing');
+      // The pointer rests on a message: ⌘C copies its words as written.
+      await light(p, 'laptop', ids.short);
+      assert.equal(await copy(), true, 'the page takes ⌘C on the lit message');
+      const short = await written(ids.short);
+      await becomes(copied, [short], 'the lit message\'s words, as written, are on the clipboard');
+      // The keys move the light from under the resting pointer: the message they light is the one ⌘C copies, as Return answers it.
+      await p.key('ArrowUp');
+      await until(async () => (await lit(p)).join() === ids.long, 'the keys light the cut-off message above');
+      assert.equal(await copy(), true, 'the page takes ⌘C on it');
+      const whole = await written(ids.long);
+      await becomes(copied, [short, whole], 'the whole message is on the clipboard, not its excerpt, though the background lane is busy');
+      assert.equal(await p.evaluate(`document.querySelector('#app-status').textContent.includes('Could not copy')`), false, 'nothing says the copy was refused');
+      // The Reader's ⇧⌘C gives the same words.
+      await p.point(words(ids.long));
+      await until(async () => (await readerOn(p))?.startsWith('Line 0'), 'a click opens the lit message in the Reader');
+      assert.equal(await copy(12), true, 'the Reader takes ⇧⌘C');
+      await becomes(copied, [short, whole, whole], 'the Reader copies the same words');
+      await closeReader(p, 'laptop');
+      // Words selected on the page: ⌘C copies them as the browser does, not the lit message.
+      await light(p, 'laptop', ids.short);
+      await p.evaluate(`(()=>{const r=document.createRange();r.selectNodeContents(document.querySelector(${JSON.stringify(words(ids.short))}));getSelection().removeAllRanges();getSelection().addRange(r);return true})()`);
+      assert.equal(await copy(), false, 'with words selected the page leaves ⌘C to the browser');
+      assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
+      await p.evaluate('getSelection().removeAllRanges()');
+      // In the writing ⌘C is the writing's, with a message lit. The press that puts the cursor there takes the
+      // feed's light (docs/interaction.md); the pointer resting on a message again lights it, the cursor staying put.
+      await into(p, 'laptop', '#inline-writing-body');
+      await p.send('Input.insertText', { text: 'Words in the composer.' });
+      await light(p, 'laptop', ids.short);
+      assert.equal(await p.evaluate('document.activeElement?.id'), 'inline-writing-body', 'the cursor is still in the composer');
+      assert.deepEqual(await lit(p), [ids.short], 'a message is lit');
+      assert.equal(await copy(), false, 'in the composer the page leaves ⌘C to the writing');
+      assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    } finally { await control({ method: 'read_fault_clear' }); }
+  });
+
+  // Lighting a cut-off card reads its whole message ahead in the background lane, one read at a time with a short
+  // queue. Show full is the person's own act: while that read ahead is slow (held in the server), Show full still
+  // shows the whole message and does not wait behind it.
+  await check('reading Show full message shows the whole message while the lit card\'s read ahead is slow in the background lane', async () => {
+    const topic = 'reading-show-full-busy-lane', body = Array.from({ length: 70 }, (_, i) => `Paragraph ${i}. Words that need the full height of the message to be read.`).join('\n\n');
+    const ids = await seed(topic, [['long', { sender: 'aim-core', join: true, addressees: [facts.actor], body }],
+      ['after', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'A short message after it.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.long, 'window.holdReads = true;');
+    await centre(p, card(ids.long)); await away(p);
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the page has its answers');
+    const since = (await control({ method: 'admission_events', after: Number.MAX_SAFE_INTEGER })).next;
+    const hold = topic + '-hold';
+    await control({ method: 'read_hold', hold_id: hold, name: 'source', phase: 'callback', read_class: 'background', count: 1 });
+    try {
+      await light(p, 'laptop', ids.long);
+      await until(async () => (await control({ method: 'admission_events', after: since })).events.some(e => e.event === 'hold-enter' && e.hold_id === hold), 'the lit card\'s read ahead is held in the server');
+      await p.point(BAR + ' [data-act="more"]');
+      const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+      assert.ok(index >= 0, 'Show full message is offered on the cut-off card');
+      await p.point(`.message-menu-list > button:nth-child(${index + 1})`);
+      const shape = () => p.evaluate(`(c=>({full:c.dataset.full??null,last:c.querySelector(':scope > .message-preview').textContent.includes('Paragraph 69.'),status:document.querySelector('#app-status').hidden?null:document.querySelector('#app-status').textContent}))(document.querySelector(${JSON.stringify(card(ids.long))}))`);
+      let seen;
+      await until(async () => { seen = await shape(); return seen.full === 'shown' || seen.status !== null; }, 'Show full shows the message or says why not');
+      assert.deepEqual(seen, { full: 'shown', last: true, status: null }, 'Show full shows the whole message though the read ahead holds the background lane');
+    } finally { await control({ method: 'read_release', hold_id: hold }); }
+    assert.deepEqual(p.errors, []); await p.close();
   });
 
   await check('reading a thumbs-up an agent gives shows on the card while the page is open, and so does its taking back', async () => {
@@ -1869,4 +1960,6 @@ export async function readingChecks({ check, page, until, view, control, shot, f
 
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
+  await editChecks({ check, until, view, facts, shot, engine },
+    { seed, open, centre, tap, press, lit, light, openReader, closeReader, readerOn, into, valueOf, card, words, DEVICES });
 }

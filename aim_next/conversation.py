@@ -12,6 +12,7 @@ from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups
 from .stacks import act_fields
+from .message_edit import current_words, edited, quoted_revision, revision, words
 
 
 CONVERSATION_SCHEMA = [
@@ -162,6 +163,9 @@ class Conversation:
                    "responsibility=excluded.responsibility,responsibility_revision=excluded.responsibility_revision",
                    (topic["id"], member, int(present), epoch, responsibility, revision))
         unwaited = not present and self._unwait(db, member, "id", topic["id"])
+        if not present:
+            # Leaving the topic may take messages from them: corrections of those go too (message_edit.py).
+            self._settle_unreadable_corrections(db, member)
         version = self._touch_topic(db, topic)
         self._change(db, "actor", member, "participation", topic["id"], version)
         if unwaited:
@@ -286,7 +290,7 @@ class Conversation:
         pending = db.execute("SELECT d.*,m.topic_id AS message_topic_id,m.seq AS message_seq FROM deliveries d INDEXED BY pending_group_deliveries "
                              "CROSS JOIN messages m ON m.id=d.message_id WHERE d.group_id=? AND d.state='pending' ORDER BY d.seq", (group["id"],))
         addressed = db.execute("SELECT d.* FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
-                               "LEFT JOIN deliveries d ON d.message_id=m.id AND d.recipient_id=a.actor_id "
+                               "LEFT JOIN deliveries d ON d.message_id=m.id AND d.recipient_id=a.actor_id AND d.revision=1 "
                                "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>=? AND a.seq<=? ORDER BY a.seq", (topic_id, actor, start, through))
         walks = ((pending, lambda row: row["message_topic_id"] == topic_id and start <= row["message_seq"] <= through, []),
                  (addressed, lambda row: row["state"] == "pending", []))
@@ -366,7 +370,13 @@ class Conversation:
                 raise Refusal("INVALID_ARGUMENT", "Invalid quote reference")
             source = self._source(db, actor, quote.get("source"))
             excerpt = _body(quote.get("excerpt", ""))
-            if not excerpt or excerpt not in source["body"]:
+            if not excerpt:
+                raise Refusal("INVALID_QUOTE", "The excerpt must preserve the referenced source's words")
+            if source["source_ref"]["kind"] == "message":
+                # A message's quote is checked against the revision it names, or any revision when it names none
+                # (docs/message-edit.md, "Quotes"); the quote is kept as written, naming what it named.
+                quoted_revision(db, source["source_ref"]["id"], quote["source"], excerpt)
+            elif excerpt not in source["body"]:
                 raise Refusal("INVALID_QUOTE", "The excerpt must preserve the referenced source's words")
             whispers.quote_allowed(db, actor, source, private)
         audience = {}
@@ -410,7 +420,7 @@ class Conversation:
         # itself (delivery.ack), so its replies settle nothing.
         if snapshot.get("reply_to") and self._actor(db, actor)["kind"] == "human":
             answered = db.execute("SELECT d.* FROM deliveries d CROSS JOIN delivery_groups g ON g.id=d.group_id "
-                                  "WHERE d.message_id=? AND d.recipient_id=? AND d.state='pending' AND g.active=1",
+                                  "WHERE d.message_id=? AND d.recipient_id=? AND d.revision=1 AND d.state='pending' AND g.active=1",
                                   (snapshot["reply_to"], actor)).fetchone()
             if answered is not None:
                 self._acknowledge(db, actor, answered)
@@ -481,12 +491,16 @@ class Conversation:
         if not isinstance(ref, dict) or ref.get("kind") != "message":
             raise Refusal("INVALID_SOURCE", "Unsupported source reference")
         identity = self._message_access(db, actor, ref.get("id"))
-        row = db.execute("SELECT m.*,a.kind AS author_kind FROM messages m JOIN actors a ON a.id=m.author_id WHERE m.id=?", (identity["id"],)).fetchone()
+        row = db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.attachments,m.quotes,m.addressees,m.reply_to,m.exchange_id,m.sent_ms,m.intent,"
+                         "m.private_to,m.go_ahead,a.kind AS author_kind FROM messages m JOIN actors a ON a.id=m.author_id WHERE m.id=?", (identity["id"],)).fetchone()
+        # The latest words, their revision (1 when never edited) and when they were edited (message_edit.py).
+        body, current, edited_ms = current_words(db, row["id"])
         return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
-                "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
+                "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": body, "attachments": json.loads(row["attachments"]),
                 "quotes": whispers.redact_quotes(db, actor, json.loads(row["quotes"])), "addressees": json.loads(row["addressees"]),
-                "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"], "version": 1, "current_revision": 1,
+                "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
+                "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms,
                 "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
 
     def _view_source(self, db, actor, args):
@@ -518,19 +532,32 @@ class Conversation:
 
     def _view_topic_messages(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
+        # Named messages are read alone: a page's position, size or form would be a second question.
+        if args.get("message_ids") is not None and set(args) & {"cursor", "direction", "limit", "items", "audience"}:
+            raise Refusal("INVALID_ARGUMENT", "message_ids goes with topic_id alone")
         limit = _page_size(args)
         backwards = args.get("direction", "after") == "before"
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
         # A reply says whose message it answers, and how that message begins;
         # every message says whether a person or an agent wrote it, and what it carries.
-        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.attachments,m.sent_ms,m.intent,m.private_to,"
-                   "p.author_id AS reply_to_author,substr(p.body,1,120) AS reply_to_excerpt,p.private_to AS reply_to_private")
+        # Every message reads as its latest words, with their revision and when they were edited, and so does the
+        # beginning of the message a reply answers (message_edit.py).
+        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(" + words("m") + ",1,1024) AS body,length(CAST(" + words("m") + " AS BLOB)) AS body_bytes,"
+                   + revision("m") + " AS revision," + edited("m") + " AS edited_ms,m.reply_to,m.exchange_id,m.addressees,m.attachments,m.sent_ms,m.intent,m.private_to,"
+                   "p.author_id AS reply_to_author,substr(" + words("p") + ",1,120) AS reply_to_excerpt,p.private_to AS reply_to_private")
         parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
         # Every form reads only what the reader may see (whispers.VISIBLE), so a
         # page never stalls on, counts or folds a whisper between others.
         values = {"topic": topic["id"], "actor": actor, "cursor": cursor, "limit": limit + 1}
-        if args.get("items") is not None:
+        if args.get("message_ids") is not None:
+            # Named messages of this topic, in page shape (a page refreshing one it holds, docs/message-edit.md).
+            ids = self._named_messages(db, actor, topic, args["message_ids"])
+            values.update(("id%d" % n, mid) for n, mid in enumerate(ids))
+            rows = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=:topic AND m.id IN (" + ",".join(
+                ":id%d" % n for n in range(len(ids))) + ") AND " + whispers.VISIBLE + " ORDER BY m.seq", values).fetchall()
+            backwards, limit = False, len(rows)
+        elif args.get("items") is not None:
             if args["items"] != "open" or topic["kind"] != "conversation":
                 raise Refusal("INVALID_ARGUMENT", "items is \"open\", and only in an outcome's conversation")
             rows = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=:topic AND m.seq" + relation + ":cursor AND "
@@ -574,6 +601,20 @@ class Conversation:
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
                 "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
 
+    def _named_messages(self, db, actor, topic, ids):
+        """The ids topic_messages was asked for, each once: one to 100 messages of this topic the actor can see, or a
+        refusal, as stack_positions refuses them. A whisper the actor is not in is refused as an unknown id."""
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 100 or any(not isinstance(mid, str) for mid in ids):
+            raise Refusal("INVALID_ARGUMENT", "Name one to 100 message ids")
+        ids = list(dict.fromkeys(_identifier(mid, "message_id") for mid in ids))
+        for mid in ids:
+            # Reach first, as stack_positions does: a message the actor cannot read, wherever it is, is refused
+            # exactly as an unknown id, so its existence and its topic never show.
+            row = self._message_access(db, actor, mid)
+            if row["topic_id"] != topic["id"]:
+                raise Refusal("INVALID_ARGUMENT", "Messages must be in the named topic")
+        return ids
+
     def _view_topic_images(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
         limit = args.get("limit", 24)
@@ -592,7 +633,7 @@ class Conversation:
             # Each topic's newest messages only, through the (topic_id, seq)
             # index: the window bounds the read however long the topic is.
             rows = db.execute("SELECT m.seq,m.id,m.topic_id,m.author_id,m.sent_ms,m.attachments FROM "
-                              "(SELECT * FROM messages m WHERE m.topic_id=:topic AND " + whispers.VISIBLE + " ORDER BY m.seq DESC LIMIT :window) m "
+                              "(SELECT m.seq,m.id,m.topic_id,m.author_id,m.sent_ms,m.attachments FROM messages m WHERE m.topic_id=:topic AND " + whispers.VISIBLE + " ORDER BY m.seq DESC LIMIT :window) m "
                               "WHERE m.attachments<>'[]' ORDER BY m.seq DESC",
                               {"topic": place["id"], "actor": actor, "window": IMAGE_WINDOW}).fetchall()
             for row in rows:

@@ -16,6 +16,8 @@ export class PressHold {
     this.down = false;
     // The waiting repaints by name, so a run of the same one during a press shows once.
     this.waiting = new Map();
+    // Those waiting for the press and its click to be over (over()).
+    this.overs = [];
     doc.addEventListener('pointerdown', event => { if (event.isPrimary && event.button === 0) this.down = true; }, true);
     const end = () => this.end();
     for (const name of ['pointerup', 'pointercancel', 'contextmenu']) doc.addEventListener(name, end, true);
@@ -25,10 +27,25 @@ export class PressHold {
   after(name, paint) {
     if (this.down) this.waiting.set(name, paint); else paint();
   }
+  // Settles once no press is held and the events its release fires have been
+  // heard: the click a press ends in is sent in the same task as its
+  // pointerup, so it is heard before a message posted at the pointerup. A
+  // redraw that replaces the very element pressed (a cut-off card's words read
+  // whole, card-scroll.mjs) waits for this: the browser sends no click for a
+  // press whose element went from under it before the release, so the press
+  // would be lost, where a repaint that keeps its nodes (after) need not wait.
+  over() {
+    if (!this.down) return Promise.resolve();
+    return new Promise(resolve => this.overs.push(resolve));
+  }
   end() {
     this.down = false;
-    const waiting = [...this.waiting.values()];
-    this.waiting.clear();
+    const waiting = [...this.waiting.values()], overs = this.overs;
+    this.waiting.clear(); this.overs = [];
     for (const paint of waiting) paint();
+    if (!overs.length) return;
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => { channel.port1.close(); for (const resolve of overs) resolve(); };
+    channel.port2.postMessage(null);
   }
 }

@@ -106,7 +106,7 @@ class Reactions:
                    (actor, message["id"], kind, message["topic_id"], value, now, revision))
         # Reacting is reading: the reactor's own pending delivery is settled.
         pending = db.execute("SELECT d.* FROM deliveries d CROSS JOIN delivery_groups g ON g.id=d.group_id "
-                             "WHERE d.message_id=? AND d.recipient_id=? AND d.state='pending' AND g.active=1",
+                             "WHERE d.message_id=? AND d.recipient_id=? AND d.revision=1 AND d.state='pending' AND g.active=1",
                              (message["id"], actor)).fetchone()
         if pending is not None:
             self._acknowledge(db, actor, pending)

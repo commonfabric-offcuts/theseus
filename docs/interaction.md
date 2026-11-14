@@ -79,7 +79,9 @@ the pointer's way, the keys' and the phone's.
 - **A cut-off message** (the first 1,024 bytes are shown) reads on in place:
   once the pointer rests on it, the keys light it or a finger taps it, the whole
   card scrolls under the wheel, trackpad or a finger, keeping its height (the
-  height it lands at, for a reply still arriving or unfolding). The
+  height it lands at, for a reply still arriving or unfolding; a press
+  already held on its words when the whole message arrives still opens
+  it: the words wait for the press to end). The
   author, timestamp and reply context scroll away with the words, in standalone
   messages and stack messages alike. The card's border and dossier title stay
   in place. At either end, scrolling carries on with the page. Where a finger
@@ -90,7 +92,10 @@ the pointer's way, the keys' and the phone's.
   Reader, and the words the reader had scrolled to inside the card stay where
   they were on the screen (the page takes up the card's own scroll). This choice lasts through incoming updates on this page; leaving
   or reloading the page restores ordinary clipping. It is never saved or
-  shared with another browser or device. (`web/card-scroll.mjs`, item 401)
+  shared with another browser or device. Choosing it is the person's act, so
+  a cut-off message is read whole on the server's foreground lane, as ⌘C reads
+  it: a slow read ahead on the background lane never refuses it.
+  (`web/card-scroll.mjs`, item 401)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's
   composer on its own, with no message above it and the cursor in the field;
   Escape, ✕ or a press outside puts it back at the page's end with the writing
@@ -300,7 +305,9 @@ page painted. Its checks, by rule:
   edits its title …";
   Tab through the bar and the ⋯ menu: `tests/links_native.mjs` ("header Tab
   reaches a message's ⋯ …", "header a message's ⋯ copies its link …").
-- A cut-off message: "reading a cut-off message scrolls in place …". Safari's
+- A cut-off message: "reading a cut-off message scrolls in place …", and a
+  press held on it as its whole message arrives: "reading a press held on a
+  cut-off card while its whole message arrives still opens it …". Safari's
   engine in the harness has no finger drag, so there the box is held to scroll
   and to stay under 60% of the window; the drag runs in Chrome.
 - 👍: "reading the bar's 👍 and the card's 👍 count …", "reading 👍 in the
@@ -324,7 +331,12 @@ page painted. Its checks, by rule:
   and swipe, the trackpad's two-finger swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
   (docs/reply-stacks.md).
 - ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",
-  with a selection, the composer and no lit message left to the browser.
+  with a selection, the composer and no lit message left to the browser; a
+  cut-off message's whole words are read as the person's act, so they copy
+  while the server's background lane is busy.
+- Show full message on a busy lane: "reading Show full message shows the whole
+  message while the lit card's read ahead is slow …" holds that read ahead in
+  the server and needs the whole message shown.
 - ?: "reading ? and the rail's "? Pointer, keys and taps" open the guide …".
 - Images: "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and

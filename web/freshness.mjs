@@ -189,6 +189,9 @@ export class Freshness {
         if (item.resource_kind === 'reaction' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('reaction:' + item.resource_id, item.version);
         // A star, a stack's name, a join or a place in this topic (docs/reply-stacks.md): the topic's acts are read again.
         if (item.resource_kind === 'acts' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('acts', item.version);
+        // A message edited, by the person here or on another device (docs/message-edit.md): its key names the
+        // message and the revision; a message this page has not loaded is read with its page.
+        if (item.resource_kind === 'edit' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('edit:' + item.resource_id, item.version);
       }
       input = answer.has_more ? answer.continuation : null;
       if (!answer.has_more) this.actorCheckpoint = copy(answer.checkpoint);

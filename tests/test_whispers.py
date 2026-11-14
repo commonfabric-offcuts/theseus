@@ -834,7 +834,10 @@ VIEW_PATHS = {
 MESSAGE_READS = {
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
-    "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations", 21),
+    "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
+                                 "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE", 22),
+    "aim_next/message_edit.py": ("one message's words, a revision of them or every revision, and its attachments, each read for a message "
+                                 "the caller reached through _message_access", 4),
     "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
                                           "a pipeline item's message sources, which _source_rows read through _message_access, the message a person's "
                                           "whisper replies to, to see that it goes to that message's author, and an answer take's reply, "

@@ -1,5 +1,6 @@
 import { checkedView } from './freshness.mjs';
 import { wordNodes } from './links.mjs';
+import { revisionOf } from './message-edit-writing.mjs';
 
 // What waits for the person. The tab title carries the unread count, and a
 // message sent to them by name raises a system notification while the page is
@@ -118,6 +119,12 @@ export function paintSent(host, answer, actions) {
     repaint();
     return entry.pending;
   };
+  // Whole words read here and then edited (docs/message-edit.md): the listed item names the later revision, and
+  // the message is read again, so what shows is its latest words.
+  for (const item of items) {
+    const entry = shown.reads.get(item.message?.id);
+    if (entry?.source && !entry.pending && revisionOf(item.message) > revisionOf(entry.source)) { entry.source = null; readWhole(item); }
+  }
   // A list drawn again with what it already shows is left alone, so a press
   // under way finishes on the button it began on.
   const shows = JSON.stringify([count, items, items.map(item => {

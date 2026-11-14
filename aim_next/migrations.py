@@ -39,6 +39,7 @@ from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
 from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
 from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
+from .message_edit import MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED, MESSAGE_EDIT_UP
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -161,6 +162,11 @@ STEPS = (
     # draft, which no agent is given the words of. Stepping back is refused once
     # any revision has been marked, since version 38 would give agents its words.
     ("38", "39", MEMORY_DRAFT_SCHEMA, MEMORY_DRAFT_DOWN, MEMORY_DRAFT_OCCUPIED),
+    # Version 40 lets a person edit their own message (docs/message-edit.md): each later revision of its words, and
+    # each delivery's revision, so an agent can be sent the message again as a correction. The deliveries table is
+    # built again with every row, its seq and where the next goes on from. Stepping back is refused once any
+    # message has been edited, since version 39 would show its first words.
+    ("39", "40", MESSAGE_EDIT_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED),
 )
 
 

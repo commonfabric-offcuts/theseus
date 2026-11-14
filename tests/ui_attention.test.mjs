@@ -442,3 +442,31 @@ test('a message sent by name shows its web addresses as links, in its excerpt an
   assert.equal(whole.text, 'agent-a: Read https://docs.example/plan then https://docs.example/cut-short-no-more');
   assert.deepEqual(links(whole), [['https://docs.example/plan', '_blank'], ['https://docs.example/cut-short-no-more', '_blank']], 'read whole, every address is a link');
 });
+
+test('a whole message read where it is listed is read again once it is edited, and shows its latest words', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag) };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const lost = { ...f.item('d2', 'Ship it at five', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
+  lost.message = { ...lost.message, id: 'm-2', revision: 1 };
+  const sources = [{ body: 'Ship it at five, after the review', revision: 1 }, { body: 'Ship it at six, after the review', revision: 2 }];
+  let reads = 0;
+  const actions = { open() {}, acknowledge: async () => {}, attachment: () => new Element('span'),
+    read: async () => ({ ...sources[reads++], source_ref: { kind: 'message', id: 'm-2' }, attachments: [] }) };
+  const host = new Element('section');
+  const closed = () => host.all().find(node => node.tag === 'li');
+  paintSent(host, { addressed: 1, latest_addressed: [lost] }, actions);
+  await closed().all().find(node => node.tag === 'button' && node.textContent === 'Read it here').onclick();
+  assert.match(closed().text, /at five, after the review/);
+  // The same words again read nothing more.
+  paintSent(host, { addressed: 1, latest_addressed: [lost] }, actions);
+  assert.equal(reads, 1);
+  // Edited: the listed item carries revision 2, and the whole words shown are read again.
+  const edited = { ...lost, message: { ...lost.message, body: 'Ship it at six', revision: 2 } };
+  paintSent(host, { addressed: 1, latest_addressed: [edited] }, actions);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(reads, 2, 'the edited message is read again');
+  assert.match(closed().text, /at six, after the review/);
+  assert.doesNotMatch(closed().text, /at five/);
+});

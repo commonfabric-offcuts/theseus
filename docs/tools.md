@@ -137,6 +137,13 @@ The record is written after the verify, not before the stop, because it states t
 
 ### Known reds: `--known-reds FILE`
 
+GitHub's aggregate classifier is a separate, stricter consumer of complete
+evidence: see [CI expected browser failures](ci-known-reds.md). It uses policy
+and validator code from the PR event's exact base SHA, verifies producer
+run/attempt receipts and case identities, and preserves raw failures. Its
+initial inventory has zero failure admissions; step-wide deploy acceptances do
+not populate it.
+
 A release ships with its own regressions fixed. A browser case that already fails on the live release is not this release's regression, so it does not hold the release, but it is never counted as a pass either: it stays a failed case in the summary, in the release check's step evidence and in the record's counts, and the record names it as a known red. `FILE` is an absolute path to a JSON object:
 
 ```json
@@ -150,7 +157,7 @@ Without the flag nothing changes. With it, a summary that did not pass is taken 
 2. `live_commit` is the live checkout's HEAD, as the deploy reads it (and still is when it reads the checkout again before the fast-forward).
 3. Every step the summary should have run is in it, once.
 4. Every step that failed is a browser step. A failed `python-units`, `node-units`, `deploy-refusals` or `wake-replay` is never a known red.
-5. Each failed browser step shows its harness ran to the end, read from the evidence beside the summary (`native/NAME/` and `native-NAME.log`): it exited 1, its results file is readable and lists its cases, the summary's counts for the step are the ones its results file gives, the browser closed, and the harness reached its end. For the harnesses that write `native.json` with their fixture's exit, that exit is 0 and the log holds the harness's last assertion (`see native.json for exact failing assertions`), which it reaches only after the browser and fixture are closed. `tests/reader_native.mjs` serves its page itself, so it has no fixture; its log ends with the results it prints last. `tests/reader_compose_native.mjs` records no fixture exit, so its step cannot show its run ended and is never taken. At least one case failed, and each failed case's name occurs once among the step's cases.
+5. Each failed browser step shows its harness ran to the end, read from the evidence beside the summary (`native/NAME/` and `native-NAME.log`): it exited 1, its results file is readable and lists its cases, the summary's counts for the step are the ones its results file gives, the browser closed, and the harness reached its end. For the harnesses that write `native.json` with their fixture's exit, that exit is 0 and the log holds the harness's last assertion (`see native.json for exact failing assertions`), which it reaches only after the browser and fixture are closed. `tests/reader_native.mjs` serves its page itself, so it has no fixture; its log ends with the results it prints last. `tests/reader_compose_native.mjs` attests its end in `native.json` instead of its log: `fixtureExitCode` is 0 and `fixtureExitSignal` is null (both the fixture's own, held from its launch), `plannedPhases` and `completedPhases` are both exactly `run:chromium`, `run:webkit`, `runAnswering:chromium`, `runAnswering:webkit`, `runSending:chromium`, `runSending:webkit` (a phase is completed only once it returned and its browser closed), and `harnessCompleted` is true, which it sets only after every planned phase. An interrupted run still closes its browsers and writes `native.json`, so it is refused on these fields however many cases it holds. At least one case failed, and each failed case's name occurs once among the step's cases.
 6. Every failed case of each failed step is listed for that step, by its exact name: no prefix, pattern or case folding, and a case with a suffix such as an engine is its own name.
 7. Each needed red's `live_summary` is a release-check summary (full or `--only`) whose `commit` is `live_commit` and whose checkout did not change while it ran, in which the same step ran once, ended as in 5, and has that exact case among its failed cases.
 
