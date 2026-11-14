@@ -46,19 +46,32 @@ test('a request after the fixture died is refused at once, not left waiting', as
   assert.match(outcome.error.message, /^Fixture exited SIGTERM: /);
 });
 
-test('an answer read after the fixture exited is dropped, since its request was already refused', async () => {
-  // A stand-in child, so the exit can be reported before the answer is read, as Node may do.
-  const fixture = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
-  const { control, exit } = fixtureControl(fixture);
-  const open = settled(control({ n: 1 })).catch(() => {});
-  fixture.emit('exit', 0, null);
-  await exit;
+// A stand-in child, so the exit can be reported before its last lines are read, as Node may do.
+const standIn = () => Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
+// Writes a line to the stand-in's stdout and says whether reading it threw.
+const read = async (fixture, line) => {
   let crash = null;
   const record = error => { crash = error; };
   process.once('uncaughtException', record);
-  fixture.stdout.write(JSON.stringify({ id: 1, answer: 2 }) + '\n');
-  await new Promise(resolve => setImmediate(resolve));
-  process.off('uncaughtException', record);
-  assert.equal(crash, null, 'reading a late answer must not throw');
-  await open;
+  try { fixture.stdout.write(line + '\n'); await new Promise(resolve => setImmediate(resolve)); }
+  catch (error) { crash = error; }
+  finally { process.off('uncaughtException', record); }
+  return crash;
+};
+
+test('a line read after the fixture exited is dropped, whole or cut short, since its request was already refused', async () => {
+  for (const line of [JSON.stringify({ id: 1, answer: 2 }), '{"id":1,"ans']) {
+    const fixture = standIn(), { control, exit } = fixtureControl(fixture);
+    const open = control({ n: 1 });
+    fixture.emit('exit', null, 'SIGTERM');
+    await exit;
+    assert.match((await settled(open)).error.message, /^Fixture exited SIGTERM: /);
+    assert.equal(await read(fixture, line), null, `reading ${line} after the exit must not throw`);
+  }
+});
+
+test('an answer from a running fixture to a request never asked fails loudly', async () => {
+  const fixture = standIn();
+  fixtureControl(fixture);
+  assert.match((await read(fixture, JSON.stringify({ id: 99, answer: 2 })))?.message ?? '', /^The fixture answered request 99, which was never asked/);
 });

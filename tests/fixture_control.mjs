@@ -11,9 +11,11 @@ export function fixtureControl(fixture) {
   // A write the fixture can no longer read: it has died, and its exit says how.
   fixture.stdin.on('error', error => { errors += `stdin: ${error.message}\n`; });
   createInterface({ input: fixture.stdout }).on('line', line => {
+    // Node can report the exit before the last lines are read: their requests were refused at exit, and the
+    // last line may be cut short by the death, so a line read after the exit is dropped.
+    if (ended) return;
     const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
-    // Node can report the exit before the last answers are read; their requests were refused at exit.
-    if (!request && ended) return;
+    if (!request) throw Error(`The fixture answered request ${result.id}, which was never asked: ${line}`);
     if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
   });
   // How the fixture ended, held from its launch: its exit code, or the signal that ended it.
