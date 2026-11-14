@@ -756,6 +756,27 @@ export function formatNodes(text, { doc = globalThis.document, partial = false, 
   return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences));
 }
 
+// A Notebook revision opened in place shows its source verbatim, with links.
+// Replace only fence lines. Raw gaps keep even quote prefixes and CRLFs.
+export function linkedFenceNodes(text, doc) {
+  const nodes = [];
+  let at = 0;
+  const emit = blocks => {
+    for (const block of blocks) {
+      if (block.fenced) {
+        // A quoted block may start after its opening line's quote prefix.
+        const start = text.lastIndexOf('\n', block.start - 1) + 1;
+        if (at < start) nodes.push(...wordNodes(text.slice(at, start), { doc }));
+        nodes.push(blockNode(block, doc, false, undefined, true));
+        at = block.end;
+      } else if (block.blocks) emit(block.blocks);
+    }
+  };
+  emit(parseBlocks(text));
+  if (at < text.length || !nodes.length) nodes.push(...wordNodes(text.slice(at), { doc }));
+  return nodes;
+}
+
 // Puts text, formatted, in host in place of what host held.
 export function formatWords(host, text, options = {}) {
   if (deferFencePaint(host, () => formatWords(host, text, options))) return host;

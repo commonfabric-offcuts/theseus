@@ -1,5 +1,5 @@
 import { paintChanges } from './page-changes.mjs';
-import { formatWords } from './message-format.mjs';
+import { linkedFenceNodes } from './message-format.mjs';
 
 // On an outcome's own page there is no Reader, so a Notebook page listed
 // beside its topics opens in place, below the list: its title, what changed
@@ -39,7 +39,8 @@ export class PageHere {
     heading.textContent = source.title || 'Notebook page';
     heading.tabIndex = -1;
     const origin = this.node('p', `Notebook · revision ${source.source_ref.revision}${source.draft === true ? ' · draft' : ''}`, 'muted');
-    const body = formatWords(this.node('div', undefined, 'page-here-body'), source.body ?? '', { doc: this.doc, copyFences: true });
+    const body = this.node('div', undefined, 'page-here-body');
+    body.append(...linkedFenceNodes(source.body ?? '', this.doc));
     // Edit page only for someone Core lets write the page (its reader_may_write).
     const cards = this.cards && source.reader_may_write === true ? Object.assign(this.node('a', 'Edit page', 'page-here-cards'), { href: this.cards(source.source_ref.id) }) : '';
     this.host.replaceChildren(heading, origin, status, body, cards, close);

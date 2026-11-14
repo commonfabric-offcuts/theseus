@@ -314,7 +314,7 @@ try {
           }
           assert.equal(await p.locator('.deck-writing').count(), 0);
           if (scope === '#source-body') {
-            const field = p.locator('#writing-body'); await field.focus(); await p.keyboard.press('Meta+V');
+            const field = p.locator('#writing-body'); await field.focus(); await p.keyboard.press('Meta+A'); await p.keyboard.press('Meta+V');
             await wait(p, words => document.querySelector('#writing-body').value === words, words);
           }
           assert.deepEqual(p.errors, []);

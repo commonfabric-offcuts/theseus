@@ -43,8 +43,8 @@ after implementation too.
    offsets and the exact mapped code text. Add an opt-in copyFences option to
    formatWords/formatNodes/drawPassages, recursively carried into quotes.
    Enable only on the requested reading surfaces. Inline code and box tables
-   receive no controls. PageHere currently uses linkWords; switch its reading
-   body to the shared Markdown renderer (not its revision diff).
+   receive no controls. PageHere keeps its existing linked source text, using
+   the shared renderer only for fenced blocks (not its revision diff).
 2. One fence-copy.mjs helper creates the control and clipboard behavior. Use
    an outer fence wrapper with the original mapped code as its own child and
    the control as a sibling outside the horizontal scroller. Reserve a small

@@ -17,7 +17,7 @@ function fixture({ since = null, refuse = null, words = null } = {}) {
     get textContent() { return this.tagName === '#text' ? this.text : this.children.map(child => child.textContent).join('') || this.text; }
     set textContent(value) { this.text = value; this.children = []; }
   }
-  const doc = { createElement: tag => new Node(tag), createTextNode: text => new Node('#text', text), activeElement: null };
+  const doc = { createElementNS: (_, tag) => new Node(tag), createElement: tag => new Node(tag), createTextNode: text => new Node('#text', text), activeElement: null };
   const host = new Node('section'); host.hidden = true;
   const reads = [], gates = [];
   const bodies = { 1: 'Ship on Friday.', 2: 'Ship on Friday.', 3: words ?? 'Ship on Monday.' };
@@ -93,8 +93,25 @@ test('a Notebook page shows its web addresses as links, and its other words are 
   await f.here.open(ref, f.row);
   const body = f.host.children.find(child => child.className.split(' ').includes('page-here-body'));
   assert.equal(body.textContent, 'Plan: https://docs.example/plan, then <ship>.');
-  assert.deepEqual(body.children[0].children.map(child => [child.tagName, child.textContent]),
+  assert.deepEqual(body.children.map(child => [child.tagName, child.textContent]),
     [['#text', 'Plan: '], ['a', 'https://docs.example/plan'], ['#text', ', then <ship>.']]);
-  const link = body.children[0].children[1];
+  const link = body.children[1];
   assert.deepEqual([link.href, link.target, link.rel], ['https://docs.example/plan', '_blank', 'noopener noreferrer']);
+});
+
+test('a revision keeps its unfenced words, links and trailing newline around a copyable fence', async () => {
+  const f = fixture({ words: '**Literal prose** https://example.com/a\n\n```two words```\n\nAfter.\n' });
+  await f.here.open(ref, f.row);
+  const body = f.host.children.find(child => child.className.includes('page-here-body'));
+  assert.equal(body.textContent, '**Literal prose** https://example.com/a\n\ntwo words\n\nAfter.\n');
+  assert.equal(body.children.filter(n => n.tagName === 'a').length, 1);
+  assert.equal(body.children.filter(n => n.className.includes('md-fence')).length, 1);
+});
+
+test('only a quoted fence changes; surrounding source keeps quote prefixes, links and CRLF', async () => {
+  const f = fixture({ words: '> > **Literal** https://example.com/before\r\n> > ```\r\n> > payload\r\n> > ```\r\n> > https://example.com/after\r\n' });
+  await f.here.open(ref, f.row);
+  const body = f.host.children.find(child => child.className.includes('page-here-body'));
+  assert.equal(body.textContent, '> > **Literal** https://example.com/before\r\npayload\r\n> > https://example.com/after\r\n');
+  assert.deepEqual(body.children.filter(n => n.tagName === 'a').map(a => a.href), ['https://example.com/before', 'https://example.com/after']);
 });
