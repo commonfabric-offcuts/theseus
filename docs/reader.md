@@ -82,7 +82,8 @@ A press or Tab into the field makes it the composer:
 
 The field grows with its writing, then scrolls: up to four lines on a laptop
 and three on a phone, where a toggle makes it taller, so the message keeps
-its room however long the reply. Wide gives the reply a whole column.
+its room however long the reply. Wide gives the reply a whole column, and
+the New message sheet the whole sheet ("Size", below).
 Escape, a press outside, or opening another message folds the composer back
 to its line; the writing is kept. Showing the same message again (choosing
 In, adopting a saved version, its access checked) is no move: the composer,
@@ -124,6 +125,46 @@ composer: a surface that closes or hides with a panel open (the Reader
 closed by ⌘⇧Return, the topic page giving way to another view) puts the
 panel away, naming no one, and a composer no one sees hears no keys, so
 Escape is always what is shown now's (`unseen`).
+
+## Size
+
+The Reader, where the composer has the message beside it, and the New
+message sheet, where it stands alone, are as tall as what shows of the window
+and grow with its width up to a maximum (item 400). On a laptop each keeps
+1.5rem of the dimmed page on every side and is at most 72rem wide, 100rem in
+Wide; the window decides the size, so it changes when the window does and
+never with what is written. On a phone, as in any window 760px wide or
+narrower, each is the window's width and as tall as what shows, above the
+keyboard when it is up (the sheet leaves .75rem of the dimmed page above it),
+so nothing goes past the screen, sideways or down, and Send stays in reach
+with the keyboard up. A phone turned sideways is wider than that, and is
+sized as a small laptop window. In Wide the reply's column is the Reader's
+whole height; in the New message sheet the composer is the sheet's height
+and its field takes what the head, an open panel and the images leave, then
+scrolls, so there is no taller toggle (⤢) there, while the stacked Reader's
+field keeps it where the window is narrow; on a laptop the sheet's who panel
+opens in it under the head, and + over the field's foot, as in Wide. Stacked, the reply
+stays as tall as its writing and the message has the rest; where the Reader
+is shorter than both (a small phone with the keyboard up, the reply holding
+an image), the field gives way, down to one line, before the reply has to
+scroll, so as much of the reply's head and images shows with Send as can.
+
+Shorter still, as on a 320-point phone with the keyboard up and an image
+whose Send was refused (its notice, the image's choices to Attach as
+download or Remove, the head, the field and Send), the composer scrolls
+inside itself: the stacked reply below the Reader's header where the window
+is narrow (there its panels open in its flow, not over the message), the
+composer inside the sheet. Every row above the field keeps its whole height,
+so no row is drawn over another, and the field keeps one line. What has
+focus shows: a press brings it into view as any focus does, and as the
+keyboard comes up the composer the field is typed in scrolls itself, and
+only itself, to bring the field, with Send on its row, back into view
+(`web/compose-bar.mjs`, which reads the keyboard). A composer that does not
+scroll (side by side, or in a wider window, a phone turned sideways among
+them) is not moved, and the Reader, which clips what is past it, is never
+scrolled: its header stays at its top. Nothing of the composer goes past
+the screen, and every part of it is a scroll away. The sizes are in `web/aim.css` (`--widest`, the stacked reply's rows and the
+sheet's), not measured in script.
 
 ## Layouts
 
@@ -244,6 +285,26 @@ message's (docs/decks.md, "Where it opens"). A card's reply stack opens here in
 the Reader, whose header then leads back to the page ("← page title").
 
 ## What the checks see
+
+`tests/reader_compose_native.mjs` measures the size ("size …" cases, in
+Chrome and WebKit): at 320×568, 375×667 and 390×844 with touch, at 480×300
+without touch (a narrow window, laid out as a phone is), at 1440×960 stacked
+and Wide, and at 2560×1440, past the maximum, with the composer empty,
+holding a draft longer than its field (in the sheet, one written at the
+page's end first), holding an image, and holding a HEIC image that waits on a
+choice, its choices open (in the Reader by a refused Send, whose notice says
+why), the Reader and the New message sheet are each measured against the
+window: their height and width as above, the composer filling the sheet and
+Wide's column, the field reaching the composer's foot, a long draft scrolling
+inside the field, a composer that scrolls inside itself having its field at
+one line (its minimum), no row of the composer drawn over another, what has focus
+showing (with the field in hand, Send too), ⤢ in the stacked Reader where
+the window is narrow and not in the sheet, and no control of the composer, nor
+the page, reaching past what shows, a control in a part that scrolls
+counting where that part is; on a phone again with the keyboard up. At
+844×390 with touch, a phone turned sideways, the same states hold only that,
+as the keyboard comes up, neither the Reader nor the sheet scrolls and the
+Reader's header stays at its top.
 
 "quoting keeps your place" (`native-compose`, at 390×844 with touch and at
 1280×800 stacked and wide, in both engines) selects words in a passage a third

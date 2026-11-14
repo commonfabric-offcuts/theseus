@@ -10376,20 +10376,6 @@
   },
   {
    "item": 228,
-   "act": "An edit sends each agent that was handed the old words, other than the editor, one correction",
-   "break": [
-    [
-     "aim_next/message_edit.py",
-     "        for agent in exposed:\n",
-     "        for agent in []:\n"
-    ]
-   ],
-   "check": {
-    "python": "test_message_edit.py"
-   }
-  },
-  {
-   "item": 228,
    "act": "A correction goes in the agent's correction group, so it is never unread, addressed or counted",
    "break": [
     [
@@ -10414,20 +10400,6 @@
    ],
    "check": {
     "python": "test_message_edit.py"
-   }
-  },
-  {
-   "item": 228,
-   "act": "People are never sent a correction of an edited message",
-   "break": [
-    [
-     "aim_next/message_edit.py",
-     "and self._actor_kind(db, reader) == \"agent\"]",
-     "] "
-    ]
-   ],
-   "check": {
-    "python": "test_message_exposure.py"
    }
   },
   {
@@ -10502,20 +10474,6 @@
   },
   {
    "item": 228,
-   "act": "Every reader of an edited message, people included, is told with an edit change",
-   "break": [
-    [
-     "aim_next/message_edit.py",
-     "        for reader in readers:\n            self._change",
-     "        for reader in reader_agents:\n            self._change"
-    ]
-   ],
-   "check": {
-    "python": "test_message_edit.py"
-   }
-  },
-  {
-   "item": 228,
    "act": "A quote's excerpt is checked against the revision its source names",
    "break": [
     [
@@ -10544,40 +10502,12 @@
   },
   {
    "item": 228,
-   "act": "A reply's line shows the latest words of the message it answers",
-   "break": [
-    [
-     "aim_next/conversation.py",
-     "words(\"p\", chars=120) + \" AS reply_to_excerpt",
-     "\"substr(p.body,1,120)\" + \" AS reply_to_excerpt"
-    ]
-   ],
-   "check": {
-    "python": "test_message_edit.py"
-   }
-  },
-  {
-   "item": 228,
    "act": "Only people edit messages",
    "break": [
     [
      "aim_next/message_edit.py",
      "if self._actor(db, actor)[\"kind\"] != \"human\":",
      "if False:"
-    ]
-   ],
-   "check": {
-    "python": "test_message_edit.py"
-   }
-  },
-  {
-   "item": 228,
-   "act": "A reached outcome's messages are not edited",
-   "break": [
-    [
-     "aim_next/message_edit.py",
-     "        if reached:\n            # An edit writes only",
-     "        if False:\n            # An edit writes only"
     ]
    ],
    "check": {
@@ -10684,40 +10614,12 @@
   },
   {
    "item": 228,
-   "act": "No module but the words helper reads a message's first words",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "words(\"m\", chars=160) + \" AS excerpt",
-     "\"substr(m.body,1,160)\" + \" AS excerpt"
-    ]
-   ],
-   "check": {
-    "python": "test_message_words.py"
-   }
-  },
-  {
-   "item": 228,
    "act": "A page of deliveries reads on past corrections it leaves out, so a readable one behind them is still listed",
    "break": [
     [
      "aim_next/delivery.py",
      "                if len(rows) < wanted:\n                    break\n",
      "                break\n"
-    ]
-   ],
-   "check": {
-    "python": "test_message_edit.py"
-   }
-  },
-  {
-   "item": 228,
-   "act": "A held ask's line in the pipeline's row is its latest words",
-   "break": [
-    [
-     "aim_next/blocking.py",
-     "\"waiting_on\": waiting, \"line\": current_words(db, row[\"id\"], shape=first_line)[0],",
-     "\"waiting_on\": waiting, \"line\": first_line(db.execute(\"SELECT body FROM messages WHERE id=?\", (row[\"id\"],)).fetchone()[0]),"
     ]
    ],
    "check": {
@@ -10978,34 +10880,6 @@
   },
   {
    "item": 228,
-   "act": "A busy answer keeps the same operation for Try again",
-   "break": [
-    [
-     "web/message-edit-writing.mjs",
-     "if (receipt.status === 'retryable') { this.state = 'busy'; this.settle(null); return receipt; }",
-     "if (receipt.status === 'retryable') { this.pending = null; this.state = 'busy'; this.settle(null); return receipt; }"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_edit.test.mjs"
-   }
-  },
-  {
-   "item": 228,
-   "act": "A conflict reads the saved words and offers the choice",
-   "break": [
-    [
-     "web/message-edit-writing.mjs",
-     "    if (code === 'REVISION_CONFLICT') {\n      // Someone saved",
-     "    if (false) {\n      // Someone saved"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_edit.test.mjs"
-   }
-  },
-  {
-   "item": 228,
    "act": "Save mine saves on the newer revision",
    "break": [
     [
@@ -11026,62 +10900,6 @@
      "web/message-edit-writing.mjs",
      "    if (this.empty) return null;\n",
      ""
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_edit.test.mjs"
-   }
-  },
-  {
-   "item": 228,
-   "act": "Words the same as the saved ones end the edit unsent",
-   "break": [
-    [
-     "web/message-edit-writing.mjs",
-     "    if (!this.dirty) { await this.end('unchanged'); return null; }\n    // A Save never waits on the debounce.",
-     "    // A Save never waits on the debounce."
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_edit.test.mjs"
-   }
-  },
-  {
-   "item": 228,
-   "act": "Save, Cancel and Use saved clear the device copy",
-   "break": [
-    [
-     "web/message-edit-writing.mjs",
-     "try { await (row ? this.persist(row) : this.clearDevice()); } catch (error) { this.journalError = error.message; }\n    this.value = value;",
-     "try { await (row ? this.persist(row) : this.persist()); } catch (error) { this.journalError = error.message; }\n    this.value = value;"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_edit.test.mjs"
-   }
-  },
-  {
-   "item": 228,
-   "act": "A Save whose answer never came goes again when the edit is opened",
-   "break": [
-    [
-     "web/message-edit-writing.mjs",
-     "    if (this.pending) { this.resumed = true; this.state = 'uncertain'; return this.retry(); }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_edit.test.mjs"
-   }
-  },
-  {
-   "item": 228,
-   "act": "The words of an unconfirmed Save stay as sent until Try again",
-   "break": [
-    [
-     "web/message-edit-writing.mjs",
-     "if (this.closed || this.over || this.sending || this.pending || this.readOnly",
-     "if (this.closed || this.over || this.sending || this.readOnly"
     ]
    ],
    "check": {
@@ -11166,20 +10984,6 @@
      "web/message-edit.mjs",
      "if (this.field.value !== w.value) {\n      this.field.value = w.value;",
      "if (false) {\n      this.field.value = w.value;"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_edit.test.mjs"
-   }
-  },
-  {
-   "item": 228,
-   "act": "Save is off while the words are blank",
-   "break": [
-    [
-     "web/message-edit.mjs",
-     "|| w.readOnly || w.empty || w.over;",
-     "|| w.readOnly || w.over;"
     ]
    ],
    "check": {
@@ -11282,20 +11086,6 @@
      "aim_next/runner.py",
      "if self._settle_unreadable_corrections(db, row[\"recipient_id\"]):",
      "if False:"
-    ]
-   ],
-   "check": {
-    "python": "test_message_edit.py"
-   }
-  },
-  {
-   "item": 228,
-   "act": "An edit's words over the body limit are a recorded BODY_TOO_LARGE that the same operation returns again",
-   "break": [
-    [
-     "aim_next/message_edit.py",
-     "        body = _body(args[\"body\"])\n        holder = _identifier(args[\"holder\"], \"holder\") if \"holder\" in args else None\n",
-     "        body = args[\"body\"]\n        holder = _identifier(args[\"holder\"], \"holder\") if \"holder\" in args else None\n"
     ]
    ],
    "check": {
@@ -11546,12 +11336,465 @@
   },
   {
    "item": 228,
-   "act": "The words check finds a read of messages.body in a column list built in one statement and joined to the table in another",
+   "act": "The words check finds a read of messages.body in a column constant joined to the table where it is used",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "ASK_COLUMNS = \"m.id,",
+     "ASK_COLUMNS = \"m.id,m.body,"
+    ]
+   ],
+   "check": {
+    "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 447,
+   "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "import { messagePreview } from './message-preview.mjs';",
+     "import { messagePreview } from './message-preview.mjs';\nimport { firstLine } from './pipeline-words.mjs';"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "  words.textContent = messagePreview(item);",
+     "  words.textContent = firstLine(item.body);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 447,
+   "act": "A dossier is named by its first message's own words until someone types a name",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "headOf(stack, { preview: messagePreview, unread",
+     "headOf(stack, { unread"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 447,
+   "act": "Renaming a dossier starts from the name shown, and Return on it unchanged names nothing",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "import { messagePreview } from './message-preview.mjs';",
+     "import { messagePreview } from './message-preview.mjs';\nimport { firstLine } from './pipeline-words.mjs';"
+    ],
+    [
+     "web/stack-feed.mjs",
+     "!typed && name === messagePreview(item)",
+     "!typed && name === firstLine(item.body)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 447,
+   "act": "A message that is only quotes shows its quoted words inside quote marks, so they read as a quote",
+   "break": [
+    [
+     "web/message-preview.mjs",
+     "if (text) return bounded(quoted ? `“${text}”` : text);",
+     "if (text) return bounded(text);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_preview.test.mjs"
+   }
+  },
+  {
+   "item": 447,
+   "act": "A message with only attachments shows by one line what is attached",
+   "break": [
+    [
+     "web/message-preview.mjs",
+     "return attached.length ? bounded(`Attached: ${attached.join(', ')}`) : '';",
+     "return '';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 400,
+   "act": "The Reader is as tall as the window",
+   "break": [
+    [
+     "web/aim.css",
+     "--widest:72rem;width:min(var(--widest),calc(100vw - 3rem));height:calc(100dvh - 3rem);",
+     "--widest:72rem;width:min(var(--widest),calc(100vw - 3rem));height:min(54rem,calc(100dvh - 3rem));"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, an image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "The Reader and the New message sheet grow with the window's width up to 72rem",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog{--reading-share:52fr;--writing-share:48fr;--widest:72rem;",
+     "dialog{--reading-share:52fr;--writing-share:48fr;--widest:54rem;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size very wide 2560×1440, an image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Side by side, the Reader grows wider still, up to 100rem",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog[data-layout=wide]{--widest:100rem}",
+     "dialog[data-layout=wide]{--widest:74rem}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size very wide 2560×1440, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the New message sheet is as tall as what shows of the window",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);",
+     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:auto;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the New message sheet is as tall as what shows above the keyboard",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);",
+     "dialog.composer-home[open]{width:100%;max-width:100%;height:auto;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the composer's field takes the height the rest leaves",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;",
+     "dialog.composer-home[open] .inline-composer textarea{--fit:none;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "A draft held at the page's end fills the sheet when ✎ takes it up, not the height it grew to",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    this.bar.fit();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, a long draft"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the sheet's who panel opens inside the sheet, under its head",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;",
+     "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the sheet's + panel opens over the field's foot, inside the sheet",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Stacked, where the Reader is short (a small phone with the keyboard up), the field gives way to one line before the reply scrolls, so as much of its head and image shows with Send as can",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:not([data-layout=wide]) .writing-pane>.field-box{align-self:stretch;display:flex;flex-direction:column;justify-content:center}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, an image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the stacked reply, taller than what the Reader's header leaves, scrolls inside itself, and the Reader with its header never scrolls",
+   "break": [
+    [
+     "web/aim.css",
+     "  #reader:not([data-layout=wide]) .writing-pane{overflow-y:auto;",
+     "  #reader:not([data-layout=wide]) .writing-pane{"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the composer taller than the sheet scrolls inside itself rather than past the sheet",
+   "break": [
+    [
+     "web/aim.css",
+     "1fr;align-content:stretch;overflow-y:auto;",
+     "1fr;align-content:stretch;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the field keeps its line however little the rows above it leave",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(0,1fr);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In the sheet each row above the field keeps its whole height, so the image's choices are never drawn under Send",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
+     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:auto auto auto auto auto 1fr;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In the stacked Reader on a phone each row above the field keeps its whole height, so the image's choices are never drawn over the head or the field",
+   "break": [
+    [
+     "web/aim.css",
+     "  #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.75rem,auto)}",
+     "  #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:auto auto auto auto auto minmax(2.75rem,auto)}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "As the keyboard comes up, the composer the field is typed in scrolls itself to bring the field, with Send, back into view",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom",
+     "composer.scrollTop += 0 * Math.max(0, field.getBoundingClientRect().bottom"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the New message sheet has no ⤢, its field already the sheet's height",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer .taller-field{display:none}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "As the keyboard comes up only the composer scrolls: the Reader, which clips, never moves, its header staying at its top (a phone turned sideways)",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom",
+     "field.scrollIntoView({ block: 'nearest' }); (field.getBoundingClientRect().bottom"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone sideways 844×390, a long draft"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In a narrow window without touch, each row of the stacked reply above the field keeps its whole height, so the image's choices are never drawn over the head, + or Send",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);",
+     "#reader:not([data-layout=wide]) .writing-pane{grid-template-rows:auto auto auto auto auto minmax(2.5rem,auto);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit sends each agent that was handed the old words, other than the editor, one correction",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        for agent in exposed:\n",
+     "        for agent in []:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "People are never sent a correction of an edited message",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "and self._actor_kind(db, reader) == \"agent\"]",
+     "] "
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Every reader of an edited message, people included, is told with an edit change",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        for reader in readers:\n            self._change",
+     "        for reader in reader_agents:\n            self._change"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A reply's line shows the latest words of the message it answers",
    "break": [
     [
      "aim_next/conversation.py",
-     "\" + words(\"m\", plain=True) + \" AS body,\"",
-     "m.body AS body,\""
+     "words(\"p\", chars=120) + \" AS reply_to_excerpt",
+     "\"substr(p.body,1,120)\" + \" AS reply_to_excerpt"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A reached outcome's messages are not edited",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        if reached:\n            # An edit writes only",
+     "        if False:\n            # An edit writes only"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "No module but the words helper reads a message's first words",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "words(\"m\", chars=160) + \" AS excerpt",
+     "\"substr(m.body,1,160)\" + \" AS excerpt"
     ]
    ],
    "check": {
@@ -11560,12 +11803,138 @@
   },
   {
    "item": 228,
-   "act": "The words check finds a read of messages.body in a column constant joined to the table where it is used",
+   "act": "A held ask's line in the pipeline's row is its latest words",
    "break": [
     [
      "aim_next/blocking.py",
-     "ASK_COLUMNS = \"m.id,",
-     "ASK_COLUMNS = \"m.id,m.body,"
+     "\"waiting_on\": waiting, \"line\": current_words(db, row[\"id\"], shape=first_line)[0],",
+     "\"waiting_on\": waiting, \"line\": first_line(db.execute(\"SELECT body FROM messages WHERE id=?\", (row[\"id\"],)).fetchone()[0]),"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A busy answer keeps the same operation for Try again",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (receipt.status === 'retryable') { this.state = 'busy'; this.settle(null); return receipt; }",
+     "if (receipt.status === 'retryable') { this.pending = null; this.state = 'busy'; this.settle(null); return receipt; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A conflict reads the saved words and offers the choice",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (code === 'REVISION_CONFLICT') {\n      // Someone saved",
+     "    if (false) {\n      // Someone saved"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Words the same as the saved ones end the edit unsent",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (!this.dirty) { await this.end('unchanged'); return null; }\n    // A Save never waits on the debounce.",
+     "    // A Save never waits on the debounce."
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Save, Cancel and Use saved clear the device copy",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "try { await (row ? this.persist(row) : this.clearDevice()); } catch (error) { this.journalError = error.message; }\n    this.value = value;",
+     "try { await (row ? this.persist(row) : this.persist()); } catch (error) { this.journalError = error.message; }\n    this.value = value;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "A Save whose answer never came goes again when the edit is opened",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.pending) { this.resumed = true; this.state = 'uncertain'; return this.retry(); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The words of an unconfirmed Save stay as sent until Try again",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (this.closed || this.over || this.sending || this.pending || this.readOnly",
+     "if (this.closed || this.over || this.sending || this.readOnly"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "Save is off while the words are blank",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "|| w.readOnly || w.empty || w.over;",
+     "|| w.readOnly || w.over;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 228,
+   "act": "An edit's words over the body limit are a recorded BODY_TOO_LARGE that the same operation returns again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        body = _body(args[\"body\"])\n        holder = _identifier(args[\"holder\"], \"holder\") if \"holder\" in args else None\n",
+     "        body = args[\"body\"]\n        holder = _identifier(args[\"holder\"], \"holder\") if \"holder\" in args else None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 228,
+   "act": "The words check finds a read of messages.body in a column list built in one statement and joined to the table in another",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "\" + words(\"m\", plain=True) + \" AS body,\"",
+     "m.body AS body,\""
     ]
    ],
    "check": {

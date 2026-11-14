@@ -287,7 +287,9 @@ def main():
                              authority_path=root / "control" / "authority.json")["binding"]
 
         def store():
-            return Store(path, instance, expected_binding=dict(binding))
+            # The runner's own load would put "The Mac is overloaded" above everything the
+            # Health page is checked for, so the page reads a calm Mac.
+            return Store(path, instance, expected_binding=dict(binding), machine=lambda: {"load": [0.5, 0.5, 0.5], "cpus": 8})
 
         def command(kind, operation, args, target=None, expected=None, sender=None, refusable=False):
             envelope = {"v": 1, "instance_id": instance, "kind": kind,

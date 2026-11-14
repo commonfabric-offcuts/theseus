@@ -70,6 +70,20 @@ const SHAPES = {
   phone: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
   stacked: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
   wide: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
+  // The composer's size (runSizes): the narrowest phones, a laptop taller than
+  // the Reader's old 54rem, and a window wider than its maximum.
+  'phone-320': { viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
+  'phone-375': { viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
+  'phone-390': { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
+  // A phone turned sideways is wider than the phone's layout (760px), so it is
+  // sized as a small laptop window, and a narrow, short window with a mouse is
+  // laid out as a phone is, without the keyboard or a finger's sizes.
+  'phone-sideways': { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
+  narrow: { viewport: { width: 480, height: 300 }, deviceScaleFactor: 1 },
+  'laptop-stacked': { viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 },
+  'laptop-wide': { viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 },
+  'very-wide-stacked': { viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 },
+  'very-wide-wide': { viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 },
 };
 const KEYBOARD = 380;
 
@@ -82,7 +96,7 @@ async function page(shape, scheme = 'light', path = '/?topic=t1') {
   contexts.add(context);
   if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: facts.origin });
   const mode = JSON.stringify(['aim-next', facts.instance_id, 'reader-layout', 'mode']);
-  await context.addInitScript(([key, value]) => { try { localStorage.setItem(key, value); } catch { /* a fresh page reads stacked */ } }, [mode, shape === 'wide' ? 'wide' : 'stacked']);
+  await context.addInitScript(([key, value]) => { try { localStorage.setItem(key, value); } catch { /* a fresh page reads stacked */ } }, [mode, shape.endsWith('wide') ? 'wide' : 'stacked']);
   const p = await context.newPage();
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));
@@ -495,7 +509,9 @@ async function run() {
         const span = p.locator('#source-body > span').nth(3), box = await span.boundingBox();
         let words;
         if (way === 'drag') {
-          await p.mouse.move(box.x + 5, box.y + 5); await p.mouse.down(); await p.mouse.move(box.x + 120, box.y + 8, { steps: 5 }); await p.mouse.up();
+          // Inside the passage's first line, a quarter of the way in, whatever the Reader's width wraps it to.
+          const line = await span.evaluate(el => { const r = el.getClientRects()[0]; return { x: r.x + Math.min(r.width / 4, 40), y: r.y + 5, end: r.x + r.width }; });
+          await p.mouse.move(line.x, line.y); await p.mouse.down(); await p.mouse.move(Math.min(line.x + 115, line.end - 2), line.y + 3, { steps: 5 }); await p.mouse.up();
           words = await p.evaluate(() => getSelection().toString());
         } else if (way === 'press') {
           await p.mouse.click(box.x + 5, box.y + 5);
@@ -895,18 +911,31 @@ async function run() {
     if (shape === 'wide') return;
     const q = await page(shape);
     await open(q, second);
-    await q.evaluate(() => { const body = document.querySelector('#source-body'), box = body.getBoundingClientRect(), style = getComputedStyle(body);
-      body.scrollTop += body.children[30].getBoundingClientRect().bottom - (Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) - 4); });
-    await q.evaluate(() => { const text = document.querySelector('#source-body').children[30].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20); getSelection().removeAllRanges(); getSelection().addRange(range); document.querySelector('#source-body').focus({ preventScroll: true }); });
+    // The words are the first passage's that end below where the reply opens,
+    // brought to end just above it: which passage that is depends on how wide
+    // the Reader sets the message, so it is found, not named, and placed exactly.
+    const set = await q.evaluate(() => {
+      const body = document.querySelector('#source-body'), box = body.getBoundingClientRect(), style = getComputedStyle(body);
+      const end = () => Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) - 4;
+      const words = part => { const range = document.createRange(); range.setStart(part.firstChild, 2); range.setEnd(part.firstChild, 20); return range; };
+      const at = [...body.children].findIndex(part => part.firstChild?.nodeType === Node.TEXT_NODE && part.firstChild.length >= 20 && words(part).getBoundingClientRect().bottom > end());
+      if (at < 0) return { at };
+      const range = words(body.children[at]);
+      body.scrollTop += range.getBoundingClientRect().bottom - end();
+      getSelection().removeAllRanges(); getSelection().addRange(range); body.focus({ preventScroll: true });
+      return { at, off: Math.round(range.getBoundingClientRect().bottom - end()), scrolled: body.scrollTop };
+    });
+    assert.ok(set.at >= 0 && Math.abs(set.off) <= 1, `words placed to end just above where the reply opens: ${JSON.stringify(set)}`);
     await q.keyboard.press('Enter');
     await until(q, () => document.querySelector('#writing-body').value.startsWith('> ') && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted');
     await q.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    const covered = await q.evaluate(() => {
+    const covered = await q.evaluate(at => {
       const body = document.querySelector('#source-body'), style = getComputedStyle(body), box = body.getBoundingClientRect();
       const bottom = Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top);
-      const words = document.createRange(); words.setStart(body.children[30].firstChild, 2); words.setEnd(body.children[30].firstChild, 20);
-      return { gap: Math.round(bottom - words.getBoundingClientRect().bottom), lineHeight: parseFloat(style.lineHeight) };
-    });
+      const words = document.createRange(); words.setStart(body.children[at].firstChild, 2); words.setEnd(body.children[at].firstChild, 20);
+      return { gap: Math.round(bottom - words.getBoundingClientRect().bottom), lineHeight: parseFloat(style.lineHeight), scrolled: body.scrollTop };
+    }, set.at);
+    assert.ok(covered.scrolled > set.scrolled, `the reply came to cover the words, and the message moved (${set.scrolled} to ${covered.scrolled})`);
     assert.ok(covered.gap >= -2 && covered.gap <= covered.lineHeight, `words the reply would cover are shown just above it (${covered.gap}px above it)`);
     await close(q);
   });
@@ -1527,6 +1556,211 @@ async function run() {
     await until(p, () => !document.querySelector('#new-message-sheet').open, 'Escape puts it back');
     assert.equal(await p.evaluate(() => document.querySelector('#inline-writing-body').value), 'A new message.');
     await close(p);
+  });
+  await runSizes();
+}
+
+// The composer's size (item 400, docs/reader.md "Size"): the Reader, the
+// composer with the message beside it, and the New message sheet, the
+// composer alone, are as tall as what shows of the window, and as wide as the
+// window lets them be up to a maximum (72rem, side by side 100rem); on a
+// phone they fill the width and what shows above the keyboard, so nothing
+// goes past the screen, sideways or down, and Send stays where a finger
+// reaches it. Each width is checked empty, with a draft longer than the field,
+// and with an image, measured in px from the page's own boxes.
+const REM = 16, WIDEST = { stacked: 72 * REM, wide: 100 * REM };
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+const SIZES = { 'phone 320×568': ['phone-320'], 'phone 375×667': ['phone-375'], 'phone 390×844': ['phone-390'], 'phone sideways 844×390': ['phone-sideways'], 'narrow window 480×300': ['narrow'],
+  'laptop 1440×960': ['laptop-stacked', 'laptop-wide'], 'very wide 2560×1440': ['very-wide-stacked', 'very-wide-wide'] };
+// A refused image: an iPhone's HEIC photo the server takes no copy of, so it
+// waits on a choice (Attach as download, Remove) and Send is refused until it
+// has one: the notice says why and the image's choices open, the composer's
+// tallest state.
+const DRAFTS = { empty: 'light', 'a long draft': 'dark', 'an image': 'light', 'a refused image': 'dark' };
+const HEIC = { name: 'IMG_3307.heic', mimeType: 'image/heic', buffer: Buffer.from('not an image the browser can read') };
+const LONG = Array.from({ length: 120 }, (_, i) => `Line ${i + 1} of a draft longer than any field.`).join('\n');
+// What one composer's surface measures: its box, its composer's, the field's
+// and Send's, against what shows of the window, and which of its controls, or
+// the page itself, reach past what shows.
+const sized = (p, which) => p.evaluate(which => {
+  const [dialog, composer] = which === 'sheet' ? ['#new-message-sheet', '#inline-composer'] : ['#reader', '#reader-composer'];
+  const d = document.querySelector(dialog), c = document.querySelector(composer), field = c.querySelector('textarea'), send = c.querySelector('.compose-send');
+  const box = el => { const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), width: Math.round(b.width), height: Math.round(b.height) }; };
+  const view = { top: Math.round(visualViewport.offsetTop), height: Math.round(visualViewport.height), width: innerWidth, innerHeight };
+  const shown = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+  // A control in a box of the composer that scrolls (a phone's panel holding more than fits, or the composer itself where it is taller than what it has) is where a finger brings it: that box is what must show.
+  const scroller = el => { for (let at = el.parentElement; at && at !== c.parentElement; at = at.parentElement) if (/auto|scroll/.test(getComputedStyle(at).overflowY) && at.scrollHeight > at.clientHeight) return at; return el; };
+  const past = [...c.querySelectorAll('button, input, textarea, select, [role=button]')].filter(shown).map(el => [el.id || el.className || el.tagName, box(scroller(el))])
+    .filter(([, b]) => b.left < -1 || b.right > view.width + 1 || b.top < view.top - 1 || b.bottom > view.top + view.height + 1).map(([name]) => name);
+  const panel = c.querySelector('.compose-panel:not([hidden])');
+  // Shows itself, not only its scroller: its own box inside what shows and inside every box of the composer that clips it.
+  const seen = el => { const b = el.getBoundingClientRect(); if (b.top < view.top - 1 || b.bottom > view.top + view.height + 1 || b.left < -1 || b.right > view.width + 1) return false;
+    for (let at = el.parentElement; at && at !== c.parentElement; at = at.parentElement) if (getComputedStyle(at).overflowY !== 'visible') { const a = at.getBoundingClientRect(); if (b.top < a.top - 1 || b.bottom > a.bottom + 1) return false; }
+    return true; };
+  const focus = c.contains(document.activeElement) ? { id: document.activeElement.id || document.activeElement.className, seen: seen(document.activeElement) } : null;
+  const notice = c.querySelector('.notice:not([hidden])'), taller = c.querySelector('.taller-field');
+  // The composer's rows, top to bottom, are each clear of the others: the notice, the head, a panel in its row, the images, and the foot (+, the field, 👍, Send), which share theirs.
+  // A row given less than its height would be drawn over the next (an image's choices under Send).
+  const rows = [...c.children].filter(el => shown(el) && getComputedStyle(el).position === 'static' && el.matches('.notice, .compose-head, .compose-panel, .image-strip, .plus-button, .field-box, .compose-send, #thumb-source')
+    && !(el.matches('.compose-head') && c.dataset.compose !== 'writing')).map(el => [el.id || el.className, box(el), el.matches('.plus-button, .field-box, .compose-send, #thumb-source') ? 'foot' : el]);
+  const over = rows.flatMap(([a, ba, ra], i) => rows.slice(i + 1).filter(([, bb, rb]) => (ra !== 'foot' || rb !== 'foot') && Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top) > 1).map(([b]) => `${a} / ${b}`));
+  // The surface never scrolls, so its own head (the Reader's ✕ and ↑ ↓, the sheet's title and ✕) stays where it is: what is taller scrolls inside the composer.
+  const head = d.querySelector(which === 'sheet' ? '.inline-composer>h2' : '.reader-header');
+  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: { ...box(c), scrolls: c.scrollHeight > c.clientHeight + 1 }, field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4, line: parseFloat(getComputedStyle(field).minHeight) }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
+    images: c.querySelectorAll('.image-strip .image-choice').length, choices: c.querySelectorAll('.image-strip .image-choice[data-open][data-needs]').length, notice: notice ? notice.textContent : '',
+    focus, compose: c.dataset.compose, taller: Boolean(shown(taller)), over, view, past, sideways: document.documentElement.scrollWidth > innerWidth };
+}, which);
+async function runSizes() {
+  for (const [size, shapes] of Object.entries(SIZES)) for (const [draft, scheme] of Object.entries(DRAFTS)) await check(`size ${size}, ${draft}: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen`, async () => {
+    for (const shape of shapes) {
+      let p = await page(shape, scheme);
+      const phone = p.touch, wide = shape.endsWith('wide'), sideways = shape === 'phone-sideways';
+      const { width, height } = SHAPES[shape].viewport;
+      // The layout is the window's width's, whatever the pointer (aim.css, max-width:760px): a finger only brings the keyboard.
+      const narrow = width <= 760;
+      // What each surface must measure: on a laptop the window less 3rem each
+      // way, up to the maximum across; narrow (a phone) the width, and what shows
+      // (less .75rem above the sheet, which the feed's dimming shows through).
+      const expected = (which, v) => narrow ? { width, height: v.height - (which === 'sheet' ? 12 : 0) }
+        : { width: Math.min(WIDEST[which === 'reader' && wide ? 'wide' : 'stacked'], width - 3 * REM), height: v.innerHeight - 3 * REM };
+      const near = (a, b) => Math.abs(a - b) <= 2;
+      const fieldOf = { sheet: 'inline-writing-body', reader: 'writing-body' };
+      const holds = async (which, when) => {
+        const field = fieldOf[which];
+        const m = await sized(p, which), want = expected(which, m.view), said = `${shape} ${which} ${when}: ${JSON.stringify({ want, ...m })}`;
+        assert.ok(m.open, `open: ${said}`);
+        // Sideways, a phone's Reader is a small laptop's, and the keyboard leaves it a sliver: what is held there is
+        // only that nothing moves the surface itself, its header (✕, ↑ ↓) staying at its top.
+        if (sideways) {
+          assert.equal(m.surfaceScrolled, 0, `the ${which} itself never scrolls: ${said}`);
+          if (which === 'reader') assert.ok(m.head.top >= m.dialog.top - 1, `the Reader's header stays at its top: ${said}`);
+          return m;
+        }
+        assert.ok(near(m.dialog.height, want.height), `as tall as what shows of the window (${want.height}px), not ${m.dialog.height}px: ${said}`);
+        assert.ok(near(m.dialog.width, want.width), `as wide as the window allows up to its maximum (${want.width}px), not ${m.dialog.width}px: ${said}`);
+        assert.deepEqual([m.dialog.top >= m.view.top - 1, m.dialog.bottom <= m.view.top + m.view.height + 1, m.dialog.left >= 0, m.dialog.right <= width + 1, m.sideways, m.past],
+          [true, true, true, true, false, []], `nothing reaches past what shows, sideways or down, Send included: ${said}`);
+        assert.ok(m.send, `Send shows: ${said}`);
+        assert.deepEqual(m.over, [], `no row of the composer is drawn over another: ${said}`);
+        assert.equal(m.surfaceScrolled, 0, `the ${which} itself never scrolls, what is taller scrolls inside the composer: ${said}`);
+        if (which === 'reader') assert.ok(m.head.top >= m.dialog.top - 1 && m.head.bottom <= m.view.top + m.view.height + 1, `the Reader's header shows: ${said}`);
+        // Alone, or side by side, the composer is the surface's whole height,
+        // its field taking what the rest leaves; stacked, the reply is as tall
+        // as its writing and the message has the rest (docs/reader.md).
+        if (which === 'sheet' || wide) {
+          assert.ok(m.composer.height >= m.dialog.height - 4, `the composer fills its surface's height: ${said}`);
+          // Alone, the field ends at the sheet's foot; side by side the hint's line and + · Send's row are under it.
+          // On a phone an open panel is under the field, in the keyboard's place.
+          const foot = m.panel && m.panel.top >= m.field.bottom - 1 ? m.panel.top : m.dialog.bottom;
+          assert.ok(foot - m.field.bottom <= (which === 'sheet' ? 24 : 120), `the field reaches down to the composer's foot: ${said}`);
+        }
+        // The field gives way first: a composer holding more than it shows (and so scrolling inside itself) has its
+        // field at one line, its own minimum, so as much of the head and the images shows as can.
+        if (m.composer.scrolls) assert.ok(m.field.height <= m.field.line + 1, `the field gives way to one line (${m.field.line}px) before the composer scrolls: ${said}`);
+        if (draft === 'a long draft') assert.ok(m.field.scrolls, `a draft longer than the field scrolls inside it: ${said}`);
+        if (draft === 'an image' || draft === 'a refused image') assert.equal(m.images, 1, `the image shows in the composer: ${said}`);
+        // What has focus shows itself, and with the field in hand Send shows beside it: a composer taller than what shows scrolls inside itself, the focus in view.
+        assert.ok(!m.focus || m.focus.seen, `what has focus shows: ${said}`);
+        if (m.focus?.id === field) assert.ok(m.send.seen, `with the field in hand, Send shows: ${said}`);
+        if (draft === 'a refused image') {
+          assert.equal(m.choices, 1, `the refused image's choices are open: ${said}`);
+          if (which === 'reader') assert.equal(m.notice, `Finish or remove the image ${HEIC.name} before sending.`, `the notice says why Send was refused: ${said}`);
+        }
+        // Narrow (a phone, or a narrow window), writing: the Reader's stacked field has ⤢ to make it taller; the sheet's field is already the sheet's height, so it has none.
+        if (narrow && m.compose === 'writing') assert.equal(m.taller, which === 'reader', `⤢ ${which === 'reader' ? 'makes the Reader\'s field taller' : 'is not in the sheet, whose field fills it'}: ${said}`);
+        return m;
+      };
+      const fill = async (which, field, plus, tile) => {
+        if (draft === 'a long draft' && which === 'reader') await p.keyboard.insertText(LONG);
+        if (draft === 'an image' || draft === 'a refused image') {
+          await p.keyboard.insertText('Here is the picture.');
+          await press(p, plus);
+          await until(p, s => !document.querySelector(s).hidden, 'the + panel', which === 'sheet' ? '#inline-plus-panel' : '#plus-panel');
+          const chooser = p.waitForEvent('filechooser');
+          await press(p, tile);
+          await (await chooser).setFiles(draft === 'an image' ? { name: 'picture.png', mimeType: 'image/png', buffer: PNG } : HEIC);
+          await until(p, s => document.querySelectorAll(`${s} .image-strip .image-choice`).length === 1, 'the image in the composer', which === 'sheet' ? '#inline-composer' : '#reader-composer', 20000);
+          if (draft === 'a refused image') {
+            const strip = which === 'sheet' ? '#inline-attachments' : '#writing-attachments';
+            await until(p, s => document.querySelector(`${s} .image-choice`)?.hasAttribute('data-needs'), 'the image waiting on a choice', strip, 20000);
+            // Send, refused, says why and opens the image's choices in the Reader; in the sheet Send waits, and a press on the image opens them.
+            if (which === 'reader') {
+              await press(p, '#send-reply', true);
+              await until(p, () => !document.querySelector('#reader-notice').hidden, 'the notice');
+            } else await press(p, `${strip} .image-open`);
+            await until(p, s => document.querySelector(`${s} .image-choice`).hasAttribute('data-open'), 'the image\'s choices open', strip);
+            await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'a settled composer');
+            await holds(which, 'refused, the image\'s choices open');
+            await shot(p, `size-refused-${which}-choices`);
+          }
+          // On a phone the tile let the keyboard go; the field takes it back.
+          await press(p, field);
+        }
+      };
+      // The keyboard comes up: the visible height falls by about the share of
+      // the screen a phone's keyboard takes, with the field focused.
+      const keyboard = async (which, field) => {
+        if (!phone) return;
+        await until(p, s => document.activeElement === document.querySelector(s), 'the field focused', field);
+        const up = height - Math.round(height * 0.45);
+        await p.setViewportSize({ width, height: up });
+        await until(p, h => Math.round(visualViewport.height) === h && getComputedStyle(document.documentElement).getPropertyValue('--vv-height').trim() === `${h}px`, 'the keyboard up', up);
+        await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'a settled page');
+        await holds(which, 'with the keyboard up');
+        await shot(p, `size-${draft.replaceAll(' ', '-')}-${which}-keyboard`);
+        await p.setViewportSize({ width, height });
+        await until(p, h => getComputedStyle(document.documentElement).getPropertyValue('--vv-height').trim() === `${h}px`, 'the keyboard down', height);
+      };
+      // Alone: the New message sheet (on a laptop, from the stacked page).
+      if (!wide) {
+        await until(p, () => !document.querySelector('#inline-composer').hidden, 'the topic\'s composer');
+        if (draft === 'a long draft') {
+          // Held in the composer at the page's end, where the field grew with it, then taken up into the sheet.
+          await p.locator('#inline-writing-body').scrollIntoViewIfNeeded();
+          await press(p, '#inline-writing-body');
+          await until(p, () => document.activeElement?.id === 'inline-writing-body' && document.querySelector('#inline-composer').dataset.compose === 'writing', 'the page end\'s field taking the writing');
+          await p.keyboard.insertText(LONG);
+        }
+        await p.evaluate(() => scrollTo(0, 0));
+        await press(p, '#new-message');
+        await until(p, () => document.querySelector('#new-message-sheet')?.open && document.activeElement?.id === 'inline-writing-body', 'the composer, ready to type');
+        await fill('sheet', '#inline-writing-body', '#inline-plus-button', '#inline-add-image');
+        await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'a settled sheet');
+        await holds('sheet', 'open');
+        await shot(p, `size-${draft.replaceAll(' ', '-')}-sheet`);
+        // The panels are measured where the window is as tall as a phone's or a laptop's: in a short window
+        // (sideways, or the narrow 300-high one) a panel is a sliver, and where it opens is not this item's.
+        if (draft === 'empty' && height > 400) for (const [panel, opener] of [['#inline-who-panel', '#inline-who-chip'], ['#inline-plus-panel', '#inline-plus-button']]) {
+          // Each panel opens inside the sheet, on the screen: a popover above a sheet as tall as the window would be off it.
+          await press(p, opener);
+          await until(p, s => !document.querySelector(s).hidden, 'the panel', panel);
+          const inside = await p.evaluate(s => { const b = document.querySelector(s).getBoundingClientRect(), d = document.querySelector('#new-message-sheet').getBoundingClientRect();
+            return { panel: [b.top, b.bottom, b.left, b.right].map(Math.round), sheet: [d.top, d.bottom, d.left, d.right].map(Math.round), inside: b.top >= d.top - 1 && b.bottom <= d.bottom + 1 && b.left >= d.left - 1 && b.right <= d.right + 1 }; }, panel);
+          assert.ok(inside.inside, `${panel} opens inside the sheet: ${JSON.stringify(inside)}`);
+          await holds('sheet', `with ${panel} open`);
+          await shot(p, `size-sheet-${panel.slice(8)}`);
+          await p.keyboard.press('Escape');
+          await until(p, s => document.querySelector(s).hidden && document.querySelector('#new-message-sheet').open, 'Escape puts the panel away, not the sheet', panel);
+        }
+        await press(p, '#inline-writing-body');
+        await keyboard('sheet', '#inline-writing-body');
+        await holds('sheet', 'with the keyboard down again');
+        await p.keyboard.press('Escape');
+        await until(p, () => !document.querySelector('#new-message-sheet').open, 'Escape puts the sheet back');
+      }
+      // Beside the message: the Reader, writing a reply, on a page of its own
+      // (an image still being taken in keeps the page on the new message).
+      if (!wide) { await close(p); p = await page(shape, scheme); }
+      await open(p, second);
+      await press(p, '#writing-body');
+      await until(p, () => document.activeElement?.id === 'writing-body' && document.querySelector('#reader-composer').dataset.compose === 'writing', 'the field taking the writing');
+      await fill('reader', '#writing-body', '#plus-button', '#add-image');
+      await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'a settled Reader');
+      await holds('reader', 'open');
+      await shot(p, `size-${draft.replaceAll(' ', '-')}-reader`);
+      await keyboard('reader', '#writing-body');
+      await close(p);
+    }
   });
 }
 
