@@ -325,14 +325,16 @@ export class StackFeed {
   }
   // A name is the dossier's: it goes on its first message, loaded or not
   // (item 470), fenced on the name Core holds there. A page whose Core sends no
-  // positions names the head it shows. edited: the person typed the name; the
-  // first line shown stands without one only where it is the first message's.
+  // positions names the head it shows. edited: the person typed in the field;
+  // one left untouched records nothing, so it never puts back a name another
+  // gave the dossier while it was open. The first line shown stands without a
+  // name only where it is the first message's.
   rename(stack, text, { edited = true } = {}) {
     const item = this.rootOf(stack)?.item ?? this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
     const name = String(text ?? '').replace(/\s+/g, ' ').trim();
     this.arrange();
     // Unchanged, or the first line it is named by already: nothing to record.
-    if (name === typed || !typed && name === firstLine(stack.head.body) && (item.id === stack.head.id || !edited)) { this.focusOn(stack.id); return; }
+    if (!edited || name === typed || !typed && name === firstLine(stack.head.body) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);

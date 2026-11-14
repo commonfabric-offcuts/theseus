@@ -11649,8 +11649,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     " && (item.id === stack.head.id || !edited)) { this.focusOn(stack.id); return; }",
-     ") { this.focusOn(stack.id); return; }"
+     "    if (!edited || name === typed || !typed && name === firstLine(stack.head.body) && item.id === stack.head.id) {",
+     "    if (!edited || name === typed || !typed && name === firstLine(stack.head.body)) {"
     ]
    ],
    "check": {
@@ -11660,12 +11660,12 @@
   },
   {
    "item": 470,
-   "act": "The rename field opened on a reply showing as the head and left untouched records no name",
+   "act": "A rename field left untouched records nothing: not a first line whose spaces a name folds, nor over a name another gave the dossier while it was open",
    "break": [
     [
      "web/stack-feed.mjs",
-     " && (item.id === stack.head.id || !edited)) { this.focusOn(stack.id); return; }",
-     " && item.id === stack.head.id) { this.focusOn(stack.id); return; }"
+     "    if (!edited || name === typed || !typed",
+     "    if (name === typed || !typed"
     ]
    ],
    "check": {

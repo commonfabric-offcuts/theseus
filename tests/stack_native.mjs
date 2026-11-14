@@ -3928,8 +3928,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // still its name once that message loads; another page holding any part of it shows it too.
   await check('reading stacks a name typed while a dossier\'s first message is not loaded names the dossier, and stays its name once that message loads', async () => {
     const topic = 'stack-name-partial';
+    // Two spaces in each reply's first line: the name field shows them as they are, and a name folds them.
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The old dossier root.', read: true }],
-      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Reply ' + i, read: true }])]);
+      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Reply  ' + i, read: true }])]);
     const p = await open(topic, 'laptop', topic, ids.r34);
     const loaded = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(id))}))`);
     assert.equal(await loaded(ids.root), false, 'the first message is outside the loaded page');
@@ -3967,8 +3968,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.key('z', 4);
     await until(async () => (await actsOf(topic, ids.root))?.name === null, '⌘Z clears the dossier\'s name in Core');
     await until(async () => (await again()) !== 'Siderail changes', 'and the other page no longer shows it');
-    // On the page holding only replies, the field opened and left untouched records nothing, and the
-    // shown reply's first line, typed in, names the dossier: the first message loaded shows it.
+    // On the page holding only replies, the field opened and left untouched records nothing, though
+    // its first line's two spaces read as one in a name, and the shown reply's first line, typed in,
+    // names the dossier: the first message loaded shows it.
     const shownLine = await again(), qHead = await q.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
     const qPen = `#messages .reply-stack[data-stack="${qHead}"] .stack-pen`;
     const qOpen = async what => { await centre(q, qPen); await q.point(qPen); await until(() => q.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), what); };
@@ -3979,9 +3981,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await q.evaluate(`document.activeElement.select()`);
     await q.send('Input.insertText', { text: shownLine });
     await q.key('Enter');
-    await until(async () => (await actsOf(topic, ids.root))?.name?.text === shownLine, `the shown first line typed in names the dossier (${shownLine})`);
+    assert.match(shownLine, /  /, 'the shown first line keeps its two spaces');
+    const folded = shownLine.replace(/\s+/g, ' ');
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === folded, `the shown first line typed in names the dossier (${folded})`);
     assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 1, 'the untouched field sent no name');
-    await until(async () => (await named())?.text === shownLine, 'the page holding the first message shows the typed name');
+    await until(async () => (await named())?.text === folded, 'the page holding the first message shows the typed name');
+    // Another reader names the dossier while the field is open here, untouched: Return puts nothing back.
+    await qOpen('it opens once more');
+    await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-their-name', args: { name: 'Their name' } });
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === 'Their name', 'Core holds the other reader\'s name');
+    await q.key('Enter');
+    await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Return closes the untouched field');
+    await until(async () => (await again()) === 'Their name', 'the page shows the other reader\'s name');
+    assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 1, 'the untouched field sent no name over it');
+    assert.equal((await actsOf(topic, ids.root)).name.text, 'Their name', 'and Core keeps it');
     assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
     await q.close(); await p.close();
   });
