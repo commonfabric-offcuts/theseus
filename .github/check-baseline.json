@@ -23959,11 +23959,11 @@
   ],
   "transitions": [
     {
-      "review": "m-cc1e0e10b0934078adb824d79b09259a",
+      "review": "Theseus paired exact-plan approval m-07fee31d86a44555905b0526a3cb1525 (#4175), reviewed source eb07402dd41c424146b903792de45a6652aad9d2 and policy 33d3565e; generation ruling m-2ed04fe627034553bd0619d44e41b30f",
       "retired_sources": [],
       "plan": {
         "version": 1,
-        "source_commit": "8cd88f8cefa9e968a2c277ba36835812eb478eed",
+        "source_commit": "eb07402dd41c424146b903792de45a6652aad9d2",
         "source_hashes": {
           ".github/workflows/checks.yml": "dbb2a6d2d96c1b2c60eb36c6d25272ea4204fef1",
           ".gitignore": "0f100ecaf843ab86e2de5057a2ceceed9c91b2b9",
@@ -23982,7 +23982,7 @@
           "tests/acts.json": "a8529f4a8c6c1169005506d88212ecb060182f47",
           "tests/agent_colors_native.mjs": "91027fe4060a9b4e251c9bcafcc1280969be4bfe",
           "tests/assessment_freshness_probe.mjs": "a079d10a00ca152223ab890400da4313b4c67663",
-          "tests/compose-reach.mjs": "e193bc339fe443b5ad43ca560db5b3a5f3dba5a3",
+          "tests/compose-reach.mjs": "c9bad52e9161d7b9ba11ce3926f131b1fae14ec5",
           "tests/conversation_native.mjs": "f28b3ca95922fb9970e40f5c5c69b071cac8aa18",
           "tests/device_native.mjs": "d5844b20472a96334f42eaa820a35750936a77aa",
           "tests/devtools_control.mjs": "30ba67d5061fe2dda175b8350335dc3670fb6a23",
@@ -24045,40 +24045,40 @@
           "tests/fixtures/schema_8.sql": "181a34ca6e59b05c5fd8d594c50a665be76b7c19",
           "tests/fixtures/schema_9.sql": "0166a0b304c24c78cee22b86fa7484289efc66e6",
           "tests/fixtures/ui_dom.mjs": "c99be2eac5c3bebedfc0624ec95e1016df45606e",
-          "tests/fixtures/ui_http.py": "0205fe9afae49de65da09ba507fe95a9c5ef1e38",
+          "tests/fixtures/ui_http.py": "debe8f26bde4969ca9246fcf421918a52fe140e5",
           "tests/fixtures/ui_store.py": "5a87fcc999572c05d35726f937b525949272fa3c",
           "tests/fold_native.mjs": "bfca7e4cca820591d826685ddbd2728ffb53c954",
           "tests/form_rules_native.mjs": "15f018ddda68502de0f552b9092641ac5639abcc",
-          "tests/health_native.mjs": "7c3260f1d96629074898d4a0e68ca773f56da6f4",
-          "tests/links_native.mjs": "a6f0c28f967c94b368710c9ef53c22d0e24b567c",
-          "tests/message_edit_native.mjs": "31ef2b9790592f32e56c02c5854eabf1795f9cb5",
-          "tests/new_line_native.mjs": "bf2fadd6fec1884e75ae3279b415219d80234d24",
-          "tests/notebook_pages_native.mjs": "4693daf4dc84405c9c4b8b32b19dd8f8ebf96b2d",
+          "tests/health_native.mjs": "e8dfe2a73dfaad6c78e1a68b37d788ba607d7b86",
+          "tests/links_native.mjs": "6370f1b98f706926e2fedfb48b3b4558b3452e1d",
+          "tests/message_edit_native.mjs": "40ef11193b128b440a1ec14fd167e8fd6c1ef98a",
+          "tests/new_line_native.mjs": "fbf52df575486f29ad8978d0449c263d64315227",
+          "tests/notebook_pages_native.mjs": "7fa68aca9696736a1b068e2ef77ed96bb07735e3",
           "tests/notebook_sheet_native.mjs": "42c1b8d2935b484927e6ff2f9d73c9973dd8b44d",
           "tests/outcome_light_native.mjs": "356884546078966d99f4c444466a9553f6341c67",
-          "tests/outcome_rail_native.mjs": "34496d14fafec14df9bfab210a3a289d4e4fc65c",
-          "tests/pipeline_native.mjs": "2f613a682030b6a9dd332b780049ad9ec0368ea7",
+          "tests/outcome_rail_native.mjs": "4a3ef8971972a8d473a68ea4483db3511133d9e7",
+          "tests/pipeline_native.mjs": "444685f29ca65ab70f1958d08acbcfb41b79c38e",
           "tests/png-bands.mjs": "a1dad1b712b23e18987afb7ad4761a90f38af068",
           "tests/press-fell.mjs": "d4167e5307ab6fd5aeac52ee671f05cee8699c82",
           "tests/reader_asks_native.mjs": "e59a790f0631796c01e5418e5de1b0a3479cdc82",
-          "tests/reader_colors_native.mjs": "889172c82c8e6b1b8cd6d196f4d378f86e173871",
-          "tests/reader_compose_native.mjs": "02830bfd157488aefe35ec7f1e65d7b3b5401588",
-          "tests/reader_departure_native.mjs": "2100c53d1df11328e11e5e04850049dffa9c2f6b",
+          "tests/reader_colors_native.mjs": "55ff22b322170bc307e6fd8470cd3d2dd4cc7147",
+          "tests/reader_compose_native.mjs": "4b1859e37d9087ea9686c6493dc658b07a7dff50",
+          "tests/reader_departure_native.mjs": "f35de31dbe65f5af8b23b55e79f101004a115057",
           "tests/reader_fixture.py": "19e463e909ced3f544ab95696e72ab74cfacb2e1",
-          "tests/reader_freshness_native.mjs": "286e00a98457168677a6d7fca582691cbe1ae063",
+          "tests/reader_freshness_native.mjs": "371aaf02cf8799fdaafd0f87a4d74782abff14ad",
           "tests/reader_images_native.mjs": "ad55163774571cfb485bb6778278b7c1916f3238",
-          "tests/reader_inline_native.mjs": "60efc21a09564799a4bf3de09c94c4c79c5e0f0b",
-          "tests/reader_live_native.mjs": "ef9a7f21e553f829bf80088ed03b5c0c4138e9d5",
+          "tests/reader_inline_native.mjs": "f2c5e1f4313dcd7b9e3037a9bdb0029de6c7d2ce",
+          "tests/reader_live_native.mjs": "5c2eb82c83907c457e29714f9e400b4ba3f8d4dc",
           "tests/reader_native.mjs": "735db65a703d77f5497c230211dd35affb09eace",
-          "tests/reader_navigation_native.mjs": "3aa276eb108fd0ec85d0bee6623e20e27935af90",
-          "tests/reader_openings_native.mjs": "40731a201642e6db12b15dcb1f3bce0f695f0651",
-          "tests/reader_persistence_native.mjs": "601a094f35b53eedc897884f17c378d9e1022ee6",
+          "tests/reader_navigation_native.mjs": "7bf54a185e7ac0cc50068f9f2cb79344be2a4f98",
+          "tests/reader_openings_native.mjs": "59cae4a37b98822364474393bba882ee13858106",
+          "tests/reader_persistence_native.mjs": "62c7d4445f4b658edfdd14fc14d1fd6d7480995a",
           "tests/release-rule.mjs": "52dcd1e36df187036274a6035dbc52d18532e590",
           "tests/release_rule.test.mjs": "2f55f90de2276cccbe2ca0a1c3452573577653fd",
           "tests/render_native.mjs": "94400298929f27ecae6a405b006d06c118c317ac",
-          "tests/stack_native.mjs": "bbb34689f80d852c5f776d7e237a69568e04fe84",
+          "tests/stack_native.mjs": "2f26595f26bd60b03e1603b6373b3cf1f57d0c98",
           "tests/targets-dom.mjs": "1720c8e57535925a1c975f7ef4b0b5fca6484fed",
-          "tests/targets_native.mjs": "25152f693817188f121d736c86fdbddaf2080b51",
+          "tests/targets_native.mjs": "8e68ceceda3226043fa37281ad2bb72f630c050c",
           "tests/test_actors_view.py": "7343794100ae23b5d86d054184ab695204794b00",
           "tests/test_agent_attach.py": "509fb9c6e3a271e3eee10d63e0070863048a2980",
           "tests/test_agent_attachments.py": "34d7a7923667e5fe639c97e6a36baf5f931feeaa",
@@ -24108,7 +24108,7 @@
           "tests/test_boundary.py": "9ecd06fc58e970d25cf6db50a03bd2177877c3e7",
           "tests/test_broker_routes.py": "a387de17f7e55efa987223742d7e4b96c1c19e27",
           "tests/test_changes.py": "2727491488708b9841ec6e1e3f27a0fd93652645",
-          "tests/test_codex_broker.py": "684484aa96375e863cfd7f4734e97a3232819bf9",
+          "tests/test_codex_broker.py": "a58c8a89b054f7d0d7a928de61e062e814f2daab",
           "tests/test_codex_host.py": "88b9fc2d97880000a6f85635072889cecd69da64",
           "tests/test_colors.py": "f2fc200e00d780a8ff0ac3e1d79be0425627490a",
           "tests/test_command_pins.py": "c275b5640134f8a3d9eea3a31fffa4193b2c3382",
@@ -24206,7 +24206,7 @@
           "tests/test_topic_reading.py": "39e0413dddc8294242a375a1ff74ae080879b87b",
           "tests/test_topic_state.py": "d90eaab19c58fed9cec667653c2567551c2ef87e",
           "tests/test_ui_freshness_fixture.py": "5033015507553769e1a3198d734c04bd65716828",
-          "tests/test_ui_http_controls.py": "bf7301fd6fc0e9c0c03fdf64db97df7cdc2c0e73",
+          "tests/test_ui_http_controls.py": "8107678a868cded7b9badccd0885a820b91ef1fc",
           "tests/test_wake_contract.py": "2ff4dd17cb470c31ec54cd0fb042128c94a2f3ef",
           "tests/test_wake_health.py": "065dccabdeb601738c9b3fbe835e6581b5d73c8b",
           "tests/test_wake_invocation.py": "d519f3f6ffb738b844ac93f16b34a9bbd9671403",
@@ -24219,7 +24219,7 @@
           "tests/topic_duties_native.mjs": "a2ce668c1bb60519c7b9fa42c8d59a85b438d8a6",
           "tests/topic_header_native.mjs": "3f415a00576d5c5e30e23de0c433ab1900328ca9",
           "tests/topic_list_native.mjs": "8bc9d818a5214170297b16c055e298b4e45308b8",
-          "tests/topic_reading_native.mjs": "da952c078ba8863839c59d8c072fe4c55c956149",
+          "tests/topic_reading_native.mjs": "4e0eec3882d1a2bcb0c56d5f55db8ad1e4b6ed78",
           "tests/topic_sources_native.mjs": "a5f0baccae674ebca88f53f2ff6dcd4e67e97325",
           "tests/topic_work_native.mjs": "c73ab853ecd3df51e9c7f5c4ca44733bbd18791e",
           "tests/ui_app.test.mjs": "f88b35662acd2a7ed7e7d8021529317c44c5965e",
@@ -24244,7 +24244,7 @@
           "tests/ui_health_light_properties.test.mjs": "536a256c2bf42199df554a314937b9f54069a8a0",
           "tests/ui_image_pick.test.mjs": "6d3415f498d2df0790f809d75f218fbc0c9e3704",
           "tests/ui_image_rows.test.mjs": "1aab44fa931e37de0bf06632f91d079db8d37dc7",
-          "tests/ui_inline_wiring.test.mjs": "021c1bb652f926d5cc1d11fe057444fa44145bc1",
+          "tests/ui_inline_wiring.test.mjs": "37670643a070d57ef4ebafffa07ce59571c7fdae",
           "tests/ui_journal_pagehide.test.mjs": "5b913c943efe7573b3ba484bf6f49e75eabb881f",
           "tests/ui_layout.test.mjs": "338a7239e30a7a773819b8ca1d6e7098ba7f31f3",
           "tests/ui_line_move.test.mjs": "254f61d2d903cd8320c31e2f358dd1f365e658db",
@@ -24319,7 +24319,7 @@
           "tests/ui_wake_lights.test.mjs": "e990cd9c000fcdf1f5468305463bf7a4d786aebf",
           "tests/ui_whisper.test.mjs": "b642c333b35b313f321ca4dc99db61b57b735ffd",
           "tests/ui_writing_input.test.mjs": "cd964a3e5f91eeeca7d06872ecb2f682c8c6cb4d",
-          "tests/wakes_native.mjs": "e4e9a72e3fa5a6bb74f17a3e80742a6580fbd749",
+          "tests/wakes_native.mjs": "2da9a657a3f411dfceb551c215072f005fea972f",
           "tests/webkit_native.mjs": "9a4da43e5fbc50899314139495f5f0fd9a4e7599",
           "tests/whisper_native.mjs": "ea739509e5d934e2cafda6628790b6bc549745bb",
           "tools/__init__.py": "75baea9b19201f9a0b56e199a0f7afdb0f609110",
@@ -37547,10 +37547,16 @@
               "name": "test_the_agent_parked_then_the_runner_killed_then_back (test_ui_freshness_fixture.WakesFixtureTests)"
             },
             {
+              "name": "test_a_save_that_comes_in_during_a_reset_waits_and_meets_its_revision (test_ui_http_controls.ImagesFixtureControls)"
+            },
+            {
               "name": "test_epoch_waits_for_a_request_holding_the_authority_shared (test_ui_http_controls.ImagesFixtureControls)"
             },
             {
               "name": "test_reset_empties_a_draft_that_holds_only_reply_fields (test_ui_http_controls.ImagesFixtureControls)"
+            },
+            {
+              "name": "test_reset_waits_for_a_save_the_server_is_still_handling (test_ui_http_controls.ImagesFixtureControls)"
             },
             {
               "name": "test_the_agent_starts_from_a_message_naming_what_it_has_seen (test_ui_http_controls.SourceFixtureControls)"
@@ -39769,6 +39775,14 @@
             },
             {
               "name": "a recheck replaces only the rechecked rows the page lists, at once, and only for an editor the registry still holds",
+              "phase": null
+            },
+            {
+              "name": "the Reader marks discovery finished for the source it shows, through a Reply or Note choice, and never for one it left",
+              "phase": null
+            },
+            {
+              "name": "the Reader marks discovery finished only when every editor's lookup has finished, a failed one included",
               "phase": null
             },
             {
@@ -47960,11 +47974,11 @@
       }
     },
     {
-      "review": "m-cc1e0e10b0934078adb824d79b09259a",
+      "review": "Theseus paired exact-plan approval m-07fee31d86a44555905b0526a3cb1525 (#4175), reviewed source 4091d95bbc68146fe589858fc54e7588f78039e0 and policy 33d3565e; generation ruling m-2ed04fe627034553bd0619d44e41b30f",
       "retired_sources": [],
       "plan": {
         "version": 1,
-        "source_commit": "a2b0323007e296a088dc0685bb2f8e4ef0b1d66b",
+        "source_commit": "4091d95bbc68146fe589858fc54e7588f78039e0",
         "source_hashes": {
           ".github/workflows/checks.yml": "dbb2a6d2d96c1b2c60eb36c6d25272ea4204fef1",
           ".gitignore": "0f100ecaf843ab86e2de5057a2ceceed9c91b2b9",
@@ -47983,7 +47997,7 @@
           "tests/acts.json": "93132052d144ab68c1b309af39089577f642bb35",
           "tests/agent_colors_native.mjs": "91027fe4060a9b4e251c9bcafcc1280969be4bfe",
           "tests/assessment_freshness_probe.mjs": "a079d10a00ca152223ab890400da4313b4c67663",
-          "tests/compose-reach.mjs": "e193bc339fe443b5ad43ca560db5b3a5f3dba5a3",
+          "tests/compose-reach.mjs": "c9bad52e9161d7b9ba11ce3926f131b1fae14ec5",
           "tests/conversation_native.mjs": "f28b3ca95922fb9970e40f5c5c69b071cac8aa18",
           "tests/device_native.mjs": "d5844b20472a96334f42eaa820a35750936a77aa",
           "tests/devtools_control.mjs": "30ba67d5061fe2dda175b8350335dc3670fb6a23",
@@ -48046,40 +48060,40 @@
           "tests/fixtures/schema_8.sql": "181a34ca6e59b05c5fd8d594c50a665be76b7c19",
           "tests/fixtures/schema_9.sql": "0166a0b304c24c78cee22b86fa7484289efc66e6",
           "tests/fixtures/ui_dom.mjs": "c99be2eac5c3bebedfc0624ec95e1016df45606e",
-          "tests/fixtures/ui_http.py": "0205fe9afae49de65da09ba507fe95a9c5ef1e38",
+          "tests/fixtures/ui_http.py": "debe8f26bde4969ca9246fcf421918a52fe140e5",
           "tests/fixtures/ui_store.py": "5a87fcc999572c05d35726f937b525949272fa3c",
           "tests/fold_native.mjs": "bfca7e4cca820591d826685ddbd2728ffb53c954",
           "tests/form_rules_native.mjs": "15f018ddda68502de0f552b9092641ac5639abcc",
-          "tests/health_native.mjs": "7c3260f1d96629074898d4a0e68ca773f56da6f4",
-          "tests/links_native.mjs": "a6f0c28f967c94b368710c9ef53c22d0e24b567c",
-          "tests/message_edit_native.mjs": "31ef2b9790592f32e56c02c5854eabf1795f9cb5",
-          "tests/new_line_native.mjs": "bf2fadd6fec1884e75ae3279b415219d80234d24",
-          "tests/notebook_pages_native.mjs": "4693daf4dc84405c9c4b8b32b19dd8f8ebf96b2d",
+          "tests/health_native.mjs": "e8dfe2a73dfaad6c78e1a68b37d788ba607d7b86",
+          "tests/links_native.mjs": "6370f1b98f706926e2fedfb48b3b4558b3452e1d",
+          "tests/message_edit_native.mjs": "40ef11193b128b440a1ec14fd167e8fd6c1ef98a",
+          "tests/new_line_native.mjs": "fbf52df575486f29ad8978d0449c263d64315227",
+          "tests/notebook_pages_native.mjs": "7fa68aca9696736a1b068e2ef77ed96bb07735e3",
           "tests/notebook_sheet_native.mjs": "42c1b8d2935b484927e6ff2f9d73c9973dd8b44d",
           "tests/outcome_light_native.mjs": "356884546078966d99f4c444466a9553f6341c67",
-          "tests/outcome_rail_native.mjs": "34496d14fafec14df9bfab210a3a289d4e4fc65c",
-          "tests/pipeline_native.mjs": "2f613a682030b6a9dd332b780049ad9ec0368ea7",
+          "tests/outcome_rail_native.mjs": "4a3ef8971972a8d473a68ea4483db3511133d9e7",
+          "tests/pipeline_native.mjs": "444685f29ca65ab70f1958d08acbcfb41b79c38e",
           "tests/png-bands.mjs": "a1dad1b712b23e18987afb7ad4761a90f38af068",
           "tests/press-fell.mjs": "d4167e5307ab6fd5aeac52ee671f05cee8699c82",
           "tests/reader_asks_native.mjs": "e59a790f0631796c01e5418e5de1b0a3479cdc82",
-          "tests/reader_colors_native.mjs": "889172c82c8e6b1b8cd6d196f4d378f86e173871",
-          "tests/reader_compose_native.mjs": "420aa60d989d4b549db4457d5b308061e7673140",
-          "tests/reader_departure_native.mjs": "2100c53d1df11328e11e5e04850049dffa9c2f6b",
+          "tests/reader_colors_native.mjs": "55ff22b322170bc307e6fd8470cd3d2dd4cc7147",
+          "tests/reader_compose_native.mjs": "c88b55f62d156fe89dba6ae9a9ecb020b048f836",
+          "tests/reader_departure_native.mjs": "f35de31dbe65f5af8b23b55e79f101004a115057",
           "tests/reader_fixture.py": "19e463e909ced3f544ab95696e72ab74cfacb2e1",
-          "tests/reader_freshness_native.mjs": "286e00a98457168677a6d7fca582691cbe1ae063",
+          "tests/reader_freshness_native.mjs": "371aaf02cf8799fdaafd0f87a4d74782abff14ad",
           "tests/reader_images_native.mjs": "ad55163774571cfb485bb6778278b7c1916f3238",
-          "tests/reader_inline_native.mjs": "60efc21a09564799a4bf3de09c94c4c79c5e0f0b",
-          "tests/reader_live_native.mjs": "ef9a7f21e553f829bf80088ed03b5c0c4138e9d5",
+          "tests/reader_inline_native.mjs": "f2c5e1f4313dcd7b9e3037a9bdb0029de6c7d2ce",
+          "tests/reader_live_native.mjs": "5c2eb82c83907c457e29714f9e400b4ba3f8d4dc",
           "tests/reader_native.mjs": "735db65a703d77f5497c230211dd35affb09eace",
-          "tests/reader_navigation_native.mjs": "3aa276eb108fd0ec85d0bee6623e20e27935af90",
-          "tests/reader_openings_native.mjs": "40731a201642e6db12b15dcb1f3bce0f695f0651",
-          "tests/reader_persistence_native.mjs": "601a094f35b53eedc897884f17c378d9e1022ee6",
+          "tests/reader_navigation_native.mjs": "7bf54a185e7ac0cc50068f9f2cb79344be2a4f98",
+          "tests/reader_openings_native.mjs": "59cae4a37b98822364474393bba882ee13858106",
+          "tests/reader_persistence_native.mjs": "62c7d4445f4b658edfdd14fc14d1fd6d7480995a",
           "tests/release-rule.mjs": "52dcd1e36df187036274a6035dbc52d18532e590",
           "tests/release_rule.test.mjs": "2f55f90de2276cccbe2ca0a1c3452573577653fd",
           "tests/render_native.mjs": "94400298929f27ecae6a405b006d06c118c317ac",
-          "tests/stack_native.mjs": "bbb34689f80d852c5f776d7e237a69568e04fe84",
+          "tests/stack_native.mjs": "2f26595f26bd60b03e1603b6373b3cf1f57d0c98",
           "tests/targets-dom.mjs": "1720c8e57535925a1c975f7ef4b0b5fca6484fed",
-          "tests/targets_native.mjs": "25152f693817188f121d736c86fdbddaf2080b51",
+          "tests/targets_native.mjs": "8e68ceceda3226043fa37281ad2bb72f630c050c",
           "tests/test_actors_view.py": "7343794100ae23b5d86d054184ab695204794b00",
           "tests/test_agent_attach.py": "509fb9c6e3a271e3eee10d63e0070863048a2980",
           "tests/test_agent_attachments.py": "34d7a7923667e5fe639c97e6a36baf5f931feeaa",
@@ -48109,7 +48123,7 @@
           "tests/test_boundary.py": "9ecd06fc58e970d25cf6db50a03bd2177877c3e7",
           "tests/test_broker_routes.py": "a387de17f7e55efa987223742d7e4b96c1c19e27",
           "tests/test_changes.py": "2727491488708b9841ec6e1e3f27a0fd93652645",
-          "tests/test_codex_broker.py": "684484aa96375e863cfd7f4734e97a3232819bf9",
+          "tests/test_codex_broker.py": "a58c8a89b054f7d0d7a928de61e062e814f2daab",
           "tests/test_codex_host.py": "88b9fc2d97880000a6f85635072889cecd69da64",
           "tests/test_colors.py": "f2fc200e00d780a8ff0ac3e1d79be0425627490a",
           "tests/test_command_pins.py": "c275b5640134f8a3d9eea3a31fffa4193b2c3382",
@@ -48207,7 +48221,7 @@
           "tests/test_topic_reading.py": "39e0413dddc8294242a375a1ff74ae080879b87b",
           "tests/test_topic_state.py": "d90eaab19c58fed9cec667653c2567551c2ef87e",
           "tests/test_ui_freshness_fixture.py": "5033015507553769e1a3198d734c04bd65716828",
-          "tests/test_ui_http_controls.py": "bf7301fd6fc0e9c0c03fdf64db97df7cdc2c0e73",
+          "tests/test_ui_http_controls.py": "8107678a868cded7b9badccd0885a820b91ef1fc",
           "tests/test_wake_contract.py": "2ff4dd17cb470c31ec54cd0fb042128c94a2f3ef",
           "tests/test_wake_health.py": "065dccabdeb601738c9b3fbe835e6581b5d73c8b",
           "tests/test_wake_invocation.py": "d519f3f6ffb738b844ac93f16b34a9bbd9671403",
@@ -48220,7 +48234,7 @@
           "tests/topic_duties_native.mjs": "a2ce668c1bb60519c7b9fa42c8d59a85b438d8a6",
           "tests/topic_header_native.mjs": "3f415a00576d5c5e30e23de0c433ab1900328ca9",
           "tests/topic_list_native.mjs": "8bc9d818a5214170297b16c055e298b4e45308b8",
-          "tests/topic_reading_native.mjs": "da952c078ba8863839c59d8c072fe4c55c956149",
+          "tests/topic_reading_native.mjs": "4e0eec3882d1a2bcb0c56d5f55db8ad1e4b6ed78",
           "tests/topic_sources_native.mjs": "a5f0baccae674ebca88f53f2ff6dcd4e67e97325",
           "tests/topic_work_native.mjs": "c73ab853ecd3df51e9c7f5c4ca44733bbd18791e",
           "tests/ui_app.test.mjs": "f88b35662acd2a7ed7e7d8021529317c44c5965e",
@@ -48245,7 +48259,7 @@
           "tests/ui_health_light_properties.test.mjs": "536a256c2bf42199df554a314937b9f54069a8a0",
           "tests/ui_image_pick.test.mjs": "6d3415f498d2df0790f809d75f218fbc0c9e3704",
           "tests/ui_image_rows.test.mjs": "1aab44fa931e37de0bf06632f91d079db8d37dc7",
-          "tests/ui_inline_wiring.test.mjs": "021c1bb652f926d5cc1d11fe057444fa44145bc1",
+          "tests/ui_inline_wiring.test.mjs": "37670643a070d57ef4ebafffa07ce59571c7fdae",
           "tests/ui_journal_pagehide.test.mjs": "5b913c943efe7573b3ba484bf6f49e75eabb881f",
           "tests/ui_layout.test.mjs": "338a7239e30a7a773819b8ca1d6e7098ba7f31f3",
           "tests/ui_line_move.test.mjs": "254f61d2d903cd8320c31e2f358dd1f365e658db",
@@ -48320,7 +48334,7 @@
           "tests/ui_wake_lights.test.mjs": "e990cd9c000fcdf1f5468305463bf7a4d786aebf",
           "tests/ui_whisper.test.mjs": "b642c333b35b313f321ca4dc99db61b57b735ffd",
           "tests/ui_writing_input.test.mjs": "cd964a3e5f91eeeca7d06872ecb2f682c8c6cb4d",
-          "tests/wakes_native.mjs": "e4e9a72e3fa5a6bb74f17a3e80742a6580fbd749",
+          "tests/wakes_native.mjs": "2da9a657a3f411dfceb551c215072f005fea972f",
           "tests/webkit_native.mjs": "9a4da43e5fbc50899314139495f5f0fd9a4e7599",
           "tests/whisper_native.mjs": "ea739509e5d934e2cafda6628790b6bc549745bb",
           "tools/__init__.py": "75baea9b19201f9a0b56e199a0f7afdb0f609110",
@@ -61884,10 +61898,16 @@
               "name": "test_the_agent_parked_then_the_runner_killed_then_back (test_ui_freshness_fixture.WakesFixtureTests)"
             },
             {
+              "name": "test_a_save_that_comes_in_during_a_reset_waits_and_meets_its_revision (test_ui_http_controls.ImagesFixtureControls)"
+            },
+            {
               "name": "test_epoch_waits_for_a_request_holding_the_authority_shared (test_ui_http_controls.ImagesFixtureControls)"
             },
             {
               "name": "test_reset_empties_a_draft_that_holds_only_reply_fields (test_ui_http_controls.ImagesFixtureControls)"
+            },
+            {
+              "name": "test_reset_waits_for_a_save_the_server_is_still_handling (test_ui_http_controls.ImagesFixtureControls)"
             },
             {
               "name": "test_the_agent_starts_from_a_message_naming_what_it_has_seen (test_ui_http_controls.SourceFixtureControls)"
@@ -64106,6 +64126,14 @@
             },
             {
               "name": "a recheck replaces only the rechecked rows the page lists, at once, and only for an editor the registry still holds",
+              "phase": null
+            },
+            {
+              "name": "the Reader marks discovery finished for the source it shows, through a Reply or Note choice, and never for one it left",
+              "phase": null
+            },
+            {
+              "name": "the Reader marks discovery finished only when every editor's lookup has finished, a failed one included",
               "phase": null
             },
             {
