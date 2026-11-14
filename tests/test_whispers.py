@@ -827,7 +827,7 @@ VIEW_PATHS = {
     "pipeline_row": "asks about items and work in Now pieces' topics, which a whisper never writes",
     "outcome_checks": "held asks, which a whisper never is; each problem's message through _message_access, and a whisper is refused as "
                       "one; the loop's account is a message on the record",
-    "check_readings": "readings and their fix topics; no message",
+    "check_readings": "readings and their fix topics, and check asks (through _check_view), which a whisper never is",
     "outcome_live": "checks, readings, fix topics and the release; no message",
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.

@@ -1,10 +1,11 @@
 # Editing a message
 
-A person can fix the words of their own message after sending it (item 228).
-Everyone then reads the new words, marked "Edited". Each agent that can read
-the message is sent one correction, so an agent that acted on the old words
-knows to read them again. Core keeps every revision; the message itself never
-changes.
+A person can fix the words of their own message after sending it (items 228
+and 452). Everyone then reads the new words, marked "Edited". Each agent that
+was handed the old words is sent one correction, so an agent that acted on
+them knows to read them again. While the person has the message open in Edit,
+agents are not handed it at all: it is held until they save or leave the
+edit. Core keeps every revision; the message itself never changes.
 
 This is how an edit keeps the rule that attributed messages remain immutable
 and corrections are separate acts (AGENTS.md): the message's row, with its
@@ -44,7 +45,10 @@ imported from) and functions it uses resolved to the strings they hold.
 ```
 
 `expected.message_revision` is the revision the editor started from, and is
-required. Checks run in this order:
+required. `args` is `{body}` or `{body, holder}`: a page that opened an edit
+session (below) names its holder, and a Save by the session's holder ends the
+session. A holder that is not an identifier is `INVALID_ARGUMENT`. Checks run
+in this order:
 
 1. The words are within the body limit; otherwise `BODY_TOO_LARGE`, recorded
    like every refusal of a write's words, so the same operation id returns it
@@ -62,8 +66,11 @@ required. Checks run in this order:
 8. The words differ from the current ones; otherwise `INVALID_ARGUMENT`, not
    recorded.
 
-The receipt's result is `{message_id, revision, edited_ms, corrections}`
-(`corrections` is how many agents were sent one), and `affected` is
+The receipt's result is `{message_id, revision, edited_ms, session_closed,
+corrections}` (`corrections` is how many agents were sent one;
+`session_closed` is true when this Save was the holder's and ended the
+session, and then `session_revision` gives the session's new revision), and
+`affected` is
 `{kind: "message", id, version: revision}`. A retry under the same operation id
 returns the same receipt and adds nothing; the same id with other words is
 `OPERATION_PAYLOAD_MISMATCH`.
@@ -75,11 +82,55 @@ topic, whoever it was sent to by name, or a whisper's two people), the editor
 included, gets an actor-scoped change `edit` keyed by the message id at its new
 revision. An open page refreshes the message from it (below).
 
-Each agent among them, other than the editor, is sent a **correction**: a
-delivery of the message at the new revision (`deliveries.revision`), with
-reason `correction`, in the agent's one delivery group of kind `correction`.
+Each agent among them, other than the editor, that was **handed the old
+words** is sent a **correction**: a delivery of the message at the new
+revision (`deliveries.revision`), with reason `correction`, in the agent's one
+delivery group of kind `correction`. An agent reader that was never handed
+them gets nothing: it reads the new words the next time it reads the message.
 People never get one. A whisper's correction goes to the agent it was
 whispered to, and to nobody else.
+
+### What counts as handed
+
+Core records, per agent and per person's message, the highest revision whose
+words left the store in an answer to that agent (`message_exposures`). An agent
+was handed the words when it has such a row, or when the message was sent at
+or below the horizon: the last message sequence when version 41 was applied,
+before exposures were kept, so every agent reader of an older message counts
+as handed.
+
+The record is made at the boundary every agent view passes through
+(`Store._hand_over`):
+
+- The words helper marks the words it returns in an agent view: a marker
+  (U+E000, the view run's random nonce, a token number, U+E001) before each
+  message's words, naming the message and the revision they are. Only words
+  the view returns are marked: a read that measures, decides or cuts (a page's
+  size bound, a go-ahead check, a preview's cut) reads them plain, and marks
+  only what it hands out.
+- At the boundary every marker of that run is taken out of the answer, keys
+  included, and each one found names a pair (message, revision). A stored
+  quote of message M in a returned message M′ counts as handing M at the
+  quote's revision (1 when it names none) when the part of the answer that
+  follows M′'s marker holds the first line of that quote (whitespace
+  collapsed, its first 40 characters). A marker that was cut or rewritten
+  never leaves: the view fails with a store error and returns nothing.
+- A pair grows the record when the message is a person's, the revision is
+  above the one recorded, and it is not revision 1 of a message at or below
+  the horizon. If none grows, the read returns as before, with no write. If one
+  does, the read is rolled back and run again under `BEGIN IMMEDIATE` on the
+  same connection, at a fresh clock, and its answer and its record commit
+  together, so no Save can commit between the words returned and the record of
+  them. A read that meets a Save's open write is `DATABASE_BUSY`, retryable,
+  and hands nothing.
+
+What an agent is handed is exactly what the store answered it. A client that
+shows the agent less than it read (the hosted notice previews 20 of the
+deliveries it reads; the assessment read tool passes on some fields) still
+counts what it read, so it may correct more than needed, and never misses one.
+A person's reads record nothing.
+
+### Corrections
 
 A correction is the agent's work, so it wakes the agent and lists in
 `deliveries`, `inbox`, `watch` and the hosted notice. It is never unread,
@@ -113,9 +164,10 @@ or repeated wake comes of it.
 A disabled agent among the readers is a reader: its correction waits, pending,
 while it is disabled, and it is woken for it once it is enabled again.
 
-Slice 1 sends a correction to every agent that can read the message, whether
-or not it was ever handed the old words. Knowing exactly which agents saw them
-comes with slice 2, with holding a message while it is open in Edit.
+A Save by a device that does not hold the edit leaves the message held (below):
+its corrections are queued in the state `held`, and an older held correction
+of the same message is settled, as a newer correction settles an older one.
+They become pending when the hold ends.
 
 ### What an agent sees
 
@@ -142,7 +194,9 @@ and `read` prints an edited message's latest words with
 - `topic_messages` items, in every form, carry `revision` (1 when never
   edited) and `edited_ms` (null when never edited), and their body is the
   latest words. A reply's `reply_to_excerpt` is the first 120 characters of the
-  latest words of the message it answers.
+  latest words of the message it answers. Every item carries `withheld` and
+  `reply_to_withheld`; for an agent, a held message's item comes without its
+  words (below).
 - `topic_messages` takes `message_ids: [id, …]` with `topic_id` alone (with
   `cursor`, `direction`, `limit`, `items` or `audience` it is
   `INVALID_ARGUMENT`), one to 100 ids, duplicates collapsed, and returns those
@@ -151,11 +205,113 @@ and `read` prints an edited message's latest words with
   message the reader cannot read, wherever it is, refuses the whole view
   `FORBIDDEN` "No readable source", so its existence never shows; a readable
   message of another topic refuses it `INVALID_ARGUMENT`.
-- The `source` view carries the latest words, `revision`, `edited_ms`, and
-  `version` and `current_revision` equal to the revision.
+- The `source` view carries the latest words, `revision`, `edited_ms`,
+  `withheld`, and `version` and `current_revision` equal to the revision.
 - A delivery item's `message` carries `revision` and `edited_ms` of the words
   it previews. A correction's item adds `correction: {revision}`, and its
   preview is the words of that revision.
+- A page's size bound measures the words, never the markers an agent view puts
+  on them.
+
+## Holding a message while it is edited
+
+Opening Edit on a message holds it from agents until the person saves, leaves
+the edit, or stops touching it for `edit_hold_ms` (2 minutes; capabilities'
+`limits`), so no agent is handed words that are about to change.
+
+### Edit sessions
+
+A message has at most one edit session (`message_edit_sessions`), owned by its
+author. A page names its device by a `holder`, an identifier of its own; the
+session's `revision` moves with every session command, and each writes an
+actor-scoped change `edit_session`, keyed by the message at that revision, to
+the author.
+
+- `message.edit_open {message_id} args {holder}`: checks as `message.edit`'s 2
+  to 5 (reach, a person, the author, an outcome not reached). A session that
+  was saved or closed, or none, starts again: its base is the current revision
+  and its draft the current words. An open one, held or lapsed, is taken by
+  this holder (`taken` is true when another device held it) and keeps its draft
+  and base, so any device resumes it. It renews the hold. The result is
+  `{message_id, session_revision, holder, taken, base_revision, base_words,
+  draft, revision, words, renewed_ms, hold_ms}`.
+- `message.edit_draft {message_id} expected {session_revision} args {holder,
+  body, base_revision}`: the words' size first (a recorded `BODY_TOO_LARGE`,
+  before access, as a Save's), then checks 2 to 5, then `EDIT_CLOSED` when no
+  session is open and `EDIT_TAKEN` "This edit is open on another device" when
+  another device holds it (neither recorded), then the session revision (a
+  recorded `REVISION_CONFLICT`), then a base that is one of the message's
+  revisions. It keeps the draft in Core and renews the hold; one after a
+  released lapse holds again. Its result is `{message_id, session_revision,
+  renewed_ms}`.
+- `message.edit_close {message_id} args {holder}`: by the holder, ends the
+  session as `closed`, lets its draft go and releases the hold: `{closed: true,
+  session_revision}`. With no open session it changes nothing and writes no
+  change: `{closed: false}`. By another device it is `EDIT_TAKEN`, not
+  recorded, and nothing is released. It checks reach, a person and the author,
+  not the outcome, so a hold can always be ended.
+- The holder's Save (`message.edit` with its `holder`) ends the session as
+  `saved` and releases the hold before any correction is queued. A Save by
+  another device commits by revision and leaves the session open.
+
+### What holding does
+
+While the session is open and not released (holding), every agent delivery of
+the message that is not settled is in the state `held`: the same row, with the
+same id, seq, group, revision and reasons, counted nowhere. Opening Edit moves
+pending rows to `held` and uncounts them as an acknowledgment would; it is not
+an acknowledgment, so it writes no change or operation, settles nothing and
+answers no wake. A delivery queued while the message is holding (a correction
+from another device's Save) is queued `held`. People's deliveries are never
+held.
+
+Every count, list and schedule reads only `pending`, so a held delivery leaves
+the agent's inbox, counts, attention and Health's waiting work, and the
+scheduler sees its departure; if it was all the agent had pending, the agent
+has nothing due. In agent views, while the session was renewed within
+`edit_hold_ms` (held):
+
+- `topic_messages` items of the message keep their id, seq, author, intent,
+  addressees, reply_to, revision and edited time, with `withheld: true`, body
+  "", `preview: false` and no attachments; a reply to it has
+  `reply_to_withheld: true` and no `reply_to_excerpt`.
+- `source` has `withheld: true`, body "", and no attachments or quotes; a
+  stored quote of a held message in another message's source has excerpt ""
+  and `withheld: true`. Outside a view (a command, `open_media`) the hold is
+  decided by the same clock.
+- Every excerpt or line entry carries `withheld`, with the words "": attention
+  blocking lines, the pipeline's held lines and asks, conversation waits,
+  stars, check asks and the check account.
+- `topic_images` leaves its images out, and `media` and `open_media` through it
+  are refused `MESSAGE_HELD`.
+- `delivery` of a held delivery, `delivery.ack` of one, `opening.publish` from
+  it with nothing written, and a pipeline move made on it (or on a reply to it)
+  are refused `MESSAGE_HELD`, not recorded: "m-… is being edited by its author
+  and is held until they save or leave the edit (at most 2 minutes). Nothing
+  was done." Quoting it, or replying to it, is not refused.
+
+Access is unchanged: a held delivery keeps its reasons, so an agent sent the
+message by name keeps exactly the access it had.
+
+### Release
+
+The hold ends with the holder's Save, the holder's close, or a lapse a write
+observes (no timer runs). Release makes each held delivery pending again, the
+same row, counted as an arrival, and hands it back: a turn that was told of it
+before the hold is told again (`handed_seq` is cleared when it covers the
+row), and the agent is due now, or when its live claim ends. It writes a
+`delivery` change at version 1 for each row, so `watch` prints it as it
+arrives. A row whose group closed during the hold (its agent left the topic)
+becomes pending uncounted, as the rows a cancelled subscription leaves.
+
+A lapse is released by the runner's next `claim_wakes`, which the runner sleeps
+until (`_next_due` counts the earliest hold end of a held delivery to an agent
+it serves), or by an `ack` of the delivery, which releases first in the same
+commit. A turn whose claim was taken while the delivery was held, and which is
+handed after the release, is handled as a stale start (the release time is
+not before the attempt started), so the delivery is due again at once rather
+than after the turn ends. Between a lapse and the write that releases it,
+views already show the words but the deliveries stay held.
 
 ## Quotes
 
@@ -179,6 +335,18 @@ revision)`, keeping every row, its id and seq, where the next seq goes on from,
 its indexes, the trigger that requires a delivery's topic, and every
 `delivery_reasons` row. Stepping back to 39 is refused once any message has
 been edited.
+
+Version 41 adds `message_edit_sessions` (one row per message: holder,
+revision, base revision, draft, state `open`, `saved` or `closed`, renewed and
+released times), `message_exposures(actor_id, message_id, revision)`, which
+only grows, and `message_edit_horizon`, set to the highest message sequence
+when the step is applied. A delivery's state may be `held`. Stepping back to 40
+is refused while any session is open, held or lapsed, or any delivery is held;
+exposures are dropped, and the next step up sets the horizon again. The words
+helper's SQL function, `marked_words`, is registered on every connection the
+store opens; no schema object names it, so a connection without it still
+opens the schema. Code that runs the helper's SQL on a connection of its own
+registers it first (`message_edit.register`).
 
 ## The web page
 

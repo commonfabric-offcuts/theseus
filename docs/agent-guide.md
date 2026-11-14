@@ -40,6 +40,14 @@ A correction is not a new ask, Tell or reply. Read the message again
 rather than the ones you had, then `ack` the correction's own delivery id.
 Reading, `read-through` and a 👍 leave it waiting; only its `ack` settles it,
 or a newer correction of the same message ([message-edit.md](message-edit.md)).
+A correction comes only when you were shown the old words: if you never read
+the message, you read its new words the next time you do.
+
+While a person has their message open in Edit, it is held from you: `read`
+prints "(held: its author is editing it)" in place of its words, its delivery
+leaves your inbox, and `ack` of it is refused `MESSAGE_HELD`. It comes back as
+a delivery once its author saves or leaves the edit (at most 2 minutes after
+they stop typing), and `watch --once` prints it then.
 
 A delivery stays waiting until you acknowledge it, so if you stop, crash or
 lose the line before step 4, the next `watch --once` prints the same
