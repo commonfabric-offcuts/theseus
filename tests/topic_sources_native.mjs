@@ -34,10 +34,23 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     return (await until(() => p.calls.slice(before).find(c => c.payload?.kind === 'opening.publish'), 'the publish request')).payload;
   };
   const started = async () => (await view('source_topics', { message_id: message })).items.map(item => item.id);
-  // The topic in the page's address. A started topic opens in place, and the page stays ready while it moves, so
-  // the new topic is the first one named that differs from the topic the page showed before Return.
+  // A started topic opens in place, and the page stays ready while it moves, so the topic it opens is the one the
+  // publish reply names. Return here holds that reply at the network first, as a slow runner delivers it: until it
+  // is released the page still shows the topic it was on, so no wait can take that topic for the new one.
   const shown = p => quiet(p, `new URLSearchParams(location.search).get('topic')`);
-  const opened = (p, from) => until(() => quiet(p, `document.body.dataset.ready==='true' && (topic => topic !== ${JSON.stringify(from)} && topic)(new URLSearchParams(location.search).get('topic'))`), 'the new topic opens');
+  const enterHeld = async p => {
+    const from = await shown(p), before = p.held.length;
+    p.intercept(payload => payload?.kind === 'opening.publish');
+    const publish = await enter(p);
+    const entry = await until(() => p.held.slice(before).find(held => held.payload?.kind === 'opening.publish'), 'the publish reply, held');
+    p.intercept(null);
+    const topic = (await p.response(entry.event)).result.topic.id;
+    assert.ok(topic && topic !== from, 'the reply names a new topic');
+    assert.equal(await shown(p), from, 'while the reply is held, the page still shows the topic it was on');
+    await p.release(entry);
+    await until(() => quiet(p, `document.body.dataset.ready==='true' && new URLSearchParams(location.search).get('topic')===${JSON.stringify(topic)}`), 'the new topic opens');
+    return { publish, topic };
+  };
 
   await check('sources the Reader starts a topic from a message in one line, quoting it, with its author in it', async () => {
     const p = await page('sources-first', null, true);
@@ -61,10 +74,8 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     await p.point('#previous-message');
     await until(() => quiet(p, `document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader is back on the question');
     assert.equal((await openLine(p)).value, 'Release name', 'stepping away and back keeps the title too');
-    const from = await shown(p);
-    const publish = await enter(p);
+    const { publish, topic } = await enterHeld(p);
     assert.deepEqual(publish.args, { seen: [] });
-    const topic = await opened(p, from);
     // The new topic opens in place, so the page was ready before it: its title is painted when the topic's read lands.
     await until(() => quiet(p, `document.querySelector('#topic-title').textContent === 'Release name'`), 'the new topic is titled as typed');
     assert.deepEqual(await started(), [topic]);
@@ -98,12 +109,10 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     const relisted = await until(async () => { const l = await line(p); return l?.links.length === 2 && l; }, 'the topic started meanwhile is named too');
     assert.deepEqual(relisted.links.map(([, href]) => href).sort(), [`?topic=${first}`, `?topic=${meanwhile}`].sort());
     await shot(p, 'sources-refused-relisted');
-    const from = await shown(p);
-    const accepted = await enter(p);
+    const { publish: accepted, topic } = await enterHeld(p);
     assert.deepEqual([...accepted.args.seen].sort(), [first, meanwhile].sort());
     assert.equal(new Set([refused.operation_id, again.operation_id, accepted.operation_id]).size, 3, 'each Return is a new operation');
     assert.equal(p.calls.filter(c => c.payload?.kind === 'opening.save').length, 1, 'the title was saved once');
-    const topic = await opened(p, from);
     assert.deepEqual((await started()).sort(), [first, meanwhile, topic].sort());
     assert.deepEqual(p.errors, []); await p.close();
   });
