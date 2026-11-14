@@ -141,6 +141,9 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       item_id: ids[0], expected_revision: 1, title, body });
     assert.equal(revision.status, 'committed');
     const p = await page('notebook-top-alignment', null, true);
+    // This desktop activation proof needs three cards in one row, including
+    // on runners whose scrollbars reserve space. The mobile proof below keeps 390px.
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false });
     const card = id => `#memory-items [data-id="${id}"]`;
     const scroll = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
     const geometry = () => p.evaluate(`Array.from(document.querySelectorAll('#memory-items .memory-card'),e=>{
@@ -157,6 +160,8 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     };
     await until(() => p.evaluate('document.querySelectorAll("#memory-items .memory-card").length===3'), 'unequal Notebook entries');
     await scroll('#memory-items');
+    const viewport = await p.evaluate(`({width:innerWidth,clientWidth:document.documentElement.clientWidth,scrollbarWidth:innerWidth-document.documentElement.clientWidth,gridWidth:document.querySelector('#memory-items').getBoundingClientRect().width,rootFont:getComputedStyle(document.documentElement).fontSize})`);
+    observations.push({ name: 'Notebook desktop viewport', ...viewport });
     const before = await geometry(); observations.push({ name: 'Notebook desktop geometry', boxes: before });
     await shot(p, 'notebook-desktop');
     assert.ok(before.every(b => Math.abs(b.y-before[0].y) <= 1 && Math.abs(b.height-before[0].height) <= 1), 'equal-height cards share one desktop row');
