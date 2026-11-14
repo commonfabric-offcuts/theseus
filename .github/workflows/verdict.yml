@@ -1,0 +1,535 @@
+# The verdict on a pull request's release check. The Checks workflow is the
+# producer: it runs the candidate's own code, from the pull request's copy of
+# that file, so nothing it says can be taken as the verdict. This workflow runs
+# from the default branch when a Checks run completes, and a pull request cannot
+# edit it. It reads the producer's artifacts as untrusted data, authenticates
+# them against GitHub's own record of the run, fetches the tested merge commit
+# itself and rebuilds it from authenticated parents, runs the validator and the
+# baseline from the pull request's base, and publishes the result as a check
+# run on the pull request's head commit. That check run, named Verdict, is the
+# one a branch rule requires.
+#
+# Two jobs: judge reads and decides with a read-only token, and publish, which
+# alone may write a check run, posts what judge decided. Everything read from an
+# artifact is data: object ids are accepted only as forty hex digits, and values
+# cross between steps as outputs, never through a file the shell evaluates.
+#
+# Every refusal is published as a failed check run that says why: a missing
+# check reads as pending forever, and a silent pass is not a pass. The producer
+# run's jobs stay what they are, raw evidence, red on every expected failure.
+name: Verdict
+
+on:
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
+
+permissions: {}
+
+# One controller at a time per head, whatever producer attempt it answers: publication for a head is serial, and the
+# publish job compares producer run and attempt against the check run already standing before it writes. The queue
+# keeps every waiting run, in order; the default keeps one and cancels the rest, which would drop a run before it
+# could publish anything.
+concurrency:
+  group: verdict-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+  queue: max
+
+env:
+  # The producer this controller judges, by GitHub's own identity for it, so a workflow added under another path or
+  # id is not mistaken for it. The id is the repository's; a transfer keeps it.
+  PRODUCER_WORKFLOW_ID: '418035217'
+  PRODUCER_WORKFLOW_PATH: .github/workflows/checks.yml
+  # The branches whose pull requests are judged, named exactly: the validator and the baseline are executable code read
+  # from the base, so a base is approved by being listed here, never by matching a shape. A new release branch is added
+  # by a reviewed change to this file.
+  APPROVED_BASES: release/live72,codex/aim-next
+
+jobs:
+  judge:
+    name: judge the producer's evidence
+    # A pull request's producer run gets a verdict, a cancelled one included: its head gets a terminal result that
+    # says so, since a cancellation by hand has no successor to speak for it. A push run's evidence is the deploy's.
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      head_sha: ${{ steps.record.outputs.head_sha }}
+      # The approved base GitHub's record named, or empty: publish names the check run for it, record or no record.
+      base_ref: ${{ steps.record.outputs.base_ref }}
+      conclusion: ${{ steps.decide.outputs.conclusion }}
+      decided: ${{ steps.decide.outputs.decided }}
+      # The record's artifact id: publish fetches exactly this one, so a publish-only re-run reads the decision judge
+      # made, and a re-run judge names its own.
+      record_id: ${{ steps.keep.outputs.artifact-id }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OUT: ${{ github.workspace }}/verdict
+      PRODUCER_RUN: ${{ github.event.workflow_run.id }}
+      PRODUCER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+    steps:
+      - name: GitHub's record of the producer run
+        id: record
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          : > "$OUT/refusals"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN/attempts/$PRODUCER_ATTEMPT" > "$OUT/run.json"
+          # What GitHub itself says about the run: its event, its attempt, its workflow, the head it ran for and the one
+          # pull request it belongs to. Everything the artifacts say is held against this record, never the reverse.
+          python3 - "$OUT/run.json" "$OUT/producer.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, sys
+          run = json.load(open(sys.argv[1]))
+          env = os.environ
+          hex40 = re.compile(r"^[0-9a-f]{40}$")
+          refusals = []
+          prs = run.get("pull_requests") or []
+          pr = prs[0] if len(prs) == 1 else {}
+          head_repo = (run.get("head_repository") or {}).get("full_name")
+          head_sha = run.get("head_sha")
+          pr_head = (pr.get("head") or {}).get("sha")
+          base_ref = (pr.get("base") or {}).get("ref")
+          base_sha = (pr.get("base") or {}).get("sha")
+          if run.get("event") != "pull_request":
+              refusals.append("the producer run's event is %s, not pull_request" % run.get("event"))
+          if run.get("conclusion") != "success" and run.get("conclusion") != "failure":
+              refusals.append("the producer run ended %s, so it left no complete evidence" % run.get("conclusion"))
+          if str(run.get("run_attempt")) != env["PRODUCER_ATTEMPT"]:
+              refusals.append("GitHub's record is of attempt %s, not the completed attempt %s" % (run.get("run_attempt"), env["PRODUCER_ATTEMPT"]))
+          if env["PRODUCER_ATTEMPT"] != "1":
+              # A re-run keeps the first attempt's artifacts under the same names and cannot replace them, so it can add
+              # no evidence; and a rerun must never turn a red into a green. A fresh run comes from a new push.
+              refusals.append("attempt %s is a re-run; only a run's first attempt is judged, and a fresh run comes from a new push" % env["PRODUCER_ATTEMPT"])
+          if str(run.get("workflow_id")) != env["PRODUCER_WORKFLOW_ID"] or run.get("path") != env["PRODUCER_WORKFLOW_PATH"]:
+              refusals.append("the run is of workflow %s at %s, not the producer %s at %s" % (
+                  run.get("workflow_id"), run.get("path"), env["PRODUCER_WORKFLOW_ID"], env["PRODUCER_WORKFLOW_PATH"]))
+          if head_repo != env["GITHUB_REPOSITORY"]:
+              refusals.append("the head lives in %s; a pull request from another repository is not checked here" % head_repo)
+          if len(prs) != 1:
+              refusals.append("the run belongs to %d pull requests, not one" % len(prs))
+          else:
+              if pr_head != head_sha:
+                  refusals.append("the run's head %s is not the pull request's head %s" % (head_sha, pr_head))
+              if base_ref not in [b for b in env["APPROVED_BASES"].split(",") if b]:
+                  refusals.append("the base %s is not a branch whose pull requests are judged here" % re.sub(r"\s+", " ", str(base_ref))[:120])
+          for name, value in (("head", head_sha), ("base", base_sha)):
+              if not (isinstance(value, str) and hex40.match(value)):
+                  refusals.append("GitHub's record names no %s commit id" % name)
+          producer = {
+              "producer": {"run_id": str(run.get("id")), "run_attempt": str(run.get("run_attempt")), "event": run.get("event"),
+                           "conclusion": run.get("conclusion"), "workflow_id": run.get("workflow_id"), "workflow_path": run.get("path"),
+                           "workflow_name": run.get("name"),
+                           "head_sha": head_sha, "head_branch": run.get("head_branch"), "head_repository": head_repo,
+                           "created_at": run.get("created_at"), "url": run.get("html_url"),
+                           "pull_request": {"number": pr.get("number"), "head_sha": pr_head, "base_ref": base_ref, "base_sha": base_sha}},
+              # The controller's own identity, so the proof names which workflow commit judged the run.
+              "controller": {"run_id": env.get("GITHUB_RUN_ID"), "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
+                             "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF"),
+                             "sha": env.get("GITHUB_SHA"), "ref": env.get("GITHUB_REF"), "repository": env.get("GITHUB_REPOSITORY"),
+                             "url": "%s/%s/actions/runs/%s" % (env.get("GITHUB_SERVER_URL"), env.get("GITHUB_REPOSITORY"), env.get("GITHUB_RUN_ID"))},
+          }
+          json.dump(producer, open(sys.argv[2], "w"), indent=1)
+          open(sys.argv[3], "a").write("".join(line + "\n" for line in refusals))
+          ok = not refusals
+          # Outputs carry only values checked above; a refused record exposes nothing for later steps to act on, except
+          # the base when it is on the approved list, so that the refusal is published under that base's check name.
+          approved = len(prs) == 1 and base_ref in [b for b in env["APPROVED_BASES"].split(",") if b]
+          print("head_sha=%s" % (head_sha if isinstance(head_sha, str) and hex40.match(head_sha) else ""))
+          print("base_sha=%s" % (base_sha if ok else ""))
+          print("base_ref=%s" % (base_ref if approved else ""))
+          print("number=%s" % (pr.get("number") if ok and isinstance(pr.get("number"), int) else ""))
+          print("refused=%s" % ("false" if ok else "true"))
+          PY
+      - name: The producer's shards
+        if: steps.record.outputs.refused == 'false'
+        # A run that left no shards is refused below, in words, rather than failing here in silence.
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          pattern: check-*
+          path: ${{ github.workspace }}/verdict/shards
+      - name: The producer's whole-run summary
+        if: steps.record.outputs.refused == 'false'
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          name: release-check
+          path: ${{ github.workspace }}/verdict/release-check
+      - name: The receipts, held to GitHub's record
+        id: receipts
+        if: steps.record.outputs.refused == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The receipts nominate a merge commit, its tree and its parents; they prove nothing by themselves. Here they
+          # must agree with each other and with GitHub's record: every receipt from this run and attempt, one merge,
+          # its second parent the head GitHub ran for, its first parent exactly the base the pull request names, since
+          # the validator's policy, code and baseline are read from that commit.
+          python3 - "$OUT/producer.json" "$OUT/shards" "$OUT/release-check" "$OUT/merge.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
+          import glob, json, os, re, sys
+          producer = json.load(open(sys.argv[1]))["producer"]
+          shards_dir, release_check, out, refusals_path = sys.argv[2:6]
+          hex40 = re.compile(r"^[0-9a-f]{40}$")
+          def clean(value):
+              # A receipt's value quoted in a refusal: one line, bounded, so it cannot shape the check run's summary.
+              return re.sub(r"\s+", " ", str(value))[:120]
+          refusals = []
+          receipts = []
+          for path in sorted(glob.glob(os.path.join(shards_dir, "check-*", "run.json"))):
+              try:
+                  doc = json.load(open(path))
+                  if not isinstance(doc, dict):
+                      raise ValueError("not an object")
+                  receipts.append((path, doc))
+              except (OSError, ValueError) as error:
+                  refusals.append("%s is not a readable receipt: %s" % (os.path.relpath(path, shards_dir), error))
+          if not receipts:
+              refusals.append("the producer run left no shard receipts")
+          if not os.path.exists(os.path.join(release_check, "summary.json")):
+              refusals.append("the producer run left no whole-run summary")
+          merges = set()
+          for path, receipt in receipts:
+              run = receipt.get("run") if isinstance(receipt.get("run"), dict) else {}
+              if (run.get("id"), run.get("attempt")) != (producer["run_id"], producer["run_attempt"]):
+                  refusals.append("%s was written by run %s attempt %s, not run %s attempt %s" % (
+                      clean(os.path.relpath(path, shards_dir)), clean(run.get("id")), clean(run.get("attempt")), producer["run_id"], producer["run_attempt"]))
+              merge = receipt.get("merge") if isinstance(receipt.get("merge"), dict) else {}
+              # Only a well-formed object id is kept; anything else reads as missing, and never reaches a message or a set.
+              fields = tuple(v if isinstance(v, str) and hex40.match(v) else None for v in (merge.get(k) for k in ("sha", "tree", "first_parent", "second_parent")))
+              if not all(fields):
+                  refusals.append("%s names a merge with a malformed or missing object id" % clean(os.path.relpath(path, shards_dir)))
+              merges.add(fields)
+          if len(merges) > 1:
+              refusals.append("the shards name different merges: %s" % sorted(str(m) for m in merges))
+          sha, tree, first, second = merges.pop() if len(merges) == 1 else (None, None, None, None)
+          if sha and second != producer["head_sha"]:
+              refusals.append("the merge's second parent %s is not the head GitHub ran this for, %s" % (second, producer["head_sha"]))
+          if sha and first != producer["pull_request"]["base_sha"]:
+              refusals.append("the merge's first parent %s is not the base the pull request names, %s; a fresh run from a new push merges onto the current base" % (
+                  first, producer["pull_request"]["base_sha"]))
+          json.dump({"sha": sha, "tree": tree, "first_parent": first, "second_parent": second, "fetched": None, "rebuilt": None}, open(out, "w"), indent=1)
+          open(refusals_path, "a").write("".join(line + "\n" for line in refusals))
+          ok = not refusals and sha is not None
+          print("merge_sha=%s" % (sha if ok else ""))
+          print("tree=%s" % (tree if ok else ""))
+          print("refused=%s" % ("false" if ok else "true"))
+          PY
+      - name: The tested merge, fetched and rebuilt
+        id: merge
+        if: steps.receipts.outputs.refused == 'false'
+        shell: bash
+        env:
+          # Values that passed the checks above, as outputs: GitHub hands them to this step as data.
+          HEAD_SHA: ${{ steps.record.outputs.head_sha }}
+          BASE_SHA: ${{ steps.record.outputs.base_sha }}
+          BASE_REF: ${{ steps.record.outputs.base_ref }}
+          NUMBER: ${{ steps.record.outputs.number }}
+          MERGE_SHA: ${{ steps.receipts.outputs.merge_sha }}
+          TREE: ${{ steps.receipts.outputs.tree }}
+        run: |
+          set -euo pipefail
+          cd "$OUT"
+          refuse() { echo "$1" >> "$OUT/refusals"; exit 0; }
+          git clone -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" candidate
+          cd candidate
+          git fetch -q origin "refs/pull/$NUMBER/head"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$HEAD_SHA" ]; then
+            refuse "refs/pull/$NUMBER/head is $(git rev-parse FETCH_HEAD) now, not $HEAD_SHA; the pull request has moved on and its newer run gets the verdict"
+          fi
+          if ! git merge-base --is-ancestor "$BASE_SHA" "origin/$BASE_REF"; then
+            refuse "the base $BASE_SHA is not a commit on $BASE_REF"
+          fi
+          # The merge commit the producer checked out, fetched by its id: its parents and tree must be the ones the
+          # receipts name and GitHub's record implies. If GitHub no longer serves it, the run is stale.
+          if ! git fetch -q origin "$MERGE_SHA" 2>/dev/null || ! git cat-file -e "$MERGE_SHA^{commit}" 2>/dev/null; then
+            refuse "the tested merge commit $MERGE_SHA can no longer be fetched; a fresh run from a new push is needed"
+          fi
+          parents="$(git rev-list --parents -n 1 "$MERGE_SHA" | cut -d' ' -f2-)"
+          if [ "$parents" != "$BASE_SHA $HEAD_SHA" ]; then
+            refuse "the tested merge $MERGE_SHA has parents $parents, not $BASE_SHA and $HEAD_SHA"
+          fi
+          if [ "$(git rev-parse "$MERGE_SHA^{tree}")" != "$TREE" ]; then
+            refuse "the tested merge $MERGE_SHA has tree $(git rev-parse "$MERGE_SHA^{tree}"), not the tree the receipts name, $TREE"
+          fi
+          # The independent check on that tree: merging the two authenticated parents here must give the same tree.
+          git checkout -q "$BASE_SHA"
+          if ! git -c user.name=verdict -c user.email=verdict@users.noreply.github.com merge -q --no-ff --no-edit "$HEAD_SHA" >/dev/null 2>&1; then
+            refuse "merging $HEAD_SHA onto $BASE_SHA does not merge cleanly here, so the tested tree cannot be rebuilt"
+          fi
+          rebuilt="$(git rev-parse 'HEAD^{tree}')"
+          if [ "$rebuilt" != "$TREE" ]; then
+            refuse "the merge of $HEAD_SHA onto $BASE_SHA has tree $rebuilt, not the tested tree $TREE"
+          fi
+          # The validator reads the commit the producer actually checked out, not the rebuild.
+          git checkout -q "$MERGE_SHA"
+          # The producer is the pull request's copy of the Checks workflow and of the release tooling it executes,
+          # tools/release_check.py and what it imports. Both must be the base's copy, or the evidence came from code
+          # nobody reviewed; a change to either lands through its own pull request first. The tests the tooling runs
+          # are the baseline's frozen sources, which the validator holds to the reviewed definition.
+          changed="$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" -- .github/workflows/checks.yml tools/)"
+          if [ -n "$changed" ]; then
+            refuse "the pull request changes the producer's code: $(echo "$changed" | tr '\n' ' '); that change lands first, through its own review"
+          fi
+          git worktree add -q "$OUT/base" "$BASE_SHA"
+          # The authenticated merge goes into producer.json as well: that file is the validator's one handshake.
+          python3 - "$OUT/merge.json" "$OUT/producer.json" "$MERGE_SHA" "$rebuilt" <<'PY'
+          import json, sys
+          doc = json.load(open(sys.argv[1]))
+          doc["fetched"] = sys.argv[3]
+          doc["rebuilt"] = sys.argv[4]
+          json.dump(doc, open(sys.argv[1], "w"), indent=1)
+          producer = json.load(open(sys.argv[2]))
+          producer["merge"] = doc
+          json.dump(producer, open(sys.argv[2], "w"), indent=1)
+          PY
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Classify the run with the base's own validator
+        if: steps.merge.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$OUT"
+          if [ ! -f base/tools/ci_known_reds.py ] || [ ! -f base/.github/check-baseline.json ]; then
+            echo "the base $(git -C base rev-parse HEAD) carries no validator or no baseline, so there is nothing to classify" >> refusals
+            exit 0
+          fi
+          # The validator's exit is the verdict; it writes what it decided and why beside it.
+          if ! python3 base/tools/ci_known_reds.py \
+                --summary release-check/summary.json \
+                --provenance release-check/provenance.json \
+                --shards shards \
+                --baseline base/.github/check-baseline.json \
+                --base-checkout base \
+                --candidate-checkout candidate \
+                --producer producer.json \
+                --out validation.json; then
+            echo "validator: not green" >> refusals
+          fi
+          test -f validation.json || echo "the validator wrote no validation.json" >> refusals
+      - name: Decide, and write the check run to publish
+        id: decide
+        if: always() && steps.record.outputs.head_sha != ''
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.record.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          cd "$OUT"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          env = os.environ
+          producer = json.load(open("producer.json"))
+          refusals = [line for line in open("refusals").read().splitlines() if line] if os.path.exists("refusals") else []
+          validation = json.load(open("validation.json")) if os.path.exists("validation.json") else None
+          merge = json.load(open("merge.json")) if os.path.exists("merge.json") else {}
+          passed = bool(isinstance(validation, dict) and validation.get("passed") is True) and not refusals
+          lines = []
+          if refusals:
+              lines.append("Refused:")
+              lines.extend("- " + r for r in refusals)
+          if isinstance(validation, dict):
+              lines.append("Validation: " + json.dumps({k: validation.get(k) for k in ("passed", "refused", "unexpected", "expected", "healed", "missing") if k in validation}))
+          p, c = producer["producer"], producer["controller"]
+          lines.append("Producer: run %s attempt %s, %s, workflow %s (%s)" % (p["run_id"], p["run_attempt"], p["url"], p["workflow_path"], p["workflow_id"]))
+          lines.append("Tested merge: %s, tree %s, onto base %s, head %s" % (merge.get("fetched"), merge.get("tree"), merge.get("first_parent"), merge.get("second_parent")))
+          lines.append("Controller: workflow %s at %s, run %s" % (c["workflow_ref"], c["workflow_sha"], c["url"]))
+          # The check run is named for the base it was judged against. A check run attaches to the commit, so without
+          # the base in the name a verdict earned against one branch's policy would satisfy a pull request of the same
+          # head into another; each branch rule requires its own name. A refused record with no approved base gets the
+          # bare name, which no rule requires.
+          base_ref = p["pull_request"].get("base_ref")
+          approved = base_ref in [b for b in env["APPROVED_BASES"].split(",") if b] if isinstance(base_ref, str) else False
+          body = {
+              "name": "Verdict for %s" % base_ref if approved else "Verdict",
+              "head_sha": env["HEAD_SHA"],
+              "status": "completed",
+              "conclusion": "success" if passed else "failure",
+              "details_url": c["url"],
+              # The decision's key on the head: which producer run and attempt it answers.
+              "external_id": "%s-%s" % (p["run_id"], p["run_attempt"]),
+              "output": {"title": "green: no unexpected failure" if passed else ("refused" if refusals else "not green"),
+                         "summary": "\n".join(lines)[:60000]},
+          }
+          json.dump(body, open("check-run.json", "w"))
+          print("conclusion=%s" % body["conclusion"])
+          print("decided=true")
+          PY
+      - name: Keep the verdict's record
+        id: keep
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          # Named for this controller attempt as well, since names cannot repeat within a run; publish reads it by id.
+          name: verdict-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-c${{ github.run_attempt }}
+          path: |
+            ${{ github.workspace }}/verdict/producer.json
+            ${{ github.workspace }}/verdict/merge.json
+            ${{ github.workspace }}/verdict/validation.json
+            ${{ github.workspace }}/verdict/refusals
+            ${{ github.workspace }}/verdict/check-run.json
+          if-no-files-found: ignore
+
+  publish:
+    name: publish the verdict
+    needs: judge
+    # Whatever became of judge, the head gets a result: judge's decision when judge made one and recorded it, and
+    # an explicit failure otherwise. The head is the one judge authenticated, or failing that the one GitHub's event
+    # named, which is the same commit GitHub itself ran the producer for.
+    if: always() && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: write
+      # The freshness read, GitHub's record of the producer's runs for the head, is an authenticated Actions read.
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - id: record
+        # The record judge uploaded, by its id: the one from this run's judge, whichever controller attempt ran it.
+        if: needs.judge.outputs.record_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.judge.outputs.record_id }}
+          path: verdict
+          # An artifact chosen by id lands in a folder named for it unless merged; publish reads verdict/check-run.json.
+          merge-multiple: true
+      - name: The check run on the pull request's head
+        shell: bash
+        env:
+          JUDGE_HEAD: ${{ needs.judge.outputs.head_sha }}
+          JUDGE_BASE: ${{ needs.judge.outputs.base_ref }}
+          JUDGE_CONCLUSION: ${{ needs.judge.outputs.conclusion }}
+          JUDGE_DECIDED: ${{ needs.judge.outputs.decided }}
+          JUDGE_RESULT: ${{ needs.judge.result }}
+          RECORD_FOUND: ${{ steps.record.outcome }}
+          EVENT_HEAD: ${{ github.event.workflow_run.head_sha }}
+          PRODUCER_RUN: ${{ github.event.workflow_run.id }}
+          PRODUCER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          env = os.environ
+          hex40 = re.compile(r"^[0-9a-f]{40}$")
+          head = env.get("JUDGE_HEAD") or env.get("EVENT_HEAD") or ""
+          if not hex40.match(head):
+              raise SystemExit("no head to publish on: %r" % head)
+          controller_url = "%s/%s/actions/runs/%s" % (env["GITHUB_SERVER_URL"], env["GITHUB_REPOSITORY"], env["GITHUB_RUN_ID"])
+          # judge's decision counts only when judge made one, recorded it, and the record names the same head and
+          # conclusion judge reported; anything else is published as a failure that says what went missing.
+          key = "%s-%s" % (env["PRODUCER_RUN"], env["PRODUCER_ATTEMPT"])
+          # The check run's name comes from the base judge authenticated, carried as a job output and not read from
+          # any artifact, so a missing record still fails under the branch's own name; the bare name is for a head
+          # whose base was unknown or not approved, and no branch rule requires it.
+          base = env.get("JUDGE_BASE") or ""
+          name = "Verdict for %s" % base if base else "Verdict"
+          body = None
+          if env.get("JUDGE_DECIDED") == "true" and env.get("RECORD_FOUND") == "success":
+              try:
+                  recorded = json.load(open("verdict/check-run.json"))
+                  if (recorded.get("head_sha") == head and recorded.get("conclusion") == env.get("JUDGE_CONCLUSION")
+                          and recorded.get("name") == name and recorded.get("external_id") == key):
+                      body = recorded
+              except (OSError, ValueError):
+                  body = None
+          if body is None:
+              body = {"name": name, "head_sha": head, "status": "completed", "conclusion": "failure",
+                      "details_url": controller_url, "external_id": key,
+                      "output": {"title": "the controller did not reach a decision",
+                                 "summary": "judge ended %s; decided %s; record %s. Producer run %s attempt %s. Controller run %s attempt %s at %s." % (
+                                     env.get("JUDGE_RESULT"), env.get("JUDGE_DECIDED") or "no", env.get("RECORD_FOUND"),
+                                     env["PRODUCER_RUN"], env["PRODUCER_ATTEMPT"], env["GITHUB_RUN_ID"], env["GITHUB_RUN_ATTEMPT"], env.get("GITHUB_WORKFLOW_SHA"))}}
+          body["output"]["summary"] = (body["output"]["summary"] + "\nPublished by controller run %s attempt %s." % (env["GITHUB_RUN_ID"], env["GITHUB_RUN_ATTEMPT"]))[:60000]
+          def gh(*args, data=None):
+              cmd = ["gh", "api"] + list(args)
+              return json.loads(subprocess.run(cmd, input=data, capture_output=True, text=True, check=True).stdout)
+          # One authoritative Verdict per head and base, decided from GitHub's own record of the producer's runs for
+          # this head, never from check-run data, which any workflow in the repository can write: a newer producer run
+          # for the same base, or a newer attempt of this one, means this decision is stale and is not published. A
+          # run GitHub associates with another base is another pull request's and leaves this one alone. The
+          # concurrency group makes this read-then-write serial per head.
+          mine = (int(env["PRODUCER_RUN"]), int(env["PRODUCER_ATTEMPT"]))
+          runs = gh("repos/%s/actions/workflows/%s/runs?head_sha=%s&event=pull_request&per_page=100" % (
+              env["GITHUB_REPOSITORY"], env["PRODUCER_WORKFLOW_ID"], head)).get("workflow_runs", [])
+          def same_base(run):
+              bases = {((pr.get("base") or {}).get("ref")) for pr in (run.get("pull_requests") or [])}
+              return int(run["id"]) == mine[0] or (base and base in bases)
+          newer = [r for r in runs if same_base(r) and (int(r["id"]), int(r.get("run_attempt") or 1)) > mine]
+          if newer:
+              print("producer run %s attempt %s is newer evidence for %s on %s; this decision for %s is not published" % (
+                  newer[0]["id"], newer[0].get("run_attempt"), head, base or "no approved base", key))
+              raise SystemExit(0)
+          # The check run to update, if any, comes from this controller run's own record of what it published, kept
+          # as an artifact of this run, never from check-run data, whose details link and external id are whatever
+          # their creator wrote. A later attempt of this run finds the newest record, verifies that it binds this head,
+          # name and key, and that the check run GitHub returns for its id still carries them, and updates that id;
+          # with no record, or a binding that does not hold, it creates a fresh check run and says so.
+          import io, zipfile
+          prefix = "published-%s-c" % key
+          artifacts = gh("repos/%s/actions/runs/%s/artifacts?per_page=100" % (env["GITHUB_REPOSITORY"], env["GITHUB_RUN_ID"])).get("artifacts", [])
+          mine_all = [a for a in artifacts if str(a.get("name", "")).startswith(prefix)]
+          records = sorted([a for a in mine_all if not a.get("expired")], key=lambda a: int(a["id"]))
+          # Why a retry ends in a fresh check run instead of an update is said in the check run itself, where the person
+          # reading the pull request sees it, not only in this job's log.
+          why_fresh = None
+          previous = None
+          if mine_all and not records:
+              why_fresh = "the earlier publication record of this controller run has expired"
+          if records:
+              try:
+                  archive = subprocess.run(["gh", "api", "repos/%s/actions/artifacts/%s/zip" % (env["GITHUB_REPOSITORY"], records[-1]["id"])],
+                                           capture_output=True, check=True).stdout
+                  previous = json.loads(zipfile.ZipFile(io.BytesIO(archive)).read("published.json"))
+              except (subprocess.CalledProcessError, zipfile.BadZipFile, KeyError, ValueError) as error:
+                  why_fresh = "the earlier publication record of this controller run could not be read (%s)" % type(error).__name__
+          target = None
+          if isinstance(previous, dict):
+              bound = (previous.get("head_sha") == head and previous.get("name") == name and previous.get("external_id") == key
+                       and str(previous.get("controller_run")) == env["GITHUB_RUN_ID"] and isinstance(previous.get("check_run_id"), int))
+              if not bound:
+                  why_fresh = "the earlier publication record of this controller run does not bind this head, name and key"
+              else:
+                  try:
+                      standing = gh("repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], previous["check_run_id"]))
+                      if standing.get("head_sha") == head and standing.get("name") == name and standing.get("external_id") == key:
+                          target = previous["check_run_id"]
+                      else:
+                          why_fresh = "check run %s from the earlier record no longer carries this head, name and key" % previous["check_run_id"]
+                  except subprocess.CalledProcessError as error:
+                      why_fresh = "check run %s from the earlier record could not be read" % previous["check_run_id"]
+                      print("%s: %s" % (why_fresh, str(error.stderr or "").strip()[:200]))
+          result = None
+          if target is not None:
+              update = {k: v for k, v in body.items() if k != "head_sha"}
+              try:
+                  result = gh("-X", "PATCH", "repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], target), "--input", "-", data=json.dumps(update))
+              except subprocess.CalledProcessError as error:
+                  why_fresh = "GitHub refused the update of check run %s" % target
+                  print("%s: %s" % (why_fresh, str(error.stderr or "").strip()[:200]))
+          if result is None:
+              if why_fresh:
+                  body["output"]["summary"] = (body["output"]["summary"] + "\nFresh check run on a retry: %s." % why_fresh)[:60000]
+              result = gh("-X", "POST", "repos/%s/check-runs" % env["GITHUB_REPOSITORY"], "--input", "-", data=json.dumps(body))
+          json.dump({"check_run_id": result.get("id"), "head_sha": head, "name": name, "external_id": key, "base": base,
+                     "controller_run": env["GITHUB_RUN_ID"], "controller_attempt": env["GITHUB_RUN_ATTEMPT"],
+                     "producer_run": env["PRODUCER_RUN"], "producer_attempt": env["PRODUCER_ATTEMPT"]}, open("published.json", "w"), indent=1)
+          print("check run %s: %s on %s (%s)" % (result.get("id"), result.get("conclusion"), result.get("head_sha"), "updated" if target is not None and result.get("id") == target else "created"))
+          PY
+      - name: Keep the publication record
+        # What this attempt published, for a later attempt of this run to find and update rather than double.
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: published-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-c${{ github.run_attempt }}
+          path: published.json
+          if-no-files-found: ignore
