@@ -396,6 +396,11 @@ unconfirmed and become the draft.
   one `message.edit_close` and clears the device row. A close with no answer
   keeps only the holder and that close's operation on the device; the next
   Edit of the message sends it again first.
+- **The edit mode going before the person ends it** (the Reader moves on
+  after `edit_open` committed) sends the one close too, and words Core has
+  not confirmed, or a Save not yet answered, stay on the device. If that
+  close gets no answer, they stay beside it: the next Edit sends the close,
+  then opens on those words, and a kept Save goes again as it was made.
 - **Escape**, closing the Reader or leaving the page sends nothing: the words
   stay on the device with their base, the session stays open in Core, and its
   hold lapses `edit_hold_ms` after the last renewal. The next Edit rejoins the

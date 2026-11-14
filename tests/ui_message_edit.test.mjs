@@ -825,6 +825,49 @@ test('empty and refused: blank words send nothing, and Core\'s refusal keeps the
   assert.equal(forbidden.w.edit('More'), false, 'and nothing more is written');
 });
 
+test('an Edit abandoned after edit_open, whose close got no answer, keeps its unconfirmed writing: the next Edit sends the close, then the Save or the words', async () => {
+  // A journaled Save whose request never reached Core: the row a lost Save leaves.
+  const core = new FakeCore(), store = deviceStore(core);
+  const first = writer(core, store);
+  const save = { v: 1, instance_id: INSTANCE, operation_id: 'op-save', kind: 'message.edit', target: { message_id: 'm1' },
+    expected: { authority: { authority_id: 'a', authority_epoch: 'e' }, message_revision: 1 }, args: { body: 'Ship 228 tomorrow', holder: 'h-kept' } };
+  store.held = { v: 1, binding: first.w.binding, base: { revision: 1, body: 'Ship 228 tomorow' }, value: 'Ship 228 tomorrow', pending: save, conflict: null,
+    holder: 'h-kept', session_revision: null, kept: null, closing: null };
+  // Edit opens (edit_open commits), and the Reader moves on before the field paints: the page abandons it, and its close is lost.
+  await first.w.load(); await first.w.start();
+  core.nextOf['message.edit_close'] = 'lost';
+  await first.w.abandon();
+  const lost = core.of('message.edit_close')[0];
+  assert.equal(store.held.closing, lost.operation_id, 'the close goes again next time');
+  assert.deepEqual(store.held.pending, save, 'and the journaled Save stays on the device beside it');
+  // The next Edit: the close first, then edit_open, then the same Save under its own operation, once.
+  const next = await opened(core, store);
+  assert.deepEqual(core.kinds, ['edit_open', 'edit_close', 'edit_close', 'edit_open', 'edit', 'edit_close']);
+  assert.equal(core.sent[2].operation_id, lost.operation_id);
+  assert.deepEqual(core.saves, [save], 'the Save goes as it was made, and only once');
+  assert.equal(core.current.body, 'Ship 228 tomorrow'); assert.equal(next.w.state, 'saved');
+  assert.equal(store.held, null, 'saved and closed: the row goes');
+  // Words typed and never confirmed by Core: the same, and they become the draft of the next Edit.
+  const typed = await opened();
+  typed.w.edit('Half a thought'); await typed.w.serial;
+  typed.core.nextOf['message.edit_close'] = 'lost';
+  await typed.w.abandon();
+  assert.equal(typed.store.held.value, 'Half a thought'); assert.equal(typeof typed.store.held.closing, 'string');
+  const again = await opened(typed.core, typed.store);
+  assert.deepEqual(typed.core.kinds, ['edit_open', 'edit_close', 'edit_close', 'edit_open', 'edit_draft']);
+  assert.equal(again.w.value, 'Half a thought'); assert.equal(typed.core.session.draft, 'Half a thought');
+  assert.notEqual(again.w.holder, typed.w.holder, 'a fresh holder for the fresh session');
+  // Words Core had confirmed are not kept: the next Edit opens on Core's own draft, with nothing saved again.
+  const kept = await opened();
+  kept.w.edit('Ship 228 tomorrow'); await kept.timers.advance(450);
+  kept.core.nextOf['message.edit_close'] = 'lost';
+  await kept.w.abandon();
+  assert.deepEqual(kept.store.held, { v: 1, binding: kept.w.binding, holder: kept.w.holder, closing: kept.core.of('message.edit_close')[0].operation_id });
+  await opened(kept.core, kept.store);
+  assert.deepEqual(kept.core.kinds, ['edit_open', 'edit_draft', 'edit_close', 'edit_close', 'edit_open']);
+  assert.equal(kept.core.saves.length, 0);
+});
+
 test('a close with no answer keeps only the holder and its operation; the next Edit sends it again first', async () => {
   const left = await opened();
   left.core.nextOf['message.edit_close'] = 'lost';

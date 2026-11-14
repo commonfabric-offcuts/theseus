@@ -103,8 +103,9 @@ export class MessageEditWriting {
     if (held) {
       if (held.v !== 1 || JSON.stringify(held.binding) !== JSON.stringify(this.binding)) throw Error('The kept edit belongs to another message.');
       this.holder = typeof held.holder === 'string' ? held.holder : null;
+      // A close that got no answer goes first (start). An abandoned Edit keeps its unconfirmed writing beside it.
       if (typeof held.closing === 'string') this.closing = held.closing;
-      else {
+      if (typeof held.value === 'string') {
         // Writing kept from an earlier Edit keeps the base it was written on: a
         // revision saved since then makes its Save a conflict, never an overwrite.
         // A row from before sessions has no holder and no kept words: its words are unconfirmed.
@@ -141,9 +142,9 @@ export class MessageEditWriting {
     if (this.closing) {
       const answer = await this.sendClose(this.closing);
       if (answer.outcome === 'unanswered') throw startFailure(answer.busy ? 'Theseus was busy' : 'Theseus did not answer');
-      // Closed, or refused (another device holds it, or the close can never succeed): a fresh row.
+      // Closed, or refused (another device holds it, or the close can never succeed): a fresh holder. The row is
+      // written again below without the close, keeping any writing it carried (a journaled Save goes in resume).
       this.closing = null; this.holder = null;
-      await this.clearDevice().catch(() => {});
     }
     if (!this.holder) {
       this.holder = crypto.randomUUID();
