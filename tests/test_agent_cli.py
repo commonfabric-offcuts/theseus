@@ -67,6 +67,20 @@ class AgentCLIBase(fixtures.ReaderCase):
         result = json.loads(text) if text else None
         return code, result, stderr.getvalue()
 
+    def records_beside_exposures(self):
+        """Every record but the exposures and the commit metadata of their write (its sequence, id and Health light): an agent's read records the messages it
+        was handed (docs/message-edit.md, "What counts as handed"), so a read that writes nothing else is checked by
+        this and by exposures()."""
+        commit = tuple('INSERT INTO "metadata" VALUES(\'%s\'' % key for key in ("commit_seq", "commit_id", "health_light"))
+        return tuple(line for line in self.records() if not line.startswith(('INSERT INTO "message_exposures"',) + commit))
+
+    def exposures(self, actor="agent-a"):
+        return {message: revision for message, revision in
+                self.sql("SELECT message_id,revision FROM message_exposures WHERE actor_id=?", (actor,))}
+
+    def handed(self, items):
+        return {item["source_ref"]["id"]: 1 for item in items}
+
     def view_cli(self, name, args=None, **kwargs):
         return self.invoke("view", {"name": name, "args": args or {}}, **kwargs)
 
@@ -92,15 +106,18 @@ class AgentCLIBase(fixtures.ReaderCase):
 
 class AgentCLIFixtureHealth(AgentCLIBase):
     def test_isolated_profiles_and_existing_store_contract_are_healthy(self):
-        before = self.records()
+        before = self.records_beside_exposures()
+        self.assertEqual((self.exposures("agent-a"), self.exposures("agent-b")), ({}, {}))
         for actor, path in self.profiles.items():
             profile = load_profile(path)
             self.assertEqual(profile.actor_id, actor)
             self.assertEqual(profile.instance_id, "test-instance")
             self.assertEqual(profile.binding, self.binding)
-        self.assertTrue(self.store.view("agent-a", "deliveries", {})["items"])
+        pending = self.store.view("agent-a", "deliveries", {})["items"]
+        self.assertTrue(pending)
         self.assertEqual(self.store.view("agent-b", "deliveries", {})["items"], [])
-        self.assertEqual(self.records(), before)
+        self.assertEqual(self.records_beside_exposures(), before)
+        self.assertEqual((self.exposures("agent-a"), self.exposures("agent-b")), (self.handed(pending), {}))
 
 
 class AgentCLICase(AgentCLIBase):
@@ -187,12 +204,14 @@ class AgentCLICase(AgentCLIBase):
             self.assertEqual(binding["actor_id"], "agent-a")
             self.assertEqual(binding["db_path"], str(self.path.resolve()))
             captured_bytes = json.dumps(binding, separators=(",", ":")).encode("utf-8")
-            before = self.records()
+            before = self.records_beside_exposures()
+            self.assertEqual(self.exposures(), {})
             code, page, _ = self.view_cli("deliveries", {"limit": 1}, binding=binding)
             self.assertEqual(code, 0)
             self.assertTrue(page["items"])
             self.assertEqual(json.dumps(binding, separators=(",", ":")).encode("utf-8"), captured_bytes)
-            self.assertEqual(self.records(), before)
+            self.assertEqual(self.records_beside_exposures(), before)
+            self.assertEqual(self.exposures(), self.handed(page["items"]))
 
     def test_current_wrapper_never_fills_or_refreshes_inner_command_pin(self):
         for pin in (None, dict(self.pin, authority_epoch="old-epoch")):
@@ -210,7 +229,8 @@ class AgentCLICase(AgentCLIBase):
 
     def test_delivery_pages_and_exact_source_reads_never_ack_or_wake(self):
         self.send("Second pending", addressees=["agent-a"])
-        before = self.records()
+        before = self.records_beside_exposures()
+        self.assertEqual(self.exposures(), {})
         with mock.patch("socket.socket", side_effect=AssertionError("CLI must not use a server")), \
                 mock.patch.object(Store, "runner_guard", side_effect=AssertionError("Read cannot start a runner")):
             code, first, _ = self.view_cli("deliveries", {"limit": 1})
@@ -225,7 +245,8 @@ class AgentCLICase(AgentCLIBase):
             code, source, _ = self.view_cli("source", {"source_ref": ref})
             self.assertEqual(code, 0)
             self.assertEqual(source, self.source(ref, actor="agent-a"))
-        self.assertEqual(self.records(), before)
+        self.assertEqual(self.records_beside_exposures(), before)
+        self.assertEqual(self.exposures(), self.handed(first["items"] + second["items"]))
 
     def test_addressed_source_does_not_grant_topic_history(self):
         # Historical addressed access survives later loss of reply permission.
@@ -446,13 +467,13 @@ class AgentCLICase(AgentCLIBase):
                 self.requests.append(count)
                 return b" " * (cap + 1)
         source = OverLimit()
-        before = self.records()
+        before = self.records_beside_exposures()
         code, result, _ = self.invoke("command", source=source)
         self.assertEqual(code, 2)
         self.assertFalse(result["recorded"])
         self.assertTrue(source.requests)
         self.assertTrue(all(0 < count <= cap + 1 for count in source.requests))
-        self.assertEqual(self.records(), before)
+        self.assertEqual(self.records_beside_exposures(), before)
 
         payload = json.dumps(self.request("view", {"name": "deliveries", "args": {"limit": 1}})).encode("utf-8")
         class FragmentedInput:
@@ -467,12 +488,15 @@ class AgentCLICase(AgentCLIBase):
                 self.position += len(piece)
                 return piece
         valid = FragmentedInput(payload)
+        self.assertEqual(self.exposures(), {})
         code, page, _ = self.invoke("view", source=valid)
         self.assertEqual(code, 0)
         self.assertTrue(page["items"])
         self.assertGreater(len(valid.requests), 1)
         self.assertEqual(valid.position, len(payload))
-        self.assertEqual(self.records(), before)
+        self.assertEqual(self.records_beside_exposures(), before)
+        self.assertEqual(self.exposures(), self.handed(page["items"]))
+        before = self.records()
 
         over = FragmentedInput(b" " * (cap + 20), piece_size=4096)
         code, result, _ = self.invoke("command", source=over)

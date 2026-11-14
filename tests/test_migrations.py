@@ -1918,6 +1918,15 @@ def everything(path):
         return {table: sorted(db.execute("SELECT * FROM " + table).fetchall(), key=repr) for table in tables if table != "metadata"}
 
 
+def horizon_taken(upgraded, stored):
+    """Takes the session step's horizon out of an upgraded store's rows: the one row a step up writes, the last
+    message sequence the older version had (0 with none), so every agent reader of those messages counts as handed
+    them (docs/message-edit.md, "What counts as handed")."""
+    sequences = [row[0] for row in stored.get("messages", [])]
+    assert upgraded.pop("message_edit_horizon") == [(max(sequences, default=0),)], "the horizon is the last message"
+    return upgraded
+
+
 def fresh_schema(directory):
     fresh = Path(directory) / "fresh"
     fresh.mkdir(exist_ok=True)
@@ -2528,8 +2537,8 @@ class Schema27Case(MigrationCase):
         self.assertEqual({table: [row[:-widened[table]] if table in widened else row for row in kept]
                           for table, kept in everything(self.path).items() if table in rows},
                          rows, "only the new columns are added, to messages and topics")
-        # The tables this step and the later ones add (the pipeline's among them) start empty.
-        for table, kept in everything(self.path).items():
+        # The tables this step and the later ones add (the pipeline's among them) start empty, but for the horizon.
+        for table, kept in horizon_taken(everything(self.path), rows).items():
             if table not in rows:
                 self.assertEqual(kept, [], table)
         for table in ("conversation_items", "conversation_takes", "conversation_waits"):
@@ -3111,7 +3120,7 @@ class ReactionStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_REACTIONS,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = everything(self.path)
+        upgraded = horizon_taken(everything(self.path), stored)
         # Each message gains whether it asks for a go-ahead, and none does.
         self.assertEqual([row[-1] for row in upgraded["messages"]], [0] * len(stored["messages"]))
         # Each delivery also gains its revision (the edit's step), the last column.
@@ -3185,7 +3194,7 @@ class OrderStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_ORDER,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = everything(self.path)
+        upgraded = horizon_taken(everything(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
                           for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
@@ -3245,7 +3254,7 @@ class StacksStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_STACKS,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = everything(self.path)
+        upgraded = horizon_taken(everything(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
                           for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
@@ -3314,7 +3323,7 @@ class BlocksStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_BLOCKS,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = everything(self.path)
+        upgraded = horizon_taken(everything(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
                           for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
@@ -3390,10 +3399,12 @@ class FoldStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_FOLD,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = everything(self.path)
+        upgraded = horizon_taken(everything(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column, and the edit's table starts empty.
         upgraded["deliveries"] = [row[:-1] for row in upgraded["deliveries"]]
         self.assertEqual(upgraded.pop("message_revisions"), [])
+        # The session step's tables start empty too.
+        self.assertEqual((upgraded.pop("message_edit_sessions"), upgraded.pop("message_exposures")), ([], []))
         self.assertEqual(upgraded, stored, "every row is kept, sqlite_sequence's place for the acts included")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         folded = self.fold(message)
@@ -3457,11 +3468,13 @@ class DraftStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_DRAFT,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        after = everything(self.path)
+        after = horizon_taken(everything(self.path), stored)
         self.assertEqual(after["memory_revisions"], sorted((row + (0,) for row in stored["memory_revisions"]), key=repr))
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr))
-        self.assertEqual({k: v for k, v in after.items() if k not in ("memory_revisions", "message_revisions")},
+        # The edit's and the session step's tables start empty.
+        self.assertEqual([after.pop(table) for table in ("message_revisions", "message_edit_sessions", "message_exposures")], [[], [], []])
+        self.assertEqual({k: v for k, v in after.items() if k != "memory_revisions"},
                          {k: v for k, v in stored.items() if k != "memory_revisions"})
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         page = self.store.view("agent-a", "memory_current", {"item_id": "page"})

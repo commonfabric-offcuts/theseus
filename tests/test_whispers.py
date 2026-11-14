@@ -837,7 +837,10 @@ MESSAGE_READS = {
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
                                  "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE", 22),
     "aim_next/message_edit.py": ("one message's words, a revision of them or every revision, and its attachments, each read for a message "
-                                 "the caller reached through _message_access", 4),
+                                 "the caller reached through _message_access; the horizon the version 41 step sets, a number; the stored "
+                                 "quotes of messages whose marked words an answer already carries, read only to record what was handed; "
+                                 "the author kind and sequence of messages so marked, to record an exposure; and an edited message's "
+                                 "sequence against the horizon; none of them shown", 8),
     "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
                                           "a pipeline item's message sources, which _source_rows read through _message_access, the message a person's "
                                           "whisper replies to, to see that it goes to that message's author, and an answer take's reply, "
@@ -874,7 +877,8 @@ MESSAGE_READS = {
                              "number then read through _message_access; sources and gathering shown through _message_access; "
                              "the operator's import of the hand-kept page, which refuses an agent's whisper and a person's outside it; "
                              "the word a move is made on (item 170), read after _because refused an agent's whisper, the message it replies to read on the record "
-                             "only, and its place shown through _message_access", 9),
+                             "only, and its place shown through _message_access; that word's parent id, read only to refuse a move on a "
+                             "held message, never shown", 10),
 }
 
 

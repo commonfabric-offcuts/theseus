@@ -205,7 +205,7 @@ class HandedCase(test_message_hold.HoldCase):
         self.assertEqual(self.exposures(self.m), [])
         self.committed(self.save("Deploy at 6"))
         after = self.saw("agent-b", m3)
-        self.assertEqual([(q["excerpt"], q.get("withheld")) for q in after["quotes"]], [("Deploy at 5", False)])
+        self.assertEqual([(q["excerpt"], "withheld" in q) for q in after["quotes"]], [("Deploy at 5", False)])
         self.assertEqual(self.exposures(self.m), [("agent-b", self.m, 1)])
 
     def test_reply_lines_record_only_what_the_line_reaches(self):

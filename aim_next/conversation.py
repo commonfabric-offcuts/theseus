@@ -515,21 +515,21 @@ class Conversation:
                 "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
 
     def _source_quotes(self, db, actor, stored):
-        """A message's stored quotes as the actor reads them (whispers.redact_quotes), each carrying withheld. A quote of a
+        """A message's stored quotes as the actor reads them (whispers.redact_quotes). A quote of a
         message is marked as that message's words at the revision it names (1 when it names none), from its source as
         stored, before redaction, so handing it records the quoted message; a quote of a held message comes with no
-        excerpt."""
+        excerpt and withheld: true, and every other quote is as stored, with no withheld key."""
         quotes = []
         for kept, quote in zip(stored, whispers.redact_quotes(db, actor, stored)):
             source = kept.get("source") if isinstance(kept, dict) else None
             if not isinstance(quote, dict) or not isinstance(source, dict) or source.get("kind") != "message":
-                quotes.append(dict(quote, withheld=False) if isinstance(quote, dict) else quote)
+                quotes.append(quote)
             elif withheld(source.get("id")):
                 quotes.append(dict(quote, excerpt="", withheld=True))
             else:
                 number = source.get("revision")
                 number = number if isinstance(number, int) and not isinstance(number, bool) and number > 0 else 1
-                quotes.append(dict(quote, excerpt=mark(source.get("id"), number, quote.get("excerpt")), withheld=False))
+                quotes.append(dict(quote, excerpt=mark(source.get("id"), number, quote.get("excerpt"))))
         return quotes
 
     def _view_source(self, db, actor, args):
