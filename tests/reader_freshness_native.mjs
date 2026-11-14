@@ -309,7 +309,15 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     const a = await page('public-send-a', null, true, {newWindow:true});
     const b = await page('public-send-b', null, true, {newWindow:true});
     // Source 0 is the message above Source 1 on the page, its stack's head (C2).
-    await a.open(0); await replace(a, 'Exact public Send under a held foreground read'); await b.open(1);
+    await a.open(0); await replace(a, 'Exact public Send under a held foreground read');
+    // C2's Send folds Source 0 for the person (a reply folds what it answers, docs/reply-stacks.md), and a's
+    // press on its stack's head row unfolds it, for them on every device: b draws it whole once that act
+    // reaches it, moving Source 1 down the page. b opens Source 1 once it shows Source 0 as a does, so no
+    // redraw lands between its hit-test and its press.
+    const folded = `(card => card.dataset.folded === 'true' || Boolean(card.querySelector(':scope > .stack-head > .stack-folded')))(document.querySelector('#messages .message-card[data-id="${facts.sources[0].id}"]'))`;
+    const shown = await a.evaluate(folded);
+    await until(async () => await b.evaluate(folded) === shown, 'peer shows Source 0 as the sender left it');
+    await b.open(1);
     await until(() => b.evaluate('!document.querySelector("#next-message").disabled'), 'peer has a message above');
     const holdId = operation('send-foreground'), admissionBefore = await control({method:'admission_events'});
     await control({method:'read_delay',ms:25});
