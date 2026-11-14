@@ -12,6 +12,8 @@ export function fixtureControl(fixture) {
   fixture.stdin.on('error', error => { errors += `stdin: ${error.message}\n`; });
   createInterface({ input: fixture.stdout }).on('line', line => {
     const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
+    // Node can report the exit before the last answers are read; their requests were refused at exit.
+    if (!request && ended) return;
     if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
   });
   // How the fixture ended, held from its launch: its exit code, or the signal that ended it.
