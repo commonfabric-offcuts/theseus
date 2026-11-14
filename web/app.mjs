@@ -2013,6 +2013,12 @@ async function initialize() {
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
+  // An article's native secondary press can collapse an existing selection
+  // before contextmenu fires. Keep those words selected for the browser menu.
+  $('messages').addEventListener('mousedown', event => {
+    if ((event.button === 2 || (event.button === 0 && event.ctrlKey)) &&
+        event.target.closest('.message-card') && window.getSelection()?.isCollapsed === false) event.preventDefault();
+  });
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();
