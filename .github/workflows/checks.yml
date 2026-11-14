@@ -126,7 +126,7 @@ jobs:
 
   combine:
     name: the whole run's summary
-    needs: check
+    needs: [plan, check]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -137,9 +137,16 @@ jobs:
           path: shards
       - name: Fold the shards' summaries into one
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
         run: |
           set -euo pipefail
           mkdir -p release-check
+          export MERGE_TREE="$(git rev-parse 'HEAD^{tree}')"
           python3 - shards release-check/summary.json <<'PY'
           import glob, json, os, sys
           shards_dir, out = sys.argv[1], sys.argv[2]
@@ -174,6 +181,23 @@ jobs:
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
           })
           json.dump(combined, open(out, "w"), indent=1)
+          # Beside the summary, what a validator binds to: this run and attempt, the event's base and head, the merge
+          # commit and its tree, each shard's own source identity and steps, and the plan the shards were dealt from.
+          env = os.environ
+          provenance = {
+              "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
+                      "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY")},
+              "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
+              "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
+              "merge": {"sha": env.get("GITHUB_SHA"), "tree": env.get("MERGE_TREE")},
+              "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
+              "required": required,
+              "plan": json.loads(env.get("PLAN_SHARDS") or "[]"),
+              "shards": [{"artifact": os.path.relpath(p, shards_dir).split(os.sep)[0], "commit": d.get("commit"), "tree_unchanged": d.get("tree_unchanged"),
+                          "tools": d.get("tools"), "steps": [step["name"] for step in d.get("steps", [])], "refused": d.get("refused")}
+                         for p, d in zip(paths, docs)],
+          }
+          json.dump(provenance, open(os.path.join(os.path.dirname(out), "provenance.json"), "w"), indent=1)
           print(json.dumps({"commit": combined["commit"], "steps": len(steps), "missing": missing, "failed": combined["failed"], "passed": combined["passed"]}))
           sys.exit(0 if combined["passed"] else 1)
           PY
