@@ -81,14 +81,36 @@ name, phase, engine and expectedFailure, including null/false defaults. This is
 an explicit inventory reviewed against the harness sources, not a count or an
 attempt to parse arbitrary JavaScript names. Changing a test plan requires its
 own reviewed policy update. A candidate cannot edit its own exceptions. The
-frozen source set covers both Python and mjs test definitions/helpers, the
-producer tools, and checks.yml. Product web/ and aim_next/ code remains free to
-change. Source-set additions/deletions also require a reviewed complete plan. This includes
-files already added on the authenticated event base: an older snapshot cannot
-implicitly authorize or omit them. Bootstrap additions with runnable checks need
-a complete transition that lists their expected identities. A transition may include `retired_sources` (default empty): that list must
-exactly match the paths present on the event base and absent from the plan. A
-retained older review cannot implicitly retire a later base addition.
+frozen source set covers **every file under tests/** (including JSON, SQL and
+media), everything under tools/, checks.yml, the four documentation inputs
+(tools, agent-cli, agent-guide, team-assessments), and all six bin/aim-next*
+launchers. Literal references in read-bearing test modules conservatively add
+other non-product repository files. The policy's exact event-base bytes are a
+separate authority binding, rather than a recursively self-hashing test input.
+Product web/ and aim_next/ code remains free to change.
+
+`tools/ci-input-reads.json` declares recognized filesystem read expressions,
+including import aliases and each repeated occurrence. Python uses AST
+signatures; Node uses balanced read-call spelling. `ci_input_reads.read_calls`
+returns the signatures and expressions for a file. A new expression fails with
+its filename, expression and an instruction to declare repository inputs or its
+generated/system/product scope. Add any non-product source dependencies to the
+entry's inputs list; these files become frozen irrespective of extension or
+location. This manifest and its scanner are trusted event-base verifier code,
+not candidate-supplied permissions. Updating a declaration is itself a producer
+tool change and requires the corresponding reviewed plan/controller update.
+The initial declarations cover the production and bootstrap sources; dynamic
+expressions are a review obligation, not a claim that arbitrary Python/JS can be
+fully analyzed statically. In particular this validator is not a sandbox for
+hostile product code that mutates a test runner or assertion library.
+
+Source-set additions/deletions also require a reviewed complete plan. This
+includes files already added on the authenticated event base: an older snapshot
+cannot implicitly authorize or omit them. Bootstrap additions with runnable
+checks need a complete transition that lists their expected identities. A
+transition may include `retired_sources` (default empty): that list must exactly
+match paths present on the event base and absent from the plan. A retained older
+review cannot implicitly retire a later base addition.
 
 Optional transitions contains `{review, plan}` entries. Each plan is a complete
 six-field policy snapshot (version, source_commit, source_hashes, required,

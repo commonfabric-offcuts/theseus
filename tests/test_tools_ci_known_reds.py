@@ -35,11 +35,12 @@ class Evidence(unittest.TestCase):
         self.command('init', '-q')
         paths = set(release_check.harnesses()) | {'tests/reader_inline_native.mjs', 'tools/ci_known_reds.py',
                                                 'tools/known_reds.py', 'tools/release_check.py',
-                                                'tests/test_example.py', ci.PRODUCER_WORKFLOW}
+                                                'tests/test_example.py', 'tests/fixtures/at_names.json', 'docs/tools.md',
+                                                'tools/ci_input_reads.py', 'tools/ci-input-reads.json', ci.PRODUCER_WORKFLOW}
         for path in paths:
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes((ci.ROOT / path).read_bytes() if path.startswith('tools/') or path == release_check.REPLAY_FILE
+            target.write_bytes((ci.ROOT / path).read_bytes() if path.startswith('tools/') or path in (release_check.REPLAY_FILE, 'tests/fixtures/at_names.json')
                                else b'# stand-in source\nassert actual == expected\n' if path.endswith('.py')
                                else b'name: Checks\n' if path == ci.PRODUCER_WORKFLOW
                                else b'// stand-in source\nassert.equal(actual, expected);\nawait helper();\n')
@@ -991,6 +992,95 @@ class Evidence(unittest.TestCase):
         result = self.validate()
         self.assertTrue(result['passed'])
         self.assertEqual(result['retired_base_sources'], [added])
+
+    def test_expected_json_fixture_cannot_be_changed_to_hide_a_regression(self):
+        path = self.repo / 'tests/fixtures/at_names.json'
+        fixture = ci.read_json(path)
+        fixture['cases'][0][1].append('auditor')
+        write(path, fixture)
+        self.advance_candidate('change data rather than the checked product')
+        self.refused('no complete matching plan')
+
+    def test_documentation_read_by_tests_cannot_be_changed(self):
+        path = self.repo / 'docs/tools.md'
+        path.write_text('Replaced expectations from documentation.\n')
+        self.advance_candidate('change documentation used as test input')
+        self.refused('no complete matching plan')
+
+    def test_new_opaque_file_read_requires_a_declaration(self):
+        files = {'tests/new.py': b'from pathlib import Path\nPath(computed_name).read_text()\n'}
+        _, errors = ci.ci_input_reads.discover(files, {})
+        self.assertTrue(errors)
+        self.assertIn('undeclared file read', errors[0])
+        self.assertIn('declare its repository inputs', errors[0])
+
+    def test_declared_non_product_read_extends_the_frozen_inputs(self):
+        files = {'tests/new.py': b'from pathlib import Path\nPath("docs/new.md").read_text()\n',
+                 'docs/new.md': b'new expected behavior', 'web/app.mjs': b'product'}
+        calls, _ = ci.ci_input_reads.read_calls('tests/new.py', files['tests/new.py'].decode())
+        declarations = {'tests/new.py': {signature: {'scope': 'repository', 'inputs': ['docs/new.md']}
+                                        for signature in calls}}
+        frozen, errors = ci.ci_input_reads.discover(files, declarations)
+        self.assertEqual(errors, [])
+        self.assertIn('docs/new.md', frozen)
+        self.assertNotIn('web/app.mjs', frozen)
+
+    def test_aliased_python_and_node_file_reads_require_declarations(self):
+        for path, text in [('tests/new.py', b'from builtins import open as reader\nreader(computed_name)\n'),
+                           ('tests/new.mjs', b'import {readFileSync as reader} from "node:fs"; reader(computedName);')]:
+            with self.subTest(path=path):
+                _, errors = ci.ci_input_reads.discover({path: text}, {})
+                self.assertTrue(errors)
+                self.assertIn('undeclared file read', errors[0])
+
+    def test_duplicate_opaque_read_is_a_new_read_obligation(self):
+        first = 'from pathlib import Path\nPath(computed_name).read_text()\n'
+        calls, _ = ci.ci_input_reads.read_calls('tests/new.py', first)
+        declarations = {'tests/new.py': {signature: {'scope': 'generated/system/product', 'inputs': []}
+                                        for signature in calls}}
+        _, errors = ci.ci_input_reads.discover({'tests/new.py': (first + 'Path(computed_name).read_text()\n').encode()}, declarations)
+        self.assertTrue(errors)
+
+    def test_new_read_in_a_reviewed_plan_still_needs_a_declaration(self):
+        path = self.repo / 'tests/test_example.py'
+        path.write_text('from pathlib import Path\nPath(computed_name).read_text()\n')
+        self.advance_candidate('new external read without input review')
+        with self.assertRaisesRegex(ci.Refused, 'undeclared file read'):
+            self.candidate_plan()
+
+    def test_deeply_nested_json_is_refused_with_a_reason(self):
+        path = self.folder / 'nested.json'
+        path.write_text('[' * 2000 + '0' + ']' * 2000)
+        with self.assertRaisesRegex(ci.Refused, 'unreadable JSON'):
+            ci.read_json(path)
+
+    def test_policy_cannot_omit_fixture_or_documentation_inputs(self):
+        for path in ('tests/fixtures/at_names.json', 'docs/tools.md'):
+            with self.subTest(path=path):
+                policy = copy.deepcopy(self.policy)
+                policy['source_hashes'].pop(path)
+                with self.assertRaisesRegex(ci.Refused, 'omits test or producer definitions'):
+                    ci.load_policy(policy, self.base)
+
+    def test_nested_json_cli_preserves_a_refusal_result_file(self):
+        self.protected_controller()
+        self.flush()
+        self.producer.write_text('[' * 2000 + '0' + ']' * 2000)
+        out = self.folder / 'nested-verdict.json'
+        pyc = str(self.folder / 'nested-cli-pyc')
+        env = dict(os.environ, **self.env, PYTHONPYCACHEPREFIX=pyc)
+        result = subprocess.run([sys.executable, '-I', '-X', 'pycache_prefix=' + pyc,
+                                 str(ci.ROOT / 'tools/ci_known_reds.py'),
+                                 '--summary', str(self.folder / 'summary.json'),
+                                 '--provenance', str(self.folder / 'provenance.json'), '--shards', str(self.shards),
+                                 '--baseline', str(self.base / '.github/check-baseline.json'),
+                                 '--base-checkout', str(self.base), '--candidate-checkout', str(self.repo),
+                                 '--producer', str(self.producer), '--out', str(out)],
+                                cwd=self.repo, env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        verdict = ci.read_json(out)
+        self.assertFalse(verdict['passed'])
+        self.assertIn('unreadable JSON', verdict['refused'])
 
     def test_controller_cli_uses_producer_record_from_a_separate_context(self):
         head = self.protected_controller()

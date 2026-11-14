@@ -21,7 +21,7 @@ import sys
 # on sys.path, including when invoked with python3 -I.
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools import known_reds, release_check
+from tools import ci_input_reads, known_reds, release_check
 
 NATIVE = known_reds.NATIVE
 PHASES = [phase + ':' + engine for phase in ('run', 'runAnswering', 'runSending')
@@ -48,7 +48,7 @@ def require(condition, message):
 def read_json(path):
     try:
         return json.loads(Path(path).read_text())
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RecursionError) as error:
         raise Refused('unreadable JSON %s: %s' % (path, error))
 
 
@@ -61,8 +61,8 @@ def git(root, *args):
 @lru_cache(maxsize=4096)
 def source(root, commit, path):
     require(isinstance(commit, str) and SHA.fullmatch(commit), 'invalid source commit')
-    require(isinstance(path, str) and path.startswith(('tests/', 'tools/', '.github/'))
-            and '..' not in Path(path).parts, 'invalid source path')
+    require(isinstance(path, str) and bool(path) and not Path(path).is_absolute()
+            and '..' not in Path(path).parts and '.git' not in Path(path).parts, 'invalid source path')
     return git(root, 'show', commit + ':' + path)
 
 
@@ -216,9 +216,13 @@ def reviewed_definitions(policy, root, commit, approved_base=None, retired_sourc
 
 @lru_cache(maxsize=4096)
 def definition_paths(root, commit):
-    tests = git(root, 'ls-tree', '-r', '--name-only', commit, 'tests').decode().splitlines()
-    tools = git(root, 'ls-tree', '-r', '--name-only', commit, 'tools').decode().splitlines()
-    return frozenset({path for path in tests if path.endswith(('.mjs', '.py'))} | set(tools) | {PRODUCER_WORKFLOW})
+    paths = git(root, 'ls-tree', '-r', '--name-only', commit).decode().splitlines()
+    files = {path: source(root, commit, path) for path in paths}
+    declarations = read_json(ROOT / 'tools/ci-input-reads.json')
+    frozen, errors = ci_input_reads.discover(files, declarations)
+    require(not errors, 'test input read audit: ' + '; '.join(errors[:5]))
+    return frozen | {PRODUCER_WORKFLOW}
+
 
 
 def select_plan(policy, root, commit, approved_base=None):
@@ -539,7 +543,8 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
     baseline = Path(baseline).resolve()
     relative = str(baseline.relative_to(Path(base_root).resolve()))
     require(baseline.read_bytes() == source(base_root, base['sha'], relative), 'policy differs from event base')
-    for path in ('tools/ci_known_reds.py', 'tools/known_reds.py', 'tools/release_check.py'):
+    for path in ('tools/ci_known_reds.py', 'tools/known_reds.py', 'tools/release_check.py',
+                 'tools/ci_input_reads.py', 'tools/ci-input-reads.json'):
         require((ROOT / path).read_bytes() == source(base_root, base['sha'], path), 'validator differs from event base: ' + path)
     known = load_policy(read_json(baseline), base_root)
     policy, transition_review = select_plan(known, candidate_root, commit, base['sha'])
@@ -677,7 +682,7 @@ def validate(summary_path, provenance_path, shards, baseline, base_root, candida
             paths = [history_path(folder, row.get(name)) for name in ('summary', 'provenance', 'shards')]
             try:
                 result = _validate_attempt(*paths, baseline, base_root, candidate_root, prior_env)
-            except (Refused, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            except (Refused, OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError) as error:
                 result = {'passed': False, 'raw_passed': False, 'refused': str(error)}
             attempts.append(dict(result, attempt=row['attempt']))
     attempts.append(dict(current, attempt=number))
@@ -712,7 +717,7 @@ def main(argv=None):
     try:
         result = validate(args.summary, args.provenance, args.shards, args.baseline, args.base_checkout, args.candidate_checkout,
                           history=args.history, producer=args.producer)
-    except (Refused, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+    except (Refused, OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError) as error:
         result = {'passed': False, 'refused': str(error)}
     args.out.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, sort_keys=True))
