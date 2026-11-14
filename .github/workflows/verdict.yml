@@ -477,8 +477,13 @@ jobs:
           import io, zipfile
           prefix = "published-%s-c" % key
           artifacts = gh("repos/%s/actions/runs/%s/artifacts?per_page=100" % (env["GITHUB_REPOSITORY"], env["GITHUB_RUN_ID"])).get("artifacts", [])
-          mine_all = [a for a in artifacts if str(a.get("name", "")).startswith(prefix)]
-          records = sorted([a for a in mine_all if not a.get("expired")], key=lambda a: int(a["id"]))
+          # The newest record is the one from the highest controller attempt, read from the name's numeric suffix:
+          # artifact ids are not in attempt order, and a record must also name the attempt its name claims.
+          def attempt_of(artifact):
+              suffix = str(artifact.get("name", ""))[len(prefix):]
+              return int(suffix) if suffix.isdigit() else None
+          mine_all = [a for a in artifacts if str(a.get("name", "")).startswith(prefix) and attempt_of(a) is not None]
+          records = sorted([a for a in mine_all if not a.get("expired")], key=attempt_of)
           # Why a retry ends in a fresh check run instead of an update is said in the check run itself, where the person
           # reading the pull request sees it, not only in this job's log.
           why_fresh = None
@@ -495,7 +500,8 @@ jobs:
           target = None
           if isinstance(previous, dict):
               bound = (previous.get("head_sha") == head and previous.get("name") == name and previous.get("external_id") == key
-                       and str(previous.get("controller_run")) == env["GITHUB_RUN_ID"] and isinstance(previous.get("check_run_id"), int))
+                       and str(previous.get("controller_run")) == env["GITHUB_RUN_ID"] and isinstance(previous.get("check_run_id"), int)
+                       and str(previous.get("controller_attempt")) == str(attempt_of(records[-1])))
               if not bound:
                   why_fresh = "the earlier publication record of this controller run does not bind this head, name and key"
               else:
