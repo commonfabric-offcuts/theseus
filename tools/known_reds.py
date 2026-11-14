@@ -27,6 +27,11 @@ FAILED_EXIT = 1
 # only after their browser and fixture are closed and the fixture's own assertions held, and it fails only when a case
 # did (tests/reader_persistence_native.mjs, tests/reader_openings_native.mjs, tests/webkit_native.mjs).
 END_LINE = "AssertionError [ERR_ASSERTION]: see native.json for exact failing assertions"
+# tests/reader_compose_native.mjs attests its end in its native.json instead: each of these planned phases (a function
+# of the harness, in an engine) returned and its browser closed, in this order, and then the harness marked itself
+# completed; and its fixture's exit, held from launch, was code 0 with no signal.
+COMPOSE_PHASES = ["run:chromium", "run:webkit", "runAnswering:chromium", "runAnswering:webkit",
+                  "runSending:chromium", "runSending:webkit"]
 WHY_LENGTH = 300
 
 
@@ -86,13 +91,11 @@ def ended_cases(out, result, whose):
 
     result is the summary's entry for the step. Its harness must have exited as a run that ended on failed cases does,
     left a readable results file the summary's counts were read from, closed its browser, had its fixture exit as that
-    harness expects, and reached its last line; every failed case must be named, and named once among the run's cases,
-    so a name stands for exactly one case."""
+    harness expects, and reached its last line (the composer's harness: recorded that every planned phase completed);
+    every failed case must be named, and named once among the run's cases, so a name stands for exactly one case."""
     name = result.get("name")
     step = NATIVE[name]
     said = "%s %s" % (whose, name)
-    if step.harness == release_check.COMPOSE:
-        raise Refused("%s cannot show its run ended: %s records no fixture exit" % (said, step.harness))
     if result.get("exit") != FAILED_EXIT:
         raise Refused("%s exited %r, not %d as a harness that ended on failed cases does" % (said, result.get("exit"), FAILED_EXIT))
     evidence, log = out / "native" / step.name, out / (name + ".log")
@@ -109,7 +112,10 @@ def ended_cases(out, result, whose):
         raise Refused("%s: the summary's counts are not those of its evidence in %s" % (said, evidence))
     if not counts["browser_closed"]:
         raise Refused("%s: the browser did not close" % said)
-    if step.results == "results.json":
+    if step.harness == release_check.COMPOSE:
+        _compose_ended(report, said)
+        ended = True
+    elif step.results == "results.json":
         # tests/reader_native.mjs serves its page itself, so it has no fixture process; its last act prints its results.
         final = _final_json(text)
         ended = isinstance(final, dict) and final.get("closed") is True and final.get("results") == results
@@ -127,6 +133,18 @@ def ended_cases(out, result, whose):
         if not isinstance(case, str) or not case or names.count(case) != 1:
             raise Refused("%s: the failed case %r is not named once among its cases" % (said, case))
     return failed
+
+
+def _compose_ended(report, said):
+    """Refused unless the composer's native.json says every planned phase ran and its fixture exited 0, no signal."""
+    code, signal = report.get("fixtureExitCode"), report.get("fixtureExitSignal", "none recorded")
+    if type(code) is not int or code != 0 or signal is not None:
+        raise Refused("%s: its fixture exited %r (signal %r), not 0 with no signal" % (said, code, signal))
+    for field in ("plannedPhases", "completedPhases"):
+        if report.get(field) != COMPOSE_PHASES:
+            raise Refused("%s: its %s are %r, not %s" % (said, field, report.get(field), ", ".join(COMPOSE_PHASES)))
+    if report.get("harnessCompleted") is not True:
+        raise Refused("%s: the harness did not complete (harnessCompleted %r)" % (said, report.get("harnessCompleted")))
 
 
 def candidate_failures(summary, out):

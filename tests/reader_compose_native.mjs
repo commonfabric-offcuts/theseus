@@ -22,7 +22,7 @@
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
+import { fixtureControl } from './fixture_control.mjs';
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -43,35 +43,28 @@ const until = async (p, expression, description, arg, timeout = 8000) => {
 };
 
 const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--media', '--agent-colors'], { cwd: root });
-let serial = 0, fixtureErrors = '';
-const requests = new Map();
-fixture.stderr.on('data', data => { fixtureErrors += data; });
-createInterface({ input: fixture.stdout }).on('line', line => {
-  const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
-  if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
-});
-fixture.once('exit', code => { for (const request of requests.values()) request.reject(Error(`Fixture exited ${code}: ${fixtureErrors}`)); });
-const control = data => new Promise((resolve, reject) => {
-  const id = ++serial; requests.set(id, { resolve, reject });
-  fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
-});
+const { control, exit: fixtureExit, errors: fixtureErrors } = fixtureControl(fixture);
 
-const facts = await control({ method: 'ready' });
-const agent = facts.agent;
+// What the fixture is seeded with, set by seed() inside the run below, so a seeding failure still leaves native.json.
+let facts, agent, first, second, log;
 // Two long messages from an agent, newest last, so a reply to either is
 // offered to that agent; and the outcome's pipeline on, so the ⋯ offers it.
 const agentMessage = async (n, body) => (await control({ method: 'agent_message', operation_id: `compose-agent-${n}`, body })).result.message_id;
-const first = await agentMessage(1, Array.from({ length: 60 }, (_, i) => `First agent passage ${i + 1}, a sentence long enough to wrap on a phone.`).join(' '));
-const second = await agentMessage(2, Array.from({ length: 60 }, (_, i) => `Second agent passage ${i + 1}, a sentence long enough to wrap on a phone.`).join(' '));
-await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'compose-pipeline', target: { workspace_id: 'w1' }, args: { enabled: true } });
 // A real team in the topic: the agent, the person and six more.
 const TEAM = ['aim-core', 'aim-lead', 'aim-spec', 'aim-ux', 'fable', 'warp'];
-await control({ method: 'topic_state', operation_id: 'compose-team', topic_id: 't1', participants: TEAM, args: { state: 'active', note: '' } });
 // A log as agents send them, in a topic of its own: one code block, one
 // passage in the Reader, taller than any screen.
-await control({ method: 'navigation_topics', topics: [{ id: 'compose-log', title: 'Build log' }] });
 const LOG = ['The build log, whole:', '', '```', ...Array.from({ length: 70 }, (_, i) => `step ${i + 1}: compiled module ${i + 1} of 70 in ${100 + i} ms`), '```', '', 'That is all of it.'].join('\n');
-const log = (await control({ method: 'agent_message', operation_id: 'compose-log', topic_id: 'compose-log', join: true, source: 'topic', body: LOG })).result.message_id;
+async function seed() {
+  facts = await control({ method: 'ready' });
+  agent = facts.agent;
+  first = await agentMessage(1, Array.from({ length: 60 }, (_, i) => `First agent passage ${i + 1}, a sentence long enough to wrap on a phone.`).join(' '));
+  second = await agentMessage(2, Array.from({ length: 60 }, (_, i) => `Second agent passage ${i + 1}, a sentence long enough to wrap on a phone.`).join(' '));
+  await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'compose-pipeline', target: { workspace_id: 'w1' }, args: { enabled: true } });
+  await control({ method: 'topic_state', operation_id: 'compose-team', topic_id: 't1', participants: TEAM, args: { state: 'active', note: '' } });
+  await control({ method: 'navigation_topics', topics: [{ id: 'compose-log', title: 'Build log' }] });
+  log = (await control({ method: 'agent_message', operation_id: 'compose-log', topic_id: 'compose-log', join: true, source: 'topic', body: LOG })).result.message_id;
+}
 
 const SHAPES = {
   phone: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
@@ -1690,32 +1683,37 @@ async function runSending() {
   });
 }
 
-// Every browser it opened is closed again, which the release check reads.
-let browserClosed = true;
+// How the run ended, which tools/known_reds.py reads from native.json: every browser it opened is closed again
+// (browserClosed); the planned phases, each a function run in each engine, and those that returned and whose browser
+// then closed, in order; harnessCompleted, set only once every planned phase returned; and the fixture's own exit code
+// and signal, held from its launch. Cleanup runs after an interruption too and writes native.json, but leaves
+// harnessCompleted false and the run's own error in place.
+const ENGINES = ['chromium', 'webkit'];
+const PHASES = [[run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
+const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
+let browserClosed = true, harnessCompleted = false;
 try {
-  for (engine of ['chromium', 'webkit']) {
-    browserClosed = false;
-    browser = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });
-    try { await run(); } finally { await browser.close(); browserClosed = true; }
+  await seed();
+  for (const [phase, before] of PHASES) {
+    if (before) await before();
+    for (engine of ENGINES) {
+      browserClosed = false;
+      browser = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });
+      try { await phase(); } finally { await browser.close(); browserClosed = true; }
+      completedPhases.push(`${phase.name}:${engine}`);
+    }
   }
-  await control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING });
-  for (engine of ['chromium', 'webkit']) {
-    browserClosed = false;
-    browser = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });
-    try { await runAnswering(); } finally { await browser.close(); browserClosed = true; }
-  }
-  for (engine of ['chromium', 'webkit']) {
-    browserClosed = false;
-    browser = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });
-    try { await runSending(); } finally { await browser.close(); browserClosed = true; }
-  }
+  harnessCompleted = true;
 } finally {
   fixture.stdin.end();
-  await new Promise(resolve => fixture.exitCode === null ? fixture.once('exit', resolve) : resolve());
+  const { code: fixtureExitCode, signal: fixtureExitSignal } = await fixtureExit;
   await mkdir(evidence, { recursive: true });
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, measured, shots }, null, 2));
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
+    fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), measured, shots }, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);
   for (const m of measured) console.log(`lines ${m.engine} ${m.shape} ${m.scheme} ${m.state}: ${m.lines} (${m.visible}px at ${m.lineHeight}px)`);
-  process.exitCode = failed.length ? 1 : 0;
+  // An interrupted run keeps its own error; asserting here would replace it.
+  if (harnessCompleted) assert.equal(fixtureExitCode, 0, `the fixture exited ${fixtureExitCode ?? fixtureExitSignal}: ${fixtureErrors()}`);
 }
+assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');
