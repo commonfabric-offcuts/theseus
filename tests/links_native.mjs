@@ -482,6 +482,8 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
       await p.evaluate(`(()=>{const find=words=>{const walk=document.createTreeWalker(document.querySelector('#source-body'),NodeFilter.SHOW_TEXT);
         for(let node;(node=walk.nextNode());)if(node.data===words)return node;throw new Error('no text '+words)};
         getSelection().setBaseAndExtent(find(${JSON.stringify(from)}),${fromAt},find(${JSON.stringify(to)}),${toAt});return true})()`);
+      // Selection changes reach the Reader as a later task; press once its pill shows.
+      await until(() => p.evaluate(`!document.querySelector('#quote-selection').hidden`), 'the quote pill shows for ' + excerpt);
       await p.point('#quote-selection');
       quoted.push(excerpt);
       const writing = quoted.map(words => words.split('\n').map(line => `> ${line}`).join('\n')).join('\n\n') + '\n\n';
