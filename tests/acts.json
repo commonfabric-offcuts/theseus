@@ -12390,7 +12390,7 @@
    "break": [
     [
      "aim_next/cli.py",
-     "HELD if wait.get(\"withheld\") else wait[\"excerpt\"]",
+     "held_words(wait, \"excerpt\")",
      "wait[\"excerpt\"]"
     ]
    ],
@@ -12847,6 +12847,202 @@
    "check": {
     "native": "reading",
     "case": "reading edit timing the Reader closed while edit_open is out"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An agent's opening.publish quoting a held message is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/openings.py",
+     "            if started[\"withheld\"]:\n                # An agent cannot start",
+     "            if False:\n                # An agent cannot start"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An agent's move on a because-word its author has open in Edit is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "for word in (row[\"id\"], parent):",
+     "for word in (parent,):"
+    ]
+   ],
+   "check": {
+    "python": "test_pipeline_go_ahead.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An agent's move on a word that replies to a held message is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "for word in (row[\"id\"], parent):",
+     "for word in (row[\"id\"],):"
+    ]
+   ],
+   "check": {
+    "python": "test_pipeline_go_ahead.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A person moves on a word that is held in Edit",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        if actor_kind(db, actor) == \"agent\":\n            # An agent never moves on a word",
+     "        if True:\n            # An agent never moves on a word"
+    ]
+   ],
+   "check": {
+    "python": "test_pipeline_go_ahead.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An abandoned Edit keeps a Save not yet answered and words Core has not confirmed",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "const keep = Boolean(this.pending) || (this.dirty && this.value !== this.kept);",
+     "const keep = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The next Edit reads the writing kept beside a close that got no answer, and sends it after the close",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      if (typeof held.value === 'string') {",
+     "      else if (typeof held.value === 'string') {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The pipeline's held line of an ask held in Edit prints (held)",
+   "break": [
+    [
+     "aim_next/cli_outcome.py",
+     "_words(held, \"line\")",
+     "held[\"line\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_pipeline.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An ask about an item, held in Edit, prints (held) in the pipeline",
+   "break": [
+    [
+     "aim_next/cli_outcome.py",
+     "_words(ask, \"excerpt\")[:120]",
+     "ask[\"excerpt\"][:120]"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_pipeline.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Only a person's message is recorded as handed, so an agent's read of an agent's words writes nothing",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if row[\"kind\"] == \"human\" and highest",
+     "if highest"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A new edit session's revision goes on from the last session's",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "revision, taken = (session[\"revision\"] + 1 if session else 1), False",
+     "revision, taken = 1, False"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Views show a lapsed message's words before any write releases it (held_ids reads the clock)",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "\"WHERE state='open' AND released_ms IS NULL AND renewed_ms>?\", (now - _hold_ms(),))}",
+     "\"WHERE state='open' AND released_ms IS NULL AND renewed_ms>?\", (0,))}"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A command's hold check reads the clock, so a lapsed message is not held (is_held)",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "(message_id, now - _hold_ms())).fetchone() is not None",
+     "(message_id, 0)).fetchone() is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A stored quote's head is its first non-empty line cut to 40 characters",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            return _collapsed(line)[:40]\n",
+     "            return _collapsed(excerpt)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Release hands work back only for rows in active groups",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "                lowest[row[\"recipient_id\"]] = min(row[\"seq\"], lowest.get(row[\"recipient_id\"], row[\"seq\"]))\n",
+     "                pass\n            lowest[row[\"recipient_id\"]] = min(row[\"seq\"], lowest.get(row[\"recipient_id\"], row[\"seq\"]))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
    }
   }
  ]
