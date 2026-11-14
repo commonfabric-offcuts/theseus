@@ -108,6 +108,7 @@ jobs:
           producer = {
               "producer": {"run_id": str(run.get("id")), "run_attempt": str(run.get("run_attempt")), "event": run.get("event"),
                            "conclusion": run.get("conclusion"), "workflow_id": run.get("workflow_id"), "workflow_path": run.get("path"),
+                           "workflow_name": run.get("name"),
                            "head_sha": head_sha, "head_branch": run.get("head_branch"), "head_repository": head_repo,
                            "created_at": run.get("created_at"), "url": run.get("html_url"),
                            "pull_request": {"number": pr.get("number"), "head_sha": pr_head, "base_ref": base_ref, "base_sha": base_sha}},
@@ -258,12 +259,16 @@ jobs:
             refuse "the pull request changes the producer's code: $(echo "$changed" | tr '\n' ' '); that change lands first, through its own review"
           fi
           git worktree add -q "$OUT/base" "$BASE_SHA"
-          python3 - "$OUT/merge.json" "$MERGE_SHA" "$rebuilt" <<'PY'
+          # The authenticated merge goes into producer.json as well: that file is the validator's one handshake.
+          python3 - "$OUT/merge.json" "$OUT/producer.json" "$MERGE_SHA" "$rebuilt" <<'PY'
           import json, sys
           doc = json.load(open(sys.argv[1]))
-          doc["fetched"] = sys.argv[2]
-          doc["rebuilt"] = sys.argv[3]
+          doc["fetched"] = sys.argv[3]
+          doc["rebuilt"] = sys.argv[4]
           json.dump(doc, open(sys.argv[1], "w"), indent=1)
+          producer = json.load(open(sys.argv[2]))
+          producer["merge"] = doc
+          json.dump(producer, open(sys.argv[2], "w"), indent=1)
           PY
           echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Classify the run with the base's own validator
