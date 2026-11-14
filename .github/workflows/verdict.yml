@@ -480,10 +480,15 @@ jobs:
           # The newest record is the one from the highest controller attempt, read from the name's numeric suffix:
           # artifact ids are not in attempt order, and a record must also name the attempt its name claims.
           def attempt_of(artifact):
+              # ASCII digits only: int() would also read other scripts' digits, or raise on a superscript.
               suffix = str(artifact.get("name", ""))[len(prefix):]
-              return int(suffix) if suffix.isdigit() else None
-          mine_all = [a for a in artifacts if str(a.get("name", "")).startswith(prefix) and attempt_of(a) is not None]
-          records = sorted([a for a in mine_all if not a.get("expired")], key=attempt_of)
+              return int(suffix) if re.fullmatch(r"[0-9]+", suffix) else None
+          current_attempt = int(env["GITHUB_RUN_ATTEMPT"])
+          # Only the controller's own upload step names these records, from its attempt number, so a record naming an
+          # attempt after this one is not one of ours and is left alone.
+          mine_all = [a for a in artifacts if str(a.get("name", "")).startswith(prefix)
+                      and attempt_of(a) is not None and attempt_of(a) <= current_attempt]
+          records = sorted([a for a in mine_all if not a.get("expired")], key=lambda a: (attempt_of(a), len(str(a.get("name", "")))))
           # Why a retry ends in a fresh check run instead of an update is said in the check run itself, where the person
           # reading the pull request sees it, not only in this job's log.
           why_fresh = None
@@ -506,7 +511,7 @@ jobs:
                   why_fresh = "the earlier publication record of this controller run does not bind this head, name and key"
               elif not named:
                   why_fresh = "the earlier publication record named for attempt %s says it was written by attempt %s" % (
-                      attempt_of(records[-1]), str(previous.get("controller_attempt"))[:20])
+                      attempt_of(records[-1]), re.sub(r"\s+", " ", str(previous.get("controller_attempt")))[:20])
               else:
                   try:
                       standing = gh("repos/%s/check-runs/%s" % (env["GITHUB_REPOSITORY"], previous["check_run_id"]))
