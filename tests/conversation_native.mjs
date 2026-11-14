@@ -84,6 +84,9 @@ export async function conversationChecks({ check, page, until, control, view, fa
 
   await check('conversation the page is a topic page, messages above the writing box, and a card arrives waiting for an answer, three quiet dots pulsing in turn, and turns Answered live, the dots gone', async () => {
     const p = await open('conversation-page', '/?conversation=w1');
+    // Exercise both motion modes independently of the machine's preference.
+    // The first half proves the staggered pulse; below, reduce proves three still dots.
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
     await until(() => quiet(p, `!document.querySelector('#conversation-empty').hidden`), 'the empty conversation says what it is for');
     assert.match(await p.evaluate(`document.querySelector('#conversation-empty').textContent`), new RegExp(`^Nothing here yet\\.Write below .* ${agent} answers each one here`));
     assert.equal(await p.evaluate(`document.querySelector('#topic-title').textContent`), 'Conversation');
