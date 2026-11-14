@@ -7,7 +7,7 @@ import uuid
 
 from . import delivery
 from .authority import RunnerGuard
-from .contract import StoreError
+from .contract import LIMITS, StoreError
 from . import work
 from .wake_health import ANSWERING
 from .health import REASON
@@ -267,7 +267,18 @@ class Runner:
             row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " AND " + self._execution_allowed(db) + " ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
         else:
             row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " AND " + self._execution_allowed(db) + " ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
-        return row[0] if row else None
+        # The earliest end of a hold on work for a recipient this query serves (docs/message-edit.md): the runner
+        # sleeps until it, and its claim_wakes releases the lapse. Pending counts and due times play no part.
+        end = db.execute("SELECT min(s.renewed_ms) FROM message_edit_sessions s INDEXED BY held_sessions WHERE s.state='open' AND s.released_ms IS NULL "
+                         "AND EXISTS (SELECT 1 FROM deliveries d CROSS JOIN recipient_schedule ON recipient_schedule.recipient_id=d.recipient_id "
+                         "WHERE d.message_id=s.message_id AND d.state='held' AND recipient_schedule.enabled=1 AND " + ANSWERING + " AND "
+                         + self._execution_allowed(db) + ("" if routed is None else " AND d.recipient_id IN (SELECT value FROM json_each(:routed))") + ")",
+                         {} if routed is None else {"routed": routed}).fetchone()[0]
+        due = row[0] if row else None
+        if end is not None:
+            end += LIMITS["edit_hold_ms"]
+            due = end if due is None else min(due, end)
+        return due
 
     def claim_wakes(self, guard, runner_token, recipients, limit=1, lease_ms=20000):
         """Claim due wakes for the routed recipients only; nobody else is claimed or attempted."""
@@ -282,6 +293,9 @@ class Runner:
             until = now + lease_ms
             if state["lease_until_ms"] < until:
                 raise RunnerError("LEASE_TOO_SHORT", "Renew the singleton before claiming this full lease", retryable=True)
+            # A hold that has lapsed is released before anything is chosen (docs/message-edit.md): its work is pending
+            # again and due now, so this same claim can hand it.
+            released = self._release_lapsed(db, now) > 0
             # Each routed recipient is one primary-key probe; people and agents
             # without a route are never read, claimed or attempted here.
             rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING + " AND " + self._execution_allowed(db) + " ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
@@ -313,7 +327,7 @@ class Runner:
                                "handed_seq": row["handed_seq"],
                                "route_binding": {"instance_id": self.instance_id, "actor_id": row["recipient_id"], "db_path": str(self.path),
                                                  "authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"]}})
-            return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims) or settled
+            return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims) or settled or released
         return self._effect(guard, action)
 
     def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None, reason=None, from_turn=None):
@@ -407,6 +421,13 @@ class Runner:
         # The notice named only deliveries above the claim's handed_seq. If that
         # work was handed back since the claim, this turn was never told of it.
         stale_start = attempt["handed_seq"] is not None and row["handed_seq"] is None
+        # Work released from a hold since the claim was never named by its notice, though the claim captured past it
+        # (the claim read last_seq while it was held): it is handled as a stale start. Wake attempts never change, so
+        # only the release time can say so (docs/message-edit.md).
+        stale_start = stale_start or (pending and db.execute(
+            "SELECT 1 FROM message_edit_sessions s INDEXED BY released_sessions CROSS JOIN deliveries d ON d.message_id=s.message_id "
+            "AND d.recipient_id=? AND d.state='pending' AND d.seq<=? WHERE s.released_ms>=? LIMIT 1",
+            (attempt["recipient_id"], attempt["captured_seq"], attempt["started_ms"])).fetchone() is not None)
         retry, handed, due = row["retry_count"], None, None
         if pending and (late or stale_start):
             if late:

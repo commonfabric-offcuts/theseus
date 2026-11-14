@@ -4,6 +4,7 @@ import json
 
 from .contract import LIMITS, Refusal, _body, _bounded_page, _identifier, _page_size, _prefix, _json, _revision
 from .delivery import _now_ms
+from .message_edit import held_refusal
 from .sources import NAMED, seen_topics
 from . import whispers
 from .standing_conversation import partial
@@ -147,7 +148,11 @@ class Openings:
         writing = {"body": saved["body"], "attachments": saved["attachments"], "quotes": [], "addressees": []}
         if not saved["body"].strip() and not saved["attachments"] and source is not None:
             # Started from a message with nothing written: its words open the topic, quoted.
-            writing["body"], excerpt = _quoted(self._source(db, actor, {"kind": "message", "id": source})["body"])
+            started = self._source(db, actor, {"kind": "message", "id": source})
+            if started["withheld"]:
+                # An agent cannot start a topic from the words of a message its author has open in Edit.
+                raise held_refusal(source)
+            writing["body"], excerpt = _quoted(started["body"])
             if excerpt:
                 writing["quotes"] = [{"source": {"kind": "message", "id": source}, "excerpt": excerpt}]
         if writing["body"].strip() or writing["attachments"]:

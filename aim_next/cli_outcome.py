@@ -10,6 +10,14 @@ import json
 from pathlib import Path
 import time
 
+# What an excerpt or line of a held message shows in place of its words (docs/message-edit.md): its author has it open
+# in Edit. Every printer of an entry that carries `withheld` prints it through _words.
+HELD = "(held)"
+
+
+def _words(entry, key):
+    return HELD if entry.get("withheld") else entry[key]
+
 
 def _at(ms):
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0)) if isinstance(ms, int) else "(time unknown)"
@@ -124,7 +132,7 @@ class PipelineVerbs:
             self.out.plain("     " + words)
         for held in (item.get("piece") or {}).get("held") or []:
             # An ask that holds the piece this item is in, until it is answered (item 259).
-            self.out.plain("     held: waiting on %s — %s (%s)" % (", ".join(held["waiting_on"]), held["line"], held["message_id"]))
+            self.out.plain("     held: waiting on %s — %s (%s)" % (", ".join(held["waiting_on"]), _words(held, "line"), held["message_id"]))
         sources = item.get("sources") or {}
         shown = []
         for source in sources.get("shown", [])[:6]:
@@ -140,7 +148,7 @@ class PipelineVerbs:
             more = sources.get("count", 0) - len(shown)
             self.out.plain("     from " + "; ".join(shown) + (" and %d more" % more if more > 0 else ""))
         for ask in item.get("asks") or []:
-            self.out.plain("     %s asked you %s in %s: %s" % (ask["by"], _at(ask["since_ms"]), ask["topic_title"], ask["excerpt"][:120]))
+            self.out.plain("     %s asked you %s in %s: %s" % (ask["by"], _at(ask["since_ms"]), ask["topic_title"], _words(ask, "excerpt")[:120]))
 
     def do_pipeline(self):
         options = self.options

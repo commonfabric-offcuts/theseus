@@ -5,10 +5,10 @@ import json
 import time
 import uuid
 
-from .contract import LIMITS, Refusal, _identifier, _json, _page_size, _prefix
+from .contract import LIMITS, Refusal, StoreError, _identifier, _json, _page_size, _prefix
 from .marks import MARKED
 from .topic_reading import unread_groups
-from .message_edit import current_words, words_at
+from .message_edit import current_words, held_refusal, holding, is_held, mark, plain, words_at
 
 
 DELIVERY_SCHEMA = [
@@ -152,10 +152,17 @@ class Delivery:
         db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
         delivery_id = "d-" + uuid.uuid4().hex
+        # A message its author has open in Edit is holding (docs/message-edit.md): an agent's unsettled delivery of it
+        # waits in the state 'held', counted nowhere, and its release counts it as an arrival. The one session row's
+        # primary key answers whether it is holding.
+        held = not settled and holding(db, message_id) and db.execute("SELECT kind FROM actors WHERE id=?", (recipient,)).fetchone()[0] == "agent"
         seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision) VALUES (?,?,?,?,?,?,?)",
-                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "pending", revision)).lastrowid
+                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "held" if held else "pending", revision)).lastrowid
         db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
-        if settled:
+        if held:
+            # Its release counts it and reads the recipient's schedule, so the schedule row exists from now (it counts nothing).
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) SELECT id,enabled FROM actors WHERE id=? ON CONFLICT DO NOTHING", (recipient,))
+        if settled or held:
             return delivery_id
         db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=COALESCE(first_pending_seq,?) WHERE id=?", (seq, group))
         db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) SELECT id,enabled FROM actors WHERE id=? ON CONFLICT DO NOTHING", (recipient,))
@@ -180,6 +187,16 @@ class Delivery:
             return dict(result, already_acknowledged=True), []
         if not row["active"]:
             return dict(result, reason="not_pending"), []
+        if row["state"] == "held":
+            # Its message is open in Edit (docs/message-edit.md): held is not pending, and is never acknowledged. A hold
+            # that has lapsed is released first, in this transaction, and the row is pending again.
+            now = _now_ms()
+            if is_held(db, row["message_id"], now):
+                raise held_refusal(row["message_id"])
+            self._release(db, row["message_id"], now)
+            row = db.execute("SELECT d.*,g.active FROM deliveries d JOIN delivery_groups g ON g.id=d.group_id WHERE d.id=?", (delivery_id,)).fetchone()
+            if row["state"] != "pending":
+                raise StoreError("A held delivery's message is not holding")
         self._acknowledge(db, actor, row)
         return dict(result, acknowledged=True, already_acknowledged=False), [{"kind": "delivery", "id": delivery_id, "version": 2}]
 
@@ -367,11 +384,13 @@ class Delivery:
                                   "substr(CAST(t.title AS BLOB),1,1025) AS title_prefix FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.id=?",
                                   (row["message_id"],)).fetchone())
         # A delivery shows the message's latest words; a correction shows the words of its own revision (message_edit.py).
+        # The words are read plain and cut, and only the cut is marked as handed (the boundary, message_edit.py).
         if row["revision"] == 1:
-            body, message["revision"], message["edited_ms"] = current_words(db, row["message_id"])
+            body, message["revision"], message["edited_ms"] = current_words(db, row["message_id"], plain=True)
         else:
-            (body, message["edited_ms"]), message["revision"] = words_at(db, row["message_id"], row["revision"]), row["revision"]
-        message["body"], message["preview"], message["whisper"] = body[:256], len(body) > 256, bool(message["whisper"])
+            (body, message["edited_ms"]), message["revision"] = words_at(db, row["message_id"], row["revision"], plain=True), row["revision"]
+        message["body"], message["preview"], message["whisper"] = (mark(row["message_id"], message["revision"], body[:256]), len(body) > 256,
+                                                                   bool(message["whisper"]))
         title, truncated = _prefix(message.pop("title_prefix"))
         item = {key: row[key] for key in ("seq", "id", "message_id", "recipient_id", "state")}
         if row["revision"] != 1:
@@ -395,6 +414,9 @@ class Delivery:
             self._message_access(db, actor, row["message_id"])
         except Refusal:
             raise Refusal("FORBIDDEN", "No readable delivery")
+        if row["state"] == "held":
+            # Its message is open in Edit: the delivery comes back once its author saves or leaves it (docs/message-edit.md).
+            raise held_refusal(row["message_id"])
         return {"instance_id": self.instance_id, "item": self._delivery_item(db, row, active=bool(row["active"]))}
 
     def _view_deliveries(self, db, actor, args):
@@ -420,7 +442,7 @@ class Delivery:
                         continue
                     item = self._delivery_item(db, row)
                     candidate = dict(answer, items=answer["items"] + [item], next_cursor=_cursor(group_id, row["seq"]))
-                    if len(_json(candidate).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+                    if len(_json(plain(candidate)).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
                         if not answer["items"]:
                             raise Refusal("SUMMARY_ITEM_TOO_LARGE", "This preview exceeds the configured response limit")
                         answer["next_cursor"] = _cursor(*last)

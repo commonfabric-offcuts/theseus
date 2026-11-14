@@ -33,7 +33,7 @@ class UsageError(ValueError):
     pass
 
 
-from .cli_outcome import PipelineVerbs, register as register_pipeline
+from .cli_outcome import PipelineVerbs, _words as held_words, register as register_pipeline
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 
 
@@ -175,6 +175,8 @@ def _output(stdout, stderr, result, code):
 
 
 LEGACY_VERBS = ("binding", "view", "command")
+# What a held message shows in place of its words (docs/message-edit.md): its author has it open in Edit.
+HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
@@ -827,7 +829,8 @@ class Agent(PipelineVerbs, TargetVerbs):
                                                                  ", ".join(str(n) for n in take["numbers"]), when, part))
         for wait in waits:
             if wait["item_id"] == item["id"] or wait["ask_message_id"] == item["id"]:
-                self.out.plain("  [waiting] on %s %s (ask %s): %s" % (wait["on"], _since(wait["since_ms"]), wait["ask_message_id"], wait["excerpt"]))
+                self.out.plain("  [waiting] on %s %s (ask %s): %s" % (wait["on"], _since(wait["since_ms"]), wait["ask_message_id"],
+                                                                     held_words(wait, "excerpt")))
 
     def topic_lines(self, items):
         for item in items:
@@ -960,6 +963,9 @@ class Agent(PipelineVerbs, TargetVerbs):
         about = item.get("about")
         if about and not about.get("hidden"):
             self.out.plain('  (about %s by %s in "%s")' % (about["message_id"], about["author_id"], _one_line(about["topic_title"], 60)))
+        if item.get("withheld"):
+            # Its author has it open in Edit: its words come back once they save or leave it (docs/message-edit.md).
+            self.out.plain("  " + HELD_WORDS)
         # A message of attachments alone, such as a screenshot, has no words to print.
         for line in body.split("\n") if body else ():
             self.out.plain("  " + line)
@@ -1552,6 +1558,9 @@ class Agent(PipelineVerbs, TargetVerbs):
             return False
         result = self.read(watch, "delivery", {"delivery_id": change["resource_id"]})
         error = result.get("error")
+        if error and error.get("code") == "MESSAGE_HELD":
+            # Its author opened Edit on it: it arrives as a delivery once they save or leave the edit.
+            return False
         if error:
             self.notice(watch, {"event": "delivery", "change": change, "error": error},
                         "delivery unavailable (%s)  [%s]" % (error.get("code"), change["resource_id"]))
@@ -1572,6 +1581,10 @@ class Agent(PipelineVerbs, TargetVerbs):
                 return
             result = self.read(watch, "delivery", {"delivery_id": identity})
             error = result.get("error")
+            if error and error.get("code") == "MESSAGE_HELD":
+                self.notice(watch, {"event": "delivery", "change": change, "error": error},
+                            "delivery held while its author edits it  [%s]" % identity)
+                return
             if error:
                 # Still one notice for this delivery, without what could not be read.
                 self.notice(watch, {"event": "delivery", "change": change, "error": error},

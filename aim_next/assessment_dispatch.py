@@ -145,13 +145,13 @@ def read_tool(core, identity, request):
         page = core.view('topic_messages',query)
         # Keep the original cursor even when a page contains only private messages.
         return {'instance_id':page['instance_id'],'next_cursor':page['next_cursor'],
-            'items':[{k:m.get(k) for k in ('id','seq','author_id','body','preview','reply_to')}
+            'items':[{k:m.get(k) for k in ('id','seq','author_id','body','preview','reply_to','withheld')}
                      for m in page['items'] if not m.get('whisper')]}
     if action == 'source' and set(args) == {'action','message_id'}:
         source = core.view('source',{'source_ref':{'kind':'message','id':args['message_id']}})
         if source.get('topic_id') != record['topic_id'] or source.get('whisper'):
             raise DispatchError('assessment_read_scope')
-        return dict({k:source.get(k) for k in ('instance_id','topic_id','seq','author','body','reply_to')},
+        return dict({k:source.get(k) for k in ('instance_id','topic_id','seq','author','body','reply_to','withheld')},
                     source_ref=source['source_ref'])
     raise DispatchError('unsupported_assessment_read')
 

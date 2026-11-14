@@ -1289,8 +1289,10 @@ function editOpener(item, anchor) {
 // dossier row's ⋯ the Reader opens on the message, as a card's click opens
 // it, and goes straight to its edit mode, as Edit page hands a page to its
 // sheet; from the Reader's ⋯ the Reader turns to it in place. The edit mode
-// has its own writing (message-edit-writing.mjs), kept on the device and
-// saved with message.edit; the reply beside it is left as it is. Save,
+// has its own writing (message-edit-writing.mjs): it takes the message's edit
+// session in Core, which holds the message from agents, keeps its draft in Core
+// and on the device, and is saved with message.edit; the reply beside it is
+// left as it is. The edit mode paints only once Core opened the session. Save,
 // Cancel, Use saved and Escape end it, and the focus goes back to where Edit
 // was chosen: a Reader opened for the edit closes onto the card.
 async function editMessage(id, opener) {
@@ -1308,18 +1310,21 @@ async function editMessage(id, opener) {
   const source = p.source;
   const writing = new MessageEditWriting({ message: { id, revision: revisionOf(source), body: source.body ?? '', attachments: source.attachments ?? [] },
     bootstrap, api, store, authority: () => registry.runtime.current,
+    ...(Number.isSafeInteger(bootstrap.limits?.edit_hold_ms) ? { holdMs: bootstrap.limits.edit_hold_ms } : {}),
     read: async () => {
       const latest = checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass: 'foreground' }), bootstrap.instance_id);
       return { revision: revisionOf(latest), body: latest.body };
     } });
   const session = messageEdit = { id, writing, opener, opened, presentation: p };
-  // The edit mode shows only once the words kept on this device are read.
-  try { await writing.load(); } catch (error) { messageEdit = null; writing.close(); reader.notice(error); return; }
-  if (!shown() || !registry.isSourceCurrent(p)) { messageEdit = null; writing.close(); return; }
+  // The edit mode shows only once the words kept on this device are read, and Core opened the session.
+  try { await writing.load(); await writing.start(); } catch (error) { messageEdit = null; writing.close(); reader.notice(error); return; }
+  // The Reader moved on while Core answered: the session it opened is closed again, once.
+  if (!shown() || !registry.isSourceCurrent(p)) { messageEdit = null; await writing.abandon(); writing.close(); return; }
   const view = new MessageEdit({ host: $('message-edit'), writing, doc: document, done: state => run(() => finishEdit(session, state)) });
   reader.notice('');
   reader.startEdit({ field: view.field, save: () => run(() => writing.save()), leave: ({ closing = false } = {}) => leaveEdit(session, { closing }) });
-  try { await writing.resume(); } catch (error) { if (messageEdit === session) { reader.notice(error); leaveEdit(session); } }
+  try { await writing.resume(); }
+  catch (error) { if (messageEdit === session) { reader.notice(error); await writing.abandon(); leaveEdit(session); } }
 }
 // The edit mode goes: its writing stays on the device unless it ended
 // (saved, cancelled, discarded). A Reader opened for the edit closes, giving
@@ -1665,6 +1670,8 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
     refresh: async (key, version, read, current) => {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
+      // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
+      if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
       if (key !== 'neighbors') return views.refresh(key, version, read, current);
       const p = registry.current;
       if (!p || p.source.source_ref.kind !== 'message') return true;
@@ -2100,7 +2107,8 @@ async function initialize() {
   $('more-messages').onclick = () => run(() => listPage('messages', true)); $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
-  window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); });
+  // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
+  window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   // What is drawn above the messages after they paint, in their column: the
   // marks line ("1 marked unread · Read it") and, on a conversation page, its

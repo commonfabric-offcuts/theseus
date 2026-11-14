@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import secrets
 import sqlite3
 import uuid
 from typing import Any
@@ -45,10 +46,11 @@ from .reactions import Reactions, REACTION_SCHEMA
 from .outline_order import OutlineOrder, ORDER_SCHEMA
 from .stacks import Stacks, ACT_FRESH
 from .blocking import Blocking, BLOCKS_SCHEMA
-from .message_edit import MessageEdit, MESSAGE_EDIT_UP
+from .message_edit import MessageEdit, EDIT_SESSION_UP, MESSAGE_EDIT_UP
+from . import message_edit
 
 
-SCHEMA_VERSION = "40"
+SCHEMA_VERSION = "41"
 
 
 def commit_identity_intact(metadata):
@@ -84,6 +86,8 @@ def _connect(path, busy_ms=250):
                          isolation_level=None, timeout=busy_ms / 1000.0)
     try:
         db.row_factory = sqlite3.Row
+        # The words helper's SQL function, on every connection (message_edit.py).
+        message_edit.register(db)
         db.execute("PRAGMA synchronous=EXTRA")
         db.execute("PRAGMA fullfsync=ON")
         db.execute("PRAGMA foreign_keys=ON")
@@ -122,7 +126,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -433,6 +437,11 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                 fence.close()
 
     def view(self, actor, view_name, args):
+        return self._view(actor, view_name, args)
+
+    def _view(self, actor, view_name, args, between=None, marks=True):
+        """One view, read in one transaction. between and marks are test seams (docs/message-edit.md): between() runs
+        after phase 1's rollback and before phase 2, and marks=False runs the handler with nothing marked or recorded."""
         db = None
         fence = None
         try:
@@ -456,7 +465,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             handler = getattr(self, "_view_" + view_name, None)
             if handler is None:
                 raise Refusal("UNKNOWN_VIEW", "Unsupported view")
-            return handler(db, actor, args)
+            return self._hand_over(db, fence, actor, kind, args, handler, between, marks)
         except Refusal as exc:
             return {"instance_id": self.instance_id, "error": {"code": exc.code, "message": exc.message, "retryable": False}}
         except AuthorityError as exc:
@@ -472,6 +481,52 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                 db.close()
             if fence is not None:
                 fence.close()
+
+    def _read_once(self, db, actor, kind, args, handler, marks):
+        """Run the handler once with the read context set, and walk its answer at the boundary: the answer with this
+        run's markers taken out, the (message_id, revision) pairs it handed, and the clock it read at."""
+        now = _delivery._now_ms()
+        agent = kind == "agent"
+        current = message_edit.Reading(agent, now, message_edit.held_ids(db, now) if agent else set(), secrets.token_hex(4), marking=marks)
+        token = message_edit.reading.set(current)
+        try:
+            answer = handler(db, actor, args)
+        finally:
+            message_edit.reading.reset(token)
+        answer, pairs = message_edit.handed(db, current, answer)
+        return answer, pairs, now
+
+    def _hand_over(self, db, fence, actor, kind, args, handler, between, marks):
+        """The boundary (docs/message-edit.md, "Exposure"): what leaves the store is the handler's answer with every
+        marker taken out, and each person's message whose words reached an agent at a revision it was not yet known to
+        have been handed is recorded, so a later edit corrects exactly the agents that were handed the old words.
+
+        A read that grows nothing returns as today, with no write. One that grows rolls back, opens BEGIN IMMEDIATE on
+        the same connection under the same fence, and runs the handler once more at a fresh clock, so nothing can
+        commit between the words it returns and the exposure it records; if the second run grows nothing (another
+        read recorded it, or the message became held) it rolls back with no write."""
+        answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)
+        if not marks or not message_edit.growing(db, actor, pairs):
+            return answer
+        db.rollback()
+        if between is not None:
+            between()
+        db.execute("BEGIN IMMEDIATE")
+        fence.verify()
+        self._check_instance(db)
+        kind = self._actor(db, actor)["kind"]
+        answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)
+        grows = message_edit.growing(db, actor, pairs)
+        if not grows:
+            db.rollback()
+            return answer
+        db.executemany("INSERT INTO message_exposures(actor_id,message_id,revision) VALUES (?,?,?) "
+                       "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)",
+                       [(actor, message_id, number) for message_id, number in grows])
+        # Every commit keeps what is red with it (health.py), at the clock this run read.
+        self._health_commit(db, now)
+        db.commit()
+        return answer
 
     def _workspace(self, db, actor, workspace_id, organise=False):
         """The workspace actor may read (its owner and members), or with organise=True
