@@ -1564,9 +1564,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.deepEqual(await looks(q), { read: { a: true, b: true, c: false }, line: { under: 'a', faded: false }, total: total - 2, row: 1 }, 'the other page shows B still read, its line where it was');
     assert.deepEqual(await looks(p), { read: { a: true, b: true, c: false }, line: { under: 'c', faded: false }, total: total - 2, row: 1 }, 'and so does this one');
     // A reload keeps it.
-    const origin = await p.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.reload');
-    await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector('#messages .new-line')) &&
+    await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector('#messages .new-line')) &&
       ${JSON.stringify(Object.values(ids))}.every(id => document.querySelector('#messages .message-card[data-id="' + id + '"]'))`).catch(() => false), 'the page loads again, a new document with all three cards');
     await becomes(() => looks(p), { read: { a: true, b: true, c: false }, line: { under: 'c', faded: false }, total: total - 2, row: 1 }, 'loaded again, A and B read, C unread, the line under C');
     assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
@@ -1610,9 +1611,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await q.send('Page.bringToFront');
     await becomes(() => looks(q), read, 'the other page shows the same, with no reload');
     await front(p);
-    const origin = await p.evaluate('performance.timeOrigin');
+    const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.send('Page.reload');
-    await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' &&
+    await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' &&
       ${JSON.stringify(Object.values(ids))}.every(id => document.querySelector('#messages .message-card[data-id="' + id + '"]'))`).catch(() => false), 'the page loads again, a new document with both cards');
     await becomes(() => looks(p), read, 'loaded again, B is read and unmarked, A unread');
     assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);

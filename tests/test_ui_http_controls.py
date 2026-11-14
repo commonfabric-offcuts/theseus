@@ -8,6 +8,7 @@ import select
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,10 +17,37 @@ FIXTURE = Path(__file__).resolve().parent / "fixtures" / "ui_http.py"
 
 # Runs the fixture unchanged, and reports on a private pipe each time the
 # fixture's own code enters and leaves an exclusive flock, with the inode of
-# the file it locks. The Store's locks go through unreported.
+# the file it locks, and each time the fixture's own code waits on a
+# condition. The Store's locks and waits go through unreported. A command
+# whose operation id starts "held-" (or a reset of the draft "held-draft") is
+# reported as it reaches the Store and when it has been handled, and in
+# between is held until a byte comes on the second pipe: a save the server, or
+# the fixture, is still handling. One whose id starts "late-" is reported as it
+# reaches the Store.
 OBSERVED = """
-import fcntl, os, runpy, sys
-marks, fixture = int(sys.argv[1]), sys.argv[2]
+import fcntl, os, runpy, sys, threading
+from aim_next import store
+marks, go, fixture = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+command = store.Store.command
+def held_command(self, actor, envelope):
+    held = str(envelope.get("operation_id", "")).startswith(("held-", "fixture-reset-held-draft-"))
+    if str(envelope.get("operation_id", "")).startswith("late-"):
+        os.write(marks, b"reached\\n")
+    if held:
+        os.write(marks, b"held\\n")
+        os.read(go, 1)
+    try:
+        return command(self, actor, envelope)
+    finally:
+        if held:
+            os.write(marks, b"handled\\n")
+store.Store.command = held_command
+wait = threading.Condition.wait
+def observed_wait(self, timeout=None):
+    if sys._getframe(1).f_code.co_filename == fixture:
+        os.write(marks, b"waiting\\n")
+    return wait(self, timeout)
+threading.Condition.wait = observed_wait
 real = fcntl.flock
 def flock(fd, operation):
     ours = sys._getframe(1).f_code.co_filename == fixture and operation & fcntl.LOCK_EX
@@ -32,7 +60,7 @@ def flock(fd, operation):
         if ours:
             os.write(marks, b"returned\\n")
 fcntl.flock = flock
-sys.argv = [fixture] + sys.argv[3:]
+sys.argv = [fixture] + sys.argv[4:]
 runpy.run_path(fixture, run_name="__main__")
 """
 
@@ -46,14 +74,16 @@ class ImagesFixtureControls(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.stderr = open(Path(self.tmp.name) / "stderr.log", "w+")
         self.marks, write = os.pipe()
+        held, self.go = os.pipe()
         # The fixture makes its instance under TMPDIR, so this test finds its
         # authority lock without the fixture having to publish a path.
         env = dict(os.environ, TMPDIR=self.tmp.name)
         self.process = subprocess.Popen(
-            [sys.executable, "-c", OBSERVED, str(write), str(FIXTURE), *self.ARGS],
+            [sys.executable, "-c", OBSERVED, str(write), str(held), str(FIXTURE), *self.ARGS],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr, text=True, bufsize=1,
-            pass_fds=(write,), env=env, cwd=str(FIXTURE.parents[2]))
+            pass_fds=(write, held), env=env, cwd=str(FIXTURE.parents[2]))
         os.close(write)
+        os.close(held)
         self.counter = 0
         self.ready = self.control("ready")
 
@@ -63,6 +93,7 @@ class ImagesFixtureControls(unittest.TestCase):
         self.process.wait(timeout=5)
         self.process.stdout.close()
         os.close(self.marks)
+        os.close(self.go)
         self.stderr.seek(0)
         errors = self.stderr.read()
         self.stderr.close()
@@ -138,6 +169,68 @@ class ImagesFixtureControls(unittest.TestCase):
             revision = draft["revision"]
         self.assertEqual(self.control("reset_drafts"), [], "an empty draft is left as it is")
 
+    def test_reset_waits_for_a_save_the_server_is_still_handling(self):
+        # A save the server took and has not finished, as a page closed while
+        # its save was on the way leaves behind. The reset reads no draft until
+        # it has landed, then empties what it wrote.
+        source = self.ready["sources"][1]
+        authority = self.authority()
+        saved = []
+        sender = threading.Thread(target=lambda: saved.append(self.http("/api/command", {
+            "v": 1, "instance_id": self.ready["instance_id"], "kind": "draft.save",
+            "operation_id": "held-save", "target": {"draft_id": "in-flight-draft"},
+            "expected": {"draft_revision": 0, "authority": {key: authority[key] for key in ("authority_id", "authority_epoch")}},
+            "args": {"source_ref": source, "topic_id": "t1", "generation": "held-generation", "body": "Words a closed page saved"}})))
+        sender.start()
+        try:
+            self.assertEqual(self.mark(), "held")
+            self.send("reset_drafts")
+            # Whichever comes first: the reset waiting, or its answer.
+            ready = select.select([self.marks, self.process.stdout], [], [], 10)[0]
+            self.assertEqual(ready, [self.marks], "the reset waited for the save in flight before reading the drafts")
+            self.assertEqual(self.mark(), "waiting")
+        finally:
+            os.write(self.go, b"g")
+            sender.join()
+        self.assertEqual(self.mark(), "handled")
+        self.assertEqual([(status, receipt["status"]) for status, receipt in saved], [(200, "committed")], saved)
+        self.assertEqual(self.answer(), ["in-flight-draft"], "the reset emptied what the save wrote")
+        draft = self.view("editor_state", {"source_ref": source, "topic_id": "t1"})["draft"]
+        self.assertEqual((draft["id"], draft["body"], draft["revision"]), ("in-flight-draft", "", 2))
+        # With nothing in flight it waits for nothing.
+        self.assertEqual(self.control("reset_drafts"), [])
+
+    def test_a_save_that_comes_in_during_a_reset_waits_and_meets_its_revision(self):
+        # A page's save that reaches the server while the reset writes waits
+        # for it, then is refused at the revision it read before the reset.
+        source = self.ready["sources"][1]
+        authority = {key: self.authority()[key] for key in ("authority_id", "authority_epoch")}
+        def save(operation, revision, body):
+            return self.http("/api/command", {
+                "v": 1, "instance_id": self.ready["instance_id"], "kind": "draft.save",
+                "operation_id": operation, "target": {"draft_id": "held-draft"},
+                "expected": {"draft_revision": revision, "authority": authority},
+                "args": {"source_ref": source, "topic_id": "t1", "generation": "held-generation", "body": body}})
+        status, receipt = save("first-save", 0, "Words before the reset")
+        self.assertEqual((status, receipt["status"]), (200, "committed"), receipt)
+        self.send("reset_drafts")
+        late = []
+        sender = threading.Thread(target=lambda: late.append(save("late-save", 1, "Words after the reset")))
+        try:
+            self.assertEqual(self.mark(), "held", "the reset's own save reached the Store")
+            sender.start()
+            self.assertEqual(self.mark(), "waiting", "the page's save waits while the reset writes")
+        finally:
+            os.write(self.go, b"g")
+        self.assertEqual(self.mark(), "handled")
+        self.assertEqual(self.mark(), "reached", "the page's save reached the Store once the reset was done")
+        self.assertEqual(self.answer(), ["held-draft"])
+        sender.join()
+        self.assertEqual([(status, receipt["status"], receipt["error"]["code"], receipt["error"]["current_versions"]) for status, receipt in late],
+                         [(200, "rejected", "REVISION_CONFLICT", {"draft_revision": 2})], late)
+        draft = self.view("editor_state", {"source_ref": source, "topic_id": "t1"})["draft"]
+        self.assertEqual((draft["body"], draft["revision"]), ("", 2))
+
     def test_epoch_waits_for_a_request_holding_the_authority_shared(self):
         locks = list(Path(self.tmp.name).glob("aim-ux-http-*/control/authority.json.lock"))
         self.assertEqual(len(locks), 1, locks)
@@ -169,6 +262,8 @@ class SourceFixtureControls(ImagesFixtureControls):
     ARGS = ("--live", "--freshness", "--images", "--media")
     test_reset_empties_a_draft_that_holds_only_reply_fields = None
     test_epoch_waits_for_a_request_holding_the_authority_shared = None
+    test_reset_waits_for_a_save_the_server_is_still_handling = None
+    test_a_save_that_comes_in_during_a_reset_waits_and_meets_its_revision = None
 
     def test_the_agent_starts_from_a_message_naming_what_it_has_seen(self):
         message = self.control("agent_message", operation_id="controls-question", body="Which name?")["result"]["message_id"]

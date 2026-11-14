@@ -68,10 +68,11 @@ export async function wakesChecks({ check, page, until, control, view, facts, sh
     // The outcomes page, in the tab behind, reads nothing while hidden; going
     // back to it, the person finds the notice gone there too, with no reload.
     assert.equal(await home.evaluate('document.visibilityState'), 'hidden', 'the outcomes page is the tab behind');
-    const loaded = await home.evaluate('performance.timeOrigin');
+    // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+    const loaded = await home.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await home.send('Page.bringToFront');
     await until(async () => (await readNotice(home)).hidden, 'and on the outcomes page');
-    assert.equal(await home.evaluate('performance.timeOrigin'), loaded, 'the outcomes page was not reloaded');
+    assert.equal(await home.evaluate('(window.documentOrigin??=performance.timeOrigin)'), loaded, 'the outcomes page was not reloaded');
     assert.deepEqual([...home.errors, ...p.errors], []);
   });
 }

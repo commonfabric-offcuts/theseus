@@ -214,9 +214,15 @@ first time it runs: a newly written script took 0.6 to 3.1 s to start on the
 bench Mac under load, a repeat run 25 ms. Written fresh for each case, that
 first run fell inside the broker's own four-second budget, and a correct broker
 refused with `codex_no_answer`. The case for a late but valid list answers at a
-point measured from the broker's recorded start (half a second of the RPC
-budget left, and, as its control, one and a half seconds left), so its outcome
-does not depend on how long startup took.
+point measured from the broker's deadline (half a second of the RPC budget
+left, and, as its control, one and a half seconds left). The bootstrap converts
+that deadline to `CLOCK_MONOTONIC_RAW`, the shared clock already used by the
+trace. It must not compare `time.monotonic()` readings from different processes:
+[macOS gained a common origin in Python 3.10](https://docs.python.org/3/library/time.html#time.monotonic),
+while this project uses 3.9. The positive control also shifts the fake API's
+monotonic origin by 750 ms; both origins must still yield an add with the true
+reserve remaining. The trace records the broker's own remaining time when it
+receives the list, and the below-reserve case still refuses without an add.
 
 Before activation, the selected real recipient must explicitly enter a
 non-consuming interval. A single exact hint must survive confirmed API-child

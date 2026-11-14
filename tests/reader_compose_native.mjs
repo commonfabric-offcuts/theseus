@@ -182,15 +182,44 @@ const noticeOver = p => p.evaluate(() => {
 });
 const noticeWords = p => p.evaluate(() => document.querySelector('#reader-notice').hidden ? '' : document.querySelector('#reader-notice').textContent);
 
+// The case that ended with the drafts not reset, so the next case resets them
+// before it runs.
+let unreset = null;
 async function check(name, action) {
   const full = `${engine} ${name}`;
   if (filter && !filter.split('|').some(part => full.includes(part))) return;
-  const started = Date.now();
-  try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }
-  catch (error) { results.push({ name: full, passed: false, error: error.stack ?? String(error) }); console.log(`FAIL ${full}\n${error.stack ?? error}`); }
-  for (const context of contexts) await context.close();
-  contexts.clear();
-  await control({ method: 'reset_drafts' });
+  const failures = [], say = error => error.stack ?? String(error);
+  // After a case whose reset was refused, this one begins with that reset,
+  // once (its pages are closed; only a save a closed page left on its way
+  // can still land, as CommandGate in ui_http.py says). Refused again, the
+  // case does not run on the writing the earlier case left, and says so.
+  if (unreset) {
+    try { await control({ method: 'reset_drafts' }); unreset = null; }
+    catch (error) { failures.push(`Drafts not reset after "${unreset}": ${say(error)}`); }
+  }
+  if (!unreset) {
+    const started = Date.now();
+    // The admitted reds' fingerprints name this line as their runner frame
+    // (.github/check-baseline.json): it stays as it reads. A pass it records
+    // is taken back below when ending the case fails.
+    try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }
+    catch (error) { failures.push(say(error)); }
+    // The case ends with every page closed, each on its own so that one that
+    // throws leaves none open to save into later cases, and the drafts reset.
+    for (const context of contexts) {
+      try { await context.close(); } catch (error) { failures.push(`Ending the case, closing a page: ${say(error)}`); }
+    }
+    contexts.clear();
+    try { await control({ method: 'reset_drafts' }); }
+    catch (error) { failures.push(`Ending the case, the drafts were not reset: ${say(error)}`); unreset = full; }
+  }
+  if (failures.length) {
+    if (results.at(-1)?.name === full) results.pop();
+    results.push({ name: full, passed: false, error: failures.join('\nthen, ') }); console.log(`FAIL ${full}\n${failures.join('\nthen, ')}`);
+  }
+  // A fixture that has exited answers nothing more: the run stops here, its
+  // evidence written, rather than failing every case left.
+  if (fixture.exitCode !== null || fixture.signalCode !== null) throw Error(`The fixture exited during "${full}": ${fixtureErrors()}`);
 }
 const close = async p => { assert.deepEqual(p.errors, [], 'no page errors'); contexts.delete(p.ctx); await p.ctx.close(); };
 
@@ -495,7 +524,19 @@ async function run() {
         const span = p.locator('#source-body > span').nth(3), box = await span.boundingBox();
         let words;
         if (way === 'drag') {
-          await p.mouse.move(box.x + 5, box.y + 5); await p.mouse.down(); await p.mouse.move(box.x + 120, box.y + 8, { steps: 5 }); await p.mouse.up();
+          // A passage's box changes with line wrapping and reserved scrollbars.
+          // Measure actual characters, then select between them with the native mouse.
+          const points = await span.evaluate(el => {
+            const node = el.firstChild;
+            if (node?.nodeType !== Node.TEXT_NODE || node.length <= 25) return null;
+            const point = offset => {
+              const range = document.createRange(); range.setStart(node, offset); range.setEnd(node, offset + 1);
+              const r = range.getBoundingClientRect(); return r.width > 0 && r.height > 0 && { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+            };
+            return { start: point(8), end: point(25) };
+          });
+          assert.ok(points?.start && points.end, 'two rendered text characters for the native drag');
+          await p.mouse.move(points.start.x, points.start.y); await p.mouse.down(); await p.mouse.move(points.end.x, points.end.y, { steps: 5 }); await p.mouse.up();
           words = await p.evaluate(() => getSelection().toString());
         } else if (way === 'press') {
           await p.mouse.click(box.x + 5, box.y + 5);
