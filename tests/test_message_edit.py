@@ -563,10 +563,112 @@ class CliCase(test_agent_verbs.WatchReadingCase):
         self.assertIn("#%s %s owner (edited, revision 2)\n  Opening message, fixed\n" % (message[1], message[0]), out)
 
 
+class HeldCliCase(test_agent_verbs.WatchReadingCase):
+    """Slice 2's CLI (docs/agent-cli.md): a held message prints as held, watch waits for its release, ack prints the
+    refusal."""
+
+    def ask(self, body="Deploy at 5", topic="t1"):
+        message = self.committed(self.command("message.post", {"body": body, "addressees": ["agent-b"], "intent": "ask"},
+                                              target={"topic_id": topic}))["message_id"]
+        return message, self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'", (message,))[0][0]
+
+    def session(self, verb, message):
+        return self.committed(self.command("message.edit_" + verb, {"holder": "h-laptop"}, target={"message_id": message}))
+
+    def quiet(self):
+        for row in self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND state='pending'"):
+            self.committed(self.command("delivery.ack", {}, target={"delivery_id": row[0]}, actor="agent-b"))
+
+    def test_watch_once_waits_through_the_hold_and_prints_the_released_delivery(self):
+        self.quiet()
+        agent = self.agent()
+        watch = test_agent_verbs.FakeWatch()
+        steps = []
+
+        def wait(timeout):
+            if timeout == 0:
+                return dict(dirty=False, stop=False)
+            if not steps:
+                steps.append(self.ask())
+                self.session("open", steps[0][0])
+            else:
+                self.session("close", steps[0][0])
+            return dict(dirty=True, stop=False)
+        watch.wait = wait
+        agent.watch_changes(watch, once=True)
+        message, delivery = steps[0]
+        self.assertNotIn("held", self.stdout.getvalue())
+        self.assertEqual(self.stdout.getvalue().count(delivery), 1, "printed once, as it was released")
+        self.assertIn("Deploy at 5  [%s in t1]" % delivery, self.stdout.getvalue())
+
+    def test_watch_reports_a_held_delivery_and_then_its_release(self):
+        self.quiet()
+        agent = self.agent()
+        steps = []
+
+        def wait(timeout):
+            if timeout == 0:
+                return dict(dirty=False, stop=False)
+            if not steps:
+                steps.append(self.ask())
+                self.session("open", steps[0][0])
+                return dict(dirty=True, stop=False)
+            if len(steps) == 1:
+                steps.append(self.session("close", steps[0][0]))
+                return dict(dirty=True, stop=False)
+            return dict(dirty=False, stop=True)
+        watch = test_agent_verbs.FakeWatch()
+        watch.wait = wait
+        agent.watch_changes(watch)
+        message, delivery = steps[0]
+        out = self.stdout.getvalue()
+        self.assertIn("delivery held while its author edits it  [%s]\n" % delivery, out)
+        self.assertIn("Deploy at 5  [%s in t1]\n" % delivery, out)
+        self.assertLess(out.index("delivery held"), out.index("Deploy at 5  ["))
+
+    def test_read_prints_a_held_message_without_its_words(self):
+        message, _ = self.ask("Deploy at 5, the long way " + "x" * 2000)
+        self.session("open", message)
+        code, out, _ = self.run_cli("read", "t1", actor="agent-b")
+        self.assertEqual(code, 0)
+        self.assertIn("%s owner asks agent-b\n  (held: its author is editing it)\n" % message, out)
+        self.assertNotIn("the long way", out)
+        self.session("close", message)
+        code, out, _ = self.run_cli("read", "t1", actor="agent-b")
+        self.assertIn("Deploy at 5, the long way", out)
+        self.assertNotIn("held: its author", out)
+
+    def test_ack_prints_the_refusal(self):
+        message, delivery = self.ask()
+        self.session("open", message)
+        code, out, err = self.run_cli("ack", delivery, actor="agent-b")
+        self.assertNotEqual(code, 0)
+        self.assertIn("MESSAGE_HELD", out + err)
+        self.assertIn("is being edited by its author and is held until they save or leave the edit (at most 2 minutes). Nothing was done.", out + err)
+        self.session("close", message)
+        code, out, _ = self.run_cli("ack", delivery, actor="agent-b")
+        self.assertEqual((code, out), (0, "acknowledged %s\n" % delivery))
+
+    def test_a_held_wait_prints_held(self):
+        conversation = self.store.view("owner", "conversation", {"workspace_id": "w1"})["conversation"]["topic_id"]
+        message, _ = self.ask("Deploy at 5 in the conversation", topic=conversation)
+        self.session("open", message)
+        code, out, _ = self.run_cli("conversation", "w1", actor="agent-b")
+        self.assertEqual(code, 0, out)
+        self.assertIn("[waiting] on agent-b", out)
+        self.assertIn("(ask %s): (held)\n" % message, out)
+        self.session("close", message)
+        code, out, _ = self.run_cli("conversation", "w1", actor="agent-b")
+        self.assertIn("(ask %s): Deploy at 5 in the conversation\n" % message, out)
+
+
 # Each case runs its own tests only, not those of the fixtures it borrows.
 for _name in list(vars(test_agent_verbs.WatchReadingCase)) + list(vars(test_agent_verbs.AgentVerbCase)):
     if _name.startswith("test_") and _name not in vars(CliCase):
         setattr(CliCase, _name, None)
+for _name in dir(HeldCliCase):
+    if _name.startswith("test_") and _name not in vars(HeldCliCase):
+        setattr(HeldCliCase, _name, None)
 
 
 if __name__ == "__main__":

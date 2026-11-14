@@ -243,6 +243,22 @@ class DispatchCase(unittest.TestCase):
         with self.assertRaisesRegex(DispatchError,'read_scope'): read({'action':'binding'},threadId=str(uuid.uuid4()))
         with self.assertRaisesRegex(DispatchError,'unsupported'): read({'action':'message.post','body':'Unwanted write'})
 
+    def test_read_tool_passes_on_a_held_message_as_withheld(self):
+        thread = str(uuid.uuid4())
+        self.core.command(self.identity,'attach',{'thread_id':thread,'runtime_digest':'a'*64})
+        def read(args):
+            return read_tool(self.core,self.identity,{'params':{'threadId':thread,'tool':'theseus_read','arguments':args}})
+        held = self.ok(self.command('message.post',{'body':'Words its author is changing'},{'topic_id':'t1'}))['message_id']
+        self.ok(self.command('message.edit_open',{'holder':'h-laptop'},{'message_id':held}))
+        [item] = [m for m in read({'action':'messages'})['items'] if m['id'] == held]
+        self.assertEqual((item['withheld'],item['body']),(True,''))
+        source = read({'action':'source','message_id':held})
+        self.assertEqual((source['withheld'],source['body']),(True,''))
+        self.ok(self.command('message.edit_close',{'holder':'h-laptop'},{'message_id':held}))
+        [item] = [m for m in read({'action':'messages'})['items'] if m['id'] == held]
+        self.assertEqual((item['withheld'],item['body']),(False,'Words its author is changing'))
+        self.assertEqual(read({'action':'source','message_id':held})['withheld'],False)
+
     def test_native_tool_read_is_answered_before_turn_start_reply(self):
         root = Path(__file__).resolve().parents[1]
         home = (self.path.parent/'read-home').resolve(); home.mkdir(mode=0o700)
