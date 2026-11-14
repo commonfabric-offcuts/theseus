@@ -83,7 +83,12 @@ attempt to parse arbitrary JavaScript names. Changing a test plan requires its
 own reviewed policy update. A candidate cannot edit its own exceptions. The
 frozen source set covers both Python and mjs test definitions/helpers, the
 producer tools, and checks.yml. Product web/ and aim_next/ code remains free to
-change. Source-set additions/deletions also require a reviewed complete plan.
+change. Source-set additions/deletions also require a reviewed complete plan. This includes
+files already added on the authenticated event base: an older snapshot cannot
+implicitly authorize or omit them. Bootstrap additions with runnable checks need
+a complete transition that lists their expected identities. A transition may include `retired_sources` (default empty): that list must
+exactly match the paths present on the event base and absent from the plan. A
+retained older review cannot implicitly retire a later base addition.
 
 Optional transitions contains `{review, plan}` entries. Each plan is a complete
 six-field policy snapshot (version, source_commit, source_hashes, required,

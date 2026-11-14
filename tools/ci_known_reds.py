@@ -201,9 +201,12 @@ def definition_bytes(data, path):
     return b''.join(lines)
 
 
-def reviewed_definitions(policy, root, commit):
-    require(definition_paths(root, commit) == definition_paths(root, policy['source_commit']),
-            'reviewed test definition changed: source set is not a complete matching plan')
+def reviewed_definitions(policy, root, commit, approved_base=None, retired_sources=()):
+    planned, actual = definition_paths(root, policy['source_commit']), definition_paths(root, commit)
+    require(planned == actual, 'reviewed test definition changed: source set is not a complete matching plan')
+    if approved_base is not None:
+        require(definition_paths(root, approved_base) - planned == set(retired_sources),
+                'reviewed test definition changed: base source retirements differ from reviewed transition')
     for path in policy['source_hashes']:
         reviewed = source(root, policy['source_commit'], path)
         candidate = source(root, commit, path)
@@ -218,13 +221,14 @@ def definition_paths(root, commit):
     return frozenset({path for path in tests if path.endswith(('.mjs', '.py'))} | set(tools) | {PRODUCER_WORKFLOW})
 
 
-def select_plan(policy, root, commit):
+def select_plan(policy, root, commit, approved_base=None):
     base = {k: v for k, v in policy.items() if k != 'transitions'}
-    plans = [(base, None)] + [(row['plan'], row['review']) for row in policy.get('transitions', [])]
+    plans = [(base, None, [])] + [(row['plan'], row['review'], row.get('retired_sources', []))
+                                for row in policy.get('transitions', [])]
     matched = []
-    for plan, review in plans:
+    for plan, review, retired in plans:
         try:
-            reviewed_definitions(plan, root, commit)
+            reviewed_definitions(plan, root, commit, approved_base, retired_sources=retired)
         except Refused:
             continue
         matched.append((plan, review))
@@ -367,8 +371,11 @@ def load_policy(policy, base_root):
     transitions = policy.get('transitions', [])
     require(isinstance(transitions, list), 'invalid reviewed plan transitions')
     for row in transitions:
-        require(isinstance(row, dict) and set(row) == {'review', 'plan'}
+        require(isinstance(row, dict) and {'review', 'plan'} <= set(row) <= {'review', 'plan', 'retired_sources'}
                 and isinstance(row['review'], str) and bool(row['review'].strip()), 'transition needs its separate review')
+        retired = row.get('retired_sources', [])
+        require(isinstance(retired, list) and all(isinstance(path, str) and bool(path) for path in retired)
+                and len(set(retired)) == len(retired), 'invalid reviewed source retirements')
         require(isinstance(row['plan'], dict) and 'transitions' not in row['plan'], 'nested plan transitions forbidden')
         load_policy(row['plan'], base_root)
         approved = {json.dumps(red, sort_keys=True) for red in policy['reds']}
@@ -535,7 +542,7 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
     for path in ('tools/ci_known_reds.py', 'tools/known_reds.py', 'tools/release_check.py'):
         require((ROOT / path).read_bytes() == source(base_root, base['sha'], path), 'validator differs from event base: ' + path)
     known = load_policy(read_json(baseline), base_root)
-    policy, transition_review = select_plan(known, candidate_root, commit)
+    policy, transition_review = select_plan(known, candidate_root, commit, base['sha'])
     traffic_bytes = source(base_root, policy['source_commit'], release_check.REPLAY_FILE)
     require(source(candidate_root, commit, release_check.REPLAY_FILE) == traffic_bytes,
             'reviewed replay traffic changed')
@@ -629,7 +636,8 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
         result.update(controller=binding['controller'], producer=binding['producer'], status_head_sha=binding['producer']['head_sha'])
     result.update(run=run, base=base, merge=expected_merge, raw_passed=summary['passed'],
                   policy_sha256=hashlib.sha256(baseline.read_bytes()).hexdigest(),
-                  plan_source_commit=policy['source_commit'], transition_review=transition_review)
+                  plan_source_commit=policy['source_commit'], transition_review=transition_review,
+                  retired_base_sources=sorted(definition_paths(candidate_root, base['sha']) - definition_paths(candidate_root, policy['source_commit'])))
     return result
 
 

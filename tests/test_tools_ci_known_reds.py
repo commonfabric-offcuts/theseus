@@ -168,7 +168,7 @@ class Evidence(unittest.TestCase):
         ci.git(self.base, 'add', '.github/check-baseline.json')
         ci.git(self.base, '-c', 'user.name=ci-test', '-c', 'user.email=ci-test@theseus.invalid',
                'commit', '-qm', 'independently reviewed plan')
-        self.base_receipt['sha'] = ci.git(self.base, 'rev-parse', 'HEAD').decode().strip()
+        self.base_sha = self.base_receipt['sha'] = ci.git(self.base, 'rev-parse', 'HEAD').decode().strip()
         write(self.folder / 'event.json', {'pull_request': {'base': self.base_receipt}})
 
     def candidate_plan(self):
@@ -203,6 +203,11 @@ class Evidence(unittest.TestCase):
 
     def protected_controller(self):
         head = self.sha
+        # The policy changes on the reviewed base; the feature's unchanged old
+        # copy must adopt that policy in its synthetic merged tree.
+        (self.repo / '.github/check-baseline.json').write_bytes((self.base / '.github/check-baseline.json').read_bytes())
+        self.command('add', '.github/check-baseline.json')
+        self.tree = self.command('write-tree').decode().strip()
         merge = self.command('commit-tree', self.tree, '-p', self.base_sha, '-p', head,
                              '-m', 'original tested synthetic merge').decode().strip()
         self.command('reset', '--hard', merge)
@@ -932,6 +937,60 @@ class Evidence(unittest.TestCase):
         (self.repo / 'tests/test_added.py').write_text('def test_new():\n    assert True\n')
         self.advance_candidate('unreviewed added test module')
         self.refused('no complete matching plan')
+
+    def reviewed_base_addition(self, path='tests/reviewed_helper.py', body='# independently reviewed helper\nanswer = 42\n'):
+        (self.base / path).write_text(body)
+        ci.git(self.base, 'add', path)
+        self.install_trusted_policy(self.policy)
+        (self.repo / path).write_text(body)
+        self.advance_candidate('adopt independently reviewed base helper')
+        return path
+
+    def test_base_additions_need_a_complete_reviewed_inventory_transition(self):
+        self.reviewed_base_addition()
+        self.protected_controller()
+        self.refused('no complete matching plan')
+
+    def test_feature_cannot_modify_an_addition_from_the_authenticated_base(self):
+        path = self.reviewed_base_addition()
+        (self.repo / path).write_text('answer = 0\n')
+        self.advance_candidate('unreviewed edit of base helper')
+        self.refused('no complete matching plan')
+
+    def test_candidate_cannot_delete_a_base_addition_to_match_old_snapshot(self):
+        path = self.reviewed_base_addition()
+        (self.repo / path).unlink()
+        self.advance_candidate('omit new base helper and keep old source set')
+        self.refused('no complete matching plan')
+
+    def test_base_added_verifier_test_identity_cannot_be_omitted(self):
+        path = 'tests/test_reviewed_verifier.py'
+        name = 'test_required (test_reviewed_verifier.Added)'
+        self.reviewed_base_addition(path, 'import unittest\nclass Added(unittest.TestCase):\n    def test_required(self):\n        self.assertTrue(True)\n')
+        plan = self.candidate_plan()
+        plan['inventory']['python-units'].append(ci.identity({'name': name}))
+        self.install_trusted_policy(dict(self.policy, transitions=[{'review': 'full-verifier-inventory-review', 'plan': plan}]))
+        self.protected_controller()
+        self.refused('reviewed check inventory omitted')
+        self.replace_unit_log('python-units', 'test_one (example.Example) ... ok\ntest_two (example.Example) ... ok\n' + name + ' ... ok\nRan 3 tests in 0.1s\n\nOK\n')
+        self.assertTrue(self.validate()['passed'])
+
+    def test_old_transition_cannot_implicitly_retire_a_later_base_addition(self):
+        path = self.repo / 'tests/test_example.py'
+        path.write_text(path.read_text().replace('assert actual == expected', 'assert actual == approved'))
+        self.advance_candidate('reviewed assertion before later base helper')
+        plan = self.candidate_plan()
+        added = self.reviewed_base_addition()
+        (self.repo / added).unlink()
+        self.advance_candidate('omit later base helper to match old transition')
+        transition = {'review': 'earlier-plan-review', 'plan': plan, 'retired_sources': []}
+        self.install_trusted_policy(dict(self.policy, transitions=[transition]))
+        self.refused('no complete matching plan')
+        transition['retired_sources'] = [added]
+        self.install_trusted_policy(dict(self.policy, transitions=[transition]))
+        result = self.validate()
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['retired_base_sources'], [added])
 
     def test_controller_cli_uses_producer_record_from_a_separate_context(self):
         head = self.protected_controller()
