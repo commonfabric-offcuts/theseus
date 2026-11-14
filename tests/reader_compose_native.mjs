@@ -22,7 +22,7 @@
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
+import { fixtureControl } from './fixture_control.mjs';
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -43,22 +43,7 @@ const until = async (p, expression, description, arg, timeout = 8000) => {
 };
 
 const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--media', '--agent-colors'], { cwd: root });
-let serial = 0, fixtureErrors = '';
-const requests = new Map();
-fixture.stderr.on('data', data => { fixtureErrors += data; });
-createInterface({ input: fixture.stdout }).on('line', line => {
-  const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
-  if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
-});
-// How the fixture ended, held from its launch: its exit code, or the signal that ended it.
-const fixtureExit = new Promise(resolve => fixture.once('exit', (code, signal) => {
-  for (const request of requests.values()) request.reject(Error(`Fixture exited ${code ?? signal}: ${fixtureErrors}`));
-  resolve({ code, signal });
-}));
-const control = data => new Promise((resolve, reject) => {
-  const id = ++serial; requests.set(id, { resolve, reject });
-  fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
-});
+const { control, exit: fixtureExit, errors: fixtureErrors } = fixtureControl(fixture);
 
 // What the fixture is seeded with, set by seed() inside the run below, so a seeding failure still leaves native.json.
 let facts, agent, first, second, log;
@@ -1724,11 +1709,11 @@ try {
   const { code: fixtureExitCode, signal: fixtureExitSignal } = await fixtureExit;
   await mkdir(evidence, { recursive: true });
   await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
-    fixtureExitCode, fixtureExitSignal, fixtureErrors, measured, shots }, null, 2));
+    fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), measured, shots }, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);
   for (const m of measured) console.log(`lines ${m.engine} ${m.shape} ${m.scheme} ${m.state}: ${m.lines} (${m.visible}px at ${m.lineHeight}px)`);
   // An interrupted run keeps its own error; asserting here would replace it.
-  if (harnessCompleted) assert.equal(fixtureExitCode, 0, `the fixture exited ${fixtureExitCode ?? fixtureExitSignal}: ${fixtureErrors}`);
+  if (harnessCompleted) assert.equal(fixtureExitCode, 0, `the fixture exited ${fixtureExitCode ?? fixtureExitSignal}: ${fixtureErrors()}`);
 }
 assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');
