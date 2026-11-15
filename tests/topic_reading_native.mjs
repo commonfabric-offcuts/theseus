@@ -1109,6 +1109,53 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
+  // Item 475's words, "until the first reply from anyone else" (warp's ruling, codex #5267): a reply that answers the
+  // message from another stack, an agent's thumbs-up on it, and a message naming the person each end the dots.
+  await check('reading dots end on a reply joined to another stack, an agent\'s thumbs-up and a message naming the person in a subject of its own, and a reload keeps each ended; a person\'s thumbs-up and a message to nobody end none', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-dots-outside-' + device;
+      const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'aim-core is here to help.' }],
+        ['p', { sender: 'fixture-other-person', join: true, body: 'Another person is here too.' }]]);
+      const p = await open('reading-dots-outside-' + device, device, topic, ids.a);
+      const drawn = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))})) && window.fetchesOut === 0`);
+      // aim-core answers the first message, and someone joins the answer to another stack: it still answers it.
+      const joined = await post(p, device, topic, '@aim-core can you check the notes?');
+      await until(async () => showing(await dots(p, joined)), `${device}: the first message waits`);
+      const reply = (await control({ method: 'agent_message', operation_id: topic + '-reply', topic_id: topic, sender: 'aim-core', reply_to: joined,
+        body: 'Checked the notes.' })).result.message_id;
+      await until(async () => await dots(p, joined) === null && await drawn(reply), `${device}: aim-core's reply ends the first one's dots`);
+      await control({ method: 'stack_act', sender: 'fixture-other-person', kind: 'stack.join', message_id: reply, operation_id: topic + '-join', args: { into: ids.p } });
+      await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+        .find(item => item.id === reply)?.stack_position.root_id === ids.p, `${device}: Core holds the reply in the other person's stack`);
+      // A person's thumbs-up is no reply; aim-core's is.
+      const thumbed = await post(p, device, topic, '@aim-core and the release, when you can?');
+      await until(async () => showing(await dots(p, thumbed)), `${device}: the second message waits`);
+      const thumbs = () => p.evaluate(`document.querySelector(${JSON.stringify(card(thumbed) + ' > .message-reactions .reaction-number')})?.textContent ?? null`);
+      await control({ method: 'agent_thumb', operation_id: topic + '-person-thumb', sender: 'fixture-other-person', message_id: thumbed });
+      await until(async () => await thumbs() === '1', `${device}: the other person's thumbs-up shows on the card`);
+      assert.ok(showing(await dots(p, thumbed)), device + ': a person\'s thumbs-up leaves the dots');
+      await control({ method: 'agent_thumb', operation_id: topic + '-thumb', sender: 'aim-core', message_id: thumbed });
+      await until(async () => await thumbs() === '2' && await dots(p, thumbed) === null, `${device}: aim-core's thumbs-up ends the second one's dots, with no reload`);
+      // A message to nobody is no reply; one naming the person, in a subject of its own, is.
+      const told = await post(p, device, topic, '@aim-core and the screenshots?');
+      await until(async () => showing(await dots(p, told)), `${device}: the third message waits`);
+      const everyone = (await control({ method: 'agent_message', operation_id: topic + '-everyone', topic_id: topic, sender: 'aim-core', whole_topic: true,
+        body: 'A note for everyone here.' })).result.message_id;
+      await until(() => drawn(everyone), `${device}: aim-core's note to everyone is drawn`);
+      assert.ok(showing(await dots(p, told)), device + ': a message naming nobody leaves the dots');
+      const tell = (await control({ method: 'agent_message', operation_id: topic + '-tell', topic_id: topic, sender: 'aim-core', whole_topic: true,
+        post_args: { addressees: [facts.actor], intent: 'tell' }, body: 'The screenshots are up.' })).result.message_id;
+      await until(async () => await dots(p, told) === null && await drawn(tell), `${device}: aim-core telling the person ends the third one's dots, with no reload`);
+      await reload(p, [joined, thumbed, told]);
+      assert.deepEqual([await dots(p, joined), await dots(p, thumbed), await dots(p, told)], [null, null, null],
+        device + ': loaded again, none waits: the reply joined to another stack, the thumbs-up and the tell each still answer theirs');
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, '@aim-core can you check the notes?': false,
+        '@aim-core and the release, when you can?': false, '@aim-core and the screenshots?': false }, device + ': and Core says so');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
   await check('reading dots never show where no agent receives the message: a topic of people only, with nobody named', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-dots-people-' + device;

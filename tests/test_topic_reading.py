@@ -71,6 +71,65 @@ class TopicReadingCase(fixtures.ReaderCase):
         self.post("I'll answer", actor="other-reader", reply_to=asked)
         self.assertIs(self.awaiting()[asked], False, "a person's reply ends it too")
 
+    def test_a_reply_to_it_in_another_stack_a_message_naming_the_reader_and_an_agents_thumbs_up_each_end_the_wait(self):
+        # Item 475's words, "until the first reply from anyone else" (warp's ruling, codex #5267): an answer that is not
+        # inside the message's dossier is a reply from someone else too.
+        told = self.post("Can you look at the build?", actor="owner", addressees=["agent-a"], intent="ask")
+        # agent-b answers in a subject of its own, telling the reader by name.
+        self.post("Done: the build is green.", actor="agent-b", addressees=["owner"], intent="tell")
+        aside = self.post("A subject of its own", actor="agent-b")
+        joined = self.post("Can you check the notes?", actor="owner", addressees=["agent-a"], intent="ask")
+        reply = self.post("Checked them.", actor="agent-a", reply_to=joined)
+        # Someone joins agent-a's reply to another stack: it answers the message from outside its dossier.
+        self.committed(self.command("stack.join", {"into": aside}, target={"message_id": reply}, expected={"join_revision": 0}))
+        page = self.page()
+        self.assertNotEqual(page[reply]["stack_position"]["root_id"], page[joined]["stack_position"]["root_id"],
+                            "the fixture holds: the reply is in another stack")
+        thumbed = self.post("And the release?", actor="owner", addressees=["agent-a"], intent="ask")
+        thumb = lambda thumbed_up, revision: self.committed(self.command(
+            "message.thumb", {"thumbed": thumbed_up}, target={"message_id": thumbed}, expected={"thumb_revision": revision}, actor="agent-a"))
+        thumb(True, 0)
+        waits = self.awaiting()
+        for name, message in (("a tell naming the reader, in a subject of its own", told), ("a reply to it, in another stack", joined),
+                              ("an agent's thumbs-up on it", thumbed)):
+            with self.subTest(name):
+                self.assertIs(waits[message], False, "%s is a reply from someone else: the wait ends" % name)
+        # The first reply was given: taking the thumbs-up back starts no new wait.
+        thumb(False, 1)
+        self.assertIs(self.awaiting()[thumbed], False, "a thumbs-up taken back leaves the wait ended")
+
+    def test_a_persons_thumbs_up_a_message_to_nobody_or_to_someone_else_and_an_agents_whisper_end_no_wait(self):
+        self.participation("other-reader", True)
+        asked = self.post("Can you look?", actor="owner", addressees=["agent-a"], intent="ask")
+        # A person's thumbs-up says they read it and understand (docs/thumbs.md); it is no reply.
+        self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": asked}, expected={"thumb_revision": 0},
+                                    actor="other-reader"))
+        self.post("Something for everyone", actor="agent-b")
+        self.post("For agent-a only", actor="agent-b", addressees=["agent-a"], intent="tell")
+        # The reader's whisper to agent-a, and agent-a's whispered answer to it, by name to the reader: it answers the
+        # whisper, not the message on the record.
+        whisper = self.committed(self.command("message.post", {"body": "Just you", "whisper": True, "addressees": ["agent-a"]},
+                                              target={"topic_id": "t1"}))["message_id"]
+        self.committed(self.command("message.post", {"body": "Just you too", "whisper": True, "addressees": ["owner"], "reply_to": whisper},
+                                    target={"topic_id": "t1"}, actor="agent-a"))
+        self.assertIs(self.awaiting()[asked], True, "none of these is a reply to it")
+        # A message naming the reader before theirs is no reply to it either.
+        later = self.post("One more", actor="owner", addressees=["agent-a"], intent="ask")
+        self.assertIs(self.awaiting()[later], True, "nothing after it names the reader")
+
+    def test_a_message_from_before_this_release_never_waits_and_the_first_post_after_it_records_where_the_rule_begins(self):
+        # Item 475's words, "after the reader posts" (codex #5267): nothing already in the store starts pulsing when this
+        # ships. The release before this one never wrote where the rule begins; the store reads as it left it.
+        old = self.post("Asked before the release", actor="owner", addressees=["agent-a"], intent="ask")
+        self.sql("DELETE FROM metadata WHERE key='reply_wait_from_seq'")
+        self.assertIs(self.awaiting()[old], False, "a message present before the release never starts waiting")
+        new = self.post("Asked after it", actor="owner", addressees=["agent-a"], intent="ask")
+        later = self.post("And this", actor="owner", addressees=["agent-a"], intent="ask")
+        waits = self.awaiting()
+        self.assertEqual((waits[old], waits[new], waits[later]), (False, True, True), "the rule holds from the first post after the release")
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='reply_wait_from_seq'"),
+                         [(str(self.sql("SELECT seq FROM messages WHERE id=?", (new,))[0][0]),)], "recorded once, by the first post")
+
     def test_no_wait_on_a_whisper_in_a_conversation_or_where_no_agent_received_it(self):
         whisper = self.committed(self.command("message.post", {"body": "Just you", "whisper": True, "addressees": ["agent-a"]},
                                               target={"topic_id": "t1"}))["message_id"]

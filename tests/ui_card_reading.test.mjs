@@ -142,3 +142,41 @@ test('the dots on a waiting message are the Conversation\'s three, named in word
   paintAwaiting(card, {}, doc);
   assert.equal(card.querySelector('.reply-wait'), null, 'a message Core said nothing of waits for nothing');
 });
+
+// Item 475's words, "until the first reply from anyone else" (warp's ruling, codex #5267): a reply to the waiting
+// message from another dossier, a message naming the reader, and an agent's thumbs-up on it are each a reply from
+// someone else, as Core says (aim_next/stacks.py); a person's thumbs-up, a message to nobody or to someone else, a
+// whisper and the reader's own message are not. Each starts from three waiting messages and those that end none.
+const outside = () => {
+  const at = (id, seq, author, root, more = {}) => [id, { id, seq, author_id: author, stack_position: { root_id: root }, ...more }];
+  const messages = new Map([at('r', 1, 'tony', 'r', { awaiting_reply: true }), at('h', 2, 'tony', 'h', { awaiting_reply: true }),
+    at('t', 3, 'tony', 't', { awaiting_reply: true })]);
+  messages.get('h').reactions = { thumbs: [{ actor_id: 'dan', at_ms: 1 }] };
+  messages.set(...at('all', 4, 'aim-core', 'all', { addressees: [] }));
+  messages.set(...at('them', 5, 'aim-core', 'them', { addressees: ['aim-ux'], intent: 'tell' }));
+  messages.set(...at('psst', 6, 'aim-core', 'p', { addressees: ['tony'], whisper: true, reply_to: 'p' }));
+  messages.set(...at('mine', 7, 'tony', 'mine', { addressees: ['aim-core'], intent: 'ask', reply_to: 'r' }));
+  assert.deepEqual(learnAnswered(messages, 'tony', kindOf), [], 'a person\'s thumbs-up, a message to nobody or to someone else, a whisper and the reader\'s own message end nothing');
+  return { messages, at };
+};
+const ended = (messages, viewer = 'tony') => learnAnswered(messages, viewer, kindOf).map(item => item.id);
+
+test('a reply to the waiting message from another dossier ends its wait, and no other', () => {
+  const { messages, at } = outside();
+  messages.set(...at('re', 8, 'aim-ux', 'elsewhere', { reply_to: 'r' }));
+  assert.deepEqual(ended(messages), ['r'], 'a reply to it, joined to another dossier, ends it');
+});
+
+test('an agent\'s thumbs-up on the waiting message ends its wait, and a person\'s does not', () => {
+  const { messages } = outside();
+  messages.get('h').reactions = { thumbs: [{ actor_id: 'dan', at_ms: 1 }, { actor_id: 'aim-core', at_ms: 2 }] };
+  assert.deepEqual(ended(messages), ['h'], 'an agent\'s thumbs-up on it ends it');
+});
+
+test('a message naming the reader after the waiting messages ends each wait, and one before a message is no reply to it', () => {
+  const { messages, at } = outside();
+  messages.set(...at('told', 8, 'aim-qa', 'told', { addressees: ['tony'], intent: 'tell' }));
+  assert.deepEqual(ended(messages), ['r', 'h', 't'], 'a message naming the reader, after them, ends each');
+  messages.set(...at('later', 9, 'tony', 'later', { awaiting_reply: true }));
+  assert.deepEqual(ended(messages), [], 'one naming the reader before it is no reply to it');
+});
