@@ -1,0 +1,8 @@
+{
+ "step": "rail",
+ "cases": [
+  "on a phone, on a Build topic's outcome, the drawer"
+ ],
+ "label": "fix297-edgegreen-1",
+ "snapshot": "09dde5a750760960c2d419c0e83d09c32930871f"
+}
