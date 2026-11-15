@@ -13,8 +13,10 @@
 #
 # A push to an approved branch is judged the same way, with no pull request: the
 # pushed head is the candidate and its first parent the base it is compared
-# against, and the check run goes on the pushed head. A merged train's check
-# names the train's pull request and the items its commits carried.
+# against, and the check run goes on the pushed head, named for the branch and
+# marked merged, so it never stands in for a pull request's check on the same
+# commit. A merged train's check names the train's pull request and the items
+# its commits carried, as the validator reads them and git confirms.
 #
 # Two jobs: judge reads and decides with a read-only token, and publish, which
 # alone may write a check run, posts what judge decided. Everything read from an
@@ -323,7 +325,8 @@ jobs:
           if [ "$EVENT" = push ]; then
             # The pushed head, fetched by its id: still on the branch, with the parents GitHub's record names and the tree
             # the receipts name. Its base is its first parent. A merge is rebuilt from its parents here, as a pull
-            # request's is; a single-parent push has nothing to rebuild, and its record says so with no rebuilt tree.
+            # request's is; a single-parent push has nothing to merge, so its tree is git's own reading of the commit
+            # fetched by id, which must be the tree the receipts name.
             if ! git fetch -q origin "$HEAD_SHA" 2>/dev/null || ! git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null; then
               refuse "the pushed head $HEAD_SHA can no longer be fetched"
             fi
@@ -338,6 +341,7 @@ jobs:
               refuse "the pushed head $HEAD_SHA has tree $(git rev-parse "$HEAD_SHA^{tree}"), not the tree the receipts name, $TREE"
             fi
             others="${parents#"$BASE_SHA"}"
+            rebuilt="$(git rev-parse "$HEAD_SHA^{tree}")"
             if [ -n "$others" ]; then
               git checkout -q "$BASE_SHA"
               # shellcheck disable=SC2086 # each further parent is its own word, forty hex digits checked by GitHub's record
@@ -601,9 +605,11 @@ jobs:
           HEAD_SHA: ${{ steps.record.outputs.head_sha }}
         run: |
           set -euo pipefail
-          # A merged head names its train: the pull request from the merge's own subject, as GitHub writes it, and the
-          # items from the Pipeline trailers of the commits the merge brings in, first parent to head. What cannot be
-          # read that way is said, never guessed. For the reader of the check run; it decides nothing.
+          # git's own reading of the train, the cross-check on the validator's: the pull request from the merge's own
+          # subject, as GitHub writes it, and the item numbers in the Pipeline trailers of the commits the push brings
+          # in, first parent to head (the merge commit itself left out; a single-parent push is its one commit). A
+          # trailer that names no number is kept as said, and counts as no item. What cannot be read is said, never
+          # guessed. The step after the validator holds the two readings to each other.
           python3 -I - "$OUT/candidate" "$HEAD_SHA" "$OUT/train.json" <<'PY'
           import json, re, subprocess, sys
           repo, head, out = sys.argv[1:4]
@@ -618,7 +624,7 @@ jobs:
           try:
               parents = git("rev-list", "--parents", "-n", "1", head).split()[1:]
               if len(parents) < 2:
-                  train["unread"].append("the pushed head has one parent, so it merged no train")
+                  train["unread"].append("the pushed head has one parent, so no merge names a pull request")
               else:
                   subject = git("log", "-1", "--format=%s", head).strip()
                   named = re.fullmatch(r"Merge pull request #([0-9]+) from (\S+)", subject)
@@ -626,17 +632,20 @@ jobs:
                       train["pull_request"], train["source"] = int(named.group(1)), named.group(2)
                   else:
                       train["unread"].append("the merge's subject names no pull request: %s" % clean(subject))
-                  log = git("log", "-z", "--reverse", "--format=%H%x1f%s%x1f%(trailers:key=Pipeline,valueonly,unfold,separator=%x1e)",
-                            "%s..%s" % (parents[0], head))
-                  for entry in [e for e in log.split("\0") if e.strip()]:
-                      fields = entry.strip("\n").split("\x1f")
-                      sha, values = fields[0], fields[-1]
-                      if sha == head:
-                          continue
-                      pipeline = [clean(v.strip()) for v in values.split("\x1e") if v.strip()]
-                      train["commits"].append({"sha": sha, "subject": clean("\x1f".join(fields[1:-1])), "pipeline": pipeline})
-                      train["items"].extend(v for v in pipeline if v not in train["items"])
-          except RuntimeError as error:
+              log = git("log", "-z", "--reverse", "--format=%H%x1f%s%x1f%(trailers:key=Pipeline,valueonly,unfold,separator=%x1e)",
+                        "%s..%s" % (parents[0], head))
+              items = set()
+              for entry in [e for e in log.split("\0") if e.strip()]:
+                  fields = entry.strip("\n").split("\x1f")
+                  sha, values = fields[0], fields[-1]
+                  if sha == head and len(parents) > 1:
+                      continue
+                  pipeline = [clean(v.strip()) for v in values.split("\x1e") if v.strip()]
+                  numbers = sorted({int(n) for v in pipeline for n in re.findall(r"(?<![A-Za-z0-9])[1-9][0-9]*(?![A-Za-z0-9])", v)})
+                  train["commits"].append({"sha": sha, "subject": clean("\x1f".join(fields[1:-1])), "pipeline": pipeline, "items": numbers})
+                  items.update(numbers)
+              train["items"] = sorted(items)
+          except (RuntimeError, IndexError) as error:
               train["unread"].append("git could not read the train: %s" % error)
           json.dump(train, open(out, "w"), indent=1)
           PY
@@ -646,7 +655,9 @@ jobs:
         run: |
           set -euo pipefail
           # From the workspace, outside every checkout. -I keeps the working directory, the environment and user site
-          # off sys.path; the validator puts its own directory there itself, so what it imports is the controller's.
+          # off sys.path, and -S skips site and with it any sitecustomize the image links in from outside the stdlib
+          # (Ubuntu's points into /etc), which the validator would report as loaded code. The validator is one
+          # self-contained file of stdlib imports; it puts its own directory on sys.path itself.
           cd "$GITHUB_WORKSPACE"
           if [ ! -f controller/tools/ci_known_reds.py ]; then
             echo "the controller $GITHUB_WORKFLOW_SHA carries no tools/ci_known_reds.py, so there is nothing to classify with" >> "$OUT/refusals"
@@ -660,7 +671,7 @@ jobs:
           fi
           # The validator's exit is the verdict; it writes what it decided and why beside it. The base and the candidate
           # are named only as data to read.
-          if ! python3 -I controller/tools/ci_known_reds.py \
+          if ! python3 -I -S controller/tools/ci_known_reds.py \
                 --summary verdict/release-check/summary.json \
                 --provenance verdict/release-check/provenance.json \
                 --shards verdict/shards \
@@ -672,31 +683,69 @@ jobs:
             echo "validator: not green" >> "$OUT/refusals"
           fi
           test -f "$OUT/validation.json" || echo "the validator wrote no validation.json" >> "$OUT/refusals"
-      - name: The modules the validator loaded
+      - name: The code the validator loaded
         if: always() && steps.controller.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          # The proof that every module the validator ran came from the controller's tree: the validator lists the
-          # files it loaded as loaded_modules in its output, and any outside controller/ refuses the verdict.
-          python3 -I - "$OUT/validation.json" "$GITHUB_WORKSPACE/controller" "$OUT/refusals" <<'PY'
+          # The proof that the validator ran nothing but itself: it lists every non-stdlib file it loaded as
+          # loaded_modules, and anything but the protected script, controller/tools/ci_known_reds.py, refuses the
+          # verdict by name. An output with no such list refuses too: the proof is part of the contract.
+          python3 -I - "$OUT/validation.json" "$GITHUB_WORKSPACE" "$OUT/refusals" <<'PY'
           import json, os, sys
+          path, workspace, refusals = sys.argv[1:4]
+          if not os.path.exists(path):
+              print("the validator wrote no output, so it loaded nothing that can be shown")
+              raise SystemExit(0)
           try:
-              validation = json.load(open(sys.argv[1]))
-          except (OSError, ValueError):
+              validation = json.load(open(path))
+          except ValueError:
               validation = None
           loaded = validation.get("loaded_modules") if isinstance(validation, dict) else None
-          if not isinstance(loaded, list):
-              print("the validator's output names no loaded_modules, so which files it ran is not shown here")
+          if not isinstance(loaded, list) or not loaded:
+              open(refusals, "a").write("the validator's output names no loaded_modules, so what code it ran is not shown\n")
               raise SystemExit(0)
-          controller = os.path.realpath(sys.argv[2]) + os.sep
-          # A relative path is the validator's own, from the workspace it ran in.
-          workspace = os.path.dirname(os.path.realpath(sys.argv[2]))
-          outside = [str(path) for path in loaded if not os.path.realpath(os.path.join(workspace, str(path))).startswith(controller)]
-          for path in loaded:
-              print("loaded %s" % path)
+          script = os.path.realpath(os.path.join(workspace, "controller", "tools", "ci_known_reds.py"))
+          outside = [str(p) for p in loaded if os.path.realpath(os.path.join(workspace, str(p))) != script]
+          for p in loaded:
+              print("loaded %s" % p)
           if outside:
-              open(sys.argv[3], "a").write("the validator loaded modules from outside the controller's tree: %s\n" % " ".join(outside)[:500])
+              open(refusals, "a").write("the validator loaded code besides the protected script %s: %s\n" % (script, " ".join(outside)[:1500]))
+          PY
+      - name: The train, the validator's reading held to git's
+        if: always() && steps.record.outputs.event == 'push' && steps.controller.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The check's Train line is the validator's reading, validation.train; git's own reading, read above from
+          # nothing the candidate runs, must agree with it on the pull request, the items and the merge commit, or the
+          # verdict is refused naming both. A push the validator judged with no train is refused, never guessed at.
+          python3 -I - "$OUT/validation.json" "$OUT/train.json" "$OUT/refusals" <<'PY'
+          import json, os, sys
+          path, git_path, refusals = sys.argv[1:4]
+          def read(p):
+              try:
+                  return json.load(open(p))
+              except (OSError, ValueError):
+                  return None
+          validation, git_train = read(path), read(git_path)
+          if validation is None:
+              print("the validator wrote no output, so there is no train to hold to git's")
+              raise SystemExit(0)
+          train = validation.get("train") if isinstance(validation, dict) else None
+          problems = []
+          if not isinstance(train, dict):
+              problems.append("the validator's output has no train for this push, so the train it carried is not named")
+          elif not isinstance(git_train, dict):
+              problems.append("git's own reading of the train is missing, so the validator's cannot be checked")
+          else:
+              mine = {"pull_request": git_train.get("pull_request"), "items": git_train.get("items"), "merge_commit": git_train.get("head")}
+              theirs = {key: train.get(key) for key in mine}
+              if theirs != mine:
+                  problems.append("the validator reads the train as %s, but git reads it as %s" % (json.dumps(theirs, sort_keys=True), json.dumps(mine, sort_keys=True)))
+          for problem in problems:
+              print(problem)
+          open(refusals, "a").write("".join(problem[:1500] + "\n" for problem in problems))
           PY
       - name: Decide, and write the check run to publish
         id: decide
@@ -745,19 +794,38 @@ jobs:
                   ", ".join("run %s at %s (%s)" % (r.get("id"), r.get("head_sha"), r.get("conclusion")) for r in known.get("runs") or []) or "none"))
               for d in known.get("dropped") or []:
                   lines.append("Dropped from the known runs: run %s, %s (%s)" % (d.get("id"), d.get("why"), ", ".join(d.get("artifacts") or [])))
-          train = read("train.json")
-          if isinstance(train, dict):
+          # The train as the validator read it: its pull request, what it reverts (the named revert items, then each
+          # reverting commit and the commit it reverts) and any other named items, then the items it shipped, which for
+          # a train of reverts alone is none. git's reading, held to it in an earlier step on the pull request, the
+          # items and the merge commit, adds only what it could not read and the commits that name no item.
+          vtrain = validation.get("train") if isinstance(validation, dict) else None
+          gtrain = read("train.json")
+          if isinstance(vtrain, dict):
+              shown = [str(d) for d in vtrain.get("display_items") or []]
+              reverted = [d[len("Revert "):] for d in shown if d.startswith("Revert ")]
+              named = [d for d in shown if not d.startswith("Revert ") and d not in [str(i) for i in vtrain.get("items") or []]]
+              pairs = ["%s reverting %s" % (str(r.get("commit"))[:8], str(r.get("target_commit"))[:8])
+                       for r in vtrain.get("reverts") or [] if isinstance(r, dict)]
+              parts = ["pull request #%s" % vtrain["pull_request"] if vtrain.get("pull_request") is not None else "no pull request named"]
+              if reverted or pairs:
+                  parts.append("reverts %s%s" % ("/".join(reverted) if reverted else "", (" (%s)" if reverted else "(%s)") % ", ".join(pairs) if pairs else ""))
+              if named:
+                  parts.append("named " + ", ".join(named))
+              if vtrain.get("items"):
+                  parts.append("items " + ", ".join(str(i) for i in vtrain["items"]))
               lines.append("")
-              if train.get("pull_request") is not None:
-                  lines.append("Train: pull request #%s from %s, merged as %s" % (train["pull_request"], train.get("source"), train.get("head")))
-              lines.extend("Train: %s" % why for why in train.get("unread") or [])
-              commits = train.get("commits") or []
-              lines.append("Items it carried, from the Pipeline trailers of the %d commits it brings in: %s" % (
-                  len(commits), ", ".join(train.get("items") or []) or "none"))
-              bare = [c for c in commits if not c.get("pipeline")]
+              lines.append("Train: " + ", ".join(parts))
+              lines.append("Items shipped: %s; merge commit %s; read from %s" % (
+                  ", ".join(str(i) for i in vtrain.get("items") or []) or "none", vtrain.get("merge_commit"), vtrain.get("items_source")))
+          elif push:
+              lines.append("")
+              lines.append("Train: the validator gave none")
+          if push and isinstance(gtrain, dict):
+              lines.extend("Train, as git reads it: %s" % why for why in gtrain.get("unread") or [])
+              bare = [c for c in gtrain.get("commits") or [] if not c.get("items")]
               if bare:
-                  lines.append("Commits with no Pipeline trailer, so no item is named for them:")
-                  lines.extend("- %s %s" % (c.get("sha"), c.get("subject")) for c in bare)
+                  lines.append("Commits whose Pipeline trailer names no item number:")
+                  lines.extend("- %s %s%s" % (c.get("sha"), c.get("subject"), " (Pipeline: %s)" % ", ".join(c["pipeline"]) if c.get("pipeline") else "") for c in bare)
           if isinstance(validation, dict) and isinstance(validation.get("loaded_modules"), list):
               lines.append("Validator loaded: " + ", ".join(str(m) for m in validation["loaded_modules"]))
           # The test definitions the merge changes, as git reads them, whatever the validator says: for the reviewer.
@@ -776,11 +844,12 @@ jobs:
           # The check run is named for the base it was judged against. A check run attaches to the commit, so without
           # the base in the name a verdict earned against one branch's policy would satisfy a pull request of the same
           # head into another; each branch rule requires its own name. A push is named for the branch pushed to, its
-          # comparison base. A refused record with no approved base gets the bare name, which no rule requires.
+          # comparison base, and marked merged, so a pull request's check and a push's on the same commit never
+          # collide. A refused record with no approved base gets the bare name, which no rule requires.
           base_ref = (p.get("comparison_base") or {}).get("ref") if push else (p.get("pull_request") or {}).get("base_ref")
           approved = base_ref in [b for b in env["APPROVED_BASES"].split(",") if b] if isinstance(base_ref, str) else False
           body = {
-              "name": "Verdict for %s" % base_ref if approved else "Verdict",
+              "name": ("Verdict for %s (merged)" if push else "Verdict for %s") % base_ref if approved else "Verdict",
               "head_sha": env["HEAD_SHA"],
               "status": "completed",
               "conclusion": "success" if passed else "failure",
@@ -884,7 +953,10 @@ jobs:
           # any artifact, so a missing record still fails under the branch's own name; the bare name is for a head
           # whose base was unknown or not approved, and no branch rule requires it.
           base = env.get("JUDGE_BASE") or ""
-          name = "Verdict for %s" % base if base else "Verdict"
+          push = env["PRODUCER_EVENT"] == "push"
+          def check_name(event, ref):
+              return ("Verdict for %s (merged)" if event == "push" else "Verdict for %s") % ref if ref else "Verdict"
+          name = check_name(env["PRODUCER_EVENT"], base)
           body = None
           if env.get("JUDGE_DECIDED") == "true" and env.get("RECORD_FOUND") == "success":
               try:
@@ -910,19 +982,19 @@ jobs:
           # One authoritative Verdict per head and base, decided from GitHub's own record of the producer's runs for
           # this head, never from check-run data, which any workflow in the repository can write: a newer producer run
           # for the same base, or a newer attempt of this one, means this decision is stale and is not published. A
-          # run GitHub associates with another base is another pull request's and leaves this one alone. A push is
-          # held to the producer's push runs for the head on the same branch. The concurrency group makes this
-          # read-then-write serial per head.
+          # run is compared only within this check's name: a pull request's runs by the bases GitHub associates with
+          # them, a push's by its branch, each named as decide names it. Another name is another check's and leaves
+          # this one alone. The concurrency group makes this read-then-write serial per head.
           mine = (int(env["PRODUCER_RUN"]), int(env["PRODUCER_ATTEMPT"]))
-          push = env["PRODUCER_EVENT"] == "push"
           runs = gh("repos/%s/actions/workflows/%s/runs?head_sha=%s&event=%s&per_page=100" % (
               env["GITHUB_REPOSITORY"], env["PRODUCER_WORKFLOW_ID"], head, "push" if push else "pull_request")).get("workflow_runs", [])
-          def same_base(run):
-              if push:
-                  return int(run["id"]) == mine[0] or bool(base and run.get("head_branch") == base)
-              bases = {((pr.get("base") or {}).get("ref")) for pr in (run.get("pull_requests") or [])}
-              return int(run["id"]) == mine[0] or (base and base in bases)
-          newer = [r for r in runs if same_base(r) and (int(r["id"]), int(r.get("run_attempt") or 1)) > mine]
+          def names_of(run):
+              if run.get("event") == "push":
+                  return {check_name("push", run.get("head_branch"))}
+              return {check_name("pull_request", (pr.get("base") or {}).get("ref")) for pr in (run.get("pull_requests") or [])}
+          def same_name(run):
+              return int(run["id"]) == mine[0] or (bool(base) and name in names_of(run))
+          newer = [r for r in runs if same_name(r) and (int(r["id"]), int(r.get("run_attempt") or 1)) > mine]
           if newer:
               print("producer run %s attempt %s is newer evidence for %s on %s; this decision for %s is not published" % (
                   newer[0]["id"], newer[0].get("run_attempt"), head, base or "no approved base", key))
