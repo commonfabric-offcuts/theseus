@@ -29,11 +29,12 @@ HEAD = "b" * 40
 
 
 def log(*commits):
-    """`git log` output as the deploy asks for it: one entry per (subject, its Pipeline trailer values), oldest first.
+    """`git log` output as the deploy asks for it: one entry per (subject, its Pipeline trailer values[, its Train-Item
+    trailer values]), oldest first; commit n's sha is n + 1 in hex.
 
     Which lines are trailers is git's to read (tests/test_tools_releases.py runs it)."""
-    return "".join("%s\x1f%s\x1f%s\x1e\n" % (("%040x" % (n + 1)), subject, "\x1d".join(values))
-                   for n, (subject, values) in enumerate(commits))
+    return "".join("%s\x1f%s\x1f%s\x1f%s\x1e\n" % (("%040x" % (n + 1)), subject, "\x1d".join(values), "\x1d".join(train[0] if train else ()))
+                   for n, (subject, values, *train) in enumerate(commits))
 
 
 SHIPPED = log(("One change", ["88"]))
@@ -501,6 +502,54 @@ class ReleasePlan(DeployCase):
                              logs={"%s..%s" % (X, HEAD): log(("Again", ["87"]))})
         self.assertIn("pipeline item 87 shipped in release 19; release 20 names it again", self.refused(recovered))
         self.assertEqual(self.kills, [])
+
+    # The shape of e6b29056..af10137c, where release 76's record had to name 464 alone (codex #4651, #4654): 412, then
+    # 464, then 398 and 399 on a merge; 398 and 399 reverted by a commit from before the trailer rule, 412 by a trailer.
+    REVERTED = log(("Dossiers drawn as a stack", ["412"]), ("The composer grows", ["464"]),
+                   ("Merge train 4", ["398, 399"]), ("Train 5: revert 398/399", []),
+                   ("Train 8: revert 412", [], ["Revert 412"]))
+
+    def test_a_reverted_item_ships_nothing_and_the_record_says_how_it_was_taken_back(self):
+        self.deploy(FakeHost(self.config, log=self.REVERTED), dry=True, revert=[398, 399])
+        record = self.plan()["record"]
+        self.assertEqual(record["items"], [464])
+        self.assertEqual(record["measurements"]["reverts"], [{"item": 412, "commit": "%040x" % 5, "by": "trailer"},
+                                                              {"item": 398, "commit": None, "by": "flag"},
+                                                              {"item": 399, "commit": None, "by": "flag"}])
+        # Without the flag the trailer still takes 412 back, and only 412.
+        self.deploy(FakeHost(self.config, log=self.REVERTED), dry=True)
+        self.assertEqual(self.plan()["record"]["items"], [464, 398, 399])
+        # A release with nothing reverted says nothing of it.
+        self.deploy(FakeHost(self.config), dry=True)
+        self.assertNotIn("reverts", self.plan()["record"]["measurements"])
+        self.assertEqual(self.kills, [])
+
+    def test_a_flag_names_only_an_item_the_range_ships_and_no_trailer_took_back(self):
+        for flagged, why in (([500], "--revert names [500]"), ([412], "--revert names [412]"), ([88], "--revert names [88]")):
+            with self.subTest(flagged):
+                host = FakeHost(self.config, log=self.REVERTED)
+                self.assertIn(why, self.refused(host, revert=flagged))
+                self.assertEqual((self.kills, host.ran("-c")), ([], []))
+
+    def test_a_reverted_item_comes_back_in_a_later_release_and_a_shipped_one_still_cannot(self):
+        # Release 19 is the one the revert ran in: it names 464 alone. A later range that ships 412 again is a release.
+        earlier = page(release(19, HEAD, [464]))
+        self.deploy(FakeHost(self.config, log=log(("Dossiers again", ["412"])), releases=(earlier, 0)), dry=True)
+        self.assertEqual(self.plan()["record"]["items"], [412])
+        self.assertIn("pipeline item 464 shipped in release 19; release 20 names it again",
+                      self.refused(FakeHost(self.config, log=log(("The composer again", ["464"])), releases=(earlier, 0))))
+        # Had release 19 named what its range claimed, 412's return would be refused: the record is what lets it back.
+        claimed = page(release(19, HEAD, [412, 464, 398, 399]))
+        self.assertIn("pipeline item 412 shipped in release 19; release 20 names it again",
+                      self.refused(FakeHost(self.config, log=log(("Dossiers again", ["412"])), releases=(claimed, 0))))
+        self.assertEqual(self.kills, [])
+
+    def test_a_revert_trailer_that_names_no_item_numbers_stops_the_deploy_before_anything_stops(self):
+        for value in ("Revert next", "Revert 412 and 413", "Revert"):
+            with self.subTest(value):
+                host = FakeHost(self.config, log=log(("Something", ["3"]), ("Take it back", [], [value])))
+                self.assertIn("does not name pipeline item numbers", self.refused(host))
+                self.assertEqual((self.kills, host.ran("-c")), ([], []))
 
     def started(self, *runs):
         """Server run records after run-server-03, one per (commit, time), as the deploys that started them wrote them."""

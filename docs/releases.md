@@ -29,6 +29,30 @@ branch in: the deploy reads every commit it ships, merges included. A
 `Pipeline` trailer whose value is not a list of item numbers stops the deploy
 before anything is stopped.
 
+### A revert takes an item back
+
+A commit that takes an item back out names it the same way, in a
+`Train-Item: Revert 412` trailer (`Revert 398, 399` names two). Every revert
+carries one. Within the commits a deploy ships, an item's revert cancels its
+earlier `Pipeline` claim: the release does not name it, so the release that
+later ships it again is not refused for naming an item already shipped. A
+`Pipeline` claim after the revert, in the same range, ships it again. A
+`Train-Item` value that does not begin with `Revert` is not read; one that
+does, and is not followed by a list of item numbers, stops the deploy like a
+malformed `Pipeline` value.
+
+A revert committed before this rule has no trailer. The deploy takes such an
+item with `--revert N` (once per item), which it refuses unless a commit in
+the range claims N and no trailer has reverted it already. Both kinds are
+listed in the record's measurements, so the record says what was taken back:
+
+```json
+{"reverts": [{"item": 412, "commit": "...", "by": "trailer"},
+              {"item": 398, "commit": null, "by": "flag"}]}
+```
+
+`reverts` is left out when nothing was, like `known_reds`.
+
 ## The record
 
 | field | meaning |
