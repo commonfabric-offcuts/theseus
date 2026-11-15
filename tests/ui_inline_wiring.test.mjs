@@ -1495,9 +1495,26 @@ test('the page begins its run of the shell as it starts, with its own way to ope
   const begun = [];
   fixture('https://fixture/?topic=t1', { shell: { begin: page => begun.push(page), ready() {}, go: () => false, topicChanged() {} } });
   assert.equal(begun.length, 1, 'once, as the page starts');
-  // updated (item 523): the page's way to say a move found another build while its writing is not yet safe.
-  assert.deepEqual(Object.keys(begun[0]).sort(), ['open', 'retire', 'updated']);
-  assert.ok(begun.every(page => typeof page.open === 'function' && typeof page.retire === 'function' && typeof page.updated === 'function'));
+  // updated (item 523): the page's way to say a move found another build while its writing is not yet safe;
+  // refused: to say why it stayed when a move that waited on the build no longer has the guard's leave.
+  assert.deepEqual(Object.keys(begun[0]).sort(), ['open', 'refused', 'retire', 'updated']);
+  assert.ok(begun.every(page => ['open', 'refused', 'retire', 'updated'].every(name => typeof page[name] === 'function')));
+});
+
+test('a move the guard let go, refused as it is made, says why the page stayed where a refused move says it: by the topic line and in the Reader or New message sheet that is open', () => {
+  for (const open of [null, 'reader', 'new-message-sheet']) {
+    const begun = [], stayed = [], scrolled = [];
+    const f = fixture('https://fixture/?topic=t1', { shell: { begin: page => begun.push(page), ready() {}, go: () => false, topicChanged() {}, stayed: () => stayed.push('stayed') } });
+    if (open) f.get(open).open = true;
+    f.get('topic-navigation-status').scrollIntoView = how => scrolled.push(JSON.stringify(how));
+    const why = Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
+    begun[0].refused(why);
+    assert.equal(f.get('topic-navigation-status').textContent, why.message, `${open}: the topic line says why`);
+    assert.deepEqual(stayed, ['stayed'], `${open}: a press that went nowhere lands as a refused move's does`);
+    const near = { reader: 'reader-notice', 'new-message-sheet': 'inline-notice' }[open];
+    if (near) assert.deepEqual([f.get(near).textContent, scrolled], [why.message, []], `${open}: and so does the writing open over the page`);
+    else assert.deepEqual([f.get('reader-notice').textContent, f.get('inline-notice').textContent, scrolled], ['', '', ['{"block":"nearest"}']], 'with nothing open, only the topic line says it, brought into view');
+  }
 });
 
 test('a move that found another build says Theseus updated with a Reload that reloads, by the topic line and in the Reader or New message sheet that is open', () => {

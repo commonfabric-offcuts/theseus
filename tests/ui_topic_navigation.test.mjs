@@ -105,6 +105,34 @@ test('topic navigation rejects new typing, replaced owners and unrelated unprote
     await assert.rejects(pending); assert.deepEqual(f.visits, []);
   }
 });
+// The move the guard clears may wait before it is made (in-place-navigation.mjs reads the build the server serves
+// first), and the person may write on meanwhile. The guard hands the move its last look, still(), which the move asks
+// again where it is made: it throws why the page stays when what it cleared has changed, and answers false once a newer
+// choice has taken the move's place.
+test('topic navigation hands the move its last look, which refuses new typing, a replaced owner, unprotected work, a send or an unready image once they come, and gives way to a newer choice', async () => {
+  const keep = /Keep this page open until your writing and selected images are safely saved/;
+  for (const [what, change, refusal] of [['new typing', f => f.editors[0].localVersion++, keep], ['a replaced owner', f => f.registry.sessions.delete('inline'), keep],
+    ['the Reader replaced', f => { f.registry.current = { editors: {} }; }, keep], ['unprotected work', f => { f.registry.hasUnprotectedWriting = true; }, keep],
+    ['a send', f => { f.registry.sessions.get('inline').sends.set('s1', {}); }, /Wait for the send to finish/],
+    ['an unready image', f => { const e = f.editors[0]; e.clientCycleId = 'cycle'; e.draft = { attachments: [] };
+      e.uploadState = { entries: [{ selected: true, owner: { kind: 'cycle', id: 'cycle' }, bytes_state: 'durable' }] }; }, keep]]) {
+    const f = fixture(), looks = [];
+    const navigation = new TopicNavigation({ registry: f.registry, topicId: 'a', navigate: (id, still) => { f.visits.push(id); looks.push(still); } });
+    assert.equal(await navigation.open('b'), true, what);
+    assert.deepEqual(f.visits, ['b']);
+    assert.equal(typeof looks[0], 'function', `${what}: the move is handed the guard's last look`);
+    assert.equal(looks[0](), true, `${what}: as the guard hands it over, it stands`);
+    change(f);
+    assert.throws(() => looks[0](), refusal, `${what}: once it comes, the move is refused`);
+  }
+  const f = fixture(), looks = [];
+  const navigation = new TopicNavigation({ registry: f.registry, topicId: 'a', navigate: (id, still) => { f.visits.push(id); looks.push(still); } });
+  assert.equal(await navigation.open('b'), true);
+  const later = navigation.open('c');
+  assert.equal(looks[0](), false, 'a newer choice takes the waiting move\'s place, which then stays without a word');
+  assert.equal(await later, true); assert.equal(looks[1](), true, 'and the newer one stands');
+});
+
 test('newer topic choice wins, current topic does nothing, and clean editors need no receipt', async () => {
   const f = fixture(); for (const e of f.editors) e.ackVersion = e.localVersion;
   f.registry.flush = async () => { throw Error('Clean writing must not be saved again'); };

@@ -352,6 +352,61 @@ test('a move that finds another build while writing is not yet safe stays where 
   assert.deepEqual([loads.h.went, loads.win.order], [[], ['depart', 'reload']], 'with nothing to keep, a back loads the place it reached');
 });
 
+// The page's guard hands the move its last look (still, from TopicNavigation.openTarget), and the shell asks it again
+// where the move is made: the person may write on while the build is read, and the move goes only while what the
+// guard cleared stands. still() answers false when a newer choice has taken the move's place, and throws why the page
+// stays when what it cleared has changed.
+test('a move whose writing changed while it read the build stays: on its own build or an unread one it says why, on another it says Theseus updated, a back is put back, and a move a newer choice took over stays silently', async () => {
+  const changed = Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
+  const onPage = (at, page) => { const said = { refused: [], updated: [] }; page.refused = error => said.refused.push(error); page.updated = reload => said.updated.push(reload); at.shell.doc = { body: { dataset: { ready: 'true' } }, activeElement: null }; return said; };
+  for (const [served, words] of [['A', 'its own build'], [null, 'a build it could not read'], ['B', 'another build']]) {
+    const read = answerable(), here = shellAt('?topic=t1', { build: 'A', served: read.served }), said = onPage(here, here.shell.page);
+    let stands = true;
+    here.shell.guard(() => false);
+    assert.equal(here.shell.go({ kind: 'topic', id: 't2' }, () => { if (!stands) throw changed; return true; }), true);
+    // The person writes on while the read is out, and the device keeps the words: no guard on leaving holds.
+    stands = false;
+    await read.answer(served);
+    assert.deepEqual([here.moves, here.h.entries, here.win.order], [[], [], []], `${words}: no move, no entry, no load`);
+    if (served === 'B') assert.deepEqual([said.updated.length, said.refused], [1, []], `${words}: it says Theseus updated, with Reload`);
+    else assert.deepEqual([said.refused, said.updated], [[changed], []], `${words}: it says why it stayed, as a refused move does`);
+    assert.deepEqual([here.shell.moving, here.shell.doc.body.dataset.ready], [false, 'true'], `${words}: and is up and ready where it stays`);
+  }
+
+  // What the guard cleared still stands: the move goes as before.
+  const clear = answerable(), goes = shellAt('?topic=t1', { build: 'A', served: clear.served }), asked = [];
+  goes.shell.go({ kind: 'topic', id: 't2' }, () => { asked.push('still'); return true; });
+  assert.deepEqual(asked, [], 'nothing is asked again before the build is read');
+  await clear.answer('A');
+  assert.deepEqual([asked, goes.moves.length, goes.h.entries], [['still'], 1, ['?topic=t2']], 'asked again once it is, and the move is made in place');
+
+  // A newer choice took the move's place: it stays, says nothing, and the newer one goes its own way.
+  const newer = answerable(), taken = shellAt('?topic=t1', { build: 'A', served: newer.served }), quiet = onPage(taken, taken.shell.page);
+  taken.shell.go({ kind: 'topic', id: 't2' }, () => false);
+  await newer.answer('A');
+  assert.deepEqual([taken.moves, taken.h.entries, taken.win.order, quiet.refused, quiet.updated, taken.shell.moving], [[], [], [], [], [], false]);
+
+  // A back whose writing changed while the build was read is put back, once, and the page says why.
+  const back = answerable(), popped = shellAt('?topic=t1', { build: 'A', served: back.served });
+  const run = { open(target) { popped.page.opened.push(target); popped.shell.go(target, () => { throw changed; }); return true; } }, why = onPage(popped, run);
+  popped.shell.page = run;
+  popped.shell.places.push('?topic=t2'); popped.goTo('?topic=t2'); popped.shell.at = JSON.stringify(['topic', 't2']);
+  popped.goTo('?topic=t1');
+  await popped.shell.popstate({ state: { aimPlace: 0 } });
+  await back.answer('A');
+  assert.deepEqual([popped.h.went, popped.moves.length, popped.win.reloads, why.refused], [[1], 0, 0, [changed]], 'the address goes back and the page says why');
+
+  // A move asked before the run is up waits for it, carrying the guard's last look, which is asked once the build is read.
+  const early = answerable(), waits = shellAt('?topic=t1', { build: 'A', served: early.served });
+  waits.moving(); waits.started();
+  let checks = 0;
+  const later = onPage(waits, waits.shell.page);
+  assert.equal(waits.shell.go({ kind: 'topic', id: 't2' }, () => { checks += 1; throw changed; }), true);
+  await waits.up();
+  await early.answer('A');
+  assert.deepEqual([waits.moves, waits.h.entries, later.refused, checks], [[], [], [changed], 1], 'the waiting move stays when what the guard cleared no longer stands');
+});
+
 // The page asks Theseus nothing more from the moment it decides to load
 // another (api.mjs depart), before it asks the browser for the load: nothing
 // starts in the moment before the browser begins it. A move in place loads

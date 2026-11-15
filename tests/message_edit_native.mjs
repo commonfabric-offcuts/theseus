@@ -1434,6 +1434,107 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
+  // The page's guard hands the move its last look, which the shell asks again once the build is read
+  // (in-place-navigation.mjs, decide): words typed while the read is out keep the page where it is, whether this
+  // device has kept them yet or its copy of them is still being written, after a row and after a back with the cursor
+  // left in the composer. The page says why, as a refused move does, and the words stay in their box.
+  const keptHere = (p, what) => until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), what);
+  const STAYED = 'Keep this page open until your writing and selected images are safely saved, then choose the topic again.';
+  const savedToTheseus = (p, what) => until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent === 'Saved to Theseus'`), what, 15000);
+  await check('reading edit build on one build, words typed while a move reads the build keep the page where it is, which says why, with the words in their box, kept on this device or not yet, after a row and after a back with the cursor in the composer: at 320, 375 and 390 by touch and on a laptop, light and dark', async () => {
+    for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+      const name = `edit-build-typed-${width}`;
+      const { topic, away, ids, there } = await twoTopics(name);
+      const p = await open(name, device, away, there.note, EDIT_FAULTS);
+      await sized(p, device, width);
+      await holdJournal(p);
+      await p.evaluate('(window.sameDocument = true)');
+      const first = await pageBuild(p);
+      // One move held at its read of the build while the person writes on. held: the device's copy of the words is
+      // still being written as the read is answered; otherwise the device has kept them first.
+      const typedWhileRead = async (how, held, words, place, look) => {
+        const runs = runsAsked(p), read = await holdBuildRead(p);
+        if (how === 'row') await moveTo(p, device, topic);
+        else { await into(p, device, '#inline-writing-body'); await p.evaluate('history.back()'); }
+        await read.out();
+        if (how === 'row') await into(p, device, '#inline-writing-body');
+        const before = await p.evaluate(`(f => { f.setSelectionRange(f.value.length, f.value.length); return f.value; })(document.querySelector('#inline-writing-body'))`);
+        if (held) await p.evaluate('window.holdJournal = true');
+        await p.send('Input.insertText', { text: words });
+        if (held) await until(() => p.evaluate('window.journalHeld.length > 0'), `${width} ${how}: the device's copy is still being written`);
+        else await keptHere(p, `${width} ${how}: the device has kept the words`);
+        await read.release();
+        await until(async () => (await p.evaluate(`document.querySelector('#topic-navigation-status').textContent`)) === STAYED, `${width} ${how}: the page says why it stayed`)
+          .catch(error => explained(p, error));
+        await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + place)}`), `${width} ${how}: the address names the page that stayed`);
+        assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width} ${how}: nothing loaded`);
+        assert.deepEqual(runs(), [], `${width} ${how}: and no run of the page was asked for`);
+        assert.equal(await valueOf(p, '#inline-writing-body'), before + words, `${width} ${how}: the words are in their box`);
+        // Said where the person is looking: in the New message sheet when it is open over the page, else by the topic line.
+        const line = await p.evaluate(`(() => { const sheet = document.querySelector('#new-message-sheet').open, n = document.querySelector(sheet ? '#inline-notice' : '#topic-navigation-status');
+          const r = n.getBoundingClientRect(); return { sheet, text: n.hidden ? '' : n.textContent, inside: r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight }; })()`);
+        assert.deepEqual([line.text, line.inside], [STAYED, true], `${width} ${how}: said in the window where the person writes: ${JSON.stringify(line)}`);
+        assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width} ${how}: nothing scrolls sideways`);
+        if (look) { for (const scheme_ of ['light', 'dark']) { await scheme(p, scheme_); await shot(p, `edit-build-typed-${how}-${width}-${scheme_}`); } await scheme(p, ''); }
+        if (held) await letJournal(p);
+        await savedToTheseus(p, `${width} ${how}: the words are saved to Theseus`);
+        return before + words;
+      };
+      await typedWhileRead('row', false, `Typed as the row's move read the build (${width}).`, away, false);
+      const awayWords = await typedWhileRead('row', true, ` And while the device was still writing (${width}).`, away, true);
+      // Chosen again with the words safe, the move is made in place, on the page's own build.
+      const again = runsAsked(p);
+      await moveTo(p, device, topic);
+      await arrived(p, topic, ids.mine);
+      assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: chosen again, the move is made in place`);
+      assert.deepEqual(again(), [`/b/${first}/app.mjs`], `${width}: by one run of app.mjs, under the page's own build`);
+      await typedWhileRead('back', false, `Typed as the back read the build (${width}).`, topic, false);
+      await typedWhileRead('back', true, ` And while the device was still writing (${width}).`, topic, true);
+      // A back with the words safe goes, in place, and the first topic's words are in its box.
+      if (await p.evaluate(`document.querySelector('#new-message-sheet').open`)) await press(p, device, '#new-message-close');
+      await p.evaluate('history.back()');
+      await arrived(p, away, there.note);
+      assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: the back goes in place`);
+      await until(async () => await valueOf(p, '#inline-writing-body') === awayWords, `${width}: the first topic's words are in its box`);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // On another build, words typed while the move reads the build and kept on this device keep the page where it is too:
+  // it says Theseus updated with Reload (the guard's last look no longer stands), rather than load the new build with
+  // the words only under Review versions.
+  await check('reading edit build words typed while a move reads the build and kept on this device keep the page where it is when the server serves another build, which says Theseus updated, with the words in their box: at 320, 375 and 390 by touch and on a laptop', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+        const name = `edit-build-typed-next-${width}`;
+        const { topic, away, there } = await twoTopics(name);
+        const p = await open(name, device, away, there.note, EDIT_FAULTS);
+        await sized(p, device, width);
+        onNext = !onNext; await restartOn(onNext ? next : null, p);
+        await p.evaluate('(window.sameDocument = true)');
+        const read = await holdBuildRead(p);
+        await moveTo(p, device, topic);
+        await read.out();
+        const words = `Typed as Theseus updated, kept on this device (${width}).`;
+        await into(p, device, '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+        await keptHere(p, `${width}: the device has kept the words`);
+        await read.release();
+        await until(async () => (await moveNotice(p)).startsWith('Theseus updated.'), `${width}: the page says Theseus updated`).catch(error => explained(p, error));
+        assert.equal(await p.evaluate('location.search'), '?topic=' + away, `${width}: the page stays where it was`);
+        assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: and nothing loaded`);
+        assert.equal(await valueOf(p, '#inline-writing-body'), words, `${width}: the words are in their box`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
   // Saves of the topic's writing to Theseus held unsent while window.holdDrafts is true (the page's fetch, as it leaves).
   const holdDrafts = p => p.evaluate(`(() => { window.holdDrafts = true; window.draftsHeld = 0; const send = window.fetch;
     window.fetch = function (input, init) { let body = null; try { body = JSON.parse(init?.body ?? 'null'); } catch {}
