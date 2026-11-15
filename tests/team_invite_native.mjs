@@ -18,8 +18,10 @@ const PHONES = [[320, 568], [375, 667], [390, 844]];
 // Every visible control of the Team panel's invite, its words (what it says, the
 // prompt and what became of a copy) and its blocks, measured where the page
 // draws them: no control covers another, no words lie under a control or under
-// other words, and nothing reaches past the screen.
-const MEASURE = `(()=>{
+// other words, and nothing reaches past the screen. The screen is the width the
+// case set (W), not innerWidth: a phone browser widens its layout to take in
+// whatever overflows, so innerWidth and scrollWidth grow with the fault.
+const MEASURE = W => `(W=>{
   const shown=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
   const name=e=>e.id?'#'+e.id:(e.className&&typeof e.className==='string'?'.'+e.className.trim().split(/\\s+/).join('.'):e.tagName.toLowerCase())+(e.textContent.trim()?' “'+e.textContent.trim().slice(0,20)+'”':'');
   const controls=[...document.querySelectorAll('#team-invite button,#team-invite input')].filter(shown);
@@ -38,9 +40,9 @@ const MEASURE = `(()=>{
   const meet=(a,c)=>a.x<c.right-.5&&c.x<a.right-.5&&a.y<c.bottom-.5&&c.y<a.bottom-.5;
   for(let i=0;i<words.length;i++){for(let j=i+1;j<words.length;j++)if(meet(words[i],words[j]))overlaps.push(words[i].name+' over '+words[j].name);
     for(const c of rects)if(meet(words[i],c))overlaps.push(c.name+' over '+words[i].name)}
-  return {sideways:document.documentElement.scrollWidth-innerWidth,width:innerWidth,rects,overlaps,
-    outside:[...rects,...blocks,...words].filter(r=>r.x<-.5||r.right>innerWidth+.5).map(r=>r.name),
-    promptSideways:pre&&shown(pre)?pre.scrollWidth-pre.clientWidth:0}})()`;
+  return {sideways:Math.max(document.documentElement.scrollWidth,innerWidth)-W,width:innerWidth,rects,overlaps,
+    outside:[...rects,...blocks,...words].filter(r=>r.x<-.5||r.right>W+.5).map(r=>r.name),
+    promptSideways:pre&&shown(pre)?pre.scrollWidth-pre.clientWidth:0}})(${W})`;
 
 export async function teamInviteChecks({ check, page, until, control, view, facts, shot }) {
   const quiet = async (p, expression) => { try { return await p.evaluate(expression); } catch { return false; } };
@@ -107,7 +109,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
         await theme(p, scheme);
         await p.evaluate(`document.querySelector('#outcome-team').scrollIntoView({block:'start'})`);
         await painted(p);
-        const m = await p.evaluate(MEASURE);
+        const m = await p.evaluate(MEASURE(width));
         const where = `${state} at ${width} ${scheme}`;
         if (m.sideways > 0) found.push(`${where}: the page scrolls sideways by ${m.sideways}px`);
         if (m.outside.length) found.push(`${where}: past the screen: ${m.outside.join(', ')}`);
