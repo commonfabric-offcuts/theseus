@@ -2275,7 +2275,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'topic_state', operation_id: 'rail-build-review', topic_id: 'rb-review', args: { state: 'review', note: 'Live in release 5' } });
     await control({ method: 'topic_state', operation_id: 'rail-build-wait-active', topic_id: 'rb-wait', args: { state: 'active', note: '' } });
     await control({ method: 'agent_message', operation_id: 'rail-build-new-1', sender: BUILD_AGENT, topic_id: 'rb-now', whole_topic: true, body: 'Built the first part' });
-    await control({ method: 'agent_message', operation_id: 'rail-build-new-2', sender: BUILD_AGENT, topic_id: 'rb-now', whole_topic: true, body: 'This one is for you', post_args: { addressees: [facts.actor] } });
+    await control({ method: 'agent_message', operation_id: 'rail-build-new-2', sender: BUILD_AGENT, topic_id: 'rb-now', whole_topic: true, body: 'This one is for you', post_args: { addressees: [facts.actor], intent: 'tell' } });
     await control({ method: 'agent_message', operation_id: 'rail-build-ask', sender: BUILD_AGENT, topic_id: 'rb-wait', whole_topic: true, body: 'Which one should ship first?', post_args: { addressees: [facts.actor], intent: 'ask' } });
   })());
   // The right rail's Build topics as drawn, each with its group, its marks, the
