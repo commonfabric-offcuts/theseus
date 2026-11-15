@@ -14281,6 +14281,136 @@
     "native": "notebook",
     "case": "notebook card images × keeps an image on the page while another card shows it"
    }
+  },
+  {
+   "item": 321,
+   "act": "Outside its card, the Reader shows a card's image line as the image at its reading size, read through the page, never the line's markup",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });",
+     "      images: null });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images the Reader shows"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A page opened in place on its outcome's page shows a card's image line as the image, read through the page",
+   "break": [
+    [
+     "web/page-here.mjs",
+     "    body.append(...linkedFenceNodes(source.body ?? '', this.doc, pageImages(source, this.media && (attachment => this.media(attachment, source.source_ref)))));",
+     "    body.append(...linkedFenceNodes(source.body ?? '', this.doc));"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images a page opened in place"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The topic's Notebook card names a card's image after an image glyph, never by its markup",
+   "break": [
+    [
+     "web/app.mjs",
+     "      linkWords(body, imageStandIns(item.body, { partial: item.preview === true }), { partial: item.preview === true });",
+     "      linkWords(body, item.body, { partial: item.preview === true });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images the topic's Notebook card"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An ask about a card quotes its image by name after an image glyph, never by its markup",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "...imageStandIns(cardStacks(card.words, messageOf).words).split('\\n')];",
+     "...cardStacks(card.words, messageOf).words.split('\\n')];"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an ask about a card"
+   }
+  },
+  {
+   "item": 321,
+   "act": "What changed in a page names an image a card gained or lost after its glyph, never by its markup",
+   "break": [
+    [
+     "web/page-changes.mjs",
+     "  const runs = changes(imageStandIns(before), imageStandIns(after));",
+     "  const runs = changes(before, after);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Where a page's images are drawn, an image line is a passage of its own, even straight under words",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "    while (j < n && !blank(lines[j]) && !startsBlock(lines, j, images)) tick(meter, lines[j++].text.length + 1);",
+     "    while (j < n && !blank(lines[j]) && !startsBlock(lines, j)) tick(meter, lines[j++].text.length + 1);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image the page does not carry shows its name alone where the page is read, and nothing is read for it",
+   "break": [
+    [
+     "web/page-image.mjs",
+     "  if (attached?.inline && read) paintThumb(figure, 'card:' + image.id, () => read(attached), img => caption.before(img));",
+     "  if (read) paintThumb(figure, 'card:' + image.id, () => read(attached ?? image), img => caption.before(img));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Where only words show, an image line inside a fenced block stays words",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    if (before || fence) return line;\n    const image = lineImage(line), end",
+     "    const image = lineImage(line), end"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An excerpt cut inside an image line's address still names the image after its glyph",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    const cut = partial && i === lines.length - 1 && CUT_LINE.exec(line);",
+     "    const cut = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
   }
  ]
 }
