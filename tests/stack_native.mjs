@@ -324,8 +324,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const alertColour = p => p.evaluate(`(()=>{const s=document.createElement('span');s.style.color='var(--alert)';document.body.append(s);const c=getComputedStyle(s).color;s.remove();return c})()`);
   const focusedOn = p => p.evaluate(`document.activeElement?.closest?.('[data-id]')?.dataset.id ?? null`);
   // A right click (two fingers' click on a trackpad) on target, where a person opens a message's menu with no bar.
+  // In Safari's engine Playwright's own secondary click, as tests/fence_copy_native.mjs makes it.
   const rightClick = async (p, selector) => {
     await centre(p, selector);
+    if (p.pw) { await p.pw.locator(selector).click({ button: 'right', position: { x: 8, y: 8 } }); return; }
     const b = await p.box(selector), x = b.x + Math.min(12, b.width / 2), y = b.y + b.height / 2;
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
@@ -859,6 +861,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await shot(p,'stack-aside-swipe-folded');
     // A reload finds the order and the folds as Core holds them.
     await p.close(); p = await open('stack-aside-swipe-reload', 'phone', topic, ids.root);
+    // Read now, they are drawn at latest and unread no longer; every message is there once the dossier is fully open.
+    const toggle = `${section} > .stack-toggle`;
+    if ((await look(p, ids, 'root')).fold !== 'open') { await centre(p, toggle); await press(p, 'phone', toggle); }
     await becomes(shown, [ids.one+':row', ids.two+':row'], 'after a reload, the same rows in the same order');
     // The title bar alone moves the dossier: below More, and back with a swipe left there.
     await drag(`${section} .stack-head`);
@@ -3722,7 +3727,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         return {root:name(ids.root),whole:name(ids.whole),loneWhole:name(ids.loneWhole),bare:row(ids.bare),thumbed:row(ids.thumbed),lone:row(ids.lone),
           title:s.querySelector('.stack-head > .stack-name').textContent,
           order:[...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>Object.keys(ids).find(k=>ids[k]===e.dataset.id)),
-          reachable:Object.keys(ids).filter(k=>shown(c(k))),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+          reachable:Object.keys(ids).filter(k=>shown(c(ids[k]))),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
       let seen = null;
       for (const width of widthsOf(device)) {
         await atWidth(p, device, width);
