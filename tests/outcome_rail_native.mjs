@@ -578,11 +578,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // would then carry it on past where it was. The order is held: the page's own list is under its outcome, the rails
   // are quiet, and the rail stands 12px from its end before the press.
   await check('rail the outline keeps its scroll when it moves in place to a topic, scrolled near the rail\'s end, and the guide\'s ? still opens the guide', async () => {
-    await control({ method: 'light_outcome', outcome: 'rail-keep-o', title: 'Keeping outcome', topic: { id: 'rail-keep-t', title: 'Keeping topic' } });
-    const p = await page('rail-keep', null, true, { url: facts.origin + '/?conversation=rail-keep-o', beforeNavigate: async q => {
+    // The outcome of the check before, so the outline holds no row more for the checks after this one.
+    await control({ method: 'light_outcome', outcome: 'rail-move-o', title: 'Moving outcome', topic: { id: 'rail-move-t', title: 'Moving topic' } });
+    const p = await page('rail-keep', null, true, { url: facts.origin + '/?conversation=rail-move-o', beforeNavigate: async q => {
       await q.send('Emulation.setDeviceMetricsOverride', { ...SIZES.laptop, height: 420 });
     } });
-    const link = '#outline .ol-outcome[data-workspace-id="rail-keep-o"] .ol-adopted a[data-topic-id="rail-keep-t"]';
+    const link = '#outline .ol-outcome[data-workspace-id="rail-move-o"] .ol-adopted a[data-topic-id="rail-move-t"]';
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)})?.getClientRects().length) && !document.documentElement.hasAttribute('data-rails-reading')`), 'the page\'s own list is under its outcome, and the rails are quiet');
     // Outcomes listed below this one (earlier checks add them) push its topic further from the rail's end: the
     // window is made tall enough to show the topic with the rail 12px from its end.
@@ -598,7 +599,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.ok(room > 0, 'the rail scrolls at this height, with the topic in view');
     assert.equal(await p.evaluate("(r=>r.scrollHeight-r.clientHeight-r.scrollTop)(document.getElementById('rail'))"), 12, 'and stands 12px from its end');
     await p.point(link);
-    await until(async () => await p.evaluate(`location.search==='?topic=rail-keep-t' && document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(link)})) && !document.querySelector(${JSON.stringify(link)}).closest('[inert]')`), 'the topic opens in place, its own list under its outcome');
+    await until(async () => await p.evaluate(`location.search==='?topic=rail-move-t' && document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(link)})) && !document.querySelector(${JSON.stringify(link)}).closest('[inert]')`), 'the topic opens in place, its own list under its outcome');
     assert.equal(await p.evaluate("document.getElementById('rail').scrollTop"), room, 'the outline\'s scroll is where it was');
     // The guide's ? that stood in the logo block through the move is the new page's own: one, and a press opens the guide.
     assert.equal(await p.evaluate("document.querySelectorAll('#rail .brand .guide-open').length"), 1, 'one guide\'s ?');
