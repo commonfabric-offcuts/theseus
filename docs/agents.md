@@ -77,7 +77,10 @@ the instance-wide message sequence that `topic_messages` pages by, which
 increases within each topic but is not contiguous there, so a gap is not a
 missed message) and the topic's title prefix (as
 `topic: {id, title, title_truncated}`, at most 1024 UTF-8 bytes), so an inbox
-line or a wake notice can name the place without another read. The `delivery`
+line or a wake notice can name the place without another read. A pending
+delivery to the agent that names its message's dossier, which nobody has
+named, also carries `name_it: {root_id, name_revision}`, the mint it is to
+send ([reply-stacks.md](reply-stacks.md#minted-names-479)). The `delivery`
 view (`args: {delivery_id}`) returns one of the actor's own deliveries as
 `{item}` in the same shape, pending or not; it is how `watch` names a
 delivery it learns of from a change. It is readable only while the message

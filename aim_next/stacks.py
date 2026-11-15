@@ -19,7 +19,10 @@ change:
 - `name` (stack.name): the short name of the dossier this message is the first
   message of; a name typed anywhere in a dossier lands there. The topic's:
   anyone who reads it may rename it, everyone sees it, and it says who typed
-  it. Empty gives the stack back its first line.
+  it. Empty gives the stack back its first line. A minted name (item 479,
+  `minted: true`) is an agent's two to five words for a dossier nobody has
+  named, once a reply on the record has landed in it: only its namer
+  (dossier_namer) may mint it, and only while no name was ever given.
 - `join` (stack.join): the stack this message heads is joined to the end of
   another stack (`into`, a message of that stack), or split back out (none).
   The topic's, wiki style, with who did it.
@@ -100,6 +103,8 @@ NAME_CHARS = 200
 PLACE_BOUND = 1e15
 # The longest chain of joins and replies a join is checked through for a loop.
 JOIN_DEPTH = 10000
+# A minted name is this many words, from the fewest to the most (item 479).
+MINT_WORDS = (2, 5)
 # What an act stands at before anyone has made it.
 NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None}}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
@@ -132,13 +137,17 @@ def _value(kind, args):
             raise Refusal("INVALID_ARGUMENT", "Name one stack and the number it is kept at, or none to let new replies move it")
         return {"key": key}
     if kind == "name":
-        name = args.get("name") if set(args) == {"name"} else None
-        if not isinstance(name, str):
+        name = args.get("name") if set(args) in ({"name"}, {"name", "minted"}) else None
+        if not isinstance(name, str) or args.get("minted", True) is not True:
             raise Refusal("INVALID_ARGUMENT", "Name one stack and its short name, or an empty name for its first line")
         name = " ".join(name.split())
         if len(name) > NAME_CHARS:
             raise Refusal("INVALID_ARGUMENT", "A short name is at most %d characters" % NAME_CHARS)
-        return {"name": name}
+        if "minted" not in args:
+            return {"name": name}
+        if not MINT_WORDS[0] <= len(name.split()) <= MINT_WORDS[1]:
+            raise Refusal("INVALID_ARGUMENT", "A minted name is %d to %d words" % MINT_WORDS)
+        return {"name": name, "minted": True}
     into = args.get("into", False) if set(args) == {"into"} else False
     if into is not None:
         if into is False:
@@ -161,7 +170,10 @@ def _shown(kind, row):
     if kind == "place":
         return {"placed": value["key"]}
     if kind == "name":
-        return {"name": {"text": value["name"], "by": row["actor_id"], "at_ms": row["at_ms"]} if value["name"] else None}
+        if not value["name"]:
+            return {"name": None}
+        # A minted name says so; a typed one, and every name an older Core kept, reads as it always did.
+        return {"name": dict({"text": value["name"], "by": row["actor_id"], "at_ms": row["at_ms"]}, **({"minted": True} if value.get("minted") is True else {}))}
     return {"joined": {"into": value["into"], "by": row["actor_id"], "at_ms": row["at_ms"]} if value["into"] else None}
 
 
@@ -221,11 +233,11 @@ class StackRoots:
         return at
 
 
-def _dossier(db, actor, root):
-    """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None.
-    Both recursive arms seek indexed children of the current member. The join
-    arm accepts only the latest act; a nonempty join overrides reply ancestry."""
-    row = db.execute("""
+# The messages of the dossier :root heads that :actor can see ('' sees only those on the record): the root, the
+# replies under it that no join took elsewhere, and the stacks joined into it, and theirs in turn. Both recursive arms
+# seek indexed children of the current member. The join arm accepts only the latest act; a nonempty join overrides
+# reply ancestry.
+MEMBERS = """
         WITH RECURSIVE members(id) AS (
           SELECT :root
           UNION
@@ -239,9 +251,42 @@ def _dossier(db, actor, root):
           JOIN messages m ON m.id=a.message_id JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
           WHERE a.owner='' AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='join' AND b.owner='')
             AND """ + VISIBLE + """
-        ) SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id
-        """, {"root": root, "actor": actor}).fetchone()
+        )"""
+
+
+def _dossier(db, actor, root):
+    """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None."""
+    row = db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id",
+                     {"root": root, "actor": actor}).fetchone()
     return row[0], row[1]
+
+
+def dossier_namer(db, root):
+    """(who mints a name for the dossier root heads, why) (item 479). The namer is None once anyone ever named it
+    (`named`: a typed name wins and is never replaced, and a dossier is minted once), and before a reply on the record
+    has landed in it (`unreplied`). Then it is the outcome's coordinator when an agent coordinates it
+    (`coordinator`), or else the first agent to reply on the record (`first_agent`), and None while no agent has
+    (`no_agent`: the first line stays). A whisper counts for nothing, since a name is everyone's."""
+    if db.execute("SELECT 1 FROM message_acts WHERE message_id=? AND kind='name' AND owner='' LIMIT 1", (root,)).fetchone():
+        return None, "named"
+    # The first agent's reply if any agent has replied, else the first reply.
+    first = db.execute(MEMBERS + " SELECT m.author_id,a.kind FROM members p JOIN messages m ON m.id=p.id JOIN actors a ON a.id=m.author_id "
+                       "WHERE m.id<>:root AND m.private_to IS NULL ORDER BY a.kind<>'agent',m.seq LIMIT 1", {"root": root, "actor": ""}).fetchone()
+    if first is None:
+        return None, "unreplied"
+    coordinator = db.execute("SELECT w.coordinator_id FROM messages m JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+                             "JOIN actors a ON a.id=w.coordinator_id WHERE m.id=? AND a.kind='agent'", (root,)).fetchone()
+    if coordinator is not None:
+        return coordinator[0], "coordinator"
+    return (first["author_id"], "first_agent") if first["kind"] == "agent" else (None, "no_agent")
+
+
+# What a refused mint says, by why its sender is not the namer.
+NOT_THE_NAMER = {"named": ("ALREADY_NAMED", "This dossier already has a name; a minted name never replaces one, and a dossier is minted once"),
+                 "unreplied": ("NOT_THE_NAMER", "Nobody has replied in this dossier yet; it is named once the first reply lands"),
+                 "coordinator": ("NOT_THE_NAMER", "The outcome's coordinator, %s, names this dossier"),
+                 "first_agent": ("NOT_THE_NAMER", "The first agent to reply here, %s, names this dossier"),
+                 "no_agent": ("NOT_THE_NAMER", "No agent has replied in this dossier, so it keeps its first line")}
 
 
 def _seen_seq(db, actor, topic):
@@ -348,6 +393,11 @@ class Stacks:
         current = self._act_revision(db, message["id"], kind, owner)
         if envelope["expected"][expected_name] != current:
             raise Refusal("REVISION_CONFLICT", "This changed since it was read; nothing was changed", {expected_name: current})
+        if value.get("minted"):
+            namer, why = dossier_namer(db, message["id"])
+            if namer != actor:
+                code, words = NOT_THE_NAMER[why]
+                raise Refusal(code, words % namer if "%s" in words else words)
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
         if (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value:
             return dict(result, **value, **{expected_name: current, "changed": False}), []
@@ -382,6 +432,24 @@ class Stacks:
         found = stack_positions(db, actor, rows)
         return {"instance_id": self.instance_id, "topic_id": topic["id"],
                 "items": [{"message_id": row["id"], "stack_position": found[row["id"]]} for row in rows]}
+
+    def _view_stack_namer(self, db, actor, args):
+        """Who names the dossier a message is in (item 479), for an agent about to mint its name: the dossier's first
+        message, its name and the name's revision (the fence a mint is sent on), and its namer, or None."""
+        message, _ = self._acted_message(db, actor, {"message_id": args.get("message_id")})
+        root = StackRoots(db, actor).root(message["id"])
+        acts = current_acts(db, actor, [root]).get(root, EMPTY)
+        namer, why = dossier_namer(db, root)
+        return {"instance_id": self.instance_id, "message_id": message["id"], "topic_id": message["topic_id"], "root_id": root,
+                "name": acts["name"], "name_revision": acts["name_revision"], "namer": namer, "why": why}
+
+    def _name_it(self, db, recipient, message_id):
+        """{root_id, name_revision} when recipient, an agent, names the dossier message_id is in and nobody has (item
+        479): a delivery carries it, so the notice and the inbox tell the namer to mint the name. None otherwise."""
+        root = StackRoots(db, recipient).root(message_id)
+        if dossier_namer(db, root)[0] != recipient:
+            return None
+        return {"root_id": root, "name_revision": self._act_revision(db, root, "name", "")}
 
     def _fold_answered(self, db, actor, message_id):
         """A person who replies to a message (its reply_to names it) or gives it a thumbs-up has dealt with it: it
