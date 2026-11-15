@@ -366,8 +366,9 @@ folded, and Unstar beside each takes the star off.
 On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
 "Move or join…", which opens a second sheet. A message swiped to the right
 folds to its row, in any state of its stack, fully open included, the
-dossier's last visible message too (item 472), and its row swiped to the
-left, or tapped, unfolds it. A drag that starts on
+dossier's last visible message too, and a message placed on its own, which
+has no title bar and stays where it was placed (item 472); its row swiped to
+the left, or tapped, unfolds it. A drag that starts on
 something scrolling sideways, such as a wide table or a block of code,
 scrolls it instead. A long message that scrolls up and down inside its card
 (item 381) is not such a thing: its card scrolls only up and down, and a
@@ -516,7 +517,9 @@ current target has the strong ring: a message, or the whole folder when its
 compact header or a stack control is selected. The next card overlaps the lit
 one's bottom edge, so its ring's bottom side is drawn again above that card,
 the ring alone and never the card, so the next card's words stay uncovered
-(item 430). A message between others keeps its quiet fold line in a dossier,
+(item 430). The dossier draws that ring on the lit card's own box, not inside
+the card, so a long message read in place, scrolled or not, and a fold line,
+each of which clips what is inside it, keep it too. A message between others keeps its quiet fold line in a dossier,
 and the line answers the pointer and shows when it is open, as anywhere. The enclosing stack does not
 also light up for a selected message. Stale keyboard focus, unread state and
 hover on an unselected message do not get another strong border. A placed message
@@ -560,7 +563,8 @@ twin without judging it, as the rule for that case is still open (item 430).
 | inside a dossier: a header press folds, the words open the Reader, no bar on a folded row, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier a press on a shown message's header …" |
 | Option and a swipe right fold the message and every one before it, later and starred ones whole, ⌘Z, and a plain swipe folding one | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad …" |
 | a swipe on a dossier's last visible message folds it in place; the title bar alone moves the dossier below More and back | in Chrome (a finger's drag), `tests/stack_native.mjs`, "reading stacks below More uses a real swipe …"; the trackpad, "reading stacks on a laptop two fingers swiped right on the trackpad …" |
-| the lit card's ring above the next card, a reply's and the first message's, read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, light and dark, `tests/stack_native.mjs`, "reading stacks the lit card's ring keeps its bottom side above the next card …" |
+| a message placed on its own folds in place under a swipe right, unfolds under a swipe left, stays placed and goes nowhere below More | the trackpad in Chrome and Safari's engine, a finger's drag in Chrome, `tests/stack_native.mjs`, "reading stacks a message placed on its own folds in place …" |
+| the lit card's ring above the next card, a reply's and the first message's, short and long (read in place, at its top and scrolled inside), and a fold line, with none below the last card and none across the next card's words, read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, light and dark, `tests/stack_native.mjs`, "reading stacks the lit card's ring keeps its bottom side above the next card …" |
 | a fold line in a dossier under the pointer and open | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a fold line in a dossier answers the pointer …" |
 | a tap's light and bar through the first mouse move after it, and the moves after it lighting another card or letting the light go | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a tap's light stays through the first mouse move after it …" |
 | one line of a message: the author's words after a quote, colon and all, a quote alone, list and heading marks, an attachment alone, an empty message, a long line | `tests/ui_message_preview.test.mjs` |
@@ -590,7 +594,9 @@ Not yet:
 
 A right swipe on its title bar (its head row, or the chevron) moves the
 dossier below More messages for you, on every device. Every message keeps
-its own fold gesture, the last one shown included (item 472). The menu offers Move below More and Bring back above More;
+its own fold gesture, the last one shown included, and so does a message
+placed on its own: it has no title bar, so a right swipe folds it where it
+was placed and moves nothing below More (item 472). The menu offers Move below More and Bring back above More;
 Command-Z undoes a move. Existing unread messages and your own replies leave
 it there; a newer visible reply from someone else brings it back. Links can
 show its messages without clearing your choice. More is a boundary for the

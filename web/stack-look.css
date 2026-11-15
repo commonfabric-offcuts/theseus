@@ -61,7 +61,6 @@
   --stack-pad:.5rem;                      /* folder edge to sheet */
   --stack-sheet-gap:.45rem;
   --stack-overlap:12px;
-  --stack-sheet-border:1px;               /* a card's border, inside its ring */
   --stack-contact:0 -1px 2px rgb(54 46 38 / .10);
   --stack-folded-height:44px;
   --stack-folded-ink:var(--stack-read-ink);
@@ -96,12 +95,17 @@
 .reply-stack:not(.only-new *) .message-fold.lit>.fold-line{box-shadow:0 0 0 2px var(--stack-ring)}
 /* The next card covers the lit one's bottom edge, and its ring with it: the
    ring is drawn again above the next card, the ring alone and never the card,
-   so the next card's words stay uncovered (item 430). A reply's card is
-   positioned, so its ring is its own layer; the first message's card stays
-   static for the tab, so the replies draw the part of its ring they cover. */
-.reply-stack:not(.only-new *) .stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line)::after{content:'';position:absolute;z-index:1;inset:calc(-1 * var(--stack-sheet-border));
-  border-radius:inherit;box-shadow:0 0 0 2px var(--stack-ring);pointer-events:none}
-.reply-stack:not(.only-new *) .message-fold.lit>.fold-line{position:relative;--stack-sheet-border:0px}
+   so the next card's words stay uncovered (item 430). The replies' box draws a
+   lit reply's ring, on the lit card's or fold line's own box (an anchor), and
+   never the card itself: a long reply read in place scrolls inside its card
+   and a fold line clips its words, so either would clip a ring of its own. The
+   first message's card stays static for the tab, so the replies draw the part
+   of its ring they cover. */
+.reply-stack:not(.only-new *) .stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line){anchor-name:--stack-lit}
+@supports (anchor-name:--stack-lit){
+.reply-stack:not(.only-new *) .stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';position:absolute;z-index:1;
+  position-anchor:--stack-lit;position-visibility:anchors-valid;top:anchor(top);right:anchor(right);bottom:anchor(bottom);left:anchor(left);
+  border-radius:var(--stack-r-sheet);box-shadow:0 0 0 2px var(--stack-ring);pointer-events:none}}
 .reply-stack:not(.only-new *)>.lit[data-stack-covered=true]~.stack-replies::before{content:'';position:absolute;z-index:1;left:-2px;right:-2px;top:calc(-1 * var(--stack-overlap));
   height:calc(var(--stack-overlap) + 2px);box-sizing:border-box;border:2px solid var(--stack-ring);border-top:0;
   border-radius:0 0 calc(var(--stack-r-sheet) + 2px) calc(var(--stack-r-sheet) + 2px);pointer-events:none}

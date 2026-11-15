@@ -14031,13 +14031,58 @@
    }
   },
   {
+   "item": 472,
+   "act": "A swipe right on a message placed on its own folds it in place and moves nothing below More",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "whole: Boolean(found.section && chrome) };",
+     "whole: Boolean(found.section && (chrome || found.section.dataset.single === 'true')) };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a message placed on its own folds in place"
+   }
+  },
+  {
    "item": 430,
    "act": "The lit reply's ring keeps its bottom side above the next card",
    "break": [
     [
      "web/stack-look.css",
-     ":is(.message-card.lit,.message-fold.lit>.fold-line)::after{content:'';",
-     ":is(.message-card.lit,.message-fold.lit>.fold-line)::after{content:none;"
+     ".stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';",
+     ".stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:none;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A long reply read in place keeps its ring's bottom side above the next card, its ring drawn outside the card that scrolls",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';position:absolute;z-index:1;\n  position-anchor:--stack-lit;position-visibility:anchors-valid;top:anchor(top);right:anchor(right);bottom:anchor(bottom);left:anchor(left);",
+     ".reply-stack:not(.only-new *) .stack-replies .message-card.lit::after{content:'';position:absolute;z-index:1;inset:-1px;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A lit fold line in a dossier keeps its ring's bottom side above the next card",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line){anchor-name:--stack-lit}",
+     ".stack-replies .message-card.lit{anchor-name:--stack-lit}"
     ]
    ],
    "check": {
