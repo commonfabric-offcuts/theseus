@@ -44,11 +44,20 @@ INVITATIONS_DOWN = ["DROP TABLE agent_invitations"]
 INVITATIONS_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM agent_invitations)"
 
 
+# Latin letters Unicode leaves whole that are written with letters of their own, by their Unicode names.
+SPELLED = {"SHARP S": "ss", "THORN": "th", "ETH": "d", "ENG": "ng", "SCHWA": "e", "EZH": "z", "ESH": "sh", "GAMMA": "g",
+           "KRA": "q", "YOGH": "gh", "WYNN": "w"}
+# The rest are named as a letter with a mark: "LATIN SMALL LETTER O WITH STROKE" is o, "LATIN CAPITAL LIGATURE OE" is oe.
+LATIN = re.compile(r"LATIN (?:SMALL |CAPITAL )?(?:LETTER|LIGATURE) (?:SMALL CAPITAL |DOTLESS |TURNED |REVERSED |OPEN |AFRICAN )?"
+                   r"(.+?)(?: WITH .*| DIGRAPH)?")
+
+
 def agent_id(name):
-    """The ID an agent is known and addressed by, from its name: its letters and digits, lower case, with accents
-    taken off (ë is e, ç is c, ß is ss), in words joined by hyphens. An ID longer than ID_MAX keeps its start and ends with
-    eight characters of a digest of the whole, so names that differ only past the cut get IDs of their own."""
-    whole = "-".join(re.findall(r"[a-z0-9]+", _unaccented(_unaccented(name).casefold())))
+    """The ID an agent is known and addressed by, from its name: its Latin letters and digits, lower case, in words
+    joined by hyphens. Accents are taken off (ë is e, ç is c), and a letter Unicode leaves whole is written as the letters it
+    stands for (ø is o, ł is l, æ is ae, þ is th, ß is ss). An ID longer than ID_MAX keeps its start and ends with eight
+    characters of a digest of the whole, so names that differ only past the cut get IDs of their own."""
+    whole = "-".join(re.findall(r"[a-z0-9]+", "".join(_spelled(c) for c in _unaccented(name))))
     if len(whole) <= ID_MAX:
         return whole
     return "%s-%s" % (whole[:ID_MAX - 9].rstrip("-"), hashlib.sha256(whole.encode("ascii")).hexdigest()[:8])
@@ -57,6 +66,15 @@ def agent_id(name):
 def _unaccented(text):
     """text in compatibility form (NFKD) without its combining marks: Zoë is Zoe, Ça is Ca, ﬁ is fi."""
     return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
+def _spelled(c):
+    """c in ASCII, lower case: a Latin letter as the letters it stands for; anything else not ASCII is a space."""
+    if c.isascii():
+        return c.lower()
+    latin = LATIN.fullmatch(unicodedata.name(c, ""))
+    letter = latin.group(1) if latin else ""
+    return SPELLED.get(letter) or (letter.lower() if re.fullmatch(r"[A-Z]{1,2}", letter) else " ")
 
 
 def _name(value):

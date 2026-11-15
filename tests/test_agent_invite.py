@@ -157,6 +157,21 @@ class Core(InviteCase):
             self.assertEqual(receipt["status"], "committed", receipt)
             self.assertEqual(receipt["result"]["agent"]["id"], agent, name)
 
+    def test_latin_letters_unicode_leaves_whole_are_spelled_in_the_id_never_dropped(self):
+        # The reviewer's names (item 525): NFKD leaves these letters whole, so taking off accents alone dropped them
+        # (Søren was s-ren, Łukasz ukasz, Þór or). A letter with a mark is its letter; a few have a spelling of their own.
+        for name, agent in (("Søren", "soren"), ("Bjørn", "bjorn"), ("Łukasz", "lukasz"), ("Æsir", "aesir"), ("Đorđe", "dorde"),
+                            ("Þór", "thor"), ("Guðrún", "gudrun"), ("Œuvre bot", "oeuvre-bot"), ("Ħal Far", "hal-far"),
+                            ("Yılmaz", "yilmaz"), ("Əliyev", "eliyev"), ("Ŋoŋ", "ngong"),
+                            # ß and its capital are ss, as the ID's rule says, whatever their case.
+                            ("Straße", "strasse"), ("GROẞ", "gross")):
+            receipt = self.store.command("owner", self.envelope(name))
+            self.assertEqual(receipt["status"], "committed", receipt)
+            self.assertEqual(receipt["result"]["agent"], {"id": agent, "name": name, "kind": "agent"}, name)
+        # The same name written without its letters' marks is the same ID, so it is taken, named as it was written.
+        self.assertEqual(self.error(self.store.command("agent-a", self.envelope("Soren")))["message"],
+                         "There is already someone called Søren here. Choose another name, such as Soren 2.")
+
     def test_the_inviter_typing_the_same_name_again_gets_the_same_agent_back_and_nothing_changes(self):
         # After a lost answer or a sign-in file not written, a reload or another outcome forgets the request (item 525):
         # the same name typed again is a new request, and Core gives back the agent this invitation put on the team.
@@ -181,6 +196,25 @@ class Core(InviteCase):
                                                                revision=self.sql("SELECT version FROM workspaces WHERE id=?", (workspace,))[0][0]))
             self.refused(receipt, "NAME_TAKEN")
             self.assertEqual(self.state(), before, "%s in %s" % (actor, workspace))
+        # The owner invited it into w1; where it is on the team of another outcome the owner organises, typing it there is
+        # refused too (the reviewer's case: the outcome is checked, not only the membership).
+        self.assertEqual(self.command("workspace.create", {"id": "w3", "title": "Its other team", "team": ["late-scribe"]})["status"], "committed")
+        self.assertIn(("late-scribe",), self.sql("SELECT actor_id FROM workspace_members WHERE workspace_id='w3'"))
+        before, changes = self.state(), self.sql("SELECT count(*) FROM changes")
+        receipt = self.store.command("owner", self.envelope("Late scribe", workspace="w3",
+                                                           revision=self.sql("SELECT version FROM workspaces WHERE id='w3'")[0][0]))
+        self.refused(receipt, "NAME_TAKEN")
+        self.assertEqual((self.state(), self.sql("SELECT count(*) FROM changes")), (before, changes))
+        self.assertEqual(self.sql("SELECT workspace_id,inviter_id FROM agent_invitations WHERE agent_id='late-scribe'"), [("w1", "owner")])
+        # A disabled agent, still on the team, is not given back to its inviter.
+        self.sql("UPDATE actors SET enabled=0 WHERE id='late-scribe'")
+        self.refused(self.store.command("owner", self.envelope("Late scribe")), "NAME_TAKEN")
+        self.sql("UPDATE actors SET enabled=1 WHERE id='late-scribe'")
+        # Someone else with the same name as well: the name is not this agent's alone, so it is not given back.
+        self.sql("INSERT INTO actors(id,kind,name) VALUES ('zz-namesake','agent','Late scribe')")
+        self.refused(self.store.command("owner", self.envelope("Late scribe")), "NAME_TAKEN")
+        self.sql("DELETE FROM actors WHERE id='zz-namesake'")
+        self.assertEqual(self.store.command("owner", self.envelope("Late scribe"))["status"], "committed", "given back again")
         # Once off the team it is not given back, by the inviter either.
         self.assertEqual(self.command("workspace.member_set", {"actor_id": "late-scribe", "present": False}, {"workspace_id": "w1"},
                                       {"workspace_revision": self.version()})["status"], "committed")
@@ -326,6 +360,25 @@ class SignIn(InviteCase):
         self.refused(self.invite(actor="agent-a", name="Late scribe"), "NAME_TAKEN")
         self.assertEqual(sorted(os.listdir(self.folder)), ["late-scribe.profile.json"])
 
+    def test_a_retry_of_either_kind_never_takes_over_someone_elses_sign_in_file(self):
+        # The file was not written; then the coordinator's own sign-in file lands in the agent's place. Neither the same
+        # request sent again nor the same name typed again as a new request adopts it, and no prompt hands it out.
+        missing = self.folder / "not-yet"
+        envelope = self.envelope("Late scribe")
+        self.assertFalse(self.sign_in(invite(self.store, "owner", envelope, missing))["written"])
+        missing.mkdir(mode=0o700)
+        path = missing / "late-scribe.profile.json"
+        coordinator = self.written_by_write_profile("agent-a")
+        path.write_bytes(coordinator)
+        path.chmod(0o600)
+        before = self.state()
+        for again in (envelope, self.envelope("Late scribe")):
+            receipt = invite(self.store, "owner", again, missing)
+            self.refused(receipt, "SIGN_IN_TAKEN", recorded=False)
+            self.assertNotIn("sign_in", receipt)
+            self.assertEqual((self.state(), path.read_bytes()), (before, coordinator))
+        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(1,)], "only the first was asked")
+
     def test_a_sign_in_file_cut_short_for_this_agent_is_written_over_by_the_same_invitation_sent_again(self):
         # write_profile died after creating the file (a full disk): the file holds the start of this agent's sign-in, or nothing.
         missing = self.folder / "not-yet"
@@ -376,6 +429,19 @@ class SignIn(InviteCase):
                 self.assertEqual((self.state(), path.read_bytes()), before)
                 self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(0,)])
                 path.unlink()
+        # The coordinator's own sign-in file, whole and valid for this instance, database and authority, binds agent-a:
+        # it is someone else's (the reviewer's case), and neither the new agent nor the inviter is handed it.
+        coordinator = self.written_by_write_profile("agent-a")
+        self.assertEqual(json.loads(coordinator.decode("utf-8")), dict(mine, actor_id="agent-a"))
+        path.write_bytes(coordinator)
+        path.chmod(0o600)
+        before = self.state()
+        receipt = self.invite()
+        self.refused(receipt, "SIGN_IN_TAKEN", recorded=False)
+        self.assertNotIn("sign_in", receipt)
+        self.assertEqual((self.state(), path.read_bytes()), (before, coordinator))
+        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(0,)])
+        path.unlink()
         # The same file binding this instance is this agent's, once Core has registered it.
         path.write_text(json.dumps(mine) + "\n")
         path.chmod(0o600)
