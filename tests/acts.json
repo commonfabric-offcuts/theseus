@@ -14104,11 +14104,11 @@
   },
   {
    "item": 301,
-   "act": "The phone drawer opens with the focus on the live open topic, never on one in a list the outline keeps on show, inert, while it draws its own",
+   "act": "The phone drawer opens with the focus on the open topic that is live and shown, never on its copy in a list not drawn or kept inert",
    "break": [
     [
      "web/rail-drawer.mjs",
-     "find(el => !el.closest('[inert]')) ?? null;",
+     "find(el => !el.closest('[inert]') && shown(el)) ?? null;",
      "find(() => true) ?? null;"
     ]
    ],

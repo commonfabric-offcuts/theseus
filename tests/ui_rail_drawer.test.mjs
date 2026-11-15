@@ -40,6 +40,7 @@ function page({ current = 't2' } = {}) {
     querySelectorAll(selector) { return this.all().filter(e => matches(e, selector)); }
     focus(options) { doc.activeElement = this; this.focusedWith = options ?? {}; }
     scrollIntoView(options) { this.scrolled.push(options); }
+    checkVisibility() { for (let at = this; at; at = at.parent) if (at.hidden) return false; return true; }
   }
   const topic = id => new El('a', { classes: ['nav-item'], attrs: { href: '/?topic=' + id, ...(id === current ? { 'aria-current': 'page' } : {}) } }).add(new El('span'));
   const wordmark = new El('a', { classes: ['wordmark'], attrs: { href: '/' } });
@@ -98,6 +99,16 @@ test('the drawer opens on the open topic where it is live, never in a list kept 
   kept.children.unshift(new p.El('a', { attrs: { href: '/' } })); kept.children[0].parent = kept;
   p.press(p.control);
   assert.equal(p.doc.activeElement, p.wordmark, 'no live open topic: the first live place, past the inert list');
+});
+
+test('the drawer opens on the open topic where it shows, never its copy in a list not drawn', () => {
+  const p = page();
+  // The topic list the outline stands in for, still in the page but not drawn, before the outline's own.
+  const undrawn = new p.El('ul'); undrawn.hidden = true;
+  undrawn.add(new p.El('a', { classes: ['nav-item'], attrs: { href: '/?topic=t2', 'aria-current': 'page' } }));
+  p.rail.children.unshift(undrawn); undrawn.parent = p.rail;
+  p.press(p.control);
+  assert.equal(p.doc.activeElement, p.topics[1], 'the focus is on the open topic that shows');
 });
 
 test('with no open topic in it, the drawer opens on the first place it can go', () => {
