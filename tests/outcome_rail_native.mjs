@@ -2354,7 +2354,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         if (!ok) continue;
         // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
         let to = node.id;
-        for (let n = 0; n < 12 && to === node.id; n++) {
+        // On as long as each press scrolls: a long message in the Reader's box is read a line at a time first.
+        for (let n = 0; n < 400 && to === node.id; n++) {
           const step = await arrowPress(p, key);
           to = await landed();
           if (!step.scrolled) break;
@@ -2605,10 +2606,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.evaluate(`(()=>{const main=document.getElementById('main'),words=document.createElement('div'),far=document.createElement('button');
         words.id='far-words';words.style.height=(innerHeight*3)+'px';words.textContent='Words to read on the way.';far.id='far-button';far.type='button';far.textContent='Far below';
         main.append(words,far);return true})()`);
-      await p.evaluate("(c=>{c.at(-1).focus();c.at(-1).scrollIntoView({block:'end'})})([...document.querySelectorAll('#main button, #main a[href]')].filter(e=>e.id!=='far-button'&&e.checkVisibility()))");
+      // On the last control above the words; a list the page draws again meanwhile takes the focus with the old one, so until it holds.
+      await until(() => p.evaluate("(c=>{const e=c.at(-1);if(document.activeElement!==e){e.focus();e.scrollIntoView({block:'end'})}return document.activeElement===e})([...document.querySelectorAll('#main button, #main a[href]')].filter(e=>e.id!=='far-button'&&e.checkVisibility()))"),
+        size + ': the last control above the words takes the focus');
       const from = await focusAt(p), h = await p.evaluate('innerHeight');
       const steps = [];
-      for (let n = 0; n < 20 && await focusAt(p) !== 'main:far-button'; n++) {
+      for (let n = 0; n < 30 && await focusAt(p) !== 'main:far-button'; n++) {
         const y = await p.evaluate(SCROLLED);
         const { at } = await arrowPress(p, 'ArrowDown');
         steps.push({ at, by: await p.evaluate(SCROLLED) - y });
@@ -2617,7 +2620,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.equal(steps.at(-1)?.at, 'main:far-button', said + ': ↓ reaches the control far below');
       const scrolls = steps.slice(0, -1);
       assert.ok(scrolls.length >= 3, said + ': it is not reached in one press, the words between scrolled past first');
-      assert.ok(scrolls.every(step => step.at === from && step.by > 0 && step.by <= h / 3 + 1), said + ': each press before it scrolls down a third of a window at most, the focus staying');
+      assert.ok(scrolls.every(step => step.at === from && step.by > 0 && step.by <= h / 3 + 1), said + ': each press before it scrolls down a third of a window at most, the focus staying on ' + from);
       assert.equal(await inView(p), true, said + ': and it shows');
       assert.deepEqual(p.errors, []); await p.close();
     }
