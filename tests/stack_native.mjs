@@ -4894,8 +4894,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await closeReader(p, device);
       }
       // Tony's rule over the dossier: how it is shown stores nothing, and every message stays in reach in place.
+      // A new document, known by its timeOrigin as first read (WebKit's can move 1 ms with no load); a read while the
+      // old one goes is no answer.
+      const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
       await p.send('Page.reload');
-      await until(() => p.evaluate(`document.body.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), `${device}: the page is drawn again`);
+      await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`).catch(() => false), `${device}: the page is drawn again, a new document`);
       await until(async () => (await kept(p)).name === 'Cabin week', `${device}: reloaded, the name shows`);
       assert.deepEqual(await kept(p), before, `${device}: a reload finds the order, the name and the folds as they were`);
       await dossierOpen(p, device, ids.root);
@@ -5128,8 +5131,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages .stack-more'))`), false, `${device}: nothing is put aside now`);
       await dossierOpen(p, device, ids.a);
       for (const key of ['a', 'a1', 'b', 'b1']) assert.ok(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[key]))}).getClientRects().length>0`), `${device}: ${key} is in reach, in place`);
+      // A new document, known by its timeOrigin as first read; a read while the old one goes is no answer.
+      const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
       await p.send('Page.reload');
-      await until(() => p.evaluate(`document.body.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.a))}))`), `${device}: the page is drawn again`);
+      await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.a))}))`).catch(() => false), `${device}: the page is drawn again, a new document`);
       await becomes(async () => Object.values(await where(p)).map(each => JSON.stringify(each)), Array(4).fill(JSON.stringify({ in: 'a', shown: true })), `${device}: reloaded, the same`);
       // Split back out: B goes back to its own place, below More.
       await dossierOpen(p, device, ids.a);
