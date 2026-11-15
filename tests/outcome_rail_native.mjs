@@ -2349,8 +2349,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       .slice(0,3).map(x=>(x.id||x.dataset.key||x.getAttribute('aria-label')||x.textContent.trim().replace(/\\s+/g,' ').slice(0,30)||x.tagName)+'<'+x.tagName.toLowerCase()+(x.type&&x.tagName==='INPUT'?' '+x.type:'')+'>')})(document.activeElement)`;
   // What a press may change in place of moving the focus (a section opened or folded, a stack shown, a message
   // folded to its row): a press that changed it acted, and is no dead end.
-  // (A stack switched to latest and unread hides its earlier replies: the messages that show are counted.)
-  const ACTED = "[...document.querySelectorAll('[aria-expanded],details,[data-head-open],[aria-pressed]')].map(e=>(e.getAttribute('aria-expanded')??'')+(e.open?'o':'')+(e.dataset.headOpen??'')+(e.getAttribute('aria-pressed')??'')).join('')+'|'+document.querySelectorAll('.fold-line').length+'|'+[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).length+'|'+document.querySelectorAll('#messages [hidden]').length";
+  // (A stack switched to latest and unread hides its earlier replies: the messages that show are counted. One
+  // whose replies all show either way changes nothing seen, and says so in its live region: what a live region
+  // is told is counted too.)
+  const ACTED = "(window.__spoken??=(o=>(new MutationObserver(ms=>{for(const m of ms)if((m.target.nodeType===1?m.target:m.target.parentElement)?.closest('[aria-live]'))o.n++}).observe(document.body,{subtree:true,childList:true,characterData:true}),o))({n:0})).n+'|'+[...document.querySelectorAll('[aria-expanded],details,[data-head-open],[aria-pressed]')].map(e=>(e.getAttribute('aria-expanded')??'')+(e.open?'o':'')+(e.dataset.headOpen??'')+(e.getAttribute('aria-pressed')??'')).join('')+'|'+document.querySelectorAll('.fold-line').length+'|'+[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).length+'|'+document.querySelectorAll('#messages [hidden]').length";
   const treeStart = (p, scope) => () => p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('${scope} [role=treeitem]')].filter(e=>e.checkVisibility()))`);
   const arrowClosure = async (p, scope, start, skip = null) => {
     const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)}),skip=${JSON.stringify(skip)};
