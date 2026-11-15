@@ -111,9 +111,14 @@ const readCard = (p, id) => p.evaluate(selector => {
   const author = card.querySelector(':scope > .message-author'), time = author.querySelector('.message-time time');
   const lines = time ? [...time.getClientRects()] : [];
   // Where the line's own words and glyphs end, and where what follows the line begins: an empty line wrapped
-  // inside it, or a row pushed below it, shows as a gap a plain card does not have.
-  const range = document.createRange(); range.selectNodeContents(author);
-  const inked = [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
+  // inside it (a hidden control alone on a line of its own), or a row pushed below it, shows as a gap a plain card
+  // does not have. Only what shows counts: words whose element is visible, and the glyphs.
+  const walker = document.createTreeWalker(author, NodeFilter.SHOW_TEXT), inked = [];
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    if (!text.textContent.trim() || getComputedStyle(text.parentElement).visibility !== 'visible') continue;
+    const range = document.createRange(); range.selectNodeContents(text); inked.push(...range.getClientRects());
+  }
+  inked.push(...[...author.querySelectorAll('.carry')].map(mark => mark.getBoundingClientRect()));
   const next = author.nextElementSibling;
   const parts = [...author.querySelectorAll('*')].map(el => `${el.tagName.toLowerCase()}.${el.className}@${Math.round(el.getBoundingClientRect().top)}+${Math.round(el.getBoundingClientRect().height)}`).join(' ');
   // A color's luminance and the contrast of two (WCAG 2), from the computed rgb() or rgba().
@@ -173,7 +178,7 @@ async function run() {
       const plainCard = await readCard(p, m.plain);
       for (const name of Object.keys(EXPECTED)) {
         const seen = await readCard(p, m[name]);
-        assert.ok(seen.author.bottom - seen.inkBottom < 4, `${name}: its line holds no empty line (${seen.shape})`);
+        assert.ok(seen.author.bottom - seen.inkBottom < 4, `${name}: its line holds no line that shows nothing (${seen.shape})`);
         assert.ok(Math.abs(seen.below - plainCard.below) < 1, `${name}: what follows its line starts as on a plain card (${seen.below} vs ${plainCard.below}; ${seen.shape})`);
       }
       if (width >= 760) {
