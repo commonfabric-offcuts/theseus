@@ -10,7 +10,7 @@ from .work import OTHER_MESSAGE, work_by_topic
 from . import whispers
 from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
-from .topic_reading import reading_fields, unread_groups
+from .topic_reading import reading_fields, unread_groups, writing_fields
 from .stacks import act_fields
 from .message_edit import current_words, edited, is_held, mark, plain, quoted_revision, reading, revision, words, withheld
 
@@ -635,6 +635,8 @@ class Conversation:
         self._reaction_fields(db, actor, items)
         self._block_fields(db, items)
         reading_fields(db, actor, unread_groups(db, actor, topic["id"], self._addressed_group(db, actor)), items)
+        # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
+        writing_fields(db, actor, items)
         # What the reader and the topic recorded about each message in its stack (stacks.py).
         act_fields(db, actor, items)
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,

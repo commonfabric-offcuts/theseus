@@ -11,8 +11,19 @@ indexes keyed by message, so a page never reads the topic's history:
   null. A reply is always in its parent's topic and the reader always sees
   their own messages, whispers included, so it never names a message the
   reader cannot read.
+
+Two more say what the reader has written privately on each message (item 127),
+from their own rows only, keyed by the message as a source:
+
+- `your_note`: the reader's private note on the message holds words.
+- `your_reply`: the reader's saved reply from the message holds words or an
+  image and is not on its way: a reply prepared to send leaves its draft empty.
 """
 from __future__ import annotations
+
+import json
+
+from .contract import _json
 
 
 def unread_groups(db, actor, topic_id, direct):
@@ -40,3 +51,34 @@ def reading_fields(db, actor, groups, items):
     for item in items:
         item["unread"] = item["id"] in unread and item["author_id"] != actor
         item["replied"] = replied.get(item["id"])
+
+
+def message_key(message_id):
+    """A message's key as a source of private writing (drafts._source_key)."""
+    return _json(["message", message_id])
+
+
+def writing_fields(db, actor, items):
+    """Add `your_note` and `your_reply` to every item of one page."""
+    keys = {message_key(item["id"]): item["id"] for item in items}
+    noted, saved = set(), set()
+    if keys:
+        marks = ",".join("?" * len(keys))
+        for row in db.execute("SELECT source_key,payload FROM notes WHERE actor_id=? AND source_key IN (%s)" % marks, [actor] + list(keys)):
+            if json.loads(row["payload"]).get("body", "").strip():
+                noted.add(keys[row["source_key"]])
+        for row in db.execute("SELECT source_key,payload FROM drafts WHERE actor_id=? AND source_key IN (%s)" % marks, [actor] + list(keys)):
+            payload = json.loads(row["payload"])
+            if payload.get("body", "").strip() or payload.get("attachments"):
+                saved.add(keys[row["source_key"]])
+    for item in items:
+        item["your_note"] = item["id"] in noted
+        item["your_reply"] = item["id"] in saved
+
+
+def writing_version(db, actor, message_id):
+    """A version of the reader's private writing on a message that grows with every save to it: the note's
+    revision and every draft's from the message added up. Neither is ever removed and each save raises one."""
+    key = message_key(message_id)
+    return db.execute("SELECT COALESCE((SELECT revision FROM notes WHERE actor_id=? AND source_key=?),0)+"
+                      "COALESCE((SELECT SUM(revision) FROM drafts WHERE actor_id=? AND source_key=?),0)", (actor, key, actor, key)).fetchone()[0]
