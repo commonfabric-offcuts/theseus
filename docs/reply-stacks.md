@@ -529,9 +529,12 @@ unread with hidden replies around the first visible one, text clearance,
 first-letter alignment, folded palette contrast including quiet states, and the
 exposed phone strip with a real folded-thumb press. The negative cases retain
 the full open messages, a normal single card and the star's fold protection,
-and the unread material of a card with the reader's own thumbs-up (inside a
-dossier and out) and of a fold outside a dossier (in the feed and placed). A
-saved fold's read material is checked on an agent's reply and a person's.
+and the unread material of a starred card with the reader's own thumbs-up,
+which the thumbs-up does not fold (inside a dossier and out), and of a fold
+outside a dossier (in the feed and placed). A saved fold's read material is
+checked on an agent's reply and a person's. A saved fold the reader then
+marks unread keeps the read material; the check records it beside an unread
+twin without judging it, as the rule for that case is still open (item 430).
 
 | What | Where |
 | --- | --- |
