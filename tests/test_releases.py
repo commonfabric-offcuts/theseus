@@ -241,6 +241,41 @@ class HostedJudgment(ReleaseCase):
                 self.refused_attach(value, "INVALID_ARGUMENT")
 
 
+class HealthOfATrainRelease(ReleaseCase):
+    """Items 481, 482: the Health view's latest release, for a release deployed from a merged train, says no release
+    check measured it and says its hosted judgment: pending, then the one attached; for a train judged before its
+    merge, that judgment. A release check's record still gives its counts."""
+
+    def latest(self):
+        answer = self.store.view("owner", "health", {})
+        self.assertNotIn("error", answer, answer)
+        return answer["release"]
+
+    def test_a_train_release_has_no_release_check_and_says_its_judgment_as_it_stands(self):
+        self.recorded(record(release=20, items=[481], measurements=trained()))
+        latest = self.latest()
+        self.assertIsNone(latest["check"], "no release check ran for a merged train")
+        self.assertEqual(latest["train"], {"kind": "ordinary", "judgment": "pending", "succeeded": None, "total": None})
+        attached = judgment()
+        attached["verdict_checks"][0]["conclusion"] = "failure"
+        self.store.attach_judgment(20, attached)
+        self.assertEqual(self.latest()["train"], {"kind": "ordinary", "judgment": "judged", "succeeded": 1, "total": 2})
+        self.recorded(record(commit=B, previous=A, items=[482], measurements=trained(kind="judged-first", judgment=judgment(head=C))))
+        latest = self.latest()
+        self.assertEqual((latest["release"], latest["check"]), (21, None))
+        self.assertEqual(latest["train"], {"kind": "judged-first", "judgment": "judged", "succeeded": 2, "total": 2})
+
+    def test_a_release_check_record_keeps_its_counts_and_is_no_train(self):
+        # The negative: a release check's record, and one with no measurements, are not trains.
+        self.recorded(record(release=19))
+        latest = self.latest()
+        self.assertIsNone(latest["train"])
+        self.assertEqual((latest["check"]["python"], latest["check"]["node"], latest["check"]["native"]), (1106, 740, {"pass": 208, "total": 208}))
+        self.recorded(record(commit=C, previous=A, items=[88], measurements=None))
+        latest = self.latest()
+        self.assertEqual((latest["release"], latest["check"], latest["train"]), (20, None, None))
+
+
 class AttachJudgmentTool(ReleaseCase):
     """tools/releases.py attach-judgment: reads the record through the live CLI and each run and check from GitHub, and
     attaches the judgment through the live admin verb. Both are this checkout's own, run as processes."""
