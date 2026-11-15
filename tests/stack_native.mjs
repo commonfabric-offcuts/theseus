@@ -974,7 +974,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   await check('reading stacks the Reader\'s archive button shows for no Notebook page in the Reader, and shows for a message of the topic', async () => {
     const page = (await control({ method: 'seed', memory_items: 1 })).item_ids[0];
     for (const device of Object.keys(DEVICES)) {
-      const message = (await control({ method: 'agent_message', operation_id: 'stack-archive-page-' + device, topic_id: 't1', source: 'topic', sender: other, addressees: [facts.actor], body: `A message beside the Notebook page, on a ${device}.` })).result.message_id;
+      const message = (await control({ method: 'agent_message', operation_id: 'stack-archive-page-' + device, topic_id: 't1', addressees: [facts.actor], body: `A message beside the Notebook page, on a ${device}.` })).result.message_id;
       const p = await open('stack-archive-page-' + device, device, 't1', message, '', `/?topic=t1&page=${page}&revision=1`);
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent !== 'Message' && document.querySelector('#source-body').textContent.length > 0`), `${device}: the Reader shows the Notebook page`);
       await noAsideAtEachWidth(p, device, 'a Notebook page');
