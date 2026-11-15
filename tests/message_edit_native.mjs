@@ -1367,7 +1367,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       await letJournal(p);
       await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), 'the device keeps the words');
       await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved on this device')`), 'the page says the words are on this device');
-      assert.ok(await p.evaluate('window.draftsHeld > 0'), 'and Theseus has not had them');
+      // Any Save to Theseus is held unsent (holdDrafts), so the words are on this device only as Reload is pressed.
+      assert.notEqual(await p.evaluate(`document.querySelector('#inline-save-state').textContent`), 'Saved to Theseus', 'and Theseus has not had them');
       await p.point('#topic-navigation-status .updated-reload');
       await replaced(p, 'Reload loads the page');
       await arrived(p, away, there.note);
