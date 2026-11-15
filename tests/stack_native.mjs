@@ -3793,17 +3793,17 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await press(p, device, row(ids.one));
       await until(async () => !await foldOf(topic, ids.one), `${at}: a press on the row unfolds it, in Core`);
       await becomes(async () => (await folded(p, ids.one)).whole, true, `${at}: and it reads whole`);
-      await twoTaps(p, device, ids.one, words(ids.one));
-      await until(async () => (await readerOn(p))?.startsWith('Reply one'), `${at}: a press on its words opens the Reader`);
-      await closeReader(p, device);
-      assert.equal(await foldOf(topic, ids.one), false, `${at}: opening it folded nothing`);
-      // A starred reply stays open: a press on its header says so and folds nothing.
-      await centre(p, card(ids.two));
+      // A starred reply stays open: a press on its header says so and folds nothing. (Before the Reader: in Safari's
+      // engine a phone tap leaves a mouse position behind, and a later scroll lights the card under it.)
       await twoTaps(p, device, ids.two, header(ids.two));
       await until(async () => await said(p) === 'Starred messages stay open', `${at}: a press on a starred message's header says it stays open`);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${at}: nothing is out after it`);
       assert.deepEqual([await foldOf(topic, ids.two), (await folded(p, ids.two)).whole], [false, true], `${at}: the starred reply stays whole, in Core`);
       await nothingElse('the starred header press');
+      await twoTaps(p, device, ids.one, words(ids.one));
+      await until(async () => (await readerOn(p))?.startsWith('Reply one'), `${at}: a press on its words opens the Reader`);
+      await closeReader(p, device);
+      assert.equal(await foldOf(topic, ids.one), false, `${at}: opening it folded nothing`);
       // The first message, as any message: its bar, a press on its header folds it under the title row, its row unfolds it.
       await centre(p, card(ids.root));
       if (device === 'laptop') {
