@@ -464,8 +464,11 @@ def source_catalog(root, commit):
         require(isinstance(step.flags,(tuple,list)) and all(isinstance(v,str) for v in step.flags),'invalid native flags')
     native = {'native-'+s.name:s for s in steps}
     require(len(native)==len(steps),'duplicate head native step')
-    require(unique(list(required),'head required steps')==set(native)|{'python-units','node-units','deploy-refusals','wake-replay'},'head required catalog is incomplete')
-    return {'NATIVE_STEPS':steps,'NATIVE':native,'REQUIRED':required,'COMPOSE':named('COMPOSE'),'REPLAY_FILE':named('REPLAY_FILE')}
+    required_set = unique(list(required),'head required steps')
+    minimum = set(native)|{'python-units','node-units'}
+    require(minimum <= required_set <= minimum|{'deploy-refusals','wake-replay'},'head required catalog is incomplete')
+    require('wake-replay' not in required_set or 'REPLAY_FILE' in definitions,'head replay traffic is undeclared')
+    return {'NATIVE_STEPS':steps,'NATIVE':native,'REQUIRED':required,'COMPOSE':named('COMPOSE') if 'COMPOSE' in definitions else 'tests/reader_compose_native.mjs','REPLAY_FILE':named('REPLAY_FILE') if 'REPLAY_FILE' in definitions else None}
 
 
 @contextmanager
@@ -479,15 +482,14 @@ def catalog_context(root,commit):
         globals().update(previous)
 
 
-def read_evidence(*args,**kwargs):
-    root,commit = args[3:5]
+def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False):
     with catalog_context(root,commit):
-        return _read_evidence(*args,**kwargs)
+        return _read_evidence(summary_path,provenance_path,shards,root,commit,run,base,expected_merge,binding,history)
 
 
 def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False):
     candidate_root = root
-    traffic = json.loads(source(root, commit, REPLAY_FILE))
+    traffic = json.loads(source(root,commit,REPLAY_FILE)) if 'wake-replay' in REQUIRED else None
     provenance, summary = read_json(provenance_path), read_json(summary_path)
     same_run(provenance.get('run'), run)
     require(provenance.get('base') == base, 'wrong API event base')
@@ -782,7 +784,7 @@ def train_identity(root,commit,binding):
                     named_items.append(value)
             if line.startswith('Pipeline:'):
                 items.update(int(n) for n in re.findall(r'(?<![A-Za-z0-9])[1-9][0-9]*(?![A-Za-z0-9])',line.partition(':')[2]))
-    return {'pull_request':number,'items':sorted(items),'merge_commit':commit,'items_source':'Pipeline trailers in newly merged history','named_items':named_items}
+    return {'pull_request':number,'items':sorted(items),'merge_commit':commit,'items_source':'Pipeline trailers in newly merged history','named_items':named_items,'display_items':named_items+[str(i) for i in sorted(items)]}
 
 
 def main(argv=None):
