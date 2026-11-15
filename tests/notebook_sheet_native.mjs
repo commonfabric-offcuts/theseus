@@ -65,6 +65,8 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   const wholeOutcome = async p => {
     const chip = '#things .things-scope .chip:last-child';
     await until(() => p.evaluate(`document.body.dataset.ready==='true' && !document.querySelector('#things .things-scope').hidden && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'`), 'the right rail has read');
+    // The rail scrolls in itself, and a row pressed before may have taken its chips out of view.
+    await p.evaluate(`document.querySelector(${JSON.stringify(chip)}).scrollIntoView({block:'nearest',behavior:'instant'})`);
     await p.point(chip);
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')==='true' && document.querySelector('#things .things-sections').getAttribute('aria-busy')!=='true'`), 'the right rail shows the whole outcome');
   };
@@ -224,6 +226,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await shot(p, 'notebook-sheet-cards');
     await p.point(`${SHEET} .notebook-sheet-close`);
     await closed(p);
+    await p.evaluate(`document.querySelector('#things .things-scope .chip:first-child').scrollIntoView({block:'nearest',behavior:'instant'})`);
     await p.point('#things .things-scope .chip:first-child');
     await until(() => p.evaluate(`document.querySelector('#things .things-scope .chip:first-child').getAttribute('aria-pressed')==='true'`), 'Just this topic');
     // The topic's own Notebook.

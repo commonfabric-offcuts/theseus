@@ -205,6 +205,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     const chip = '#things .things-scope .chip:last-child';
     await until(() => p.evaluate(`document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'`), 'the right rail has read');
     if (await p.evaluate(`!document.querySelector('#things .things-scope').hidden && document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')!=='true'`)) {
+      await p.evaluate(`document.querySelector(${JSON.stringify(chip)}).scrollIntoView({block:'nearest',behavior:'instant'})`);
       await aim(p, chip);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')==='true' && document.querySelector('#things .things-sections').getAttribute('aria-busy')!=='true'`), 'the right rail shows the whole outcome');
     }
