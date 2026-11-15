@@ -4912,8 +4912,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       if (device === 'phone') {
         // At 375 and 320 pixels too: every glyph 44px, inside the window, nothing scrolling sideways.
         for (const width of [375, 320]) {
+          // The message stays lit (a second tap would open it), and its bar is placed again for the narrower window.
           await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-          await light(p, device, ids.short);
+          await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.getBoundingClientRect().right<=innerWidth))(document.querySelector('.message-bar'))`), `${width}: the lit message's bar is in the window`);
+          assert.ok((await lit(p)).includes(ids.short), `${width}: the short message is still lit`);
           const at = await p.evaluate(`(()=>{const b=document.querySelector('.message-bar');return {buttons:[...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>{const r=x.getBoundingClientRect();return [x.dataset.act,r.width,r.height,r.left>=0&&r.right<=innerWidth]}),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
           assert.deepEqual(at.buttons.map(([act]) => act), ['thumb', 'reply', 'fold', 'more'], `${width}: the same bar`);
           for (const [act, w, h, inside] of at.buttons) assert.ok(w >= 44 && h >= 44 && inside, `${width}: ${act} is 44px and in the window (${w}×${h})`);
@@ -4921,7 +4923,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await shot(p, `message-bar-phone-${width}`);
         }
         await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
-        await light(p, device, ids.short);
+        await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden))(document.querySelector('.message-bar'))`), '390: the bar is back');
       }
       // Fold, then Unfold, in Core for the reader.
       await press(p, device, '.message-bar [data-act=fold]');
