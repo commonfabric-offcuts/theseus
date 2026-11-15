@@ -177,10 +177,11 @@ STEPS = (
     # Version 42 keeps the hosted judgment attached to a release deployed from an ordinary merged train, once it
     # lands (items 481, 482): beside its record, which never changes. Stepping back is refused once any is attached.
     ("41", "42", JUDGMENT_SCHEMA, JUDGMENT_DOWN, JUDGMENT_OCCUPIED),
-    # Version 42 keeps who invited each agent into which outcome from its page (docs/agents.md, "Inviting an agent"),
-    # so the same person typing the same name there again gets that agent back. Agents registered before it were
-    # invited by no one it knows of. Stepping back is refused once anyone has been invited, since 41 cannot say by whom.
-    ("41", "42", INVITATIONS_SCHEMA, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
+    # Version 43 keeps who invited each agent into which outcome from its page (docs/agents.md, "Inviting an agent"),
+    # so the same person typing the same name there again gets that agent back. It follows release 81's 42, where
+    # agents were already invited from the page. Stepping back is refused once anyone has been invited, since 42
+    # cannot say by whom.
+    ("42", "43", INVITATIONS_SCHEMA, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
 )
 
 

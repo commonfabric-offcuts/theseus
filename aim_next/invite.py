@@ -34,8 +34,8 @@ NAME_MAX = 60
 ID_MAX = 40
 CODE_ROOT = Path(__file__).resolve().parents[1]
 KIND = "workspace.agent_invite"
-# Who invited each agent into which outcome (version 42), so the same person typing the same name there again gets that
-# agent back. Stepping back is refused once anyone has been invited, since version 41 cannot say who invited them.
+# Who invited each agent into which outcome (version 43), so the same person typing the same name there again gets that
+# agent back. Stepping back is refused once anyone has been invited, since version 42 cannot say who invited them.
 INVITATIONS_SCHEMA = [
     "CREATE TABLE agent_invitations (agent_id TEXT PRIMARY KEY REFERENCES actors(id), "
     "workspace_id TEXT NOT NULL REFERENCES workspaces(id), inviter_id TEXT NOT NULL REFERENCES actors(id))",

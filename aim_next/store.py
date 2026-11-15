@@ -51,7 +51,7 @@ from .invite import Invites, INVITATIONS_SCHEMA
 from . import message_edit
 
 
-SCHEMA_VERSION = "42"
+SCHEMA_VERSION = "43"
 
 
 def commit_identity_intact(metadata):
