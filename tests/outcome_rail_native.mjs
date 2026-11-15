@@ -1268,8 +1268,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         if (phone) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
         await q.send('Page.addScriptToEvaluateOnNewDocument', { source: recordRequests(key) });
       } });
-      // Up with nothing more on its way, so no row moves under a press (every outcome the earlier checks made is listed).
-      await settled(p, at + ': the page and its rails are up');
+      // Up with no read of the rails waiting or out, so no row moves under a press (every outcome the earlier
+      // checks made is listed). The right rail is not waited for: at a phone's width it is not drawn.
+      await until(() => p.evaluate(`document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading')
+        && Boolean(document.querySelector('#outline #topic-navigation a[data-topic-id=t1]')) && Boolean(document.querySelector('#outline .ol-outcome[data-workspace-id=w1]'))`).catch(() => false), at + ': the page and its outline are up');
       if (phone) { await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens the drawer'); }
       const place = () => p.evaluate(`({search:location.search,open:document.querySelector('.ol-outcome[data-workspace-id=w1]').hasAttribute('data-open')})`);
       const titles = {};
