@@ -1,10 +1,12 @@
 // How each card in a topic reads to the person (docs/topic-reading.md), below
 // the browser: which messages are talk between agents, whether a card reads as
-// read, the reply arrow's newest reply, and the ranges a page reports read.
+// read, the reply arrow's newest reply, the dots on the reader's own message
+// while it waits for a reply (item 475), and the ranges a page reports read.
 // tests/topic_reading_native.mjs presses the same cards in Chrome and WebKit.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { agentTalk, readNow, learnReply, seenRanges } from '../web/card-reading.mjs';
+import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, AWAITING_WORDS, seenRanges } from '../web/card-reading.mjs';
+import { miniDocument } from './fixtures/mini_dom.mjs';
 
 const kinds = { 'aim-core': 'agent', 'aim-ux': 'agent', 'aim-qa': 'agent', tony: 'human', dan: 'human' };
 const kindOf = name => kinds[name];
@@ -86,4 +88,42 @@ test('the ranges a page reports read hold only messages seen on screen, in one l
   assert.deepEqual(ranges([item(1), item(2), item(3)], []), [], 'nothing seen, nothing reported');
   assert.deepEqual(ranges([item(1), item(2), item(5, 'aim-core', 'b'), item(6, 'aim-core', 'b')], [1, 2, 5, 6]), [[1, 2], [5, 6]], 'never across a gap between runs');
   assert.deepEqual(ranges([item(1), item(2), item(3, 'aim-core', 'b')], [1, 2, 3]), [[1, 2], [3, 3]], 'adjacent numbers in two runs stay two ranges');
+});
+
+// Item 475: the reader's message an agent received waits for a reply, as Core says (awaiting_reply), until a message
+// by anyone else arrives after it in its dossier; the page ends it by the same rule as the message arrives.
+test('a message that arrives ends the wait on the reader\'s earlier messages in its dossier only when someone else wrote it', () => {
+  const at = (id, seq, author, root, awaiting = false) => [id, { id, seq, author_id: author, stack_position: { root_id: root }, awaiting_reply: awaiting }];
+  const messages = new Map([at('r', 1, 'tony', 'r', true), at('s', 2, 'tony', 'r', true), at('x', 3, 'tony', 'x', true)]);
+  assert.deepEqual(learnAnswered(messages, 'tony'), [], 'nothing by anyone else: every wait stands');
+  messages.set(...at('own', 4, 'tony', 'r'));
+  assert.deepEqual(learnAnswered(messages, 'tony'), [], 'the reader\'s own later message ends nothing');
+  messages.set(...at('other', 5, 'aim-core', 'elsewhere'));
+  assert.deepEqual(learnAnswered(messages, 'tony'), [], 'someone else\'s message in another dossier ends nothing');
+  messages.set(...at('reply', 6, 'dan', 'r'));
+  assert.deepEqual(learnAnswered(messages, 'tony').map(item => item.id), ['r', 's'], 'a person\'s reply in the dossier ends both waits before it');
+  assert.deepEqual([...messages.values()].map(item => [item.id, item.awaiting_reply]),
+    [['r', false], ['s', false], ['x', true], ['own', false], ['other', false], ['reply', false]], 'and only those');
+  messages.set(...at('later', 7, 'tony', 'r', true));
+  assert.deepEqual(learnAnswered(messages, 'tony'), [], 'a reply before a message is no reply to it');
+  messages.set(...at('agent', 8, 'aim-core', 'x'));
+  assert.deepEqual(learnAnswered(messages, 'tony').map(item => item.id), ['x'], 'an agent\'s reply ends it as a person\'s does');
+});
+
+test('the dots on a waiting message are the Conversation\'s three, named in words, and go once it waits no more', () => {
+  const doc = miniDocument(), card = doc.createElement('button');
+  card.append(doc.createElement('span'));
+  paintAwaiting(card, { awaiting_reply: false }, doc);
+  assert.equal(card.querySelector('.item-waiting'), null, 'a message that does not wait draws none');
+  paintAwaiting(card, { awaiting_reply: true }, doc);
+  paintAwaiting(card, { awaiting_reply: true }, doc);
+  const dots = card.querySelectorAll('.item-waiting');
+  assert.equal(dots.length, 1, 'repainting keeps one');
+  assert.equal(dots[0].children.length, 3, 'three dots');
+  assert.deepEqual([dots[0].getAttribute('role'), dots[0].getAttribute('aria-label'), dots[0].title], ['img', AWAITING_WORDS, AWAITING_WORDS]);
+  assert.equal(AWAITING_WORDS, 'Waiting for a reply');
+  paintAwaiting(card, { awaiting_reply: false }, doc);
+  assert.equal(card.querySelector('.reply-wait'), null, 'answered, the dots go');
+  paintAwaiting(card, {}, doc);
+  assert.equal(card.querySelector('.reply-wait'), null, 'a message Core said nothing of waits for nothing');
 });

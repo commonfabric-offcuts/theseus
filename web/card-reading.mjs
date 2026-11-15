@@ -4,6 +4,7 @@
 // classes the card's colors own are never touched.
 import { datedTime, shownTime } from './times.mjs';
 import { reactionsOf } from './reactions.mjs';
+import { waitingDots } from './outcome-conversation.mjs';
 
 // Talk between agents: an agent wrote it, by name to agents only, and the
 // reader is not among them, did not write it, and wrote nothing it answers.
@@ -40,6 +41,42 @@ export function learnReply(messages, item, viewer) {
   if (!parent || parent.replied && parent.replied.id !== item.id && (messages.get(parent.replied.id)?.seq ?? 0) > item.seq) return null;
   parent.replied = { id: item.id, sent_ms: Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null };
   return parent;
+}
+
+// Waiting for a reply (item 475): Core says it for each of the reader's own
+// messages it sends (`awaiting_reply`, aim_next/stacks.py), true while an agent
+// received the message and nobody else has written after it in its dossier.
+// A message that arrives while the page is open ends it here first, by the
+// same rule: someone else wrote it, after the waiting message, in the same
+// dossier (its stack_position's root). Returns the messages it ended.
+export function learnAnswered(messages, viewer) {
+  const latest = new Map();
+  for (const item of messages.values()) {
+    const root = item.stack_position?.root_id;
+    if (item.author_id !== viewer && typeof root === 'string' && Number.isSafeInteger(item.seq)) latest.set(root, Math.max(latest.get(root) ?? 0, item.seq));
+  }
+  const ended = [];
+  for (const item of messages.values()) {
+    if (item.awaiting_reply !== true || (latest.get(item.stack_position?.root_id) ?? 0) <= item.seq) continue;
+    item.awaiting_reply = false;
+    ended.push(item);
+  }
+  return ended;
+}
+
+export const AWAITING_WORDS = 'Waiting for a reply';
+// The Conversation's three dots at the foot of the card (outcome-conversation.mjs),
+// in the card's own ink, while the message waits for a reply; gone once it does
+// not. Repainting keeps one.
+export function paintAwaiting(card, item, doc = card.ownerDocument) {
+  const row = card.querySelector(':scope > .reply-wait');
+  if (item.awaiting_reply !== true) { row?.remove(); return; }
+  if (row) return;
+  const host = doc.createElement('span'); host.className = 'item-tags reply-wait';
+  const group = doc.createElement('span'); group.className = 'item-tag-group';
+  group.append(waitingDots(doc, AWAITING_WORDS));
+  host.append(group);
+  card.append(host);
 }
 
 // The arrow, drawn as nodes: a hook back to the left.

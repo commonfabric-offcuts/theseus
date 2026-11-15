@@ -193,6 +193,31 @@ def act_fields(db, actor, items):
         item["stack_position"] = positions[item["id"]]
 
 
+def awaiting_fields(db, actor, topic, items):
+    """Add `awaiting_reply` to every item of one page, after act_fields has placed each in its dossier (item 475,
+    docs/topic-reading.md, "Waiting for a reply"). True on a message of the reader's own, on the record (not a
+    whisper), in a topic that is not an outcome's conversation, that an agent received (a delivery of its first
+    revision to an agent: one it was addressed to, or one taking part and switched on when it was sent), while no
+    message by anyone else that the reader can see follows it in its dossier. False on every other message. It is
+    read from what is stored, never stored: showing it changes nothing."""
+    own = [item for item in items if item["author_id"] == actor and not item.get("whisper")]
+    received = set()
+    if own and topic["kind"] != "conversation":
+        ids = [item["id"] for item in own]
+        received = {row[0] for row in db.execute(
+            "SELECT DISTINCT d.message_id FROM deliveries d JOIN actors a ON a.id=d.recipient_id "
+            "WHERE d.message_id IN (%s) AND d.revision=1 AND a.kind='agent'" % ",".join("?" * len(ids)), ids)}
+    others = {}
+    for item in items:
+        item["awaiting_reply"] = False
+        if item["id"] not in received:
+            continue
+        root = item["stack_position"]["root_id"]
+        if root not in others:
+            others[root] = _dossier(db, actor, root)[1]
+        item["awaiting_reply"] = others[root] is None or others[root] < item["seq"]
+
+
 class StackRoots:
     def __init__(self, db, actor):
         self.db, self.actor, self.roots = db, actor, {}
