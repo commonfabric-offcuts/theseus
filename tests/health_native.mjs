@@ -335,7 +335,7 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     // Each state of the release line a deploy's record gives (aim_next/health.py, web/health.mjs): an ordinary train
     // whose hosted judgment is pending, then attached; a train judged before its merge; and, the negative, a release
     // check's record, which still says its counts passed. Each is read on a page open at 320, 375 and 390 px phone
-    // widths and a laptop, in light, and at 320 px and the laptop in dark, as the page repaints from the live feed.
+    // widths and a laptop, in light, and at 320 px and the laptop in dark, as each page reads again.
     const sizes = [['320', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, 'light'], ['375', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true }, 'light'],
       ['390', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }, 'light'], ['laptop', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }, 'light'],
       ['320', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, 'dark'], ['laptop', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }, 'dark']];
@@ -367,11 +367,18 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     const judged = (head, conclusions) => ({ head, audit: 'm-audit',
       producer_runs: [{ id: 101, kind: 'run', name: 'Checks', head_sha: head, status: 'completed', conclusion: conclusions[0] }],
       verdict_checks: conclusions.slice(1).map((conclusion, i) => ({ id: 201 + i, kind: 'check', name: 'Verdict', head_sha: head, status: 'completed', conclusion })) });
+    // A page in a tab behind reads again when it is shown (followCommits, web/app.mjs); the one in front follows the
+    // live feed. Each page is brought to the front before it is read.
+    const front = async page => {
+      await page.p.send('Page.bringToFront');
+      await until(() => page.p.evaluate("document.visibilityState==='visible'"), `${page.where}: the page is in front`);
+    };
     // Every page shows release `release` with exactly `details`, the line opened in place and fitting the page.
     const shows = async (release, details, label) => {
       for (const page of pages) {
+        await front(page);
         const line = await until(async () => { const l = await readRelease(page.p); return l && l.summary.startsWith(`Latest release: Release ${release} went live at `) && l; },
-          `${page.where}: ${label}: the release line repaints to release ${release} from the live feed`);
+          `${page.where}: ${label}: the release line repaints to release ${release}`);
         if (!line.open) {
           const selector = 'details[data-key="release"] summary';
           await page.p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
@@ -398,9 +405,11 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     await shows(pending.release, ['It came from a merged train, so no release check ran here.', 'Its hosted judgment is still pending.', pending.shipped], 'pending');
     await control({ method: 'targets', operation_id: `health-train-judgment-${pending.release}`, kind: 'attach_judgment', release: pending.release,
       judgment: judged(pending.commit, ['success', 'failure']) });
-    // Attaching the judgment is a commit, and the same release repaints with it.
-    for (const page of pages) await until(async () => (await readRelease(page.p)).details.includes('Its hosted judgment: 1 of 2 runs and checks succeeded.'),
-      `${page.where}: the attached judgment repaints the release line`);
+    // Attaching the judgment is a commit: the page in front, the last one read, repaints with it from the live feed;
+    // each other page reads it when shown.
+    const inFront = pages[pages.length - 1];
+    await until(async () => (await readRelease(inFront.p)).details.includes('Its hosted judgment: 1 of 2 runs and checks succeeded.'),
+      `${inFront.where}: the attached judgment repaints the release line from the live feed`);
     await shows(pending.release, ['It came from a merged train, so no release check ran here.', 'Its hosted judgment: 1 of 2 runs and checks succeeded.', pending.shipped], 'attached');
     const first = await record(train('judged-first', judged('c'.repeat(40), ['success', 'success']), sha(number)));
     await shows(first.release, ['It came from a merged train judged before its merge, so no release check ran here.', 'That judgment: 2 of 2 runs and checks succeeded.', first.shipped], 'judged-first');
