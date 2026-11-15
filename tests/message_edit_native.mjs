@@ -1097,10 +1097,10 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const outlineRow = id => `#outline a[data-topic-id="${id}"]`;
   const railOpen = p => p.evaluate(`document.querySelector('#rail').classList.contains('open')`);
   const moveTo = async (p, device, id) => {
+    // The rails' reads settled first: what they bring (the outline's rows, the line under ☰ of what is new elsewhere) moves them.
+    await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), `${device}: the rails are quiet`);
     // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
     if (device === 'phone' && !await railOpen(p)) {
-      // The rails' reads settled first: what they bring (the line under ☰ of what is new elsewhere) moves the page.
-      await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), 'phone: the rails are quiet');
       await centre(p, '#rail-open');
       await p.evaluate(`(window.railPresses = [], ['pointerdown', 'click'].forEach(type => addEventListener(type, e => window.railPresses.push(type + ':' + (e.target.id || e.target.className || e.target.tagName) + ':' + e.defaultPrevented), true)), true)`);
       await press(p, device, '#rail-open');
