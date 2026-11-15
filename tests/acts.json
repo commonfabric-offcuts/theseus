@@ -9490,6 +9490,96 @@
    }
   },
   {
+   "item": 398,
+   "act": "Where scroll bars are always shown, the left sidebar's scroll bar shows while it scrolls",
+   "break": [
+    [
+     "web/scrollbars.mjs",
+     "    element.setAttribute('data-scrolling', '');",
+     "    element.removeAttribute('data-scrolling');"
+    ]
+   ],
+   "check": {
+    "native": "scrollbars",
+    "case": "scrollbars rail at 1280"
+   }
+  },
+  {
+   "item": 398,
+   "act": "Where scroll bars are always shown, the left sidebar's resting scroll bar is transparent",
+   "break": [
+    [
+     "web/aim.css",
+     "html[data-quiet-scrollbars],html[data-quiet-scrollbars] *{--quiet-scrollbar-thumb:transparent}",
+     "html[data-quiet-scrollbars],html[data-quiet-scrollbars] *{--quiet-scrollbar-thumb:var(--muted)}"
+    ]
+   ],
+   "check": {
+    "native": "scrollbars",
+    "case": "scrollbars rail at 320"
+   }
+  },
+  {
+   "item": 398,
+   "act": "Overlay scroll bars are left to the platform: the left sidebar keeps the room and the bar live had",
+   "break": [
+    [
+     "web/scrollbars.mjs",
+     "  if (!(gutter > 0)) { installed.set(doc, nothing); return nothing; }",
+     "  if (false) { installed.set(doc, nothing); return nothing; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading scrollbars rail at 320"
+   }
+  },
+  {
+   "item": 399,
+   "act": "A message in the composer shows its scroll bar while it scrolls, and the bar fades after",
+   "break": [
+    [
+     "web/scrollbars.mjs",
+     "    }, 700);",
+     "    }, 600000);"
+    ]
+   ],
+   "check": {
+    "native": "scrollbars",
+    "case": "scrollbars source at 390"
+   }
+  },
+  {
+   "item": 399,
+   "act": "Always-shown scroll bars take the platform's own width, so a message in the composer is as wide as live draws it",
+   "break": [
+    [
+     "web/aim.css",
+     "*::-webkit-scrollbar{width:var(--quiet-scrollbar-size);height:var(--quiet-scrollbar-size)}",
+     "*::-webkit-scrollbar{width:10px;height:10px}"
+    ]
+   ],
+   "check": {
+    "native": "scrollbars",
+    "case": "scrollbars source at 320"
+   }
+  },
+  {
+   "item": 399,
+   "act": "In Safari's engine, overlay scroll bars take no room, so a message in the composer is as wide as live draws it",
+   "break": [
+    [
+     "web/scrollbars.mjs",
+     "  const width = probe.offsetWidth - probe.clientWidth;",
+     "  const width = 10;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading scrollbars source at 320"
+   }
+  },
+  {
    "item": 405,
    "act": "Only an outcome organizer may request an assessment",
    "break": [
