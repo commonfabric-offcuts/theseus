@@ -104,7 +104,7 @@ where they were asked for.
   "quoting: one who has not scrolled keeps the quoted words in sight as the
   reply grows, and a scroll the person makes … lets them go", "typing in the
   reply leaves a message scrolled to its end at its end", "quoting: words
-  chosen to the very start of the next passage …" and "quoting: once the
+  chosen to the very start of the next sentence …" and "quoting: once the
   lines wrap anew, the message shows the words quoted …".
 - `tests/reader_live_native.mjs` (`native-live`): "live a message arriving
   leaves the card being read in place, and a field scrolled away holds nothing",

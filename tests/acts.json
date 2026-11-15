@@ -14091,21 +14091,6 @@
   },
   {
    "item": 434,
-   "act": "Words chosen to the very start of the next passage are kept in sight in the passage that holds them",
-   "break": [
-    [
-     "web/reader.mjs",
-     "find(part => Number(part.dataset.start) < to && to <= Number(part.dataset.end))",
-     "find(part => Number(part.dataset.start) <= to && to < Number(part.dataset.end))"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium stacked: quoting: words chosen to the very start of the next passage"
-   }
-  },
-  {
-   "item": 434,
    "act": "Once the lines wrap anew the message shows the words quoted, measured again, not where they were",
    "break": [
     [

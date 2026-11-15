@@ -1767,6 +1767,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const grown = await copy();
     if (grant) assert.equal(grown, body, '⌘C copies the passages lit');
     await shot(p, 'reading-passage-shift');
+    // The same light in the dark scheme.
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the dark scheme');
+    assert.equal(await shining(), body, 'the light stays as the scheme changes');
+    await shot(p, 'reading-passage-shift-dark');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+    await until(() => p.evaluate(`!matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the light scheme again');
     await p.key('Enter');
     await until(async () => (await reply()).endsWith(`> ${body}\n\n`), 'Return quotes the passages lit, after the reply kept');
     if (!grant) await sure(null, body, '⌘C copied the passages lit');
@@ -1785,6 +1792,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await closeReader(p, 'laptop');
     assert.deepEqual(p.errors, []);
     await p.close();
+    // A finger lights a message and no passage of it: on a phone a tap is not a pointer resting on words.
+    const phone = await open('reading-passage-phone', 'phone', topic, ids.alone);
+    await light(phone, 'phone', ids.alone);
+    assert.equal(await phone.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return h&&h.size?[...h][0].toString():null})()`), null, 'a tap lights the message and no passage of it');
+    await shot(phone, 'reading-passage-phone');
+    assert.deepEqual(phone.errors, []);
+    await phone.close();
   });
 
   // Lighting a cut-off card reads its whole message ahead in the background lane, one read at a time with a short

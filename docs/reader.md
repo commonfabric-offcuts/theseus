@@ -349,9 +349,10 @@ put. "phone: quoting at the end of a message …" quotes the last words above
 the reply of a message scrolled to its end, the keyboard going down and up
 again: the words still show. "typing in the reply leaves a message scrolled
 to its end at its end" types words with the message at its end. "quoting:
-words chosen to the very start of the next passage …" chooses a paragraph up
-to offset 0 of the next one, just above where the reply opens: the words
-chosen end just above the reply, not the next passage's line. "wide:
+words chosen to the very start of the next sentence …" chooses a sentence up
+to offset 0 of the next one, which begins the line below, just above where
+the reply opens: the words chosen end just above the reply, not on the next
+sentence's line. "wide:
 quoting: once the lines wrap anew …" quotes the end of a long list item near
 the bottom of what shows, then narrows the window: the words still show.
 

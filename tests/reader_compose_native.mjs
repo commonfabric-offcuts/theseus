@@ -1158,9 +1158,10 @@ async function run() {
     const words = range.getBoundingClientRect(), field = document.querySelector('#writing-body');
     return { room, top: words.top, bottom: words.bottom, scroll: body.scrollTop, end: body.scrollHeight - body.clientHeight, lineHeight: parseFloat(style.lineHeight), field: field.getBoundingClientRect().height, lines: field.value.split('\n').length };
   }, n);
-  // Words of a passage placed to end just above where the reply opens, its index.
+  // Words of a passage from below what shows, placed to end just above where
+  // the reply opens, the message scrolled well down to them; its index.
   const nearReply = async p => {
-    const n = await p.evaluate(() => [...document.querySelector('#source-body').children].findIndex(part => part.firstChild?.nodeType === Node.TEXT_NODE && part.getBoundingClientRect().top > document.querySelector('#reader-composer').getBoundingClientRect().top - 260));
+    const n = await p.evaluate(() => [...document.querySelector('#source-body').children].findIndex(part => part.firstChild?.nodeType === Node.TEXT_NODE && part.getBoundingClientRect().top > document.querySelector('#reader-composer').getBoundingClientRect().top + 300));
     await p.evaluate(n => { const body = document.querySelector('#source-body'), text = body.children[n].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20);
       body.scrollTop += range.getBoundingClientRect().bottom - (document.querySelector('#reader-composer').getBoundingClientRect().top - 8); }, n);
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -1238,6 +1239,9 @@ async function run() {
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const again = await wordsAt(p, n);
     assert.ok(again.bottom <= again.room.bottom + 2 && again.top >= again.room.top - 2, `the keyboard down and up again, the quoted words still show above the reply (words ${Math.round(again.top)}–${Math.round(again.bottom)}px, the room ${Math.round(again.room.top)}–${Math.round(again.room.bottom)}px)`);
+    await shot(p, 'quote-kept-keyboard-again');
+    await p.emulateMedia({ colorScheme: 'dark' }); p.scheme = 'dark';
+    await shot(p, 'quote-kept-keyboard-again');
     await close(p);
   });
 
@@ -1336,6 +1340,8 @@ async function run() {
     await settled();
     const wrapped = await where();
     assert.ok(wrapped.top >= wrapped.room.top - 2 && wrapped.bottom <= wrapped.room.bottom + 2, `once the lines wrap anew, the words quoted show (words ${Math.round(wrapped.top)}–${Math.round(wrapped.bottom)}px, the room ${Math.round(wrapped.room.top)}–${Math.round(wrapped.room.bottom)}px)`);
+    await shot(p, 'quote-after-rewrap');
+    await p.emulateMedia({ colorScheme: 'dark' }); p.scheme = 'dark';
     await shot(p, 'quote-after-rewrap');
     await close(p);
   });
