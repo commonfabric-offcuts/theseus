@@ -1156,7 +1156,8 @@ async function run() {
     const room = { top: box.top + parseFloat(style.paddingTop), bottom: Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) };
     const text = body.children[n].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20);
     const words = range.getBoundingClientRect(), field = document.querySelector('#writing-body');
-    return { room, top: words.top, bottom: words.bottom, scroll: body.scrollTop, end: body.scrollHeight - body.clientHeight, lineHeight: parseFloat(style.lineHeight), field: field.getBoundingClientRect().height, lines: field.value.split('\n').length };
+    return { room, top: words.top, bottom: words.bottom, scroll: body.scrollTop, end: body.scrollHeight - body.clientHeight, lineHeight: parseFloat(style.lineHeight), field: field.getBoundingClientRect().height, lines: field.value.split('\n').length,
+      body: Math.round(box.bottom - parseFloat(style.paddingBottom)), composer: Math.round(document.querySelector('#reader-composer').getBoundingClientRect().top) };
   }, n);
   // Words of a passage from below what shows, placed to end just above where
   // the reply opens, the message scrolled well down to them; its index.
@@ -1191,9 +1192,11 @@ async function run() {
     await open(p, wrap, 'A plan in one item');
     const n = await nearReply(p);
     await quoteAt(p, n);
+    const quoted = await wordsAt(p, n);
+    assert.ok(quoted.bottom <= quoted.room.bottom + 2 && quoted.top >= quoted.room.top - 2, `quoted, the words show above the reply (${JSON.stringify(quoted)})`);
     await growLine(p, 'A second thought.');
     const held = await wordsAt(p, n);
-    assert.ok(held.bottom <= held.room.bottom + 2 && held.top >= held.room.top - 2, `not scrolled, the quoted words stay in sight above the reply as it grows (words ${Math.round(held.top)}–${Math.round(held.bottom)}px, the room ${Math.round(held.room.top)}–${Math.round(held.room.bottom)}px)`);
+    assert.ok(held.bottom <= held.room.bottom + 2 && held.top >= held.room.top - 2, `not scrolled, the quoted words stay in sight above the reply as it grows (words ${Math.round(held.top)}–${Math.round(held.bottom)}px, the room ${Math.round(held.room.top)}–${Math.round(held.room.bottom)}px; quoted ${JSON.stringify(quoted)}, then ${JSON.stringify(held)})`);
     await shot(p, 'quote-held-while-typing');
     // The words scrolled below what shows: by a drag of the message's
     // scrollbar where it has one. Safari's engine draws an overlay scrollbar
