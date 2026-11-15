@@ -2475,13 +2475,31 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const release = await holdOnTitle(p);
     const second = 'A second reply while a press is held.';
     await p.evaluate(`(window.watched = false, window.watchFor = ${JSON.stringify({ read: 'topic_messages', words: second })})`);
+    // The answers the page has taken in that hold the second reply (api.mjs
+    // reads every answer, a command's or a view's, with json()). The page's own handling
+    // of an answer runs on from json() in the same task (freshness.mjs, then
+    // topic-views.mjs paints), so once the mark shows, the page has the reply
+    // in hand and its drawing waits on the press. window.watched alone reads
+    // a copy of the answer, which can come in before the page's own.
+    await p.evaluate(`(()=>{const json=Response.prototype.json;window.answersTaken=0;window.repliesTaken=0;
+      Response.prototype.json=function(){return json.call(this).then(value=>{window.answersTaken++;if(JSON.stringify(value).includes(${JSON.stringify(second)}))window.repliesTaken++;return value})}})()`);
     const later = (await control({ method: 'agent_message', operation_id: `${topic}-held-2`, topic_id: topic, source: 'topic', sender: other, reply_to: ids.root, addressees: [facts.actor], body: second })).result.message_id;
-    await until(() => p.evaluate('window.watched'), 'laptop: the page read the second reply while the press on the topic\'s name is held');
+    await until(() => p.evaluate('window.watched && window.repliesTaken > 0'), 'laptop: the page read the second reply and has it in hand while the press on the topic\'s name is held');
     await twoFrames(p);
-    const stackOf = () => p.evaluate(`document.querySelector(${JSON.stringify(card(later))})?.closest('.reply-stack')?.dataset.stack ?? null`);
-    assert.equal(await stackOf(), null, 'laptop: while the press is held, the second reply waits');
+    const stackOf = `document.querySelector(${JSON.stringify(card(later))})?.closest('.reply-stack')?.dataset.stack ?? null`;
+    assert.equal(await p.evaluate(stackOf), null, 'laptop: while the press is held, the second reply waits');
+    // The release as the page hears it: a listener after the page's own
+    // (press-hold.mjs, on the document) reads the stacks within the release's
+    // own pointerup, once the page's handler and its microtasks have run,
+    // with how many answers holding the reply the page took in since it was
+    // seen waiting (other answers, such as its reports of what was read, are
+    // counted for the record).
+    await p.evaluate(`(()=>{const taken=window.repliesTaken,all=window.answersTaken;window.atRelease=null;
+      document.addEventListener('pointerup',()=>{window.atRelease={stack:${stackOf},answers:window.repliesTaken-taken,others:window.answersTaken-all}},{capture:true,once:true})})()`);
     await release();
-    assert.equal(await stackOf(), ids.root, 'laptop: the moment the press ends, the reply that waited is drawn into its stack');
+    const atRelease = await until(() => p.evaluate('window.atRelease'), 'laptop: the page heard the release');
+    observations.push({ name: 'held press released', engine, atRelease });
+    assert.deepEqual({ stack: atRelease.stack, answers: atRelease.answers }, { stack: ids.root, answers: 0 }, 'laptop: the moment the press ends, the reply that waited is drawn into its stack, by the release alone');
     assert.equal(await readerOn(p), null, 'laptop: and the press on the topic\'s name opened nothing');
     assert.deepEqual(p.errors, []);
     await p.close();
