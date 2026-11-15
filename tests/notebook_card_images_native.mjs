@@ -407,7 +407,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     await p.point(`${ROOT} .deck-ask-line [data-ask-press]`);
     await until(() => p.calls.some(call => call.payload?.kind === 'message.post'), 'the ask is sent');
     const asked = p.calls.find(call => call.payload?.kind === 'message.post').payload.args.body;
-    assert.ok(asked.startsWith(`What does the chart show?\n\n> **Shown**\n>\n> An image from the page.\n> 🖼 wide.png\n> \`![code.png](attachment:${id}-media-0)\`\n\n`), `the card is quoted, its image by name and the code span as words: ${JSON.stringify(asked)}`);
+    assert.ok(asked.startsWith(`What does the chart show?\n\n> **Shown**\n> An image from the page.\n> 🖼 wide.png\n> \`![code.png](attachment:${id}-media-0)\`\n\n`), `the card is quoted, its image by name and the code span as words: ${JSON.stringify(asked)}`);
     await until(async () => (await core(id)).body.includes('[Reply stack]('), 'the card keeps the link to its stack');
     assert.ok((await core(id)).body.includes(`![wide.png](attachment:${id}-media-0)`), 'the card keeps its image line');
     assert.deepEqual(p.errors, []); await p.close();
