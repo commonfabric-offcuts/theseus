@@ -42,8 +42,9 @@ before anything is stopped.
 | `source` | `deploy` when the deploy wrote it, `backfill` when it was recorded afterwards |
 | `evidence` | where the deploy wrote its evidence, or `null` |
 
-The view adds `deployed_ms` (the same time in epoch milliseconds) and
-`recorded_ms` (when the record was written).
+The view adds `deployed_ms` (the same time in epoch milliseconds),
+`recorded_ms` (when the record was written) and `hosted_judgment` (below;
+`null` when none is attached).
 
 `measurements` holds the release check's counts:
 
@@ -69,6 +70,33 @@ It sits inside `measurements`, which the store keeps as one JSON object of at
 most 16384 bytes, so the record's own fields and the admin verb are unchanged;
 a record too large for that is refused before anything stops.
 
+A release deployed from a merged train (docs/tools.md, "A merged train") ran no
+local release check, so its measurements hold none of those counts, only the
+train as the deploy read it:
+
+```json
+{"train": {"file": "/abs/train.json", "pr": 31, "kind": "ordinary", "merge_commit": "...", "merged_tree": "...",
+           "release_branch": "release/live73", "items": [{"item": 481, "approved_head": "...", "review": "m-..."}],
+           "hosted_run": null, "judgment": "pending"}}
+```
+
+An ordinary train's `judgment` is `"pending"`: GitHub judges it after the
+merge. A judged-first train's is the judgment it came with: `head` (the parent
+of the merge commit its runs name), `producer_runs` and `verdict_checks` (each
+`{kind, id, name, head_sha, status, conclusion}`, as GitHub listed it) and
+`audit`. `hosted_run`, when given, is the run on the merge commit as GitHub
+listed it at the deploy.
+
+When an ordinary train's hosted judgment lands, it is attached to the record:
+a separate fact, written once, shown by the view as `hosted_judgment` in the
+judged-first form above, its `head` the release's commit. The record itself
+keeps saying `"pending"`, as it was written; a reader takes `hosted_judgment`
+for what landed since. Only a record whose train is ordinary and pending takes
+one (`JUDGMENT_NOT_PENDING` otherwise), every run and check must name the
+release's commit (`JUDGMENT_OF_ANOTHER_COMMIT`), the same judgment again
+returns the one attached (`"attached": false`), and another is refused with
+`RELEASE_JUDGED`. The store refuses to update or delete a judgment.
+
 A record never changes: the store refuses to update or delete one. Writing the
 same record again returns the one already there (`"recorded": false`), so a
 retried deploy step or a backfill run twice adds nothing. A different record
@@ -90,6 +118,11 @@ record without a number on an instance with none is refused with
   fact of every outcome's pipeline, and what each piece holding them has become,
   and its topic, is the state derived from those facts
   ([pipeline.md](pipeline.md#the-release)).
+- `bin/aim-next-admin attach-judgment --profile /abs/profile.json --release N --judgment /abs/judgment.json`
+  attaches a release's hosted judgment (above) from a JSON file. Like
+  `record-release` it is an operator act on the local instance, never an HTTP
+  route. `tools/releases.py attach-judgment` reads the judgment from GitHub and
+  calls it (docs/tools.md).
 - The `releases` view (`cursor`, `limit`) lists the records newest first;
   `next_cursor` is the last release number on the page. Every enabled member
   of the instance can read it, over `/api/view` like any view.

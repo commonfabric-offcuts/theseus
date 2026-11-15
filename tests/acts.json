@@ -11940,6 +11940,216 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 481,
+   "act": "A deploy of a merged train ships its merge commit and refuses any other commit",
+   "break": [
+    [
+     "tools/train.py",
+     "    if sha != merge:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A merged train whose merge commit is not on origin's release branch is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "    if not _contains(git, merge, tip,",
+     "    if False and not _contains(git, merge, tip,"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A merged train whose approved head is not in its merge commit is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "        if not _contains(git, item[\"approved_head\"], merge,",
+     "        if False and not _contains(git, item[\"approved_head\"], merge,"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A read of the train's facts that fails refuses rather than counting as an answer",
+   "break": [
+    [
+     "tools/train.py",
+     "    if answer.returncode != 0:\n        raise Refused(\"%s could not be read (git",
+     "    if False:\n        raise Refused(\"%s could not be read (git"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The hosted run a train names must name the merge commit as its head",
+   "break": [
+    [
+     "tools/train.py",
+     "        if hosted[\"head_sha\"] != merge:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train that changes the deploy tool, the controller or a data migration is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "        if kept:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train's release record says its hosted judgment is pending",
+   "break": [
+    [
+     "tools/train.py",
+     "judgment = \"pending\" if train[\"judgment\"] is None",
+     "judgment = \"judged\" if train[\"judgment\"] is None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judged-first train without its judgment is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "    if train[\"kind\"] == \"ordinary\":",
+     "    if train[\"kind\"] == \"ordinary\" or train[\"judgment\"] is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judged-first judgment of a parent whose tree is not the merge commit's is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "    if judged_tree != tree:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judged-first judgment whose runs name a commit that is not a parent of the merge commit is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "    if head not in parents:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judgment still running is not taken",
+   "break": [
+    [
+     "tools/train.py",
+     "        if found[\"status\"] != \"completed\":",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "attach-judgment refuses a run that names another commit than the release's",
+   "break": [
+    [
+     "tools/train.py",
+     "        if found[\"head_sha\"] != commit:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The store refuses a judgment whose runs name another commit than the release's",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "        if entry.get(\"head_sha\") != commit:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "Only a release whose record says its judgment is pending takes one",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "    if train.get(\"kind\") != \"ordinary\" or train.get(\"judgment\") != \"pending\":",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A release's hosted judgment is attached once; another is refused",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "        if row[\"hosted_judgment\"] == stored:",
+     "        if True:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
   }
  ]
 }

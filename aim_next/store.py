@@ -33,7 +33,7 @@ from .sources import Sources, SOURCE_SCHEMA
 from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
 from .health import Health, HEALTH_SCHEMA, LIGHT_KEY
 from . import delivery as _delivery
-from .releases import Releases, RELEASE_SCHEMA, write_release
+from .releases import Releases, JUDGMENT_SCHEMA, RELEASE_SCHEMA, write_judgment, write_release
 from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA, redact_topic
 from .standing_conversation import StandingConversation, STANDING_SCHEMA
@@ -48,7 +48,7 @@ from .blocking import Blocking, BLOCKS_SCHEMA
 from .message_edit import MessageEdit, MESSAGE_EDIT_UP
 
 
-SCHEMA_VERSION = "40"
+SCHEMA_VERSION = "41"
 
 
 def commit_identity_intact(metadata):
@@ -122,7 +122,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + JUDGMENT_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -230,6 +230,16 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             return written
         written = self._operator_write(write, "recorded", "release record")
         return {"instance_id": self.instance_id, "release": found["release"], "recorded": written}
+
+    def attach_judgment(self, number, judgment):
+        """Operator attachment of a release's hosted judgment (docs/releases.md); never a command or an HTTP route."""
+        found = {}
+
+        def write(db):
+            found["release"], written = write_judgment(db, number, judgment, _now_ms())
+            return written
+        attached = self._operator_write(write, "attached", "release judgment")
+        return {"instance_id": self.instance_id, "release": found["release"], "attached": attached}
 
     def import_pipeline(self, seed, actor):
         """Operator import of the hand-written pipeline (docs/pipeline.md); never a command or an HTTP route."""

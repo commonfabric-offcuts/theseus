@@ -13,6 +13,12 @@ same record written again (a retried deploy step, a backfill run twice) is
 the record already there, not a second one; a different record for a number
 or commit already recorded is refused, and so is an item an earlier record
 already shipped.
+
+A release deployed from an ordinary merged train (items 481, 482) says its
+hosted judgment is pending. Once GitHub's judgment of its commit lands, the
+operator attaches it (`bin/aim-next-admin attach-judgment`): a separate fact
+beside the record, written once, which the record's view shows as
+`hosted_judgment`; the record itself stays as it was written.
 """
 
 import datetime
@@ -32,6 +38,19 @@ RELEASE_SCHEMA = [
 ]
 RELEASE_DOWN = ("DROP TABLE releases",)
 RELEASE_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM releases)"
+# Version 41: the hosted judgment attached to a release whose record says it is pending, once, never changed.
+JUDGMENT_SCHEMA = [
+    "CREATE TABLE release_judgments (number INTEGER PRIMARY KEY REFERENCES releases(number), judgment TEXT NOT NULL, "
+    "recorded_ms INTEGER NOT NULL)",
+    "CREATE TRIGGER immutable_judgments_update BEFORE UPDATE ON release_judgments BEGIN SELECT RAISE(ABORT, 'immutable judgment'); END",
+    "CREATE TRIGGER immutable_judgments_delete BEFORE DELETE ON release_judgments BEGIN SELECT RAISE(ABORT, 'immutable judgment'); END",
+]
+JUDGMENT_DOWN = ("DROP TABLE release_judgments",)
+JUDGMENT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM release_judgments)"
+# Every record with the judgment attached to it, if any.
+RECORDS = ("SELECT releases.*, release_judgments.judgment AS hosted_judgment FROM releases "
+           "LEFT JOIN release_judgments ON release_judgments.number=releases.number")
+JUDGMENT_FIELDS = ("head", "producer_runs", "verdict_checks", "audit")
 
 FIELDS = ("release", "commit", "previous", "deployed_at", "items", "measurements", "source", "evidence")
 REQUIRED = ("commit", "deployed_at", "items", "source")
@@ -111,11 +130,12 @@ def release_row(record):
 
 
 def release_item(row):
-    """A stored row as the view and the admin verb show it."""
+    """A stored row, read through RECORDS, as the view and the admin verb show it."""
     return {"release": row["number"], "commit": row["commit_sha"], "previous": row["previous_sha"],
             "deployed_at": row["deployed_at"], "deployed_ms": row["deployed_ms"], "items": json.loads(row["items"]),
             "measurements": None if row["measurements"] is None else json.loads(row["measurements"]),
-            "source": row["source"], "evidence": row["evidence"], "recorded_ms": row["recorded_ms"]}
+            "source": row["source"], "evidence": row["evidence"], "recorded_ms": row["recorded_ms"],
+            "hosted_judgment": None if row["hosted_judgment"] is None else json.loads(row["hosted_judgment"])}
 
 
 SAME = ("commit_sha", "previous_sha", "deployed_at", "deployed_ms", "items", "measurements", "source", "evidence")
@@ -126,7 +146,7 @@ def write_release(db, record, now_ms):
 
     A record without a number follows the latest; the first record names its own."""
     row = release_row(record)
-    existing = db.execute("SELECT * FROM releases WHERE commit_sha=?", (row["commit_sha"],)).fetchone()
+    existing = db.execute(RECORDS + " WHERE releases.commit_sha=?", (row["commit_sha"],)).fetchone()
     if existing is not None:
         if all(existing[key] == row[key] for key in SAME) and row["number"] in (None, existing["number"]):
             return release_item(existing), False
@@ -150,7 +170,51 @@ def write_release(db, record, now_ms):
                "recorded_ms) VALUES (?,?,?,?,?,?,?,?,?,?)",
                (number, row["commit_sha"], row["previous_sha"], row["deployed_at"], row["deployed_ms"], row["items"],
                 row["measurements"], row["source"], row["evidence"], now_ms))
-    return release_item(db.execute("SELECT * FROM releases WHERE number=?", (number,)).fetchone()), True
+    return release_item(db.execute(RECORDS + " WHERE releases.number=?", (number,)).fetchone()), True
+
+
+def _judged(entries, name, commit):
+    if not isinstance(entries, list) or not entries:
+        _refuse("%s lists at least one run" % name)
+    for entry in entries:
+        if not isinstance(entry, dict) or isinstance(entry.get("id"), bool) or not isinstance(entry.get("id"), int):
+            _refuse("each of %s is a JSON object with GitHub's id" % name)
+        if entry.get("head_sha") != commit:
+            raise Refusal("JUDGMENT_OF_ANOTHER_COMMIT", "%s %s names %r as its head, not the release's commit %s"
+                          % (name, entry["id"], entry.get("head_sha"), commit))
+
+
+def write_judgment(db, number, judgment, now_ms):
+    """Attach the hosted judgment to release number, in the caller's write transaction: (the record, whether it was
+    attached now). Only a release whose record says its judgment is pending takes one, and only of its own commit;
+    the same judgment again is the one already attached, and another is refused."""
+    _number(number, "release", 2 ** 31)
+    row = db.execute(RECORDS + " WHERE releases.number=?", (number,)).fetchone()
+    if row is None:
+        raise Refusal("RELEASE_UNKNOWN", "No release %d is recorded" % number)
+    train = (json.loads(row["measurements"]) if row["measurements"] is not None else {}).get("train") or {}
+    if train.get("kind") != "ordinary" or train.get("judgment") != "pending":
+        raise Refusal("JUDGMENT_NOT_PENDING", "Release %d's record does not say its hosted judgment is pending; only an "
+                      "ordinary merged train's release takes one afterwards" % number)
+    if not isinstance(judgment, dict) or set(judgment) != set(JUDGMENT_FIELDS):
+        _refuse("A judgment is a JSON object with exactly %s" % ", ".join(JUDGMENT_FIELDS))
+    commit = row["commit_sha"]
+    if judgment["head"] != commit:
+        raise Refusal("JUDGMENT_OF_ANOTHER_COMMIT", "The judgment is of %r, not release %d's commit %s"
+                      % (judgment["head"], number, commit))
+    _judged(judgment["producer_runs"], "producer_runs", commit)
+    _judged(judgment["verdict_checks"], "verdict_checks", commit)
+    if not isinstance(judgment["audit"], str) or not judgment["audit"].strip():
+        _refuse("A judgment names its audit")
+    stored = _json(judgment)
+    if len(stored.encode("utf-8")) > MAX_MEASUREMENTS_BYTES:
+        _refuse("A judgment is at most %d bytes" % MAX_MEASUREMENTS_BYTES)
+    if row["hosted_judgment"] is not None:
+        if row["hosted_judgment"] == stored:
+            return release_item(row), False
+        raise Refusal("RELEASE_JUDGED", "Release %d already has its hosted judgment; a judgment never changes" % number)
+    db.execute("INSERT INTO release_judgments(number,judgment,recorded_ms) VALUES (?,?,?)", (number, stored, now_ms))
+    return release_item(db.execute(RECORDS + " WHERE releases.number=?", (number,)).fetchone()), True
 
 
 class Releases:
@@ -158,6 +222,6 @@ class Releases:
         """The instance's release records, newest first; cursor is the last number a page showed."""
         limit = _page_size(args)
         cursor = args.get("cursor")
-        rows = db.execute("SELECT * FROM releases" + (" WHERE number<?" if cursor is not None else "")
-                          + " ORDER BY number DESC LIMIT ?", (() if cursor is None else (cursor,)) + (limit + 1,)).fetchall()
+        rows = db.execute(RECORDS + (" WHERE releases.number<?" if cursor is not None else "")
+                          + " ORDER BY releases.number DESC LIMIT ?", (() if cursor is None else (cursor,)) + (limit + 1,)).fetchall()
         return _bounded_page({"instance_id": self.instance_id}, rows, limit, release_item, "release")

@@ -27,7 +27,7 @@ from .memory import (MEMORY_DRAFT_DOWN, MEMORY_DRAFT_OCCUPIED, MEMORY_DRAFT_SCHE
 from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
 from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
-from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
+from .releases import JUDGMENT_DOWN, JUDGMENT_OCCUPIED, JUDGMENT_SCHEMA, RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
 from .standing_conversation import SETTLE_ASKED_BACK, STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
 from .pipeline import (PIPELINE_DECIDED_AGAIN_DOWN, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_DOWN, PIPELINE_FACTS_BACKFILL, PIPELINE_FACTS_COUNT,
@@ -167,6 +167,9 @@ STEPS = (
     # built again with every row, its seq and where the next goes on from. Stepping back is refused once any
     # message has been edited, since version 39 would show its first words.
     ("39", "40", MESSAGE_EDIT_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED),
+    # Version 41 keeps the hosted judgment attached to a release deployed from an ordinary merged train, once it
+    # lands (items 481, 482): beside its record, which never changes. Stepping back is refused once any is attached.
+    ("40", "41", JUDGMENT_SCHEMA, JUDGMENT_DOWN, JUDGMENT_OCCUPIED),
 )
 
 
