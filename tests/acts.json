@@ -12306,6 +12306,34 @@
    }
   },
   {
+   "item": 481,
+   "act": "attach-judgment finds the release on any page of the live CLI's release records, not only the newest",
+   "break": [
+    [
+     "tools/releases.py",
+     "found = [item for page in pages for item in page.get(\"items\") or []",
+     "found = [item for page in pages[:1] for item in page.get(\"items\") or []"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "Only an owner_acceptance of exactly true makes a live summary an owner's acceptance; \"true\", 1 or another truthy value is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "summary.get(\"owner_acceptance\") is True",
+     "summary.get(\"owner_acceptance\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
    "item": 482,
    "act": "An owner's acceptance is exactly owner_acceptance, cases, by, message and why, each case exactly a step and a case",
    "break": [
