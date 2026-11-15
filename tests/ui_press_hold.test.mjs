@@ -9,11 +9,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PressHold } from '../web/press-hold.mjs';
 
-// A page as PressHold listens to it: the document, and its window for blur.
+// A page as PressHold listens to it: the document's window, which hears a
+// press before the document does.
 function page() {
   const doc = new EventTarget();
   doc.defaultView = new EventTarget();
-  const fire = (name, fields = {}, on = doc) => on.dispatchEvent(Object.assign(new Event(name), fields));
+  const fire = (name, fields = {}, on = doc.defaultView) => on.dispatchEvent(Object.assign(new Event(name), fields));
   return { doc, fire, press: (fields = {}) => fire('pointerdown', { isPrimary: true, button: 0, ...fields }) };
 }
 
@@ -21,7 +22,7 @@ const ENDINGS = {
   'its pointerup': ({ fire }) => fire('pointerup', { isPrimary: true, button: 0 }),
   'its pointercancel (a finger that scrolls)': ({ fire }) => fire('pointercancel', { isPrimary: true, button: 0 }),
   'a context menu it opened': ({ fire }) => fire('contextmenu', { button: 0 }),
-  'the window losing the focus': ({ fire, doc }) => fire('blur', {}, doc.defaultView),
+  'the window losing the focus': ({ fire }) => fire('blur'),
 };
 
 for (const [ending, end] of Object.entries(ENDINGS)) {

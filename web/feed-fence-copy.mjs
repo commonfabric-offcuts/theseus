@@ -68,7 +68,7 @@ export function mountFeedFences(host) {
       cards.add(card);
       seen.add(anchor);
       if (!active.has(anchor)) {
-        control.dataset.message = card.dataset.id;
+        control.dataset.faceOf = card.dataset.id;
         layer.append(control); active.set(anchor, control); resize.observe(anchor);
       }
     }

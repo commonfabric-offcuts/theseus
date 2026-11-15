@@ -474,6 +474,11 @@ function paintStack(section, stack, byId, context) {
 // fold line and the head. viewer: who reads. nameOf(actor): a person's name
 // as the page shows it. on: what the stack's own controls do (stack-feed.mjs).
 export function arrangeStacks(list, messages, options = {}) {
+  const before = options.motion?.capture();
+  paintStacks(list, messages, options);
+  options.motion?.painted(before);
+}
+function paintStacks(list, messages, options = {}) {
   const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, on = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
   Object.assign(state, { viewer, again: () => arrangeStacks(list, messages, options) });

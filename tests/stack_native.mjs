@@ -7,6 +7,7 @@
 // Chrome for Testing (reader_persistence_native.mjs --reading) and in Safari's
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
+import { motionChecks } from './stack_motion_native.mjs';
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
@@ -4518,4 +4519,6 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await drawn(), false, `after the swipe and Core's answer, B is below the closed More (More: ${JSON.stringify(await more())})`);
     assert.deepEqual(p.errors, []); await p.close();
   });
+  await motionChecks({ check, until, view, control, shot, facts, observations, engine }, { ...helpers, menuOf, choose, keyTo, actsOf });
+
 }
