@@ -1101,7 +1101,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const moveState = p => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => ({ at: location.search, ready: document.body?.dataset.ready,
     drawer: document.querySelector('#rail')?.classList.contains('open'), expanded: document.querySelector('#rail-open')?.getAttribute('aria-expanded'),
     inert: document.querySelector('#main')?.inert, sheet: document.querySelector('#new-message-sheet')?.open, focus: document.activeElement?.id || document.activeElement?.tagName,
-    notices: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent), presses: window.movePresses, shifts: window.moveShifts,
+    notices: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent), presses: window.movePresses, shifts: window.moveShifts, restartNotices: window.restartNotices,
     shell: { moving: shell.moving, page: Boolean(shell.page), handles: Boolean(shell.handles), owed: Boolean(shell.owed), leaving: shell.leaving, build: shell.build } }))`)
     .catch(e => ({ unread: e.message }));
   const explained = (p, error) => moveState(p).then(state => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) }); });
@@ -1165,16 +1165,27 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const filesOf = revision => new Map(execFileSync('git', ['ls-tree', '-r', '--name-only', revision, 'web'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n')
     .map(file => ['/' + file.slice('web/'.length), execFileSync('git', ['show', `${revision}:${file}`], { cwd: ROOT })]));
   // A deploy: the server stops and starts again on web (another build's files), or on the checkout's own.
-  // p, a page open meanwhile: it hears the server go, and reaches it again (its live feed up, its words of not
-  // reaching Theseus gone) before the person acts, so no line leaves the page under a finger on its way down.
-  const contactOf = p => p.evaluate(`import('/api.mjs').then(({ contact }) => ({ live: contact.live, unreached: Boolean(document.querySelector('[data-unreached]')) }))`).catch(() => null);
+  // p, a page open meanwhile: it hears the server go, and reaches it again before the person acts: its live feed up, and
+  // every line it showed while Theseus was away (its words of not reaching Theseus, its saves and updates waiting) gone.
+  // On a phone those lines sit above ☰ (aim.css, the folded rail), so one going after the person aims moves ☰ from under
+  // the finger. window.restartNotices lists each line that showed meanwhile, for a failure.
+  const contactOf = p => p.evaluate(`import('/api.mjs').then(({ contact }) => ({ live: contact.live, unreached: Boolean(document.querySelector('[data-unreached]')),
+    notices: [...document.querySelectorAll('.notice:not([hidden])')].filter(n => n.getClientRects().length).map(n => n.id + ': ' + n.textContent), seen: window.restartNotices }))`).catch(() => null);
+  const watchRestart = p => p.evaluate(`(() => { window.restartNotices = []; const seen = () => { for (const n of document.querySelectorAll('.notice:not([hidden])')) {
+    const line = n.id + ': ' + n.textContent; if (n.getClientRects().length && !window.restartNotices.includes(line)) window.restartNotices.push(line); } };
+    new MutationObserver(seen).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] }); return true; })()`);
   const restartOn = async (web = null, p = null) => {
+    if (p) await watchRestart(p);
     await control({ method: 'server_stop' });
     if (p) await until(async () => (await contactOf(p))?.live === false, 'the page hears the server go');
     const restarted = await control({ method: 'server_start', ...(web ? { web } : {}) });
     assert.equal(restarted.origin, facts.origin, 'the server is back at the same address');
     facts.token = restarted.token;
-    if (p) await until(async () => { const c = await contactOf(p); return c?.live === true && !c.unreached; }, 'the page reaches the server again', 15000);
+    if (p) {
+      let last = null;
+      await until(async () => { last = await contactOf(p); return last?.live === true && !last.unreached && last.notices.length === 0; }, 'the page reaches the server again', 15000)
+        .catch(error => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(last) }); });
+    }
   };
   // Another build of the page: the checkout's files with one module changed.
   const anotherBuild = () => {
