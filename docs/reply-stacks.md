@@ -652,8 +652,7 @@ or closed, Only new turned on or off, an act or a reaction, a move on another
 device) everything placed by what the page shows is placed again: the Reader's
 ↑ and ↓ while it is open, the New line, and Earlier messages. Core's
 neighbours of the Reader beyond what the page loaded are read again whenever
-an acts read reaches a later act than the page had read (its first acts read
-only sets where it stands, the neighbours being read as it opens), since a Move
+an acts read reaches a later act than they were last read at, since a Move
 below More or Bring back on another device moves their dossier with no change
 to the topic; an acts read that reaches no later act leaves the neighbours
 already resolved as they stand (item 426). The New line,

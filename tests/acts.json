@@ -14098,8 +14098,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "      if (moved) this.invalidate('neighbors', version, true);\n",
-     ""
+     "      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version, true); }\n",
+     "      if (moved) this.neighborsAt = reached;\n"
     ]
    ],
    "check": {
@@ -14113,8 +14113,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "      if (moved) this.invalidate('neighbors', version, true);\n",
-     "      if (moved) this.invalidate('neighbors', version);\n"
+     "      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version, true); }\n",
+     "      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version); }\n"
     ]
    ],
    "check": {
@@ -14127,7 +14127,7 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "    const moved = reached > (this.neighborsAt ?? reached);",
+     "    const moved = reached > (this.neighborsAt ?? -Infinity);",
      "    const moved = true;"
     ]
    ],
@@ -14212,20 +14212,6 @@
    "check": {
     "native": "reading",
     "case": "a star in a message's header"
-   }
-  },
-  {
-   "item": 426,
-   "act": "The page's first acts read sets where it stands and asks the Reader's neighbours for nothing",
-   "break": [
-    [
-     "web/topic-views.mjs",
-     "    const moved = reached > (this.neighborsAt ?? reached);",
-     "    const moved = reached > (this.neighborsAt ?? -Infinity);"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_stack_position.test.mjs"
    }
   }
  ]
