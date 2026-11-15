@@ -830,8 +830,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // The button as it shows: its name, tooltip, count and whether it is pressed; where it sits; its size; and
       // whether any control of the Reader's header covers another (a phone's header has the least room).
       const button = () => p.evaluate(`(()=>{const b=document.querySelector('#reader-aside'),r=b.getBoundingClientRect(),star=document.querySelector('#reader-star');
-        const boxes=[...document.querySelectorAll('#reader .reader-header button, #reader .reader-header h2')].filter(e=>e.getClientRects().length).map(e=>[e.id||e.tagName,e.getBoundingClientRect()]);
-        const over=[];for(const [a,x] of boxes)for(const [c,y] of boxes)if(a<c&&!(x.right<=y.left+0.5||y.right<=x.left+0.5||x.bottom<=y.top+0.5||y.bottom<=x.top+0.5)&&!(a==='H2'&&x.width<1)&&!(c==='H2'&&y.width<1))over.push(a+'/'+c);
+        const els=[...document.querySelectorAll('#reader .reader-header button, #reader .reader-header h2')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().width>=1);
+        const over=[];for(const e of els)for(const f of els){const x=e.getBoundingClientRect(),y=f.getBoundingClientRect();if(els.indexOf(e)<els.indexOf(f)&&!e.contains(f)&&!f.contains(e)&&!(x.right<=y.left+0.5||y.right<=x.left+0.5||x.bottom<=y.top+0.5||y.bottom<=x.top+0.5))over.push((e.id||e.className||e.tagName)+'/'+(f.id||f.className||f.tagName));}
         const header=document.querySelector('#reader .reader-header').getBoundingClientRect();
         return {shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed'),
           glyph:Boolean(b.querySelector('svg')),besideStar:b.previousElementSibling===star,size:[Math.round(r.width),Math.round(r.height)],over,inside:r.left>=header.left-0.5&&r.right<=header.right+0.5,
@@ -877,6 +877,48 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 378, the button's busy and refused states: pressed, it shows the move at once while Core has it (busy), and
+  // a refusal puts it back unpressed, saying so, with the dossier above More again and nothing moved in Core. On a
+  // laptop and at 320, 375 and 390 by a finger. Chrome holds Core's answer; Safari's harness cannot.
+  if (engine === 'chrome') await check('reading stacks the Reader\'s archive button shows the move at once while Core has it, and a refusal puts it back unpressed, the dossier above More', async () => {
+    for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+      const topic = `stack-archive-refused-${device}-${width}`;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'A dossier whose move is refused.' }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Its only reply.' }]]);
+      const p = await open(topic, device, topic, ids.root);
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+      const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+      const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),pressed:b.getAttribute('aria-pressed'),count:b.querySelector('.aside-count').textContent}))(document.querySelector('#reader-aside'))`);
+      await openReader(p, device, ids.one, 'Its only reply');
+      await until(async () => (await button()).shown, `${device} ${width}: the archive button shows`);
+      await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }] });
+      const asideSent = payload => payload?.kind === 'stack.aside';
+      p.intercept(asideSent);
+      await press(p, device, '#reader-aside');
+      const held = await until(() => p.held.find(entry => asideSent(entry.payload)), `${device} ${width}: the move is on its way to Core`);
+      // Busy: Core has not answered, and the button and the page already show the move.
+      assert.deepEqual(await button(), { shown: true, name: 'Bring back above More: 2 messages', pressed: 'true', count: '2' }, `${device} ${width}: while Core has it, the button shows the move, pressed`);
+      assert.equal(await shown(), false, `${device} ${width}: and the dossier is below More`);
+      await shot(p, `stack-archive-busy-${device}-${width}`);
+      p.held.splice(p.held.indexOf(held), 1);
+      p.intercept(null);
+      await p.send('Fetch.fulfillRequest', { requestId: held.event.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+        body: Buffer.from(JSON.stringify({ instance_id: facts.instance_id, status: 'rejected', error: { code: 'FORBIDDEN', message: 'Refused for this check.' } })).toString('base64') });
+      // Refused: back as it was, unpressed, and the page says why.
+      await until(async () => (await button()).pressed === 'false', `${device} ${width}: refused, the button is no longer pressed`);
+      assert.deepEqual(await button(), { shown: true, name: 'Move below More: 2 messages', pressed: 'false', count: '2' }, `${device} ${width}: it offers the move again`);
+      await until(() => p.evaluate(`document.getElementById('app-status').textContent.includes('Refused for this check.')`), `${device} ${width}: the refusal is said`);
+      assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, false, `${device} ${width}: Core moved nothing`);
+      assert.equal(await p.evaluate(`document.documentElement.scrollWidth > innerWidth`), false, `${device} ${width}: nothing scrolls sideways`);
+      await shot(p, `stack-archive-refused-${device}-${width}`);
+      await closeReader(p, device);
+      await becomes(shown, true, `${device} ${width}: the dossier is above More`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+  else observations.push({ name: 'the Reader\'s archive button refused', engine, held: 'holds Core\'s answers with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
+
   // Item 465: the page's New message composer at rest sits between the last dossier above More and the More line,
   // drawn in the feed, never among the dossiers put aside nor after the Notebook. Up over the page (✎) it is not
   // moved while another device moves a dossier across More, so the writing keeps its cursor; put back, it takes
@@ -895,8 +937,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // whether each sits wholly below the one before it, the composer included.
       const names = Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]));
       const shown = () => p.evaluate(`(()=>{const names=${JSON.stringify(names)},list=document.querySelector('#messages'),sheet=document.querySelector('#new-message-sheet');
-        const rows=[...list.children].filter(e=>e===sheet||e.getClientRects().length&&!e.dataset.line);
-        const order=rows.map(e=>e===sheet?'composer':e.classList.contains('stack-more')?'More':names[e.dataset.id??e.dataset.stack]??'?');
+        // The seeded dossiers and messages, More and the composer; a line, or the fixture's notice of who joined, is not one.
+        const rows=[...list.children].filter(e=>e===sheet||e.getClientRects().length&&(e.classList.contains('stack-more')||names[e.dataset.id??e.dataset.stack]));
+        const order=rows.map(e=>e===sheet?'composer':e.classList.contains('stack-more')?'More':names[e.dataset.id??e.dataset.stack]);
         const boxes=rows.map(e=>e.getBoundingClientRect()),stacked=boxes.every((b,i)=>!i||b.top>=boxes[i-1].bottom-0.5);
         const notebook=document.querySelector('#notebook').getBoundingClientRect();
         return {order,stacked,inFeed:sheet.parentElement===list,beforeNotebook:sheet.getBoundingClientRect().bottom<=notebook.top+0.5,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
