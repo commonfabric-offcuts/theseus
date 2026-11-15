@@ -7382,13 +7382,13 @@
    "break": [
     [
      "web/notebook-sheet.mjs",
-     "if (place.opener?.isConnected) { place.opener.focus({ preventScroll: true }); this.returnFocus = place.opener; }",
+     "if (place.opener?.isConnected) place.opener.focus({ preventScroll: true });",
      ""
     ]
    ],
    "check": {
     "native": "notebook",
-    "case": "a card being written survives"
+    "case": "notebook creation pencil"
    }
   },
   {

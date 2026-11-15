@@ -425,6 +425,62 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await q.close();
   });
 
+  // The topic's New message composer at the page's end and a Notebook page share the sheet. Closing the page folds the
+  // composer back to its one line, its writing kept, as every close of the sheet does, whatever the composer was when
+  // the page opened: a line, being written, or being written with its + panel open (fold's three branches). The focus
+  // goes back to the card that opened the page, not to New message. At a laptop's width, the page opened by the keys,
+  // and on phones 320, 375 and 390 wide, by touch.
+  await check('notebook in the composer: closing a page folds the topic\'s New message composer back to its line, its writing kept and the focus on the card, whether the composer was a line, being written or had its + panel open, at a laptop\'s width and on phones 320, 375 and 390 wide', async () => {
+    const id = await topicPage('Sheet and composer', cardsBody);
+    const composer = p => p.evaluate(`(()=>{const r=document.querySelector('#inline-composer'),v=e=>Boolean(e?.checkVisibility()),a=document.activeElement;
+      return {compose:r.dataset.compose,panel:r.dataset.panel??null,panels:[...r.querySelectorAll('.compose-panel')].filter(v).map(e=>e.id),
+        expanded:[...r.querySelectorAll('#inline-who-chip,#inline-plus-button')].filter(e=>e.getAttribute('aria-expanded')==='true').map(e=>e.id),
+        send:v(document.querySelector('#inline-send')),words:document.querySelector('#inline-writing-body').value,
+        focus:a===document.querySelector(${JSON.stringify(card(id))})?'the card':(a?.id||a?.tagName||null)}})()`);
+    for (const [label, width, height] of [['laptop', 1440, 600], ['phone-320', 320, 568], ['phone-375', 375, 667], ['phone-390', 390, 844]]) {
+      const touch = label !== 'laptop';
+      const p = await page(`notebook-sheet-composer-${label}`, null, true, { beforeNavigate: async q => {
+        await q.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: touch });
+        if (touch) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      const hit = async selector => {
+        await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);
+        if (touch) await tap(p, selector); else await p.point(selector);
+      };
+      await listed(p, card(id), 'the topic\'s Notebook lists its page');
+      await until(() => p.evaluate("!document.querySelector('#inline-composer').hidden"), 'the topic\'s New message composer at the page\'s end');
+      for (const state of ['line', 'writing', 'panel']) {
+        const said = `${label}, the composer ${{ line: 'a line', writing: 'being written', panel: 'being written, its + panel open' }[state]}`;
+        if (state !== 'line') {
+          await hit('#inline-writing-body');
+          await until(async () => (await composer(p)).compose === 'writing', `${said}: the composer opens to write`);
+          await p.send('Input.insertText', { text: ` Kept ${state} ${label}.` });
+        }
+        if (state === 'panel') {
+          await hit('#inline-plus-button');
+          await until(async () => (await composer(p)).panel === 'plus', `${said}: the + panel opens`);
+        }
+        const before = await composer(p);
+        assert.deepEqual([before.compose, before.panel, before.send], [state === 'line' ? 'line' : 'writing', state === 'panel' ? 'plus' : null, state !== 'line'], `${said}, as the page opens: ${JSON.stringify(before)}`);
+        if (state !== 'line') assert.ok(before.words.endsWith(` Kept ${state} ${label}.`), `${said}: the words are in the composer: ${JSON.stringify(before)}`);
+        // The page opens from its card: on a laptop by the keys (the focus on the card, as Tab puts it, and Return), so
+        // a + panel open stays open until the page hides the composer; on a phone by a finger.
+        if (touch) await hit(card(id));
+        else { await p.evaluate(`(c=>{c.scrollIntoView({block:'center',behavior:'instant'});c.focus();})(document.querySelector(${JSON.stringify(card(id))}))`); await p.key('Enter'); }
+        await opened(p, 'Sheet and composer', ['Plan', 'Steps', 'Notes']);
+        // Closed by ✕; on a laptop, the composer being written, by Escape.
+        if (!touch && state === 'writing') await p.key('Escape'); else await hit(`${SHEET} .notebook-sheet-close`);
+        await closed(p);
+        // The browser's close event comes with a later frame: what it does is done by then.
+        await settle(p); await settle(p);
+        assert.deepEqual(await composer(p), { compose: 'line', panel: null, panels: [], expanded: [], send: false, words: before.words, focus: 'the card' },
+          `${said}: closing the page folds the composer back to its line, its writing kept, and the focus is on the card that opened the page`);
+      }
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
   await check('notebook in the composer: keys the page does not use, and a wheel or trackpad over the backdrop or the sheet\'s head, move nothing behind it', async () => {
     const id = await topicPage('Sheet keys', cardsBody);
     const p = await page('notebook-sheet-keys', null, true, laptop);
