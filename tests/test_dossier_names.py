@@ -181,15 +181,15 @@ class ReachCase(NamesCase):
     """The coordinator names a dossier only when Core sends it the dossier's replies: an agent, enabled, taking part
     in the dossier's topic. Any other coordinator is never told to mint, so the first agent to reply names it."""
 
-    def first_agent_names_it(self, root, topic="t1"):
+    def first_agent_names_it(self, root, coordinator_refused="NOT_THE_NAMER"):
         """agent-b replies through the CLI, is told it names the dossier, and mints it; agent-a, who coordinates, is
-        refused."""
+        refused (a disabled actor acts on nothing at all)."""
         code, out, err = self.run_cli("reply", root, "Friday works.", actor="agent-b")
         self.assertEqual((code, err), (0, ""))
         self.assertIn('you name it:  [you name its dossier: mint %s --expected 0 "two to five words"]' % root, out)
         found = self.store.view("agent-b", "stack_namer", {"message_id": root})
         self.assertEqual((found["namer"], found["why"]), ("agent-b", "first_agent"))
-        self.rejected(self.mint(root, "Cabin week plan", actor="agent-a"), "NOT_THE_NAMER")
+        self.rejected(self.mint(root, "Cabin week plan", actor="agent-a"), coordinator_refused)
         code, out, err = self.run_cli("mint", root, "Cabin week plan", actor="agent-b")
         self.assertEqual((code, err, out), (0, "", 'named the dossier of %s "Cabin week plan"\n' % root))
         self.assertEqual(self.names(), [({"name": "Cabin week plan", "minted": True}, "agent-b")])
@@ -215,7 +215,7 @@ class ReachCase(NamesCase):
     def test_a_disabled_coordinator_does_not_name_a_dossier(self):
         root = self.post("Can we lock the cabin for July 12?")
         self.sql("UPDATE actors SET enabled=0 WHERE id='agent-a'")
-        self.first_agent_names_it(root)
+        self.first_agent_names_it(root, coordinator_refused="INVALID_ACTOR")
 
     def test_a_person_who_coordinates_never_names_a_dossier_and_the_first_agent_does(self):
         """Review B2: a person may be chosen to coordinate, and takes part in t1, yet only an agent is told to mint."""
