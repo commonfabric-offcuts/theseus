@@ -156,7 +156,10 @@ page can no longer read is not read here either, and what the rail showed and
 kept of it goes as the page hides the topic's messages. It shows beside the page at 1181px and wider, as a panel from the
 right between 761px and 1180px, and as a sheet from the bottom on a phone.
 Below 1181px it opens from "Pipeline & pages" in the header, and Escape or a
-tap on the dimmed page closes it. While it is open the page and the outline
+tap on the dimmed page closes it. Beside it the outcome's name gives way
+first; on a phone too narrow for both header buttons with their counts (320px,
+with new messages in Build topics), "Pipeline & pages" goes to a line of its
+own, inside the screen. While it is open the page and the outline
 under it take no keys, focus or presses, as under the outline's drawer. Its
 arrows open and fold as the outline's do, without ⌘: → opens a folded
 section or goes to its first row, ← folds an open one or goes from a row to

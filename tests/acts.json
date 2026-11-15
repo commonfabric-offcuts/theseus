@@ -14165,6 +14165,21 @@
     "native": "rail",
     "case": "a Build topic waiting on the reader opens at the question"
    }
+  },
+  {
+   "item": 297,
+   "act": "On a phone too narrow for both header buttons with their counts, \"Pipeline & pages\" goes to its own line, inside the screen",
+   "break": [
+    [
+     "web/rails.css",
+     "#main .eyebrow-row{display:flex;flex-wrap:wrap;",
+     "#main .eyebrow-row{display:flex;flex-wrap:nowrap;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "on a phone, on a Build topic's outcome, the drawer"
+   }
   }
  ]
 }
