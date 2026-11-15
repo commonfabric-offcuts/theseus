@@ -950,6 +950,8 @@ export async function conversationChecks({ check, page, until, control, view, fa
       whole_topic: !args.reply_to, sender: 'person', body, ...args })).result.message_id;
     const ids = [await mine('rv476-root', 'Earlier check: the plan.')];
     for (let n = 1; n <= 8; n++) ids.push(await mine(`rv476-${n}`, `Earlier check: reply ${n}.`, { reply_to: ids[0] }));
+    // A person's reply folds the message it answers for them (Core); unfolded again, the first message shows as any does.
+    await control({ method: 'stack_act', sender: person, kind: 'message.fold', message_id: ids[0], operation_id: 'rv476-unfold', args: { folded: false } });
     const p = await open('rv476', '/?conversation=rv476', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
     const toggle = `.reply-stack[data-stack="${ids[0]}"] > .stack-toggle`;
     const fold = () => quiet(p, `document.querySelector('.reply-stack[data-stack="${ids[0]}"]')?.dataset.fold ?? null`);
@@ -968,7 +970,15 @@ export async function conversationChecks({ check, page, until, control, view, fa
     const widths = async (want, label) => {
       for (const [width, mobile] of [[1280, false], [390, true], [375, true], [320, true]]) {
         await p.send('Emulation.setDeviceMetricsOverride', { width, height: mobile ? 844 : 900, deviceScaleFactor: 1, mobile });
-        await until(async () => JSON.stringify(await seen()) === JSON.stringify(want), `${width}px: ${label} (${JSON.stringify(await seen())})`);
+        // What the dossier's first message shows when it does not settle: its stack's state and each of its parts.
+        const first = () => quiet(p, `(c=>c&&{stack:{...c.closest('.reply-stack').dataset},card:{...c.dataset},lit:c.classList.contains('lit'),
+          parts:[...c.children].map(e=>e.className+':'+getComputedStyle(e).display)})(document.querySelector('#messages .message-card[data-id="${ids[0]}"]'))`);
+        try { await until(async () => JSON.stringify(await seen()) === JSON.stringify(want), `${width}px: ${label}`); }
+        catch (error) {
+          const state = await quiet(p, `import('/reply-stacks.mjs').then(m=>{const s=m.stackState(document.getElementById('messages')),id=${JSON.stringify(ids[0])},st=s.stacks.find(x=>x.id===id);
+            return JSON.stringify({level:s.levels.get(id),earlier:[...s.earlier],whole:[...s.whole],folded:[...s.folded],earlierRows:[...s.earlierRows],only:Boolean(s.only),head:st?.head?.id,replies:st?.replies.map(r=>r.id),acts:st?.head?.acts})})`);
+          throw new Error(`${error.message}: ${JSON.stringify(await seen())}, its first message ${JSON.stringify(await first())}, the stack state ${state}`);
+        }
         assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${width}px: ${label}: nothing scrolls sideways`);
       }
       await p.send('Emulation.setDeviceMetricsOverride', DESK);
