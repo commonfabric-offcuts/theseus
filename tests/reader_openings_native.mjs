@@ -51,7 +51,7 @@ const control = data => new Promise((resolve, reject) => {
 
 const hashes = {};
 for (const filename of ['web/app.mjs', 'web/opening.mjs', 'web/opening-view.mjs', 'web/image-rows.mjs', 'web/opening-store.mjs', 'web/topic-navigation.mjs',
-  'web/index.html', 'web/aim.css', 'aim_next/openings.py', 'aim_next/server.py', 'tests/fixtures/ui_http.py', 'tests/reader_openings_native.mjs']) {
+  'web/index.html', 'web/aim.css', 'aim_next/openings.py', 'aim_next/server.py', 'aim_next/web_build.py', 'tests/fixtures/ui_http.py', 'tests/reader_openings_native.mjs']) {
   hashes[filename] = createHash('sha256').update(await readFile(path.join(root, filename))).digest('hex');
 }
 const results = [], observations = [], tapSpacing = [];
