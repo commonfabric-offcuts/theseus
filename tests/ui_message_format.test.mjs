@@ -467,6 +467,39 @@ test('the Reader\'s passages cover the whole message, with no gap or overlap, an
   assert.deepEqual(passages('').childNodes, [], 'no words, no passages');
 });
 
+// A card's words are blocks, not passages (web/feed-passages.mjs): what lights on a card is the Reader's passages,
+// read from passageSpans and found among the card's own nodes by rangeOf, so a passage lit on a card covers the
+// same characters as that passage in the Reader, and quotes the same words.
+test('a card lights the Reader\'s own passages: passageSpans are the Reader\'s, and each, found among a card\'s blocks, runs over exactly its own characters', () => {
+  // The browser's walker over text nodes and its ranges, as rangeOf asks the card's document for them.
+  doc.createTreeWalker = root => { const texts = walk(root).filter(node => node.nodeType === 3); let at = -1; return { nextNode: () => texts[++at] ?? null }; };
+  doc.createRange = () => ({ setStart(node, k) { this.start = [node, k]; }, setEnd(node, k) { this.end = [node, k]; }, get collapsed() { return this.start[0] === this.end[0] && this.start[1] === this.end[1]; } });
+  try {
+    for (const body of ['Words before the passage. The lit passage is these words. Words after it.', EVERYTHING, 'A short message\nwith a second line, *as written*.',
+      'See [the *new* `plan`](https://a.example/x) now. And after.', '- [ ] a task\n- an item with **bold** words\n\n> a quote here']) {
+      const spans = format.passageSpans(body, doc);
+      assert.deepEqual(spans, passages(body).childNodes.map(node => ({ start: Number(node.dataset.start), end: Number(node.dataset.end) })), `the Reader's passages: ${JSON.stringify(body)}`);
+      const card = render(body);
+      assert.equal(format.drawnText(card), body, 'the card knows the words it drew');
+      for (const { start, end } of spans) {
+        const range = format.rangeOf(card, start, end), words = body.slice(start, end);
+        if (!words.trim()) continue;
+        assert.ok(range, `the passage ${JSON.stringify(words)} is drawn on the card`);
+        const from = format.sourcePosition(...range.start), to = format.sourcePosition(...range.end, true);
+        assert.ok(from >= start && to <= end, `${JSON.stringify(words)}: the card's range stays inside the passage (${from}–${to} in ${start}–${end})`);
+        // What the card leaves undrawn of the passage is markup and spacing, never a word of it.
+        assert.equal(body.slice(start, from).replace(/[\s#>*`|:-]|\[ \]|\d+[.)]/g, ''), '', `nothing of ${JSON.stringify(words)} is left out before it`);
+        assert.equal(body.slice(to, end).replace(/[\s#>*`|:~_-]|```\w*/g, ''), '', `nothing of ${JSON.stringify(words)} is left out after it`);
+      }
+    }
+    // The middle sentence of three, on its card: exactly its own characters.
+    const three = 'Words before the passage. The lit passage is these words. Words after it.', card = render(three);
+    const middle = format.passageSpans(three, doc)[1], range = format.rangeOf(card, middle.start, middle.end);
+    assert.equal(three.slice(format.sourcePosition(...range.start), format.sourcePosition(...range.end, true)), 'The lit passage is these words. ');
+    assert.equal(format.rangeOf(card, three.length, three.length + 4), null, 'past its words, nothing is drawn');
+  } finally { delete doc.createTreeWalker; delete doc.createRange; }
+});
+
 // A drawing of nodes as words and elements, without the blocks and passages that hold them.
 const drawing = host => {
   const out = [];

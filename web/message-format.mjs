@@ -789,8 +789,14 @@ export function formatWords(host, text, options = {}) {
   host.replaceChildren();
   for (const node of formatNodes(text, { doc: host.ownerDocument ?? globalThis.document, ...options })) host.append(node);
   host.classList.add('formatted');
+  DRAWN.set(host, String(text ?? ''));
   return host;
 }
+
+// The text a host's words were drawn from (formatWords, drawPassages), which
+// the positions its nodes know are positions in; undefined for a host neither drew.
+const DRAWN = new WeakMap();
+export const drawnText = host => DRAWN.get(host);
 
 // The Reader's source as passages (reader.mjs): every child of host is one
 // passage with the span of the text it shows (data-start, data-end), and the
@@ -853,4 +859,53 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
     if (!SOURCE.has(node)) placed(node, { start, end });
     host.append(node);
   });
+  DRAWN.set(host, body);
+}
+
+// The passages of a text, as the Reader draws them (drawPassages): each
+// {start, end}, in order, covering the whole text. A card shows a message's
+// words as blocks, not passages, so what lights on it is read from here.
+// Drawn once into a node no page holds, and kept for the few texts read last.
+const SPANS = new Map();
+export function passageSpans(text, doc = globalThis.document) {
+  text = String(text ?? '');
+  let spans = SPANS.get(text);
+  if (!spans) {
+    const host = doc.createElement('div');
+    drawPassages(host, text, doc);
+    spans = [...host.childNodes].map(part => ({ start: Number(part.dataset.start), end: Number(part.dataset.end) }));
+    if (SPANS.size >= 32) SPANS.delete(SPANS.keys().next().value);
+  }
+  SPANS.delete(text); SPANS.set(text, spans);
+  return spans;
+}
+
+// The drawn words that show the characters from to `to` of the text a host
+// drew, as a Range: from the first drawn character at or after from, to the
+// end of the last before to; null when none of them is drawn. sourcePosition
+// read backwards, so a range made here selects back to the same characters.
+export function rangeOf(host, from, to) {
+  const doc = host.ownerDocument, walker = doc.createTreeWalker(host, 4);
+  let start = null, end = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const a = sourcePosition(node, 0), b = sourcePosition(node, node.data.length, true);
+    if (a === null || b === null || b <= a) continue;
+    if (!start && b > from) start = [node, offsetAt(node, from, false)];
+    if (a < to) end = [node, offsetAt(node, to, true)];
+  }
+  if (!start || !end) return null;
+  const range = doc.createRange();
+  range.setStart(...start); range.setEnd(...end);
+  return range.collapsed ? null : range;
+}
+// In a text node: the first offset at or after the character at (a start),
+// or the last offset whose boundary is at or before it (an end).
+function offsetAt(node, at, end) {
+  let lo = 0, hi = node.data.length;
+  if (!end) {
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sourcePosition(node, mid) >= at) hi = mid; else lo = mid + 1; }
+    return lo;
+  }
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (sourcePosition(node, mid, true) <= at) lo = mid; else hi = mid - 1; }
+  return lo;
 }

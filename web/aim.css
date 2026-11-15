@@ -109,6 +109,9 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
+/* A passage lit on a card under the pointer (web/feed-passages.mjs) is painted as the Reader's is; on the person's own black card, the other way round, so it shows. */
+.message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: #000; color: #fff; }
+.own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { background-color: var(--ink); color: #000; }
 .message-card.own-message {
   --ink: #e0e8e5;
   --muted: #9aaba8;

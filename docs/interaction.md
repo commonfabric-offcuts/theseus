@@ -24,6 +24,29 @@ the pointer's way, the keys' and the phone's.
   focus never draws a second ring while the pointer selects a message;
   using the rail keys gives the light back to that rail. A click on a lit message opens
   it in the Reader.
+  On a lit message the passage under the pointer lights too, as in the Reader,
+  on a topic's card and a dossier's alike: a sentence of a paragraph, or a
+  heading, a list item, a quote, a code block or a table, read as the Reader
+  reads them (`passageSpans` in `web/message-format.mjs`). Off the words
+  (between lines, beside a short line, on the author's line) the passage lit
+  last stays lit. Moving with Shift held, or a Shift-click, grows the light
+  from the passage lit first to the one under the pointer, from words dragged
+  over when there are some, and opens nothing; a Shift-click on a link in the
+  words is the browser's, which opens the link in a new window as it always
+  has (docs/links.md), and grows no light (where the click puts the focus on
+  the link, Return there follows it, and the light goes out as above). A card drawn again with
+  other words under its light (the whole of a cut-off message arriving in
+  place of its excerpt, an edit arriving) puts the light out, as an edit drawn
+  into the Reader puts out the passage lit there: the place lit would hold
+  other words, so Return there quotes nothing and ⌘C copies the whole message,
+  until the pointer moving on lights a passage of the new words. The light is painted over the
+  card's own words (`web/feed-passages.mjs`), so nothing on the card, and
+  nothing stored, changes for it; the keys lighting a message light no
+  passage of it, and a passage lights only where Return would quote it: the
+  focus moving where Return does something else (the message's ☆, its bar's
+  👍, Reply and ⋯, writing, a pop-up, the Reader) puts the light out, as in
+  the Reader, and back on the card the pointer resting on the words lights a
+  passage again.
   A click or a tap in a message, or on its bar, moves the keys' place to that
   message, and one on a dossier's header to the dossier, so ↑ ↓, Return and the
   stack keys go on from there; the pointer moving onto a message or a header
@@ -60,16 +83,21 @@ the pointer's way, the keys' and the phone's.
   are not the keys moving a selection, such as a page opening at a message or
   the phone's drawer opening on the topic being read, keep their own ways.
   (`web/reveal.mjs`, `shownSelected` in `web/reply-stacks.mjs`)
-- **Return**, or **Reply** on the bar (a phone's way), opens the Reader on the
-  lit message with the cursor in the reply and nothing quoted; to quote part of
-  it, select that part in the Reader and press Return. Return on a selected
+- **Return** opens the Reader on the lit message with the cursor in the reply:
+  with the words selected on its card, or else its lit passages, quoted, as
+  Return quotes them in the Reader, and nothing quoted when neither (a message
+  the keys lit). **Reply** on the bar (a phone's way) quotes nothing; to quote
+  part of the message there, select that part in the Reader and press Return. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does: Return
   saves it and Escape cancels; Space folds and opens the dossier. Return in
   writing, on a folded line or on another control does what it does there.
 - **⌘C** (Ctrl-C off a Mac, as ⌘A is, `web/writing-input.mjs`) with no words
   selected copies the lit message's words as written: the message the pointer
   or the keys lit last, the one Return answers, and a cut-off message whole.
-  They are the words the Reader's ⇧⌘C copies of the message it shows. Words
+  They are the words the Reader's ⇧⌘C copies of the message it shows. While a
+  passage of it is lit, ⌘C copies exactly that passage's words as written (the
+  passages lit, when Shift grew the light), as ⌘C does in the Reader on a lit
+  passage. Words
   selected anywhere copy as the browser copies them, and in writing or a
   pop-up ⌘C is theirs; with nothing lit it does nothing of the page's. Nothing
   is said when it copies, as in the Reader; a refusal says how else to copy.
@@ -346,6 +374,34 @@ page painted. Its checks, by rule:
   back out, → ← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
   and swipe, the trackpad's two-finger swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
   (docs/reply-stacks.md).
+- A card's lit passage: "reading a passage the pointer rests on lights on a
+  topic's card and a dossier's …", on a topic's card and a dossier's, with
+  words before and after the passage: ⌘C copies exactly the lit words, read
+  back through the browser's own clipboard, Return quotes the same words, ⌘C
+  in the Reader copies its own lit passage, Shift grows the light, and the
+  keys light no passage. "reading a card's lit passage goes out as the focus
+  moves to a control of the message or to writing …": Tab through the lit
+  message's ☆, 👍, Reply and ⋯, and ⌘Return into writing, each with no
+  passage lit; Shift-Tab back to the card, where the pointer lights a passage
+  again and Return quotes it. "reading Shift-click on a card grows the light
+  and opens nothing …": a Shift-click grows the light, opens nothing and
+  leaves no selection of the browser's; words selected in another passage are
+  what Shift grows the light from, giving way to it; and Return on words
+  selected quotes exactly them, not the passage lit. "reading a cut-off
+  card's lit passage goes out as its whole message arrives …" lights the
+  excerpt's last sentence, cut mid-word, while the whole message's read is
+  held in the server, then lets it arrive; "reading an edit arriving under a
+  card's lit passage …" lights a sentence of the person's message and saves an
+  edit of it from another device. In each, once the card is drawn again no
+  words are lit, ⌘C copies the whole message as written, Return quotes
+  nothing, and the pointer on the new words lights a passage of them, which
+  ⌘C copies and Return quotes exactly. "reading Shift-click on a link in a
+  card's words opens it in a new window …": a Shift-click on the card's
+  words grows the light and opens nothing; one on a link in them is left to
+  the browser, one new window opens at the link's address, and the link grows
+  no light. That the passages are the
+  Reader's, over exactly their characters on a card's blocks:
+  `tests/ui_message_format.test.mjs`.
 - ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",
   with a selection, the composer and no lit message left to the browser; a
   cut-off message's whole words are read as the person's act, so they copy

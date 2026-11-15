@@ -463,8 +463,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      event.preventDefault();\n      this.act('reply');",
-     "      event.preventDefault();"
+     "      else this.act('reply');",
+     "      else return;"
     ]
    ],
    "check": {
@@ -478,8 +478,8 @@
    "break": [
     [
      "web/app.mjs",
-     "registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });",
-     "registry.current?.source?.source_ref?.id === id) return;"
+     "else reader.reply({ kind: 'message', id });",
+     "else return;"
     ]
    ],
    "check": {
@@ -3156,36 +3156,6 @@
   },
   {
    "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
    "act": "An act's answer landing under a held press waits for the press to end, so nothing moves under the pointer",
    "break": [
     [
@@ -3774,8 +3744,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "    this.copy(item);\n",
-     ""
+     "    if (words) this.copy(item, words); else this.copy(item);\n",
+     "    if (words) this.copy(item, words);\n"
     ]
    ],
    "check": {
@@ -9945,8 +9915,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
-     "if (bottom !== room.bottom) this.sourceBody.scrollTop"
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (bottom !== room.bottom) this.moveTo("
     ]
    ],
    "check": {
@@ -9960,8 +9930,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
-     "if (false) this.sourceBody.scrollTop"
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (false) this.moveTo("
     ]
    ],
    "check": {
@@ -9975,8 +9945,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "words = passage && range.getBoundingClientRect();",
-     "words = passage && passage.getBoundingClientRect();"
+     "measure = () => wordsBox(range);",
+     "measure = () => passage.getBoundingClientRect();"
     ]
    ],
    "check": {
@@ -10019,8 +9989,8 @@
    "act": "Measuring the reply as a quote grows it does not pull a message scrolled to its end down",
    "break": [
     [
-     "web/reader.mjs",
-     "if (place) this.sourceBody.scrollTop = scrolled;",
+     "web/compose-bar.mjs",
+     "    back();",
      ""
     ]
    ],
@@ -10035,8 +10005,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "else if (top < room.top && bottom < room.bottom) this.sourceBody.scrollTop",
-     "else if (false) this.sourceBody.scrollTop"
+     "else if (top < room.top && bottom < room.bottom) this.moveTo(",
+     "else if (false) this.moveTo("
     ]
    ],
    "check": {
@@ -10057,6 +10027,126 @@
    "check": {
     "native": "compose",
     "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoting keeps your place: what showed of the words quoted stays where it was on screen, the topic page behind the Reader too, and the quote lands after the writing with the cursor after it, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (bottom !== room.bottom) this.moveTo("
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words the opening reply would cover are shown the least way, just above the reply, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (false) this.moveTo("
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "What a quote keeps showing is the words it takes, not the whole passage they are in: a line of a log taller than the screen stays where it was, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "measure = () => wordsBox(range);",
+     "measure = () => passage.getBoundingClientRect();"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A passage lit whole and taller than the screen keeps what showed of it where it was, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "shows = top < bottom;",
+     "shows = false;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words taller than the room the reply leaves fill it, their start kept on the screen, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.min(bottom - room.bottom, top - room.top)",
+     "(bottom - room.bottom)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Measuring the reply as a quote grows it does not pull a message scrolled to its end down, in Safari's engine",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "    back();",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A line quoted from above what shows comes into sight at its top, the least way, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "else if (top < room.top && bottom < room.bottom) this.moveTo(",
+     "else if (false) this.moveTo("
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Words taller than the room quoted from above it come into sight with their end at its bottom, the least way, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.max(top - room.top, bottom - room.bottom)",
+     "(top - room.top)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
    }
   },
   {
@@ -13479,6 +13569,36 @@
    }
   },
   {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
    "item": 447,
    "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
    "break": [
@@ -15538,6 +15658,350 @@
    ],
    "check": {
     "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A passage of a card's message lights under the pointer as the Reader's do, on a topic's card and a dossier's",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (entry && entry === this.lit) this.passages.point(event, entry);",
+     "if (false) this.passages.point(event, entry);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Return on a lit passage of a card opens the Reader with those words quoted, in place of a reply with nothing quoted",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (chosen && item) this.quote(item.id, cardIn(this.lit), chosen);",
+     "if (false) this.quote(item.id, cardIn(this.lit), chosen);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "⌘C while a passage of a card is lit copies exactly that passage's words, not the whole message",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (words) this.copy(item, words); else this.copy(item);",
+     "this.copy(item);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Moving with Shift held grows a card's light from the passage lit first to the one under the pointer, as in the Reader",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "const anchor = extend && this.lit?.words === words ? this.lit.anchor : span;",
+     "const anchor = span;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "The keys lighting another message put a card's passage light out, and Return there quotes nothing",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "follow(entry) { if (this.lit && this.lit.entry !== entry) this.clear(); }",
+     "follow(entry) {}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "⌘C in the Reader on a lit passage, nothing selected, copies exactly that passage's words",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "What lights on a card is the Reader's own passages, found among the card's blocks over exactly their characters",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "    if (a < to) end = [node, offsetAt(node, to, true)];",
+     "    end = [node, offsetAt(node, to, true)];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A card's lit passage goes out as the focus moves where Return does something else (a control of the message or its bar, writing, a pop-up), as in the Reader",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a card lights from the passage lit first to the one under the pointer, opens nothing, and leaves no selection of the browser's beside the light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      this.shifted = false;\n      if (!event.shiftKey",
+     "      this.shifted = false; return;\n      if (!event.shiftKey"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Words selected on a card are what Shift grows its light from, and the selection gives way to the light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const chosen = this.selected(entry);\n    if (!chosen) return;",
+     "    const chosen = null;\n    if (!chosen) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Return on words selected on a card quotes exactly those words, not the passage lit",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const selected = this.selected(entry);\n    if (selected) return selected;",
+     "    const selected = null;\n    if (selected) return selected;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A cut-off card drawn again under its lit passage, its whole message arriving in place of the excerpt, puts the light out, so Return and ⌘C act on no words of the excerpt",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a cut-off card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "An edit arriving under a card's lit passage puts the light out, so Return and ⌘C act on no words of the place lit on the old words",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading an edit arriving under a card's lit passage"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and it grows no light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (event.target.closest?.('a')) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a link in a card's words"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A cut-off card drawn again under its lit passage, its whole message arriving in place of the excerpt, puts the light out, so Return and ⌘C act on no words of the excerpt",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading a cut-off card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "An edit arriving under a card's lit passage puts the light out, so Return and ⌘C act on no words of the place lit on the old words",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading an edit arriving under a card's lit passage"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and it grows no light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (event.target.closest?.('a')) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading Shift-click on a link in a card's words"
+   }
+  },
+  {
+   "item": 434,
+   "act": "A scroll of the message the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size moves nothing",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    this.sourceBody.addEventListener('scroll', () => this.scrolled(), { passive: true });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 434,
+   "act": "The Reader's own moves of the message are not taken for the person's scroll: one who has not scrolled keeps the quoted words in sight as the reply grows",
+   "break": [
+    [
+     "web/reader.mjs",
+     "moveTo(top) { this.sourceBody.scrollTop = top; this.lastTop = this.sourceBody.scrollTop; }",
+     "moveTo(top) { this.sourceBody.scrollTop = top; }"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 434,
+   "act": "The browser's own pull of a message scrolled to its end, as its room grows, is no scroll of the person's",
+   "break": [
+    [
+     "web/reader.mjs",
+     "now < before && now >= body.scrollHeight - body.clientHeight - 1",
+     "false"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium phone: quoting at the end of a message"
+   }
+  },
+  {
+   "item": 434,
+   "act": "Typing in a reply leaves a message scrolled to its end at its end",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "    back();",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: typing in the reply leaves a message scrolled to its end"
+   }
+  },
+  {
+   "item": 434,
+   "act": "Once the lines wrap anew the message shows the words quoted, measured again, not where they were",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (width !== this.kept.width) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium wide: quoting: once the lines wrap anew"
+   }
+  },
+  {
+   "item": 434,
+   "act": "A scroll of the message down that the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size does not pull them back",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (now === before || now < before",
+     "if (now >= before || now < before"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
    }
   }
  ]
