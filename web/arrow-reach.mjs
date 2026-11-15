@@ -15,7 +15,8 @@
 // right rail's first section, the last message), the pane hands the key on
 // here (reach), within its own column.
 //
-// Never in writing: in a field the arrows are the writing's. A focused box that
+// Never in writing: in a field the arrows are the writing's, but for ↑ and ↓
+// in a one-line field or an empty box, which have no other line to go to. A focused box that
 // can still scroll that way (a message's text in the Reader) scrolls, and once
 // at its end the arrows go on. While a pop-up is open the arrows move only
 // through it. With nothing focused, ↓ goes to the first control in view from
@@ -129,6 +130,18 @@ function scrollsOn(el, way, view) {
   return scrolling(view.getComputedStyle(el), way === 'up' || way === 'down') && room(el, way);
 }
 
+// A one-line field has no line above or below its own, and an empty box has
+// no line at all: ↑ and ↓ there go on to the control that way, so a field the
+// arrows land in never holds them. ← and → stay the writing's, and so do ↑ and
+// ↓ in a box with words in it, and in a field that offers a list of
+// suggestions (a datalist, a combobox), where they choose among them.
+const ONE_LINE = new Set(['text', 'search', 'email', 'url', 'tel', 'password']);
+function leavesLine(at, way) {
+  if ((way !== 'up' && way !== 'down') || at.matches('[role=combobox], [aria-autocomplete]')) return false;
+  if (at.tagName === 'INPUT') return ONE_LINE.has(at.type) && !at.list;
+  return at.tagName === 'TEXTAREA' && at.value === '';
+}
+
 // The arrows' last say, on the window. managed(at): whether a pane's own keys
 // decide for the focus there (they hand on what they want moved, through
 // reach). region(at): the part of the page the focus moves within first, or
@@ -142,7 +155,7 @@ export function arrowReach(doc, { managed = () => false, region = () => null, be
     const way = WAYS[event.key];
     if (!way || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const at = doc.activeElement;
-    if (at?.closest?.(FIELD) || at?.closest?.(OWNS) || managed(at, way) || scrollsOn(at, way, view)) return;
+    if ((at?.closest?.(FIELD) && !leavesLine(at, way)) || at?.closest?.(OWNS) || managed(at, way) || scrollsOn(at, way, view)) return;
     const nothing = onNothing(at, doc), within = nothing ? null : region(at);
     const moved = within ? reach(at, way, { within, doc }) || beyond(at, way) : reach(nothing ? null : at, way, { doc });
     if (moved) event.preventDefault();

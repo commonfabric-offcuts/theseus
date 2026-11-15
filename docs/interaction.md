@@ -297,7 +297,13 @@ rule above. (`web/arrow-reach.mjs`)
   always has, so the words between are read on the way; once it shows, the
   next press lands on it.
 - **Never in writing.** In a field the arrows are the writing's, as everywhere
-  above.
+  above, but for ↑ and ↓ in a one-line field (a title, a name, a pipeline's
+  "Add an item…"), which has no line above or below its own, and in a box with
+  nothing written in it (an empty reply, an outcome's "Write the target"):
+  they go on to the control that way, so a field the arrows land in never
+  holds them. In a box with words in it ↑ and ↓ stay the writing's, and a
+  field that offers suggestions (a name to pick from a list) keeps them for
+  those.
 
 ## Everywhere
 
