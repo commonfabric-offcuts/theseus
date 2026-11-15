@@ -3738,7 +3738,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, selector);
   };
 
-  await check('reading stacks inside a dossier a name is plain words with no agent tag, and a folded row has no Folded pill and a 👍 only once someone gave one, at 320, 375 and 390 wide and on a laptop, light and dark; a message on its own keeps its tag, pill and 👍; and a reload finds order, names and folds unchanged (item 471)', async () => {
+  // Tony's 5418: a message shown whole in a dossier keeps its agent name's pill as it had it before item 471, the same
+  // computed corner, fill, border and padding as the base drew; a folded row keeps 471's plain name.
+  const BASE_PILL = { radius: '4.8px', border: 'none 0px', padding: '0px 4px', margin: '-4px' };
+  await check('reading stacks inside a dossier a message shown whole keeps its agent name\'s pill as before, and a folded row has a plain name, no Folded pill and a 👍 only once someone gave one, at 320, 375 and 390 wide and on a laptop, light and dark; a message on its own keeps its tag, pill and 👍; and a reload finds order, names and folds unchanged (item 471, Tony 5418)', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-inside-look-' + device;
       const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
@@ -3755,9 +3758,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await fullyOpen(p, device, ids);
       const face = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
         shown=e=>Boolean(e&&e.getClientRects().length&&e.getBoundingClientRect().width>1),painted=e=>!['rgba(0, 0, 0, 0)','transparent'].includes(getComputedStyle(e).backgroundColor);
-        const name=id=>{const n=c(id).querySelector(':scope > .message-author > .author-name');return {text:n.textContent,tag:painted(n),inset:parseFloat(getComputedStyle(n).paddingLeft)}};
+        const name=id=>{const n=c(id).querySelector(':scope > .message-author > .author-name'),s=getComputedStyle(n),probe=document.createElement('span');
+          probe.style.background='var(--agent-tag)';c(id).append(probe);const fill=getComputedStyle(probe).backgroundColor;probe.remove();
+          return {text:n.textContent,tag:painted(n),fill:s.backgroundColor===fill,pill:{radius:s.borderRadius,border:s.borderStyle+' '+s.borderWidth,padding:s.padding,margin:s.marginLeft}}};
         const row=id=>{const r=c(id).querySelector(':scope > .message-folded'),t=r.querySelector('.folded-thumb'),f=r.querySelector('.folded-cue');
-          return {author:r.querySelector('.folded-author').textContent,pill:shown(f),cue:f.textContent,thumb:shown(t)?t.textContent:null}};
+          return {author:r.querySelector('.folded-author').textContent,tag:painted(r.querySelector('.folded-author')),pill:shown(f),cue:f.textContent,thumb:shown(t)?t.textContent:null}};
         const s=c(ids.root).closest('.reply-stack');
         return {root:name(ids.root),whole:name(ids.whole),loneWhole:name(ids.loneWhole),bare:row(ids.bare),thumbed:row(ids.thumbed),lone:row(ids.lone),
           title:s.querySelector('.stack-head > .stack-name').textContent,
@@ -3770,11 +3775,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await dossierTheme(p, theme); await away(p);
           const now = await face();
           const at = `${device} ${width}px ${theme}`;
-          assert.deepEqual([now.root.tag, now.root.inset, now.whole.tag, now.whole.inset], [false, 0, false, 0], `${at}: in a dossier an agent's name is plain words, no tag: ${JSON.stringify(now)}`);
-          assert.equal(now.loneWhole.tag, true, `${at}: a message on its own keeps its agent tag`);
-          assert.deepEqual(now.bare, { author: 'aim-ux', pill: false, cue: 'Folded', thumb: null }, `${at}: a folded row in a dossier: no pill ("Folded" is said to a screen reader), no 👍 nobody gave`);
-          assert.deepEqual(now.thumbed, { author: other, pill: false, cue: 'Folded', thumb: '👍 1' }, `${at}: its 👍 shows once someone gave one`);
-          assert.deepEqual(now.lone, { author: other, pill: true, cue: 'Folded', thumb: '👍' }, `${at}: a folded message on its own keeps its pill and its 👍`);
+          assert.deepEqual([now.loneWhole.tag, now.loneWhole.fill], [true, true], `${at}: a message on its own keeps its agent tag: ${JSON.stringify(now.loneWhole)}`);
+          // Before item 471 every agent name in a dossier had the pill: the computed corner, border, padding and pull
+          // to the left the base (fd004e6e) shows there, at every width and in both engines, and the agent's tag fill.
+          for (const key of ['root', 'whole']) {
+            assert.deepEqual([now[key].tag, now[key].fill, now[key].pill], [true, true, BASE_PILL], `${at}: in a dossier ${key}, shown whole, keeps its agent name's pill as before: ${JSON.stringify(now)}`);
+          }
+          assert.deepEqual(now.bare, { author: 'aim-ux', tag: false, pill: false, cue: 'Folded', thumb: null }, `${at}: a folded row in a dossier: a plain name, no pill ("Folded" is said to a screen reader), no 👍 nobody gave`);
+          assert.deepEqual(now.thumbed, { author: other, tag: false, pill: false, cue: 'Folded', thumb: '👍 1' }, `${at}: its 👍 shows once someone gave one`);
+          const { tag: _loneTag, ...lone } = now.lone;
+          assert.deepEqual(lone, { author: other, pill: true, cue: 'Folded', thumb: '👍' }, `${at}: a folded message on its own keeps its pill and its 👍`);
           assert.deepEqual(now.reachable, Object.keys(ids), `${at}: every message is on show in place, whole or as its row`);
           assert.equal(now.sideways, false, `${at}: nothing scrolls sideways`);
           if (seen) assert.deepEqual([now.order, now.title], [seen.order, seen.title], `${at}: the same order and title at every width and theme`);
@@ -4013,54 +4023,110 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  // Item 430: the next card covers the lit card's bottom edge by its 12px overlap. The ring keeps its bottom side over
-  // it, read from the screen: the pixel just below the lit card's box is the ring's. Every state of a lit message in a
-  // dossier: a short reply and first message; a long reply and first message (over 1,024 bytes), which lighting turns
-  // into a card read in place that scrolls inside itself (card-scroll.mjs), at its top and scrolled inside; and a fold
-  // line between agents, lit by the keys. The ring stays its own: none below the last card, none across the next one's words.
-  await check('reading stacks the lit card\'s ring keeps its bottom side above the next card, a reply\'s and the first message\'s, short, long read in place and scrolled inside, and a fold line, at 320, 375 and 390 wide and on a laptop, light and dark (item 430)', async () => {
-    const long = what => Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of ${what}, long enough to be read in place.`).join('\n');
-    const line = id => `#messages .message-fold[data-id="${id}"] > .fold-line`;
-    // The lit element's box and the ring's colour, the entry after it in its dossier and the last one shown.
-    const ringAt = async (p, selector, at, key) => {
-      await twoFrames(p);
-      const box = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(selector)}),b=c.getBoundingClientRect(),probe=document.createElement('span');
-        probe.style.background='var(--stack-ring)';c.append(probe);const ring=getComputedStyle(probe).backgroundColor;probe.remove();
-        const x=document.createElement('canvas').getContext('2d');x.fillStyle=ring;x.fillRect(0,0,1,1);
-        const s=c.closest('.reply-stack'),shown=[...s.querySelectorAll(':scope > [data-id], :scope > .stack-replies > [data-id]')].filter(e=>e.getClientRects().length);
-        const entry=shown.find(e=>e.contains(c)),next=shown[shown.indexOf(entry)+1],last=shown.at(-1);
-        const walk=next&&document.createTreeWalker(next,NodeFilter.SHOW_TEXT,{acceptNode:t=>t.textContent.trim()&&t.parentElement.getClientRects().length?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP});
-        const text=walk?.nextNode(),range=document.createRange();if(text)range.selectNodeContents(text);
-        return {left:b.left,right:b.right,bottom:b.bottom,covered:entry.dataset.stackCovered,scrollsInPlace:c.classList.contains('scroll-in-place'),scrollTop:c.scrollTop,
-          nextWords:text?range.getBoundingClientRect().top:null,last:last===entry?null:last.getBoundingClientRect().bottom,ring:[...x.getImageData(0,0,1,1).data].slice(0,3),innerWidth,innerHeight}})()`);
-      assert.equal(box.covered, 'true', `${at}: the next card overlaps ${key}`);
-      assert.ok(box.bottom + 3 < box.innerHeight, `${at}: ${key}'s bottom edge is in the window: ${JSON.stringify(box)}`);
-      const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
-      const scale = image.width / box.innerWidth, y = Math.floor((box.bottom + 1) * scale);
-      const xs = [0.3, 0.5, 0.7].map(f => Math.floor((box.left + (box.right - box.left) * f) * scale));
-      const got = xs.map(x => image.pixel(x, y));
-      const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 24);
-      assert.ok(got.every(px => near(px, box.ring)), `${at}: the ring's bottom side shows over the next card below ${key}: ring ${JSON.stringify(box.ring)}, screen ${JSON.stringify(got)}, ${JSON.stringify(box)}`);
-      assert.ok(box.nextWords >= box.bottom + 2 - .5, `${at}: the ring below ${key} stays clear of the words the next card or line shows first: ${JSON.stringify(box)}`);
-      let below = null;
-      if (box.last !== null && box.last + 3 < box.innerHeight) {
-        below = image.pixel(Math.floor((box.left + (box.right - box.left) / 2) * scale), Math.floor((box.last + 1) * scale));
-        assert.ok(!near(below, box.ring), `${at}: no ring is drawn below the dossier's last card while ${key} is lit: ring ${JSON.stringify(box.ring)}, screen ${JSON.stringify(below)}`);
+  // Item 430, as Tony's 5418 put it right: the lit message's ring is drawn on its own box and read from the screen.
+  // The card in front of it (the next one, over its bottom edge by the 12px overlap) covers the ring's bottom side as it
+  // covers the card's own bottom edge; the ring's top side and its sides show. One outline: down the middle of the lit
+  // message and the card in front, the ring's colour shows only at its top side, and at its bottom side when nothing is
+  // in front; across its middle, only at its two sides. Each side is where the box's edge is, within a pixel as the
+  // screen rounds it. A hit test alone would pass a ring drawn over the card in front (it takes no pointer), so the
+  // pixels are read.
+  // Each problem is said; with `wrong` given they are gathered there, every state's, for the case to say at once.
+  const ringRead = async (p, selector, at, key, { inWindow = true } = {}, wrong = null) => {
+    const problems = [], need = (ok, message) => { if (!ok) problems.push(message); };
+    await twoFrames(p);
+    const box = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(selector)}),b=c.getBoundingClientRect(),probe=document.createElement('span');
+      probe.style.background='var(--stack-ring)';c.append(probe);const ring=getComputedStyle(probe).backgroundColor;probe.remove();
+      const x=document.createElement('canvas').getContext('2d');x.fillStyle=ring;x.fillRect(0,0,1,1);
+      const s=c.closest('.reply-stack'),shown=[...s.querySelectorAll(':scope > [data-id], :scope > .stack-replies > [data-id]')].filter(e=>e.getClientRects().length);
+      const entry=shown.find(e=>e.contains(c)),front=shown[shown.indexOf(entry)+1]??null,last=shown.at(-1),f=front?.getBoundingClientRect();
+      const walk=front&&document.createTreeWalker(front,NodeFilter.SHOW_TEXT,{acceptNode:t=>t.textContent.trim()&&t.parentElement.getClientRects().length?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP});
+      const text=walk?.nextNode(),range=document.createRange();if(text)range.selectNodeContents(text);
+      const hit=document.elementFromPoint((b.left+b.right)/2,b.bottom+1),bar=document.querySelector('.message-bar'),r=bar&&!bar.hidden&&bar.getClientRects().length?bar.getBoundingClientRect():null;
+      return {bar:r?{left:r.left,right:r.right,top:r.top,bottom:r.bottom}:null,left:b.left,right:b.right,top:b.top,bottom:b.bottom,radius:parseFloat(getComputedStyle(c).borderTopLeftRadius)||0,
+        front:f?{top:f.top,bottom:f.bottom}:null,frontWords:text?range.getBoundingClientRect().top:null,hitBelow:hit?(front?.contains(hit)?'front':c.contains(hit)?'lit':'other'):null,
+        last:last===entry?null:last.getBoundingClientRect().bottom,covered:entry.dataset.stackCovered??null,scrollsInPlace:c.classList.contains('scroll-in-place'),scrollTop:c.scrollTop,
+        ring:[...x.getImageData(0,0,1,1).data].slice(0,3),innerWidth,innerHeight}})()`);
+    const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    const scale = image.width / box.innerWidth, inside = (v, most) => Math.max(0, Math.min(most - 1, v));
+    const ringy = (x, y) => image.pixel(Math.floor(inside(x, box.innerWidth) * scale), Math.floor(inside(y, box.innerHeight) * scale)).every((v, i) => Math.abs(v - box.ring[i]) <= 24);
+    // The runs of the ring's colour along a line, each [first, last] in CSS pixels.
+    const runs = (from, to, point) => {
+      const out = [];
+      for (let v = Math.floor(from); v <= Math.ceil(to); v++) {
+        if (!ringy(...point(v))) continue;
+        if (out.length && out.at(-1)[1] === v - 1) out.at(-1)[1] = v; else out.push([v, v]);
       }
-      observations.push({ name: 'stack lit ring bottom', engine, at, key, ring: box.ring, got, below, scrollsInPlace: box.scrollsInPlace, scrollTop: box.scrollTop });
-      return { box, below };
+      return out;
     };
-    // Scrolls a card read in place inside itself, done on its scroll event (at once when it is already there).
-    const scrollInside = (p, selector, to) => p.evaluate(`new Promise(done=>{const c=document.querySelector(${JSON.stringify(selector)}),want=${to === 'top' ? 0 : '(c.scrollHeight-c.clientHeight)/2'};
-      if(Math.abs(c.scrollTop-want)<1)return done();c.addEventListener('scroll',()=>done(),{once:true});c.scrollTop=want})`);
+    // A band from..to (its far edge exclusive) matches a run within a pixel, as the screen rounds it.
+    const band = (run, from, to) => Boolean(run) && Math.abs(run[0] - from) <= 1.5 && Math.abs(run[1] + 1 - to) <= 1.5;
+    const says = `${at}: ${JSON.stringify(box)}`;
+    const topShown = box.top - 2 >= 0, bottomShown = box.bottom + 3 < box.innerHeight;
+    if (inWindow) need(topShown && bottomShown, `${at}: ${key}'s top and bottom edges are in the window: ${says}`);
+    // The message's bar floats over its top right corner, over the ring there too: points under it are not read.
+    const free = (x, y) => !box.bar || x < box.bar.left - 2 || x > box.bar.right + 2 || y < box.bar.top - 2 || y > box.bar.bottom + 2;
+    const across = [box.left + box.radius + 2, box.right - box.radius - 2], xs = [];
+    for (let x = across[0]; x <= across[1]; x += 2) xs.push(x);
+    const until_ = Math.min(box.front ? box.front.top - 2 : box.bottom - box.radius - 1, box.innerHeight - 2), ys = [];
+    for (let y = Math.max(box.top, 0) + box.radius; y <= until_; y += 2) ys.push(y);
+    const read = { box, under: null, top: null, sides: null, down: null, across: null };
+    if (box.front) {
+      need(box.covered === 'true', `${at}: the card in front overlaps ${key}`);
+      if (bottomShown) {
+        // The strip the ring's bottom side would take, inside the card in front: none of the ring's colour.
+        read.under = [Math.floor(box.bottom), Math.floor(box.bottom) + 1].flatMap(y => xs.filter(x => free(x, y) && ringy(x, y + .5)).map(x => [x, y]));
+        need(!read.under.length, `${at}: the ring's bottom side is drawn under the card in front of ${key}, never over it: ring colour at ${read.under.length} points of the strip, from ${JSON.stringify(read.under.slice(0, 3))}: ${says}`);
+        need(box.hitBelow === 'front', `${at}: the card in front is topmost just below ${key}'s edge: ${says}`);
+        need(box.frontWords >= box.bottom + 2 - .5, `${at}: the words the card or line in front shows first stay below ${key}'s edge: ${says}`);
+      }
+    }
+    if (topShown) {
+      // The ring's top side, above the card behind: the ring's colour all along it.
+      read.top = xs.filter(x => free(x, box.top - 1.5) && !ringy(x, box.top - 1.5));
+      need(!read.top.length, `${at}: the ring's top side shows all along ${key}'s top edge: missing at ${read.top.length} points from x ${read.top[0]}: ${says}`);
+    }
+    // Its sides, down to where the card in front begins.
+    read.sides = ys.filter(y => !ringy(box.left - 1.5, y) || (free(box.right + .5, y) && !ringy(box.right + .5, y)));
+    need(!read.sides.length, `${at}: the ring's sides show down ${key}'s edges: missing at ${read.sides.length} points from y ${read.sides[0]}: ${says}`);
+    // One outline, on the box's own edges: down a line near its left side, clear of the bar, and across its middle.
+    const mid = box.left + box.radius + 4;
+    read.down = runs(Math.max(box.top - 6, 0), Math.min(box.front ? box.front.bottom - 3 : box.bottom + 6, box.innerHeight - 1), y => [mid, y]);
+    const want = [...(topShown ? [[box.top - 2, box.top]] : []), ...(!box.front && bottomShown ? [[box.bottom, box.bottom + 2]] : [])];
+    need(read.down.length === want.length && want.every(([a, b], i) => band(read.down[i], a, b)),
+      `${at}: down ${key}${box.front ? ' and the card in front' : ''} the ring shows once, at its own top${!box.front && bottomShown ? ' and bottom' : ''}: runs ${JSON.stringify(read.down)}, want ${JSON.stringify(want)}, ${says}`);
+    const row = (Math.max(box.top, 0) + box.radius + until_) / 2;
+    read.across = runs(box.left - 6, box.right + 6, x => [x, row]);
+    need(read.across.length === 2 && band(read.across[0], box.left - 2, box.left) && band(read.across[1], box.right, box.right + 2),
+      `${at}: across ${key} the ring shows once at each side, on its edges: runs ${JSON.stringify(read.across)}, ${says}`);
+    if (box.last !== null && box.last + 3 < box.innerHeight) {
+      read.below = runs(box.last + .5, box.last + 2.5, y => [mid, y]);
+      need(!read.below.length, `${at}: no ring is drawn below the dossier's last card while ${key} is lit: ${says}`);
+    }
+    observations.push({ name: 'stack lit ring', engine, at, key, ring: box.ring, down: read.down, across: read.across, scrollsInPlace: box.scrollsInPlace, scrollTop: box.scrollTop, problems });
+    if (wrong) wrong.push(...problems); else assert.deepEqual(problems, [], problems.join('\n'));
+    return read;
+  };
+  // Scrolls a box, the card read in place or the page holding it, to the place `to` names (an expression of `el`, the
+  // scrolling element), done when the scroll has ended: on its scrollend event where the engine sends one, else on its
+  // scroll event, the position being set at once; at once when it is already there.
+  const scrolled = (p, selector, page, to) => p.evaluate(`new Promise(done=>{const c=document.querySelector(${JSON.stringify(selector)});let box=${page ? 'c.parentElement' : 'c'};
+    if(${page})while(box&&!(/(auto|scroll)/.test(getComputedStyle(box).overflowY)&&box.scrollHeight>box.clientHeight+1))box=box.parentElement;
+    const el=box||document.scrollingElement,events=box||document,goal=Math.round(Math.max(0,Math.min(el.scrollHeight-el.clientHeight,${to})));
+    if(Math.abs(el.scrollTop-goal)<1)return done(el.scrollTop);
+    events.addEventListener('onscrollend' in window?'scrollend':'scroll',()=>done(el.scrollTop),{once:true});el.scrollTop=goal})`);
+  const long = what => Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of ${what}, long enough to be read in place.`).join('\n');
+  const longDossier = topic => seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+    ['root', { sender: other, join: true, addressees: [facts.actor], body: long('the first message') }],
+    ['long', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: long('an agent\'s reply') }],
+    ['between', { sender: 'aim-ux', reply_to: 'root', addressees: [other], body: 'Between the agents, to aim-core.', read: true }],
+    ['short', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A short reply after them.' }],
+    ['tail', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: long('the latest reply') }]]);
+
+  await check('reading stacks the lit message\'s ring has its bottom side under the card in front and its top and sides shown, read from the screen, a reply\'s and the first message\'s, short, long read in place and scrolled inside, and a fold line, at 320, 375 and 390 wide and on a laptop, light and dark (item 430, Tony 5418)', async () => {
+    const line = id => `#messages .message-fold[data-id="${id}"] > .fold-line`;
     for (const device of Object.keys(DEVICES)) {
       const topic = `stack-ring-${device}`, ids = await dossierSeed(topic, false, true);
-      const longTopic = `stack-ring-long-${device}`;
-      const longIds = await seed(longTopic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
-        ['root', { sender: other, join: true, addressees: [facts.actor], body: long('the first message') }],
-        ['long', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: long('an agent\'s reply') }],
-        ['between', { sender: 'aim-ux', reply_to: 'root', addressees: [other], body: 'Between the agents, to aim-core.', read: true }],
-        ['short', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A short reply after them.' }]]);
+      const longTopic = `stack-ring-long-${device}`, longIds = await longDossier(longTopic);
       let negatives = 0;
       for (const [seeded, root, keys] of [[topic, ids, ['root', 'middle']], [longTopic, longIds, ['root', 'long', 'between']]]) {
         const p = await open(seeded, device, seeded, root.root); await dossierOpen(p, device, root.root);
@@ -4082,15 +4148,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
             for (const theme of ['light', 'dark']) {
               await dossierTheme(p, theme);
               const at = `${device} ${width}px ${theme}`;
-              const top = await ringAt(p, selector, at, key);
+              const top = await ringRead(p, selector, at, key);
               if (top.below) negatives++;
               if (scrolls) {
                 assert.equal(top.box.scrollsInPlace, true, `${at}: ${key} scrolls inside its card`);
-                // Scrolled inside, the card's box stays where it is, and its ring with it.
-                await scrollInside(p, selector, 'middle');
-                const inside = await ringAt(p, selector, `${at} scrolled inside`, key);
+                await scrolled(p, selector, false, '(el.scrollHeight-el.clientHeight)/2');
+                const inside = await ringRead(p, selector, `${at} scrolled inside`, key);
                 assert.ok(inside.box.scrollTop > 0, `${at}: ${key} scrolled inside its card: ${JSON.stringify(inside.box)}`);
-                await scrollInside(p, selector, 'top');
+                await scrolled(p, selector, false, '0');
               }
               if (key === keys[1]) await shot(p, `stack-ring-${seeded === longTopic ? 'long-' : ''}${device}-${width}-${theme}`);
               if (folded) await shot(p, `stack-ring-fold-line-${device}-${width}-${theme}`);
@@ -4100,6 +4165,75 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.deepEqual(p.errors, []); await p.close();
       }
       assert.ok(negatives > 0, `${device}: the last card's bottom edge was read for a stray ring at least once`);
+    }
+  });
+
+  // Tony's 5418: a long message read in place keeps one ring, on its own box, as it scrolls inside, as the page scrolls
+  // it, as the window resizes and as it grows (Show full message): each read after the scroll has ended. The first
+  // message and a reply have a card in front; the latest reply has none, so its whole ring shows, bottom side too.
+  await check('reading stacks a lit message read in place keeps one ring on its own box as it scrolls inside, as the page scrolls, as the window resizes and as it grows, read from the screen, the first message, a reply and the latest reply, at 320, 375 and 390 wide and on a laptop, light and dark (Tony 5418)', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `stack-ring-scroll-${device}`, ids = await longDossier(topic), wrong = [];
+      // Grown: on a page of its own, before anything scrolls it, Show full message takes the read-in-place box away
+      // from the lit reply and its card grows below its words; its bottom side is read where the window shows it.
+      const g = await open(`${topic}-grown`, device, topic, ids.root); await dossierOpen(g, device, ids.root);
+      const grow = card(ids.long);
+      // Lighting reads the whole message in the background lane, which a busy server may refuse: it is lit once the
+      // page's own opening reads are answered.
+      await until(() => g.evaluate('window.fetchesOut === 0'), `${device}: the page's opening reads are answered`);
+      await centre(g, grow); await light(g, device, ids.long);
+      await until(() => g.evaluate(`document.querySelector(${JSON.stringify(grow)}).classList.contains('scroll-in-place')`), `${device}: lit, the long reply is read in place`);
+      await press(g, device, '.message-bar [data-act="more"]');
+      const index = await g.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+      assert.ok(index >= 0, `${device}: the lit message offers Show full message`);
+      await press(g, device, `.message-menu-list > button:nth-child(${index + 1})`);
+      await until(() => g.evaluate(`document.querySelector(${JSON.stringify(grow)}).dataset.full==='shown'`), `${device}: the card shows its whole message`);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(g, theme);
+        assert.ok((await lit(g)).includes(ids.long), `${device} ${theme}: the grown reply is still lit`);
+        await ringRead(g, grow, `${device} ${theme} grown`, 'long', { inWindow: false }, wrong);
+        await shot(g, `stack-ring-grown-${device}-${theme}`);
+      }
+      // Its bottom in view: the card in front covers the ring's bottom side. Scrolling the page can let a phone's light
+      // go in Safari's engine in this harness; then there is no ring to read, and that is said.
+      await scrolled(g, grow, true, 'el.scrollTop+c.getBoundingClientRect().bottom-innerHeight*.7');
+      if ((await lit(g)).includes(ids.long)) {
+        const bottom = await ringRead(g, grow, `${device} dark grown, its bottom in view`, 'long', { inWindow: false }, wrong);
+        assert.ok(bottom.under !== null, `${device}: the grown card's bottom edge was read: ${JSON.stringify(bottom.box)}`);
+      }
+      else observations.push({ name: 'stack lit ring grown, light let go on a scroll', engine, device });
+      await shot(g, `stack-ring-grown-bottom-${device}-dark`);
+      assert.deepEqual(g.errors, []); await g.close();
+      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: the page's opening reads are answered`);
+      const sizes = device === 'phone' ? PHONES : [DEVICES.laptop.width, 900];
+      for (const key of ['root', 'long', 'tail']) {
+        const selector = card(ids[key]);
+        for (const width of sizes) {
+          if (device === 'phone') await atWidth(p, device, width);
+          else await p.send('Emulation.setDeviceMetricsOverride', { width, height: DEVICES.laptop.height, deviceScaleFactor: 1, mobile: false });
+          await centre(p, selector);
+          if (!(await lit(p)).includes(ids[key])) await light(p, device, ids[key]);
+          await until(() => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).classList.contains('scroll-in-place')`), `${device} ${width}px: lit, the long ${key} is read in place`);
+          await centre(p, selector);
+          for (const theme of ['light', 'dark']) {
+            await dossierTheme(p, theme);
+            const at = `${device} ${width}px ${theme} ${key}`;
+            await ringRead(p, selector, `${at} at rest`, key, {}, wrong);
+            await scrolled(p, selector, false, '(el.scrollHeight-el.clientHeight)/2');
+            const middle = await ringRead(p, selector, `${at} scrolled inside to its middle`, key, {}, wrong);
+            assert.ok(middle.box.scrollTop > 0, `${at}: scrolled inside: ${JSON.stringify(middle.box)}`);
+            await scrolled(p, selector, false, 'el.scrollHeight');
+            await ringRead(p, selector, `${at} scrolled inside to its end`, key, {}, wrong);
+            const moved = await scrolled(p, selector, true, 'el.scrollTop+48');
+            await ringRead(p, selector, `${at} with the page scrolled (${moved})`, key, {}, wrong);
+            await shot(p, `stack-ring-scroll-${key}-${device}-${width}-${theme}`);
+            await scrolled(p, selector, false, '0'); await centre(p, selector);
+          }
+        }
+      }
+      assert.deepEqual(wrong, [], `${device}: ${wrong.length} problems with the ring:\n${wrong.slice(0, 24).join('\n')}`);
+      assert.deepEqual(p.errors, []); await p.close();
     }
   });
 

@@ -196,8 +196,8 @@ their acts.
   someone has given one, and the message bar does not attach to the row (a
   right-click opens its ⋯, and a press unfolds it). A message on its own, a
   placed one included, keeps its "Folded" and its 👍.
-- **Inside a dossier (item 471).** An author's name is plain words, with no
-  agent tag: the card's own colour says who wrote it. A press on the header
+- **Inside a dossier (item 471).** A message shown whole keeps its agent
+  name's badge, as it had before; a folded row's name is plain words. A press on the header
   of a message the dossier shows whole (who wrote it and when) folds it for
   the reader alone, as x does; a starred message stays open, and says so. Its
   words, its bar and Return open the Reader, and a control in the header (the
@@ -509,10 +509,10 @@ measures the line itself, not blank space above it: with the line a tenth
 inside the window, the page stays where it was. No arrival or fold motion
 is part of this static treatment (item 429; motion remains item 412).
 
-The first author letter aligns with the body text. In a dossier an author's
-name is plain words (item 471); in a placed message's folder an agent's badge
-protrudes 4px to the left, and only the first name fragment moves when an
-Unread pill holds the final grapheme. A folded message keeps its author and words at full
+The first author letter aligns with the body text. An agent's badge
+protrudes 4px to the left, in a dossier as in a placed message's folder, and
+only the first name fragment moves when an Unread pill holds the final
+grapheme; a folded row's name in a dossier is plain words (item 471). A folded message keeps its author and words at full
 contrast, including quiet agent talk. In a dossier, a saved fold gives its
 card the existing read material even before its read marker catches up; this
 presentation writes no read command, and it holds for a person's card as for
@@ -532,14 +532,15 @@ reader's existing star act (item 413).
 Shown whole, the head's card is the first
 sheet; while the stack is renamed, the field takes the tab's place. Only one
 current target has the strong ring: a message, or the whole folder when its
-compact header or a stack control is selected. The next card overlaps the lit
-one's bottom edge, so its ring's bottom side is drawn again above that card,
-the ring alone and never the card, so the next card's words stay uncovered
-(item 430). The dossier draws that ring on the lit card's own box, not inside
-the card, so a long message read in place, scrolled or not, and a fold line,
-each of which clips what is inside it, keep it too. A fold line over the
-card before it keeps its words below that card's edge, as a card's padding
-does, so that ring crosses none of them. A message between others keeps its quiet fold line in a dossier,
+compact header or a stack control is selected. The ring is the lit card's
+or fold line's own, drawn on its own box, so it stays on that box as a card
+read in place scrolls inside itself, as the page scrolls, as the window
+resizes and as the card grows: one outline, never a second. The next card
+overlaps the lit one's bottom edge and covers the ring's bottom side with it;
+the ring's top side and its sides show (item 430). A message between others
+stacks as a card does, in front of the card before it and behind the one
+after. A fold line over the card before it keeps its words below that
+card's edge, as a card's padding does. A message between others keeps its quiet fold line in a dossier,
 and the line answers the pointer and shows when it is open, as anywhere. The enclosing stack does not
 also light up for a selected message. Stale keyboard focus, unread state and
 hover on an unselected message do not get another strong border. A placed message
@@ -579,13 +580,14 @@ twin without judging it, as the rule for that case is still open (item 430).
 | a scroll right after a trackpad swipe folded a message | `tests/stack_native.mjs`, "reading stacks a scroll right after two fingers fold a message …" |
 | x folds and unfolds the selected message; a starred one, a dossier and writing | `tests/ui_outline_order.test.mjs` (the key map); `tests/stack_native.mjs`, "reading stacks x folds the selected message …" |
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
-| inside a dossier: plain names, folded rows with no pill and a 👍 only once given, a message on its own unchanged, at 320, 375 and 390 pixels and on a laptop, light and dark, and a reload finding order, names and folds as they were | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks inside a dossier a name is plain words …" |
+| inside a dossier: a message shown whole keeps its agent name's badge (its computed corner, fill, border and padding those of a message on its own), folded rows with a plain name, no pill and a 👍 only once given, a message on its own unchanged, at 320, 375 and 390 pixels and on a laptop, light and dark, and a reload finding order, names and folds as they were | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks inside a dossier a message shown whole keeps its agent name's pill …" |
 | inside a dossier: a header press folds, the words open the Reader, no bar on a folded row, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier a press on a shown message's header …" |
 | Option and a swipe right fold the message and every one before it, later and starred ones whole, ⌘Z, and a plain swipe folding one | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds the message …" |
 | in a dossier longer than the loaded page, the messages not loaded fold too, by one request, another reader's folds stand, ⌘Z unfolds every one, and Earlier messages on a new document shows them folded | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds every message before it in a dossier longer than the loaded page …"; in Core, `tests/test_stacks.py` (`FoldThroughCase`) |
 | a swipe on a dossier's last visible message folds it in place; the title bar alone moves the dossier below More and back | in Chrome (a finger's drag), `tests/stack_native.mjs`, "reading stacks below More uses a real swipe …"; the trackpad, "reading stacks on a laptop two fingers swiped right on the trackpad …" |
 | a message placed on its own folds in place under a swipe right, unfolds under a swipe left on the same page, stays placed and goes nowhere below More | the trackpad in Chrome and Safari's engine, each gesture beginning 300 ms after the last as a real trackpad's does, a finger's drag in Chrome, `tests/stack_native.mjs`, "reading stacks a message placed on its own folds in place …" |
-| the lit card's ring above the next card, a reply's and the first message's, short and long (read in place, at its top and scrolled inside), and a fold line, with none below the last card and none across the next card's words, read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, light and dark, `tests/stack_native.mjs`, "reading stacks the lit card's ring keeps its bottom side above the next card …" |
+| the lit message's ring: its bottom side under the card in front (no ring colour in the strip it would take there, and the card in front topmost by a hit test), its top side and sides shown, one outline on its own edges, none below the last card and the next card's words clear, a reply's and the first message's, short and long (read in place, at its top and scrolled inside), and a fold line, read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, light and dark, `tests/stack_native.mjs`, "reading stacks the lit message's ring has its bottom side under the card in front …" |
+| a lit message read in place keeps one ring on its own box, within a pixel, as it scrolls inside to its middle and its end, as the page scrolls, as the window resizes and as it grows (Show full message), each read once the scroll has ended, the first message, a reply and the latest reply (its bottom side shown, nothing in front), read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop at two widths, light and dark, `tests/stack_native.mjs`, "reading stacks a lit message read in place keeps one ring on its own box …" |
 | a fold line in a dossier under the pointer and open | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a fold line in a dossier answers the pointer …" |
 | a tap's light and bar through the first mouse move after it, and the moves after it lighting another card or letting the light go | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a tap's light stays through the first mouse move after it …" |
 | one line of a message: the author's words after a quote, colon and all, a quote alone, list and heading marks, an attachment alone, an empty message, a long line | `tests/ui_message_preview.test.mjs` |

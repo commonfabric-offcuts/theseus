@@ -10050,8 +10050,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{padding:0;border-radius:0;background:none}",
-     ".reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{border-radius:0;background:none}"
+     ".agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}",
+     ".agent-card>.message-author>.author-name:first-child{margin-left:0}"
     ]
    ],
    "check": {
@@ -13807,17 +13807,47 @@
   },
   {
    "item": 471,
-   "act": "In a dossier an author's name is plain words, with no agent tag",
+   "act": "In a dossier a message shown whole keeps its agent name's pill as before, the same corner, fill and padding as a message on its own",
    "break": [
     [
      "web/stack-look.css",
-     ".agent-card .author-name{padding:0;border-radius:0;background:none}",
-     ".agent-card .author-name{padding:0;border-radius:0}"
+     ".reply-stack:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}",
+     ".reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks inside a dossier a name is plain words"
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a message shown whole keeps its agent name's fill (no plain-name rule over it)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .agent-card .author-name-start{padding-right:0}",
+     ".reply-stack:not(.only-new *) .agent-card .author-name-start{padding-right:0}\n.reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{padding:0;border-radius:0;background:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a folded row's name is plain words; its badge only in a placed message's folder",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=true]:not(.only-new *) .agent-card .folded-author{",
+     ".reply-stack:not(.only-new *) .agent-card .folded-author{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
    }
   },
   {
@@ -13832,7 +13862,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks inside a dossier a name is plain words"
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
    }
   },
   {
@@ -13847,7 +13877,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks inside a dossier a name is plain words"
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
    }
   },
   {
@@ -13862,7 +13892,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks inside a dossier a name is plain words"
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
    }
   },
   {
@@ -13877,7 +13907,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks inside a dossier a name is plain words"
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
    }
   },
   {
@@ -14106,52 +14136,52 @@
   },
   {
    "item": 430,
-   "act": "The lit reply's ring keeps its bottom side above the next card",
+   "act": "The lit message's ring has its bottom side under the card in front, its top and sides shown",
    "break": [
     [
      "web/stack-look.css",
-     ".stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';",
-     ".stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:none;"
+     ".reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}",
+     ".reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring);z-index:1}"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
    }
   },
   {
    "item": 430,
-   "act": "A long reply read in place keeps its ring's bottom side above the next card, its ring drawn outside the card that scrolls",
+   "act": "A lit message read in place keeps one ring, on its own box, as it scrolls inside, the page scrolls, the window resizes and it grows",
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *) .stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';position:absolute;z-index:1;\n  position-anchor:--stack-lit;position-visibility:anchors-valid;top:anchor(top);right:anchor(right);bottom:anchor(bottom);left:anchor(left);",
-     ".reply-stack:not(.only-new *) .stack-replies .message-card.lit::after{content:'';position:absolute;z-index:1;inset:-1px;"
+     "/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n",
+     ".reply-stack:not(.only-new *) .stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line){anchor-name:--stack-lit}\n.reply-stack:not(.only-new *) .stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';position:absolute;z-index:1;\n  position-anchor:--stack-lit;position-visibility:anchors-valid;top:anchor(top);right:anchor(right);bottom:anchor(bottom);left:anchor(left);\n  border-radius:var(--stack-r-sheet);box-shadow:0 0 0 2px var(--stack-ring);pointer-events:none}\n/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+    "case": "reading stacks a lit message read in place keeps one ring on its own box"
    }
   },
   {
    "item": 430,
-   "act": "A lit fold line in a dossier keeps its ring's bottom side above the next card",
+   "act": "A lit fold line shows its ring's top side over the card before it: later faces stack above earlier ones, a fold as a card",
    "break": [
     [
      "web/stack-look.css",
-     ".stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line){anchor-name:--stack-lit}",
-     ".stack-replies .message-card.lit{anchor-name:--stack-lit}"
+     ".reply-stack:not(.only-new *) .stack-replies>[data-id]{position:relative}",
+     ".reply-stack:not(.only-new *) .stack-replies>[data-id]:not(.message-fold){position:relative}"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
    }
   },
   {
    "item": 430,
-   "act": "A fold line over a lit card keeps its words below that card's edge, clear of the ring drawn over it",
+   "act": "A fold line over a lit card keeps its words below that card's edge",
    "break": [
     [
      "web/stack-look.css",
@@ -14161,22 +14191,22 @@
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
    }
   },
   {
    "item": 430,
-   "act": "The lit first message's ring keeps its bottom side above the first reply",
+   "act": "The lit first message's ring has its bottom side under the first reply",
    "break": [
     [
      "web/stack-look.css",
-     ">.lit[data-stack-covered=true]~.stack-replies::before{content:'';",
-     ">.lit[data-stack-covered=true]~.stack-replies::before{content:none;"
+     "/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n",
+     ".reply-stack:not(.only-new *)>.lit[data-stack-covered=true]~.stack-replies::before{content:'';position:absolute;z-index:1;left:-2px;right:-2px;top:calc(-1 * var(--stack-overlap));\n  height:calc(var(--stack-overlap) + 2px);box-sizing:border-box;border:2px solid var(--stack-ring);border-top:0;\n  border-radius:0 0 calc(var(--stack-r-sheet) + 2px) calc(var(--stack-r-sheet) + 2px);pointer-events:none}\n/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
    }
   },
   {

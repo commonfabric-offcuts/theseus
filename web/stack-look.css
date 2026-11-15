@@ -93,22 +93,11 @@
 .reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}
 .reply-stack:not(.only-new *) .message-fold>.fold-line{outline:none;box-shadow:none}
 .reply-stack:not(.only-new *) .message-fold.lit>.fold-line{box-shadow:0 0 0 2px var(--stack-ring)}
-/* The next card covers the lit one's bottom edge, and its ring with it: the
-   ring is drawn again above the next card, the ring alone and never the card,
-   so the next card's words stay uncovered (item 430). The replies' box draws a
-   lit reply's ring, on the lit card's or fold line's own box (an anchor), and
-   never the card itself: a long reply read in place scrolls inside its card
-   and a fold line clips its words, so either would clip a ring of its own. The
-   first message's card stays static for the tab, so the replies draw the part
-   of its ring they cover. */
-.reply-stack:not(.only-new *) .stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line){anchor-name:--stack-lit}
-@supports (anchor-name:--stack-lit){
-.reply-stack:not(.only-new *) .stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';position:absolute;z-index:1;
-  position-anchor:--stack-lit;position-visibility:anchors-valid;top:anchor(top);right:anchor(right);bottom:anchor(bottom);left:anchor(left);
-  border-radius:var(--stack-r-sheet);box-shadow:0 0 0 2px var(--stack-ring);pointer-events:none}}
-.reply-stack:not(.only-new *)>.lit[data-stack-covered=true]~.stack-replies::before{content:'';position:absolute;z-index:1;left:-2px;right:-2px;top:calc(-1 * var(--stack-overlap));
-  height:calc(var(--stack-overlap) + 2px);box-sizing:border-box;border:2px solid var(--stack-ring);border-top:0;
-  border-radius:0 0 calc(var(--stack-r-sheet) + 2px) calc(var(--stack-r-sheet) + 2px);pointer-events:none}
+/* The ring is the lit card's or fold line's own, drawn on its own box, so it
+   stays on that box as the card scrolls inside itself, grows or the window
+   resizes. The card in front (the next one, over its bottom edge) covers the
+   ring's bottom side as it covers the card's own edge; the ring's top and sides
+   show (Tony, on item 430). */
 /* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */
 .only-new :is(.stack-head,.stack-toggle){display:none}
 
@@ -216,21 +205,18 @@
 .reply-stack:not(.only-new *) .message-fold>.fold-line:hover{background:var(--soft);color:var(--ink)}
 .reply-stack:not(.only-new *) .message-fold>.fold-line[aria-expanded=true]{color:var(--ink)}
 .reply-stack:not(.only-new *) .message-fold[data-stack-covered=true]>.fold-line[aria-expanded=false]{min-height:var(--stack-folded-height);padding-bottom:calc(.3rem + var(--stack-overlap))}
-/* A fold line over the card before it keeps its words below that card's edge, as a card's padding does, so the ring
-   a lit card above draws over the line crosses none of them (item 430). */
+/* A fold line over the card before it keeps its words below that card's edge, as a card's padding does, clear of the
+   12px it covers (item 430). */
 .reply-stack:not(.only-new *) .stack-replies>.message-fold[data-stack-overlap=true]>.fold-line{padding-top:calc(.3rem + var(--stack-overlap))}
-/* In a placed message's folder agent badges protrude; the letters align with
-   the message's words. Only the first fragment moves when an Unread pill holds
-   the final grapheme. */
-.reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}
-.reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name-start{padding-right:0}
-.reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name-end{padding-left:0}
-.reply-stack[data-single=true]:not(.only-new *) .agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}
+/* Agent badges protrude; the letters align with the message's words. Only the
+   first fragment moves when an Unread pill holds the final grapheme. A message
+   shown whole keeps its badge in a dossier too (Tony, on item 471); a folded
+   row's name is plain words there, its badge only in a placed message's folder. */
+.reply-stack:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}
+.reply-stack:not(.only-new *) .agent-card .author-name-start{padding-right:0}
+.reply-stack:not(.only-new *) .agent-card .author-name-end{padding-left:0}
+.reply-stack:not(.only-new *) .agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}
 .reply-stack[data-single=true]:not(.only-new *) .agent-card .folded-author{margin-left:calc(-1 * var(--stack-name-inset));padding-inline:var(--stack-name-inset);border-radius:.3rem;background:var(--agent-tag)}
-/* In a dossier an author's name is plain text, with no tag (item 471): the
-   card's own colour already says who wrote it, and the letters align with its words. */
-.reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{padding:0;border-radius:0;background:none}
-.reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name:hover{text-decoration:none}
 /* A joined stack's first message, and a stack the reader placed: one quiet line says so. */
 .stack-join-line,.stack-placed-line{display:flex;flex-wrap:wrap;align-items:center;gap:0 .4rem;margin:0;padding:.15rem .5rem 0;color:var(--stack-meta-ink);font-size:.76rem}
 /* The line's gap from the cards is margin, outside its box: what a join's

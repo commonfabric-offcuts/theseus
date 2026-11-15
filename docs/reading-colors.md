@@ -243,9 +243,10 @@ card's fill from screenshot pixels on both sides.
 Each agent's color above is its default. A person can choose another for any
 agent, for themselves alone: clicking the agent's name, on one of its cards or
 on its pill among the topic's people, opens a small picker with the palette's colors
-and the agent's default. Inside a dossier an author's name is plain words, with
-no tag, and a click on a card's header folds the message (docs/reply-stacks.md,
-item 471), so there the color is chosen from the topic's people. The choice is kept by Core, so it follows the person
+and the agent's default. Inside a dossier a message shown whole keeps its
+agent name's pill and a folded row's name is plain words, and a click on a
+card's header folds the message (docs/reply-stacks.md, item 471), so there the
+color is chosen from the topic's people. The choice is kept by Core, so it follows the person
 to every page and device; it changes nothing anyone else sees, and no
 message, delivery or wake. The person's own messages keep their black: there
 is no choice for oneself, and a person's cards are never tinted.
