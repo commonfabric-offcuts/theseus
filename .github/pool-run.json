@@ -1,0 +1,8 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks a message placed on its own folds in place"
+ ],
+ "label": "mutant-placed-whole-8e5fa64c-1",
+ "snapshot": "8e5fa64cc38589a9ea37fad0bed7fdea6c6104f6"
+}
