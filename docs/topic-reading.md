@@ -45,6 +45,12 @@ waits, so nothing there starts pulsing on deploy; a store no such release has
 posted to has no value and reads as before, with no message waiting. It is a
 sequence, not a time, so neither Core nor the page compares clocks.
 
+Messages naming the reader are read only between the reader's oldest message
+on the page and the newest message on the record by anyone else, which the
+topic's summary already keeps (`topic_summaries`, work.py), and replies and
+thumbs-up by the page's own messages, so the read does not grow as the topic
+grows after them.
+
 No table, command or schema step: the metadata table holds the one value.
 
 ## Waiting for a reply (475)

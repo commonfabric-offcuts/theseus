@@ -77,6 +77,7 @@ class TopicReadingCase(fixtures.ReaderCase):
         told = self.post("Can you look at the build?", actor="owner", addressees=["agent-a"], intent="ask")
         # agent-b answers in a subject of its own, telling the reader by name.
         self.post("Done: the build is green.", actor="agent-b", addressees=["owner"], intent="tell")
+        self.assertIs(self.awaiting()[told], False, "a tell naming the reader ends the wait, the newest message in the topic too")
         aside = self.post("A subject of its own", actor="agent-b")
         joined = self.post("Can you check the notes?", actor="owner", addressees=["agent-a"], intent="ask")
         reply = self.post("Checked them.", actor="agent-a", reply_to=joined)

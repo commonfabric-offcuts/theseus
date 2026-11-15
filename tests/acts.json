@@ -14199,6 +14199,39 @@
     "native": "reading",
     "case": "reading dots end on a reply joined"
    }
+  },
+  {
+   "item": 475,
+   "act": "The newest message by someone else bounds the messages naming the reader, the topic's newest one included",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "CASE WHEN l.author_id<>:actor THEN l.seq ELSE o.seq END",
+     "o.seq"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "Whether a message waits for a reply reads no more as the topic grows after it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "newest[0] > lowest:",
+     "newest[0] > -1:"
+    ],
+    [
+     "aim_next/stacks.py",
+     "AND n.seq>? AND n.seq<=? AND m.author_id<>?",
+     "AND n.seq>? AND ? IS NOT NULL AND m.author_id<>?"
+    ]
+   ],
+   "check": {
+    "python": "test_stepping_correction.py"
+   }
   }
  ]
 }

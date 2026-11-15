@@ -234,9 +234,17 @@ def awaiting_fields(db, actor, topic, items):
         answered |= {row[0] for row in db.execute(
             "SELECT DISTINCT r.message_id FROM message_reactions r JOIN actors a ON a.id=r.actor_id "
             "WHERE r.message_id IN (%s) AND r.kind='thumb' AND a.kind='agent'" % marks, ids)}
-        named = db.execute("SELECT max(n.seq) FROM message_addressees n CROSS JOIN messages m ON m.seq=n.seq "
-                           "WHERE n.topic_id=? AND n.actor_id=? AND m.author_id<>? AND m.private_to IS NULL",
-                           (topic["id"], actor, actor)).fetchone()[0]
+        # The newest message on the record by anyone but the reader, from the topic's summary (work.py: the latest
+        # message, or the latest by someone other than its author): a message naming the reader can be no newer, so
+        # what is read below lies between the reader's oldest message here and it, however the topic grows after.
+        newest = db.execute("SELECT CASE WHEN l.author_id<>:actor THEN l.seq ELSE o.seq END FROM topic_summaries s "
+                            "LEFT JOIN messages l ON l.id=s.latest_message_id LEFT JOIN messages o ON o.id=s.other_message_id "
+                            "WHERE s.topic_id=:topic", {"actor": actor, "topic": topic["id"]}).fetchone()
+        lowest = min(item["seq"] for item in own)
+        if newest is not None and newest[0] is not None and newest[0] > lowest:
+            named = db.execute("SELECT max(n.seq) FROM message_addressees n CROSS JOIN messages m ON m.seq=n.seq "
+                               "WHERE n.topic_id=? AND n.actor_id=? AND n.seq>? AND n.seq<=? AND m.author_id<>? AND m.private_to IS NULL",
+                               (topic["id"], actor, lowest, newest[0], actor)).fetchone()[0]
     others = {}
     for item in items:
         item["awaiting_reply"] = False
