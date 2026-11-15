@@ -216,6 +216,8 @@ def unit_records(text, node=False):
             rows.append(({'name': name, 'phase': json.dumps(ancestry) if ancestry else None}, status))
             parents = {n: value for n, value in parents.items() if n < indent}
         else:
+            if line.startswith(('FAILED (', 'OK (')):
+                continue
             head = re.match(r'^(\S+ \([^)]+\))(?:\s+\.\.\.\s*(.*))?$', line)
             rest = line.strip()
             if head:
