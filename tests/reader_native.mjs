@@ -441,7 +441,7 @@ try {
     const words = ['Saved to Theseus', 'Saved', 'Source or destination unavailable — writing kept on this device',
       'The image change is not saved on this device. Retry before sending.', 'Saved; recovery-copy cleanup could not finish. Retry from Review versions.',
       long, `Finish or remove the image ${'IMG_0001-'.repeat(40)}.png before sending.`, 'Words no status says yet. '.repeat(12)];
-    const rem = 16, roomy = 12 * rem;
+    const rem = 16, roomy = 12 * rem, whoWords = 'Tell fixture-notebook-agent, auditor and reviewer · everyone here';
     let opened = 0;
     const measure = surface => evaluate(`(()=>{const at=s=>{const b=document.querySelector(s).getBoundingClientRect();return [b.x,b.y,b.width,b.height].map(n=>Math.round(n*2)/2)};
       const lines=e=>{const r=document.createRange();r.selectNodeContents(e);return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size};
@@ -478,9 +478,19 @@ try {
           await point(surface === 'reader' ? '#writing-body' : '#inline-writing-body');
           await until(() => evaluate('document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation => animation.playState !== "running")'), 'settled layout');
           const label = `${width}px ${view}`, status = surface === 'reader' ? '#save-state' : '#inline-save-state';
+          // The who chip with the words a reply naming three people gives it
+          // (whisper-choice.mjs, chipWords). Were the chip let take the head
+          // row, a chip this long leaves the status beside it less room than
+          // "Saved to Theseus" in the head rows of several views here (a status
+          // without its 3.5rem wraps below the chip, and reads whole there).
+          // The fixture's own "Everyone here" is short enough to leave it its
+          // room in every view, the Reader growing with the window (item 400).
+          const chip = surface === 'reader' ? '#who-chip' : '#inline-who-chip';
+          await evaluate(`document.querySelector(${JSON.stringify(chip)}).textContent = ${JSON.stringify(whoWords)}`);
           const shown = [];
           for (const text of words) { await say(status, text); shown.push({ text, ...await measure(surface) }); }
           const first = shown[0];
+          assert.equal(await evaluate(`document.querySelector(${JSON.stringify(chip)}).textContent`), whoWords, `${label}: the who chip kept its words while the status changed`);
           observations.push({ label, footer: first.footer, status: first.status, whole: Object.fromEntries(shown.map(item => [item.text.slice(0, 40), item.whole])), hintLines: first.hintLines });
           for (const item of shown) assert.deepEqual(item.boxes, first.boxes, `${label}: "${item.text}" moves nothing: the writing and the buttons stay still`);
           for (const item of shown) assert.equal(item.statusLines, 1, `${label}: "${item.text}" takes one line`);

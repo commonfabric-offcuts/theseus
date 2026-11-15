@@ -388,12 +388,22 @@ def main():
                 media.append({"id": media_id, "name": name, "content_type": content_type,
                               "sha256": hashlib.sha256(data).hexdigest()})
         sources = []
+        # Source 1 has one passage longer than any line the Reader draws, a few
+        # lines down, so a passage that wraps is there to measure at every
+        # width. The Reader grows with the window (item 400), and passages all
+        # of one length can fill its lines whole, as at 72rem in a 1440 window.
+        # Its words name none of the Reader's controls, which a Select All
+        # check finds nowhere in the message.
+        wrapping = ("Source 1 long passage runs on as one sentence past the end of any line it is drawn on, "
+                    "stacked or side by side, at every window width, so that a passage that wraps onto a "
+                    "second line is always there near the top to light, select and measure. ")
         for number in range(2):
             draft, generation = "seed-draft-%d" % number, "seed-generation-%d" % number
             source = ({"kind": "new_topic", "id": "fixture-opening", "workspace_id": "w1"}
                       if number == 0 else sources[0])
+            passage = "Source %d exact passage. " % number
             args = {"source_ref": source, "topic_id": "t1", "generation": generation,
-                    "body": ("Source %d exact passage. " % number) * 100}
+                    "body": passage * 100 if number == 0 else passage * 30 + wrapping + passage * 69}
             if media and number == 0:
                 args["attachments"] = [{"id": item["id"]} for item in media]
             if number == 0:
