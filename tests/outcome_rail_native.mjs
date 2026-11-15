@@ -1209,6 +1209,128 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
+  // Each pencil's title line in every state it has (web/quick-create.mjs, OneLine; item 305): open and
+  // empty, refused for an empty Return, busy while its command is on its way, and refused by the server,
+  // at 320, 375 and 390 in the open drawer and on a laptop, light and dark. The command is held here
+  // before the server has it (Chrome's Fetch at the request stage, WebKit's route), so the refusal
+  // given in its place leaves nothing made.
+  const TRY_AGAIN = ' Press Return to try once more.';
+  const REFUSAL = 'Only the people on this outcome’s team can start something in it; ask its owner to add you.';
+  const holdCommands = async (p, kind) => {
+    if (p.intercept) {
+      const from = p.held.length;
+      await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
+      p.intercept((payload, event) => event.responseStatusCode === undefined && payload?.kind === kind);
+      return {
+        first: what => until(() => p.held.slice(from).find(entry => entry.payload?.kind === kind), what),
+        answer: (entry, receipt) => p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: 200,
+          responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(receipt)).toString('base64') }),
+        stop: async () => { p.intercept(null); await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] }); },
+      };
+    }
+    const held = [], url = facts.origin + '/api/command';
+    const handler = route => { const payload = route.request().postDataJSON(); if (payload?.kind === kind) held.push({ route, payload }); else route.continue(); };
+    await p.pw.route(url, handler);
+    return {
+      first: what => until(() => held[0], what),
+      answer: (entry, receipt) => entry.route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(receipt) }),
+      stop: () => p.pw.unroute(url, handler),
+    };
+  };
+  // A title line as drawn: whether it is under its row or heading and clear of everything in it (its pencil
+  // too), inside the rail with nothing over the field or its words, 44px tall, with no sideways scroll; and
+  // what it says, whether it holds the cursor and whether it is busy.
+  const lineState = (p, spec) => p.evaluate(`(()=>{const input=document.getElementById(${JSON.stringify(spec.input)});if(!input)return null;
+    const root=input.closest('.one-line'),state=root.querySelector('.one-line-state'),anchor=document.querySelector(${JSON.stringify(spec.anchor)}),pen=document.querySelector(${JSON.stringify(spec.pencil)});
+    const rs=document.getElementById('rail'),rail=rs.getBoundingClientRect(),box=e=>e.getBoundingClientRect(),i=box(input),r=box(root),s=box(state);
+    const inRail=b=>b.left>=rail.left-0.5&&b.right<=rail.right+0.5&&b.top>=rail.top-0.5&&b.bottom<=rail.bottom+0.5;
+    const hits=(e,b)=>[[b.left+3,b.top+3],[b.right-3,b.top+3],[b.left+3,b.bottom-3],[b.right-3,b.bottom-3],[b.left+b.width/2,b.top+b.height/2]].every(([x,y])=>e.contains(document.elementFromPoint(x,y)));
+    const above=Math.max(...[anchor,...anchor.querySelectorAll('*'),pen].filter(e=>e.getClientRects().length).map(e=>box(e).bottom));
+    return {under:anchor.nextElementSibling===root,clear:above<=r.top+0.5,inRail:inRail(r)&&(state.hidden||inRail(s)),uncovered:hits(input,i)&&(state.hidden||hits(state,s)),
+      tall:i.height>=43.5,scroll:document.documentElement.scrollWidth<=innerWidth&&rs.scrollWidth<=rs.clientWidth,focused:document.activeElement===input,
+      expanded:pen.getAttribute('aria-expanded'),busy:input.getAttribute('aria-busy'),value:input.value,
+      state:state.hidden?null:{text:state.textContent,quiet:state.classList.contains('quiet')},search:location.search}})()`);
+  // How many commands of a kind the page has sent: its fetch is called within the key's own keydown
+  // (quick-create.mjs awaits nothing before it), so the record is whole once the key has been pressed.
+  const commandsSent = async (p, key, kind) => (await recorded(p, key)).filter(entry => entry.request === '/api/command' && entry.name === kind).length;
+  await check('rail each pencil\'s title line, at 320, 375 and 390 in the open drawer and on a laptop, light and dark, open, refused when empty, busy while it starts and refused by the server, is under its row or heading and clear of it, in the rail with nothing over it; a second Return while busy sends nothing more, the server\'s refusal keeps the title and makes nothing, Escape closes the line, and Return again makes it', async () => {
+    const specs = [
+      { name: 'topic', pencil: '#ol-pencil-w1', input: 'ol-new-topic-w1', anchor: '#outline .ol-outcome[data-workspace-id="w1"] > .ol-row', kind: 'opening.save', empty: 'Type the topic’s title, then press Return.' },
+      { name: 'outcome', pencil: '#outline-new-outcome', input: 'outline-new-outcome-title', anchor: '#outline .ol-heading', kind: 'workspace.create', empty: 'Type the outcome’s title, then press Return.' },
+    ];
+    for (const [width, theme] of [[320, 'light'], [320, 'dark'], [375, 'light'], [375, 'dark'], [390, 'light'], [390, 'dark'], [1280, 'light'], [1280, 'dark']]) {
+      const phone = width < SIZES.laptop.width, at = `${width} ${theme}`, key = `rail-line-states-${width}-${theme}`;
+      const p = await page(key, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', phone ? { ...SIZES.phone, width } : SIZES.laptop);
+        if (phone) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        await q.send('Page.addScriptToEvaluateOnNewDocument', { source: recordRequests(key) });
+      } });
+      await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && Boolean(document.querySelector("#outline .ol-outcome[data-workspace-id=w1]"))'), at + ': the rail is ready');
+      if (phone) { await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens the drawer'); }
+      const place = () => p.evaluate(`({search:location.search,open:document.querySelector('.ol-outcome[data-workspace-id=w1]').hasAttribute('data-open')})`);
+      const titles = {};
+      for (const spec of specs) {
+        const said = `${at} ${spec.name} line`, title = titles[spec.name] = `Held ${spec.name} ${width} ${theme}`, words = JSON.stringify(spec.input);
+        const looks = async (what, want) => {
+          const seen = await lineState(p, spec);
+          assert.ok(seen, `${said} ${what}: the line is there`);
+          assert.deepEqual([seen.under, seen.clear, seen.inRail, seen.uncovered, seen.tall, seen.scroll, seen.expanded], [true, true, true, true, true, true, 'true'],
+            `${said} ${what}: under its ${spec.name === 'topic' ? 'row' : 'heading'} and clear of it and its pencil, in the rail, nothing over it, 44px tall, no sideways scroll: ${JSON.stringify(seen)}`);
+          assert.deepEqual({ focused: seen.focused, busy: seen.busy, state: seen.state }, want, `${said} ${what}: ${JSON.stringify(seen)}`);
+          await shot(p, `rail-line-${spec.name}-${what}-${width}-${theme}`);
+          return seen;
+        };
+        const before = await place();
+        // Open: one press on the pencil, the cursor in the empty line, nothing said yet.
+        await p.evaluate(`document.querySelector(${JSON.stringify(spec.pencil)}).scrollIntoView({block:'center'})`);
+        if (phone) await tap(p, spec.pencil); else await p.point(spec.pencil);
+        await until(() => p.evaluate(`document.activeElement?.id===${words}`), said + ': the press opens the line, the cursor in it');
+        await looks('open', { focused: true, busy: null, state: null });
+        assert.deepEqual(await place(), before, said + ': the press opened and folded nothing, and the page stayed');
+        // Refused: Return on the empty line says so in plain words, and sends nothing.
+        await p.key('Enter');
+        await until(() => p.evaluate(`document.getElementById(${words})?.nextElementSibling?.textContent===${JSON.stringify(spec.empty)}`), said + ': an empty Return is refused in plain words');
+        await looks('refused', { focused: true, busy: null, state: { text: spec.empty, quiet: false } });
+        assert.equal(await commandsSent(p, key, spec.kind), 0, said + ': an empty Return sends nothing');
+        // Busy: the title typed, Return sends its command, held before the server has it.
+        const hold = await holdCommands(p, spec.kind);
+        await p.send('Input.insertText', { text: title });
+        await p.key('Enter');
+        const held = await hold.first(said + ': Return sends the command');
+        await until(() => p.evaluate(`document.getElementById(${words})?.getAttribute('aria-busy')==='true'`), said + ': the line is busy');
+        await looks('busy', { focused: true, busy: 'true', state: { text: 'Starting…', quiet: true } });
+        await p.key('Enter');
+        assert.equal(await commandsSent(p, key, spec.kind), 1, said + ': a second Return while busy sends nothing more');
+        // Refused by the server: its words, the title kept as typed, the line no longer busy, the cursor still in it.
+        await hold.answer(held, { instance_id: held.payload.instance_id, operation_id: held.payload.operation_id, kind: held.payload.kind, status: 'rejected', recorded: false,
+          result: null, affected: [], error: { code: 'FORBIDDEN', message: REFUSAL, retryable: false } });
+        await until(() => p.evaluate(`document.getElementById(${words})?.nextElementSibling?.textContent===${JSON.stringify(REFUSAL + TRY_AGAIN)}`), said + ': the server\'s refusal is said in its words');
+        const refused = await looks('server-refused', { focused: true, busy: null, state: { text: REFUSAL + TRY_AGAIN, quiet: false } });
+        assert.deepEqual([refused.value, refused.search], [title, before.search], said + ': the title stays as typed, and the page stays');
+        await hold.stop();
+        // Escape closes the line from there and gives its pencil the keys; a phone's drawer stays open.
+        await p.key('Escape');
+        await until(() => p.evaluate(`!document.getElementById(${words}) && document.activeElement===document.querySelector(${JSON.stringify(spec.pencil)})`), said + ': Escape closes the line and gives the pencil the keys');
+        if (phone) assert.equal((await drawer(p)).open, true, said + ': the drawer stays open');
+      }
+      // Nothing the server refused was made: the one outcome asked for was answered here, and no topic was published.
+      assert.deepEqual([await commandsSent(p, key, 'workspace.create'), await commandsSent(p, key, 'opening.publish')], [1, 0], at + ': one outcome asked for, and no topic published');
+      assert.ok(!(await view('workspaces', { limit: 100 })).items.some(item => item.title === titles.outcome), at + ': Core holds no outcome by the refused title');
+      if (width === 390 && theme === 'light') {
+        // The refused title's line again, and Return sends it once more: the outcome is made, and its page opens.
+        await p.evaluate(`document.getElementById('outline-new-outcome').scrollIntoView({block:'center'})`);
+        await tap(p, '#outline-new-outcome');
+        await until(() => p.evaluate(`document.activeElement?.id==='outline-new-outcome-title'`), at + ': the New outcome line again, the cursor in it');
+        assert.equal(await p.evaluate(`document.getElementById('outline-new-outcome-title').value`), titles.outcome, at + ': the refused title is still there');
+        await p.key('Enter');
+        const opened = await until(async () => { const now = await placeOf(p).catch(() => null); return now?.ready && now.title === titles.outcome && now; }, at + ': Return again makes the outcome and opens its page');
+        assert.equal((await view('workspace', { workspace_id: new URLSearchParams(opened.search).get('workspace') })).workspace?.title, titles.outcome, at + ': Core holds the outcome by the title typed');
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // The keys across the panes (docs/interaction.md, "Keys across the panes";
   // docs/outline-order.md). Run last: they leave the person's folds as they found them.
   const swapped = (ids, id, delta) => { const next = [...ids], at = next.indexOf(id); [next[at], next[at + delta]] = [next[at + delta], next[at]]; return next; };
