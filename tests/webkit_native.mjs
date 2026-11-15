@@ -87,7 +87,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
-  'tests/stack_native.mjs', 'tests/stack_motion_native.mjs', 'web/stack-motion.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
+  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
@@ -163,10 +163,6 @@ try {
       }
       if (method === 'Emulation.setEmulatedMedia') {
         for (const feature of params.features ?? []) {
-          if (feature.name === 'prefers-reduced-motion') {
-            await pw.emulateMedia({ reducedMotion: feature.value === 'reduce' ? 'reduce' : 'no-preference' });
-            continue;
-          }
           assert.equal(feature.name, 'prefers-color-scheme', `media feature ${feature.name}`);
           scheme = feature.value || null;
           await pw.emulateMedia({ colorScheme: scheme });
@@ -213,12 +209,8 @@ try {
     }, `${selector} holds its place`); };
     // As in the Chrome harness: a pointer action lands on its target or fails by naming what covers it, or, when
     // the target moved between the hit-test and the press, where the press fell (FELL).
-    // A reply sliding onto its deck takes no press (item 412), so a person waits
-    // for it to land before pressing what it passes over, and so does this.
-    const landed = selector => until(() => evaluate(`(t => { const b = t?.getBoundingClientRect(); return !b || !document.elementFromPoint(b.x + Math.min(12, b.width / 2), b.y + Math.min(12, b.height / 2))?.closest('[data-stack-motion=arrival]'); })(document.querySelector(${JSON.stringify(selector)}))`), `no reply slides over ${selector}`);
     const point = async (selector, kind = 'click', { covered = false } = {}) => {
       if (kind === 'click' && !covered && await reach(selector)) return;
-      await landed(selector);
       await still(selector);
       const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);

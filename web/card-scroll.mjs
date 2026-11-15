@@ -14,7 +14,6 @@ import { feedFence } from './feed-fence-copy.mjs';
 // window, so the page still scrolls
 // beside the card. Opening it still shows it whole.
 import { formatWords } from './message-format.mjs';
-import { landed } from './reveal.mjs';
 
 export const SCROLL_CUE = 'Open to read it whole';
 
@@ -102,9 +101,8 @@ export class CardScroll {
         return false;
       }
       // Measure only while the message is shown, never a closed stack's zero-
-      // height root. Keep the whole card's size, including its header and cue,
-      // as it lands: a card still arriving or unfolding is not yet that size.
-      const height = landed(card.ownerDocument, () => card.getBoundingClientRect().height);
+      // height root. Keep the whole card's size, including its header and cue.
+      const height = card.getBoundingClientRect().height;
       card.style.maxHeight = `${Math.ceil(height)}px`;
       formatWords(preview, body, { copyFences: 'feed' });
       preview.classList.add('scroll-in-place');

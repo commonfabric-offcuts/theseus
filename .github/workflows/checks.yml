@@ -34,9 +34,12 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push supersedes its older head, so its run is cancelled. Every push to a release branch
+# is a merged train's head: its run is that head's judgment and the next train's control, so it runs to the end,
+# grouped by its ref and commit together, since one commit can be pushed to two branches (each needs its own verdict).
 concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
+  group: checks-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
