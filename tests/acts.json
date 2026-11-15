@@ -14230,6 +14230,50 @@
     "native": "rail",
     "case": "rail a topic the page can no longer read leaves the right rail at once"
    }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnails are read only once it is drawn as a card near the window: at load a folded row, an earlier message behind its row and a card far below read nothing",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "      whenNear(host, () => paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }));",
+     "      paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading card thumbnails are read only"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnails are read when it comes near later: a scroll, an unfold, an earlier message shown whole",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "const go = waiting.get(each.target); forget(each.target); go(); }",
+     "forget(each.target); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading card thumbnails are read only"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnail read waits behind every other image read, so the composer's own thumbnails never queue behind a topic's cards",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "    const behind = later ? -1 : reads.findIndex(each => each.later);",
+     "    const behind = -1;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_image_pick.test.mjs"
+   }
   }
  ]
 }

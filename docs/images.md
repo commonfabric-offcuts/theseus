@@ -46,8 +46,9 @@ its read does not take a turn, so it can still meet a busy refusal while
 thumbnails load.
 
 A sent message's images also show as thumbnails in its card on the topic
-page and in a dossier, read in the same turns (docs/topic-reading.md, "Images
-in a card").
+page and in a dossier, read in the same turns but behind every other read,
+so a composer's thumbnails never wait for a topic's cards, and only once the
+card is drawn near the window (docs/topic-reading.md, "Images in a card").
 
 A narrower row, on a phone, shows no thumbnail. Beside one, the row's words
 would have so little room that their lines change as Check confirmation or
