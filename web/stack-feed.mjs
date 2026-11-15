@@ -18,7 +18,7 @@ import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
 import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
-import { firstLine } from './pipeline-words.mjs';
+import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 
@@ -336,8 +336,9 @@ export class StackFeed {
     // A name is one line, its spaces made single, as Core keeps it.
     const single = words => String(words ?? '').replace(/\s+/g, ' ').trim(), name = single(text);
     this.arrange();
-    // Unchanged, or the first line it is named by already: nothing to record.
-    if (!edited || name === typed || !typed && name === single(firstLine(stack.head.body)) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
+    // Unchanged, or the line it is named by already (messagePreview), where that
+    // line is the first message's: nothing to record.
+    if (!edited || name === typed || !typed && name === messagePreview(item) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);

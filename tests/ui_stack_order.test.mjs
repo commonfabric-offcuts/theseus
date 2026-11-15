@@ -287,7 +287,7 @@ test('a fold line holding unread replies says how many in red; the head says New
   assert.deepEqual([headOf(stack, { unread: item => item.seq === 1 || item.seq === 2 }).headNew, headOf(stack, { unread: item => item.seq === 1 }).fresh], [true, 0]);
   const named = { ...stack, head: { ...stack.head, acts: { name: { text: 'Cabin week', by: 'owner' } } } };
   assert.deepEqual([headOf(named).name, headOf(named).typed.by], ['Cabin week', 'owner']);
-  assert.equal(headOf({ ...stack, head: { ...stack.head, acts: { name: null } } }, { firstLine: text => text.split('\n')[0] + '!' }).name, 'Message 1!');
+  assert.equal(headOf({ ...stack, head: { ...stack.head, acts: { name: null } } }, { preview: item => item.body.split('\n')[0] + '!' }).name, 'Message 1!');
 });
 
 // Item 470: a dossier's name is its first message's. A page holding only replies reads it from the position Core
