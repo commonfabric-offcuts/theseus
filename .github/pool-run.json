@@ -1,0 +1,8 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks a reply arriving while a press is held is drawn once it ends"
+ ],
+ "label": "t16m-press-head-3",
+ "snapshot": "a9d423cac6b7967d9d94fe4c6d6200c3b64f838f"
+}
