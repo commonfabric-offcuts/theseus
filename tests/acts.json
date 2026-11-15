@@ -8359,8 +8359,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "card.querySelector(':scope > .message-folded > .folded-thumb'), star]) {",
-     "null, star]) {"
+     "card.querySelector(':scope > .message-folded > .folded-thumb')]) {",
+     "null]) {"
     ]
    ],
    "check": {
@@ -14201,12 +14201,12 @@
   },
   {
    "item": 473,
-   "act": "The message bar, Fold on it, keeps clear of the lit card's star and the room a finger takes round it",
+   "act": "A message bar taking more than half its card sits flush with the card's end, clear of the star after who wrote it",
    "break": [
     [
      "web/message-menu.mjs",
-     "card.querySelector(':scope > .message-folded > .folded-thumb'), star]) {",
-     "card.querySelector(':scope > .message-folded > .folded-thumb')]) {"
+     "const inset = width > box.width / 2 ? 0 : 12;",
+     "const inset = 12;"
     ]
    ],
    "check": {
