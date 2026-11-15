@@ -947,6 +947,8 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-image:has(>.image-thumb[hidden]),.deck-image:not(:has(>.image-thumb)){padding:.4rem .6rem;padding-right:2.6rem;border:1px dashed var(--line);border-radius:.5rem}.deck-image:not(:has(>.deck-image-remove)){padding-right:.6rem}
 .deck-image-remove{position:absolute;top:.3rem;right:.3rem;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font-size:1.1rem;line-height:1;cursor:pointer}.deck-image-remove:hover{background:var(--soft)}
 @media(pointer:coarse){.deck-image-remove{width:2.75rem;height:2.75rem}}
+/* On a phone a card being written keeps room for its images beside the box, both on the screen at once. */
+@media(max-width:760px){.deck-writing:has(>.deck-images)>.deck-editor{min-height:min(26dvh,14rem)}.deck-image>.image-thumb{max-height:min(30dvh,14rem)}}
 .deck-writing.deck-dropping{outline:2px dashed var(--accent);outline-offset:2px}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}

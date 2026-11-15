@@ -461,6 +461,28 @@ def main():
                     {"workspace_id": "w1"}, {"workspace_revision": version})
             return agent
 
+        def published(operation, items, sender):
+            # Attachments, each published by sender as an agent's CLI publishes one: {"name", "text"}, or
+            # {"name", "image"}, an image from tests/fixtures/media by its file name. Each is OPERATION-media-N.
+            attached = []
+            for number, item in enumerate(items):
+                media_id = "%s-media-%d" % (operation, number)
+                if "image" in item:
+                    data = (Path(__file__).parent / "media" / item["image"]).read_bytes()
+                    kind = {".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}[Path(item["image"]).suffix]
+                else:
+                    data, kind = item["text"].encode(), "text/plain"
+                command("media.begin", "%s-media-begin-%d" % (operation, number), {
+                    "name": item["name"], "content_type": kind, "size_bytes": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": "%s-publish-%d" % (operation, number),
+                }, {"media_id": media_id}, {"media_revision": 0}, sender=sender)
+                envelope = {"v": 1, "instance_id": instance, "kind": "media.publish", "operation_id": "%s-publish-%d" % (operation, number),
+                            "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
+                            "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
+                assert store().publish_media(sender, envelope, io.BytesIO(data))["status"] == "committed"
+                attached.append({"id": media_id})
+            return attached
+
         def agent_message(request):
             operation = request["operation_id"]
             # The person may write one too, so their own message is drawn, or
@@ -500,25 +522,8 @@ def main():
             current = store().view(sender, "editor_state", {"source_ref": source, "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
-            # Optional attachments, each published by the agent: {"name", "text"}, or
-            # {"name", "image"}, an image from tests/fixtures/media by its file name.
-            attached = []
-            for number, item in enumerate(request.get("attachments", [])):
-                media_id = "%s-media-%d" % (operation, number)
-                if "image" in item:
-                    data = (Path(__file__).parent / "media" / item["image"]).read_bytes()
-                    kind = {".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}[Path(item["image"]).suffix]
-                else:
-                    data, kind = item["text"].encode(), "text/plain"
-                command("media.begin", "%s-media-begin-%d" % (operation, number), {
-                    "name": item["name"], "content_type": kind, "size_bytes": len(data),
-                    "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": "%s-publish-%d" % (operation, number),
-                }, {"media_id": media_id}, {"media_revision": 0}, sender=sender)
-                envelope = {"v": 1, "instance_id": instance, "kind": "media.publish", "operation_id": "%s-publish-%d" % (operation, number),
-                            "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
-                            "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
-                assert store().publish_media(sender, envelope, io.BytesIO(data))["status"] == "committed"
-                attached.append({"id": media_id})
+            # Optional attachments, each published by the agent (published()).
+            attached = published(operation, request.get("attachments", []), sender)
             command("draft.save", operation + "-save", dict({
                 "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
@@ -891,9 +896,11 @@ def main():
                                 {"topic_id": topic_id}, {"topic_revision": revision})
                         answer = {"topic_id": topic_id, "workspace_id": workspace}
                     elif freshness and request["method"] == "agent_page":
-                        # The fixture's agent starts a page in the Notebook of a topic it takes part in.
+                        # The fixture's agent starts a page in the Notebook of a topic it takes part in, with
+                        # "attachments" of its own (published()), which a card's line names as attachment:OPERATION-media-N.
+                        attached = published(request["operation_id"], request.get("attachments", []), "fixture-notebook-agent")
                         answer = command("memory.create", request["operation_id"], {
-                            "title": request["title"], "body": request["body"], "attachments": [], "references": []},
+                            "title": request["title"], "body": request["body"], "attachments": attached, "references": []},
                             {"item_id": request["item_id"], "owner_scope": {"kind": "topic", "id": request["topic_id"]}},
                             {"item_revision": 0}, sender="fixture-notebook-agent")
                     elif freshness and request["method"] == "agent_view":

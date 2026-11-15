@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
+import { cardImageChecks } from './notebook_card_images_native.mjs';
 
 // Notebook pages in the real browser against the real server: an outcome's
 // pages are listed on the right rail of a topic (All of this outcome) and of
@@ -1509,4 +1510,6 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   });
   // A page in the composer over the feed (item 396), in a module of its own.
   await notebookSheetChecks({ check, page, until, control, view, facts, shot });
+  // Images in a card (item 321), in a module of its own.
+  await cardImageChecks({ check, page, until, control, view, facts, shot });
 }
