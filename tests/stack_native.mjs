@@ -4644,12 +4644,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // drawn where it sits for the link.
   // On a phone the link is tapped on its own first line: at 390 wide it wraps, and the middle of its box is the
   // paragraph between its lines.
-  const linkedAside = async (topic, device, { follow = true, mine = false } = {}) => {
+  const linkedAside = async (topic, device, { follow = true, mine = false, init = '' } = {}) => {
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
       ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
       ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }],
       ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
-    const p = await open(topic, device, topic, ids.a);
+    const p = await open(topic, device, topic, ids.a, init);
     const section = `#messages .reply-stack[data-stack="${ids.b}"]`;
     const drawn = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
     const newest = async () => (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
@@ -4940,7 +4940,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await light(p, device, ids.starred);
       assert.deepEqual((await barFacts(p)).map(b => b.act), ['thumb', 'reply', 'more'], `${device}: a starred message's bar has no Fold`);
       // Show full message, on the long message its card cuts off, and gone once it shows whole.
-      await light(p, device, ids.long);
+      // Its words fill the card, so a phone taps their middle, clear of the bar still over the starred message.
+      if (device === 'phone') {
+        await centre(p, card(ids.long)); await tap(p, words(ids.long), 'centre');
+        await until(async () => (await lit(p)).includes(ids.long) && await bar(p) !== null, 'phone: the long message lights, with its bar');
+      } else await light(p, device, ids.long);
       await until(async () => (await barFacts(p))?.some(b => b.act === 'full'), `${device}: a cut-off message's bar offers Show full message`);
       f = await barFacts(p);
       assert.deepEqual([named('full').glyph, named('full').label, named('full').title], [true, 'Show full message', 'Show full message'], `${device}: Show full message is a named glyph`);
@@ -5063,6 +5067,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const order = () => p.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length).map(e=>e.dataset.line?'line:'+e.dataset.line:e.classList.contains('stack-more')?'More':e.dataset.id===${JSON.stringify(ids.x)}?'x':null).filter(Boolean)`);
       await until(async () => (await order()).includes('line:older'), device + ': the New line waits at the bottom, saying more new messages lie below');
       assert.deepEqual(await order(), ['line:older', 'More'], device + ': with More closed, the line sits above More, not below it');
+      await centre(p, '#messages .stack-more');
       await press(p, device, '#messages .stack-more');
       await becomes(order, ['line:older', 'More', 'x'], device + ': with More open, the line is still above More, and X shows below it');
       await shot(p, `new-line-below-more-${device}`);
@@ -5119,22 +5124,27 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // holds, so reading the move it missed does not take the dossier away; a later move still does.
   await check('reading stacks below More: a link followed while the page holds an older place for the dossier than Core keeps it drawn where it sits once the page reads Core\'s place, and a later move on another device still takes it below More', async () => {
     const topic = 'below-more-link-race';
-    const { p, drawn, newest, below, elsewhere, more, ids } = await linkedAside(topic, 'laptop', { follow: false });
-    // The page's reads of the acts wait unsent, as on a slow connection: it does not hear of what another device does.
-    await p.evaluate(`window.waitView = 'message_acts'`);
+    // Before the page's own code: its reads of the views named in window.held wait unsent, as on a slow connection,
+    // until window.letHeld() sends them. Reading where a dossier sits (stack_positions) is never held.
+    const init = `window.held=new Set();window.heldWaiting=[];window.letHeld=()=>{window.held.clear();for(const go of window.heldWaiting.splice(0))go()};
+      {const sent=window.fetch;window.fetch=function(input,init){let b=null;try{b=JSON.parse(init&&init.body)}catch{}
+        if(b&&b.name&&window.held.has(b.name))return new Promise(go=>window.heldWaiting.push(go)).then(()=>sent.call(this,input,init));return sent.call(this,input,init)}}`;
+    const { p, drawn, newest, below, elsewhere, more, ids } = await linkedAside(topic, 'laptop', { follow: false, init });
+    // The page reads neither the acts nor the topic: it does not hear of what another device does.
+    await p.evaluate(`['message_acts','topic_messages','topic','topic_unread','reactions'].forEach(name=>window.held.add(name))`);
     await elsewhere('stack.aside', ids.b, { through: null });
     await until(async () => !(await below()), 'Core holds B brought back');
     await elsewhere('stack.aside', ids.b, { through: await newest() });
     await until(below, 'Core holds B below More again, at a later place');
-    await until(() => p.evaluate('window.waitingViews.length > 0'), 'the page\'s read of those acts waits');
+    await until(() => p.evaluate('window.heldWaiting.length > 0'), 'the page\'s read of what changed waits');
     assert.equal(await drawn(), false, 'the page still holds B below More, at the place it read before');
     const link = `#messages .message-card a.words-link[href*="${ids.b1}"]`;
     await centre(p, link); await p.point(link);
     await until(async () => (await readerOn(p))?.startsWith('A reply to B'), 'the link opens B1 in the Reader');
     await closeReader(p, 'laptop');
     await becomes(drawn, true, 'the link draws B where it sits');
-    await p.evaluate('window.letViews()');
-    await until(() => p.evaluate('window.fetchesOut === 0 && window.waitingViews.length === 0'), 'the page reads what it missed');
+    await p.evaluate('window.letHeld()');
+    await until(() => p.evaluate('window.fetchesOut === 0 && window.heldWaiting.length === 0'), 'the page reads what it missed');
     await twoFrames(p);
     assert.equal(await drawn(), true, `having read the moves it missed, the page keeps B drawn where the link drew it (More: ${JSON.stringify(await more())})`);
     // A move after the link was followed is a new place: B goes below the closed More.
