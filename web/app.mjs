@@ -112,6 +112,8 @@ let stackFeed = null;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
 const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
+// The ? beside the logo opens the guide (item 463); index.html draws it, and each run gives it its press.
+$('guide-open').onclick = () => guide.open();
 const halfShown = new Set(), atMiddle = new Set();
 // Whether what is drawn above the topic page's messages after they paint has
 // had its first fill, so no card the page counts as seen moves (noteRead).
@@ -1790,7 +1792,6 @@ async function initialize() {
     run(() => healthLight.load());
   }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
-  guide.offer($('instance-label'));
   refreshDirectory();
   document.addEventListener('focusin', event => {
     const list = event.target?.getAttribute?.('list');
@@ -2873,7 +2874,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
+window.addEventListener('pagehide', () => { live?.stop(); healthLight?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).
