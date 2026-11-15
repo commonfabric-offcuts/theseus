@@ -6945,8 +6945,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision'];",
-     "const PLACING = ['root_id'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
+     "const PLACING = ['root_id', 'name_revision'];"
     ]
    ],
    "check": {
@@ -11713,8 +11713,8 @@
     ],
     [
      "web/stack-feed.mjs",
-     "!typed && name === messagePreview(item)",
-     "!typed && name === firstLine(item.body)"
+     "!typed && name === messagePreview(stack.head)",
+     "!typed && name === firstLine(stack.head.body)"
     ]
    ],
    "check": {
@@ -11749,6 +11749,209 @@
    "check": {
     "native": "reading",
     "case": "reading stacks a folded message's row shows its author's own words"
+   }
+  },
+  {
+   "item": 470,
+   "act": "Core takes a dossier's name on its first message alone, as the reader's Core finds it through joins and replies",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if kind in (\"aside\", \"name\") and StackRoots(db, actor).root(message[\"id\"]) != message[\"id\"]:",
+     "        if kind == \"aside\" and StackRoots(db, actor).root(message[\"id\"]) != message[\"id\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 470,
+   "act": "Every message's position carries its dossier's name and who typed it, however little of the dossier a page holds",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"],\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A rename typed on a reply showing as the head names the dossier's first message, loaded or not",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const item = this.rootOf(stack)?.item ?? this.messages().get(stack.id) ?? stack.head, typed",
+     "    const item = this.messages().get(stack.id) ?? stack.head, typed"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "name typed while a dossier's first message is not loaded"
+   }
+  },
+  {
+   "item": 470,
+   "act": "The head row shows the dossier's name from the position where the page holds only replies",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;",
+     "  const typed = actsOf(stack.head).name;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A dossier's name changed elsewhere is drawn on a page holding only its replies",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A name typed in that matches a reply's shown first line names the dossier; the first line stands without one only on the first message itself",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (!edited || name === typed || !typed && name === messagePreview(stack.head) && item.id === stack.head.id) {",
+     "    if (!edited || name === typed || !typed && name === messagePreview(stack.head)) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "name typed while a dossier's first message is not loaded"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A rename field left untouched records nothing: not a first line whose spaces a name folds, nor over a name another gave the dossier while it was open",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (!edited || name === typed || !typed",
+     "    if (name === typed || !typed"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "name typed while a dossier's first message is not loaded"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A position a join or a split has made stale is not its stack's: the head row names the stack's own dossier",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(position => position && fits(position))",
+     "  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(Boolean)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 470,
+   "act": "While a split or a join waits for its answer, each head row names its own dossier and a rename typed there goes to it, on a full page and one holding only replies",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(position => position && fits(position))",
+     "  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(Boolean)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "split or a join waiting for its answer"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A join or a split answered reads the dossiers' positions again",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join') await this.refreshPositions();",
+     "    if (kind === 'stack.aside' || kind === 'stack.name') await this.refreshPositions();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "split or a join waiting for its answer"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A read of positions places each message it reads by its own row, never by another's sharing a stale root",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "        if (read.has(id) || other.stack_position?.root_id !== position.root_id) continue;",
+     "        if (other.stack_position?.root_id !== position.root_id) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 470,
+   "act": "With the first message loaded as the head, its own acts name the dossier over a position that says another",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;",
+     "  const typed = position && 'name' in position ? position.name : actsOf(stack.head).name;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A first line with doubled spaces, typed in on its first message as the head, records nothing",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "!typed && name === messagePreview(stack.head) && item.id === stack.head.id",
+     "!typed && name === String(stack.head.body ?? '').split('\\n')[0] && item.id === stack.head.id"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "split or a join waiting for its answer"
+   }
+  },
+  {
+   "item": 470,
+   "act": "A name typed on a page holding only replies shows there before Core answers it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "        if ('name' in pending) stack_position = { ...stack_position, name: pending.name };\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "split or a join waiting for its answer"
    }
   },
   {
