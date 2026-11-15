@@ -773,9 +773,15 @@ def train_identity(root,commit,binding):
     number = p['pull_request']['number'] if p['event'] == 'pull_request' else int(match[1]) if match else None
     base = binding['merge']['first_parent']
     item_head = p['head_sha'] if p['event'] == 'pull_request' else binding['merge'].get('second_parent') or commit
-    messages = git(root,'log','--format=%B%x00',base+'..'+item_head).decode().split('\0')
-    items, named_items = set(), []
-    for message in messages:
+    messages = git(root,'log','--format=%H%x1f%B%x00',base+'..'+item_head).decode().split('\0')
+    items, named_items, reverts = set(), [], []
+    for entry in messages:
+        if not entry.strip():
+            continue
+        sha,separator,message = entry.partition('\x1f')
+        require(separator and SHA.fullmatch(sha.strip()),'unreadable train commit identity')
+        for target in re.findall(r'(?m)^(?:This reverts commit |Reverts:\s*)([0-9a-f]{40})(?=[^0-9a-f]|$)',message):
+            reverts.append({'commit':sha.strip(),'target_commit':target})
         trailers = subprocess.run(['git','interpret-trailers','--parse'],input=message,text=True,capture_output=True,check=True).stdout
         for line in trailers.splitlines():
             if line.startswith('Train-Item:'):
@@ -784,7 +790,7 @@ def train_identity(root,commit,binding):
                     named_items.append(value)
             if line.startswith('Pipeline:'):
                 items.update(int(n) for n in re.findall(r'(?<![A-Za-z0-9])[1-9][0-9]*(?![A-Za-z0-9])',line.partition(':')[2]))
-    return {'pull_request':number,'items':sorted(items),'merge_commit':commit,'items_source':'Pipeline trailers in newly merged history','named_items':named_items,'display_items':named_items+[str(i) for i in sorted(items)]}
+    return {'pull_request':number,'items':sorted(items),'merge_commit':commit,'items_source':'Pipeline trailers in newly merged history','named_items':named_items,'display_items':named_items+[str(i) for i in sorted(items)],'reverts':reverts}
 
 
 def main(argv=None):
