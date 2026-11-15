@@ -438,7 +438,7 @@ jobs:
           echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: The base's last three runs, by GitHub's record
         id: known
-        if: steps.merge.outputs.ready == 'true'
+        if: steps.merge.outputs.ready == 'true' && steps.controller.outputs.ready == 'true'
         shell: bash
         env:
           BASE_REF: ${{ steps.record.outputs.base_ref }}
@@ -552,9 +552,11 @@ jobs:
                       continue
                   for artifact in artifacts:
                       name, artifact_id = artifact["name"], artifact["id"]
-                      archive = api("repos/%s/actions/artifacts/%d/zip" % (repo, artifact_id), raw=True)
                       digest = artifact.get("digest")
-                      if isinstance(digest, str) and digest.startswith("sha256:") and hashlib.sha256(archive).hexdigest() != digest[len("sha256:"):]:
+                      if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                          raise CouldNotRead("artifact %s of run %d lacks a valid GitHub SHA-256 digest" % (name, run["id"]))
+                      archive = api("repos/%s/actions/artifacts/%d/zip" % (repo, artifact_id), raw=True)
+                      if hashlib.sha256(archive).hexdigest() != digest[len("sha256:"):]:
                           raise CouldNotRead("artifact %s of run %d does not match the digest GitHub gives for it" % (name, run["id"]))
                       # The producer's layout: each check-* shard in shards/ under its own name, the summary in release-check/.
                       dest = os.path.join(history, record["dir"], "shards", name) if name.startswith("check-") else os.path.join(history, record["dir"], name)
@@ -570,7 +572,9 @@ jobs:
                       record["artifacts"].append({key: artifact.get(key) for key in ("id", "name", "size_in_bytes", "digest")})
                   try:
                       missing = controller["history_missing_steps"](
-                          os.path.join(history, record["dir"], "release-check", "summary.json"), candidate_root, run["head_sha"])
+                          os.path.join(history, record["dir"], "release-check", "summary.json"),
+                          os.path.join(history, record["dir"], "release-check", "provenance.json"),
+                          candidate_root, run, base_ref, repo)
                   except (controller["Refused"], OSError, ValueError, KeyError, TypeError, AttributeError) as error:
                       raise CouldNotRead("run %d's combined receipt could not be checked: %s" % (run["id"], error))
                   if missing:

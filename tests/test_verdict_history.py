@@ -44,9 +44,10 @@ class VerdictHistoryCase(unittest.TestCase):
 
     def summary(self, missing=()):
         return {'tool': 'theseus-release-check', 'commit': self.sha, 'required': self.required,
+                'tree_unchanged': True, 'tree_after': {'head': self.sha, 'changes': ''}, 'passed': False, 'combined_from': [],
                 'steps': [{'name': name} for name in self.required if name not in missing]}
 
-    def select(self, summaries, corrupt=False, expired=False):
+    def select(self, summaries, corrupt=False, expired=False, digest_override='valid', provenance_change=None):
         history = self.root / 'history'
         producer = self.root / 'producer.json'
         producer.write_text(json.dumps({'producer': {'created_at': '2026-11-15T06:00:00Z', 'run_id': '99'}}))
@@ -60,8 +61,19 @@ class VerdictHistoryCase(unittest.TestCase):
                          'path': '.github/workflows/checks.yml', 'head_repository': {'full_name': 'org/repo'},
                          'created_at': '2026-11-15T05:%02d:00Z' % (50-index), 'html_url': 'run/%d' % run_id})
             data = io.BytesIO()
+            provenance = {'run': {'id': run_id, 'attempt': 1, 'workflow': 'Checks', 'event': 'push',
+                                  'repository': 'org/repo', 'workflow_sha': self.sha,
+                                  'workflow_ref': 'org/repo/.github/workflows/checks.yml@refs/heads/release/live73'},
+                          'base': {'ref': None, 'sha': None}, 'head': {'ref': 'refs/heads/release/live73', 'sha': self.sha},
+                          'merge': {'sha': self.sha, 'tree': self.git('rev-parse', 'HEAD^{tree}').strip(),
+                                    'first_parent': None, 'second_parent': None},
+                          'checked': {'commit': self.sha, 'tree_unchanged': True}, 'required': self.required,
+                          'plan': [{'steps': self.required}], 'shards': []}
+            if provenance_change:
+                provenance_change(provenance)
             with zipfile.ZipFile(data, 'w') as zipped:
                 zipped.writestr('summary.json', json.dumps(summary))
+                zipped.writestr('provenance.json', json.dumps(provenance))
             archives[run_id] = data.getvalue()
         calls = []
         original_run = subprocess.run
@@ -82,7 +94,8 @@ class VerdictHistoryCase(unittest.TestCase):
                 run_id = int(endpoint.split('/runs/')[1].split('/')[0])
                 value = {'total_count': 1, 'artifacts': [{'id': run_id, 'name': 'release-check',
                          'size_in_bytes': len(archives[run_id]), 'expired': expired and run_id == 1,
-                         'digest': 'sha256:' + ('0'*64 if corrupt and run_id == 1 else hashlib.sha256(archives[run_id]).hexdigest())}]}
+                         'digest': ('sha256:' + ('0'*64 if corrupt and run_id == 1 else hashlib.sha256(archives[run_id]).hexdigest()))
+                                   if digest_override == 'valid' else digest_override}]}
             return subprocess.CompletedProcess(command, 0, json.dumps(value).encode(), b'')
 
         workflow = (ROOT / '.github/workflows/verdict.yml').read_text()
@@ -116,6 +129,28 @@ class VerdictHistoryCase(unittest.TestCase):
         self.assertEqual(manifest['dropped'], [])
         self.assertEqual(refusal, '')
 
+    def test_controller_readiness_is_required_before_loading_code(self):
+        section = (ROOT / '.github/workflows/verdict.yml').read_text().split(
+            "      - name: The base's last three runs, by GitHub's record\n", 1)[1].split('        shell:', 1)[0]
+        self.assertIn("if: steps.merge.outputs.ready == 'true' && steps.controller.outputs.ready == 'true'", section)
+
+    def test_missing_digest_refuses_before_download(self):
+        manifest, refusal, calls = self.select([self.summary(['native-reader'])], digest_override=None)
+        self.assertIsNone(manifest)
+        self.assertIn('lacks a valid GitHub SHA-256 digest', refusal)
+        self.assertFalse(any(call.endswith('/zip') for call in calls))
+
+    def test_unsupported_digest_refuses_before_download(self):
+        manifest, refusal, calls = self.select([self.summary(['native-reader'])], digest_override='sha512:'+'a'*128)
+        self.assertIsNone(manifest)
+        self.assertIn('lacks a valid GitHub SHA-256 digest', refusal)
+        self.assertFalse(any(call.endswith('/zip') for call in calls))
+
+    def test_short_sha256_digest_refuses_before_download(self):
+        manifest, refusal, _ = self.select([self.summary(['native-reader'])], digest_override='sha256:abc')
+        self.assertIsNone(manifest)
+        self.assertIn('lacks a valid GitHub SHA-256 digest', refusal)
+
     def test_digest_failure_is_not_an_incomplete_history_drop(self):
         manifest, refusal, _ = self.select([self.summary(['native-reader'])], corrupt=True)
         self.assertIsNone(manifest)
@@ -134,6 +169,45 @@ class VerdictHistoryCase(unittest.TestCase):
         manifest, refusal, _ = self.select([summary])
         self.assertIsNone(manifest)
         self.assertIn('history summary plan differs from source', refusal)
+
+    def test_object_steps_are_malformed_not_history_loss(self):
+        summary = self.summary()
+        summary['steps'] = {}
+        manifest, refusal, _ = self.select([summary])
+        self.assertIsNone(manifest)
+        self.assertIn('invalid history steps', refusal)
+
+    def test_dirty_history_is_not_dropped(self):
+        summary = self.summary(['native-reader'])
+        summary['tree_after']['changes'] = 'M tests/reader.mjs'
+        manifest, refusal, _ = self.select([summary])
+        self.assertIsNone(manifest)
+        self.assertIn('dirty history combined source', refusal)
+
+    def test_focused_history_is_not_dropped(self):
+        summary = self.summary(['native-reader'])
+        summary['only'] = ['python-units', 'node-units']
+        manifest, refusal, _ = self.select([summary])
+        self.assertIsNone(manifest)
+        self.assertIn('focused or skipped history aggregate', refusal)
+
+    def test_misbound_history_run_is_not_dropped(self):
+        manifest, refusal, _ = self.select([self.summary(['native-reader'])],
+                                         provenance_change=lambda p: p['run'].update(id=999))
+        self.assertIsNone(manifest)
+        self.assertIn('wrong producer run or attempt', refusal)
+
+    def test_misbound_history_head_is_not_dropped(self):
+        manifest, refusal, _ = self.select([self.summary(['native-reader'])],
+                                         provenance_change=lambda p: p['head'].update(sha='0'*40))
+        self.assertIsNone(manifest)
+        self.assertIn('history provenance source differs from API', refusal)
+
+    def test_dirty_history_provenance_is_not_dropped(self):
+        manifest, refusal, _ = self.select([self.summary(['native-reader'])],
+                                         provenance_change=lambda p: p['checked'].update(tree_unchanged=False))
+        self.assertIsNone(manifest)
+        self.assertIn('dirty history provenance', refusal)
 
     def test_duplicate_history_steps_are_not_a_missing_step_drop(self):
         summary = self.summary(['native-reader'])

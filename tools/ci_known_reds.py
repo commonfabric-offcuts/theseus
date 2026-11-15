@@ -471,22 +471,58 @@ def source_catalog(root, commit):
     return {'NATIVE_STEPS':steps,'NATIVE':native,'REQUIRED':required,'COMPOSE':named('COMPOSE') if 'COMPOSE' in definitions else 'tests/reader_compose_native.mjs','REPLAY_FILE':named('REPLAY_FILE') if 'REPLAY_FILE' in definitions else None}
 
 
-def history_missing_steps(summary_path, root, commit):
+def history_missing_steps(summary_path, provenance_path, root, api, base_ref, repository):
     """Only a well-formed, source-bound combined receipt can disclose omitted steps.
 
     Used by the selector after archive digest verification. This does not judge
     passing evidence; admitted histories still undergo full read_evidence checks.
     Candidate evidence never takes this drop path.
     """
+    commit = api['head_sha']
     require(isinstance(commit, str) and SHA.fullmatch(commit), 'invalid history source')
-    summary = read_json(summary_path)
+    summary, provenance = read_json(summary_path), read_json(provenance_path)
+    require(isinstance(summary, dict) and isinstance(provenance, dict), 'history receipts must be objects')
     required = set(source_catalog(root, commit)['REQUIRED'])
+    run = {'id':api['id'], 'attempt':1, 'workflow':'Checks', 'event':'push', 'repository':repository}
+    same_run(provenance.get('run'), run)
+    require(provenance['run'].get('workflow_sha') == commit and
+            provenance['run'].get('workflow_ref') == '%s/%s@refs/heads/%s' % (repository, PRODUCER_WORKFLOW, base_ref),
+            'history workflow source differs from API')
+    base, head = {'ref':None, 'sha':None}, {'ref':'refs/heads/'+base_ref, 'sha':commit}
+    parents = git(root, 'rev-list', '--parents', '-n', '1', commit).decode().split()[1:]
+    merge = {'sha':commit, 'tree':git(root, 'rev-parse', commit+'^{tree}').decode().strip(),
+             'first_parent':parents[0] if parents else None, 'second_parent':parents[1] if len(parents)>1 else None}
+    require(provenance.get('base') == base and provenance.get('head') == head and provenance.get('merge') == merge,
+            'history provenance source differs from API')
+    require(provenance.get('checked') == {'commit':commit, 'tree_unchanged':True}, 'dirty history provenance')
+    require(unique(provenance['required'], 'history provenance steps') == required, 'incomplete history provenance plan')
     require(summary.get('tool') == TOOL and summary.get('commit') == commit,
             'wrong history combined source')
+    require(summary.get('tree_unchanged') is True and summary.get('tree_after') == {'head':commit, 'changes':''},
+            'dirty history combined source')
+    require('only' not in summary and not summary.get('skipped'), 'focused or skipped history aggregate')
+    require(type(summary.get('passed')) is bool, 'history aggregate lacks raw verdict')
     require(unique(summary['required'], 'history required steps') == required,
             'history summary plan differs from source')
+    require(isinstance(summary.get('steps'), list) and all(isinstance(step, dict) and
+            isinstance(step.get('name'), str) and step['name'] for step in summary['steps']), 'invalid history steps')
     names = unique([step['name'] for step in summary['steps']], 'history combined steps')
     require(names <= required, 'history summary has unknown steps')
+    plan = plan_steps(provenance['plan'])
+    require(Counter(name for shard in plan for name in shard) == Counter(required), 'incomplete history shard plan')
+    entries = provenance.get('shards')
+    require(isinstance(entries, list) and all(isinstance(entry, dict) for entry in entries), 'invalid history shard provenance')
+    artifacts = [entry['artifact'] for entry in entries]
+    require(unique(artifacts, 'history shard artifacts') <= {'check-%d' % i for i in range(len(plan))},
+            'unknown history shard artifact')
+    require(unique(summary.get('combined_from'), 'history combined artifacts') ==
+            {name+'/summary.json' for name in artifacts}, 'history combined artifact inventory differs')
+    for entry in entries:
+        receipt = entry.get('receipt')
+        require(not entry.get('refused') and isinstance(receipt, dict), 'invalid history shard receipt')
+        same_run(receipt.get('run'), run)
+        require(receipt.get('base') == base and receipt.get('head') == head and receipt.get('merge') == merge,
+                'history shard source differs from API')
     return sorted(required - names)
 
 
