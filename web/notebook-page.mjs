@@ -1,5 +1,5 @@
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
-import { applyAct, deckBody, parseDeck, cardText, textCard, findCard } from './deck.mjs';
+import { applyAct, deckBody, parseDeck, cardText, cardImages, imageLine, textCard, findCard } from './deck.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-writing.mjs';
 import { NotebookImages } from './notebook-images.mjs';
@@ -48,6 +48,13 @@ export class NotebookPage extends DeckPage {
     this.draft.append(this.draftButton,this.draftNote);
     const tools=this.node('div','notebook-tools'); tools.append(this.views,this.draft);
     this.status.before(tools); this.status.after(this.conflictPanel,this.imagePanel,this.textPanel);
+    // An image file dropped on the card being written goes into it, as one pasted there does (item 321); a drag of
+    // anything but files is left to the box.
+    const dropping=event=>Boolean(this.editing&&!this.readOnly&&this.images&&event.target.closest?.('.deck-writing')&&[...(event.dataTransfer?.types??[])].includes('Files'));
+    const lit=on=>this.list.querySelector('.deck-writing')?.classList.toggle('deck-dropping',on);
+    for(const kind of ['dragenter','dragover'])this.list.addEventListener(kind,event=>{if(!dropping(event))return;event.preventDefault();event.dataTransfer.dropEffect='copy';lit(true);});
+    this.list.addEventListener('dragleave',event=>{if(!event.relatedTarget||!this.list.querySelector('.deck-writing')?.contains(event.relatedTarget))lit(false);});
+    this.list.addEventListener('drop',event=>{if(!dropping(event))return;event.preventDefault();lit(false);this.addToCard([...event.dataTransfer.files],this.editing.field);});
     this.drawView();
   }
   async load() {
@@ -62,7 +69,7 @@ export class NotebookPage extends DeckPage {
         this.store={get:async()=>null,put:async()=>{},close:()=>{}};
       }
       this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>this.writingChanged(),
-        reconcile:(base,mine,theirs)=>this.mergeIncoming(base,mine,theirs),localActive:()=>Boolean(this.editing&&this.editing.field.value!==this.editing.startedValue)});
+        reconcile:(base,mine,theirs)=>this.mergeIncoming(base,mine,theirs),localActive:()=>Boolean(this.editing&&this.boxChanged(this.editing))});
       if(this.unavailable)this.writing.readOnly=true;
       await this.writing.open();
       globalThis.addEventListener('pagehide',()=>{this.writing.close();this.writing.serial.finally(()=>this.store.close());},{signal:this.listening.signal});
@@ -97,20 +104,16 @@ export class NotebookPage extends DeckPage {
   mergeIncoming(base,mine,theirs) {
     if(this.mode!=='cards')return null;
     const e=this.editing;
-    if(e&&!e.fresh&&e.field.value!==e.startedValue) {
+    if(e&&!e.fresh&&this.boxChanged(e)) {
       const before=parseDeck(base.body),after=parseDeck(theirs.body);
       let at=findCard(before,e.text,e.near);
-      if(at<0)at=findCard(before,cardText(textCard(this.editorWords(e))),e.near);
+      if(at<0)at=findCard(before,cardText(textCard(this.boxText(e))),e.near);
       if(at<0)at=e.near;
       if(!before.cards[at]||findCard(after,cardText(before.cards[at]),at)<0)return null;
     }
     const merged=mergeCardContent(base,mine,theirs);
     if(merged&&e&&!mergeCardContent({...mine,body:this.previewBody()},{...mine,body:deckBody(this.deck)},merged))return null;
     return merged;
-  }
-  editorWords(e) {
-    const written=e.field.value;
-    return e.stacks?.length&&/\S/.test(written)?`${written.trimEnd()}\n\n${e.stacks.join('\n')}`:written;
   }
   sync(force=false) {
     const w=this.writing;
@@ -147,7 +150,7 @@ export class NotebookPage extends DeckPage {
   previewBody() {
     const e=this.editing;
     if(!e)return deckBody(this.deck);
-    const written=e.field.value, to=e.stacks?.length&&/\S/.test(written)?`${written.trimEnd()}\n\n${e.stacks.join('\n')}`:written;
+    const to=this.boxText(e);
     const act=e.fresh?{kind:'add',after:e.after,text:to,depth:e.depth,near:e.near}:{kind:'edit',text:e.text,to,near:e.near};
     const done=applyAct(this.deck,act);
     return done?deckBody(done.deck):deckBody(this.deck);
@@ -167,15 +170,17 @@ export class NotebookPage extends DeckPage {
   }
   open(editing) {
     this.cardImages?.close();this.cardImages?.list?.remove();
+    // A refusal said for the card before goes as another opens.
+    if(this.imageError){this.imageError=null;this.writingChanged();}
     super.open(editing);
     if(!this.editing)return;
     this.writing.active=true;
-    this.editing.startedValue=this.editing.field.value;
     this.editing.field.addEventListener('input',()=>this.save());
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
   finish({discard=false} = {}) {
     this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
+    if(this.imageError&&this.editing){this.imageError=null;this.writingChanged();}
     if(discard){this.editing=null;this.paint();this.show(true);}
     else super.finish();
     if(this.writing)this.writing.active=false;
@@ -258,6 +263,8 @@ export class NotebookPage extends DeckPage {
     }
     if(!changed)this.conflictRevision=null;
     this.paintImages();
+    // A card's image as it now stands: shown from this device while it uploads, then from Core.
+    for(const figure of this.list.querySelectorAll('.deck-image'))this.picture(figure,cardImages(figure.dataset.line).images[0]);
     if(this.unavailable)this.say(this.unavailable,'attention');
     else if(w.journalError)this.say('Device copy unavailable: '+w.journalError+'. Keep this page open.','attention',()=>w.flush());
     else if(this.imageError)this.say(this.imageError,'attention');
@@ -292,25 +299,83 @@ export class NotebookPage extends DeckPage {
         input.deleteSelection();
         try {
           const media=await readInTurn(()=>this.api.media(this.bootstrap.instance_id,item.attachment,item.source_ref),{first:true});
-          await this.captureImage(new File([media.blob],item.attachment.name,{type:item.attachment.content_type}));
+          const file=new File([media.blob],item.attachment.name,{type:item.attachment.content_type});
+          // Picked while writing a card, the image goes into that card.
+          if(field!==this.text&&this.editing?.field===field)this.addToCard([file],field);
+          else await this.captureImage(file);
         } catch(error){this.imageError=error.message;this.writingChanged();}
       }});
     field.addEventListener('input',()=>picker.update());
     field.addEventListener('paste',event=>{
-      const file=[...(event.clipboardData?.files??[])].find(file=>file.type.startsWith('image/'));
-      if(file&&!this.readOnly){event.preventDefault();this.captureImage(file);}
+      const files=[...(event.clipboardData?.files??[])];
+      if(!files.length||this.readOnly)return;
+      // Into a card being written, every file pasted is taken or refused with a line saying why (item 321).
+      if(field!==this.text){event.preventDefault();this.addToCard(files,field);return;}
+      const file=files.find(file=>file.type.startsWith('image/'));
+      if(file){event.preventDefault();this.captureImage(file);}
     });
     return picker;
+  }
+  // Files pasted, dropped or picked into the card being written (item 321): each is taken or refused at once, before
+  // its bytes are read, the first refusal saying what was not added and why. One taken is named in the card at once,
+  // under its words, and shows from this device's copy while it uploads to the page as one of its attachments.
+  addToCard(files, field) {
+    const e=this.editing;
+    if(!e||e.field!==field||this.readOnly||!this.images)return;
+    this.imageError=null;
+    const added=[];
+    for(const file of files) {
+      let admitted;
+      try {admitted=this.images.admit(file);} catch(error) {this.imageError=error.message;break;}
+      added.push(imageLine(admitted.name,admitted.media));
+      this.images.capture(file,admitted).catch(error=>{this.imageError=error.message;this.writingChanged();});
+    }
+    if(added.length){e.images=[...(e.images??[]),...added];this.paint();this.save();}
+    this.writingChanged();
+  }
+  // A card's image: from this device while it is the person's own and not yet in Core, else read through the page
+  // as it stands, so only someone who may read the page sees it (docs/decks.md, "Images in a card"). Its name stays
+  // with it, for screen readers, and shows while nothing else does: before it loads, while it uploads or fails, or
+  // when the page holds no such image.
+  picture(figure, image) {
+    const w=this.writing, name=image.name||'Image';
+    if(!w?.base)return super.picture(figure,image);
+    const own=this.images?.held(image.id), attached=w.base.source.attachments.find(a=>a.id===image.id);
+    const local=own?.bytes?new Blob([own.bytes],{type:own.type}):own?.file??null;
+    let state='';
+    if(own&&!own.ready)state=own.error?` · ${own.error}`:' · Uploading…';
+    else if(!own&&!attached)state=' · not on this page';
+    let caption=figure.querySelector(':scope > .deck-image-name');
+    if(!caption){caption=this.node('figcaption','deck-image-name');figure.prepend(caption);}
+    caption.textContent=name+state;
+    if(local||own?.ready?.inline||(!own&&attached?.inline))paintThumb(figure,'card:'+image.id,async()=>local??(own?.ready
+      ?(await this.api.media(this.bootstrap.instance_id,{...own.ready,id:own.ready.media_id})).blob
+      :(await this.api.media(this.bootstrap.instance_id,attached,w.base.source.source_ref)).blob),img=>caption.before(img));
+  }
+  // × on an image in a card box: it leaves the card, and the page, unless another card still shows it.
+  unpicture(editing, image) {
+    super.unpicture(editing,image);
+    if(this.editing!==editing||this.readOnly)return;
+    this.save();
+    if(!this.namedImages(this.previewBody()).has(image.id))this.images.remove(image.id).catch(error=>{this.imageError=error.message;this.writingChanged();});
+  }
+  // The images the page's cards show, by id.
+  namedImages(body) {
+    const ids=new Set();
+    for(const card of parseDeck(body).cards)for(const image of cardImages(card.words).images)ids.add(image.id);
+    return ids;
   }
   paintImages() {
     const w=this.writing;if(!w?.value||!this.imageRows)return;
     this.addImage.disabled=w.readOnly; this.addImage.hidden=w.reading;
-    const attached=w.value.attachments.map(ref=>{
+    // An image a card shows is the card's: it is listed here only while it needs the person (Retry).
+    const named=this.namedImages(w.value.body);
+    const attached=w.value.attachments.filter(ref=>!named.has(ref.id)).map(ref=>{
       const own=w.images.find(i=>i.ready?.media_id===ref.id),d=own?.ready;
       const descriptor=d?{...d,id:d.media_id}:w.base?.source.attachments.find(a=>a.id===ref.id);
       return {id:own?.id??ref.id,name:descriptor?.name??'Image',descriptor,own};
     });
-    const pending=w.images.filter(i=>!i.removed&&!i.associated).map(own=>({id:own.id,name:own.name,own}));
+    const pending=w.images.filter(i=>!i.removed&&!i.associated&&(i.error||!named.has(i.media))).map(own=>({id:own.id,name:own.name,own}));
     const rows=[];
     for(const item of [...attached,...pending]) {
       let row=this.imageNodes.get(item.id);

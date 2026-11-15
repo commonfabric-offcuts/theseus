@@ -1,34 +1,54 @@
 const copy = structuredClone;
 const TYPES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
+const megabytes = bytes => `${Math.floor(bytes / 1048576)} MB`;
 const digest = async blob => [...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(b=>b.toString(16).padStart(2,'0')).join('');
 
 // A page's images use the same Core media.begin/media.publish protocol as
 // message images. Bytes and the exact two requests share the page's journal;
 // publication is not page attachment until its receipt has been confirmed.
+// An image's media id is chosen when it is taken in, so a card can name it at
+// once (item 321, docs/decks.md "Images in a card"); its bytes show from this
+// device until Core has them.
 export class NotebookImages {
-  constructor(writing) { this.writing=writing; this.running=new Map(); }
-  async capture(file) {
-    const w=this.writing, limits=w.bootstrap.limits, discarded=w.discardVersion;
+  constructor(writing) { this.writing=writing; this.running=new Map(); this.arriving=new Map(); this.dropped=new Set(); }
+  // Whether the page takes this file, decided at once, before its bytes are read: {media, name}, or a refusal that
+  // says what was not added and why.
+  admit(file) {
+    const w=this.writing, limits=w.bootstrap.limits;
     if(w.closed||w.readOnly)throw Error('This page cannot be changed here.');
-    if(!TYPES.has(file.type)||!file.size)throw Error('Choose a PNG, JPEG, GIF or WebP image.');
-    if(file.size>limits.image_bytes)throw Error('This image exceeds the attachment size limit.');
-    const pending=w.images.filter(i=>!i.removed&&!i.ready);
+    const name=file.name||'Pasted image.'+(file.type.split('/')[1]||'png');
+    if(!TYPES.has(file.type)||!file.size)throw Error(`${name} was not added: it is not a PNG, JPEG, GIF or WebP image.`);
+    if(file.size>limits.image_bytes)throw Error(`${name} was not added: an image may be at most ${megabytes(limits.image_bytes)}.`);
+    const pending=[...w.images.filter(i=>!i.removed&&!i.ready),...this.arriving.values()];
     const sizes=w.value.attachments.map(ref=>w.images.find(i=>i.ready?.media_id===ref.id)?.size??w.base.source.attachments.find(a=>a.id===ref.id)?.size_bytes);
     if(sizes.some(n=>!Number.isInteger(n)))throw Error('Read this page’s attachments again before adding another image.');
-    if(sizes.length+pending.length>=limits.attachment_count||[...sizes,...pending.map(i=>i.size)].reduce((n,size)=>n+size,file.size)>limits.attachment_bytes)throw Error('This page has reached its attachment limit.');
-    const name=file.name||'Pasted image.'+file.type.split('/')[1];
+    if(sizes.length+pending.length>=limits.attachment_count||[...sizes,...pending.map(i=>i.size)].reduce((n,size)=>n+size,file.size)>limits.attachment_bytes)
+      throw Error(`${name} was not added: a page holds at most ${limits.attachment_count} images, ${megabytes(limits.attachment_bytes)} in all.`);
     if(new TextEncoder().encode(name).length>limits.media_name_utf8_bytes)throw Error('The image name is too long.');
-    const bytes=await file.arrayBuffer();
+    return {media:crypto.randomUUID(),name};
+  }
+  // The image the page holds under a media id: its entry, or the file still being read in; null when it holds none.
+  held(media) {
+    return this.writing.images.find(i=>!i.removed&&(i.media===media||i.begin?.target.media_id===media||i.ready?.media_id===media))??this.arriving.get(media)??null;
+  }
+  async capture(file, admitted=this.admit(file)) {
+    const w=this.writing, discarded=w.discardVersion, {media,name}=admitted;
+    this.arriving.set(media,{media,name,type:file.type,size:file.size,file});
+    let bytes;
+    try {bytes=await file.arrayBuffer();} finally {this.arriving.delete(media);}
     if(w.closed||w.readOnly||discarded!==w.discardVersion)throw Error('This page is no longer open for writing.');
-    const entry={id:crypto.randomUUID(),name,type:file.type,size:file.size,bytes,begin:null,publish:null,begun:false,ready:null,associated:false,removed:false,error:null};
+    if(this.dropped.delete(media))return null;
+    const entry={id:crypto.randomUUID(),media,name,type:file.type,size:file.size,bytes,begin:null,publish:null,begun:false,ready:null,associated:false,removed:false,error:null};
     w.images.push(entry); w.notify();
     try {await w.persist();}
     catch(error){entry.error='Device copy unavailable: '+error.message+'. Keep this page open.';w.notify();return entry;}
     this.run(entry); return entry;
   }
   async remove(id) {
-    const w=this.writing, entry=w.images.find(i=>i.id===id||i.ready?.media_id===id);
+    const w=this.writing, entry=w.images.find(i=>i.id===id||i.media===id||i.ready?.media_id===id);
     if(w.closed||w.readOnly)return;
+    // An image still being read in is not taken in at all.
+    if(this.arriving.has(id))this.dropped.add(id);
     if(entry){entry.removed=true;entry.bytes=null;}
     const media=entry?.ready?.media_id??id;
     w.edit({attachments:w.value.attachments.filter(a=>a.id!==media)},w.capture());
@@ -51,7 +71,7 @@ export class NotebookImages {
       if(!e.begin) {
         const hash=await digest(new Blob([e.bytes],{type:e.type}));
         if(!valid())return;
-        const id=crypto.randomUUID(),pub=crypto.randomUUID(),expected={authority:copy(w.bootstrap.authority)};
+        const id=e.media??crypto.randomUUID(),pub=crypto.randomUUID(),expected={authority:copy(w.bootstrap.authority)};
         // Bootstrap authority may have extra descriptive fields; only the
         // canonical pair belongs in a command.
         expected.authority={authority_id:w.bootstrap.authority.authority_id,authority_epoch:w.bootstrap.authority.authority_epoch};

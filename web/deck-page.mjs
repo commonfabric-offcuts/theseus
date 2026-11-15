@@ -1,4 +1,4 @@
-import { applyAct, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
+import { applyAct, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
@@ -525,16 +525,35 @@ export class DeckPage {
   }
 
   // ⌘Return, Edit or a click: the picked card's text in one box, its first line the title, the cursor at `at` (a click's
-  // place) or the end. The lines naming its stacks stay out of the box and go back under what is written, so writing
-  // never loses them.
+  // place) or the end. The lines naming its images and its stacks stay out of the box and go back under what is
+  // written, so writing never loses them; its images show under the box as they show on the card (item 321).
   edit(at = null) {
     const card = this.deck.cards[this.picked];
     if (!card || this.readOnly || this.asking) return;
-    const { words, stacks } = this.written(card);
-    const height = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`)?.getBoundingClientRect().height ?? 0;
-    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, depth: card.depth, near: this.picked, fresh: false, at, height });
+    const { words, stacks, images } = this.written(card), row = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
+    // The box keeps the height of the card's words; its images stand under it at the heights they showed at.
+    const pictures = row ? [...row.querySelectorAll(':scope > .deck-images > .deck-image')] : [];
+    const height = Math.max(0, (row?.getBoundingClientRect().height ?? 0) - (row?.querySelector(':scope > .deck-images')?.getBoundingClientRect().height ?? 0));
+    const shownAt = new Map(pictures.map(figure => [figure.dataset.line, figure.getBoundingClientRect().height]));
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height });
   }
-  written(card) { return cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null)); }
+  written(card) {
+    const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null)), shown = cardImages(words);
+    return { words: shown.words, stacks, images: shown.images.map(image => image.line) };
+  }
+  // What a card box makes of the card: what is written, then the lines naming its images and its stacks under it. A
+  // new card holding only images is named for the first of them, so it is made with them; a card cleared of all its
+  // text is still removed, with its images.
+  boxText(editing) {
+    const written = editing.field.value, images = editing.images ?? [], kept = [...images, ...(editing.stacks ?? [])];
+    if (!kept.length) return written;
+    if (/\S/.test(written)) return `${written.trimEnd()}\n\n${kept.join('\n')}`;
+    if (!editing.fresh || !images.length) return written;
+    const [first] = cardImages(images[0]).images;
+    return `${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'Image'}\n\n${kept.join('\n')}`;
+  }
+  // Whether a card box changes its card: its words, or the images kept with it.
+  boxChanged(editing) { return editing.field.value !== (editing.shown ?? editing.text) || (editing.images ?? []).join('\n') !== (editing.kept ?? ''); }
   // A card box left open when the page was let go (another page opened, a move, a reload), opened again: on the
   // card nearest where it stood whose words are what was written, the cursor where it was. False when no card is.
   reopen({ value, near, selection } = {}) {
@@ -594,7 +613,8 @@ export class DeckPage {
     // On a laptop the box keeps the height its card showed at, less the room around it, and grows only when what is
     // written needs more, so the text stays where it stood (aim.css reads --kept there; a phone's box has its own).
     if (editing.height) {
-      const around = field.closest('li').getBoundingClientRect().height - field.getBoundingClientRect().height;
+      const holder = field.closest('li'), images = holder.querySelector(':scope > .deck-images');
+      const around = holder.getBoundingClientRect().height - field.getBoundingClientRect().height - (images?.getBoundingClientRect().height ?? 0);
       field.style.setProperty('--kept', `${Math.max(0, editing.height - around)}px`);
       this.fit(field);
     }
@@ -631,7 +651,7 @@ export class DeckPage {
   // not made, a card cleared goes with its children), so ⌘Return on an empty new card never makes another.
   writeNext() {
     const editing = this.editing;
-    if (!/\S/.test(editing.field.value)) { this.finish(); return; }
+    if (!/\S/.test(this.boxText(editing))) { this.finish(); return; }
     if (!editing.fresh) { const at = findCard(this.deck, editing.text, editing.near); if (at >= 0) this.picked = at; }
     this.finish();
     if (!this.editing) this.start();
@@ -654,10 +674,10 @@ export class DeckPage {
     const editing = this.editing;
     if (!editing) return;
     this.editing = null;
-    const written = editing.field.value, to = editing.stacks?.length && /\S/.test(written) ? `${written.trimEnd()}\n\n${editing.stacks.join('\n')}` : written;
+    const to = this.boxText(editing);
     let made = false;
     if (editing.fresh) made = this.act({ kind: 'add', after: editing.after, text: to, depth: editing.depth, near: editing.near });
-    else if (written !== (editing.shown ?? editing.text)) {
+    else if (this.boxChanged(editing)) {
       made = this.act({ kind: 'edit', text: editing.text, to, near: editing.near });
       // Its card changed elsewhere while it was written: what was written goes beside it, over nothing.
       if (!made && findCard(this.deck, editing.text, editing.near) < 0 && /\S/.test(to)) {
@@ -782,8 +802,38 @@ export class DeckPage {
     const card = textCard(asking.text), row = this.node('li', 'deck-card deck-asking');
     row.style.setProperty('--depth', String(asking.depth));
     row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'),
-      formatWords(this.node('div', 'deck-words'), cardStacks(card.words, messageOf).words, { copyFences: true }), asking.form);
+      formatWords(this.node('div', 'deck-words'), cardImages(cardStacks(card.words, messageOf).words).words, { copyFences: true }), asking.form);
     return row;
+  }
+
+  // A card's images, under its words: each one of the page's attachments, drawn by picture() (NotebookPage), or its
+  // name. In a card box each keeps the height it showed at on the card, and has × to take it out of the card.
+  pictures(images, editing = null) {
+    const holder = this.node('div', 'deck-images');
+    for (const image of images) {
+      const figure = this.node('figure', 'deck-image');
+      figure.dataset.line = image.line; figure.dataset.id = image.id;
+      const at = editing?.shownAt?.get(image.line);
+      if (at) figure.style.minHeight = `${at}px`;
+      this.picture(figure, image);
+      if (editing) {
+        const remove = this.node('button', 'deck-image-remove', '×'), words = `Remove the image ${image.name || 'Image'} from this card`;
+        remove.type = 'button'; remove.title = words; remove.setAttribute('aria-label', words);
+        remove.addEventListener('mousedown', event => event.preventDefault());
+        remove.addEventListener('click', event => { event.stopPropagation(); this.unpicture(editing, image); });
+        figure.append(remove);
+      }
+      holder.append(figure);
+    }
+    return holder;
+  }
+  picture(figure, image) { figure.append(this.node('figcaption', 'muted', image.name || 'Image')); }
+  // × on an image in a card box: the image leaves the card; the box keeps the focus.
+  unpicture(editing, image) {
+    if (this.editing !== editing || this.readOnly) return;
+    editing.images = editing.images.filter(line => line !== image.line);
+    this.paint();
+    editing.field.focus({ preventScroll: true });
   }
 
   // A box takes a height of its own only when what is written needs more than it has: scrollHeight counts whole
@@ -803,7 +853,7 @@ export class DeckPage {
     const { shown, parents } = this.layout();
     while (!shown[this.picked] && parents[this.picked] >= 0) this.picked = parents[this.picked];
     const rows = cards.map((card, index) => {
-      const row = this.node('li', 'deck-card'), { words, stacks } = cardStacks(card.words, messageOf);
+      const row = this.node('li', 'deck-card'), { words: all, stacks } = cardStacks(card.words, messageOf), { words, images } = cardImages(all);
       const title = this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled');
       if (groupEnd(cards, index) > index + 1) title.prepend(this.foldButton(index));
       row.dataset.index = String(index);
@@ -811,7 +861,7 @@ export class DeckPage {
       row.style.setProperty('--depth', String(card.depth));
       if (parents[index] >= 0) row.append(this.node('p', 'deck-under muted', cards[parents[index]].title || 'Untitled'));
       const shownWords = formatWords(this.node('div', 'deck-words'), words, { copyFences: true });
-      row.append(title, shownWords, this.bubbles(index, stacks));
+      row.append(title, shownWords, ...(images.length ? [this.pictures(images)] : []), this.bubbles(index, stacks));
       // A click opens the card in its box with the cursor where it fell. ⌘-click and ⇧-click select, never selecting
       // the page's text, and finish a card being written first, so a click and then a ⌘-click select both cards. A
       // link or a button keeps its own click, and words a drag selected stay selected.
@@ -845,10 +895,11 @@ export class DeckPage {
       // box leaves the writing its focus.
       const parent = !editing.fresh && at >= 0 && groupEnd(cards, at) > at + 1;
       holder.classList.toggle('deck-parent', parent);
-      holder.classList.toggle('deck-worded', !editing.fresh && at >= 0 && Boolean(cardStacks(cards[at].words, messageOf).words));
+      holder.classList.toggle('deck-worded', !editing.fresh && at >= 0 && Boolean(cardImages(cardStacks(cards[at].words, messageOf).words).words));
       const chevron = parent ? this.node('span', 'deck-title deck-chevron') : null;
       if (chevron) { chevron.append(this.foldButton(at)); holder.append(chevron); }
       holder.append(editing.field);
+      if (editing.images?.length) holder.append(this.pictures(editing.images.map(line => cardImages(line).images[0]), editing));
       holder.addEventListener('mousedown', event => { if (event.target === holder) event.preventDefault(); });
       if (editing.fresh) rows.splice(at > 0 ? at : editing.after === null ? 0 : rows.length, 0, holder);
       else if (at >= 0) rows.splice(at, 1, holder);
