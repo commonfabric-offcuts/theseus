@@ -2148,6 +2148,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const sideNotebook = p => p.evaluate(`(()=>{const r=document.getElementById('rail'),v=e=>e.checkVisibility();
     return {parts:r.querySelectorAll('#outcome-references, .notebook-create, .reference, .ol-notes').length,
       words:[...r.querySelectorAll('*')].filter(e=>v(e)&&[...e.childNodes].some(n=>n.nodeType===3&&/Outcome Notebook|Rail plan|More pages/.test(n.textContent))).length}})()`);
+  // Every transition and animation on the page that ends has run its course (each one's finished promise); one that
+  // repeats for ever (a light's pulse) never finishes and is left out.
+  const settledMotion = p => p.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().endTime !== Infinity).map(a => a.finished.catch(() => null))).then(() => true)');
   const SIZE_464 = { laptop: SIZES.laptop, 390: SIZES.phone, 375: { width: 375, height: 760, deviceScaleFactor: 2, mobile: true }, 320: { width: 320, height: 700, deviceScaleFactor: 2, mobile: true } };
   const openAt = (name, url, size, theme) => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
     await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
@@ -2185,13 +2188,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
           await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: w - 12, y: h / 2 }] });
           await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
           await until(async () => !(await drawer(p)).open, at + ': the side rail closes');
+          await settledMotion(p);
         }
         if (!await p.evaluate("matchMedia('(min-width: 1181px)').matches")) {
           await (phone ? tap(p, '#things-open') : p.point('#things-open'));
           await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open')"), at + ': the right rail opens');
+          // The sheet slides up from the bottom: a finger aims once it has come to rest.
+          await settledMotion(p);
         }
         if (kind === 'topic') {
           const chip = '#things .things-scope .chip:last-child';
+          await until(() => p.evaluate("!document.querySelector('#things .things-scope').hidden && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'"), at + ': the right rail has read');
           await (phone ? tap(p, chip) : p.point(chip));
           await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')==='true'`), at + ': All of this outcome');
         }
