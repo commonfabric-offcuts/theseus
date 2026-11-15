@@ -365,10 +365,16 @@ export class Shell {
     // tap, a link in the page, back and forward land on the page reached.
     const at = this.doc?.activeElement ?? null;
     const way = { target, popped, landing: !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page', writing: !popped && this.writeTo === routeKey(target) };
+    // The rail lets the focus go now (its tree no longer holds it), so a key
+    // meanwhile rings nothing there, and the phone's drawer, closing, hands it to no button.
+    if (way.landing === 'page' && inRails(at)) at.blur();
     if (!this.build) { this.proceed(way); return true; }
     // The move is under way while the server says which build it serves: what
-    // is asked meanwhile waits for it, as it waits for a run on its way.
+    // is asked meanwhile waits for it, as it waits for a run on its way. The
+    // drawer closes as the move begins, so the page shows meanwhile, and its
+    // notice shows if the page stays (updated).
     this.moving = true;
+    this.drawer?.close();
     this.served().then(build => (build === null || build === this.build ? this.proceed(way) : this.updated(way)));
     return true;
   }
@@ -376,10 +382,6 @@ export class Shell {
   proceed({ target, popped, landing, writing }) {
     if (!popped) this.places.push(routeHref(target));
     this.landing = landing; this.writing = writing;
-    // The rail lets the focus go now (its tree no longer holds it), so a key
-    // meanwhile rings nothing there, and the phone's drawer, closing, hands it to no button.
-    const at = this.doc?.activeElement ?? null;
-    if (landing === 'page' && inRails(at)) at.blur();
     this.move();
   }
   // The server serves another build than this document's: the place loads

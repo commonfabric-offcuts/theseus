@@ -1969,7 +1969,7 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    if (landing === 'page' && inRails(at)) at.blur();\n",
+     "    if (way.landing === 'page' && inRails(at)) at.blur();\n",
      ""
     ]
    ],

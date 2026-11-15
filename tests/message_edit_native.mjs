@@ -1105,7 +1105,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const arrived = (p, id, first) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + id)} && document.body.dataset.ready === 'true'
     && Boolean(document.querySelector(${JSON.stringify(card(first))}))`), `the page shows ${id}`, 15000);
   // The build the page's modules came from (aim_next/web_build.py), and the one the server serves: null for none.
-  const pageBuild = p => p.evaluate(`(s => s ? (/^\/b\/([^/]+)\//.exec(new URL(s.src).pathname) || [])[1] || null : null)(document.querySelector('script[type=module][src]'))`);
+  const pageBuild = p => p.evaluate(`(s => { const [, b, build] = s ? new URL(s.src).pathname.split('/') : []; return b === 'b' && build ? build : null; })(document.querySelector('script[type=module][src]'))`);
   const servedBuild = async () => { const r = await fetch(facts.origin + '/api/build'); return r.ok ? (await r.json()).build : null; };
   // What the page says of a move: the notice where a refused move says why, and the New message sheet's or the Reader's.
   const moveNotice = p => p.evaluate(`['topic-navigation-status', 'inline-notice', 'reader-notice'].map(id => document.getElementById(id)).filter(n => n && !n.hidden).map(n => n.textContent).join(' | ')`);
@@ -1188,6 +1188,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
 
   await check('reading edit build a move on one build stays in place and says nothing; once the server starts on another build the next move loads the place afresh on it, the writing kept, and Edit opens: at 320, 375 and 390 by touch and on a laptop', async () => {
     const next = anotherBuild();
+    let onNext = false;
     try {
       for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
         const { topic, away, ids, there } = await twoTopics(`edit-build-next-${width}`);
@@ -1205,7 +1206,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved to Theseus')`), `${width}: the writing is saved`, 15000);
         if (await p.evaluate(`document.querySelector('#new-message-sheet').open`)) await press(p, device, '#new-message-close');
         await p.evaluate('document.activeElement?.blur()');
-        await restartOn(width % 2 ? next : null);
+        // Each width's page opened on the build the server served; the deploy is to the other one.
+        onNext = !onNext; await restartOn(onNext ? next : null);
         await moveTo(p, device, away);
         await arrived(p, away, there.note);
         const served = await servedBuild();
@@ -1257,13 +1259,14 @@ export async function editChecks({ check, until, view, control, facts, shot = as
 
   await check('reading edit build a move that finds another build while writing here is not yet safe stays, says Theseus updated with Reload, keeps the words, and Reload loads the new build with them: at 320, 375 and 390 by touch and on a laptop, light and dark', async () => {
     const next = anotherBuild();
+    let onNext = false;
     try {
       for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
         const { topic, away, ids, there } = await twoTopics(`edit-build-held-${width}`);
         const p = await open(`edit-build-held-${width}`, device, away, there.note, EDIT_FAULTS);
         await sized(p, device, width);
         await holdJournal(p);
-        await restartOn(width % 2 ? next : null);
+        onNext = !onNext; await restartOn(onNext ? next : null);
         await p.evaluate('(window.sameDocument = true)');
         const read = await holdBuildRead(p);
         await moveTo(p, device, topic);
@@ -1308,6 +1311,20 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
+  // Edit on the person's own message as they reach it: from its bar, or, once a reply heads it into a stack shown as one row
+  // (docs/reply-stacks.md), which has no bar, from the Reader's ⋯ on it.
+  const editReached = async (p, device, id) => {
+    const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
+    if (!row) { await menuOf(p, device, id); await choose(p, device, 'Edit'); return; }
+    await p.evaluate('document.activeElement?.blur()');
+    const head = card(id) + ' > .stack-head > .stack-who';
+    if (!(await lit(p)).includes(id)) await light(p, device, id);
+    if (device === 'laptop') await p.key('Enter'); else await tap(p, head);
+    await until(async () => await readerOn(p) !== null, `${device}: the Reader opens on the head`);
+    await press(p, device, '#reader-menu');
+    await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: the Reader's ⋯ opens`);
+    await choose(p, device, 'Edit');
+  };
   await check('reading edit build going back into Edit after posting a reply while Edit was held, twice, opens on the latest words with no notice; an agent\'s message offers no Edit, and another device holding the edit is said', async () => {
     for (const device of ['laptop', 'phone']) {
       const topic = `edit-again-${device}`;
@@ -1325,7 +1342,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       let latest = posted;
       for (const round of [1, 2]) {
         // Edit, kept open with new words in it.
-        await menuOf(p, device, mine); await choose(p, device, 'Edit');
+        await editReached(p, device, mine);
         await until(() => p.evaluate(`document.querySelector('#reader').dataset.editing === 'true' || !document.querySelector('#reader-notice').hidden`), `${device} ${round}: Edit opens, or the Reader says why not`);
         assert.equal((await editEvidence(p)).notice, '', `${device} ${round}: Edit opens with no notice: ` + JSON.stringify(await editEvidence(p)));
         await editing(p, device, latest);
@@ -1348,7 +1365,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         }
       }
       // Back into Edit after the second reply: the latest words, no notice.
-      await menuOf(p, device, mine); await choose(p, device, 'Edit');
+      await editReached(p, device, mine);
       await until(() => p.evaluate(`document.querySelector('#reader').dataset.editing === 'true' || !document.querySelector('#reader-notice').hidden`), `${device}: Edit opens again, or the Reader says why not`);
       assert.equal((await editEvidence(p)).notice, '', `${device}: Edit opens with no notice: ` + JSON.stringify(await editEvidence(p)));
       await editing(p, device, latest);

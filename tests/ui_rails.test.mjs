@@ -264,8 +264,11 @@ test('a module served under a build names it; the build the server serves is rea
 
 test('a move on this document\'s own build reads the served build first and moves in place; on another it loads the place afresh, with no entry of its own', async () => {
   const same = answerable(), here = shellAt('?topic=t1', { build: 'A', served: same.served });
+  const closed = [];
+  here.shell.drawer = { close: () => closed.push(same.asked.length) };
   assert.equal(here.shell.go({ kind: 'topic', id: 't2' }), true);
   assert.deepEqual([same.asked.length, here.moves.length, here.h.entries], [1, 0, []], 'nothing moves while the read is out');
+  assert.deepEqual(closed, [0], 'the phone\'s drawer closes as the move begins, before the read, so the page shows meanwhile');
   assert.equal(here.shell.between, true, 'the move is under way meanwhile');
   assert.equal(here.shell.go({ kind: 'topic', id: 't3' }), false, 'and is not stacked');
   await same.answer('A');
