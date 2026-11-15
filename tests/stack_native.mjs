@@ -4865,8 +4865,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // The keys: Tab from the dossier reaches each glyph in turn, Shift-Tab comes back, and Return on Reply replies.
         await keyTo(p, ids.root);
         const at = () => p.evaluate(`document.activeElement?.closest?.('.stack-tools')?document.activeElement.dataset.tool:null`);
-        for (let n = 0; n < 4 && await at() !== 'reply'; n++) await p.key('Tab');
-        assert.equal(await at(), 'reply', 'Tab from the dossier reaches its Reply');
+        for (let n = 0; n < 12 && await at() !== 'reply'; n++) await p.key('Tab');
+        assert.equal(await at(), 'reply', 'Tab from the dossier\'s first message, past its bar and chevron, reaches the title bar\'s Reply');
         await until(() => toolsShown(p, ids.root), 'a glyph holding the focus shows the title bar\'s glyphs');
         await p.key('Tab'); assert.equal(await at(), 'aside', 'then Move below More');
         await p.key('Tab'); assert.equal(await at(), 'menu', 'then ⋯');

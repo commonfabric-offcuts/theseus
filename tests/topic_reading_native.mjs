@@ -230,7 +230,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const line = card(ids.plain) + ' > .message-reactions';
       const count = () => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(line)})?.querySelector('.reaction-count');return c?{text:c.textContent,mine:c.classList.contains('mine'),who:getComputedStyle(c.querySelector('.reaction-who')).display!=='none'}:null})()`);
       await light(p, device, ids.plain);
-      assert.deepEqual(await bar(p), { thumb: 'false', reply: null, more: null }, device + ': 👍, Reply and ⋯; no ✅ 🚫 on a message that asks nothing');
+      assert.deepEqual(await bar(p), { thumb: 'false', reply: null, fold: null, more: null }, device + ': 👍, Reply, Fold and ⋯; no ✅ 🚫 on a message that asks nothing, and no Show full message on one shown whole');
       assert.equal(await count(), null, device + ': no count before anyone thumbs it');
       const thumb = async (on, how) => {
         await how();
@@ -290,7 +290,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(await p.evaluate(`[...document.querySelector(${JSON.stringify(card(ids.ask))}).querySelectorAll('[data-react]')].map(e=>[e.dataset.react,e.textContent])`),
         [['yes', '✅ Go ahead'], ['no', "🚫 Don't"]], device + ': the ask offers both answers on its card');
       await light(p, device, ids.ask);
-      assert.deepEqual(await bar(p), { thumb: 'false', yes: 'false', no: 'false', reply: null, more: null }, device + ': and on its bar');
+      assert.deepEqual(await bar(p), { thumb: 'false', yes: 'false', no: 'false', reply: null, fold: null, more: null }, device + ': and on its bar');
       // Laptop: the card's ✅, then the bar's 🚫. Phone: the bar's ✅, then the card's 🚫.
       const first = device === 'phone' ? `${BAR} [data-act=yes]` : `${choices} [data-react=yes]`;
       const second = device === 'phone' ? `${choices} [data-react=no]` : `${BAR} [data-act=no]`;
