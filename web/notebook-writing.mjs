@@ -31,6 +31,9 @@ export class NotebookWriting {
     this.base = null; this.value = null; this.pending = null; this.conflict = null;
     this.error = null; this.readOnly = false; this.running = null; this.timer = null;
     this.active = false; this.closed = false; this.serial = Promise.resolve(); this.localVersion = 0; this.images = [];
+    // described: each attachment as Core last described it this visit, so one taken off the page and put back on it
+    // (Undo after × in a card) is described as before once the revision carrying it is saved.
+    this.described = new Map();
     this.journalPending = 0; this.journalError = null;
     // reading: Core does not let this person write the page (its reader_may_write), so nothing new is written
     // here; writing already kept on this device still goes, and Core answers it.
@@ -151,8 +154,9 @@ export class NotebookWriting {
         if (receipt.result?.item_id !== this.item || receipt.result.revision !== sent.expected.item_revision + 1 ||
             receipt.result.source_ref?.kind !== 'memory' || receipt.result.source_ref.id !== this.item ||
             receipt.result.source_ref.revision !== receipt.result.revision) throw Error('The saved revision does not match this page.');
+        for (const described of this.base.source.attachments) if (described.name) this.described.set(described.id, described);
         const source = { ...this.base.source, ...copy(sent.args), source_ref: copy(receipt.result.source_ref),
-          attachments: sent.args.attachments.map(ref => this.base.source.attachments.find(a => a.id === ref.id) ?? ref) };
+          attachments: sent.args.attachments.map(ref => this.described.get(ref.id) ?? ref) };
         // own: the person's own revision, which Core counts as read by them (notebook-sheet.mjs reads the others).
         this.base = { revision: receipt.result.revision, content: copy(sent.args), source, own: true };
         this.pending = null; this.error = null; this.dirtySince=null;

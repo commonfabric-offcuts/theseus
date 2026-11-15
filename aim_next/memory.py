@@ -140,7 +140,10 @@ class Memory:
             _revision(envelope["expected"], "item_revision", revision)
         current = None if creating else db.execute("SELECT attachments,draft FROM memory_revisions WHERE item_id=? AND revision=?",
                                                    (item_id, revision)).fetchone()
-        retained = [] if creating else [ref["id"] for ref in json.loads(current["attachments"])]
+        # A writer of the page may attach again any image one of its revisions carried, whoever uploaded it (Undo after
+        # × in a card, docs/decks.md "Images in a card"): whoever may read the page reads it at that revision already.
+        retained = [] if creating else [ref["id"] for row in db.execute("SELECT attachments FROM memory_revisions WHERE item_id=?", (item_id,))
+                                        for ref in json.loads(row["attachments"])]
         title, body, attachments, refs, draft = self._memory_content(db, actor, envelope["args"], retained=retained)
         was = bool(current and current["draft"])
         draft = was if draft is None else draft

@@ -160,6 +160,7 @@ export class NotebookPage extends DeckPage {
     const body=this.text.value,seen=this.textSeen;
     this.writing.edit({body},seen,'text');
     this.textSeen={revision:seen.revision,content:{...seen.content,body}};
+    this.keepNamed(body);
   }
   save() {
     if(!this.writing || !this.cardsSeen)return;
@@ -167,6 +168,14 @@ export class NotebookPage extends DeckPage {
     const body=this.previewBody(),seen=this.cardsSeen;
     this.writing.edit({body},seen,'cards',acts);
     this.cardsSeen={revision:seen.revision,content:{...seen.content,body}};
+    this.keepNamed(body);
+  }
+  // A card line naming an image × took off the page this visit, back in the page's words (Undo, or the line written
+  // again), puts the image back on the page (NotebookImages.restore), so no card names an image the page lost.
+  keepNamed(body) {
+    if(!this.images?.released.size)return;
+    for(const id of this.namedImages(body))if(this.images.released.has(id))
+      this.images.restore(id).catch(error=>{this.imageError=error.message;this.writingChanged();});
   }
   open(editing) {
     this.cardImages?.close();this.cardImages?.list?.remove();
@@ -353,12 +362,13 @@ export class NotebookPage extends DeckPage {
       ?(await this.api.media(this.bootstrap.instance_id,{...own.ready,id:own.ready.media_id})).blob
       :(await this.api.media(this.bootstrap.instance_id,attached,w.base.source.source_ref)).blob),img=>caption.before(img));
   }
-  // × on an image in a card box: it leaves the card, and the page, unless another card still shows it.
+  // × on an image in a card box: it leaves the card, and the page, unless another card still shows it; Undo, or its
+  // line written again, puts it back (keepNamed).
   unpicture(editing, image) {
     super.unpicture(editing,image);
     if(this.editing!==editing||this.readOnly)return;
     this.save();
-    if(!this.namedImages(this.previewBody()).has(image.id))this.images.remove(image.id).catch(error=>{this.imageError=error.message;this.writingChanged();});
+    if(!this.namedImages(this.previewBody()).has(image.id))this.images.remove(image.id,{keep:true}).catch(error=>{this.imageError=error.message;this.writingChanged();});
   }
   // The images the page's cards show, by id.
   namedImages(body) {

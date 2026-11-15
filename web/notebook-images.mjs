@@ -10,7 +10,8 @@ const digest = async blob => [...new Uint8Array(await crypto.subtle.digest('SHA-
 // once (item 321, docs/decks.md "Images in a card"); its bytes show from this
 // device until Core has them.
 export class NotebookImages {
-  constructor(writing) { this.writing=writing; this.running=new Map(); this.arriving=new Map(); this.dropped=new Set(); }
+  // released: what this visit took off the page, by media id, so Undo can put it back (restore).
+  constructor(writing) { this.writing=writing; this.running=new Map(); this.arriving=new Map(); this.dropped=new Set(); this.released=new Map(); }
   // Whether the page takes this file, decided at once, before its bytes are read: {media, name}, or a refusal that
   // says what was not added and why.
   admit(file) {
@@ -44,15 +45,45 @@ export class NotebookImages {
     catch(error){entry.error='Device copy unavailable: '+error.message+'. Keep this page open.';w.notify();return entry;}
     this.run(entry); return entry;
   }
-  async remove(id) {
-    const w=this.writing, entry=w.images.find(i=>i.id===id||i.media===id||i.ready?.media_id===id);
+  // keep: × in a card took it off (docs/decks.md, "Images in a card"), so Undo may put it back.
+  async remove(id, {keep=false}={}) {
+    const w=this.writing, entry=w.images.find(i=>i.id===id||i.media===id||i.ready?.media_id===id), arriving=this.arriving.get(id);
     if(w.closed||w.readOnly)return;
     // An image still being read in is not taken in at all.
-    if(this.arriving.has(id))this.dropped.add(id);
-    if(entry){entry.removed=true;entry.bytes=null;}
+    if(arriving)this.dropped.add(id);
     const media=entry?.ready?.media_id??id;
+    // What putting it back needs, for this visit: its entry and bytes, or the file still being read in.
+    if(keep)this.released.set(entry?.media??media,{entry,bytes:entry?.bytes??null,file:arriving?.file??null,name:arriving?.name??null});
+    if(entry){entry.removed=true;entry.bytes=null;}
     w.edit({attachments:w.value.attachments.filter(a=>a.id!==media)},w.capture());
     await w.persist(); w.notify();
+  }
+  // An image this visit took off the page, put back on it: Undo brought back a card line naming it (docs/decks.md,
+  // "Images in a card"). One uploaded is attached again; one still uploading goes on uploading, from its bytes, and
+  // is attached once Core has it; one Core held before this visit is attached again by its id, which Core takes from
+  // a writer of a page that has carried it. An image never taken off this page is left alone.
+  async restore(media) {
+    const w=this.writing, kept=this.released.get(media);
+    if(!kept||w.closed||w.readOnly)return null;
+    this.released.delete(media);
+    const old=kept.entry;
+    if(!old) {
+      // Still being read in, it is taken after all; read in and let go, it is taken again from its file.
+      if(this.arriving.has(media)){this.dropped.delete(media);return null;}
+      if(kept.file)return this.capture(kept.file,{media,name:kept.name});
+      if(!w.value.attachments.some(a=>a.id===media))w.edit({attachments:[...w.value.attachments,{id:media}]},w.capture());
+      await w.persist(); w.notify(); return null;
+    }
+    if(old.ready){old.removed=false;old.associated=false;this.associate(old);w.notify();return old;}
+    // Its bytes go back under an entry of its own, so the device copy holds them again, once any request the removal
+    // stopped has ended; what that request reached carries over.
+    const entry={...old,id:crypto.randomUUID(),bytes:kept.bytes,removed:false,associated:false,error:null};
+    w.images=[...w.images.filter(i=>i!==old),entry]; w.notify();
+    await this.running.get(old.id);
+    Object.assign(entry,{begin:old.begin,publish:old.publish,begun:old.begun,ready:old.ready});
+    if(entry.ready)entry.bytes=null;
+    if(w.closed||w.readOnly||entry.removed)return entry;
+    this.run(entry); return entry;
   }
   run(entry) {
     if(this.running.has(entry.id))return this.running.get(entry.id);

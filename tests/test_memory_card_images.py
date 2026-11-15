@@ -83,3 +83,19 @@ class CardImageCase(ReaderCase):
         self.write(1, "## Plan\n\nShip it Friday.\n![chart.png](attachment:card-image)\n", ["card-image"], actor="agent-a")
         self.assertEqual([item["id"] for item in self.store.view("owner", "memory_current", {"item_id": "cards"})["attachments"]], ["card-image"])
         self.assertEqual(self.image("agent-b", "card-image"), PNG)
+
+    def test_a_writer_attaches_again_an_image_an_earlier_revision_carried_though_another_uploaded_it_and_no_image_the_page_never_carried(self):
+        # agent-a's image goes on the page, the person takes it off with ×, then Undo puts the card line back with it.
+        self.ready("agents-chart", PNG, content_type="image/png", actor="agent-a")
+        line = "![theirs.png](attachment:agents-chart)"
+        self.write(1, f"## Plan\n\nShip it.\n![chart.png](attachment:card-image)\n{line}\n", ["card-image", "agents-chart"], actor="agent-a")
+        self.write(2, "## Plan\n\nShip it.\n![chart.png](attachment:card-image)\n", ["card-image"])
+        self.write(3, f"## Plan\n\nShip it.\n![chart.png](attachment:card-image)\n{line}\n", ["card-image", "agents-chart"])
+        self.assertEqual([item["id"] for item in self.store.view("owner", "memory_current", {"item_id": "cards"})["attachments"]], ["card-image", "agents-chart"])
+        self.assertEqual(self.image("agent-b", "agents-chart"), PNG)
+        # An image someone else uploaded that no revision of this page carried is still refused, the page unchanged.
+        self.ready("never-here", PNG, content_type="image/png", actor="agent-a")
+        receipt = self.command("memory.revise", {"title": "Cards", "body": "## Plan\n\nShip it.\n", "attachments": [{"id": "card-image"}, {"id": "never-here"}],
+                                                 "references": []}, target={"item_id": "cards"}, expected={"item_revision": 4})
+        self.rejected(receipt, "FORBIDDEN")
+        self.assertEqual(self.store.view("owner", "memory_current", {"item_id": "cards"})["source_ref"]["revision"], 4)

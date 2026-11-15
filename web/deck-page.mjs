@@ -1,4 +1,4 @@
-import { applyAct, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
+import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
@@ -541,17 +541,8 @@ export class DeckPage {
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null)), shown = cardImages(words);
     return { words: shown.words, stacks, images: shown.images.map(image => image.line) };
   }
-  // What a card box makes of the card: what is written, then the lines naming its images and its stacks under it. A
-  // new card holding only images is named for the first of them, so it is made with them; a card cleared of all its
-  // text is still removed, with its images.
-  boxText(editing) {
-    const written = editing.field.value, images = editing.images ?? [], kept = [...images, ...(editing.stacks ?? [])];
-    if (!kept.length) return written;
-    if (/\S/.test(written)) return `${written.trimEnd()}\n\n${kept.join('\n')}`;
-    if (!editing.fresh || !images.length) return written;
-    const [first] = cardImages(images[0]).images;
-    return `${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'Image'}\n\n${kept.join('\n')}`;
-  }
+  // What a card box makes of the card (boxText in deck.mjs).
+  boxText(editing) { return boxText({ written: editing.field.value, images: editing.images, stacks: editing.stacks, fresh: editing.fresh }); }
   // Whether a card box changes its card: its words, or the images kept with it.
   boxChanged(editing) { return editing.field.value !== (editing.shown ?? editing.text) || (editing.images ?? []).join('\n') !== (editing.kept ?? ''); }
   // A card box left open when the page was let go (another page opened, a move, a reload), opened again: on the

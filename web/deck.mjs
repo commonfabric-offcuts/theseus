@@ -81,6 +81,18 @@ export function imageLine(name, id) {
   return `![${name.replace(/[ \t]*[[\]\\\r\n]+[ \t]*/g, ' ').trim() || 'Image'}](attachment:${id})`;
 }
 
+// What a card box makes of its card: what is written, then the lines naming its images and its stacks under it. A
+// new card holding only images is named for the first of them, so it is made with them; a card cleared of all its
+// text is still removed, its images with it, and a new card with nothing in it is never made.
+export function boxText({ written, images = [], stacks = [], fresh = false }) {
+  const kept = [...images, ...stacks];
+  if (!kept.length) return written;
+  if (/\S/.test(written)) return `${written.trimEnd()}\n\n${kept.join('\n')}`;
+  if (!fresh || !images.length) return written;
+  const [first] = cardImages(images[0]).images;
+  return `${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim() || 'Image'}\n\n${kept.join('\n')}`;
+}
+
 // A card from the text a person wrote: the first line that is not blank is
 // its title, any heading marks on it dropped; the rest are its words.
 export function textCard(text) {

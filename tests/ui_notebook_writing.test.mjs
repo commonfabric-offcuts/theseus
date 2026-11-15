@@ -246,3 +246,12 @@ test('a save answered by a newer revision reads whether the person may still wri
   await c.flush();
   assert.equal(c.conflict.content.title,'Renamed elsewhere','the newer revision was read'); assert.equal(c.reading,true);
 });
+
+test('an attachment taken off the page and put back on it is described as Core described it, once the revision carrying it is saved', async t => {
+  const f = fixture(t), c = await f.make();
+  c.edit({attachments:[]},c.capture()); await c.flush();
+  assert.deepEqual(c.base.source.attachments, []);
+  c.edit({attachments:[{id:'image1'},{id:'image2'}]},c.capture()); await c.flush();
+  assert.deepEqual(c.base.source.attachments, [{id:'image1',name:'First image'},{id:'image2'}], 'one Core never described stays as written');
+  assert.equal(f.source().source_ref.revision, 3);
+});

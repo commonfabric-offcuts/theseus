@@ -187,6 +187,15 @@ before it loads, or when the page holds no such image ("· not on this page").
 An image smaller than a thumbnail shows at a thumbnail's size. The page's list of
 images under the head leaves an image a card shows to the card, unless it needs
 Retry. × takes the image off the page too, unless another card still shows it.
+Undo, bringing back the card's line, puts the image back on the page (and so
+does writing its line again while the page is open), so a card never names an
+image the page lost: one uploaded is attached again, one still uploading when ×
+was pressed goes on uploading from its bytes and is attached once Core has it,
+and one someone else added is attached again by its id, which Core takes from a
+writer of the page because one of its revisions carried it
+(`NotebookImages.restore`). Core still refuses an image someone else uploaded
+that no revision of the page carried. An image taken off with Remove in the
+page's list of images is not put back.
 
 An image already on the page is read through the page as it stands
 (`/api/media/read` with the page's `source_ref`), so only someone who may read
@@ -194,13 +203,17 @@ the page sees it; someone Core does not let write the page sees the images and
 no ×. In the Text view the line is words like any other, and an image pasted
 there is attached to the page without a line, as before.
 
-The rules for the line are `cardImages` and `imageLine` in `web/deck.mjs`,
-checked by `tests/ui_card_images.test.mjs`, with the page's limits; reading
-through the page, `tests/test_memory_card_images.py`; in the browser,
+The rules for the line are `cardImages`, `imageLine` and `boxText` in
+`web/deck.mjs`, checked by `tests/ui_card_images.test.mjs`, with the page's
+limits and putting an image back; reading through the page and attaching an
+image again, `tests/test_memory_card_images.py`; in the browser,
 `tests/notebook_card_images_native.mjs` in the `notebook` and
 `webkit-notebook` modes: a paste and a drop while the card is written, a
-reload, ×, the refusals and a large image within the limit, and each state of a
-card's image at 320, 375, 390 and a laptop, light and dark.
+reload, ×, Undo after ×, × on an image two cards show, a new card holding only
+an image, the refusals and a large image within the limit, and each state of a
+card's image at 320, 375, 390 and a laptop, light and dark; an image picked
+with `#img` into a card, `tests/notebook_pages_native.mjs` ("notebook images
+paste and img picker").
 
 ## Saving
 

@@ -133,6 +133,136 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // The cards' Undo, pressed as a person presses it.
+  const undo = async (p, root) => {
+    assert.equal(await p.evaluate(`(()=>{const b=[...document.querySelectorAll(${JSON.stringify(root + ' .deck-bar button')})].find(b=>b.textContent==='Undo');if(b)b.dataset.undoPress='';return Boolean(b);})()`), true, 'the cards\' Undo shows');
+    await p.point(`${root} .deck-bar [data-undo-press]`);
+  };
+
+  // × takes an image off the page, and Undo, bringing back the card's line, puts it back, so a card never names an
+  // image the page lost: one uploaded, one still uploading when × is pressed, and one someone else added, which Core
+  // takes back from a writer of a page that carried it.
+  await check('notebook card images Undo after × puts the image back on the page and in its card: one uploaded, one still uploading, and one someone else added', async () => {
+    const id = 'nb-card-undo', ROOT = '#deck-page', BOX = `${ROOT} .deck-writing textarea`, WRITING = `${ROOT} .deck-writing`, card = `${ROOT} .deck-card[data-index="0"]`;
+    assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Card undo', body: '## Plan\n\nShip it.\n\n## Notes\n\nKeep these.\n' })).status, 'committed');
+    const p = await page(id, null, true, { url: `${facts.origin}/?cards=${id}`, beforeNavigate: q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: HOLD }) });
+    await until(() => p.evaluate(`document.body.dataset.ready==='true' && document.querySelectorAll('${ROOT} .deck-card').length===2`), 'the cards show');
+    const open = async () => {
+      await p.point(`${card} .deck-words`);
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(BOX)})`), 'the card opens to write');
+    };
+    const named = page => lines(page.body).map(line => line.name);
+    // Uploaded: ×, then Undo.
+    await open();
+    assert.equal(await paste(p, BOX, [{ name: 'chart.png', type: 'image/png', base64: png }]), true);
+    const chart = (await holds(id, page => page.attachments.length === 1 && lines(page.body).length === 1, 'the image goes to the page and the card names it')).attachments[0].id;
+    await p.key('Escape');
+    await until(async () => (await figures(p, card)).some(f => f.shown), 'the card shows its image');
+    await open();
+    await p.point(`${WRITING} .deck-image-remove`);
+    await holds(id, page => page.attachments.length === 0 && lines(page.body).length === 0, '× takes the image out of the card and off the page');
+    await p.key('Escape');
+    await undo(p, ROOT);
+    const back = await holds(id, page => lines(page.body).length === 1 && page.attachments.length === 1, 'Undo puts the line back and the image back on the page');
+    assert.deepEqual([lines(back.body)[0].id, back.attachments[0].id, back.attachments[0].name], [chart, chart, 'chart.png']);
+    await until(async () => { const shown = await figures(p, card); return shown.length === 1 && shown[0].shown && shown[0].name === 'chart.png'; }, 'the card shows its image again, from the page');
+    // Still uploading when × is pressed: Undo puts it back, and it goes to the page once its upload ends.
+    await p.evaluate('globalThis.cardUploadHeld=true');
+    await open();
+    assert.equal(await paste(p, BOX, [{ name: 'held.png', type: 'image/png', base64: png }]), true);
+    await until(() => p.evaluate('Boolean(globalThis.releaseCardUpload)'), 'its upload is held at the transport');
+    await p.key('Escape');
+    await holds(id, page => named(page).join() === 'chart.png,held.png', 'the card names the image still uploading');
+    await open();
+    assert.deepEqual((await figures(p, WRITING)).map(f => f.name), ['chart.png', 'held.png · Uploading…']);
+    await p.point(`${WRITING} .deck-image:nth-of-type(2) .deck-image-remove`);
+    await p.key('Escape');
+    await holds(id, page => named(page).join() === 'chart.png', '× takes the image still uploading out of the card');
+    await undo(p, ROOT);
+    await holds(id, page => named(page).join() === 'chart.png,held.png', 'Undo puts its line back');
+    await until(async () => (await figures(p, card)).some(f => f.name === 'held.png · Uploading…' && f.shown), 'the card shows it uploading again, from this device');
+    await p.evaluate('(globalThis.cardUploadHeld=false,globalThis.releaseCardUpload())');
+    const both = await holds(id, page => page.attachments.length === 2, 'its upload ends and it goes to the page');
+    assert.deepEqual(lines(both.body).map(line => line.id), both.attachments.map(a => a.id), 'the page carries each image a card names, in order');
+    await until(async () => { const shown = await figures(p, card); return shown.length === 2 && shown.every(f => f.shown && !f.name.includes('·')); }, 'the card shows both, uploaded');
+    assert.deepEqual(p.errors, []); await p.close();
+    // Someone else's: an agent's image on a page the person writes.
+    const theirs = 'nb-card-undo-theirs', media = `${theirs}-media-0`, SHEET = '#new-message-sheet .notebook-sheet-page:not([hidden])', SBOX = `${SHEET} .deck-writing textarea`;
+    assert.equal((await control({ method: 'agent_page', operation_id: theirs, item_id: theirs, topic_id: 't1', title: 'Their image',
+      body: `## Theirs\n\nA chart.\n![their-chart.png](attachment:${media})\n`, attachments: [{ name: 'their-chart.png', image: 'screen.png' }] })).status, 'committed');
+    const q = await page(theirs, null, true, { url: `${facts.origin}/?topic=t1&page=${theirs}` });
+    await until(() => q.evaluate(`document.querySelector('#new-message-sheet').open && document.querySelectorAll(${JSON.stringify(SHEET + ' .deck-card')}).length===1`), 'the page opens in the composer');
+    const theirCard = `${SHEET} .deck-card[data-index="0"]`;
+    await until(async () => (await figures(q, theirCard)).some(f => f.shown), 'the card shows their image');
+    await q.point(`${theirCard} .deck-words`);
+    await until(() => q.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(SBOX)})`), 'the card opens to write');
+    await q.point(`${SHEET} .deck-writing .deck-image-remove`);
+    await q.key('Escape');
+    await holds(theirs, page => page.attachments.length === 0 && lines(page.body).length === 0, '× takes their image out of the card and off the page');
+    await undo(q, SHEET);
+    const again = await holds(theirs, page => lines(page.body).length === 1 && page.attachments.length === 1, 'Undo puts their image back on the page');
+    assert.deepEqual([lines(again.body)[0].id, again.attachments[0].id], [media, media]);
+    await until(async () => { const shown = await figures(q, theirCard); return shown.length === 1 && shown[0].shown && shown[0].name === 'their-chart.png'; }, 'the card shows their image again');
+    assert.deepEqual(q.errors, []); await q.close();
+  });
+
+  // × keeps an image on the page while another card still shows it (a line copied in the Text view), and takes it off
+  // once no card does.
+  await check('notebook card images × keeps an image on the page while another card shows it, and takes it off with the last', async () => {
+    const id = 'nb-card-shared', media = `${id}-media-0`, line = `![screen.png](attachment:${media})`;
+    assert.equal((await control({ method: 'agent_page', operation_id: id, item_id: id, topic_id: 't1', title: 'Shared image',
+      body: `## A\n\nOne.\n${line}\n\n## B\n\nTwo.\n${line}\n`, attachments: [{ name: 'screen.png', image: 'screen.png' }] })).status, 'committed');
+    const SHEET = '#new-message-sheet .notebook-sheet-page:not([hidden])', SBOX = `${SHEET} .deck-writing textarea`;
+    const p = await page(id, null, true, { url: `${facts.origin}/?topic=t1&page=${id}` });
+    await until(() => p.evaluate(`document.querySelector('#new-message-sheet').open && document.querySelectorAll(${JSON.stringify(SHEET + ' .deck-card')}).length===2`), 'the page opens in the composer');
+    const open = async index => {
+      await p.point(`${SHEET} .deck-card[data-index="${index}"] .deck-words`);
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(SBOX)})`), 'the card opens to write');
+    };
+    await open(0);
+    await p.point(`${SHEET} .deck-writing .deck-image-remove`);
+    await p.key('Escape');
+    // The next act writes after every act before it, so what the page carries then is what × left.
+    await open(1);
+    await p.key('e', 2); await p.send('Input.insertText', { text: ' More.' }); await p.key('Escape');
+    const kept = await holds(id, page => page.body.includes('Two. More.'), 'the next card\'s words are saved');
+    assert.deepEqual([lines(kept.body).length, kept.attachments.map(a => a.id)], [1, [media]], 'card A no longer names it, and the page keeps the image card B shows');
+    await until(async () => { const shown = await figures(p, `${SHEET} .deck-card[data-index="1"]`); return shown.length === 1 && shown[0].shown && shown[0].name === 'screen.png'; }, 'card B still shows it, from the page');
+    // × in the last card that shows it takes it off the page.
+    await open(1);
+    await p.point(`${SHEET} .deck-writing .deck-image-remove`);
+    await p.key('Escape');
+    await holds(id, page => lines(page.body).length === 0 && page.attachments.length === 0, '× in the last card that shows it takes it off the page');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A new card holding only images is made, named for the first; a new card with nothing in it is not.
+  await check('notebook card images an image pasted into a new card with no words makes a card named for it, and an empty new card makes none', async () => {
+    const id = 'nb-card-fresh', ROOT = '#deck-page', BOX = `${ROOT} .deck-writing textarea`, WRITING = `${ROOT} .deck-writing`;
+    assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Fresh', body: '## Plan\n\nShip it.\n' })).status, 'committed');
+    const p = await page(id, null, true, { url: `${facts.origin}/?cards=${id}` });
+    await until(() => p.evaluate(`document.body.dataset.ready==='true' && document.querySelectorAll('${ROOT} .deck-card').length===1`), 'the card shows');
+    const fresh = async () => {
+      assert.equal(await p.evaluate(`(()=>{const b=[...document.querySelectorAll('${ROOT} .deck-bar button')].find(b=>b.textContent==='New card');if(b)b.dataset.newPress='';return Boolean(b);})()`), true, 'New card shows');
+      await p.point(`${ROOT} .deck-bar [data-new-press]`);
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(BOX)}) && document.activeElement.value===''`), 'a new card opens, empty, to write');
+    };
+    // Nothing in it: Escape makes no card.
+    await fresh();
+    await p.key('Escape');
+    await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(WRITING)}) && document.querySelectorAll('${ROOT} .deck-card').length===1`), 'the empty new card goes, making none');
+    // Only an image: made, named for it.
+    await fresh();
+    assert.equal(await paste(p, BOX, [{ name: 'diagram.png', type: 'image/png', base64: png }]), true);
+    await until(async () => (await figures(p, WRITING)).some(f => f.shown), 'the image shows under the new box');
+    await p.key('Escape');
+    const made = await holds(id, page => page.attachments.length === 1 && /\n## diagram\n/.test(page.body), 'the new card is made with its image, named for it');
+    assert.equal(made.body, `## Plan\n\nShip it.\n\n## diagram\n\n![diagram.png](attachment:${made.attachments[0].id})\n`);
+    await until(async () => (await figures(p, `${ROOT} .deck-card[data-index="1"]`)).some(f => f.shown), 'the new card shows its image');
+    assert.equal(await p.evaluate(`document.querySelector('${ROOT} .deck-card[data-index="1"] .deck-title').textContent`), 'diagram');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('notebook card images a file that is not an image, and an image past the limit, are refused with a line saying what was not added and why; a large image within the limit goes', async () => {
     const id = 'nb-card-refusals', ROOT = '#deck-page', BOX = `${ROOT} .deck-writing textarea`, WRITING = `${ROOT} .deck-writing`, SIGN = `${ROOT} .deck-status`;
     assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Refusals', body: '## Plan\n\nShip it.\n' })).status, 'committed');

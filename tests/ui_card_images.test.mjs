@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAct, cardImages, cardStacks, cardText, deckBody, imageLine, parseDeck } from '../web/deck.mjs';
+import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, imageLine, parseDeck } from '../web/deck.mjs';
 import { NotebookImages } from '../web/notebook-images.mjs';
 
 // Images in a Notebook card (item 321, docs/decks.md "Images in a card"): a line of a card's words that holds only
@@ -117,4 +117,85 @@ test('an image taken in keeps the media id it was named by, so the card that nam
   // × takes it off the page.
   await images.remove(admitted.media);
   assert.deepEqual(w.value.attachments, []); assert.equal(images.held(admitted.media), null);
+});
+
+test('a card box writes its images under its words; a new card holding only images is made, named for the first, and nothing else empty is', () => {
+  const chart = '![chart.png](attachment:m-1)', photo = '![photo.jpg](attachment:m-2)', stack = '[Reply stack](https://here.example/?topic=t&message=m9)';
+  assert.equal(boxText({ written: 'Plan\nShip it.\n\n', images: [chart, photo], stacks: [stack] }), `Plan\nShip it.\n\n${chart}\n${photo}\n${stack}`);
+  assert.equal(boxText({ written: 'Plan', fresh: true }), 'Plan');
+  // A new card with no words: made with its images, named for the first of them.
+  assert.equal(boxText({ written: '', images: [chart, photo], fresh: true }), `chart\n\n${chart}\n${photo}`);
+  assert.equal(boxText({ written: ' \n', images: ['![.png](attachment:m-3)'], fresh: true }), 'Image\n\n![.png](attachment:m-3)');
+  assert.deepEqual(parseDeck(`## A\n\nwords\n\n## ${boxText({ written: '', images: [chart], fresh: true })}`).cards.map(card => [card.title, cardImages(card.words).images.map(image => image.id)]),
+    [['A', []], ['chart', ['m-1']]]);
+  // A card cleared of its text is removed, its images with it; a new card with nothing in it, or only a stack, is never made.
+  assert.equal(boxText({ written: '  ', images: [chart], stacks: [stack] }), '  ');
+  assert.equal(boxText({ written: '', fresh: true }), '');
+  assert.equal(boxText({ written: '', stacks: [stack], fresh: true }), '');
+});
+
+// A page whose uploads answer as Core does.
+function uploading(w) {
+  const sent = [];
+  w.api.command = async e => { sent.push(e); return { instance_id: 'i1', operation_id: e.operation_id, kind: e.kind, status: 'committed', recorded: true, result: { media_id: e.target.media_id, media_revision: 1, state: 'pending' } }; };
+  w.api.upload = async e => { sent.push(e); const a = sent.find(s => s.kind === 'media.begin' && s.target.media_id === e.target.media_id).args; return { instance_id: 'i1', operation_id: e.operation_id, kind: e.kind, status: 'committed', recorded: true, result: { media_id: e.target.media_id, media_revision: 2, state: 'ready', name: a.name, content_type: a.content_type, size_bytes: a.size_bytes, sha256: a.sha256, inline: true } }; };
+  return sent;
+}
+
+test('an image × took off the page goes back on it when Undo brings back its line: uploaded, still uploading, still read in, or only in Core', async () => {
+  // Uploaded this visit: attached again, once, with no second upload.
+  let w = page(), images = new NotebookImages(w), sent = uploading(w);
+  const chart = images.admit(file('chart.png', 'image/png', 3)), entry = await images.capture(file('chart.png', 'image/png', 3), chart);
+  await images.running.get(entry.id);
+  await images.remove(chart.media, { keep: true });
+  assert.deepEqual(w.value.attachments, []);
+  assert.equal(await images.restore(chart.media), entry);
+  assert.deepEqual(w.value.attachments, [{ id: chart.media }]); assert.equal(images.held(chart.media), entry);
+  assert.equal(sent.length, 2, 'nothing uploads again');
+  assert.equal(await images.restore(chart.media), null, 'put back once');
+  assert.deepEqual(w.value.attachments, [{ id: chart.media }]);
+
+  // Still uploading when × was pressed: its upload goes on from its bytes, under an entry of its own, and it is attached.
+  w = page(); images = new NotebookImages(w); sent = uploading(w);
+  let release, started; const publish = w.api.upload, reached = new Promise(done => { started = done; });
+  w.api.upload = (e, blob) => new Promise(done => { release = () => done(publish(e, blob)); started(); });
+  const photo = images.admit(file('photo.png', 'image/png', 3)), held = await images.capture(file('photo.png', 'image/png', 3), photo);
+  await reached;
+  await images.remove(photo.media, { keep: true });
+  assert.equal(held.removed, true); assert.equal(held.bytes, null);
+  const back = images.restore(photo.media);
+  assert.equal(images.held(photo.media).bytes.byteLength, 3, 'held again from its bytes while it uploads');
+  release(); const again = await back; await images.running.get(again.id);
+  assert.notEqual(again.id, held.id); assert.deepEqual(w.images, [again]);
+  assert.deepEqual(w.value.attachments, [{ id: photo.media }]); assert.equal(again.ready.media_id, photo.media);
+  assert.deepEqual(sent.map(e => e.kind), ['media.begin', 'media.publish'], 'one begin, one publish: the upload goes on as it was');
+
+  // Still being read in: taken after all. Read in and dropped: taken again from its file.
+  w = page(); images = new NotebookImages(w); uploading(w);
+  let read; const slow = { name: 'slow.png', type: 'image/png', size: 3, arrayBuffer: () => new Promise(done => { read = done; }) };
+  const reading = images.capture(slow, images.admit(slow)), [arriving] = images.arriving.keys();
+  await images.remove(arriving, { keep: true }); await images.restore(arriving);
+  read(new ArrayBuffer(3)); const taken = await reading; await images.running.get(taken.id);
+  assert.deepEqual(w.value.attachments, [{ id: arriving }]);
+  const late = { name: 'late.png', type: 'image/png', size: 3, arrayBuffer: async () => new ArrayBuffer(3) }, admitted = images.admit(late);
+  const dropped = images.capture(late, admitted); await images.remove(admitted.media, { keep: true });
+  assert.equal(await dropped, null);
+  const retaken = await images.restore(admitted.media); await images.running.get(retaken.id);
+  assert.equal(retaken.media, admitted.media); assert.deepEqual(w.value.attachments.map(a => a.id), [arriving, admitted.media]);
+
+  // Only in Core, someone else's: attached again by its id.
+  w = page({ attachments: [{ id: 'theirs', name: 'theirs.png', size_bytes: 3 }] }); images = new NotebookImages(w);
+  await images.remove('theirs', { keep: true });
+  assert.deepEqual(w.value.attachments, []);
+  await images.restore('theirs');
+  assert.deepEqual(w.value.attachments, [{ id: 'theirs' }]);
+});
+
+test('an image is put back only when × took it off: never one removed from the page\'s list, or one this page never held', async () => {
+  const w = page({ attachments: [{ id: 'listed', name: 'listed.png', size_bytes: 3 }, { id: 'kept', name: 'kept.png', size_bytes: 3 }] }), images = new NotebookImages(w);
+  await images.remove('listed');
+  assert.equal(await images.restore('listed'), null);
+  assert.equal(await images.restore('elsewhere'), null);
+  assert.deepEqual(w.value.attachments, [{ id: 'kept' }]);
+  assert.equal(images.released.size, 0);
 });

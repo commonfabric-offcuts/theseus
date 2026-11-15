@@ -124,6 +124,12 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await until(async()=>(await current()).attachments.length===2,'picked image is copied, published and saved to the same page');
     assert.equal((await current()).body.includes('#imgnotebook-chart'),false,'the picker token is removed from the actual saved body');
     assert.ok((await current()).body.includes('Writing.'),'picking an image preserves the surrounding words');
+    // Picked while a card is written, the image goes into that card (decks.md, "Images in a card"); pasted in Text, it
+    // is attached to the page with no line, as before.
+    const [pasted,picked]=(await current()).attachments;
+    await until(async()=>(await current()).body.includes(`![notebook-chart.png](attachment:${picked.id})`),'the card names the image picked into it');
+    assert.equal((await current()).body,`## First\n\nWriting.\n\n![notebook-chart.png](attachment:${picked.id})\n`);
+    assert.equal(pasted.name,'notebook-paste.png');
     await p.point('.notebook-views button:first-child');
     await shot(p,'notebook-writing-images');
     assert.deepEqual(p.errors,[]);await p.close();
