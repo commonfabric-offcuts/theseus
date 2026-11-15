@@ -141,7 +141,7 @@ content needs: a title line is about a sentence wide, and a few sentences about
   (the audit's own negative control), then the rule on each surface: "forms the
   Outcomes page and its New outcome line keep to the rule", "forms an outcome
   page, its New topic line, its purpose and its team keep to the rule", "forms
-  a topic page, its People row and its composer keep to the rule", "forms the
+  a topic page, its Team and its composer keep to the rule", "forms the
   Reader on a message, on a Notebook page, its note and its Start a topic line
   keep to the rule", "forms a resumed opening and a resumed outcome form keep to
   the rule".

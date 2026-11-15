@@ -168,8 +168,11 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .topic-header .topic-subtitle{margin-top:.3rem;font-size:.95rem;overflow-wrap:anywhere}.topic-subtitle .topic-state{margin-right:.25rem;vertical-align:.08em}
 /* ✅ Done beside a state Ready for review: a pill the size of a tap, outlined in the accent as that state is; once pressed the subtitle says Done and holds the focus. */
 .topic-subtitle .mark-done{display:inline-flex;align-items:center;gap:.3rem;min-height:2.75rem;margin:0 .35rem 0 0;padding:.2rem .85rem;border:1px solid var(--accent);border-radius:1.4rem;background:var(--panel);color:var(--ink);font-size:.875rem;font-weight:600;line-height:1.2;vertical-align:middle}.topic-subtitle .mark-done:hover{background:var(--soft)}.topic-subtitle:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
-/* The people, at the very bottom after the messages: one pill each, filled with the person's colour; the reader's own is black, as their messages are. */
-.topic-people{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--line)}.topic-people h2{font-size:.8rem;font-weight:600;color:var(--muted)}.topic-people .participants{flex:1 1 auto;margin:0;align-items:center}
+/* The people, the topic's Team in its header: one pill each, filled with the person's colour; the reader's own is black, as their messages are. */
+/* The topic's Team (item 465): on the title row's right, under the title, its pills and "+ Add" flush right, beside the subtitle; on a phone, under the subtitle. */
+.topic-header>div{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:1.25rem}.topic-header>div>*{grid-column:1/-1}.topic-header>div>.topic-subtitle{grid-column:1}
+.topic-people{grid-column:2!important;grid-row:3;align-self:start;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.4rem .6rem;max-width:28rem;margin-top:.3rem}.topic-people h2{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.topic-people .participants{flex:0 1 auto;margin:0;align-items:center;justify-content:flex-end}
+@media(max-width:760px){.topic-people{grid-column:1/-1!important;grid-row:auto;justify-content:flex-start;max-width:none;margin-top:.6rem}.topic-people .participants{justify-content:flex-start}}
 .person-pill{display:inline-flex;align-items:center;min-height:2rem;border-radius:1rem;background:var(--agent-tag,#eff0f0);color:var(--ink);font-size:.82rem;font-weight:600;line-height:1}
 .person-pill .pill-name{display:inline-flex;align-items:center;min-height:2rem;padding:0 .8rem;border:0;border-radius:0;background:transparent;color:inherit;font:inherit}
 .person-pill button.pill-name:hover{background:transparent;text-decoration:underline}
@@ -300,7 +303,7 @@ textarea.whispering,textarea.whispering:focus{border:1px dashed var(--whisper-li
    stack draws nothing of its own here: its boxes give way, so each card it shows lays out as a card on its own does,
    whatever else of its stack shows. */
 #messages.only-new :is(.reply-stack,.stack-replies){display:contents}
-#messages.only-new>:not([data-item=new],.reply-stack),#messages.only-new>.reply-stack>:not([data-item=new],.stack-replies),
+#messages.only-new>:not([data-item=new],.reply-stack,.composer-home),#messages.only-new>.reply-stack>:not([data-item=new],.stack-replies),
 #messages.only-new>.reply-stack>.stack-replies>:not([data-item=new]){display:none}
 /* Two fingers swiped across the trackpad over the messages fold or unfold one (web/stack-feed.mjs), so with the pointer
    there a sideways overscroll goes back or forward no page. Only the page's own scroller can say so, so it sits on the root. */
@@ -851,6 +854,9 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .reader-title-row{display:flex;align-items:center;gap:.15rem;min-width:0}.reader-title-row h2{min-width:0}
 #reader-star{flex:none;min-width:2.5rem;min-height:2.5rem;margin:-.5rem 0;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.15rem;line-height:1;color:var(--muted)}
 #reader-star:hover{background:var(--soft);color:var(--ink)}#reader-star[aria-pressed=true]{color:var(--accent)}
+/* The archive button beside the star (item 378): its glyph and the count of the stack's messages that move below More with it. */
+#reader-aside{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:.2rem;min-width:2.5rem;min-height:2.5rem;margin:-.5rem 0;padding:0 .35rem;border-color:transparent;background:transparent;font-size:.8rem;font-weight:600;line-height:1;color:var(--muted)}
+#reader-aside svg{flex:none}#reader-aside:hover{background:var(--soft);color:var(--ink)}#reader-aside[aria-pressed=true]{color:var(--accent)}
 /* ↑ Previous · ↓ Next at the end of the message, on a phone only. */
 .reader-end{display:none}
 /* The ⋯ as a sheet from the bottom, on a phone. */
@@ -888,14 +894,14 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   .plus-button,.composer>#thumb-source{width:2.75rem;height:2.75rem}
   .composer[data-compose=line] textarea{height:2.75rem}
   #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.75rem,auto)}
-  .reader-header>button,#reader-stepping>button,#reader-star{min-width:2.75rem;min-height:2.75rem}
+  .reader-header>button,#reader-stepping>button,#reader-star,#reader-aside{min-width:2.75rem;min-height:2.75rem}
   .taller-field{width:2.75rem;height:2.75rem;top:0}
   .image-strip{padding:1rem 1rem 0 0}
   .image-choice>button[data-method=remove]{width:2.75rem;height:2.75rem;top:-1rem;right:-1rem;background:transparent;border:0}
   .image-choice>button[data-method=remove]::before{display:grid;place-items:center;width:1.5rem;height:1.5rem;border-radius:50%;border:1px solid var(--line);background:var(--panel)}
   .quote-pill{min-height:2.75rem}
 }
-/* The topic's new message: a quiet mark beside the title opens the composer on its own; at the page's end it is the same composer, one line until written in. */
+/* The topic's new message: a quiet mark beside the title opens the composer on its own; at rest, in the feed just above More, it is the same composer, one line until written in. */
 .new-message{flex:0 0 auto;display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;padding:0;color:var(--muted);border-color:transparent;background:transparent}
 .new-message:hover{color:var(--ink);background:var(--soft)}
 main:has(#inline-composer[hidden]) #new-message{display:none}

@@ -3186,7 +3186,7 @@
   },
   {
    "item": 283,
-   "act": "A commit while a button below the stacks is held down does not swallow the press",
+   "act": "A commit while a Team pill's remove button is held down does not swallow the press",
    "break": [
     [
      "web/press-hold.mjs",
@@ -3196,7 +3196,7 @@
    ],
    "check": {
     "native": "header",
-    "case": "header the people are one filled pill each after the last message"
+    "case": "header the Team is one filled pill each"
    }
   },
   {
@@ -8419,8 +8419,8 @@
    "break": [
     [
      "web/app.mjs",
-     "redrawn: () => paintReaderStar() });",
-     "redrawn: () => {} });"
+     "redrawn: () => { paintReaderStar(); paintReaderAside(); },",
+     "redrawn: () => { paintReaderAside(); },"
     ]
    ],
    "check": {
@@ -13803,6 +13803,129 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 378,
+   "act": "The Reader's archive button moves the message's whole dossier below More and brings it back, the same act as the ⋯ item",
+   "break": [
+    [
+     "web/app.mjs",
+     "$('reader-aside').onclick = () => asideFromReader();",
+     "$('reader-aside').onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's archive button"
+   }
+  },
+  {
+   "item": 378,
+   "act": "The Reader's archive button is labelled with the count of the stack's messages that move below More with it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "count: 1 + stack.replies.length",
+     "count: 1"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's archive button"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The closed New message composer rests between the last dossier above More and the More line",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (resting) top.push(home);",
+     "if (resting) top.unshift(home);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The popped New message composer is never moved while it is up, so it stays modal and the writing keeps its cursor",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const resting = home && !home.open;",
+     "const resting = Boolean(home);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the New message composer rests"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The composer resting among the messages keeps its own arrow keys, as at the page's end",
+   "break": [
+    [
+     "web/panes.mjs",
+     "?.contains(at) && !at.closest('.composer-home'));",
+     "?.contains(at));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the New message composer rests"
+   }
+  },
+  {
+   "item": 465,
+   "act": "A New line for a message further back is still drawn with the composer under the messages, and sits above it",
+   "break": [
+    [
+     "web/unanswered.mjs",
+     "const oldest = cards.filter(child => child.dataset?.seq).at(-1);",
+     "const oldest = cards.at(-1);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unanswered.test.mjs"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The Team sits on the title row's right, under the title, right of the subtitle on a laptop",
+   "break": [
+    [
+     "web/aim.css",
+     ".topic-people{grid-column:2!important;grid-row:3;",
+     ".topic-people{grid-column:1/-1!important;grid-row:auto;"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the Team is one filled pill each"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The Team's pills and + Add are in the header's arrow-key row with Topic settings and New message",
+   "break": [
+    [
+     "web/index.html",
+     "<section id=\"topic-people\" class=\"topic-people\" aria-labelledby=\"people-heading\"><h2 id=\"people-heading\">Team</h2><div id=\"participants\" class=\"participants\" aria-label=\"Topic participants\"></div></section><div id=\"outcome-purpose\"",
+     "<div id=\"outcome-purpose\""
+    ],
+    [
+     "web/index.html",
+     "      <section id=\"messages\" aria-label=\"Conversation\">",
+     "      <section id=\"topic-people\" class=\"topic-people\" aria-labelledby=\"people-heading\"><h2 id=\"people-heading\">Team</h2><div id=\"participants\" class=\"participants\" aria-label=\"Topic participants\"></div></section>\n      <section id=\"messages\" aria-label=\"Conversation\">"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header → and ← move from New message along the Team"
    }
   }
  ]

@@ -875,7 +875,7 @@ function feedOf() {
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); }, home: $('new-message-sheet') });
   return stackFeed;
 }
 // The conversation's own word on a message: its item and the asks that wait,
@@ -1101,6 +1101,7 @@ function paintReaderMark() {
   $('reader-menu').hidden = !(p && !p.sourceUnavailable && ((ref?.kind === 'message' && topic) || (ref?.kind === 'memory' && p.source.owner_scope))) && !reader?.layoutChoice;
   paintReaderThumb$();
   paintReaderStar();
+  paintReaderAside();
 }
 // The message the Reader shows, with its acts: its star and fold there are
 // the reader's own (stack-feed.mjs). The page's reply stacks hold it, or, for
@@ -1139,6 +1140,27 @@ function starFromReader() {
   const item = readerFeedItem();
   if (!item) return;
   stackFeed.star(item);
+}
+// The archive button beside the star (item 378): Move below More for the
+// dossier the message is in, the same act as ⋯'s (StackFeed.setAside), with
+// the count of the stack's messages that go with it; Bring back once it is
+// there, pressed. Only for a message the page's stacks hold, as ⋯ offers it.
+function readerAside() {
+  const item = readerFeedItem();
+  return item && views.messages.has(item.id) ? stackFeed.asideOffer(item.id) : null;
+}
+function paintReaderAside() {
+  const button = $('reader-aside'), offer = readerAside();
+  button.hidden = !offer;
+  if (!offer) return;
+  const words = `${offer.below ? 'Bring back above More' : 'Move below More'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
+  button.querySelector('.aside-count').textContent = String(offer.count);
+  button.setAttribute('aria-pressed', String(offer.below));
+  button.setAttribute('aria-label', words); button.title = words;
+}
+function asideFromReader() {
+  const offer = readerAside();
+  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
 }
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.
@@ -2043,6 +2065,7 @@ async function initialize() {
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
+  $('reader-aside').onclick = () => asideFromReader();
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();

@@ -94,8 +94,17 @@ the pointer's way, the keys' and the phone's.
   (`web/card-scroll.mjs`, item 401)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's
   composer on its own, with no message above it and the cursor in the field;
-  Escape, ✕ or a press outside puts it back at the page's end with the writing
-  kept. (docs/reader.md)
+  Escape, ✕ or a press outside puts it back in its place with the writing
+  kept. At rest that composer sits among the messages, just above More: under
+  the last dossier shown above More, and above the More line (or the end of the
+  messages, where nothing is put aside). It is never moved while it is up over
+  the page, and goes to its place as it is put back. (docs/reader.md,
+  `home` in `web/reply-stacks.mjs`, item 465)
+- **The Team.** The topic's people are its Team, on the title row's right,
+  under the title (under the subtitle on a phone): a pill each and "+ Add" for
+  whoever may change them, as ever. They are among the header's buttons, so ←
+  and → move along them with Topic settings and New message (below), and Tab
+  reaches them in that order. (item 465)
 - **A Notebook page** opens in that sheet, over the feed, from wherever it is
   listed or linked as it stands; ✕, Escape (a second one while a card is
   written) or a press outside closes it, keeping a card half written, and puts
@@ -203,8 +212,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   Escape in the Reader gives the focus back to the message, so the arrows
   work again.
 - **The buttons at the top of the feed.** These are two rows: the
-  header's buttons (Topic settings, New message, and the others drawn there,
-  such as "Pipeline & pages" below 1181px), and under them the view filters
+  header's buttons (Topic settings, New message, the Team's pills and "+ Add",
+  and the others drawn there, such as "Pipeline & pages" below 1181px), and under them the view filters
   in the row just over the messages ("Read it", Only new, Show agent
   coordination), when any of those shows. ↑ on the message at the top of the
   feed moves the keys onto the row just above it, the filters' when they
@@ -246,7 +255,9 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
 - **Put a dossier aside.** Swipe its header or last visible message right,
   on a phone or with two fingers on a trackpad, to move it below More messages
   for you on every device. The menu offers Move below More and Bring back
-  above More; ⌘Z undoes it. Your own replies leave it there; a new reply from
+  above More; ⌘Z undoes it. In the Reader the archive button beside the star
+  is the same act, labelled with how many of the stack's messages move with it
+  (item 378). Your own replies leave it there; a new reply from
   someone else brings it back. Other messages still swipe to fold individually.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the

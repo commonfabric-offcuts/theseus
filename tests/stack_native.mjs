@@ -812,6 +812,140 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await q.close(); await p.close();
   });
 
+  // Item 378: the Reader's archive button beside the star is ⋯'s Move below More for the message's whole dossier,
+  // labelled with how many of the stack's messages go with it, and Bring back once they are there, pressed. Pressed
+  // as a person presses it, on a laptop and by a finger at 320, 375 and 390, in light and dark; what Core holds is
+  // read for the person and for another reader, and a message of another stack stays where it is.
+  await check('reading stacks the Reader\'s archive button moves the message\'s whole dossier below More, says how many messages go, and brings it back pressed', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-archive-' + device;
+      const ids = await seed(topic, [['lone', { sender: other, join: true, addressees: [facts.actor], body: 'A message of its own stays where it is.' }],
+        ['root', { sender: other, addressees: [facts.actor], body: 'File this dossier out of sight.' }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'An earlier reply in the dossier.' }],
+        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'The newest reply in the dossier.' }]]);
+      const p = await open('stack-archive-' + device, device, topic, ids.root);
+      const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      const position = async id => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position;
+      const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+      // The button as it shows: its name, tooltip, count and whether it is pressed; where it sits; its size; and
+      // whether any control of the Reader's header covers another (a phone's header has the least room).
+      const button = () => p.evaluate(`(()=>{const b=document.querySelector('#reader-aside'),r=b.getBoundingClientRect(),star=document.querySelector('#reader-star');
+        const boxes=[...document.querySelectorAll('#reader .reader-header button, #reader .reader-header h2')].filter(e=>e.getClientRects().length).map(e=>[e.id||e.tagName,e.getBoundingClientRect()]);
+        const over=[];for(const [a,x] of boxes)for(const [c,y] of boxes)if(a<c&&!(x.right<=y.left+0.5||y.right<=x.left+0.5||x.bottom<=y.top+0.5||y.bottom<=x.top+0.5)&&!(a==='H2'&&x.width<1)&&!(c==='H2'&&y.width<1))over.push(a+'/'+c);
+        const header=document.querySelector('#reader .reader-header').getBoundingClientRect();
+        return {shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed'),
+          glyph:Boolean(b.querySelector('svg')),besideStar:b.previousElementSibling===star,size:[Math.round(r.width),Math.round(r.height)],over,inside:r.left>=header.left-0.5&&r.right<=header.right+0.5,
+          sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await openReader(p, device, ids.two, 'The newest reply');
+      const widths = device === 'phone' ? [320, 375, 390] : [1280];
+      const sized = async width => { if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width }); };
+      for (const width of widths) {
+        await sized(width);
+        await until(async () => (await button()).shown, `${device} ${width}: the archive button shows beside the star`);
+        const at = await button();
+        assert.deepEqual([at.name, at.title, at.count, at.pressed, at.glyph, at.besideStar], ['Move below More: 3 messages', 'Move below More: 3 messages', '3', 'false', true, true],
+          `${device} ${width}: an archive glyph named Move below More, with the stack's 3 messages: ${JSON.stringify(at)}`);
+        if (device === 'phone') assert.ok(at.size[0] >= 44 && at.size[1] >= 44, `${width}: 44px under a finger: ${at.size}`);
+        assert.deepEqual([at.over, at.inside, at.sideways], [[], true, false], `${device} ${width}: no control of the header covers another, and nothing scrolls sideways: ${JSON.stringify(at)}`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
+      }
+      await press(p, device, '#reader-aside');
+      await until(async () => (await position(ids.root)).below, `${device}: Core holds the dossier below More`);
+      await becomes(shown, false, `${device}: the whole dossier goes below a closed More`);
+      assert.equal((await actsOf(topic, ids.root, other))?.aside ?? null, null, `${device}: the other reader has no move`);
+      assert.equal((await position(ids.lone)).below, false, `${device}: a message of another stack stays above More`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.lone}"]')?.getClientRects().length)`), true, `${device}: and stays on the page`);
+      await until(async () => (await button()).pressed === 'true', `${device}: the button is pressed once the dossier is below More`);
+      const moved = await button();
+      assert.deepEqual([moved.name, moved.title, moved.count, await readerOn(p).then(text => text?.startsWith('The newest reply'))],
+        ['Bring back above More: 3 messages', 'Bring back above More: 3 messages', '3', true], `${device}: it offers Bring back, and the Reader stays on the message: ${JSON.stringify(moved)}`);
+      if (device === 'laptop') assert.equal(await p.evaluate(`document.activeElement?.id`), 'reader-aside', 'the focus stays on the button');
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-${device}-pressed-${theme}`); }
+      await dossierTheme(p, 'light');
+      await press(p, device, '#reader-aside');
+      await until(async () => !(await position(ids.root)).below, `${device}: Bring back clears the move in Core`);
+      await until(async () => (await button()).pressed === 'false', `${device}: the button is no longer pressed`);
+      await closeReader(p, device);
+      await becomes(shown, true, `${device}: the dossier is back above More`);
+      // A message of its own is a stack of one: one message moves.
+      await openReader(p, device, ids.lone, 'A message of its own');
+      await until(async () => (await button()).name === 'Move below More: 1 message', `${device}: a message of its own moves alone`);
+      assert.equal((await button()).count, '1');
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 465: the page's New message composer at rest sits between the last dossier above More and the More line,
+  // drawn in the feed, never among the dossiers put aside nor after the Notebook. Up over the page (✎) it is not
+  // moved while another device moves a dossier across More, so the writing keeps its cursor; put back, it takes
+  // its place again. On a laptop and at 320, 375 and 390 by a finger, light and dark.
+  await check('reading stacks the New message composer rests between the last dossier above More and the More line, and is not moved while it is up', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-composer-' + device;
+      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The oldest dossier.' }],
+        ['b', { sender: other, addressees: [facts.actor], body: 'The dossier put aside.' }],
+        ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply in the dossier put aside.' }],
+        ['c', { sender: other, addressees: [facts.actor], body: 'The newest dossier.' }]]);
+      const p = await open(topic, device, topic, ids.c);
+      const newest = async () => (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      const aside = async (through, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.b, operation_id: `${topic}-aside-${n}`, args: { through } });
+      // What the feed shows, in its order: each dossier or message by its seed name, More, and the composer; and
+      // whether each sits wholly below the one before it, the composer included.
+      const names = Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]));
+      const shown = () => p.evaluate(`(()=>{const names=${JSON.stringify(names)},list=document.querySelector('#messages'),sheet=document.querySelector('#new-message-sheet');
+        const rows=[...list.children].filter(e=>e===sheet||e.getClientRects().length&&!e.dataset.line);
+        const order=rows.map(e=>e===sheet?'composer':e.classList.contains('stack-more')?'More':names[e.dataset.id??e.dataset.stack]??'?');
+        const boxes=rows.map(e=>e.getBoundingClientRect()),stacked=boxes.every((b,i)=>!i||b.top>=boxes[i-1].bottom-0.5);
+        const notebook=document.querySelector('#notebook').getBoundingClientRect();
+        return {order,stacked,inFeed:sheet.parentElement===list,beforeNotebook:sheet.getBoundingClientRect().bottom<=notebook.top+0.5,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await becomes(async () => (await shown()).order, ['c', 'b', 'a', 'composer'], `${device}: with nothing below More, the composer rests under the last dossier`);
+      assert.deepEqual(await shown().then(s => [s.stacked, s.inFeed, s.beforeNotebook]), [true, true, true], `${device}: drawn in the feed, below the last dossier and above the Notebook`);
+      await aside(await newest(), 1);
+      await becomes(async () => (await shown()).order, ['c', 'a', 'composer', 'More'], `${device}: with a dossier below More, the composer sits between the last dossier above More and the More line`);
+      assert.equal((await shown()).stacked, true, `${device}: each wholly below the one before it`);
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        await centre(p, '#new-message-sheet');
+        assert.equal((await shown()).sideways, false, `${device} ${width}: nothing scrolls sideways`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-composer-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
+      }
+      await press(p, device, '#messages .stack-more');
+      await becomes(async () => (await shown()).order, ['c', 'a', 'composer', 'More', 'b'], `${device}: with More open, the composer stays above the More line, not among the dossiers put aside`);
+      await press(p, device, '#messages .stack-more');
+      // Another device brings the dossier back: More goes, and the composer is under the last dossier again.
+      await aside(null, 2);
+      await becomes(async () => (await shown()).order, ['c', 'b', 'a', 'composer'], `${device}: brought back, the composer rests under the last dossier, More gone`);
+      // ✎ puts the composer up over the page. Another device puts the dossier aside again while it is up, which would
+      // carry the composer's place past it.
+      await p.evaluate('scrollTo(0, 0)');
+      await press(p, device, '#new-message');
+      await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device}: ✎ puts the composer up, ready to type`);
+      await p.send('Input.insertText', { text: 'Writing while the feed changes.' });
+      await aside(await newest(), 3);
+      await until(() => p.evaluate(`!document.querySelector('#messages .reply-stack[data-stack="${ids.b}"]')?.getClientRects().length && Boolean(document.querySelector('#messages .stack-more'))`), `${device}: the dossier goes below More behind the sheet`);
+      assert.deepEqual(await p.evaluate(`[document.querySelector('#new-message-sheet').matches(':modal'), document.activeElement?.id, document.querySelector('#inline-writing-body').value, document.querySelector('#inline-writing-body').selectionStart]`),
+        [true, 'inline-writing-body', 'Writing while the feed changes.', 'Writing while the feed changes.'.length], `${device}: the sheet stays up and the writing keeps its cursor`);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open`), `${device}: Escape puts the composer back`);
+      await becomes(async () => (await shown()).order, ['c', 'a', 'composer', 'More'], `${device}: put back, it takes its place between the last dossier above More and the More line`);
+      assert.equal(await p.evaluate(`document.querySelector('#inline-writing-body').value`), 'Writing while the feed changes.', `${device}: with the writing kept`);
+      if (device === 'laptop') {
+        // Among the messages, the composer keeps its own keys as it did at the page's end: ← and → on its + do not
+        // take the focus out of it to the outline or the right rail, as they do from a message.
+        await p.evaluate(`document.querySelector('#inline-plus-button').focus()`);
+        assert.equal(await p.evaluate(`document.activeElement?.id === 'inline-plus-button' && Boolean(document.activeElement.getClientRects().length)`), true, 'the resting composer\'s + has the focus');
+        for (const key of ['ArrowRight', 'ArrowLeft']) {
+          await p.key(key);
+          assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('.composer-home'))`), true, `${key} on the resting composer's + leaves the focus in the composer`);
+        }
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   if (engine === 'chrome') await check('reading stacks below More uses a real swipe on chrome and the last visible message but folds other messages', async () => {
     const topic = 'stack-aside-swipe';
     const ids = await seed(topic, [['root', {sender:other,join:true,addressees:[facts.actor],body:'A dossier to swipe.'}],

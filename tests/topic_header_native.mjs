@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { pngPixels } from './png-bands.mjs';
 
-// The top of a topic, Topic settings and the people at the bottom, in the real
-// browser against the real server: the title with its gear and the note under
-// it, the dialog's keyboard, pointer and phone behaviour, and one pill per
-// person after the last message. Every press and key is a native input event.
+// The top of a topic, Topic settings and its Team, in the real browser against
+// the real server: the title with its gear and the note under it, the dialog's
+// keyboard, pointer and phone behaviour, and one pill per person in the Team on
+// the title row's right (item 465). Every press and key is a native input event.
 export async function headerChecks({ check, page, until, control, view, facts, shot }) {
   const HINT = 'Open a message to read, quote, reply, or keep a private note.';
   const NOTE = 'Ongoing: each release and what comes next';
@@ -1003,8 +1003,10 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header the people are one filled pill each after the last message, and a remove button sits in its pill', async () => {
-    await setState('header-people-active', { state: 'active', note: '' });
+  // Item 465: the people are the topic's Team, on the title row's right, under the title (under the subtitle on a
+  // phone), a filled pill each with "+ Add"; nothing of them is left after the messages.
+  await check('header the Team is one filled pill each on the title row\'s right, under the title, and a remove button sits in its pill', async () => {
+    await setState('header-people-active', { state: 'active', note: NOTE });
     // More messages than one page, all read, so More messages shows below them.
     await control({ method: 'seed', messages: 32 });
     await control({ method: 'agent_message', operation_id: 'header-people-read', body: 'Read up to here.', read: true });
@@ -1013,21 +1015,29 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       return {name:name.textContent,button:name.tagName==='BUTTON',title:name.title,fill:c.backgroundColor,border:[c.borderTopWidth,c.borderRightWidth,c.borderBottomWidth,c.borderLeftWidth],shadow:c.boxShadow,
         remove:out?{label:out.getAttribute('aria-label'),inside:ob.left>=pb.left-0.5&&ob.right<=pb.right+0.5&&ob.top>=pb.top-0.5&&ob.bottom<=pb.bottom+0.5,size:[ob.width,ob.height]}:null,
         buttonInButton:Boolean(e.querySelector('button button'))}})})()`);
-    // loaded: the messages the page holds; a reply stack folds most of them away (docs/topic-reading.md), so the last shown is the last on screen.
-    const below = p => p.evaluate(`(()=>{const all=[...document.querySelectorAll('#messages [data-id]')],cards=all.filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1).getBoundingClientRect(),more=document.querySelector('#more-messages');
-      const top=document.querySelector('#topic-people').getBoundingClientRect().top;return {loaded:all.length,belowCard:top>=last.bottom,belowMore:more.hidden||top>=more.getBoundingClientRect().bottom,next:more.nextElementSibling.id}})()`);
+    // Where the Team is: in the header, headed Team, under the title row; on a laptop flush with the title row's
+    // right and right of the subtitle, on a phone under the subtitle; nothing of it overlaps the title row or the
+    // subtitle, and no People section follows the messages.
+    const placed = p => p.evaluate(`(()=>{const team=document.querySelector('#topic-people'),t=team.getBoundingClientRect(),row=document.querySelector('.topic-header .title-row').getBoundingClientRect(),
+      sub=document.querySelector('#topic-description').getBoundingClientRect(),add=document.querySelector('#participants .add-chip')?.getBoundingClientRect(),pills=[...team.querySelectorAll('.person-pill, .add-chip')].map(e=>e.getBoundingClientRect());
+      const apart=(a,b)=>a.right<=b.left+0.5||b.right<=a.left+0.5||a.bottom<=b.top+0.5||b.bottom<=a.top+0.5;
+      return {header:Boolean(team.closest('.topic-header')),heading:document.querySelector('#people-heading').textContent,underTitle:t.top>=row.bottom-0.5,
+        right:Math.round(row.right-Math.max(...pills.map(b=>b.right))),besideSubtitle:sub.right<=t.left+0.5&&t.top<sub.bottom,underSubtitle:t.top>=sub.bottom-0.5,
+        clear:apart(t,row)&&apart(t,sub),afterMessages:Boolean(document.querySelector('#messages ~ #topic-people, #messages ~ * #topic-people')),add:Boolean(add),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
     const p = await page('header-people', null, true, { beforeNavigate: scheme('light') });
     await until(async () => (await people(p)).length >= 2, 'the people painted');
-    const first = await below(p);
-    assert.deepEqual([first.belowCard, first.belowMore, first.next], [true, true, 'topic-people'], 'the people come right after More messages, below the last message: ' + JSON.stringify(first));
+    const laptop = await placed(p);
+    assert.deepEqual([laptop.header, laptop.heading, laptop.underTitle, laptop.besideSubtitle, laptop.clear, laptop.afterMessages, laptop.add, laptop.sideways],
+      [true, 'Team', true, true, true, false, true, false], 'the Team is in the header under the title, right of the subtitle, with "+ Add", and nothing follows the messages: ' + JSON.stringify(laptop));
+    assert.ok(Math.abs(laptop.right) <= 2, 'its pills end flush with the title row\'s right: ' + JSON.stringify(laptop));
     assert.equal(await p.evaluate(`document.querySelector('#more-messages').hidden`), false, 'a topic with more than a page shows More messages');
+    // More messages loads the next page; the Team stays where it was, at the top.
+    const loaded = () => p.evaluate(`document.querySelectorAll('#messages [data-id]').length`), first = await loaded();
     await p.evaluate(`document.querySelector('#more-messages').scrollIntoView({block:'center'})`);
     await p.point('#more-messages');
-    // A page that loads nothing new fails naming what it showed.
-    let seen;
-    const later = await until(async () => { const b = seen = await below(p); return b.loaded > first.loaded && b; }, 'More messages loads the next page')
-      .catch(error => assert.fail(`${error.message}: ${JSON.stringify({ first, seen })}`));
-    assert.deepEqual([later.belowCard, later.belowMore], [true, true], 'still below the new last message');
+    await until(async () => await loaded() > first, 'More messages loads the next page');
+    assert.deepEqual(await placed(p).then(x => [x.header, x.underTitle, x.afterMessages]), [true, true, false], 'still in the header after More messages');
+    await p.evaluate(`scrollTo(0, 0)`);
     const light = await people(p);
     const own = light.find(x => x.name === facts.actor), theirs = light.find(x => x.name === agent);
     assert.deepEqual([own.button, own.fill], [false, 'rgb(0, 0, 0)'], 'the reader\'s own pill is black and opens nothing');
@@ -1038,7 +1048,6 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.deepEqual([pill.remove?.label, pill.remove?.inside], [`Remove ${pill.name}`, true], `${pill.name}'s remove button is inside the pill`);
       assert.ok(pill.remove.size[0] >= 32 && pill.remove.size[1] >= 32, 'a finger hits the remove button: ' + pill.remove.size);
     }
-    await p.evaluate(`document.querySelector('#topic-people').scrollIntoView({block:'center'})`);
     await shot(p, 'header-people-light');
     const dark = await page('header-people-dark', null, true, { beforeNavigate: scheme('dark') });
     await until(async () => (await people(dark)).length >= 2, 'the people painted, dark');
@@ -1046,14 +1055,23 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       if (pill.name === facts.actor) assert.deepEqual([pill.fill, pill.shadow === 'none'], ['rgb(0, 0, 0)', false], 'dark: the reader\'s pill is black with a thin edge');
       else assert.deepEqual([pill.fill === 'rgba(0, 0, 0, 0)', pill.shadow], [false, 'none'], `dark: ${pill.name}'s pill is filled, with no ring`);
     }
-    await dark.evaluate(`document.querySelector('#topic-people').scrollIntoView({block:'center'})`);
+    assert.deepEqual(await placed(dark).then(x => [x.header, x.underTitle, x.besideSubtitle, x.clear]), [true, true, true, true], 'dark: the Team in the same place');
     await shot(dark, 'header-people-dark');
     await dark.close();
-    const small = await page('header-people-phone', null, true, { beforeNavigate: phone });
-    await until(async () => (await people(small)).length >= 2, 'the people painted on a phone');
-    for (const pill of await people(small)) assert.equal(pill.remove?.inside, true, `390: ${pill.name}'s remove button is inside the pill`);
-    assert.equal(await noSideways(small), true, '390: no sideways scroll');
-    await small.close();
+    // On a phone, at each of its widths, light and dark: under the subtitle, clear of the title row, no sideways scroll.
+    for (const theme of ['light', 'dark']) {
+      const small = await page('header-people-phone-' + theme, null, true, { beforeNavigate: both(phone, scheme(theme)) });
+      await until(async () => (await people(small)).length >= 2, 'the people painted on a phone');
+      for (const width of [320, 375, 390]) {
+        await small.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        const at = await placed(small);
+        assert.deepEqual([at.header, at.heading, at.underSubtitle, at.clear, at.add, at.sideways], [true, 'Team', true, true, true, false], `${width}: the Team under the subtitle, clear of the title row, with "+ Add", nothing sideways: ` + JSON.stringify(at));
+        for (const pill of await people(small)) assert.equal(pill.remove?.inside, true, `${width}: ${pill.name}'s remove button is inside the pill`);
+        assert.equal(await noSideways(small), true, `${width}: no sideways scroll`);
+        await shot(small, `header-people-phone-${width}-${theme}`);
+      }
+      await small.close();
+    }
     // The owner removes the agent with a real press on the button inside its
     // pill, and a commit that repaints the people while the button is held
     // down does not swallow the press.
@@ -1078,6 +1096,29 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(async () => !(await people(p)).some(x => x.name === agent), 'its pill leaves');
     assert.equal(await p.evaluate(`document.activeElement?.matches('#participants .add-chip')`), true, 'the focus is on "+ Add"');
     assert.equal((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), false, 'Core took it out');
+    assert.deepEqual(p.errors, []);
+  });
+
+  // Item 465: the header's arrow-key row holds every button drawn in it, so the Team's pills and "+ Add" join Topic
+  // settings and New message in it: → from New message walks the Team to "+ Add", ← walks back, and ↓ from any of
+  // them leaves the row for the first message, never along the pills.
+  await check('header → and ← move from New message along the Team\'s pills to "+ Add" and back, as one row; ↓ leaves for the first message', async () => {
+    await setState('header-row-active', { state: 'active', note: '' });
+    const p = await page('header-row', null, true, { beforeNavigate: scheme('light') });
+    await until(() => p.evaluate(`Boolean(document.querySelector('#participants .add-chip')) && document.querySelectorAll('#topic-people button').length >= 3`), 'the Team painted with "+ Add"');
+    const at = () => p.evaluate(`(a=>a.closest('#topic-people')?'team:'+(a.matches('.add-chip')?'add':a.getAttribute('aria-label')||a.title||a.textContent):a.closest('#messages [data-id]')?'message':a.id)(document.activeElement)`);
+    const team = await p.evaluate(`[...document.querySelectorAll('#topic-people button')].filter(b=>b.getClientRects().length).map(b=>'team:'+(b.matches('.add-chip')?'add':b.getAttribute('aria-label')||b.title||b.textContent))`);
+    // The keys start on New message, the last of the title row's buttons.
+    await p.evaluate(`document.querySelector('#new-message').focus({preventScroll:true})`);
+    const walked = [];
+    for (let n = 0; n < team.length; n++) { await p.key('ArrowRight'); walked.push(await at()); }
+    assert.deepEqual(walked, team, '→ walks the Team\'s buttons in order, from New message to "+ Add"');
+    const back = [];
+    for (let n = 0; n < team.length; n++) { await p.key('ArrowLeft'); back.push(await at()); }
+    assert.deepEqual(back, [...team.slice(0, -1).reverse(), 'new-message'], '← walks back to New message');
+    await p.key('ArrowRight');
+    await p.key('ArrowDown');
+    assert.equal(await at(), 'message', '↓ from a pill leaves the row for the first message');
     assert.deepEqual(p.errors, []);
   });
 }

@@ -76,7 +76,7 @@ function page({ phone = false, add = () => true, host = null } = {}) {
   plus.append(plusDone);
   root.append(notice, whoChip, plusButton, field, send, who, plus);
   // host: the dialog the composer sits in (the Reader, the popped New
-  // message sheet), or none, as at the topic page's end.
+  // message sheet), or none, as resting in the topic page's feed.
   const dialog = host && make('dialog', { open: true, modal: true });
   if (dialog) { dialog.append(root); doc.body.append(dialog); } else doc.body.append(root);
   const named = [];
@@ -238,7 +238,7 @@ test('Send does not wait on a name typed in To that the writing already names, a
 
 // Escape while a panel is open puts it away wherever the focus is, and the
 // bar hears it itself, so it holds on every surface the composer sits in: the
-// topic page's end, where no dialog is open to pass the key on, and the
+// topic page's feed, where the composer rests, where no dialog is open to pass the key on, and the
 // Reader and the popped New message sheet, whose own Escape then never comes
 // (the browser sends no cancel for a key whose keydown was taken).
 for (const host of [false, true]) for (const at of ['+', 'Send', 'the page']) test(`${host ? 'in a dialog (the Reader, the popped sheet)' : 'at the topic page\'s end, in no dialog'}: Escape with focus on ${at} puts the open who panel away and names what was typed in To; with no panel open the bar leaves Escape alone`, () => {

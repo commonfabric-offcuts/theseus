@@ -440,7 +440,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await q.close();
   });
 
-  // The topic's New message composer at the page's end and a Notebook page share the sheet. Closing the page folds the
+  // The topic's New message composer where it rests in the feed and a Notebook page share the sheet. Closing the page folds the
   // composer back to its one line, its writing kept, as every close of the sheet does, whatever the composer was when
   // the page opened: a line, being written, or being written with its + panel open (fold's three branches). The focus
   // goes back to the card that opened the page, not to New message. At a laptop's width, the page opened by the keys,

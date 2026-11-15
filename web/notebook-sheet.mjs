@@ -120,7 +120,7 @@ export class NotebookSheet {
   async open(id, { opener = null, write = null } = {}) {
     if (!this.dialog) return false;
     const serial = ++this.serial;
-    // The New message sheet, popped up, goes back to the page's end first, its writing kept; a page opened from
+    // The New message sheet, popped up, goes back to its place in the feed first, its writing kept; a page opened from
     // the Reader's words takes the Reader's place, its reply kept, so one window stands over the feed.
     if (!this.showing) this.hold();
     if (this.dialog.open && !this.showing) this.dialog.close();
@@ -149,6 +149,9 @@ export class NotebookSheet {
     }
     if (!page.host.isConnected) this.body.append(page.host);
     this.show(page);
+    // The sheet rests in the feed, just above More (reply-stacks.mjs, item 465). Where the feed is not drawn (an
+    // outcome's page, Health), what holds it shows nothing, a modal in it included: it goes up from the page's end.
+    if (!this.dialog.open && !this.dialog.parentElement?.getClientRects().length) this.doc.getElementById('main')?.append(this.dialog);
     if (!this.dialog.open) this.dialog.showModal();
     const kept = first ? take(WRITING + id) : null;
     page.readAt = undefined;
@@ -262,8 +265,8 @@ export class NotebookSheet {
     paintChanges(shown, earlier.body ?? '', source.body ?? '', this.doc);
     page.changes.replaceChildren(changes); page.changes.hidden = false;
   }
-  // The sheet at rest is the page's end, in the feed; up over the feed it leaves its place there, which a
-  // holder of its height keeps, so a feed read to its end does not move behind the backdrop.
+  // The sheet at rest is in the feed, just above More; up over the feed it leaves its place there, which a
+  // holder of its height keeps, so the feed does not move behind the backdrop.
   hold() {
     if (this.holder?.isConnected || this.dialog.open) return;
     const style = globalThis.getComputedStyle(this.dialog);
