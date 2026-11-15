@@ -39,11 +39,15 @@ export function wordsShown(kind, count = 0, named = null) {
 }
 
 // Moves the one logo block, then the page's status notices, to the top of
-// host (the rail or main). The nodes move, so their handlers stay.
+// host (the rail or main). The nodes move, so their handlers stay. Where the
+// page has no rail (host is main), the Health link goes to its end, as it ends
+// the rail elsewhere (outline-rail.mjs places it there; item 463).
 export function placeBrand(host, doc = host.ownerDocument) {
   const brand = doc.querySelector('.brand');
   const notices = ['app-status', 'wakes-status', 'updates-status'].map(id => doc.getElementById(id)).filter(Boolean);
   host.prepend(brand, ...notices);
+  const health = doc.getElementById('health-link');
+  if (health && host.id === 'main') host.append(health);
 }
 
 // One page inside an outcome. sections: [{name, node, load}] in any order;
