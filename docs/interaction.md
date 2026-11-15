@@ -31,7 +31,14 @@ the pointer's way, the keys' and the phone's.
   (between lines, beside a short line, on the author's line) the passage lit
   last stays lit. Moving with Shift held, or a Shift-click, grows the light
   from the passage lit first to the one under the pointer, from words dragged
-  over when there are some, and opens nothing. The light is painted over the
+  over when there are some, and opens nothing; a Shift-click on a link in the
+  words is the browser's, which opens the link in a new window as it always
+  has (docs/links.md), and the light stays as it was. A card drawn again with
+  other words under its light (the whole of a cut-off message arriving in
+  place of its excerpt, an edit arriving) puts the light out, as an edit drawn
+  into the Reader puts out the passage lit there: the place lit would hold
+  other words, so Return there quotes nothing and ⌘C copies the whole message,
+  until the pointer moving on lights a passage of the new words. The light is painted over the
   card's own words (`web/feed-passages.mjs`), so nothing on the card, and
   nothing stored, changes for it; the keys lighting a message light no
   passage of it, and a passage lights only where Return would quote it: the
@@ -361,7 +368,19 @@ page painted. Its checks, by rule:
   and opens nothing …": a Shift-click grows the light, opens nothing and
   leaves no selection of the browser's; words selected in another passage are
   what Shift grows the light from, giving way to it; and Return on words
-  selected quotes exactly them, not the passage lit. That the passages are the
+  selected quotes exactly them, not the passage lit. "reading a cut-off
+  card's lit passage goes out as its whole message arrives …" lights the
+  excerpt's last sentence, cut mid-word, while the whole message's read is
+  held in the server, then lets it arrive; "reading an edit arriving under a
+  card's lit passage …" lights a sentence of the person's message and saves an
+  edit of it from another device. In each, once the card is drawn again no
+  words are lit, ⌘C copies the whole message as written, Return quotes
+  nothing, and the pointer on the new words lights a passage of them, which
+  ⌘C copies and Return quotes exactly. "reading Shift-click on a link in a
+  card's words opens it in a new window …": the page leaves the click to the
+  browser, one new window opens at the link's address and the light stays as
+  it was; a Shift-click on the card's other words still grows the light and
+  opens nothing. That the passages are the
   Reader's, over exactly their characters on a card's blocks:
   `tests/ui_message_format.test.mjs`.
 - ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",

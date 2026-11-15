@@ -4,10 +4,12 @@
 // (message-format.mjs, passageSpans), on a topic's card and a dossier's alike.
 // Moving with Shift held, or a Shift-click, lights from the passage lit first
 // to the one under the pointer, growing from words dragged over when there are
-// some. What lights is what Return quotes and what ⌘C copies on the lit
-// message (message-menu.mjs), so a hover never promises a quote Return would
-// not make: it lights only while Return would quote it, and goes out as the
-// focus moves where Return does something else. The light is painted as a highlight over the card's own words
+// some; a Shift-click on a link is the browser's, and opens it. What lights
+// is what Return quotes and what ⌘C copies on the lit message
+// (message-menu.mjs), so a hover never promises a quote Return would not make:
+// it lights only while Return would quote it, and goes out as the focus moves
+// where Return does something else, or as the card is drawn again with other
+// words. The light is painted as a highlight over the card's own words
 // (CSS.highlights), so the card's nodes and what it stores stay as they are.
 import { drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
@@ -23,15 +25,26 @@ export class FeedPassages {
     Object.assign(this, { host, lights, entryOf, doc });
     this.win = doc.defaultView;
     this.lit = null; this.pointer = null; this.shifted = false;
-    // A card drawn again under its light (the whole of a cut-off message
-    // arriving, an edit) is lit again on its new words.
-    this.redrawn = new this.win.MutationObserver(() => this.paint());
+    // A card drawn again under its light with other words (the whole of a
+    // cut-off message arriving in place of its excerpt, an edit) puts the
+    // light out, as an edit drawn into the Reader puts out the passage lit
+    // there: the place lit would hold other words, which Return and ⌘C would
+    // then act on, and which passage of the new words stands for the one lit
+    // is no one's to guess. The pointer moving on lights one of them. Words
+    // drawn again as they were (a topic's name arriving for a link in them)
+    // keep the light on the same words.
+    this.redrawn = new this.win.MutationObserver(() => {
+      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();
+    });
     // A Shift-click lights, as a Shift-move does, and opens nothing; the
     // browser's own selection is kept from growing beside it, so what lights
     // is what quotes.
     host.addEventListener('pointerdown', event => {
       this.shifted = false;
       if (!event.shiftKey || event.button !== 0 || event.pointerType === 'touch') return;
+      // A link is only a link, as in the Reader: a Shift-click on one is the
+      // browser's, which opens it in a new window, and lights nothing.
+      if (event.target.closest?.('a')) return;
       const entry = this.entryOf(event.target), hit = entry && this.lights() && this.at(event.clientX, event.clientY, entry);
       if (!hit) return;
       this.shifted = true;
@@ -89,7 +102,7 @@ export class FeedPassages {
   light(entry, { words, span }, extend = false) {
     if (extend) this.adopt(entry, words);
     const anchor = extend && this.lit?.words === words ? this.lit.anchor : span;
-    this.lit = { entry, words, anchor, start: Math.min(anchor.start, span.start), end: Math.max(anchor.end, span.end) };
+    this.lit = { entry, words, text: drawnText(words), anchor, start: Math.min(anchor.start, span.start), end: Math.max(anchor.end, span.end) };
     this.paint();
   }
   // Words dragged over in the entry become the light's anchor, the passages

@@ -461,7 +461,9 @@ revision, repaints: the card's words, its excerpt cue and folded line,
 copy of the message and of each reply to it, the stacks, an attention row
 showing it (a whole message read there is read again), and an open Reader on
 it, in place, unless that Reader is editing it (then its Save meets the
-conflict). A message only a reply's line shows is not taken into the page:
+conflict). A passage lit on the card, or in that Reader, goes out as its new
+words are drawn (docs/interaction.md, "The light"): the place lit would hold
+other words. A message only a reply's line shows is not taken into the page:
 paging up reads it. A revision lower than the one held, or than the latest
 read for a reply's line, is ignored. If the read is refused, the card stays as
 it is and the page goes on.

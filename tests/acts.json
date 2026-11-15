@@ -14090,6 +14090,96 @@
    }
   },
   {
+   "item": 478,
+   "act": "A cut-off card drawn again under its lit passage, its whole message arriving in place of the excerpt, puts the light out, so Return and ⌘C act on no words of the excerpt",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a cut-off card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "An edit arriving under a card's lit passage puts the light out, so Return and ⌘C act on no words of the place lit on the old words",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading an edit arriving under a card's lit passage"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and the card's light stays as it was",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (event.target.closest?.('a')) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a link in a card's words"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A cut-off card drawn again under its lit passage, its whole message arriving in place of the excerpt, puts the light out, so Return and ⌘C act on no words of the excerpt",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading a cut-off card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "An edit arriving under a card's lit passage puts the light out, so Return and ⌘C act on no words of the place lit on the old words",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading an edit arriving under a card's lit passage"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and the card's light stays as it was",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (event.target.closest?.('a')) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading Shift-click on a link in a card's words"
+   }
+  },
+  {
    "item": 434,
    "act": "A scroll of the message the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size moves nothing",
    "break": [

@@ -52,8 +52,14 @@ never promises a quote that Return would not make.
   "reading a passage the pointer rests on lights on a topic's card and a
   dossier's; ⌘C copies exactly its words and Return quotes them …", "reading
   a card's lit passage goes out as the focus moves to a control of the message
-  or to writing …" (no hover promise where Return presses a control) and
-  "reading Shift-click on a card grows the light and opens nothing …".
+  or to writing …" (no hover promise where Return presses a control),
+  "reading Shift-click on a card grows the light and opens nothing …",
+  "reading a cut-off card's lit passage goes out as its whole message
+  arrives …" and "reading an edit arriving under a card's lit passage puts
+  the light out …" (a card drawn again with other words lights none of them
+  until the pointer moves, so Return and ⌘C act on no words that were not
+  lit), and "reading Shift-click on a link in a card's words opens it in a new
+  window …".
 
 ## Every input works
 
