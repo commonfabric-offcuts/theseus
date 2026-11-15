@@ -3639,7 +3639,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   await check('reading stacks a minted name says Named by the agent that minted it in the dossier\'s tab, on a laptop and phones 320 to 390 wide, light and dark, folded and open; a mint from anyone else is refused, and a name the person types replaces it and its mark', async () => {
     const minter = 'aim-ux', words = 'Cabin week plan';
     // The tab, as a person sees it: its name, its "Named by" mark (null without one), whether the two keep to the
-    // tab's two lines inside the dossier, and the mark's contrast on the folder.
+    // tab's two lines inside the dossier, whether the mark's words show whole (an agent's name as short as aim-ux
+    // is never cut, even at 320: the count gives way first), and the mark's contrast on the folder.
     const tab = (p, id) => p.evaluate(`(()=>{const c=document.querySelector('#messages .message-card[data-id="${id}"]'),row=c?.querySelector(':scope > .stack-head');
       if(!row)return null;const n=row.querySelector('.stack-name'),m=row.querySelector('.stack-named'),s=c.closest('.reply-stack'),box=e=>e.getBoundingClientRect();
       if(!m)return {name:n.textContent,named:null,title:n.title,sideways:document.documentElement.scrollWidth>innerWidth};
@@ -3649,7 +3650,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
       return {name:n.textContent,named:m.textContent,title:n.title,markTitle:m.title,
         secondLine:mb.top>=nb.bottom-2&&Math.abs(mb.top-who.top)<2,inTab:mb.left>=r.left-.5&&mb.right<=r.right+.5&&mb.bottom<=r.bottom+.5,inDossier:r.right<=sb.right+.5,
-        shown:mb.width>=24,contrast:Math.round(contrast(pixel(getComputedStyle(m).color),pixel(getComputedStyle(row).backgroundColor))*100)/100,
+        whole:m.scrollWidth<=m.clientWidth+.5,contrast:Math.round(contrast(pixel(getComputedStyle(m).color),pixel(getComputedStyle(row).backgroundColor))*100)/100,
         sideways:document.documentElement.scrollWidth>innerWidth}})()`);
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-minted-' + device;
@@ -3674,8 +3675,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
           for (const theme of ['light', 'dark']) {
             await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
-            await becomes(async () => { const t = await tab(p, ids.root); return t && { secondLine: t.secondLine, inTab: t.inTab, inDossier: t.inDossier, shown: t.shown, sideways: t.sideways }; },
-              { secondLine: true, inTab: true, inDossier: true, shown: true, sideways: false }, `${device} ${width}px ${theme} ${level}: the mark keeps to the tab's second line, inside the dossier`);
+            await becomes(async () => { const t = await tab(p, ids.root); return t && { secondLine: t.secondLine, inTab: t.inTab, inDossier: t.inDossier, whole: t.whole, sideways: t.sideways }; },
+              { secondLine: true, inTab: true, inDossier: true, whole: true, sideways: false }, `${device} ${width}px ${theme} ${level}: the mark keeps to the tab's second line, inside the dossier, its words whole`);
             const seen = await tab(p, ids.root);
             assert.ok(seen.contrast >= 4.5, `${device} ${width}px ${theme}: the mark reads at 4.5 or more on the folder: ${seen.contrast}`);
             assert.match(seen.markTitle, /^Named by .* when the first reply landed/, 'its tooltip says how it was named');
