@@ -11668,8 +11668,8 @@
    "break": [
     [
      "web/key-tree.mjs",
-     "    if (this.holds(row.el)) this.ring(row.el);",
-     "    if (this.holds(row.el)) setTimeout(() => this.ring(row.el));"
+     "    if (row) this.ring(row.el);",
+     "    if (row) setTimeout(() => this.ring(row.el));"
     ]
    ],
    "check": {
