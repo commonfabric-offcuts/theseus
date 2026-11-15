@@ -2228,7 +2228,6 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         try {
           assert.ok(far.right <= screen + 0.5, `${at}: nothing scrolls sideways: ${far.what} ends at ${far.right}, past the right edge of the ${screen}px screen (scrollWidth ${seen.scroll}, innerWidth ${seen.width}) (${drawn})`);
           assert.ok(seen.scroll <= screen && seen.width <= screen, `${at}: no sideways scroll (${seen.scroll}, ${seen.width}, ${screen})`);
-          assert.ok(seen.name && seen.name.width > 0, `${at}: the outcome's name keeps a place in the header (${drawn})`);
           if (phone) {
             const { outcomes, pages, name, row, gap } = seen;
             assert.ok(outcomes && pages, `${at}: both pills show (${drawn})`);
@@ -2240,7 +2239,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
             assert.equal(fits, size === 320 ? fitsAt320 : true, `${at}: the two pills and one gap ${size === 320 && !fitsAt320 ? 'do not fit' : 'fit'} the row (${drawn})`);
             // The row's lines: "☰ Outcomes" starts the first; the name stays on it; "Pipeline & pages" is on the first
             // when the two pills fit with one gap, and wholly under "☰ Outcomes", on the second, when they do not.
-            const line = part => sameLine(part, outcomes) ? 1 : part.top >= outcomes.bottom ? 2 : 'neither';
+            const line = part => !part ? 'none' : sameLine(part, outcomes) ? 1 : part.top >= outcomes.bottom ? 2 : 'neither';
             assert.ok(Math.abs(outcomes.top - seen.rowTop) <= 1, `${at}: "☰ Outcomes" starts the header row's first line (${drawn})`);
             assert.deepEqual({ outcomes: 1, name: line(name), pages: line(pages) }, { outcomes: 1, name: 1, pages: fits ? 1 : 2 },
               `${at}: the line each is on: "☰ Outcomes" and the name the first, "Pipeline & pages" the ${fits ? 'first' : 'second'} (${drawn})`);
@@ -2265,6 +2264,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
             assert.deepEqual([seen.outcomes, seen.pages], [null, null], `${at}: neither pill with both rails beside the page (${drawn})`);
             assert.equal(seen.name.clipped, false, `${at}: the outcome's name is whole (${drawn})`);
           }
+          assert.ok(seen.name && seen.name.width > 0, `${at}: the outcome's name keeps a place in the header (${drawn})`);
           assert.deepEqual(p.errors, [], `${at}: no page errors`);
         } catch (error) {
           if (!(error instanceof assert.AssertionError)) throw error;
