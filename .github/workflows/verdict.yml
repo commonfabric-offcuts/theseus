@@ -445,8 +445,10 @@ jobs:
         run: |
           set -euo pipefail
           # What already fails on the base is read from the base's own runs, not from a list anyone curates: the newest
-          # three completed push runs of the producer on the base branch, first attempts only, begun before the run
-          # judged here and never that run itself, each with its artifacts laid out as this job lays out the producer's.
+          # three push runs of the producer on the base branch that ended success or failure, first attempts only, begun
+          # before the run judged here and never that run itself, each with its artifacts laid out as this job lays out
+          # the producer's. Eligibility comes before the count: a cancelled or timed-out run left no complete evidence,
+          # so it neither counts toward the three nor is downloaded.
           # A run whose artifacts have expired is dropped and named, and no older run takes its place: expiry is
           # retention. Fewer than three is recorded as such and the validator decides. A read that fails, or an archive
           # that does not match its digest, is a fault: it refuses the verdict and writes no manifest, so "could not
@@ -512,6 +514,8 @@ jobs:
                       why = "not the producer"
                   elif (run.get("head_repository") or {}).get("full_name") != repo:
                       why = "a head in another repository"
+                  elif run.get("conclusion") not in ("success", "failure"):
+                      why = "concluded %s, so it left no complete evidence" % clean(run.get("conclusion"))
                   elif run.get("run_attempt") != 1:
                       why = "attempt %s, not a first attempt" % clean(run.get("run_attempt"))
                   elif not when(run.get("created_at")) < cutoff:
