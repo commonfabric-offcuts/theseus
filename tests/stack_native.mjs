@@ -107,6 +107,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   await check('reading dossier look exposes a 44px phone strip and its folded thumbs-up remains reachable', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = `dossier-touch-${device}`, ids = await dossierSeed(topic);
+      // In a dossier a folded row shows its 👍 once someone has given one (item 471): another has.
+      await control({ method: 'agent_thumb', sender: other, message_id: ids.middle, operation_id: topic + '-their-thumb' });
       await dossierFold(topic, ids.middle);
       const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
       for (const theme of ['light', 'dark']) {
@@ -852,7 +854,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => (await actsOf(topic,ids.two))?.folded, 'a swipe on the last visible message folds it, in Core');
     await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
     assert.equal((await actsOf(topic,ids.root))?.aside??null,null,'and leaves the dossier where it is, above More');
-    assert.equal((await actsOf(topic,ids.two,'aim-ux'))?.folded??false,false,'another reader\'s view of it is unchanged');
+    assert.equal((await actsOf(topic,ids.two,other))?.folded??false,false,'another reader\'s view of it is unchanged');
     await becomes(shown, [ids.one+':row', ids.two+':row'], 'both replies are their rows, in their places, in the dossier on show');
     await shot(p,'stack-aside-swipe-folded');
     // A reload finds the order and the folds as Core holds them.
@@ -3696,7 +3698,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, selector);
   };
 
-  await check('reading stacks inside a dossier (item 471) a name is plain words with no agent tag, and a folded row has no Folded pill and a 👍 only once someone gave one, at 320, 375 and 390 wide and on a laptop, light and dark; a message on its own keeps its tag, pill and 👍; and a reload finds order, names and folds unchanged', async () => {
+  await check('reading stacks inside a dossier a name is plain words with no agent tag, and a folded row has no Folded pill and a 👍 only once someone gave one, at 320, 375 and 390 wide and on a laptop, light and dark; a message on its own keeps its tag, pill and 👍; and a reload finds order, names and folds unchanged (item 471)', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-inside-look-' + device;
       const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
@@ -3752,7 +3754,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  await check('reading stacks inside a dossier (item 471) a press on a shown message\'s header folds it for the reader alone, its words open the Reader, a folded row has no bar, and the first message folds by its header and x, unfolds by its row and shows its bar as any message, the title row staying the dossier\'s; a message on its own opens from its header', async () => {
+  await check('reading stacks inside a dossier a press on a shown message\'s header folds it for the reader alone, its words open the Reader, a folded row has no bar, and the first message folds by its header and x, unfolds by its row and shows its bar as any message, the title row staying the dossier\'s; a message on its own opens from its header (item 471)', async () => {
     for (const device of Object.keys(DEVICES)) for (const width of widthsOf(device)) {
       const topic = `stack-inside-press-${device}-${width}`;
       const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
@@ -3774,7 +3776,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await twoTaps(p, device, ids.one, header(ids.one));
       await until(async () => await foldOf(topic, ids.one), `${at}: a press on the header folds the reply, in Core`);
       await becomes(async () => (await folded(p, ids.one)).row, true, `${at}: it is its row, in its place`);
-      assert.equal(await foldOf(topic, ids.one, 'aim-ux'), false, `${at}: another reader's view is unchanged`);
+      assert.equal(await foldOf(topic, ids.one, other), false, `${at}: another reader's view is unchanged`);
       await nothingElse('the header press');
       if (device === 'laptop') {
         // Folded, its row lights under the pointer with no bar.
@@ -3847,7 +3849,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await said(p), '3 messages folded to one line, for you only');
     assert.deepEqual(await rows(), ['root:row', 'r1:row', 'r2', 'r3:row', 'r4'], 'each folded message is its row, in its place');
     assert.equal((await look(p, ids, 'root')).fold, 'open', 'and the dossier stays fully open');
-    for (const key of ['root', 'r1', 'r3']) assert.equal(await foldOf(topic, ids[key], 'aim-ux'), false, `another reader's view of ${key} is unchanged`);
+    for (const key of ['root', 'r1', 'r3']) assert.equal(await foldOf(topic, ids[key], other), false, `another reader's view of ${key} is unchanged`);
     assert.equal((await actsOf(topic, ids.root))?.aside ?? null, null, 'nothing moved below More');
     await p.key('z', 4);
     await becomes(folds, { root: false, r1: false, r2: false, r3: false, r4: false }, '⌘Z unfolds them all, in Core');
@@ -3915,7 +3917,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const line = `#messages .message-fold[data-id="${ids.between}"] > .fold-line`;
       const paint = () => p.evaluate(`(()=>{const l=document.querySelector(${JSON.stringify(line)}),probe=document.createElement('span');
         const read=v=>{probe.style.background=v;l.append(probe);const c=getComputedStyle(probe).backgroundColor;probe.remove();return c};
-        const s=getComputedStyle(l);return {background:s.backgroundColor,color:s.color,soft:read('var(--soft)'),ink:read('var(--ink)'),expanded:l.getAttribute('aria-expanded'),inDossier:l.closest('.reply-stack')?.dataset.single==='false'}})()`);
+        const s=getComputedStyle(l);return {background:s.backgroundColor,color:s.color,soft:read('var(--soft)'),ink:read('var(--ink)'),expanded:l.getAttribute('aria-expanded'),hovered:l.matches(':hover'),inDossier:l.closest('.reply-stack')?.dataset.single==='false'}})()`);
       for (const width of widthsOf(device)) {
         await atWidth(p, device, width);
         for (const theme of ['light', 'dark']) {
@@ -3923,7 +3925,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           const at = `${device} ${width}px ${theme}`;
           const rest = await paint();
           assert.deepEqual([rest.inDossier, rest.expanded], [true, 'false'], `${at}: the line is in a dossier, shut`);
-          assert.notEqual(rest.color, rest.ink, `${at}: shut, at rest, its words are quiet`);
+          // A phone's emulated touch can leave :hover where a tap was; the quiet words are read where nothing hovers.
+          if (!rest.hovered) assert.notEqual(rest.color, rest.ink, `${at}: shut, at rest, its words are quiet`);
           if (device === 'laptop') {
             await p.point(line, 'move');
             await becomes(async () => { const now = await paint(); return [now.background, now.color]; }, [rest.soft, rest.ink], `${at}: the pointer over it gives it the soft fill and full ink`);
@@ -3931,7 +3934,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
             await becomes(async () => { const now = await paint(); return [now.background, now.color]; }, [rest.background, rest.color], `${at}: and leaving puts it back`);
           }
           await press(p, device, line);
+          if (device === 'laptop') await away(p);
           await becomes(async () => { const now = await paint(); return [now.expanded, now.color]; }, ['true', rest.ink], `${at}: open, the line shows it in full ink`);
+          if (device === 'laptop') assert.equal((await paint()).hovered, false, `${at}: with the pointer away from it`);
           await shot(p, `stack-fold-line-${device}-${width}-${theme}`);
           await press(p, device, line);
           await becomes(async () => (await paint()).expanded, 'false', `${at}: a press shuts it again`);
@@ -5078,18 +5083,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   });
 
   // The person's own Move below More, here, on B drawn where it sits for a link: two fingers swiped right over its
-  // last reply. Core finds B's place unchanged (the same through as the Move below More this page made, so the
+  // title bar (item 472: over its last reply they would fold that reply). Core finds B's place unchanged (the same through as the Move below More this page made, so the
   // same revision); B still goes below the closed More, at once and after Core answers.
   await check('reading stacks below More: two fingers swiped right over a dossier a link drew where it sits move it below the closed More, though Core finds its place unchanged', async () => {
     const topic = 'below-more-swipe-again';
     const { p, drawn, below, ids, more } = await linkedAside(topic, 'laptop', { mine: true });
     const revision = async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.aside_revision;
     const was = await revision();
-    await centre(p, card(ids.b1));
-    const b = await p.box(card(ids.b1)), x = b.x + b.width / 2, y = b.y + Math.min(b.height / 2, 20);
+    const title = `#messages .reply-stack[data-stack="${ids.b}"] .stack-head`;
+    await centre(p, title);
+    const b = await p.box(title), x = b.x + b.width / 2, y = b.y + Math.min(b.height / 2, 20);
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     for (const deltaX of [-30, -30, -30, -30, -18, -10, -5, -2, -1]) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY: 0 });
     await until(async () => await said(p) === 'Moved below More, for you only', 'the swipe moves B below More');
+    assert.equal(await foldOf(topic, ids.b1), false, 'and folds no message of it');
     await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
     await twoFrames(p);
     assert.deepEqual([await below(), await revision()], [true, was], 'Core holds B below More, at the place it held');
