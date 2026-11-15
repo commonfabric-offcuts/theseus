@@ -3602,10 +3602,6 @@ class SessionStepCase(MigrationCase):
 
     VERSION, FIXTURE = BEFORE_SESSION, SCHEMA_BEFORE_SESSION
 
-    def upgrade(self):
-        # The step itself, to its own version; the invitations' step after it has a case of its own.
-        return migrate(self.path, "test-instance", self.binding, SESSION_VERSION)
-
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, BEFORE_SESSION)
 
@@ -3627,14 +3623,14 @@ class SessionStepCase(MigrationCase):
         stored = everything(self.path)
         top = self.sql("SELECT max(seq) FROM messages")[0][0]
         self.assertGreater(top, 0)
+        # Upgraded to the head, through the invitations' step, which adds a table and no row.
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_SESSION,
-                                          "schema_version": SESSION_VERSION, "migrated": True})
-        fresh_schema(self.temp.name)
-        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_INVITES), "tables, indexes and triggers match a fresh instance of version 41")
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         self.assertFalse([sql for sql in schema(self.path) if "marked_words" in sql], "no schema object names the SQL function")
         after = everything(self.path)
         self.assertEqual(after.pop("message_edit_horizon"), [(top,)], "the horizon is the last message at the upgrade")
-        self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures")), ([], []))
+        self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures"), after.pop("agent_invitations")), ([], [], []))
         self.assertEqual(after, stored, "every row of every table is kept")
         # A fresh instance has horizon 0.
         fresh = Path(self.temp.name) / "fresh"
@@ -3667,7 +3663,7 @@ class SessionStepCase(MigrationCase):
                     self.step_back()
                 self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
                 self.assertEqual(self.unchanged(), before)
-                self.assertEqual(self.metadata()["schema_version"], SESSION_VERSION)
+                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
         # The open session is ended by its holder (a released lapse is not holding, so nothing is moved by the close).
         self.sql("UPDATE message_edit_sessions SET released_ms=NULL,renewed_ms=?", (store_module._delivery._now_ms(),))
         self.assertEqual(self.session("close", message)["closed"], True)

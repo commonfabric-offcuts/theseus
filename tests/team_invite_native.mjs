@@ -200,7 +200,8 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     await openLine(p); await type(p, 'Fixture Notebook Agent');
     const sent = p.calls.length;
     await p.key('Enter');
-    const refusal = 'There is already someone called Fixture Notebook Agent here. Choose another name, such as Fixture Notebook Agent 2.';
+    // The refusal names who has the name, as Core knows them (item 525): the fixture's agent is called by its ID.
+    const refusal = 'There is already someone called fixture-notebook-agent here. Choose another name, such as Fixture Notebook Agent 2.';
     await until(async () => (await said(p)) === refusal, 'the refusal in plain words');
     assert.equal(invites(p, sent).length, 1);
     assert.deepEqual(await p.evaluate(`(i=>[document.activeElement===i,i.value,i.selectionStart,i.selectionEnd,i.readOnly])(document.querySelector('#invite-agent-name'))`),

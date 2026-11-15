@@ -348,7 +348,7 @@ class SignIn(InviteCase):
     def test_a_file_that_begins_like_someone_elses_sign_in_is_kept_and_never_taken_over(self):
         # The start of a sign-in for the same ID in another instance: not this agent's, whatever its name.
         other = Path(self.temp.name).resolve() / "other"
-        other.mkdir()
+        other.mkdir(mode=0o700)
         from aim_next import initialize
         theirs = initialize(other / "db.sqlite3", "other-instance", [{"id": "release-scribe", "kind": "agent"}],
                             authority_path=other / "authority.json")["binding"]
