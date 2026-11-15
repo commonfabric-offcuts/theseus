@@ -7,6 +7,7 @@ import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { showLine } from './lines.mjs';
 import { ComposeBar } from './compose-bar.mjs';
+import { holdPlace, releasePlace } from './sheet-holder.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -37,6 +38,7 @@ export class InlineComposer {
     // later, leaves it there, or wherever a key pressed since has moved it.
     this.sheet?.addEventListener('close', () => {
       const popped = this.popped; this.popped = false;
+      releasePlace(this.sheet);
       this.bar.fold();
       if (popped) document.querySelector('#new-message')?.focus({ preventScroll: true });
     });
@@ -107,6 +109,8 @@ export class InlineComposer {
   caret() { return this.input.caret(); }
   pop() {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
+    // At rest it is among the dossiers (item 465): a holder keeps its place there, so the feed does not move behind it.
+    holdPlace(this.sheet);
     this.sheet.showModal(); this.popped = true;
     // The sheet gives the field its height (aim.css): the height it grew to in its place in the feed goes.
     this.bar.fit();
