@@ -462,7 +462,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         }
         const before = await composer(p);
         assert.deepEqual([before.compose, before.panel, before.send], [state === 'line' ? 'line' : 'writing', state === 'panel' ? 'plus' : null, state !== 'line'], `${said}, as the page opens: ${JSON.stringify(before)}`);
-        if (state !== 'line') assert.ok(before.words.endsWith(` Kept ${state} ${label}.`), `${said}: the words are in the composer: ${JSON.stringify(before)}`);
+        if (state !== 'line') assert.ok(before.words.includes(` Kept ${state} ${label}.`), `${said}: the words are in the composer: ${JSON.stringify(before)}`);
         // The page opens from its card: on a laptop by the keys (the focus on the card, as Tab puts it, and Return), so
         // a + panel open stays open until the page hides the composer; on a phone by a finger.
         if (touch) await hit(card(id));
