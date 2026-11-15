@@ -872,14 +872,15 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await press(p, device, 'dialog.interaction-guide [aria-label=Close]');
         await until(async () => (await guide())?.open === false, device + ': ✕ closes the guide');
       };
-      // The ? beside the logo as drawn: whether it shows and takes a press where it is drawn, whether it sits
+      // The ? beside the logo as drawn: whether it shows (drawn at its size and opaque) and takes a press where it is drawn, whether it sits
       // in the logo block right of the wordmark, its size, its words, names and tooltip, and how many
       // controls still say "Pointer, keys and taps" in their words (the old row did).
       const mark = () => p.evaluate(`(()=>{const b=document.getElementById('guide-open'),w=document.querySelector('.wordmark');
         const rows=[...document.querySelectorAll('button,a')].filter(e=>/Pointer, keys and taps/.test(e.textContent)).length;
         if(!b)return {drawn:false,rows};
         const r=b.getBoundingClientRect(),m=w.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
-        return {drawn:true,rows,opacity:getComputedStyle(b).opacity,hit:b.contains(hit),inBrand:b.parentElement===w.parentElement,
+        const style=getComputedStyle(b);
+        return {drawn:true,rows,shown:r.width>2&&r.height>2&&style.opacity==='1'&&style.visibility==='visible',hit:b.contains(hit),inBrand:b.parentElement===w.parentElement,
           beside:r.left>=m.right-1&&r.top<m.bottom&&r.bottom>m.top,width:Math.round(r.width),height:Math.round(r.height),
           words:b.textContent.trim(),name:b.getAttribute('aria-label'),tip:b.title,focused:document.activeElement===b}})()`);
       if (device === 'laptop') {
@@ -912,10 +913,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         const away = await mark();
         assert.equal(away.rows, 0, 'laptop: no "? Pointer, keys and taps" row is left in the rail');
         assert.ok(away.drawn, 'laptop: the logo block has its ?');
-        assert.deepEqual([away.opacity, away.hit, away.words], ['0', false, '?'], 'laptop: no ? shows, or takes a press, until the logo block is pointed at: ' + JSON.stringify(away));
+        assert.deepEqual([away.shown, away.hit, away.words], [false, false, '?'], 'laptop: no ? shows, or takes a press, until the logo block is pointed at: ' + JSON.stringify(away));
         // Pointing at the logo shows it, right of the wordmark, named and with a tooltip; a press opens the guide.
         await p.point('.wordmark', 'move');
-        const pointed = await until(async () => { const seen = await mark(); return seen.opacity === '1' && seen.hit && seen; }, 'laptop: pointing at the logo shows its ?');
+        const pointed = await until(async () => { const seen = await mark(); return seen.shown && seen.hit && seen; }, 'laptop: pointing at the logo shows its ?');
         assert.deepEqual([pointed.inBrand, pointed.beside, pointed.name, pointed.tip], [true, true, 'Pointer, keys and taps', 'Pointer, keys and taps (?)'],
           'laptop: a ? right of the wordmark, in the logo block, with its name and tooltip: ' + JSON.stringify(pointed));
         await shot(p, 'reading-guide-logo-laptop');
@@ -927,7 +928,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.point('#instance-label');
         await p.point('#topic-title', 'move');
         await p.key('Tab', 8); await p.key('Tab', 8);
-        const keyed = await until(async () => { const seen = await mark(); return seen.opacity === '1' && seen; }, 'laptop: the keys on the wordmark show the ?');
+        const keyed = await until(async () => { const seen = await mark(); return seen.shown && seen; }, 'laptop: the keys on the wordmark show the ?');
         assert.equal(await p.evaluate(`document.activeElement?.classList.contains('wordmark')`), true, 'laptop: Shift-Tab reached the wordmark');
         assert.equal(keyed.hit, true, 'laptop: the ? the keys show takes a press too');
         await p.key('Tab');
@@ -936,7 +937,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.key('Enter');
       } else {
         await tap(p, '#rail-open');
-        const shown = await until(async () => { const seen = await mark(); return seen.drawn && seen.opacity === '1' && seen.hit && seen; }, 'phone: "☰ Outcomes" shows the ? beside the logo with no pointer over it');
+        const shown = await until(async () => { const seen = await mark(); return seen.drawn && seen.shown && seen.hit && seen; }, 'phone: "☰ Outcomes" shows the ? beside the logo with no pointer over it');
         assert.deepEqual([shown.rows, shown.inBrand, shown.beside, shown.words, shown.name], [0, true, true, '?', 'Pointer, keys and taps'],
           'phone: the ? right of the wordmark, and no "? Pointer, keys and taps" row: ' + JSON.stringify(shown));
         assert.ok(shown.width >= 44 && shown.height >= 44, `phone: the ? is a full tap (${shown.width}×${shown.height})`);

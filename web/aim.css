@@ -544,9 +544,9 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 #thumb-source{flex-shrink:0;min-width:2.75rem}
 .reader-reactions{margin:0;padding:.3rem .2rem 0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
 #thumb-source[aria-pressed=true]{background:var(--soft);font-weight:700}
-/* The guide's ? beside the logo (item 463): a ? in a circle, a full tap on a phone, where it always shows; with a fine pointer on a laptop it shows while the logo block is pointed at or holds the keys, and takes no press while hidden. */
-.guide-open{display:inline-grid;place-items:center;width:1.9rem;height:1.9rem;min-height:0;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}.guide-open>span{display:grid;place-items:center;width:1.3rem;height:1.3rem;border:1.5px solid currentColor;border-radius:50%;font-size:.75rem;font-weight:700;line-height:1}.guide-open:hover{background:var(--soft);color:var(--ink)}
-@media(hover:hover) and (pointer:fine) and (min-width:761px){.brand:not(:hover,:focus-within) .guide-open{opacity:0;pointer-events:none}}
+/* The guide's ? beside the logo (item 463): a ? in a circle, a full tap on a phone, where it always shows; with a fine pointer on a laptop it shows while the logo block is pointed at or holds the keys. The button is a tap area with a button's corners, never a pill; what shows is the circle, a pill as wide as its ? that its least width keeps round (the rendering check's rule for a short count), and a pointer over it fills it. Hidden, it is drawn at no size, so it is painted nowhere and takes no press, yet stays in the Tab order and named, so the keys still reach it beside the wordmark. */
+.guide-open{display:inline-grid;place-items:center;width:1.9rem;height:1.9rem;min-height:0;padding:0;border:0;background:transparent;color:var(--muted)}.guide-open>span{display:grid;place-items:center;min-width:1.3rem;height:1.3rem;padding:0;border:1.5px solid currentColor;border-radius:50%;font-size:.75rem;font-weight:700;line-height:1}.guide-open:hover{background:transparent;color:var(--ink)}.guide-open:hover>span{background:var(--soft)}
+@media(hover:hover) and (pointer:fine) and (min-width:761px){.brand:not(:hover,:focus-within) .guide-open{transform:scale(0)}}
 dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;max-height:calc(100dvh - 2rem);padding:1rem 1.25rem 1.25rem;overflow:auto}
 .interaction-guide header{display:flex;align-items:center;justify-content:space-between;gap:1rem}
 .interaction-guide h2{margin:0;font-size:1.05rem}

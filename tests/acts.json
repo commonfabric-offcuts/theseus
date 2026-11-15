@@ -11578,7 +11578,7 @@
    "break": [
     [
      "web/aim.css",
-     ".brand:not(:hover,:focus-within) .guide-open{opacity:0;pointer-events:none}",
+     ".brand:not(:hover,:focus-within) .guide-open{transform:scale(0)}",
      ".brand .guide-open{}"
     ]
    ],
@@ -11620,6 +11620,51 @@
    "check": {
     "native": "rail",
     "case": "the logo block and Health at 320"
+   }
+  },
+  {
+   "item": 463,
+   "act": "The ? beside the logo shows as a circle only as wide as its ?, kept round by its least width, in both schemes, laptop and phone, drawn and pointed at",
+   "break": [
+    [
+     "web/aim.css",
+     "place-items:center;min-width:1.3rem;height:1.3rem;",
+     "place-items:center;width:1.3rem;height:1.3rem;"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live rendering: every pill is as wide as its words"
+   }
+  },
+  {
+   "item": 463,
+   "act": "The button around the ? beside the logo is a tap area with a button's corners, never a pill wider than its ? that blends into the rail",
+   "break": [
+    [
+     "web/aim.css",
+     "min-height:0;padding:0;border:0;background:transparent;color:var(--muted)}.guide-open>span",
+     "min-height:0;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}.guide-open>span"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live rendering: every pill is as wide as its words"
+   }
+  },
+  {
+   "item": 463,
+   "act": "Hidden on a laptop, the ? beside the logo is drawn nowhere, never a see-through circle that blends into the rail",
+   "break": [
+    [
+     "web/aim.css",
+     ".brand:not(:hover,:focus-within) .guide-open{transform:scale(0)}",
+     ".brand:not(:hover,:focus-within) .guide-open{opacity:0;pointer-events:none}"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live rendering: every pill is as wide as its words"
    }
   },
   {

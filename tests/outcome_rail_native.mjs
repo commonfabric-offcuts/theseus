@@ -152,11 +152,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     l=document.getElementById('instance-label'),a=document.getElementById('health-link');
     const box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:Math.round(r.width),height:Math.round(r.height)}};
     const meet=(x,y)=>x.left<y.right-0.5&&y.left<x.right-0.5&&x.top<y.bottom-0.5&&y.top<x.bottom-0.5;
-    const wm=box(w),lb=box(l),hl=box(a),rb=box(rail),g=b&&box(b);
+    const wm=box(w),lb=box(l),hl=box(a),rb=box(rail),g=b&&box(b),c=b?.firstElementChild&&box(b.firstElementChild);
     // Shown as a person sees it: a closed Keys holds its words out of sight (content-visibility), so checkVisibility.
     const others=[...rail.querySelectorAll('*')].filter(e=>e.checkVisibility()&&!e.contains(a)&&!a.contains(e));
     const below=others.filter(e=>e.getBoundingClientRect().bottom>hl.top+1).map(e=>e.id||e.className||e.tagName.toLowerCase());
-    return {guide:g?{opacity:getComputedStyle(b).opacity,width:g.width,height:g.height,beside:g.left>=wm.right-1&&g.top<wm.bottom&&g.bottom>wm.top,
+    // It shows when it is drawn at its size and opaque; the circle inside it is what shows.
+    return {guide:g?{shown:g.width>2&&g.height>2&&getComputedStyle(b).opacity==='1'&&getComputedStyle(b).visibility==='visible',width:g.width,height:g.height,
+        circle:c&&{width:c.width,height:c.height},beside:g.left>=wm.right-1&&g.top<wm.bottom&&g.bottom>wm.top,
         overlaps:meet(g,lb)||meet(g,wm),inside:g.right<=rb.right+0.5}:null,
       health:{parent:a.parentElement?.id??'',last:a.parentElement?.lastElementChild===a,width:hl.width,height:hl.height,
         lowest:below.length===0,below,inside:hl.left>=rb.left-0.5&&hl.right<=rb.right+0.5,words:a.textContent},
@@ -178,15 +180,19 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       } else await p.point('#topic-title', 'move');
       const seen = await brandAndHealth(p);
       assert.ok(seen.guide, at + ': the logo block has its ?');
-      assert.deepEqual([seen.guide.beside, seen.guide.overlaps, seen.guide.inside], [true, false, true], at + ': the ? sits right of the wordmark, over nothing, inside the rail: ' + JSON.stringify(seen.guide));
+      let guide = seen.guide;
       if (metrics.mobile) {
-        assert.equal(seen.guide.opacity, '1', at + ': on a phone the ? always shows');
-        assert.ok(seen.guide.width >= 44 && seen.guide.height >= 44, at + `: the ? is a full tap (${seen.guide.width}×${seen.guide.height})`);
+        assert.equal(guide.shown, true, at + ': on a phone the ? always shows');
+        assert.ok(guide.width >= 44 && guide.height >= 44, at + `: the ? is a full tap (${guide.width}×${guide.height})`);
       } else {
-        assert.equal(seen.guide.opacity, '0', at + ': on a laptop no ? shows until the logo block is pointed at');
+        assert.equal(guide.shown, false, at + ': on a laptop no ? shows until the logo block is pointed at: ' + JSON.stringify(guide));
         await p.point('.wordmark', 'move');
-        await until(async () => (await brandAndHealth(p)).guide.opacity === '1', at + ': pointing at the logo shows its ?');
+        guide = await until(async () => { const now = (await brandAndHealth(p)).guide; return now.shown && now; }, at + ': pointing at the logo shows its ?');
       }
+      // Where it shows: right of the wordmark, over nothing, inside the rail, its circle round and only as wide as the ? keeps it.
+      assert.deepEqual([guide.beside, guide.overlaps, guide.inside], [true, false, true], at + ': the ? sits right of the wordmark, over nothing, inside the rail: ' + JSON.stringify(guide));
+      assert.ok(guide.circle && guide.circle.width === guide.circle.height && guide.circle.width <= 22 && guide.circle.width < guide.width,
+        at + ': the circle is round, the ? its words, no wider than its height, inside a wider tap: ' + JSON.stringify(guide));
       assert.deepEqual([seen.health.parent, seen.health.last, seen.health.lowest, seen.health.inside], ['outline', true, true, true],
         at + ': Health is the last part of the outline, below everything else in the rail, inside it: ' + JSON.stringify(seen.health));
       if (metrics.mobile) assert.ok(seen.health.height >= 44, at + `: Health is a full tap (${seen.health.height}px)`);

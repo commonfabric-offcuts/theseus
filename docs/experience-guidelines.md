@@ -199,7 +199,10 @@ nothing scrolls sideways, and nothing depends on hover.
 - `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
   the logo block and Health at 320, 375 and 390 by touch and on a laptop …":
   the logo's ? and the Health link are full taps, the ? always shows on a phone
-  and shows on a laptop only while the logo block is pointed at.
+  and shows on a laptop only while the logo block is pointed at; its circle is
+  round and only as wide as its ?. `tests/render_native.mjs` (`native-live`):
+  "live rendering: every pill is as wide as its words …" points at the ? on
+  every page it judges, so its circle is judged as drawn and hovered.
 - `tests/device_native.mjs` (`native-webkit-device`): "device at a phone's width
   every phone check control is in reach by touch and nothing scrolls sideways".
 - A real phone: the phone check records what Tony's phone did with the names

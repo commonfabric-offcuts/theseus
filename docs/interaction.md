@@ -4,11 +4,14 @@ One short page of the rules every screen follows. The page itself is in the
 app: press ? anywhere outside writing, or the ? in a circle beside the
 Theseus logo (`web/interaction-guide.mjs`, the same words). On a laptop that
 ? shows while the pointer is over the logo block, or the keys are in it (Tab
-from the wordmark reaches it), and takes no press while it does not show; on
-a phone it always shows, a full 44px tap, at the top of the side rail that
-"☰ Outcomes" opens or of a page with no rail (item 463). It is named and
-titled "Pointer, keys and taps". Each rule there names the pointer's way, the
-keys' and the phone's.
+from the wordmark reaches it), and takes no press while it does not show:
+hidden, it is drawn at no size, still in the Tab order and named; on a phone
+it always shows, a full 44px tap, at the top of the side rail that
+"☰ Outcomes" opens or of a page with no rail (item 463). What shows is the
+circle, only as wide as its ? (round by its least width, as a short count
+is); the button around it is a tap area with a button's corners, and a
+pointer over it fills the circle. It is named and titled "Pointer, keys and
+taps". Each rule there names the pointer's way, the keys' and the phone's.
 
 ## The topic page
 
@@ -344,7 +347,9 @@ page painted. Its checks, by rule:
   the logo block is pointed at or holds the keys, and no "? Pointer, keys and
   taps" row left), in Chrome and Safari's engine; its size and place at 320,
   375 and 390 and on a laptop, light and dark: "rail the logo block and Health
-  at 320 …".
+  at 320 …"; its circle as wide as its ? and standing out, drawn and pointed
+  at, in both schemes, laptop and phone: "live rendering: every pill is as
+  wide as its words …" (`tests/render_native.mjs`, `native-live`).
 - Images: "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and
   takes the #img words out as one edit ⌘Z puts back; "reading Paste image: …"
