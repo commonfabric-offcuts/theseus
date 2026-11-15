@@ -1078,8 +1078,12 @@ export class Reader {
     // An opener the open itself hid (Read it, once the last mark clears)
     // hands focus to the page rather than dropping it to the body.
     const back = this.opener?.isConnected && this.opener.checkVisibility?.() !== false ? this.opener : document.getElementById('main');
-    if (back === this.opener && this.openerRinged) back.focus({ preventScroll: true, focusVisible: true });
-    else back?.focus({ preventScroll: true });
+    // The dialog closing has already given the opener the focus, with no
+    // ring after a press, and a browser rings no element that has it already.
+    if (back === this.opener && this.openerRinged) {
+      if (document.activeElement === back) back.blur();
+      back.focus({ preventScroll: true, focusVisible: true });
+    } else back?.focus({ preventScroll: true });
   }
 
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }

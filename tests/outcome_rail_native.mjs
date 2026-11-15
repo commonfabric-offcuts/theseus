@@ -1538,6 +1538,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await keyedAt(p), 'name:rail-ring-o');
     await p.key('Enter');
     await arrived(p, '?conversation=rail-ring-o', null, 'Return on the outcome opens its Conversation');
+    await settled(p, 'the Conversation is up');
     await until(async () => await keyedAt(p) === 'name:rail-ring-o', 'the keys stay on the outcome\'s row');
     await returnTo('Return on the topic opens it again');
     assert.equal((await placeOf(p)).origin, start.origin, 'every move in place');

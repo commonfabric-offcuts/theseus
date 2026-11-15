@@ -11718,8 +11718,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "    if (back === this.opener && this.openerRinged) back.focus({ preventScroll: true, focusVisible: true });",
-     "    if (back === this.opener && this.openerRinged) back.focus({ preventScroll: true });"
+     "      back.focus({ preventScroll: true, focusVisible: true });",
+     "      back.focus({ preventScroll: true });"
     ]
    ],
    "check": {
