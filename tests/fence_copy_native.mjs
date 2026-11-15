@@ -34,7 +34,7 @@ const body = 'Before the fence.\n\n~~~~ text\n' + payload + '\n~~~~\n\nAfter the
 const note = 'Opening.\n\n' + body + '\n\n## First card\n' + body + '\n\nTarget after fence.\n\n## Second card\nOther words.';
 const wait = (p, fn, arg) => p.waitForFunction(fn, arg, { timeout: 10000 });
 const query = id => `.message-card[data-id="${id}"]`;
-const feedCopy = card => '.feed-fence-copy[data-message="' + card.match(/data-id="([^"]+)"/)[1] + '"]';
+const feedCopy = card => '.feed-fence-copy[data-face-of="' + card.match(/data-id="([^"]+)"/)[1] + '"]';
 
 async function open(url, { phone = false, dark = false, width = 390 } = {}) {
   const ctx = await browser.newContext({ viewport: phone ? { width, height: 844 } : { width: 1280, height: 900 }, hasTouch: phone, isMobile: phone, colorScheme: dark ? 'dark' : 'light' });
@@ -781,7 +781,7 @@ try {
         await p.keyboard.press(tab);
         assert.ok(await p.evaluate(id => {
           const el = document.activeElement;
-          return el !== document.body && !el.closest('.message-bar') && el.closest('.message-card')?.dataset.id !== id && el.dataset.message !== id;
+          return el !== document.body && !el.closest('.message-bar') && el.closest('.message-card')?.dataset.id !== id && el.dataset.faceOf !== id;
         }, id), shape + ' Tab exits the card');
         await p.keyboard.press(back);
         assert.ok(await glyph.evaluate(e => e === document.activeElement), shape + ' backward re-entry');

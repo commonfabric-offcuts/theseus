@@ -52,6 +52,9 @@ the pointer's way, the keys' and the phone's.
   little that opens it; one that fits but not with the whole gap shows whole
   with the gap there is room for; one already a tenth inside does not move.
   One taller than the area lands with its top a tenth below the area's top.
+  A reply still arriving in a dossier (docs/reply-stacks.md, "Dossier
+  motion") is measured where it lands, and keeps travelling there; the page
+  is already as long as it will be, so the window scrolls the whole way.
   Going up and going down read the same rule. The scrolling area is the
   nearest box that scrolls (a rail, a drawer), else the window; a page may
   leave a bar it keeps at an edge out of it with CSS `scroll-padding`, which
@@ -75,8 +78,9 @@ the pointer's way, the keys' and the phone's.
   is said when it copies, as in the Reader; a refusal says how else to copy.
 - **A cut-off message** (the first 1,024 bytes are shown) reads on in place:
   once the pointer rests on it, the keys light it or a finger taps it, the whole
-  card scrolls under the wheel, trackpad or a finger, keeping its height (a
-  press already held on its words when the whole message arrives still opens
+  card scrolls under the wheel, trackpad or a finger, keeping its height (the
+  height it lands at, for a reply still arriving or unfolding; a press
+  already held on its words when the whole message arrives still opens
   it: the words wait for the press to end). The
   author, timestamp and reply context scroll away with the words, in standalone
   messages and stack messages alike. The card's border and dossier title stay

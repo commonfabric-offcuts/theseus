@@ -3156,36 +3156,6 @@
   },
   {
    "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
    "act": "An act's answer landing under a held press waits for the press to end, so nothing moves under the pointer",
    "break": [
     [
@@ -3265,7 +3235,7 @@
    "break": [
     [
      "web/press-hold.mjs",
-     "    doc.defaultView.addEventListener('blur', end);\n",
+     "    win.addEventListener('blur', end);\n",
      ""
     ]
    ],
@@ -11660,6 +11630,539 @@
    ],
    "check": {
     "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind, { ...provenance, live: false })); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind, { ...provenance, live: false }))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 412,
+   "act": "Only fresh live replies travel and the folder follows their moving lower edge",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "this.next = arrivalIds(provenance, this.handled);",
+     "this.next = [];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion arrival follows the moving lower edge"
+   }
+  },
+  {
+   "item": 412,
+   "act": "An individual fold clips the existing solid author to its reachable edge",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "this.fold(entry, old, folded);",
+     "if (!folded) this.fold(entry, old, folded);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion fold clips one solid author"
+   }
+  },
+  {
+   "item": 412,
+   "act": "An individual unfold expands the same solid author in place",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "this.fold(entry, old, folded);",
+     "if (folded) this.fold(entry, old, folded);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion unfold draws the same solid author"
+   }
+  },
+  {
+   "item": 412,
+   "act": "Reduced motion paints natural final arrival fold and unfold without travel",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "!this.reduced.matches &&",
+     "true &&"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion reduced preference paints natural arrival fold and unfold"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A primary press held through an animation freezes its physical geometry",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "pause() { this.paused = true;",
+     "pause() { return; this.paused = true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press held through arrival freezes geometry"
+   }
+  },
+  {
+   "item": 412,
+   "act": "Cancelling mid-flight releases temporary styles and a successor can animate",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "on(win, 'resize', () => this.finish());",
+     "on(win, 'resize', () => {});"
+    ],
+    [
+     "web/stack-motion.mjs",
+     "watchSize(effect) {",
+     "watchSize(effect) { return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion cancelling an arrival mid-flight restores styles"
+   }
+  },
+  {
+   "item": 412,
+   "act": "Initial loads and read-only replays never deal messages again",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "const anchor = this.anchor();",
+     "this.next = entries(this.list).map(e => e.dataset.id); const anchor = this.anchor();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion no arrival on page load or a read-only replay"
+   }
+  },
+  {
+   "item": 412,
+   "act": "Returning to a hidden feed does not animate catch-up; input resumes future live motion",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "!this.awaitingAttention &&",
+     "true &&"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_motion.test.mjs"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A transparent travelling reply earns no Core read until it settles visibly",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (moving) { cardObserver?.unobserve(entry);",
+     "if (false) { cardObserver?.unobserve(entry);"
+    ],
+    [
+     "web/app.mjs",
+     "!entry.dataset.stackMotion && onScreen(entry)",
+     "onScreen(entry)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion arrival follows the moving lower edge"
+   }
+  },
+  {
+   "item": 412,
+   "act": "Motion below the reading anchor may grow; motion above held words or writing is skipped",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "return !anchorBox || top >= anchorBox.bottom - 1;",
+     "return true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_motion.test.mjs"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A batch shares one moving floor; a batch extending off screen keeps natural layout together",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (!staticSections.has(section)) this.deal",
+     "if (true) this.deal"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a burst shares its moving floor"
+   }
+  },
+  {
+   "item": 412,
+   "act": "The existing message bar follows a selected incoming face before its folder grows",
+   "break": [
+    [
+     "web/app.mjs",
+     "moved: () => menu?.place(),",
+     "moved: () => {},"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a burst shares its moving floor"
+   }
+  },
+  {
+   "item": 412,
+   "act": "The keys moving to a reply still arriving bring it whole into view where it lands, and it keeps travelling there",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "landWith(this.doc, read => this.landed(read));",
+     "void 0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion the keys onto a reply still arriving"
+   }
+  },
+  {
+   "item": 412,
+   "act": "The keys moving to a reply still unfolding bring it whole into view at its full height",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "for (const animation of animations) animation.currentTime = animation.effect.getComputedTiming().endTime;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion the keys onto a reply still unfolding"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A reply arriving above the field or new message being written lands in place, without moving the writing",
+   "break": [
+    [
+     "web/app.mjs",
+     "anchor: () => heldAt().anchor,",
+     "anchor: () => null,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion writing below an arriving reply holds still"
+   }
+  },
+  {
+   "item": 412,
+   "act": "The keys moving to a long reply still arriving or unfolding low on a short page reveal it where the still page does, in one scroll, and the page's held length goes when it lands",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "root.style.setProperty('min-height', length + 'px');",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion the keys onto a long reply"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A cut-off reply the keys light while it arrives or unfolds reads on in place in a box of the height it lands at, not its height in flight",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "const height = landed(card.ownerDocument, () => card.getBoundingClientRect().height);",
+     "const height = card.getBoundingClientRect().height;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion the keys onto a long reply"
+   }
+  },
+  {
+   "item": 412,
+   "act": "While a new message slides onto the deck, a press on its face does nothing and nothing under it is pressed; once it lands it takes presses, and a press held on it pauses the slide",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "eaten = down = arriving(e) ? e.pointerId : null;",
+     "eaten = down = null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on a reply still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A pointer passing over a new message still sliding onto the deck, or moving while a press begun on it is held, does not light it or move the keys there",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (e.isTrusted && (down !== null ? name === 'mousemove' || e.pointerId === down : !e.buttons && arriving(e))) e.stopImmediatePropagation();",
+     "void e;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on a reply still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A press on the Copy of a code block on a new message still sliding onto the deck does nothing either; once it lands, the Copy takes presses",
+   "break": [
+    [
+     "web/feed-fence-copy.mjs",
+     "control.dataset.faceOf = card.dataset.id;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on the Copy of a code block on a reply still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A press on the message bar of a new message still sliding onto the deck, lit by the keys, does nothing and opens no menu; once it lands, its bar takes presses",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "this.bar.dataset.faceOf = entry.dataset.id;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on the bar of a reply the keys lit while still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A layer drawn over a card for it is part of that card's face while it slides: a press on it is the face's",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "return [...this.list.querySelectorAll('[data-stack-motion=arrival]')].some(node => node.dataset.id === id);",
+     "return false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on the bar of a reply the keys lit while still sliding in does nothing, and once landed it takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A finger swiped from a new message still sliding onto the deck folds nothing and sets nothing aside, and the page hears none of its touch; once it lands, the same swipe acts",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (!arriving(e)) return;",
+     "return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a finger swiped across a reply still sliding in sets nothing aside, and once landed the same swipe does"
+   }
+  },
+  {
+   "item": 412,
+   "act": "The moves and the end of a touch begun on a new message still sliding onto the deck reach the page no more than its start",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (!ours.length) return;",
+     "return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a finger swiped across a reply still sliding in sets nothing aside, and once landed the same swipe does"
+   }
+  },
+  {
+   "item": 412,
+   "act": "Two fingers swiped across a trackpad over a new message still sliding onto the deck fold nothing and set nothing aside, and the page hears none of the wheel; once it lands, the same swipe acts",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (!e.isTrusted || !(e.timeStamp - wheeled < SWIPE_GAP || arriving(e))) return;",
+     "if (true) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion two fingers swiped across a reply still sliding in set nothing aside, to the swipe's end, and once landed the same swipe does"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A trackpad swipe begun over a new message still sliding onto the deck is followed to its end, momentum and all, past the message's landing",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "e.timeStamp - wheeled < SWIPE_GAP || arriving(e)",
+     "arriving(e)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion two fingers swiped across a reply still sliding in set nothing aside, to the swipe's end, and once landed the same swipe does"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A wheel turned across a new message still sliding onto the deck is kept from the browser, which would go back a page; one turned down still scrolls the page",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) e.preventDefault();",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion two fingers swiped across a reply still sliding in set nothing aside, to the swipe's end, and once landed the same swipe does"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A press held on a new message still sliding onto the deck holds back the next live message until it is released, as any held press does",
+   "break": [
+    [
+     "web/press-hold.mjs",
+     "win.addEventListener('pointerdown',",
+     "doc.addEventListener('pointerdown',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press held on a reply still sliding in holds back the next live message until release"
+   }
+  },
+  {
+   "item": 412,
+   "act": "After a press falls on a new message still sliding onto the deck, a script's click, the keys and the pointer act as before",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "on(win, 'keydown', () => { eaten = null; }, true);",
+     "on(win, 'keydown', () => {}, true);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion after a press falls on a sliding reply, a script click, the keys and the pointer act as before"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A right press on a new message still sliding onto the deck opens nothing; once it lands, a right press reaches it",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "'auxclick', 'contextmenu', 'selectstart']",
+     "'auxclick', 'selectstart']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a right press on a reply still sliding in opens nothing, and once landed it reaches the page"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A press on the ⋯ menu the keys opened on a new message still sliding onto the deck does nothing and leaves the menu open; once it lands, its menu takes presses",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (face !== null) root.dataset.faceOf = face;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a press on the menu the keys opened on a reply still sliding in does nothing, and once landed the menu takes the press"
+   }
+  },
+  {
+   "item": 412,
+   "act": "While a new message slides onto the deck, a layer drawn over another card that has landed, its bar, takes presses",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "node => node.dataset.id === id",
+     "() => true"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion the bar of a landed reply takes a press while another reply slides in"
+   }
+  },
+  {
+   "item": 412,
+   "act": "A touch begun on a new message still sliding onto the deck that the browser cancels holds nothing after: the next touch, with the same identifier, reaches the page and its swipe acts",
+   "break": [
+    [
+     "web/stack-motion.mjs",
+     "['touchmove', 'touchend', 'touchcancel']",
+     "['touchmove', 'touchend']"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier motion a touch on a reply still sliding in that the browser cancels holds nothing after, and the next swipe on the landed reply acts"
    }
   },
   {

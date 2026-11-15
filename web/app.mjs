@@ -65,6 +65,7 @@ import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress }
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
+import { StackMotion } from './stack-motion.mjs';
 import { readerSteps } from './stack-order.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
@@ -110,7 +111,7 @@ let outcomeReached = false;
 // The Reader's edit of one of the person's messages, while it is open (editMessage).
 let messageEdit = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
-let stackFeed = null;
+let stackFeed = null, stackMotion = null;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
 const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
@@ -465,7 +466,7 @@ function noteRead() {
   const shown = new Set();
   for (const entry of entries($('messages'))) {
     const seq = Number(entry.dataset.seq);
-    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) shown.add(seq);
+    if ((halfShown.has(seq) || atMiddle.has(seq)) && !entry.dataset.stackMotion && onScreen(entry)) shown.add(seq);
   }
   if (!shown.size) return;
   for (const [from, through] of seenRanges([...views.messages.values()], seq => shown.has(seq), id => views.runOf(id), bootstrap.actor))
@@ -697,10 +698,7 @@ async function openSource(ref, opener, act = null) {
 // the repaint: when the repaint stops drawing it (put below More on another
 // device), the card drawn next below it is held instead.
 function keepListAnchor(paint) {
-  const at = document.activeElement, list = $('messages');
-  const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
-  const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const anchor = writing ? inline.field : field ? at : listAnchor();
+  const list = $('messages'), { writing, field, anchor } = heldAt();
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
@@ -708,6 +706,13 @@ function keepListAnchor(paint) {
   paint();
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
   if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
+}
+// What a repaint holds in place, and what dossier motion may not move (stack-motion.mjs).
+function heldAt() {
+  const at = document.activeElement;
+  const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
+  const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
+  return { writing, field, anchor: writing ? inline.field : field ? at : listAnchor() };
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
@@ -740,11 +745,11 @@ function paintMoreMessages() {
   $('more-messages').hidden = Boolean(aside && !view.asideShown) || views.olderCursor === null || (!view?.only &&
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
-function paintViews(kind) {
+function paintViews(kind, provenance) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
-  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
+  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind, { ...provenance, live: false })); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
@@ -768,6 +773,7 @@ function paintViews(kind) {
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
+  if (kind === 'messages') { feedOf(); stackMotion.stage(provenance); }
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
   let following = $('messages').firstElementChild;
@@ -871,7 +877,12 @@ function actorLabel(id) {
 function stackMessages() { feedOf().arrange(); }
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
-  stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
+  stackMotion ??= new StackMotion({ list: $('messages'), moved: () => menu?.place(), anchor: () => heldAt().anchor, reading: (entry, moving) => {
+    const seq = Number(entry.dataset.seq);
+    if (moving) { cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); halfShown.delete(seq); atMiddle.delete(seq); }
+    else if (entry.isConnected) { cardObserver?.observe(entry); middleObserver?.observe(entry); }
+  } });
+  stackFeed ??= new StackFeed({ motion: stackMotion, list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current, send: envelope => api.command(envelope),
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
@@ -1197,14 +1208,14 @@ async function toggleMark() {
 // right-click (docs/links.md, "A message's menu").
 // On a phone it opens as a sheet from the bottom, as a long press does.
 function openMessageMore(item, more) {
-  openMessageMenu({ anchor: more, items: messageMenuItems(item, more, more), label: 'This message', sheet: true });
+  openMessageMenu({ anchor: more, items: messageMenuItems(item, more, more), label: 'This message', sheet: true, face: item.id });
 }
 // say: the ⋯ that says "Link copied", or null where none shows. anchor: what
 // the menu opened from, where a phone's "Move or join…" sheet opens too.
 // What the message's stack offers comes first, its moves and joins last (stack-feed.mjs).
 function messageMenuItems(item, say, anchor = say) {
   const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
-  const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: moves, label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
+  const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: moves, label: 'Move or join', sheet: true, face: item.id }) }) : { first: [], last: [] };
   const items = [...stack.first, { label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   const card = cardIn(messageEntries.get(item.id));
   if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', act: () => run(() => cardScroll.showFull(card, item)) });
@@ -1227,7 +1238,7 @@ function messageContextMenu(event) {
   const card = cardIn(entry), shown = !card.hidden, anchor = shown ? card : entry.querySelector('.fold-line') ?? entry;
   const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null;
   // "Link copied" shows on the bar's ⋯ while its message is lit, as it is under the pointer.
-  openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null, anchor), label: 'This message', sheet: true });
+  openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null, anchor), label: 'This message', sheet: true, face: item.id });
 }
 // The link names the message's own topic, which the Reader may show on a page of another.
 async function copyLink(topicId, messageId, say) {
@@ -2875,7 +2886,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
+window.addEventListener('pagehide', () => { stackMotion?.dispose(); live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).
