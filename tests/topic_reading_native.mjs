@@ -1713,9 +1713,29 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const move = async (id, text, modifiers = 0) => { const at = await aim(id, text); assert.ok(at, `${text} is drawn on ${id}`); await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, modifiers }); };
     // What the page lights: the words of the lit passage highlight, or null.
     const shining = () => p.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return h&&h.size?[...h][0].toString():null})()`);
+    // What ⌘C put on the clipboard, read back through the browser's own clipboard: in Chrome by its clipboard API,
+    // granted; Safari's engine lets a page read the clipboard only inside a press, so there it is read by the
+    // browser's own paste (⌘V) into the Reader's reply, once the Reader is open, and the pasted words taken out again.
     const clipboard = () => p.evaluate('navigator.clipboard.readText()');
-    const copy = async () => { await p.evaluate(`navigator.clipboard.writeText('nothing copied yet')`); await p.key('c', 4); await until(async () => await clipboard() !== 'nothing copied yet', 'the page copies on ⌘C'); return clipboard(); };
+    const copy = async () => {
+      await p.evaluate(`navigator.clipboard.writeText('nothing copied yet')`); await p.key('c', 4);
+      if (!grant) return null;
+      await until(async () => await clipboard() !== 'nothing copied yet', 'the page copies on ⌘C'); return clipboard();
+    };
     const reply = () => p.evaluate(`document.querySelector('#writing-body').value`);
+    const pasted = async () => {
+      const before = await p.evaluate(`(()=>{const f=document.querySelector('#writing-body');f.focus();f.setSelectionRange(f.value.length,f.value.length);return f.value})()`);
+      await p.key('v', 4);
+      await until(async () => await reply() !== before, 'the browser pastes what is on the clipboard');
+      const after = await reply();
+      assert.ok(after.startsWith(before), 'the paste lands at the end of the reply');
+      await p.evaluate(`(()=>{const f=document.querySelector('#writing-body');f.setSelectionRange(${JSON.stringify(before.length)},f.value.length)})()`);
+      await p.key('Backspace');
+      await until(async () => await reply() === before, 'the pasted words taken out again');
+      return after.slice(before.length);
+    };
+    // What ⌘C copied: read at once in Chrome; in Safari's engine by pasting into the open Reader's reply (pasted).
+    const sure = async (got, words, what) => { if (grant) assert.equal(got, words, what); else assert.equal(await pasted(), words, what + ' (pasted in Safari\'s engine)'); };
     for (const [id, where] of [[ids.alone, 'a topic\'s card'], [ids.reply, 'a dossier\'s card']]) {
       await centre(p, card(id));
       // On the card but off its words, the message lights and no passage does.
@@ -1724,16 +1744,18 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.equal(await shining(), null, `${where}: no passage lights off the words`);
       await move(id, 'lit passage');
       await becomes(shining, said[1] + ' ', `${where}: the passage under the pointer lights, and only it`);
-      assert.equal(await copy(), said[1], `${where}: ⌘C copies exactly the lit words, not the words before or after them`);
+      const copied = await copy();
+      if (grant) assert.equal(copied, said[1], `${where}: ⌘C copies exactly the lit words, not the words before or after them`);
       await p.key('Enter');
       await until(async () => (await readerOn(p))?.startsWith(said[0]), `${where}: Return opens the Reader on the message`);
       await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), `${where}: the cursor is in the reply`);
       assert.equal(await reply(), `> ${said[1]} \n\n`, `${where}: the reply quotes those same words, and nothing before or after them`);
+      if (!grant) await sure(null, said[1], `${where}: ⌘C copied exactly the lit words, not the words before or after them`);
       await shot(p, 'reading-passage-quoted-' + (id === ids.alone ? 'card' : 'dossier'));
       // In the Reader too, ⌘C on a passage lit by a press copies exactly its words.
       await p.point('#source-body [data-start="0"]');
       await until(() => p.evaluate(`document.querySelectorAll('#source-body .hover-quote').length === 1 && getSelection().isCollapsed`), `${where}: a press lights the Reader's first passage`);
-      assert.equal(await copy(), said[0], `${where}: ⌘C in the Reader copies exactly the lit passage's words`);
+      await sure(await copy(), said[0], `${where}: ⌘C in the Reader copies exactly the lit passage's words`);
       await closeReader(p, 'laptop');
     }
     // Shift grows the light from the passage lit first to the one under the pointer, and both copy and quote it.
@@ -1742,10 +1764,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await becomes(shining, said[0] + ' ', 'the first passage lights');
     await move(ids.reply, 'Words after', 8);
     await becomes(shining, body, 'moved with Shift held, the light grows to the passage under the pointer');
-    assert.equal(await copy(), body, '⌘C copies the passages lit');
+    const grown = await copy();
+    if (grant) assert.equal(grown, body, '⌘C copies the passages lit');
     await shot(p, 'reading-passage-shift');
     await p.key('Enter');
     await until(async () => (await reply()).endsWith(`> ${body}\n\n`), 'Return quotes the passages lit, after the reply kept');
+    if (!grant) await sure(null, body, '⌘C copied the passages lit');
     await closeReader(p, 'laptop');
     // The keys light a message and no passage: Return replies with nothing quoted.
     await centre(p, card(ids.alone));

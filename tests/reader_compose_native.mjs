@@ -58,6 +58,7 @@ const LOG = ['The build log, whole:', '', '```', ...Array.from({ length: 70 }, (
 // A list item long enough to wrap to many lines, in a topic of its own: one
 // passage in the Reader, whose lines wrap anew as the Reader's width changes.
 const WRAP = ['A plan in one item:', ...Array.from({ length: 16 }, (_, i) => `Paragraph ${i + 1} before the item, to scroll by.`), '- ' + Array.from({ length: 60 }, (_, i) => `part ${i + 1} of the plan`).join(', ') + ', and the item ends here.', '',
+  Array.from({ length: 60 }, (_, i) => `Sentence ${i + 1} of a long paragraph.`).join(' '),
   ...Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1} after the item, to scroll by.`)].join('\n\n');
 async function seed() {
   facts = await control({ method: 'ready' });
@@ -1185,8 +1186,8 @@ async function run() {
   // grows; a scroll the person makes, however made, lets them go, so the
   // reply's next change of size leaves the message where they put it.
   await check('stacked: quoting: one who has not scrolled keeps the quoted words in sight as the reply grows, and a scroll the person makes, a scrollbar\'s drag among them, lets them go', async () => {
-    const p = await page('stacked');
-    await open(p, second);
+    const p = await page('stacked', 'light', '/?topic=compose-wrap');
+    await open(p, wrap, 'A plan in one item');
     const n = await nearReply(p);
     await quoteAt(p, n);
     await growLine(p, 'A second thought.');
@@ -1219,8 +1220,8 @@ async function run() {
   // person's: the words quoted are still kept in sight when the keyboard
   // comes up again.
   await check('phone: quoting at the end of a message: the keyboard going down and coming up again keeps the quoted words in sight', async () => {
-    const p = await page('phone');
-    await open(p, second);
+    const p = await page('phone', 'light', '/?topic=compose-wrap');
+    await open(p, wrap, 'A plan in one item');
     await p.evaluate(() => { const body = document.querySelector('#source-body'); body.scrollTop = body.scrollHeight; });
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     // The last passage whose words show, just above the reply's line.
@@ -1259,25 +1260,29 @@ async function run() {
     await close(p);
   });
 
-  // Words chosen up to the very start of the next passage, the reply then
-  // opening over them: what is kept in sight above the reply is the words
-  // chosen, in the passage that holds them, not the line the next passage
-  // starts on.
-  await check('stacked: quoting: words chosen to the very start of the next passage end just above the reply, not that passage', async () => {
+  // Words chosen up to the very start of the next sentence, which begins a
+  // line of its own, the reply then opening over them: what is kept in sight
+  // above the reply is the words chosen, in the passage that holds them, not
+  // the line the next sentence starts on.
+  await check('stacked: quoting: words chosen to the very start of the next sentence end just above the reply, not on that sentence\'s line', async () => {
     const q = await page('stacked', 'light', '/?topic=compose-wrap');
     await open(q, wrap, 'A plan in one item');
     const set = await q.evaluate(() => {
       const body = document.querySelector('#source-body'), parts = [...body.children];
-      const at = parts.findIndex(part => part.textContent.startsWith('Paragraph 3 after'));
+      const lines = part => [...part.getClientRects()].filter(box => box.width > 0);
+      // A sentence of the long paragraph after which the next one starts a new line.
+      const at = parts.findIndex((part, i) => part.textContent.startsWith('Sentence ') && parts[i + 1]?.textContent.startsWith('Sentence ')
+        && lines(parts[i + 1])[0].top > lines(part).at(-1).top + 1);
+      if (at < 0) return { at };
       const words = parts[at].firstChild, next = parts[at + 1].firstChild, range = document.createRange();
       range.setStart(words, 2); range.setEnd(next, 0);
       const end = () => Math.min(body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) - 4;
       const chosen = document.createRange(); chosen.setStart(words, 2); chosen.setEnd(words, words.data.trimEnd().length);
       body.scrollTop += chosen.getBoundingClientRect().bottom - end();
       getSelection().removeAllRanges(); getSelection().addRange(range); body.focus({ preventScroll: true });
-      return { at, scrolled: body.scrollTop, selected: getSelection().toString(), next: parts[at + 1].getBoundingClientRect().top - chosen.getBoundingClientRect().bottom };
+      return { at, scrolled: body.scrollTop, selected: getSelection().toString(), next: parts[at + 1].textContent, line: lines(parts[at + 1])[0].top - chosen.getBoundingClientRect().bottom };
     });
-    assert.ok(set.at > 0 && set.selected.includes('ragraph 3 after') && !set.selected.includes('Paragraph 4') && set.next > 0, `words chosen to the start of the next passage, which starts on a line below: ${JSON.stringify(set)}`);
+    assert.ok(set.at > 0 && set.selected.startsWith('ntence ') && !set.selected.includes(set.next.trim()) && set.line >= 0, `words chosen to the start of the next sentence, which starts the line below: ${JSON.stringify(set)}`);
     await q.keyboard.press('Enter');
     await until(q, () => document.querySelector('#writing-body').value.startsWith('> ') && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted');
     await q.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -1285,10 +1290,12 @@ async function run() {
       const body = document.querySelector('#source-body'), words = body.children[at].firstChild, chosen = document.createRange();
       chosen.setStart(words, 2); chosen.setEnd(words, words.data.trimEnd().length);
       const bottom = Math.min(body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top);
-      return { gap: Math.round(bottom - chosen.getBoundingClientRect().bottom), lineHeight: parseFloat(getComputedStyle(body).lineHeight), scrolled: body.scrollTop };
+      return { gap: Math.round(bottom - chosen.getBoundingClientRect().bottom), lineHeight: parseFloat(getComputedStyle(body).lineHeight), scrolled: body.scrollTop, quoted: document.querySelector('#writing-body').value };
     }, set.at);
+    assert.ok(shown.quoted.includes(set.selected.trim()), `the words chosen are quoted: ${JSON.stringify(shown.quoted)}`);
     assert.ok(shown.scrolled > set.scrolled, `the reply came to cover the words, and the message moved (${set.scrolled} to ${shown.scrolled})`);
     assert.ok(shown.gap >= -2 && shown.gap <= shown.lineHeight / 2, `the words chosen end just above the reply, not a line further on (${shown.gap}px above it, a line is ${shown.lineHeight}px)`);
+    await shot(q, 'quote-to-next-sentence');
     await close(q);
   });
 
