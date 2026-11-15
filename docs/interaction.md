@@ -33,7 +33,8 @@ the pointer's way, the keys' and the phone's.
   from the passage lit first to the one under the pointer, from words dragged
   over when there are some, and opens nothing; a Shift-click on a link in the
   words is the browser's, which opens the link in a new window as it always
-  has (docs/links.md), and the light stays as it was. A card drawn again with
+  has (docs/links.md), and grows no light (where the click puts the focus on
+  the link, Return there follows it, and the light goes out as above). A card drawn again with
   other words under its light (the whole of a cut-off message arriving in
   place of its excerpt, an edit arriving) puts the light out, as an edit drawn
   into the Reader puts out the passage lit there: the place lit would hold
@@ -377,10 +378,10 @@ page painted. Its checks, by rule:
   words are lit, ⌘C copies the whole message as written, Return quotes
   nothing, and the pointer on the new words lights a passage of them, which
   ⌘C copies and Return quotes exactly. "reading Shift-click on a link in a
-  card's words opens it in a new window …": the page leaves the click to the
-  browser, one new window opens at the link's address and the light stays as
-  it was; a Shift-click on the card's other words still grows the light and
-  opens nothing. That the passages are the
+  card's words opens it in a new window …": a Shift-click on the card's
+  words grows the light and opens nothing; one on a link in them is left to
+  the browser, one new window opens at the link's address, and the link grows
+  no light. That the passages are the
   Reader's, over exactly their characters on a card's blocks:
   `tests/ui_message_format.test.mjs`.
 - ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",

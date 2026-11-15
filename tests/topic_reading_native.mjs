@@ -2023,16 +2023,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   });
 
   // Shift-click on a link in a card's words opens the link as the browser does, in a new window, as it did before a
-  // card's passages lit (item 478); the page leaves it alone, as the Reader leaves a press on a link. Shift-click on
-  // the card's other words still grows the light, and opens nothing.
+  // card's passages lit (item 478); the page leaves it alone, as the Reader leaves a press on a link, and it grows no
+  // light. Shift-click on the card's other words still grows the light, and opens nothing. The link goes to a file of
+  // this server, outside the app's own places, so the new window has an address to show in Safari's engine too.
   await check('reading Shift-click on a link in a card\'s words opens it in a new window as the browser does; Shift-click on its other words grows the light', async () => {
-    const topic = 'reading-passage-link', ELSEWHERE = 'http://127.0.0.1:1/preview?Q=1';
-    const said = ['Words before the link.', `The preview is at ${ELSEWHERE} now.`, 'Words after the link.'];
+    const topic = 'reading-passage-link', ELSEWHERE = facts.origin + '/aim.css?shift-click';
+    const said = ['Words before the link.', `The style is at ${ELSEWHERE} now.`, 'Words after the link.'];
     const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
       ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: said.join(' ') }]]);
     const p = await open(topic, 'laptop', topic, ids.alone);
     const on = card(ids.alone);
-    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on + ' a.words-link[target="_blank"]')})?.getAttribute('href') === ${JSON.stringify(ELSEWHERE)}`), 'the card shows the link');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on + ' a.words-link[target="_blank"]')})?.getAttribute('href') === ${JSON.stringify(ELSEWHERE)}`), 'the card shows the link, to open in a new window');
     // Each click as the window first hears it, kept to read once it is over: whether the page took it from the browser.
     await p.evaluate(`(addEventListener('click',e=>{window.lastClick=e},true),true)`);
     const shiftClick = async text => {
@@ -2042,23 +2043,28 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await until(() => p.evaluate(`window.taps > ${taps}`), `the Shift-click on ${text} is heard`);
     };
     await centre(p, on);
+    // Shift-click on the card's words grows the light from the passage lit to the one under the pointer, and opens nothing.
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shiningOn(p), said[0] + ' ', 'the first passage lights');
+    await shiftClick('Words after');
+    await becomes(() => shiningOn(p), said.join(' '), 'Shift-click on the card\'s words grows the light from the passage lit to the one under the pointer');
+    assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), true, 'the page takes a Shift-click on words from the browser');
+    assert.equal(await readerOn(p), null, 'Shift-click on words opens nothing');
     // The pointer comes to rest on the link, which lights the passage it is in, as passing over words does.
-    await moveTo(p, ids.alone, '127.0.0.1');
+    await moveTo(p, ids.alone, 'aim.css');
     await becomes(() => shiningOn(p), said[1] + ' ', 'the passage the link is in lights');
     const before = await windows.list();
-    await shiftClick('127.0.0.1');
+    await shiftClick('aim.css');
     assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), false, 'the page leaves a Shift-click on a link to the browser');
-    const added = await until(async () => { const now = [...(await windows.list())].filter(([id]) => !before.has(id)); return now.length ? now : null; }, 'Shift-click on the link opens a new window');
+    const added = await until(async () => { const now = [...(await windows.list())].filter(([id]) => !before.has(id)); return now.some(([, url]) => url === ELSEWHERE) ? now : null; }, 'Shift-click on the link opens a new window at its address');
     assert.deepEqual(added.map(([, url]) => url), [ELSEWHERE], 'one new window, at the link\'s address');
     for (const [id] of added) await windows.close(id);
     await p.send('Page.bringToFront');
-    assert.equal(await shiningOn(p), said[1] + ' ', 'the light stays as it was');
+    // The link grows no light. Where the click puts the focus on the link, Return there follows the link,
+    // and the light goes out as it does wherever Return quotes nothing; otherwise it stays as it was.
+    const onLink = await p.evaluate(`Boolean(document.activeElement?.matches('a.words-link'))`);
+    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light (the focus ${onLink ? 'on the link' : 'not on the link'})`);
     assert.equal(await readerOn(p), null, 'and the card did not open');
-    // Shift-click on the card's other words grows the light from the passage lit, and opens nothing.
-    await shiftClick('Words after');
-    await becomes(() => shiningOn(p), `${said[1]} ${said[2]}`, 'Shift-click on the card\'s words grows the light from the passage lit to the one under the pointer');
-    assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), true, 'the page takes a Shift-click on words from the browser');
-    assert.equal(await readerOn(p), null, 'Shift-click on words opens nothing');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

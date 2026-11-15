@@ -14121,7 +14121,7 @@
   },
   {
    "item": 478,
-   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and the card's light stays as it was",
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and it grows no light",
    "break": [
     [
      "web/feed-passages.mjs",
@@ -14166,7 +14166,7 @@
   },
   {
    "item": 478,
-   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and the card's light stays as it was",
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and it grows no light",
    "break": [
     [
      "web/feed-passages.mjs",
