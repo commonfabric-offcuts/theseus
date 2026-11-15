@@ -444,6 +444,45 @@ test('the right rail shows each Build topic once: each piece in Now with its top
   assert.deepEqual(buildRows(undefined, undefined), { now: [], review: [], other: [] });
 });
 
+test('a row of the right rail\'s Now carries its topic\'s marks from Core\'s Build topics being built, whatever page of them it falls on', async () => {
+  const { buildRows } = await import('../web/things-rail.mjs');
+  const piece = topic => ({ topic: { id: topic, title: 'Piece in ' + topic }, items: [1], stage: { name: 'Build', entered_ms: 5 } });
+  // Twenty newer Build topics fill the page read; the one being built is older, so only Core's building list holds it.
+  const page = Array.from({ length: 20 }, (_, n) => ({ id: 't' + n, title: 'Topic ' + n, state: 'active' }));
+  const old = { id: 't-old', title: 'Old topic', state: 'waiting', unread: 2, addressed: 1, asks: [{ actor_id: 'me', message_id: 'm1' }] };
+  const rows = buildRows([piece('t-old')], page, { building: [old] });
+  assert.deepEqual(rows.now.map(row => [row.topic, row.item?.unread ?? null, row.item?.addressed ?? null, row.item?.state ?? null]), [['t-old', 2, 1, 'waiting']],
+    'its row carries its unread count, the part sent by name and where it stands');
+  assert.equal(rows.other.length, 20, 'and the page\'s topics are listed as before');
+  assert.equal(buildRows([piece('t-old')], page).now[0].item, null, 'without Core\'s list (the pipeline off) a piece off the page has no marks, as before');
+});
+
+test('a topic shows in one place: Done or archived with its piece under way it is the outline\'s, and two pieces in one topic make one row of Now', async () => {
+  const { buildRows } = await import('../web/things-rail.mjs');
+  const piece = (topic, stage) => ({ topic: { id: topic, title: 'Piece in ' + topic }, items: [1], stage: { name: stage, entered_ms: 5 } });
+  const building = [{ id: 't-now', title: 'Now topic', state: 'active' }];
+  // t-done's piece is still under way, but Core no longer lists its topic among the open Build topics: it is Done.
+  const rows = buildRows([piece('t-now', 'Build'), piece('t-done', 'Review'), piece('t-now', 'Release checks')], [], { building });
+  assert.deepEqual(rows.now.map(row => [row.topic, row.stage]), [['t-now', 'Build']], 'the Done topic has no row here, and t-now one');
+  const off = buildRows([piece('t-now', 'Build'), piece('t-done', 'Review')], []);
+  assert.deepEqual(off.now.map(row => row.topic), ['t-now', 't-done'], 'with the pipeline off, Now is the pipeline\'s own list, as before');
+  assert.deepEqual(buildRows([{ topic: null, items: [3], stage: null }, { topic: null, items: [4], stage: null }], [], { building: [] }).now.map(row => row.title), ['Item 3', 'Item 4'],
+    'a piece with no topic keeps its row');
+});
+
+test('the right rail\'s Build rows follow the reader\'s own order where they placed the topics, within each group, and Core\'s otherwise', async () => {
+  const { buildRows } = await import('../web/things-rail.mjs');
+  const piece = topic => ({ topic: { id: topic, title: topic }, items: [1], stage: { name: 'Build', entered_ms: 5 } });
+  const builds = ['a', 'b', 'c', 'd', 'e'].map((id, n) => ({ id, title: id, state: n < 2 ? 'review' : 'active' }));
+  const building = [{ id: 'n1', title: 'n1', state: 'active' }, { id: 'n2', title: 'n2', state: 'active' }];
+  const plain = buildRows([piece('n1'), piece('n2')], builds, { building });
+  assert.deepEqual([plain.now, plain.review, plain.other].map(rows => rows.map(row => row.topic)), [['n1', 'n2'], ['a', 'b'], ['c', 'd', 'e']], 'with no order of the reader\'s, Core\'s');
+  const saved = ['e', 'n2', 'b', 'c', 'a', 'n1'];
+  const own = buildRows([piece('n1'), piece('n2')], builds, { building, saved });
+  assert.deepEqual([own.now, own.review, own.other].map(rows => rows.map(row => row.topic)), [['n2', 'n1'], ['b', 'a'], ['e', 'c', 'd']],
+    'the reader\'s order in each group; d, never placed, after c, which Core lists before it');
+});
+
 test('an open outcome\'s row counts its Conversation and its Build topics, which have no row in the outline; folded, everything', async () => {
   const { countedWhere } = await import('../web/outline-rail.mjs');
   const item = { id: 'w1', unread: 9, addressed: 3, build: { unread: 3, addressed: 1 } };
@@ -476,5 +515,15 @@ test('the right rail reads the Build topics a page at a time, as many as asked f
   const all = await read(BUILD_PAGE * 3);
   assert.deepEqual([all.items.map(item => item.id), all.next], [topics.map(topic => topic.id), null], 'the last page: every one, in Core\'s order, and no more');
   const none = await ThingsRail.prototype.readBuilds.call({ buildWant: BUILD_PAGE, handles: null }, async () => ({ items: [], next_cursor: null }), 'w1');
-  assert.deepEqual(none, { items: [], next: null, fresh: 0 }, 'no Build topics: none, nothing more, nothing new');
+  assert.deepEqual(none, { items: [], next: null, fresh: 0, building: null }, 'no Build topics: none, nothing more, nothing new');
+});
+
+test('the right rail\'s read of the Build topics brings Core\'s list of those being built and learns the reader\'s own order, as the outline does', async () => {
+  const { ThingsRail, BUILD_PAGE } = await import('../web/things-rail.mjs');
+  const { book, scopeOf } = await import('../web/outline-order.mjs');
+  const building = [{ id: 't-old', title: 'Old' }];
+  const read = await ThingsRail.prototype.readBuilds.call({ buildWant: BUILD_PAGE, handles: null },
+    async () => ({ items: [{ id: 't1', title: 'One' }], next_cursor: null, building, order: { ids: ['t1', 't-old'], revision: 3 } }), 'w-order');
+  assert.deepEqual(read.building, building, 'the topics being built come with the page');
+  assert.deepEqual(book.ids(scopeOf('w-order')), ['t1', 't-old'], 'and the reader\'s order of the outcome\'s topics is known to the page');
 });

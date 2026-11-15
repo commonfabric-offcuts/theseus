@@ -146,7 +146,10 @@ release check's `--report`, and which piece a candidate's readings name.
   number is spent only when a deploy records it.
 - `combine` makes a release only while there is none (`RELEASE_OPEN` names the
   one being put together); approved pieces wait in their last stage. Its
-  optional `release_number` must be that number (`RELEASE_NUMBER`).
+  optional `release_number` must be that number (`RELEASE_NUMBER`). Its topic
+  may hold a piece still under way: the `pipeline` view lists the release
+  apart from Now's pieces, and the right rail draws one row of Now for a
+  topic, however many pieces it holds (docs/rails.md).
 - While it is open, the pipeline stays on and keeps shipping in releases:
   `configure` refuses turning either off (`RELEASE_OPEN`), so the settings never
   change what is in it.

@@ -2281,13 +2281,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // The right rail's Build topics as drawn, each with its group, its marks, the
   // line under it and its size; and the outline's topic rows of the outcome,
   // whether or not the drawer that holds them is open, with their marks.
-  const buildRail = p => p.evaluate(`(()=>{const shown=e=>Boolean(e)&&e.checkVisibility();
+  const buildRail = (p, outcome = 'rail-build-o') => p.evaluate(`(()=>{const shown=e=>Boolean(e)&&e.checkVisibility();
     const marks=a=>{const badge=a.querySelector('.unread-count'),state=a.querySelector('.topic-state');
       return {unread:badge?Number(badge.textContent):0,byName:Boolean(badge?.classList.contains('addressed')),state:state?state.textContent:null,mine:Boolean(state?.classList.contains('mine'))}};
     const rows=[...document.querySelectorAll('#things .things-sec[data-key=pipeline] .pipe-builds a.row')].filter(shown).map(a=>{const box=a.getBoundingClientRect();
       return {id:new URLSearchParams(a.getAttribute('href')).get('topic'),group:a.closest('ul').previousElementSibling?.textContent??null,...marks(a),
         stage:a.querySelector('.sub')?.textContent??null,current:a.getAttribute('aria-current'),height:Math.round(box.height),right:Math.round(box.right)}});
-    const li=document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"]'),outcome=li?.querySelector('.ol-adopted')??li,done=outcome?.querySelector('details.topic-group');
+    const li=document.querySelector('#outline .ol-outcome[data-workspace-id="${outcome}"]'),outcome=li?.querySelector('.ol-adopted')??li,done=outcome?.querySelector('details.topic-group');
     const listed=[...(outcome?.querySelectorAll('.ol-topics a[data-topic-id]')??[])];
     return {rows,outline:listed.filter(a=>!a.closest('details.topic-group')).map(a=>({id:a.dataset.topicId,...marks(a)})),
       done:listed.filter(a=>a.closest('details.topic-group')===done&&shown(a)).map(a=>a.dataset.topicId),doneLabel:done&&!done.hidden?done.querySelector('summary').textContent:null,
@@ -2595,5 +2595,202 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await arrived(p, '?topic=rb-review', 'Built and live', 'a row waiting on nobody opens its topic');
     assert.equal(await p.evaluate(`document.querySelector('#reader').open`), false, 'with no Reader over it');
     assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A topic shows in one place as what makes it a Build topic changes under
+  // the page reading it (item 297): the pipeline turned off or on, or a piece
+  // started in it. rf-built's piece is in Now; rf-plain has none yet, and an
+  // item waits in Now for one.
+  const flagPipe = (operation, kind, target, args) => control({ method: 'pipeline', kind, operation_id: 'rail-flag-' + operation, target, workspace_id: 'rail-flag-o', args });
+  let flagMade = null;
+  const flagOutcome = () => (flagMade ??= (async () => {
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: 'rail-flag-o', title: 'Flagged Build topics', team: [BUILD_AGENT] }] });
+    await control({ method: 'navigation_topics', topics: [{ id: 'rf-built', title: 'Built here', workspace_id: 'rail-flag-o' }, { id: 'rf-plain', title: 'Plain here', workspace_id: 'rail-flag-o' }] });
+    await flagPipe('on', 'pipeline.configure', { workspace_id: 'rail-flag-o' }, { enabled: true });
+    await flagPipe('stages', 'pipeline.stages_set', { workspace_id: 'rail-flag-o' }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    const item = async name => (await flagPipe('item-' + name, 'pipeline.item_add', { workspace_id: 'rail-flag-o' }, { title: 'Item ' + name, section: 'now', size: 'small', sources: [{ note: 'the check' }] })).result.number;
+    await flagPipe('start-built', 'pipeline.piece_start', { workspace_id: 'rail-flag-o' }, { numbers: [await item('built')], topic_id: 'rf-built', stage_id: 'build' });
+    return { later: await item('later') };
+  })());
+  // Where a topic shows: its rows in the right rail and in the outline's open topics.
+  const placesOf = (seen, id) => ({ rail: seen.rows.filter(row => row.id === id).map(row => [row.group, row.current]), outline: seen.outline.filter(row => row.id === id).length });
+
+  await check('rail turned off while a Build topic is read, the topic moves live from the right rail to the outline, and turned on, back: it is never in neither', async () => {
+    await flagOutcome();
+    const p = await openAt('rail-flag-off', '/?topic=rf-built', 'laptop', 'light');
+    await settled(p, 'the Build topic is up');
+    let seen = null;
+    const shows = (what, test) => until(async () => { seen = await buildRail(p, 'rail-flag-o'); return !seen.busy && test(placesOf(seen, 'rf-built')); }, what)
+      .catch(error => { throw Error(`${error.message} (${JSON.stringify(placesOf(seen, 'rf-built'))})`); });
+    await shows('the right rail lists the topic being read in Now, marked, and the outline lists it not', at => at.outline === 0 && JSON.stringify(at.rail) === '[["Now","page"]]');
+    await flagPipe('off', 'pipeline.configure', { workspace_id: 'rail-flag-o' }, { enabled: false });
+    try {
+      await shows('turned off, the outline lists the topic being read, live', at => at.outline === 1);
+      assert.ok(!seen.groups.includes('Other Build topics') && !seen.groups.includes('Ready for review'), 'and the right rail lists no Build topics');
+      await shot(p, 'rail-flag-off');
+    } finally {
+      await flagPipe('on-again', 'pipeline.configure', { workspace_id: 'rail-flag-o' }, { enabled: true });
+    }
+    await shows('on again, the right rail lists it, marked, and the outline no longer, live', at => at.outline === 0 && JSON.stringify(at.rail) === '[["Now","page"]]');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail a piece started in the topic being read moves it live from the outline to the right rail\'s Now: it is never in both', async () => {
+    const { later } = await flagOutcome();
+    const p = await openAt('rail-flag-start', '/?topic=rf-plain', 'laptop', 'light');
+    await settled(p, 'the plain topic is up');
+    let seen = null;
+    const shows = (what, test) => until(async () => { seen = await buildRail(p, 'rail-flag-o'); return !seen.busy && seen.rows.some(row => row.id === 'rf-built') && test(placesOf(seen, 'rf-plain')); }, what)
+      .catch(error => { throw Error(`${error.message} (${JSON.stringify(placesOf(seen, 'rf-plain'))})`); });
+    await shows('the outline lists the topic being read, and the right rail lists it not', at => at.outline === 1 && at.rail.length === 0);
+    await flagPipe('start-plain', 'pipeline.piece_start', { workspace_id: 'rail-flag-o' }, { numbers: [later], topic_id: 'rf-plain', stage_id: 'build' });
+    await shows('a piece started in it, the right rail lists it in Now, marked, and the outline no longer, live', at => at.outline === 0 && JSON.stringify(at.rail) === '[["Now","page"]]');
+    await shot(p, 'rail-flag-start');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A topic marked Done while its piece is still under way (item 297): Done
+  // decides, so it folds into the outline's Done group and leaves Now.
+  let doneMade = null;
+  const doneOutcome = () => (doneMade ??= (async () => {
+    const pipe = (operation, kind, target, args) => control({ method: 'pipeline', kind, operation_id: 'rail-done-' + operation, target, workspace_id: 'rail-done-o', args });
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: 'rail-done-o', title: 'Done while building', team: [BUILD_AGENT] }] });
+    await control({ method: 'navigation_topics', topics: [{ id: 'rd-built', title: 'Built, then Done', workspace_id: 'rail-done-o' }, { id: 'rd-plain', title: 'Plain talk', workspace_id: 'rail-done-o' }] });
+    await pipe('on', 'pipeline.configure', { workspace_id: 'rail-done-o' }, { enabled: true });
+    await pipe('stages', 'pipeline.stages_set', { workspace_id: 'rail-done-o' }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    const { result: { number } } = await pipe('item', 'pipeline.item_add', { workspace_id: 'rail-done-o' }, { title: 'Item for rd-built', section: 'now', size: 'small', sources: [{ note: 'the check' }] });
+    await pipe('start', 'pipeline.piece_start', { workspace_id: 'rail-done-o' }, { numbers: [number], topic_id: 'rd-built', stage_id: 'build' });
+  })());
+
+  await check('rail a Build topic marked Done while its piece is still under way leaves the right rail\'s Now and folds into the outline\'s Done group; reopened, it is in Now again', async () => {
+    await doneOutcome();
+    const p = await openAt('rail-done-building', '/?conversation=rail-done-o', 'laptop', 'light');
+    await buildRailShown(p, 'done while building', false);
+    let seen = null;
+    const shows = (what, test) => until(async () => { seen = await buildRail(p, 'rail-done-o'); return !seen.busy && test(seen); }, what)
+      .catch(error => { throw Error(`${error.message} (${JSON.stringify({ rows: seen?.rows.map(row => [row.id, row.group]), outline: seen?.outline.map(row => row.id), done: seen?.done, doneLabel: seen?.doneLabel })})`); });
+    await shows('the right rail lists the topic in Now', now => now.rows.some(row => row.id === 'rd-built' && row.group === 'Now') && now.outline.some(row => row.id === 'rd-plain'));
+    await control({ method: 'topic_state', operation_id: 'rail-done-building-done', topic_id: 'rd-built', args: { state: 'done' } });
+    try {
+      await shows('marked Done, it leaves the right rail and the outline counts it Done, live', now => !now.rows.some(row => row.id === 'rd-built') && now.doneLabel === 'Done (1)');
+      await p.point('#outline .ol-outcome[data-workspace-id="rail-done-o"] details.topic-group > summary');
+      await shows('the outline\'s Done group lists it', now => now.done.includes('rd-built'));
+      assert.deepEqual([seen.rows.filter(row => row.id === 'rd-built').length, seen.outline.filter(row => row.id === 'rd-built').length, seen.done.filter(id => id === 'rd-built').length], [0, 0, 1],
+        'it shows once, in the Done group');
+      await shot(p, 'rail-done-building');
+    } finally {
+      await control({ method: 'topic_state', operation_id: 'rail-done-building-reopen', topic_id: 'rd-built', args: { state: 'active', note: '' } });
+      await p.evaluate("(()=>{for (const key of Object.keys(localStorage)) if (key.startsWith('aim-next.topic-lists.')) localStorage.removeItem(key); return true})()");
+    }
+    await shows('reopened, with its piece still under way, it is in Now again and out of the Done group', now => now.rows.some(row => row.id === 'rd-built' && row.group === 'Now') && now.doneLabel === null);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // More Build topics than a page (item 297): ro-now's piece is in Now and
+  // its agent asks the person something there, before 21 more Build topics,
+  // each piece finished, are made, so ro-now falls past the first page.
+  const OLDER = 21;
+  let olderMade = null;
+  const olderOutcome = () => (olderMade ??= (async () => {
+    const pipe = (operation, kind, target, args) => control({ method: 'pipeline', kind, operation_id: 'rail-older-' + operation, target, workspace_id: 'rail-older-o', args });
+    const item = async name => (await pipe('item-' + name, 'pipeline.item_add', { workspace_id: 'rail-older-o' }, { title: 'Item for ' + name, section: 'now', size: 'small', sources: [{ note: 'the check' }] })).result.number;
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: 'rail-older-o', title: 'Older Build topic', team: [BUILD_AGENT] }] });
+    await control({ method: 'navigation_topics', topics: [{ id: 'ro-now', title: 'Built long ago', workspace_id: 'rail-older-o' }] });
+    await pipe('on', 'pipeline.configure', { workspace_id: 'rail-older-o' }, { enabled: true });
+    await pipe('stages', 'pipeline.stages_set', { workspace_id: 'rail-older-o' }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    await pipe('start-ro-now', 'pipeline.piece_start', { workspace_id: 'rail-older-o' }, { numbers: [await item('ro-now')], topic_id: 'ro-now', stage_id: 'build' });
+    await control({ method: 'agent_message', operation_id: 'rail-older-ask', sender: BUILD_AGENT, topic_id: 'ro-now', whole_topic: true, body: 'Which one first?', post_args: { addressees: [facts.actor], intent: 'ask' } });
+    const topics = Array.from({ length: OLDER }, (_, n) => `ro-${String(n).padStart(2, '0')}`);
+    await control({ method: 'navigation_topics', topics: topics.map(id => ({ id, title: 'Built ' + id, workspace_id: 'rail-older-o' })) });
+    for (const topic of topics) {
+      const { result: { piece_id } } = await pipe('start-' + topic, 'pipeline.piece_start', { workspace_id: 'rail-older-o' }, { numbers: [await item(topic)], topic_id: topic, stage_id: 'build' });
+      await pipe('finish-' + topic, 'pipeline.piece_finish', { piece_id }, {});
+    }
+  })());
+
+  await check('rail with more than 20 Build topics, the piece in Now whose topic is older than the first 20 carries its unread count, the sent-by-name badge and Waiting on you', async () => {
+    await olderOutcome();
+    const listed = (await view('workspace_topics', { workspace_id: 'rail-older-o', build: true, limit: 20 })).items.map(item => item.id);
+    assert.ok(listed.length === 20 && !listed.includes('ro-now'), `the first 20 Build topics Core lists leave out the older one (${listed})`);
+    const p = await openAt('rail-older-now', '/?conversation=rail-older-o', 'laptop', 'light');
+    await buildRailShown(p, 'older', false);
+    const seen = await until(async () => { const now = await buildRail(p, 'rail-older-o'); return !now.busy && now.rows.length === 21 && now; }, 'the right rail lists the piece in Now and the first 20 Build topics');
+    assert.deepEqual(marksOf(seen.rows.filter(row => row.id === 'ro-now')), [{ id: 'ro-now', group: 'Now', unread: 1, byName: true, state: 'Waiting on you', mine: true }],
+      'its row in Now, once, with what its outline row would carry');
+    assert.deepEqual(seen.rows.filter(row => row.group !== 'Now').map(row => row.id).sort(), [...listed].sort(), 'and the first 20 under it');
+    await shot(p, 'rail-older-now');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail the right rail\'s Build topics follow the reader\'s own order of the outcome\'s topics, as the outline does', async () => {
+    await olderOutcome();
+    const core = (await view('workspace_topics', { workspace_id: 'rail-older-o', build: true, limit: 100 })).items.map(item => item.id);
+    // The reader's own order: Core's, turned round.
+    await control({ method: 'order_as', operation_id: 'rail-older-order', workspace_id: 'rail-older-o', ids: [...core].reverse() });
+    const p = await openAt('rail-older-order', '/?conversation=rail-older-o', 'laptop', 'light');
+    await buildRailShown(p, 'order', false);
+    const first = core.slice(0, 20).filter(id => id !== 'ro-now');
+    let seen = null;
+    await until(async () => { seen = await buildRail(p, 'rail-older-o'); return !seen.busy && seen.rows.length === 21; }, 'the right rail lists the Build topics');
+    const groups = [...new Set(seen.rows.map(row => row.group))];
+    for (const group of groups) {
+      const shown = seen.rows.filter(row => row.group === group).map(row => row.id);
+      assert.deepEqual(shown, [...shown].sort((a, b) => core.indexOf(b) - core.indexOf(a)), `${group}: in the reader's order, Core's turned round (${shown})`);
+    }
+    assert.deepEqual(seen.rows.filter(row => row.group !== 'Now').map(row => row.id).sort(), [...first].sort(), 'the first 20 Core lists, each once');
+    assert.ok(seen.rows.filter(row => row.group !== 'Now').length > 1, 'more than one row to order');
+    await shot(p, 'rail-older-order');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // The phone's header with two-digit counts (docs/rails.md, "The right
+  // rail"): ☰ Outcomes carries everything new and the light of what waits on
+  // the person, and "Pipeline & pages" what is new in the outcome's Build
+  // topics. re-plain's ten new messages, one of them a question to the person,
+  // make the first two digits and light it; re-build's make the second one
+  // digit, then two.
+  const edgePipe = (operation, kind, target, args) => control({ method: 'pipeline', kind, operation_id: 'rail-edge-' + operation, target, workspace_id: 'rail-edge-o', args });
+  const edgeNews = async (topic, from, to) => {
+    for (let at = from; at < to; ++at) await control({ method: 'agent_message', operation_id: `rail-edge-${topic}-${at}`, sender: BUILD_AGENT, topic_id: topic, whole_topic: true, body: `News ${at}` });
+  };
+  // The header as drawn: each count, and every part of it that runs past the phone's edge.
+  const headerEdge = (p, edge) => p.evaluate(`(()=>{const shown=e=>e.checkVisibility();
+    const badge=id=>{const b=document.querySelector('#'+id+' .unread-count');return b&&shown(b)?b.textContent:''};
+    const box=e=>{const r=e?.getBoundingClientRect();return r?[Math.round(r.left*100)/100,Math.round(r.right*100)/100,Math.round(r.top)]:null};
+    const header=document.querySelector('#main .topic-header');
+    const lamp=document.querySelector('#rail-open .outcome-light');
+    return {outcomes:badge('rail-open'),lit:Boolean(lamp&&shown(lamp)),things:badge('things-open'),scroll:document.documentElement.scrollWidth,
+      boxes:Object.fromEntries(['rail-open','workspace-name','things-open'].map(id=>[id,box(document.getElementById(id))])),
+      past:[...header.querySelectorAll('*')].filter(shown).map(e=>[(e.id?'#'+e.id:'')+(typeof e.className==='string'&&e.className?'.'+e.className.split(' ').join('.'):'')||e.tagName.toLowerCase(),
+        Math.round(e.getBoundingClientRect().right*100)/100]).filter(([,right])=>right>${edge})}})()`);
+
+  await check('rail on a phone at 320 375 390, with two-digit counts on ☰ Outcomes and on "Pipeline & pages" or one, nothing in the header runs past the page\'s edge', async () => {
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: 'rail-edge-o', title: 'Edge of the phone', team: [BUILD_AGENT] }] });
+    await control({ method: 'navigation_topics', topics: [{ id: 're-build', title: 'Built at the edge', workspace_id: 'rail-edge-o' }, { id: 're-plain', title: 'Plain at the edge', workspace_id: 'rail-edge-o' }] });
+    await edgePipe('on', 'pipeline.configure', { workspace_id: 'rail-edge-o' }, { enabled: true });
+    await edgePipe('stages', 'pipeline.stages_set', { workspace_id: 'rail-edge-o' }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    const { result: { number } } = await edgePipe('item', 'pipeline.item_add', { workspace_id: 'rail-edge-o' }, { title: 'Item at the edge', section: 'now', size: 'small', sources: [{ note: 'the check' }] });
+    await edgePipe('start', 'pipeline.piece_start', { workspace_id: 'rail-edge-o' }, { numbers: [number], topic_id: 're-build', stage_id: 'build' });
+    await edgeNews('re-plain', 0, 9);
+    await control({ method: 'agent_message', operation_id: 'rail-edge-ask', sender: BUILD_AGENT, topic_id: 're-plain', whole_topic: true, body: 'Which edge?', post_args: { addressees: [facts.actor], intent: 'ask' } });
+    let sent = 0;
+    for (const [built, digits] of [[5, 1], [12, 2]]) {
+      await edgeNews('re-build', sent, built);
+      sent = built;
+      const want = (await view('workspaces', { limit: 100 })).items.find(item => item.id === 'rail-edge-o').build.unread;
+      assert.equal(String(want).length, digits, `Core counts ${want} new in the Build topics`);
+      for (const size of [390, 375, 320]) {
+        const at = `${size}, "Pipeline & pages" at ${want}`, edge = SIZE_464[size].width;
+        const p = await openAt(`rail-edge-${size}-${digits}`, '/?conversation=rail-edge-o', size, 'light');
+        await phoneUp(p, at + ': the Conversation is up');
+        let seen = null;
+        await until(async () => { seen = await headerEdge(p, edge); return seen.things === String(want) && seen.outcomes.length >= 2 && seen.lit; }, at + ': both counts and the light are drawn')
+          .catch(error => { throw Error(`${error.message} (${JSON.stringify(seen)})`); });
+        assert.deepEqual(seen.past, [], `${at}, ☰ Outcomes at ${seen.outcomes}: nothing in the header runs past the ${edge}px edge (${JSON.stringify(seen.boxes)})`);
+        assert.ok(seen.scroll <= edge, `${at}: the page does not scroll sideways (${seen.scroll})`);
+        await shot(p, `rail-edge-${size}-${digits}`);
+        assert.deepEqual(p.errors, []); await p.close();
+      }
+    }
   });
 }

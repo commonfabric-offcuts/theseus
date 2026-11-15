@@ -161,6 +161,11 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
+# A topic list's row: the topic with its message count and the sequence of its newest message, read through its one-row
+# summary (a topic names no message here, so no whisper is read; tests/test_whispers.py).
+_TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
+
+
 class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None):
@@ -790,8 +795,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                 continue
             keyset = after is not None and flag == after[0]
             # latest_seq is the sequence of the topic's newest message, read through its one-row summary.
-            rows += db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t INDEXED BY workspace_topic_order "
-                               "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
+            rows += db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t INDEXED BY workspace_topic_order " + _TOPIC_SUMMARY +
                                "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=?" + (
                                    # The open list leaves out the conversation, which has its own row; it is
                                    # never Done or archived unless its outcome is reached, and then it is listed there.
@@ -801,17 +805,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                                + (limit + 1 - len(rows),)).fetchall()
             if len(rows) > limit:
                 break
-        # A topic names the message that reopened or started it only to a reader who may see it (whispers.py).
-        items = [redact_topic(db, actor, row) for row in rows[:limit]]
-        counts = self._unread(db, actor, topics=[item["id"] for item in items])
-        waits = self._waits_by_topic(db, [item["id"] for item in items])
-        work = work_by_topic(db, waits, actor)
-        for item in items:
-            item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
-            item["archived"] = bool(item["archived"])
-            item["waiting_on"], item["asks"] = waits[item["id"]]
-            item["work"] = work[item["id"]]
-            item["build"] = item["id"] in builds
+        items = self._topic_items(db, actor, rows[:limit], builds)
         last = items[-1] if items else None
         # How many topics the folded lists hold, each counted in its own stretch of the index.
         groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1",
@@ -827,4 +821,26 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             # What all the open Build topics hold for the reader, not only this page's, for the count the right rail's Pipeline shows.
             open_builds = self._open_build_topics(db, workspace["id"])
             answer["builds"] = self._build_counts(self._unread(db, actor, topics=sorted(open_builds)), open_builds)
+            # The ones holding a piece under way, whatever page they fall on, so each row of the right rail's Now carries its marks.
+            building = sorted(self._building_topics(db, workspace["id"]))
+            answer["building"] = self._topic_items(db, actor, db.execute(
+                "SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t " + _TOPIC_SUMMARY +
+                "WHERE t.id IN (SELECT value FROM json_each(?)) ORDER BY t.activity_ms DESC,t.id DESC",
+                (json.dumps(building),)).fetchall(), builds) if building else []
         return answer
+
+    def _topic_items(self, db, actor, rows, builds):
+        """A topic list's items as every list gives them: each with the reader's unread count, where it stands, its work
+        and whether it is a Build topic (builds, item 297)."""
+        # A topic names the message that reopened or started it only to a reader who may see it (whispers.py).
+        items = [redact_topic(db, actor, row) for row in rows]
+        counts = self._unread(db, actor, topics=[item["id"] for item in items])
+        waits = self._waits_by_topic(db, [item["id"] for item in items])
+        work = work_by_topic(db, waits, actor)
+        for item in items:
+            item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
+            item["archived"] = bool(item["archived"])
+            item["waiting_on"], item["asks"] = waits[item["id"]]
+            item["work"] = work[item["id"]]
+            item["build"] = item["id"] in builds
+        return items

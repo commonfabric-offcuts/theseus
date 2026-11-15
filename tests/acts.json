@@ -4986,8 +4986,8 @@
    "break": [
     [
      "aim_next/store.py",
-     "        items = [redact_topic(db, actor, row) for row in rows[:limit]]",
-     "        items = [dict(row) for row in rows[:limit]]"
+     "        items = [redact_topic(db, actor, row) for row in rows]",
+     "        items = [dict(row) for row in rows]"
     ]
    ],
    "check": {
@@ -14179,6 +14179,236 @@
    "check": {
     "native": "rail",
     "case": "on a phone, on a Build topic's outcome, the drawer"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Turning an outcome's pipeline off or on moves the version of each topic a piece was built in, so a page reading one reads it again",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        if bool(current and current[\"enabled\"]) != settings[\"enabled\"]:\n            # On or off",
+     "        if False:\n            # On or off"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic's first piece moves its version, so a page reading it reads it again",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "            self._build_moved(db, [topic[\"id\"]])\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\"",
+     "            pass\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\""
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A release that is its topic's first piece moves that topic's version",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "            self._build_moved(db, [topic[\"id\"]])\n        # No number is stored",
+     "            pass\n        # No number is stored"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Turned off while a Build topic is read, the topic moves live from the right rail to the outline, and back when turned on",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        if bool(current and current[\"enabled\"]) != settings[\"enabled\"]:\n            # On or off",
+     "        if False:\n            # On or off"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail turned off while a Build topic is read"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A piece started in the topic being read moves it live from the outline to the right rail's Now",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "            self._build_moved(db, [topic[\"id\"]])\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\"",
+     "            pass\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a piece started in the topic being read"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Core's list of Build topics names those a piece is being built in on every page, with their marks",
+   "break": [
+    [
+     "aim_next/store.py",
+     "building = sorted(self._building_topics(db, workspace[\"id\"]))",
+     "building = []"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic Done or archived, its piece under way or not, is not among those being built",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        builds = self._open_build_topics(db, workspace_id)\n        if not builds:\n            return set()\n        return builds & ",
+     "        builds = self._build_topics(db, workspace_id)\n        if not builds:\n            return set()\n        return builds & "
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A row of the right rail's Now carries its topic's marks from Core's list of those being built, whatever page of Build topics it falls on",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "const rows = new Map([...(builds ?? []), ...(building ?? [])].map(item => [item.id, item]));",
+     "const rows = new Map((builds ?? []).map(item => [item.id, item]));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "With more than 20 Build topics, the piece in Now whose topic is past the first 20 carries its unread count and Waiting on you",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "building = Array.isArray(answer.building) ? answer.building : null;",
+     "building = null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail with more than 20 Build topics"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic Done with its piece under way has no row in the right rail's Now",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (shown.has(topic) || (building && !rows.has(topic))) return false;",
+     "if (shown.has(topic)) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic marked Done while its piece is under way leaves the right rail's Now and folds into the outline's Done group",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (shown.has(topic) || (building && !rows.has(topic))) return false;",
+     "if (shown.has(topic)) return false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a Build topic marked Done while its piece is still under way"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Two pieces in one topic make one row of the right rail's Now",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (shown.has(topic) || (building && !rows.has(topic))) return false;",
+     "if (building && !rows.has(topic)) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Build rows follow the reader's own order within each group, and Core's otherwise",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "return placeIn([...byKey.keys()], saved).map(key => byKey.get(key));",
+     "return [...byKey.keys()].map(key => byKey.get(key));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail learns the reader's own order of the outcome's topics from its read of the Build topics",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      book.learn(scopeOf(workspace), orderOf(answer));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Build topics are drawn in the reader's own order of the outcome's topics, as the outline's are",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "this.pipelineRows(found.pipeline, book.ids(scopeOf(this.handles.workspaceId)))",
+     "this.pipelineRows(found.pipeline, [])"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the right rail's Build topics follow the reader's own order"
+   }
+  },
+  {
+   "item": 297,
+   "act": "On a phone at 320, 375 and 390, with two-digit counts on ☰ Outcomes and \"Pipeline & pages\", nothing in the header runs past the edge",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #main .eyebrow-row{display:flex;flex-wrap:wrap;",
+     "[data-rails] #main .eyebrow-row{display:flex;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a phone at 320 375 390, with two-digit counts"
    }
   }
  ]

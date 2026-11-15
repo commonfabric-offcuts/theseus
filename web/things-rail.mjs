@@ -29,6 +29,7 @@ import { reloader } from './live.mjs';
 import { listen } from './in-place-navigation.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
+import { book, orderOf, placeIn, scopeOf } from './outline-order.mjs';
 
 export const SECTIONS = [
   ['starred', 'Starred'], ['pipeline', 'Pipeline'], ['waiting', 'Waiting for…'], ['notebook', 'Notebook'], ['previews', 'Previews'],
@@ -43,17 +44,31 @@ export const NOTEBOOK_PAGE = 20;
 export const BUILD_PAGE = 20;
 
 // The outcome's Build topics (item 297), each once, as the Pipeline section
-// shows them: under Now each piece being built, with its topic's row as the
-// outline would draw it; then the Build topics Ready for review, until they
-// are Done and fold into the outline's Done group; then any other. pieces: the
-// pipeline's pieces in Now; builds: the Build topics Core lists, in its order.
-export function buildRows(pieces, builds, titles = new Map()) {
-  const rows = new Map((builds ?? []).map(item => [item.id, item]));
-  const now = (pieces ?? []).map(piece => ({
+// shows them: under Now one row for each topic a piece is being built in, its
+// topic's row as the outline would draw it; then the Build topics Ready for
+// review, until they are Done and fold into the outline's Done group; then any
+// other. Each group is in the reader's own order where they placed its topics,
+// as the outline keeps it (outline-order.mjs), and Core's otherwise.
+// pieces: the pipeline's pieces in Now; builds: the Build topics Core lists,
+// in its order; building: Core's open Build topics holding a piece under way,
+// whatever page of builds they would fall on (null while the pipeline is off,
+// when no topic is a Build topic and Now is the pipeline's own list). A piece
+// whose topic is not among them is in a topic Done or archived, which is the
+// outline's alone; saved: the reader's own order of the outcome's topics.
+export function buildRows(pieces, builds, { titles = new Map(), building = null, saved = [] } = {}) {
+  const rows = new Map([...(builds ?? []), ...(building ?? [])].map(item => [item.id, item]));
+  const shown = new Set();
+  const placed = list => { const byKey = new Map(list.map((row, at) => [row.topic ?? `\u0000${at}`, row])); return placeIn([...byKey.keys()], saved).map(key => byKey.get(key)); };
+  const now = placed((pieces ?? []).filter(piece => {
+    const topic = piece.topic?.id ?? null;
+    if (topic === null) return true;
+    if (shown.has(topic) || (building && !rows.has(topic))) return false;
+    shown.add(topic);
+    return true;
+  }).map(piece => ({
     title: piece.topic?.title || (piece.items ?? []).map(number => titles.get(number) ?? `Item ${number}`).join(', '),
-    topic: piece.topic?.id ?? null, stage: piece.stage?.name ?? null, since: piece.stage?.entered_ms ?? null, item: rows.get(piece.topic?.id) ?? null }));
-  const building = new Set(now.map(row => row.topic));
-  const rest = (builds ?? []).filter(item => !building.has(item.id)).map(item => ({ title: item.title, topic: item.id, item }));
+    topic: piece.topic?.id ?? null, stage: piece.stage?.name ?? null, since: piece.stage?.entered_ms ?? null, item: rows.get(piece.topic?.id) ?? null })));
+  const rest = placed((builds ?? []).filter(item => !shown.has(item.id)).map(item => ({ title: item.title, topic: item.id, item })));
   return { now, review: rest.filter(row => row.item.state === 'review'), other: rest.filter(row => row.item.state !== 'review') };
 }
 
@@ -424,24 +439,29 @@ export class ThingsRail {
   }
   // The outcome's Build topics not Done, from the first, as many as the
   // person has asked for (BUILD_PAGE, and as many again for each More topics),
-  // in Core's pages and order; next says whether there are more, and fresh
-  // how many messages in all of them are new to the reader (Core's builds).
+  // in Core's pages and order; next says whether there are more, fresh how
+  // many messages in all of them are new to the reader (Core's builds), and
+  // building the ones a piece is being built in, whatever page they are on.
+  // The reader's own order of the outcome's topics, which every page carries,
+  // is learned as the outline learns it (outline-order.mjs).
   async readBuilds(view, workspace) {
     const items = [], want = this.buildWant, most = this.handles?.pageMax ?? BUILD_PAGE;
-    let cursor = '', fresh = 0;
+    let cursor = '', fresh = 0, building = null;
     do {
       const answer = await view('workspace_topics', { workspace_id: workspace, build: true, limit: Math.max(1, Math.min(most, want - items.length)), cursor });
       items.push(...(answer.items ?? [])); cursor = answer.next_cursor ?? null;
       fresh = Number.isSafeInteger(answer.builds?.unread) && answer.builds.unread > 0 ? answer.builds.unread : 0;
+      building = Array.isArray(answer.building) ? answer.building : null;
+      book.learn(scopeOf(workspace), orderOf(answer));
     } while (cursor !== null && items.length < want);
-    return { items, next: cursor, fresh };
+    return { items, next: cursor, fresh, building };
   }
   // Each section's words, drawn only when they change, so the pointer's hover
   // and focus stay where they were. A section takes its kept fold as it
   // appears, and is left as the person has it after that.
   paint(found) {
     const reader = this.handles.bootstrap.actor, nowMs = clock.now();
-    const items = found.pipeline ? this.pipelineRows(found.pipeline) : null;
+    const items = found.pipeline ? this.pipelineRows(found.pipeline, book.ids(scopeOf(this.handles.workspaceId))) : null;
     const { previews, prs } = thingsIn(found.messages);
     // The pencil of the Notebook listed shows only to someone Core lets write it (reader_may_write).
     if (found.notebook !== undefined) for (const [scope, creator] of this.creators) creator.setAvailable((scope === 'topic') === found.byTopic && found.notebook !== null && found.notebookMayWrite);
@@ -485,12 +505,12 @@ export class ThingsRail {
     this.nothing.hidden = any;
     this.nothing.textContent = found.byTopic ? 'This topic refers to nothing yet. “All of this outcome” shows the rest.' : 'Nothing here yet.';
   }
-  pipelineRows({ now, next, builds }) {
+  pipelineRows({ now, next, builds }, saved = []) {
     const titles = new Map((now.items ?? []).map(item => [item.number, item.title]));
     const pieceTopic = new Map();
     for (const piece of now.pieces ?? []) for (const number of piece.items ?? []) pieceTopic.set(number, piece.topic?.id ?? null);
     const withTopic = item => ({ ...item, pieceTopic: pieceTopic.get(item.number) ?? null });
-    return { live: now.facts?.live ?? null, rows: buildRows(now.pieces, builds?.items, titles), more: (builds?.next ?? null) !== null, builds: builds?.items ?? [], fresh: builds?.fresh ?? 0,
+    return { live: now.facts?.live ?? null, rows: buildRows(now.pieces, builds?.items, { titles, building: builds?.building ?? null, saved }), more: (builds?.next ?? null) !== null, builds: builds?.items ?? [], fresh: builds?.fresh ?? 0,
       now: (now.items ?? []).map(withTopic), next: (next.items ?? []).map(withTopic), title: now.pipeline?.title ?? 'Pipeline' };
   }
   // The pipeline, and in it the outcome's Build topics (item 297): the outline

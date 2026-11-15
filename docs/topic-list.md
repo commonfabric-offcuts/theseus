@@ -69,7 +69,17 @@ said, and for a reader outside a person's whisper that reopened the topic
   page's cost then follows as well as its own size.
 - Asked with `build: true`, the answer also carries `builds: {unread,
   addressed}`: what all the outcome's open Build topics hold for the reader,
-  not only the page's, so the right rail's Pipeline heading counts them.
+  not only the page's, so the right rail's Pipeline heading counts them; and
+  `building`, the items, shaped as `items` are, of the open Build topics a
+  piece is being built in (one under way, not a release), on every page
+  whatever page each would fall on, so each row of the right rail's Now
+  carries its topic's marks. A Done or archived topic is never among them, its
+  piece under way or not: it is in its own list.
+- Whether a topic is a Build topic changes only when its outcome's pipeline is
+  turned on or off, or when the first piece (a release's among them) is
+  started in it. Each such change moves the topic's version, with a change in
+  its own feed, so a page reading the topic reads it again and the outline and
+  the right rail move it at once.
 - Each list is ordered by `activity_ms`, latest first, and then by topic id,
   descending, so topics with the same time keep one order.
 - `next_cursor` is the position of the page's last topic, written

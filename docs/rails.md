@@ -41,7 +41,12 @@ docs/topic-list.md), so the outline asks for its topics without them and the
 right rail for them alone. While the pipeline is off, or on an outcome with
 none, no topic is a Build topic and the outline lists every topic as before.
 The topic being read is a Build topic when Core says so, and is then marked in
-the right rail, not the outline. Pages that keep the side rail they had (the
+the right rail, not the outline. Turning the pipeline on or off, or a topic's
+first piece, moves that topic's version (docs/topic-list.md), so the page
+reading it reads it again and it moves between the outline and the right rail
+at once, never in neither and never in both. Done decides: a topic marked Done
+while its piece is still under way is in the outline's Done (N), and not in the
+right rail's Now. Pages that keep the side rail they had (the
 outcome's own page, its pipeline) list every topic, since they have no right
 rail.
 
@@ -114,9 +119,14 @@ says so in one quiet line.
   the star off (docs/reply-stacks.md).
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
   from the `pipeline` view, and the outcome's Build topics, each once: under
-  Now each piece being built, its row its topic's; then Ready for review, the
-  Build topics that are, until someone marks them Done; then Other Build
-  topics (a piece set aside, finished or held, a topic reopened). Each row
+  Now each topic a piece is being built in, one row for it however many
+  pieces it holds, its row its topic's (Core names these topics on every page,
+  `building`, so however many Build topics there are, each carries its marks);
+  then Ready for review, the Build topics that are, until someone marks them
+  Done; then Other Build topics (a piece set aside, finished or held, a topic
+  reopened). Each group is in the reader's own order of the outcome's topics
+  where they have placed them with ⌘↑ and ⌘↓, as the outline is
+  (docs/outline-order.md), and Core's otherwise. Each row
   carries what the outline's row would: the unread count, marked when part of
   it was sent to the reader by name, where it stands (Waiting on you, Ready
   for review…), the work ring, and the mark of the topic being read; one that

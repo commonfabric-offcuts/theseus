@@ -255,6 +255,23 @@ class Pipeline:
         return {row[0] for row in db.execute("SELECT id FROM topics WHERE id IN (SELECT value FROM json_each(?)) AND kind='topic' AND archived=0 "
                                              "AND state!='done'", (json.dumps(sorted(builds)),))}
 
+    def _building_topics(self, db, workspace_id):
+        """The outcome's open Build topics that hold a piece under way (item 297): each is a row of the right rail's Now,
+        whichever page of the Build topics it falls on. A Done or archived topic is not, even with its piece under way: it
+        is in the outline's Done (N) or Archived (N), and nowhere else."""
+        builds = self._open_build_topics(db, workspace_id)
+        if not builds:
+            return set()
+        return builds & {row[0] for row in db.execute(
+            "SELECT p.topic_id FROM pipeline_stage_entries e INDEXED BY open_entries JOIN pipeline_pieces p ON p.id=e.piece_id "
+            "WHERE e.workspace_id=? AND e.left_ms IS NULL AND p.kind='piece'", (workspace_id,))}
+
+    def _build_moved(self, db, topic_ids):
+        """Topics whose being a Build topic just changed (item 297: the pipeline turned on or off, or a topic's first piece):
+        each topic's version moves, so a page reading it reads it again and puts it in the outline or the right rail."""
+        for topic_id in sorted(topic_ids):
+            self._touch_topic(db, db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone())
+
     def _build_counts(self, counts, builds):
         """{unread, addressed} summed over the Build topics given, from _unread's {topic_id: [unread, addressed, workspace_id]}."""
         found = [counts[topic] for topic in builds if topic in counts]
@@ -582,6 +599,9 @@ class Pipeline:
         else:
             db.execute("UPDATE pipelines SET enabled=?,title=?,unit_one=?,unit_many=?,sized=?,ships_in_releases=?,section_words=? "
                        "WHERE workspace_id=?", values + (workspace["id"],))
+        if bool(current and current["enabled"]) != settings["enabled"]:
+            # On or off, every topic a piece was built in becomes a Build topic or stops being one (item 297).
+            self._build_moved(db, {row[0] for row in db.execute("SELECT topic_id FROM pipeline_pieces WHERE workspace_id=?", (workspace["id"],))})
         if bool(current and current["ships_in_releases"]) != settings["ships_in_releases"]:
             # Whether the records name this outcome's items is what shipping in releases means. Turned on, every record
             # written so far is the outcome's, and ships what it names wherever it is still being built (no release is
@@ -1055,6 +1075,9 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "round is a whole number from 1")
         piece_id = "p-" + uuid.uuid4().hex[:24]
         ms = _now_ms()
+        # A topic's first piece makes it a Build topic (item 297).
+        if not db.execute("SELECT 1 FROM pipeline_pieces WHERE topic_id=?", (topic["id"],)).fetchone():
+            self._build_moved(db, [topic["id"]])
         db.execute("INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)", (piece_id, workspace["id"], "piece", topic["id"]))
         self._enter(db, actor, {"id": piece_id, "workspace_id": workspace["id"]}, stage, round_number, size, ms, args.get("ask_message_id"))
         # The piece takes its items, from the held release when they go back to building (D35).
@@ -1150,6 +1173,9 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "Name the approved pieces to combine")
         ms = _now_ms()
         release_id = "p-" + uuid.uuid4().hex[:24]
+        # A topic's first piece makes it a Build topic (item 297).
+        if not db.execute("SELECT 1 FROM pipeline_pieces WHERE topic_id=?", (topic["id"],)).fetchone():
+            self._build_moved(db, [topic["id"]])
         # No number is stored: the release's number is _next_release's while it is the release (3.4).
         db.execute("INSERT INTO pipeline_pieces VALUES (?,?,'release',?,NULL,?,1)",
                    (release_id, workspace["id"], topic["id"], args.get("commit_sha")))

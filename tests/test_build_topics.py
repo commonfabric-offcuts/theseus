@@ -139,6 +139,81 @@ class BuildTopicsCase(PipelineCase):
         self.committed(self.on(enabled=False))
         self.assertEqual((self.ids(build=True), self.ids(build=False), self.ids()), ([], ["t1"], ["t1"]))
 
+    def version(self, topic):
+        return self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]
+
+    def test_turning_the_pipeline_off_or_on_moves_each_build_topic_on_so_a_page_reading_it_reads_it_again(self):
+        # A page holds its topic as it last read it, and reads it again when the topic's version moves (item 297): its
+        # topic's build flag decides whether the outline or the right rail lists it, so the flag never changes unseen.
+        self.topic("t2", "Plain talk")
+        self.committed(self.start(numbers=(1,), topic="t1"))
+        before = {topic: self.version(topic) for topic in ("t1", "t2")}
+        self.committed(self.on(enabled=False))
+        after = {topic: self.version(topic) for topic in ("t1", "t2")}
+        self.assertGreater(after["t1"], before["t1"], "off, t1 is no Build topic any more: its version moves")
+        self.assertEqual(after["t2"], before["t2"], "t2 never was one: nothing moves")
+        self.assertTrue(self.sql("SELECT 1 FROM changes WHERE scope_kind='topic' AND scope_id='t1' AND resource_kind='topic' AND version=?", (after["t1"],)),
+                        "and the topic's own feed says so")
+        self.committed(self.on(enabled=False, title="Renamed while off"))
+        self.assertEqual(self.version("t1"), after["t1"], "settings changed while it stays off move no topic")
+        self.committed(self.on())
+        self.assertGreater(self.version("t1"), after["t1"], "on again, t1 is a Build topic again: its version moves")
+        self.assertEqual(self.version("t2"), before["t2"])
+
+    def test_a_topics_first_piece_moves_it_on_and_a_later_piece_does_not(self):
+        self.topic("t2", "Plain talk")
+        self.add("Now 2", section="now", size="small")
+        before = self.version("t2")
+        piece = self.committed(self.start(numbers=(1,), topic="t2"))["piece_id"]
+        self.assertGreater(self.version("t2"), before, "its first piece makes t2 a Build topic: its version moves")
+        self.assertTrue(self.store.view("owner", "topic", {"topic_id": "t2"})["topic"]["build"])
+        self.committed(self.command("pipeline.piece_finish", {}, {"piece_id": piece}))
+        before = self.version("t2")
+        self.committed(self.start(numbers=(2,), topic="t2"))
+        self.assertEqual(self.version("t2"), before, "a later piece in it changes nothing about it: it already was one")
+
+    def test_a_release_moves_its_topic_on_when_it_is_the_topics_first_piece_and_not_when_the_topic_is_already_one(self):
+        self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})
+        self.committed(self.on(ships_in_releases=True))
+        self.stages({"stage_id": "build", "name": "Build"}, {"stage_id": "checks", "name": "Release checks", "scope": "release"})
+        self.topic("t3", "Release")
+        self.add("Now 2", section="now", size="small")
+        first = self.committed(self.start(numbers=(1,), topic="t1"))["piece_id"]
+        before = {topic: self.version(topic) for topic in ("t1", "t3")}
+        self.committed(self.command("pipeline.combine", {"piece_ids": [first], "topic_id": "t3"}, {"workspace_id": "w1"}))
+        self.assertGreater(self.version("t3"), before["t3"], "the release is t3's first piece: t3 is a Build topic now")
+        self.assertTrue(self.store.view("owner", "topic", {"topic_id": "t3"})["topic"]["build"])
+        self.assertEqual(self.version("t1"), before["t1"], "t1, combined, already was one: nothing about it moved")
+
+    def test_the_build_list_carries_every_open_build_topic_holding_a_piece_under_way_whatever_page_it_is_on(self):
+        # The right rail's Now has a row for each piece under way, its topic's (item 297): its marks come from here, not
+        # from the page of Build topics it reads, where a quiet topic falls past the first 20.
+        self.committed(self.start(numbers=(1,), topic="t1"))
+        self.post("Which one ships first?", topic="t1", addressees=["owner"], intent="ask")
+        for n in range(3):
+            topic = "t-%d" % n
+            self.topic(topic, "Built %d" % n)
+            piece = self.committed(self.start(numbers=(self.add("Item %d" % n, section="now", size="small"),), topic=topic))["piece_id"]
+            self.committed(self.command("pipeline.piece_finish", {}, {"piece_id": piece}))
+        answer = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True, "limit": 1})
+        self.assertEqual([item["id"] for item in answer["items"]], ["t-2"], "the page holds the newest Build topic alone")
+        [now] = answer["building"]
+        self.assertEqual((now["id"], now["unread"], now["addressed"], [ask["actor_id"] for ask in now["asks"]], now["build"]), ("t1", 1, 1, ["owner"], True),
+                         "t1, with what its row carries")
+        later = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True, "limit": 1, "cursor": answer["next_cursor"]})
+        self.assertEqual([item["id"] for item in later["building"]], ["t1"], "on every page")
+        self.assertNotIn("building", self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": False}), "the outline's list has no Now")
+        # A finished piece's topic is no row of Now; a Done topic is the outline's, its piece under way or not.
+        self.say("t1", state="done")
+        self.assertEqual(self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True})["building"], [])
+        self.say("t1", state="active")
+        self.assertEqual([item["id"] for item in self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True})["building"]], ["t1"])
+        self.say("t1", archived=True)
+        self.assertEqual(self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True})["building"], [], "nor an archived one")
+        self.say("t1", archived=False)
+        self.committed(self.on(enabled=False))
+        self.assertEqual(self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True})["building"], [], "off, nothing is being built here")
+
 
 if __name__ == "__main__":
     unittest.main()
