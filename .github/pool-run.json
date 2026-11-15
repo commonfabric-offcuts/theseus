@@ -1,0 +1,8 @@
+{
+ "step": "header",
+ "cases": [
+  "header a tap with its answer and the panel read lost, then Your part saved, then another tap"
+ ],
+ "label": "t16m-lostpart-head-3",
+ "snapshot": "a9d423cac6b7967d9d94fe4c6d6200c3b64f838f"
+}
