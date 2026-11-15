@@ -7,6 +7,7 @@ own evidence parsers; all executable non-stdlib code is the controller commit.
 Raw verdicts remain raw. Mutation results are advisory on trains.
 """
 import argparse
+import datetime
 from collections import Counter, namedtuple
 from functools import lru_cache
 import hashlib
@@ -363,6 +364,10 @@ def median(values):
         return None
     middle = len(ordered) // 2
     return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2.0
+
+def now():
+    return datetime.datetime.now().astimezone().isoformat()
+
 
 def replay_step(runs, started):
     """The wake-replay step from its runs: per agent the median of each run (D29's runs), the median over every wake,
