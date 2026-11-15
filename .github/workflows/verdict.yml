@@ -4,10 +4,12 @@
 # from the default branch when a Checks run completes, and a pull request cannot
 # edit it. It reads the producer's artifacts as untrusted data, authenticates
 # them against GitHub's own record of the run, fetches the tested merge commit
-# itself and rebuilds it from authenticated parents, runs the validator and the
-# baseline from the pull request's base, and publishes the result as a check
-# run on the pull request's head commit. That check run, named Verdict, is the
-# one a branch rule requires.
+# itself and rebuilds it from authenticated parents, runs this controller's own
+# validator against the candidate's tree, with the base branch's own last runs
+# as the evidence of what already fails there, and publishes the result as a
+# check run on the pull request's head commit. That check run, named Verdict, is
+# the one a branch rule requires. Every change to a test's definition is listed
+# in it for the item's reviewer, since a change can rewrite its own tests.
 #
 # Two jobs: judge reads and decides with a read-only token, and publish, which
 # alone may write a check run, posts what judge decided. Everything read from an
@@ -40,9 +42,9 @@ env:
   # id is not mistaken for it. The id is the repository's; a transfer keeps it.
   PRODUCER_WORKFLOW_ID: '418035217'
   PRODUCER_WORKFLOW_PATH: .github/workflows/checks.yml
-  # The branches whose pull requests are judged, named exactly: the validator and the baseline are executable code read
-  # from the base, so a base is approved by being listed here, never by matching a shape. A new release branch is added
-  # by a reviewed change to this file.
+  # The branches whose pull requests are judged, named exactly: the base's own runs say what already fails there, and
+  # the base's tree is what the candidate is held against, so a base is approved by being listed here, never by
+  # matching a shape. A new release branch is added by a reviewed change to this file.
   APPROVED_BASES: release/live72,codex/aim-next,release/live73
 
 jobs:
@@ -175,7 +177,7 @@ jobs:
           # The receipts nominate a merge commit, its tree and its parents; they prove nothing by themselves. Here they
           # must agree with each other and with GitHub's record: every receipt from this run and attempt, one merge,
           # its second parent the head GitHub ran for, its first parent exactly the base the pull request names, since
-          # the validator's policy, code and baseline are read from that commit.
+          # the candidate is held against that commit and that branch's own runs.
           python3 - "$OUT/producer.json" "$OUT/shards" "$OUT/release-check" "$OUT/merge.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
           import glob, json, os, re, sys
           producer = json.load(open(sys.argv[1]))["producer"]
@@ -276,7 +278,7 @@ jobs:
           # The producer is the pull request's copy of the Checks workflow and of the release tooling it executes,
           # tools/release_check.py and what it imports. Both must be the base's copy, or the evidence came from code
           # nobody reviewed; a change to either lands through its own pull request first. The tests the tooling runs
-          # are the baseline's frozen sources, which the validator holds to the reviewed definition.
+          # may change with the candidate: every such change is listed below, for the item's reviewer.
           changed="$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" -- .github/workflows/checks.yml tools/)"
           if [ -n "$changed" ]; then
             refuse "the pull request changes the producer's code: $(echo "$changed" | tr '\n' ' '); that change lands first, through its own review"
@@ -294,35 +296,233 @@ jobs:
           json.dump(producer, open(sys.argv[2], "w"), indent=1)
           PY
           echo "ready=true" >> "$GITHUB_OUTPUT"
-      - name: Classify the run with the base's own validator
+      - name: The controller, at the commit this workflow runs from
+        id: controller
         if: steps.merge.outputs.ready == 'true'
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          refuse() { echo "$1" >> "$OUT/refusals"; exit 0; }
+          # The validator and every helper it imports come from here, the whole tree at the commit this workflow file
+          # was read from, which a pull request cannot edit; never from the base or the candidate. Its own clone, so
+          # nothing in the candidate's repository is shared with it.
+          git clone -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" controller
+          if ! git -C controller checkout -q "$GITHUB_WORKFLOW_SHA" 2>/dev/null || [ "$(git -C controller rev-parse HEAD)" != "$GITHUB_WORKFLOW_SHA" ]; then
+            refuse "the controller's own commit $GITHUB_WORKFLOW_SHA cannot be checked out"
+          fi
+          if ! git -C controller merge-base --is-ancestor "$GITHUB_WORKFLOW_SHA" "origin/$DEFAULT_BRANCH"; then
+            refuse "the controller's own commit $GITHUB_WORKFLOW_SHA is not a commit on the default branch $DEFAULT_BRANCH"
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: The base's last three runs, by GitHub's record
+        id: known
+        if: steps.merge.outputs.ready == 'true'
+        shell: bash
+        env:
+          BASE_REF: ${{ steps.record.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+          # What already fails on the base is read from the base's own runs, not from a list anyone curates: the newest
+          # three completed push runs of the producer on the base branch, first attempts only, begun before the run
+          # judged here, each with its artifacts laid out as this job lays out the producer's. Fewer than three is
+          # recorded as such and the validator decides; a read that fails refuses the verdict and writes no manifest,
+          # so "could not read" never passes for "nothing there".
+          python3 -I - "$OUT/history" "$OUT/producer.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
+          import hashlib, io, json, os, re, subprocess, sys, urllib.parse, zipfile
+          from datetime import datetime
+          env = os.environ
+          history, producer_path, refusals_path = sys.argv[1:4]
+          repo, base_ref, workflow_id = env["GITHUB_REPOSITORY"], env["BASE_REF"], env["PRODUCER_WORKFLOW_ID"]
+          wanted = 3
+          hex40 = re.compile(r"^[0-9a-f]{40}$")
+          class CouldNotRead(Exception):
+              pass
+          def clean(value):
+              return re.sub(r"\s+", " ", str(value))[:200]
+          def api(endpoint, raw=False):
+              answer = subprocess.run(["gh", "api", endpoint], capture_output=True)
+              if answer.returncode != 0:
+                  raise CouldNotRead("GitHub's API could not be read at %s: %s" % (endpoint, clean(answer.stderr.decode(errors="replace")) or "exit %d" % answer.returncode))
+              if raw:
+                  return answer.stdout
+              try:
+                  return json.loads(answer.stdout)
+              except ValueError as error:
+                  raise CouldNotRead("GitHub's answer at %s is not JSON: %s" % (endpoint, error))
+          def when(value):
+              try:
+                  return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+              except (TypeError, ValueError):
+                  raise CouldNotRead("GitHub gave the time %s, which does not read as one" % clean(value))
+          def listing(endpoint, key):
+              # Every page of a listing, until GitHub's own total is read; a page with no list is a failed read.
+              items, page = [], 1
+              while True:
+                  doc = api("%s&page=%d" % (endpoint, page))
+                  batch = doc.get(key) if isinstance(doc, dict) else None
+                  if not isinstance(batch, list) or not isinstance(doc.get("total_count"), int):
+                      raise CouldNotRead("GitHub's answer at %s page %d carries no %s list" % (endpoint, page, key))
+                  items.extend(batch)
+                  if not batch or len(items) >= doc["total_count"]:
+                      return items
+                  page += 1
+          try:
+              before = json.load(open(producer_path))["producer"]["created_at"]
+              cutoff = when(before)
+              ref = api("repos/%s/git/ref/heads/%s" % (repo, urllib.parse.quote(base_ref, safe="/")))
+              base_head = ((ref.get("object") or {}).get("sha") if isinstance(ref, dict) else None)
+              if not (isinstance(base_head, str) and hex40.match(base_head)):
+                  raise CouldNotRead("GitHub names no head commit for %s" % base_ref)
+              query = "repos/%s/actions/workflows/%s/runs?%s" % (repo, workflow_id, urllib.parse.urlencode(
+                  {"branch": base_ref, "event": "push", "status": "completed", "created": "<" + before,
+                   "exclude_pull_requests": "true", "per_page": "100"}))
+              chosen = []
+              for run in listing(query, "workflow_runs"):
+                  # The query already asks for these; each is checked again here, since only GitHub's record of the run
+                  # itself decides whether it is the base's evidence. A re-run's artifacts mix attempts, so it is passed over.
+                  why = None
+                  if (run.get("event"), run.get("head_branch"), run.get("status")) != ("push", base_ref, "completed"):
+                      why = "not a completed push to %s" % base_ref
+                  elif str(run.get("workflow_id")) != workflow_id or run.get("path") != env["PRODUCER_WORKFLOW_PATH"]:
+                      why = "not the producer"
+                  elif (run.get("head_repository") or {}).get("full_name") != repo:
+                      why = "a head in another repository"
+                  elif run.get("run_attempt") != 1:
+                      why = "attempt %s, not a first attempt" % clean(run.get("run_attempt"))
+                  elif not when(run.get("created_at")) < cutoff:
+                      why = "begun at %s, not before %s" % (clean(run.get("created_at")), before)
+                  elif not isinstance(run.get("id"), int):
+                      why = "no run id"
+                  if why:
+                      print("passed over run %s: %s" % (clean(run.get("id")), why), file=sys.stderr)
+                  else:
+                      chosen.append(run)
+              chosen = sorted(chosen, key=lambda run: (when(run["created_at"]), run["id"]), reverse=True)[:wanted]
+              runs = []
+              for run in chosen:
+                  record = {key: run.get(key) for key in ("id", "run_attempt", "head_sha", "head_branch", "event", "conclusion", "created_at", "html_url")}
+                  record["dir"] = "known/%d/" % run["id"]
+                  record["artifacts"] = []
+                  seen = set()
+                  for artifact in listing("repos/%s/actions/runs/%d/artifacts?per_page=100" % (repo, run["id"]), "artifacts"):
+                      name, artifact_id = artifact.get("name"), artifact.get("id")
+                      if not (isinstance(name, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", name)) or name in seen or not isinstance(artifact_id, int):
+                          raise CouldNotRead("run %d has an artifact named %s, id %s, which cannot be laid out" % (run["id"], clean(name), clean(artifact_id)))
+                      seen.add(name)
+                      if artifact.get("expired"):
+                          raise CouldNotRead("artifact %s of run %d has expired, so that run's evidence cannot be read" % (name, run["id"]))
+                      archive = api("repos/%s/actions/artifacts/%d/zip" % (repo, artifact_id), raw=True)
+                      digest = artifact.get("digest")
+                      if isinstance(digest, str) and digest.startswith("sha256:") and hashlib.sha256(archive).hexdigest() != digest[len("sha256:"):]:
+                          raise CouldNotRead("artifact %s of run %d does not match the digest GitHub gives for it" % (name, run["id"]))
+                      # The producer's layout: each check-* shard in shards/ under its own name, the summary in release-check/.
+                      dest = os.path.join(history, record["dir"], "shards", name) if name.startswith("check-") else os.path.join(history, record["dir"], name)
+                      try:
+                          with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+                              for member in zipped.namelist():
+                                  parts = member.replace("\\", "/").split("/")
+                                  if member.startswith("/") or ".." in parts:
+                                      raise CouldNotRead("artifact %s of run %d holds the path %s, outside its own folder" % (name, run["id"], clean(member)))
+                              zipped.extractall(dest)
+                      except zipfile.BadZipFile as error:
+                          raise CouldNotRead("artifact %s of run %d is not a readable archive: %s" % (name, run["id"], error))
+                      record["artifacts"].append({key: artifact.get(key) for key in ("id", "name", "size_in_bytes", "digest")})
+                  runs.append(record)
+          except CouldNotRead as error:
+              open(refusals_path, "a").write("the base's own runs could not be read, so what already fails there is unknown: %s\n" % error)
+              print("ready=false")
+              raise SystemExit(0)
+          # Every dir is relative to this manifest's own folder.
+          manifest = {"base_ref": base_ref, "base_head": base_head, "query": query, "runs": runs, "fewer_than_three": len(runs) < wanted}
+          os.makedirs(history, exist_ok=True)
+          json.dump(manifest, open(os.path.join(history, "known-runs.json"), "w"), indent=1)
+          print("ready=true")
+          PY
+      - name: The test definitions the merge changes, read by git alone
+        id: tests
+        if: steps.merge.outputs.ready == 'true'
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.record.outputs.base_sha }}
+          MERGE_SHA: ${{ steps.receipts.outputs.merge_sha }}
+        run: |
+          set -euo pipefail
+          refuse() { echo "$1" >> "$OUT/refusals"; exit 0; }
+          # Every file that defines what the release check tests, changed between the base and the tested merge: all of
+          # tests/, the release check that names the steps and finds the units, and the harnesses it runs from tools/
+          # (tools/release_check.py's harnesses()). Read here by git, so the flag does not depend on anything the
+          # candidate wrote; nothing from either tree runs. Each is flagged for the item's reviewer, not refused.
+          if ! git -C "$OUT/candidate" diff --no-ext-diff --no-textconv --no-renames --name-status -z "$BASE_SHA" "$MERGE_SHA" -- \
+                tests tools/release_check.py tools/wake_replay.py tools/wake_standin.py > "$OUT/test-definitions.z"; then
+            refuse "which test definitions the merge changes cannot be read from git"
+          fi
+          python3 -I - "$OUT/test-definitions.z" "$OUT/test-definitions.json" "$BASE_SHA" "$MERGE_SHA" <<'PY'
+          import json, sys
+          fields = open(sys.argv[1], "rb").read().decode("utf-8", "replace").split("\0")
+          changed = [{"status": status, "path": path} for status, path in zip(fields[0::2], fields[1::2]) if status]
+          json.dump({"base": sys.argv[3], "merge": sys.argv[4], "changed": changed}, open(sys.argv[2], "w"), indent=1)
+          PY
+      - name: Classify the run with the controller's own validator
+        if: steps.controller.outputs.ready == 'true' && steps.known.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          cd "$OUT"
-          if [ ! -f base/tools/ci_known_reds.py ] || [ ! -f base/.github/check-baseline.json ]; then
-            echo "the base $(git -C base rev-parse HEAD) carries no validator or no baseline, so there is nothing to classify" >> refusals
+          # From the workspace, outside every checkout. -I keeps the working directory, the environment and user site
+          # off sys.path; the validator puts its own directory there itself, so what it imports is the controller's.
+          cd "$GITHUB_WORKSPACE"
+          if [ ! -f controller/tools/ci_known_reds.py ]; then
+            echo "the controller $GITHUB_WORKFLOW_SHA carries no tools/ci_known_reds.py, so there is nothing to classify with" >> "$OUT/refusals"
             exit 0
           fi
           # The signatures in tools/ci-input-reads.json are sha256 of ast.dump's text, which Python 3.13 changed:
           # a later interpreter reads every declaration as missing and refuses everything. Refuse the interpreter.
-          if ! python3 -c 'import sys; sys.exit(0 if (3, 9) <= sys.version_info[:2] <= (3, 12) else 1)'; then
-            echo "the controller's python3 is $(python3 -c 'import sys; print(sys.version.split()[0])'), outside 3.9 to 3.12: its ast.dump text differs from the one the declarations were signed with, so the validator cannot be trusted on this image" >> refusals
+          if ! python3 -I -c 'import sys; sys.exit(0 if (3, 9) <= sys.version_info[:2] <= (3, 12) else 1)'; then
+            echo "the controller's python3 is $(python3 -I -c 'import sys; print(sys.version.split()[0])'), outside 3.9 to 3.12: its ast.dump text differs from the one the declarations were signed with, so the validator cannot be trusted on this image" >> "$OUT/refusals"
             exit 0
           fi
-          # The validator's exit is the verdict; it writes what it decided and why beside it.
-          if ! python3 base/tools/ci_known_reds.py \
-                --summary release-check/summary.json \
-                --provenance release-check/provenance.json \
-                --shards shards \
-                --baseline base/.github/check-baseline.json \
-                --base-checkout base \
-                --candidate-checkout candidate \
-                --producer producer.json \
-                --out validation.json; then
-            echo "validator: not green" >> refusals
+          # The validator's exit is the verdict; it writes what it decided and why beside it. The base and the candidate
+          # are named only as data to read.
+          if ! python3 -I controller/tools/ci_known_reds.py \
+                --summary verdict/release-check/summary.json \
+                --provenance verdict/release-check/provenance.json \
+                --shards verdict/shards \
+                --known-runs verdict/history/known-runs.json \
+                --base-checkout verdict/base \
+                --candidate-checkout verdict/candidate \
+                --producer verdict/producer.json \
+                --out verdict/validation.json; then
+            echo "validator: not green" >> "$OUT/refusals"
           fi
-          test -f validation.json || echo "the validator wrote no validation.json" >> refusals
+          test -f "$OUT/validation.json" || echo "the validator wrote no validation.json" >> "$OUT/refusals"
+      - name: The modules the validator loaded
+        if: always() && steps.controller.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The proof that every module the validator ran came from the controller's tree: the validator lists the
+          # files it loaded as loaded_modules in its output, and any outside controller/ refuses the verdict.
+          python3 -I - "$OUT/validation.json" "$GITHUB_WORKSPACE/controller" "$OUT/refusals" <<'PY'
+          import json, os, sys
+          try:
+              validation = json.load(open(sys.argv[1]))
+          except (OSError, ValueError):
+              validation = None
+          loaded = validation.get("loaded_modules") if isinstance(validation, dict) else None
+          if not isinstance(loaded, list):
+              print("the validator's output names no loaded_modules, so which files it ran is not shown here")
+              raise SystemExit(0)
+          controller = os.path.realpath(sys.argv[2]) + os.sep
+          # A relative path is the validator's own, from the workspace it ran in.
+          workspace = os.path.dirname(os.path.realpath(sys.argv[2]))
+          outside = [str(path) for path in loaded if not os.path.realpath(os.path.join(workspace, str(path))).startswith(controller)]
+          for path in loaded:
+              print("loaded %s" % path)
+          if outside:
+              open(sys.argv[3], "a").write("the validator loaded modules from outside the controller's tree: %s\n" % " ".join(outside)[:500])
+          PY
       - name: Decide, and write the check run to publish
         id: decide
         if: always() && steps.record.outputs.head_sha != ''
@@ -332,9 +532,14 @@ jobs:
         run: |
           set -euo pipefail
           cd "$OUT"
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          python3 -I - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
           env = os.environ
+          def read(path):
+              try:
+                  return json.load(open(path))
+              except (OSError, ValueError):
+                  return None
           producer = json.load(open("producer.json"))
           refusals = [line for line in open("refusals").read().splitlines() if line] if os.path.exists("refusals") else []
           validation = json.load(open("validation.json")) if os.path.exists("validation.json") else None
@@ -350,6 +555,26 @@ jobs:
           lines.append("Producer: run %s attempt %s, %s, workflow %s (%s)" % (p["run_id"], p["run_attempt"], p["url"], p["workflow_path"], p["workflow_id"]))
           lines.append("Tested merge: %s, tree %s, onto base %s, head %s" % (merge.get("fetched"), merge.get("tree"), merge.get("first_parent"), merge.get("second_parent")))
           lines.append("Controller: workflow %s at %s, run %s" % (c["workflow_ref"], c["workflow_sha"], c["url"]))
+          known = read("history/known-runs.json")
+          if isinstance(known, dict):
+              lines.append("Known reds from the base's own runs on %s (head %s when listed)%s: %s" % (
+                  known.get("base_ref"), known.get("base_head"), ", fewer than three" if known.get("fewer_than_three") else "",
+                  ", ".join("run %s at %s (%s)" % (r.get("id"), r.get("head_sha"), r.get("conclusion")) for r in known.get("runs") or []) or "none"))
+          if isinstance(validation, dict) and isinstance(validation.get("loaded_modules"), list):
+              lines.append("Validator loaded: " + ", ".join(str(m) for m in validation["loaded_modules"]))
+          # The test definitions the merge changes, as git reads them, whatever the validator says: for the reviewer.
+          tests = read("test-definitions.json")
+          flagged = tests.get("changed") if isinstance(tests, dict) else None
+          if isinstance(flagged, list):
+              lines.append("")
+              lines.append("Test definitions changed from base %s to merge %s: %d" % (tests.get("base"), tests.get("merge"), len(flagged)))
+              lines.extend("- %s %s" % (f.get("status"), f.get("path")) for f in flagged)
+          for key in ("test_definition_changes", "mutation_advisories"):
+              lines.append("")
+              if isinstance(validation, dict) and key in validation:
+                  lines.extend(["%s, from the validator:" % key, "```json", json.dumps(validation[key], indent=1), "```"])
+              else:
+                  lines.append("%s: the validator gave none" % key)
           # The check run is named for the base it was judged against. A check run attaches to the commit, so without
           # the base in the name a verdict earned against one branch's policy would satisfy a pull request of the same
           # head into another; each branch rule requires its own name. A refused record with no approved base gets the
@@ -364,7 +589,8 @@ jobs:
               "details_url": c["url"],
               # The decision's key on the head: which producer run and attempt it answers.
               "external_id": "%s-%s" % (p["run_id"], p["run_attempt"]),
-              "output": {"title": "green: no unexpected failure" if passed else ("refused" if refusals else "not green"),
+              "output": {"title": ("green: no unexpected failure" if passed else ("refused" if refusals else "not green"))
+                                  + ("; %d test definitions changed, for review" % len(flagged) if flagged else ""),
                          "summary": "\n".join(lines)[:60000]},
           }
           json.dump(body, open("check-run.json", "w"))
@@ -382,6 +608,8 @@ jobs:
             ${{ github.workspace }}/verdict/producer.json
             ${{ github.workspace }}/verdict/merge.json
             ${{ github.workspace }}/verdict/validation.json
+            ${{ github.workspace }}/verdict/history/known-runs.json
+            ${{ github.workspace }}/verdict/test-definitions.json
             ${{ github.workspace }}/verdict/refusals
             ${{ github.workspace }}/verdict/check-run.json
           if-no-files-found: ignore
