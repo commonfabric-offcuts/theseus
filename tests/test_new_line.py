@@ -29,6 +29,8 @@ class NewLineCase(ReaderCase):
         self.assertEqual(answer["commit_seq"], commit, "read in the same transaction as the commit it reflects")
         for args in ({"direction": "before", "limit": 30}, {"direction": "before", "limit": 1},
                      {"direction": "after", "cursor": 0, "limit": 1}, {"audience": "reader"}):
+            # An agent's first read of a message records that it was handed (docs/message-edit.md), a commit of its own.
+            commit = int(self.sql("SELECT value FROM metadata WHERE key='commit_seq'")[0][0])
             page = self.store.view(actor, "topic_messages", dict({"topic_id": "t1"}, **args))
             self.assertNotIn("error", page, page)
             self.assertEqual((page["oldest_unread"], page["commit_seq"]), (answer["oldest_unread"], commit), args)

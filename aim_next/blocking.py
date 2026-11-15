@@ -20,7 +20,7 @@ from .contract import Refusal, _identifier, _prefix
 from .outcome_asks import held_ask, record_ask
 from .reactions import answered_yes
 from .standing_conversation import is_conversation
-from .message_edit import current_words
+from .message_edit import current_words, withheld
 
 # What an ask that holds something is read with (messages m): what _ask_waits and the order read. Its line is read
 # afterwards from its latest words, for the asks kept only (message_edit.py), so no row costs a lookup per revision.
@@ -162,8 +162,8 @@ class Blocking:
             outcome, outcome_truncated = _prefix(row["workspace_title_prefix"])
             found.append({"message_id": row["id"], "topic_id": row["topic_id"], "title": title, "title_truncated": truncated,
                           "workspace": {"id": row["workspace_id"], "title": outcome, "title_truncated": outcome_truncated},
-                          "by": row["author_id"], "since_ms": row["sent_ms"], "line": first_line(current_words(db, row["id"])[0]),
-                          "blocks": self._blocked_words(db, row["kind"], row["ref"])})
+                          "by": row["author_id"], "since_ms": row["sent_ms"], "line": current_words(db, row["id"], shape=first_line)[0],
+                          "withheld": withheld(row["id"]), "blocks": self._blocked_words(db, row["kind"], row["ref"])})
         return found
 
     def _held(self, db, workspace_id, kind, ref):
@@ -178,7 +178,8 @@ class Blocking:
             waiting = [member for member in json.loads(row["addressees"]) if self._ask_waits(db, topic, row, member)]
             if waiting:
                 held.append({"message_id": row["id"], "topic_id": row["topic_id"], "by": row["author_id"], "since_ms": row["sent_ms"],
-                             "waiting_on": waiting, "line": first_line(current_words(db, row["id"])[0])})
+                             "waiting_on": waiting, "line": current_words(db, row["id"], shape=first_line)[0],
+                             "withheld": withheld(row["id"])})
         return held
 
     def _block_fields(self, db, items):

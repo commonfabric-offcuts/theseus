@@ -1965,6 +1965,6 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     { seed, open, centre, press, light, openReader, card, within }, scrollbars);
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
-  await editChecks({ check, until, view, facts, shot, engine },
+  await editChecks({ check, until, view, control, facts, shot, engine },
     { seed, open, centre, tap, press, lit, light, openReader, closeReader, readerOn, into, valueOf, card, words, DEVICES });
 }

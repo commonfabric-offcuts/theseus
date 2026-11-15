@@ -11,8 +11,12 @@ from test_delivery import DeliveryCase
 
 
 def measured(operation):
-    """Run one operation and count the SQLite VM instructions and statements it takes."""
+    """Run one operation and count the SQLite VM instructions and statements it takes. group_query_vm_steps is the
+    most one transaction spends on the group query: an agent's read that hands words it has not been handed is run
+    again under BEGIN IMMEDIATE to record them (docs/message-edit.md, "What counts as handed"), and each run is one
+    page's scan."""
     counts = {"vm_steps": 0, "statements": [], "group_query_vm_steps": 0}
+    runs = [0]
     connect = store_module._connect
 
     def instrumented(path):
@@ -20,10 +24,16 @@ def measured(operation):
         def step():
             counts["vm_steps"] += 1
             if counts["statements"] and counts["statements"][-1].startswith("SELECT id FROM delivery_groups"):
-                counts["group_query_vm_steps"] += 1
+                runs[-1] += 1
+                counts["group_query_vm_steps"] = max(runs)
             return 0
+
+        def trace(statement):
+            if statement.startswith("BEGIN"):
+                runs.append(0)
+            counts["statements"].append(statement)
         db.set_progress_handler(step, 1)
-        db.set_trace_callback(counts["statements"].append)
+        db.set_trace_callback(trace)
         return db, runtime
 
     started = time.monotonic()

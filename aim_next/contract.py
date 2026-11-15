@@ -13,6 +13,9 @@ LIMITS = {
     # The most places one outline order holds, and its most bytes, so every
     # outcome list and topic list that carries it keeps room for its items (outline_order.py).
     "order_ids": 500, "order_utf8_bytes": 32768,
+    # How long an open Edit holds its message from agents after its last renewal (docs/message-edit.md): about two
+    # REWAKE_MS periods for an abandoned Edit; a person working in the field renews it with every save.
+    "edit_hold_ms": 120000,
 }
 
 # A reader can see a topic as its outcome's owner or member, its creator, or an active participant.
@@ -80,9 +83,11 @@ def _bounded_page(answer, rows, limit, item, key):
     def response():
         return dict(answer, items=list(items), next_cursor=items[-1][key] if items and len(rows) > len(items) else None)
 
+    # The bound measures the words, never the markers an agent view puts on them (message_edit.plain).
+    from .message_edit import plain
     for row in rows[:limit]:
         items.append(item(row))
-        if len(_json(response()).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+        if len(_json(plain(response())).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
             items.pop()
             if not items:
                 raise Refusal("VIEW_TOO_LARGE", "A preview cannot fit in the bounded response")

@@ -99,6 +99,13 @@ newer. A broker route accepts the field and never sends it to its child.
   what arrived after it was handed its work, so it gets no empty follow-up. A
   delivery still pending above `handed_seq` keeps the recipient due.
 - When the recipient's pending count reaches 0, `handed_seq` becomes NULL.
+- Opening Edit on a message moves its agent deliveries to `held`, which the
+  scheduler counts as a departure, as it counts an acknowledgment
+  ([message-edit.md](message-edit.md#holding-a-message-while-it-is-edited)).
+- Release moves them back to pending and hands them back: `handed_seq` becomes
+  NULL when it covers them, and the recipient is due now (or at the live
+  claim's end). A claim taken while they were held and handed after the
+  release is a stale start.
 
 ## Turn records
 

@@ -98,6 +98,39 @@ class GoAheadCase(PipelineCase):
                              % (self.placed_at(), theirs, author))
         self.nothing_moved(before)
 
+    def open_edit(self, message, holder="h-laptop"):
+        self.committed(self.command("message.edit_open", {"holder": holder}, target={"message_id": message}, actor="owner"))
+
+    def test_an_agent_never_moves_on_a_word_held_in_edit_nor_on_one_answering_a_held_word(self):
+        ask = self.say("Shall I move 2 to Later? It waits on 3.", actor="agent-a", addressees=["owner"], intent="ask")
+        yes = self.say("Yes", reply_to=ask)
+        before = self.sql("SELECT count(*) FROM pipeline_events WHERE kind='moved'")
+        # The owner has their Yes open in Edit: an agent may not move on it.
+        self.open_edit(yes)
+        receipt = self.move(2, section="later", actor="agent-a", because_message_id=yes)
+        self.assertEqual((receipt.get("error", {}).get("code"), receipt.get("recorded")), ("MESSAGE_HELD", False), receipt)
+        self.assertIn(yes, receipt["error"]["message"])
+        self.nothing_moved(before)
+        self.committed(self.command("message.edit_close", {"holder": "h-laptop"}, target={"message_id": yes}, actor="owner"))
+        # The word a Yes answers, held: the Yes alone is not the word either.
+        proposal = self.say("Move 2 to Later when 3 lands.")
+        go = self.say("Go ahead with #2 now.", reply_to=proposal)
+        self.open_edit(proposal)
+        receipt = self.move(2, section="later", actor="agent-a", because_message_id=go)
+        self.assertEqual((receipt.get("error", {}).get("code"), receipt.get("recorded")), ("MESSAGE_HELD", False), receipt)
+        self.assertIn(proposal, receipt["error"]["message"])
+        self.nothing_moved(before)
+        # Once the edit is left, the same moves go.
+        self.committed(self.command("message.edit_close", {"holder": "h-laptop"}, target={"message_id": proposal}, actor="owner"))
+        self.committed(self.move(2, section="later", actor="agent-a", because_message_id=go))
+        self.assertEqual(self.section("later"), [2])
+
+    def test_a_person_moves_on_a_word_held_in_edit(self):
+        word = self.say("Go ahead with #2, wherever it fits.")
+        self.open_edit(word)
+        self.committed(self.move(2, section="later", actor="owner", because_message_id=word))
+        self.assertEqual(self.section("later"), [2])
+
     def test_a_word_older_than_the_owners_placement_does_not_lift_it(self):
         old = self.say("2 can go to Later")
         self.placed = self.committed(self.move(2, above=1, actor="owner"))["event"]

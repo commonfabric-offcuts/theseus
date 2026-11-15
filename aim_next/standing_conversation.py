@@ -27,7 +27,7 @@ from .contract import READABLE, Refusal, _identifier, _revision
 from .delivery import _now_ms
 from .health import HEALTH_ACTOR
 from . import whispers
-from .message_edit import words
+from .message_edit import mark, revision, words, withheld
 
 
 # Version 28: a topic's kind, the conversation a replaced topic gave way to,
@@ -391,13 +391,14 @@ class StandingConversation:
     # Views -------------------------------------------------------------------
 
     def _conversation_waits(self, db, topic_id):
-        rows = db.execute("SELECT q.ask_id,q.actor_id,m.author_id,m.sent_ms," + words("m") + " AS body,m.reply_to FROM conversation_waits q "
+        rows = db.execute("SELECT q.ask_id,q.actor_id,m.author_id,m.sent_ms," + words("m", plain=True) + " AS body," + revision("m") + " AS revision,m.reply_to FROM conversation_waits q "
                           "JOIN messages m ON m.id=q.ask_id WHERE m.topic_id=? ORDER BY m.seq,q.actor_id", (topic_id,)).fetchall()
         waits = []
         for row in rows:
             item = row["reply_to"] if row["reply_to"] is not None and self._item(db, row["reply_to"]) is not None else None
             waits.append({"ask_message_id": row["ask_id"], "on": row["actor_id"], "by": row["author_id"],
-                          "since_ms": row["sent_ms"], "item_id": item, "excerpt": excerpt(row["body"])})
+                          "since_ms": row["sent_ms"], "item_id": item, "excerpt": mark(row["ask_id"], row["revision"], excerpt(row["body"])),
+                          "withheld": withheld(row["ask_id"])})
         return waits
 
     def _view_conversation(self, db, actor, args):

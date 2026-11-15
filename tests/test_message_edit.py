@@ -60,6 +60,11 @@ class EditCase(fixtures.ReaderCase):
         return self.sql("SELECT scope_id,version FROM changes WHERE scope_kind='actor' AND resource_kind='edit' AND resource_id=? ORDER BY scope_id,version",
                         (message,))
 
+    def saw(self, agent, message):
+        """The agent is handed the message's words (it reads its source), so an edit of it corrects that agent (slice 2:
+        only an agent handed the words is corrected)."""
+        return self.source({"kind": "message", "id": message}, actor=agent)
+
     def member(self, actor, present):
         version = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
         self.committed(self.command("workspace.member_set", {"actor_id": actor, "present": present}, target={"workspace_id": "w1"},
@@ -71,6 +76,8 @@ class AppendCase(EditCase):
 
     def test_an_edit_appends_revision_2_and_the_message_row_stays_byte_identical(self):
         message = self.opening["id"]
+        self.saw("agent-a", message)
+        self.saw("agent-b", message)
         row = self.sql("SELECT * FROM messages WHERE id=?", (message,))
         result = self.committed(self.edit(message, "Opening message, fixed"))
         self.assertEqual((result["message_id"], result["revision"], result["corrections"]), (message, 2, 2))
@@ -137,6 +144,8 @@ class CorrectionCase(EditCase):
     def test_every_agent_that_reads_it_gets_exactly_one_correction_and_is_woken_and_a_person_never_does(self):
         self.member("other-reader", True)
         message = self.opening["id"]
+        for reader in ("agent-a", "agent-b", "other-reader"):
+            self.saw(reader, message)
         self.assertEqual(self.schedule("agent-b"), (0, 0), "agent-b is sent nothing until the edit")
         self.committed(self.edit(message, "Fixed"))
         self.assertEqual(sorted(row[:3] for row in self.corrections()), [("agent-a", message, 2), ("agent-b", message, 2)],
@@ -151,8 +160,19 @@ class CorrectionCase(EditCase):
                          "every reader, people and agents, the editor included, and nobody else")
         self.assertIn(("agent-b", "delivery"), self.sql("SELECT scope_id,resource_kind FROM changes WHERE resource_kind='delivery' AND scope_id='agent-b'"))
 
+    def test_no_agent_that_was_never_handed_the_words_gets_a_correction_and_every_reader_is_told(self):
+        self.member("other-reader", True)
+        message = self.opening["id"]
+        self.assertEqual(self.committed(self.edit(message, "Fixed"))["corrections"], 0)
+        self.assertEqual(self.corrections(), [], "agent-a was sent it but never read it; agent-b never read it")
+        self.assertEqual(self.schedule("agent-b"), (0, 0))
+        self.assertEqual(self.told(message), [("agent-a", 2), ("agent-b", 2), ("other-reader", 2), ("owner", 2)])
+        self.assertEqual(self.source({"kind": "message", "id": message}, actor="agent-b")["body"], "Fixed")
+
     def test_a_newer_correction_settles_the_older_one_and_previews_its_own_revision(self):
         message = self.opening["id"]
+        self.saw("agent-a", message)
+        self.saw("agent-b", message)
         self.committed(self.edit(message, "Second words"))
         [older] = [item for item in self.listed("agent-b") if item.get("correction")]
         self.assertEqual((older["correction"], older["message"]["body"], older["message"]["revision"]), ({"revision": 2}, "Second words", 2))
@@ -211,6 +231,7 @@ class AccessCase(EditCase):
 
     def test_losing_the_message_settles_its_correction_and_leaves_no_preview_count_or_wake(self):
         message = self.opening["id"]
+        self.saw("agent-b", message)
         self.committed(self.edit(message, "Words agent-b may no longer read"))
         self.assertEqual(self.schedule("agent-b"), (1, 1))
         correction = self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND revision=2")[0][0]
@@ -229,6 +250,7 @@ class AccessCase(EditCase):
         # Access lost by a write that settles nothing (here the team row is removed by hand): every read of pending
         # corrections leaves it out by itself.
         message = self.opening["id"]
+        self.saw("agent-b", message)
         self.committed(self.edit(message, "Words agent-b may no longer read"))
         correction = self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND revision=2")[0][0]
         self.sql("DELETE FROM workspace_members WHERE actor_id='agent-b'")
@@ -244,6 +266,7 @@ class AccessCase(EditCase):
         for row in self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND state='pending'"):
             self.committed(self.command("delivery.ack", {}, target={"delivery_id": row[0]}, actor="agent-b"))
         for message in lost + [kept]:
+            self.saw("agent-b", message)
             self.committed(self.edit(message, "Fixed words"))
         self.sql("DELETE FROM workspace_members WHERE actor_id='agent-b'")
         page = self.store.view("agent-b", "deliveries", {"limit": 1})
@@ -253,6 +276,7 @@ class AccessCase(EditCase):
 
     def test_leaving_the_topic_settles_a_correction_only_where_the_message_is_lost(self):
         message = self.opening["id"]
+        self.saw("agent-a", message)
         self.committed(self.edit(message, "Fixed"))
         # agent-a leaves t1 but stays on the team, so it still reads the message: its correction stays.
         self.participation("agent-a", False)
@@ -262,6 +286,7 @@ class AccessCase(EditCase):
     def test_a_topic_only_reader_that_leaves_has_its_correction_settled_with_no_count_or_wake(self):
         message = self.opening["id"]
         self.participation("outsider", True)
+        self.saw("outsider", message)
         self.committed(self.edit(message, "Fixed"))
         self.assertEqual(self.pending("outsider", message), [2])
         self.participation("outsider", False)
@@ -280,6 +305,7 @@ class AccessCase(EditCase):
 
     def test_a_whisper_edit_reaches_only_its_agent_and_its_notice_keeps_it_private(self):
         whisper = self.post("Between us", addressees=["agent-a"], whisper=True)
+        self.saw("agent-a", whisper)
         self.committed(self.edit(whisper, "Between us, fixed"))
         self.assertEqual([row[0] for row in self.corrections(message=whisper)], ["agent-a"])
         self.assertEqual(self.told(whisper), [("agent-a", 2), ("owner", 2)])
@@ -297,6 +323,7 @@ class AccessCase(EditCase):
 class NoticeCase(EditCase):
     def test_the_hosted_notice_names_a_correction_in_cores_words(self):
         message = self.opening["id"]
+        self.saw("agent-a", message)
         self.committed(self.edit(message, "Fixed words"))
         items = self.listed("agent-a")
         correction = next(item for item in items if item.get("correction"))
@@ -312,6 +339,8 @@ class RefusalCase(EditCase):
 
     def test_the_same_operation_gives_the_same_receipt_one_revision_and_one_correction_each(self):
         message = self.opening["id"]
+        self.saw("agent-a", message)
+        self.saw("agent-b", message)
         first = self.edit(message, "Fixed", op="o-1")
         self.committed(first)
         # The answer was lost: the operation says what happened, and sending it again gives the same receipt.
@@ -324,6 +353,7 @@ class RefusalCase(EditCase):
 
     def test_a_stale_base_is_a_recorded_conflict_that_the_same_operation_returns_again(self):
         message = self.opening["id"]
+        self.saw("agent-a", message)
         self.committed(self.edit(message, "Phone words", op="o-2"))
         stale = self.edit(message, "Laptop words", op="o-3")
         self.assertEqual((stale.get("error", {}).get("code"), stale["recorded"], stale.get("error", {}).get("current_versions")),
@@ -433,38 +463,72 @@ class QuoteCase(EditCase):
 
 
 class RaceCase(EditCase):
-    """Acceptance 5: an agent's read and a person's Save, on two connections, in either order. A read releases its
-    snapshot when it answers, so the Save never waits on it; the agent ends with the new words, or the old words and
-    exactly one pending correction."""
+    """Acceptance 8 (slice 2): an agent's read and a person's Save, on two connections, in either order. A read that
+    hands words not yet recorded records them in a write of its own (the boundary), so it either commits before the
+    Save, and is corrected, or after it, and reads the new words; it never answers with words it did not record."""
 
     def envelope(self, body, op):
         return {"v": 1, "instance_id": "test-instance", "operation_id": op, "kind": "message.edit",
                 "target": {"message_id": self.opening["id"]}, "expected": {"message_revision": 1, "authority": dict(self.pin)},
                 "args": {"body": body}}
 
-    def read(self):
-        page = self.store.view("agent-b", "topic_messages", {"topic_id": "t1"})
-        self.assertNotIn("error", page, "a read inside the Save's write is never refused")
+    def read(self, **seams):
+        page = self.store._view("agent-b", "topic_messages", {"topic_id": "t1"}, **seams)
+        self.assertNotIn("error", page, page)
         return next(item for item in page["items"] if item["id"] == self.opening["id"])
 
-    def test_a_read_inside_the_saves_write_gets_the_old_words_and_one_correction(self):
+    def exposure(self):
+        return self.sql("SELECT revision FROM message_exposures WHERE actor_id='agent-b' AND message_id=?", (self.opening["id"],))
+
+    def commit_seq(self):
+        return int(self.sql("SELECT value FROM metadata WHERE key='commit_seq'")[0][0])
+
+    def test_a_read_inside_the_saves_write_is_busy_hands_nothing_and_the_save_commits(self):
         seen = []
 
         def effect(db, actor, envelope):
-            # The edit is written but not committed; the read is a second connection.
+            # The edit is written but not committed; the read is a second connection, whose record waits on the write.
             result = self.store._command_message_edit(db, actor, envelope)
-            seen.append(self.read())
+            seen.append(self.store.view("agent-b", "topic_messages", {"topic_id": "t1"}))
             return result
         receipt = self.store._execute_command("owner", self.envelope("Fixed words", "race-1"), effect=effect)
         self.committed(receipt)
-        self.assertEqual((seen[0]["revision"], seen[0]["body"]), (1, "Opening message"))
-        self.assertEqual(self.pending("agent-b", self.opening["id"]), [2], "old words and exactly one correction")
+        self.assertEqual(seen[0], {"instance_id": "test-instance", "error": {"code": "DATABASE_BUSY", "message": "Read is temporarily unavailable",
+                                                                             "retryable": True}}, "no words")
+        self.assertEqual(self.exposure(), [], "no exposure")
+        self.assertEqual(self.pending("agent-b", self.opening["id"]), [], "and so no correction")
+        self.assertEqual(self.read()["body"], "Fixed words", "read again, it reads the Save's words")
 
-    def test_a_read_after_the_save_gets_the_new_words(self):
+    def test_a_read_committed_before_the_save_is_corrected_once(self):
+        self.assertEqual(self.read()["body"], "Opening message")
+        self.assertEqual(self.exposure(), [(1,)])
         self.committed(self.store.command("owner", self.envelope("Fixed words", "race-2")))
+        self.assertEqual(self.pending("agent-b", self.opening["id"]), [2])
+
+    def test_a_read_after_the_save_gets_the_new_words_and_no_correction(self):
+        self.committed(self.store.command("owner", self.envelope("Fixed words", "race-3")))
         item = self.read()
         self.assertEqual((item["revision"], item["body"]), (2, "Fixed words"))
-        self.assertEqual(self.pending("agent-b", self.opening["id"]), [2], "never more than one correction")
+        self.assertEqual(self.pending("agent-b", self.opening["id"]), [])
+        self.assertEqual(self.exposure(), [(2,)])
+
+    def test_an_edit_between_the_two_runs_is_read_by_the_second(self):
+        def between():
+            self.committed(self.store.command("owner", self.envelope("Fixed words", "race-4")))
+        item = self.read(between=between)
+        self.assertEqual((item["revision"], item["body"]), (2, "Fixed words"), "the second run's words, not the first's")
+        self.assertEqual(self.exposure(), [(2,)])
+        self.assertEqual(self.pending("agent-b", self.opening["id"]), [])
+
+    def test_the_same_record_between_the_two_runs_grows_nothing_and_writes_once(self):
+        before = self.commit_seq()
+
+        def between():
+            self.read()
+        item = self.read(between=between)
+        self.assertEqual(item["body"], "Opening message")
+        self.assertEqual(self.exposure(), [(1,)])
+        self.assertEqual(self.commit_seq(), before + 1, "only the read between committed")
 
 
 class CliCase(test_agent_verbs.WatchReadingCase):
@@ -479,6 +543,7 @@ class CliCase(test_agent_verbs.WatchReadingCase):
         message = self.sql("SELECT id,seq FROM messages WHERE topic_id='t1' ORDER BY seq LIMIT 1")[0]
         for row in self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND state='pending'"):
             self.committed(self.command("delivery.ack", {}, target={"delivery_id": row[0]}, actor="agent-b"))
+        self.assertNotIn("error", self.store.view("agent-b", "source", {"source_ref": {"kind": "message", "id": message[0]}}))
         agent = self.agent()
         watch = test_agent_verbs.FakeWatch()
 
@@ -498,10 +563,112 @@ class CliCase(test_agent_verbs.WatchReadingCase):
         self.assertIn("#%s %s owner (edited, revision 2)\n  Opening message, fixed\n" % (message[1], message[0]), out)
 
 
+class HeldCliCase(test_agent_verbs.WatchReadingCase):
+    """Slice 2's CLI (docs/agent-cli.md): a held message prints as held, watch waits for its release, ack prints the
+    refusal."""
+
+    def ask(self, body="Deploy at 5", topic="t1"):
+        message = self.committed(self.command("message.post", {"body": body, "addressees": ["agent-b"], "intent": "ask"},
+                                              target={"topic_id": topic}))["message_id"]
+        return message, self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'", (message,))[0][0]
+
+    def session(self, verb, message):
+        return self.committed(self.command("message.edit_" + verb, {"holder": "h-laptop"}, target={"message_id": message}))
+
+    def quiet(self):
+        for row in self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND state='pending'"):
+            self.committed(self.command("delivery.ack", {}, target={"delivery_id": row[0]}, actor="agent-b"))
+
+    def test_watch_once_waits_through_the_hold_and_prints_the_released_delivery(self):
+        self.quiet()
+        agent = self.agent()
+        watch = test_agent_verbs.FakeWatch()
+        steps = []
+
+        def wait(timeout):
+            if timeout == 0:
+                return dict(dirty=False, stop=False)
+            if not steps:
+                steps.append(self.ask())
+                self.session("open", steps[0][0])
+            else:
+                self.session("close", steps[0][0])
+            return dict(dirty=True, stop=False)
+        watch.wait = wait
+        agent.watch_changes(watch, once=True)
+        message, delivery = steps[0]
+        self.assertNotIn("held", self.stdout.getvalue())
+        self.assertEqual(self.stdout.getvalue().count(delivery), 1, "printed once, as it was released")
+        self.assertIn("Deploy at 5  [%s in t1]" % delivery, self.stdout.getvalue())
+
+    def test_watch_reports_a_held_delivery_and_then_its_release(self):
+        self.quiet()
+        agent = self.agent()
+        steps = []
+
+        def wait(timeout):
+            if timeout == 0:
+                return dict(dirty=False, stop=False)
+            if not steps:
+                steps.append(self.ask())
+                self.session("open", steps[0][0])
+                return dict(dirty=True, stop=False)
+            if len(steps) == 1:
+                steps.append(self.session("close", steps[0][0]))
+                return dict(dirty=True, stop=False)
+            return dict(dirty=False, stop=True)
+        watch = test_agent_verbs.FakeWatch()
+        watch.wait = wait
+        agent.watch_changes(watch)
+        message, delivery = steps[0]
+        out = self.stdout.getvalue()
+        self.assertIn("delivery held while its author edits it  [%s]\n" % delivery, out)
+        self.assertIn("Deploy at 5  [%s in t1]\n" % delivery, out)
+        self.assertLess(out.index("delivery held"), out.index("Deploy at 5  ["))
+
+    def test_read_prints_a_held_message_without_its_words(self):
+        message, _ = self.ask("Deploy at 5, the long way " + "x" * 2000)
+        self.session("open", message)
+        code, out, _ = self.run_cli("read", "t1", actor="agent-b")
+        self.assertEqual(code, 0)
+        self.assertIn("%s owner asks agent-b\n  (held: its author is editing it)\n" % message, out)
+        self.assertNotIn("the long way", out)
+        self.session("close", message)
+        code, out, _ = self.run_cli("read", "t1", actor="agent-b")
+        self.assertIn("Deploy at 5, the long way", out)
+        self.assertNotIn("held: its author", out)
+
+    def test_ack_prints_the_refusal(self):
+        message, delivery = self.ask()
+        self.session("open", message)
+        code, out, err = self.run_cli("ack", delivery, actor="agent-b")
+        self.assertNotEqual(code, 0)
+        self.assertIn("MESSAGE_HELD", out + err)
+        self.assertIn("is being edited by its author and is held until they save or leave the edit (at most 2 minutes). Nothing was done.", out + err)
+        self.session("close", message)
+        code, out, _ = self.run_cli("ack", delivery, actor="agent-b")
+        self.assertEqual((code, out), (0, "acknowledged %s\n" % delivery))
+
+    def test_a_held_wait_prints_held(self):
+        conversation = self.store.view("owner", "conversation", {"workspace_id": "w1"})["conversation"]["topic_id"]
+        message, _ = self.ask("Deploy at 5 in the conversation", topic=conversation)
+        self.session("open", message)
+        code, out, _ = self.run_cli("conversation", "w1", actor="agent-b")
+        self.assertEqual(code, 0, out)
+        self.assertIn("[waiting] on agent-b", out)
+        self.assertIn("(ask %s): (held)\n" % message, out)
+        self.session("close", message)
+        code, out, _ = self.run_cli("conversation", "w1", actor="agent-b")
+        self.assertIn("(ask %s): Deploy at 5 in the conversation\n" % message, out)
+
+
 # Each case runs its own tests only, not those of the fixtures it borrows.
 for _name in list(vars(test_agent_verbs.WatchReadingCase)) + list(vars(test_agent_verbs.AgentVerbCase)):
     if _name.startswith("test_") and _name not in vars(CliCase):
         setattr(CliCase, _name, None)
+for _name in dir(HeldCliCase):
+    if _name.startswith("test_") and _name not in vars(HeldCliCase):
+        setattr(HeldCliCase, _name, None)
 
 
 if __name__ == "__main__":
@@ -600,6 +767,7 @@ class JoinCase(EditCase):
         message = self.opening["id"]
         for row in self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND state='pending'"):
             self.committed(self.command("delivery.ack", {}, target={"delivery_id": row[0]}, actor="agent-b"))
+        self.saw("agent-b", message)
         self.committed(self.edit(message, "Words agent-b may no longer read"))
         self.assertEqual(self.schedule("agent-b"), (1, 1))
         # A route removed by a write that settles nothing (a stand-in for any future one: today member_set,
@@ -615,6 +783,7 @@ class JoinCase(EditCase):
         message = self.opening["id"]
         for row in self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND state='pending'"):
             self.committed(self.command("delivery.ack", {}, target={"delivery_id": row[0]}, actor="agent-b"))
+        self.saw("agent-b", message)
         self.committed(self.edit(message, "Words agent-b still reads"))
         [claim] = self.claims("agent-b")["claims"]
         self.assertEqual(claim["recipient_id"], "agent-b")
@@ -635,6 +804,7 @@ class JoinCase(EditCase):
             self.committed(self.command("participation.set", {"actor_id": "agent-b", "present": False}, target={"topic_id": "t3"}))
         self.assertEqual(self.sql("SELECT count(*) FROM workspace_members WHERE actor_id='agent-b'"), [(0,)])
         self.assertEqual(self.sql("SELECT creator_id FROM topics WHERE id='t3'"), [("agent-b",)])
+        self.saw("agent-b", message)
         self.committed(self.edit(message, "A person's words, fixed"))
         self.assertEqual(self.pending("agent-b", message), [2], "the creator reads it, so it is told")
         self.assertEqual(self.schedule("agent-b")[1], 1, "and is woken")
@@ -656,6 +826,7 @@ class JoinCase(EditCase):
         self.sql("DELETE FROM workspace_members WHERE workspace_id='w4' AND actor_id='outsider'")
         self.assertEqual(self.sql("SELECT count(*) FROM topic_participants WHERE topic_id='t4' AND actor_id='outsider' AND active=1"), [(0,)])
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE message_id=? AND recipient_id='outsider'", (message,)), [(0,)])
+        self.saw("outsider", message)
         self.committed(self.edit(message, "The person's words, fixed"))
         self.assertEqual(self.pending("outsider", message), [2], "the outcome's owner reads it, so it is told")
         self.assertEqual(self.schedule("outsider")[1], 1, "and is woken")
@@ -665,6 +836,7 @@ class JoinCase(EditCase):
         message = self.opening["id"]
         for row in self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-b' AND state='pending'"):
             self.committed(self.command("delivery.ack", {}, target={"delivery_id": row[0]}, actor="agent-b"))
+        self.saw("agent-b", message)
         self.sql("UPDATE actors SET enabled=0 WHERE id='agent-b'")
         self.committed(self.edit(message, "Fixed while agent-b was off"))
         self.assertEqual(self.pending("agent-b", message), [2], "a disabled reader is a reader: its correction waits")
