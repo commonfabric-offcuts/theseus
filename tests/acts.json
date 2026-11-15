@@ -13804,6 +13804,295 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 324,
+   "act": "Only the outcome's owner or coordinator may invite an agent: Core refuses anyone else, a member too, whatever the page shows",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if workspace is None or not organises(workspace, actor):",
+     "if workspace is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "An invitation registers the named agent and adds it to the outcome's team in the same act",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        db.execute(\"INSERT INTO workspace_members VALUES (?,?)\", (workspace[\"id\"], agent))\n",
+     "        None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A name or ID someone already has is refused, naming a free name to choose instead, and nothing is registered",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if _taken(db, name, agent):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The server writes the agent's sign-in file, private to its user, once Core has recorded the invitation",
+   "break": [
+    [
+     "aim_next/profile.py",
+     "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)",
+     "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A file already in the new agent's place, for anyone else, is kept, and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if agent and _binds(sign_in_path(folder, agent), store, agent) is False:",
+     "if agent and _binds(sign_in_path(folder, agent), store, agent) is None and False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The prompt tells the agent to read the agent guide first",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        \"Before anything else, read the agent guide: %s\" % (CODE_ROOT / \"docs\" / \"agent-guide.md\"),\n",
+     "        \"Before anything else, read the README.\",\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The page's invitation goes through the sign-in writer, so its answer carries the prompt",
+   "break": [
+    [
+     "aim_next/server.py",
+     "                   if value[\"kind\"] == invite.KIND else",
+     "                   if False else"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The server writes sign-in files in the folder of its own profile",
+   "break": [
+    [
+     "aim_next/serve.py",
+     "sign_in_folder=Path(profile_path).resolve().parent)",
+     "sign_in_folder=None)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "An answer that never came keeps the exact invitation, so the next Return sends the same one",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (!(kept && kept.target.workspace_id === workspace.id && kept.args.name === name && kept.args.harness === harness)) {",
+     "if (true) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_agent_invite.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A sign-in file not written keeps the invitation for Try again",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "{ again: true, retry: true, agent: result.agent });",
+     "{ again: true, agent: result.agent });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_agent_invite.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "Someone else changing the team at the same moment sends the invitation once more at the revision Core names",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (Number.isInteger(current) && current !== this.pending.expected.workspace_revision) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_agent_invite.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "Return in the name line invites, and the prompt shows with its copy glyph",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (event.key === 'Enter') { event.preventDefault(); if (!event.repeat) this.go(); }",
+     "if (event.key === 'Enter') { event.preventDefault(); }"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A tap on Codex or Claude Code gives the focus back to the name, so Return invites",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "this.paintChips(); this.input.focus(); };",
+     "this.paintChips(); };"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refused name is kept, focused and selected, to be changed in place",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "    if (!failed.again) this.input.select();",
+     "    if (false) this.input.select();"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a taken name"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A member who does not organise the outcome is offered no invite",
+   "break": [
+    [
+     "web/app.mjs",
+     "teamInvite.paint(organises(workspace,bootstrap.actor));",
+     "teamInvite.paint(true);"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a member who does not organise"
+   }
+  },
+  {
+   "item": 324,
+   "act": "While the invitation is out a second Return sends nothing",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "  async go(again = false) {\n    if (this.busy) return;",
+     "  async go(again = false) {\n    if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite while the invitation is out"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A sign-in file not written shows Try again, which sends the same invitation",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "    if (retry) {",
+     "    if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a sign-in file that could not be written"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A copy the browser refuses selects the prompt to copy by hand",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "    if (ok) return;\n",
+     "    return;\n"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a copy the browser refuses"
+   }
+  },
+  {
+   "item": 324,
+   "act": "On a phone the copy glyph and × are at least 44px to touch",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copy,.invite-close{width:2.75rem;height:2.75rem}",
+     ".invite-copy,.invite-close{width:2rem;height:2rem}"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite on a phone by touch"
+   }
+  },
+  {
+   "item": 324,
+   "act": "On a phone the prompt wraps its long paths rather than scrolling sideways",
+   "break": [
+    [
+     "web/aim.css",
+     "white-space:pre-wrap;overflow-wrap:anywhere;font:.8rem/1.5",
+     "white-space:pre;overflow-wrap:anywhere;font:.8rem/1.5"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite on a phone by touch"
+   }
   }
  ]
 }
