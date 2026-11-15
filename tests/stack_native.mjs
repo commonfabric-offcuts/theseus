@@ -3696,7 +3696,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await centre(p, card(ids.r3)); await press(p, device, card(ids.r3));
         await becomes(async () => (await earlierLook(p, ids)).messages, openedLook.map(m => (m === 'r3:row' ? 'r3:card' : m)), `${at}: a press on a row shows that message whole, in its place`);
         await until(() => p.evaluate(`(()=>{const h=document.querySelector(${JSON.stringify(card(ids.r3) + ' > .card-images > .card-image')}),i=h?.querySelector('img');return Boolean(h&&h.getAttribute('aria-label')==='Image: screen.png'&&i&&!i.hidden&&i.naturalWidth>0)})()`), `${at}: its image shows in the card`);
-        await openReader(p, device, ids.r3);
+        await openReader(p, device, ids.r3, 'Reply 3 about the cabin.');
         await until(() => p.evaluate(`[...document.querySelectorAll('#source-attachments button')].some(b=>b.textContent==='Open screen.png')`), `${at}: the Reader opens on it and offers its image's Open`);
         assert.equal(await readerOn(p), 'Reply 3 about the cabin.', `${at}: the Reader shows that message`);
         await closeReader(p, device);
@@ -3813,10 +3813,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // The plain card is as it was: its author line and its words, nothing after them.
       assert.deepEqual(await p.evaluate(`[...document.querySelector(${JSON.stringify(card(ids.plain))}).children].filter(e=>e.getClientRects().length).map(e=>e.className).filter(c=>/card-images/.test(c))`), [], `${device}: a message with no image draws no thumbnails`);
       // The Reader keeps Open for each attachment, an image's and a file's alike.
-      await openReader(p, device, ids.two);
+      await openReader(p, device, ids.two, 'These two, in this order.');
       await until(() => p.evaluate(`(()=>{const b=[...document.querySelectorAll('#source-attachments button')].map(b=>b.textContent);return b.includes('Open palette.png')&&b.includes('Open one.jpg')})()`), `${device}: the Reader offers Open for each image`);
       await closeReader(p, device);
-      await openReader(p, device, ids.file);
+      await openReader(p, device, ids.file, 'The notes.');
       await until(() => p.evaluate(`[...document.querySelectorAll('#source-attachments button')].some(b=>b.textContent==='Open notes.txt')`), `${device}: the Reader offers Open for the file`);
       await closeReader(p, device);
       assert.deepEqual(p.errors, []); await p.close();

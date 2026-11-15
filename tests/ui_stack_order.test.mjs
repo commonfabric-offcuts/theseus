@@ -169,7 +169,7 @@ test('a join the reader makes shows where it went: the stack it goes into open, 
     const together = stacksOf(joined);
     assert.equal(together.length, 1, 'one stack');
     assert.equal(together[0].id, shown.open, 'the stack opened is the one heading the two');
-    return rowsOf(together[0], { level: shown.level }).filter(row => row.kind !== 'fold-all');
+    return rowsOf(together[0], { level: shown.level });
   };
   for (const acted of ['m1', 'm3']) {
     const up = joinShown(stacks, 1, 'up', acted);
@@ -194,7 +194,9 @@ test('a join the reader makes shows where it went: the stack it goes into open, 
 const named = (id, seq, extra = {}) => ({ id, seq, author_id: 'agent-a', body: `${id}\nmore`, ...extra });
 const joinedA = { joined: { into: 'B', by: 'owner', at_ms: 50 } };
 const tonys = (joined = joinedA) => [named('B', 1), named('A', 3, { acts: joined }), named('b1', 5, { reply_to: 'B' }), named('a2', 7, { reply_to: 'A' }), named('b3', 9, { reply_to: 'B' })];
-const shownRows = (stack, level = 'open') => words(rowsOf(stack, { level }).filter(row => row.kind !== 'fold-all'));
+// The rows a join makes; an open dossier of more than seven begins with its earlier-messages row (item 476), which
+// the cases on that row read, not these.
+const shownRows = (stack, level = 'open') => words(rowsOf(stack, { level }).filter(row => row.kind !== 'earlier'));
 
 test('a join interleaves both stacks oldest first under the head, the join line staying on the joined stack\'s first message', () => {
   const [stack, ...rest] = stacksOf(tonys());

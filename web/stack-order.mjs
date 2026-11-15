@@ -127,7 +127,8 @@ export function earlierOf(stack, level) {
 // a folded reply shows where it would, as its one-line row (rowFolded). Open,
 // an earlier reply (earlierOf) shows once its row was opened (earlier).
 export function shown(stack, item, { level = 'folded', kept = () => false, earlier = false } = {}) {
-  if (level === 'open') return earlier || !earlierOf(stack, level).includes(item);
+  if (!earlier && earlierOf(stack, level).includes(item)) return false;
+  if (level === 'open') return true;
   if (level === 'head') return false;
   return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);
 }
@@ -156,16 +157,8 @@ const messages = n => (n === 1 ? 'message' : 'messages');
 // (earlier), each { kind: 'reply', item, earlier: true } in its place.
 export function rowsOf(stack, { level = 'folded', kept, unread = () => false, peeked = () => false, earlier = false } = {}) {
   const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept, earlier });
-  if (level === 'open') {
-    const before = earlierOf(stack, level);
-    if (before.length && !earlier) rows.push({ kind: 'earlier', items: before, words: `${before.length} earlier ${messages(before.length)}`, fresh: before.filter(unread).length });
-    for (const item of all) {
-      if (!show(item)) continue;
-      if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });
-      rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }), earlier: before.includes(item) });
-    }
-    return rows;
-  }
+  const earliest = earlierOf(stack, level);
+  if (earliest.length && !earlier) rows.push({ kind: 'earlier', items: earliest, words: `${earliest.length} earlier ${messages(earliest.length)}`, fresh: earliest.filter(unread).length });
   let run = [], before = true;
   const flush = () => {
     if (!run.length) return;
@@ -175,10 +168,11 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, pe
     run = [];
   };
   for (const item of all) {
-    if (!show(item)) { run.push(item); continue; }
+    if (!show(item)) { if (!earliest.includes(item)) run.push(item); continue; }
     flush(); before = false;
     if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });
     rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }) });
+    if (earliest.includes(item)) rows[rows.length - 1].earlier = true;
   }
   flush();
   return rows;

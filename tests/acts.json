@@ -13804,6 +13804,243 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 476,
+   "act": "An open dossier of more than seven messages shows its newest seven and one row for the earlier ones, which opened shows them all in their places",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return level === 'open' && all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
+     "  return [];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 476,
+   "act": "On the page an open dossier of more than seven shows its newest seven as cards and one row, \"8 earlier messages\", for the rest",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return level === 'open' && all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
+     "  return [];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A dossier of seven messages or fewer shows no earlier-messages row",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "export const RECENT = 7;",
+     "export const RECENT = 6;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Opened, each earlier message shows as one row in its place, who wrote it and its line",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "      if (row.earlier && !row.folded && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A press on an earlier message's row shows it whole in its place, its image with it, and from there the Reader opens on it with its Open",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (cardIn(entry).dataset.earlier === 'true' && state.earlierRows.has(id)) { state.whole.add(id); state.again(); return true; }",
+     "  if (cardIn(entry).dataset.earlier === 'true' && state.earlierRows.has(id)) { state.again(); return true; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The first message among the earlier ones is its tab alone until the row is opened, then a row under the tab that a press shows whole",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (state.earlierRows.has(stack.id) && !event?.target?.closest?.('.stack-head')) { state.whole.add(stack.id); state.again(); return true; }",
+     "  if (state.earlierRows.has(stack.id) && !event?.target?.closest?.('.stack-head')) { state.again(); return true; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Return on the earlier-messages row takes the keys on to the first earlier message",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        if (focused && first) cardIn(first).focus({ preventScroll: true });",
+     "        if (focused && first) void first;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Changing the dossier's state lets the earlier-messages row go: folded and opened again, it is closed",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  state.earlier.delete(stack.id); for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);",
+     "  void stack;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A link to an earlier message opens the dossier's row and shows that message whole in its place",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (!state.whole.has(own)) { state.whole.add(own); changed = true; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A message's images show as thumbnails in its card, on the topic page and in a dossier",
+   "break": [
+    [
+     "web/app.mjs",
+     "      paintCardImages(card, item, cardImageBytes(item.id));",
+     "      void cardImageBytes;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnails are the right rail's thumbnail size",
+   "break": [
+    [
+     "web/aim.css",
+     "flex:none;width:4.2rem;height:4.2rem;overflow:hidden;",
+     "flex:none;width:5rem;height:5rem;overflow:hidden;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "Each thumbnail has an accessible name, \"Image: \" and its file's name",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "    host.setAttribute('aria-label', `Image: ${name}`); host.title = name;",
+     "    host.title = name;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "Each thumbnail is read through the message that carries it, so only a reader of that message gets it",
+   "break": [
+    [
+     "web/app.mjs",
+     "(await api.media(bootstrap.instance_id, attachment, { kind: 'message', id })).blob",
+     "(await api.media(bootstrap.instance_id, attachment, { kind: 'message', id: attachment.id })).blob"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A file that is not an image, or an image not verified inline, shows no thumbnail",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "filter(attachment => attachment?.inline === true && INLINE.includes(attachment.content_type))",
+     "filter(attachment => Boolean(attachment))"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 474,
+   "act": "On the page a message with no image, a file and a folded row draw no thumbnails",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "filter(attachment => attachment?.inline === true && INLINE.includes(attachment.content_type))",
+     "filter(attachment => Boolean(attachment))"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "An image Theseus refuses shows its name in its square, and no picture",
+   "break": [
+    [
+     "web/aim.css",
+     ".card-image:not(:has(>img))>.card-image-name{display:block;",
+     ".card-image:not(:has(>img))>.card-image-name{display:none;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
   }
  ]
 }

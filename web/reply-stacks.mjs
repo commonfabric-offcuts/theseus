@@ -134,8 +134,9 @@ export function levelOf(state, id) {
 // closes again, and what it showed whole folds back to rows (item 476).
 export function setLevel(state, stack, level) {
   state.levels.set(stack.id, level);
-  state.peeked.delete(stack.id); state.earlier.delete(stack.id); state.whole.delete(stack.id);
-  for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); state.whole.delete(item.id); }
+  state.peeked.delete(stack.id);
+  for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); }
+  state.earlier.delete(stack.id); for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);
 }
 
 // How the page shows its stacks as last drawn (stack-order.mjs, shownOrder):
@@ -399,9 +400,9 @@ function paintEarlier(entry, item, on, { nameOf, doc }) {
   if (!on) { earlierRows.get(card)?.remove(); if (card.dataset.earlier) card.dataset.earlier = 'false'; return; }
   let row = earlierRows.get(card);
   if (!row) { row = element(doc, 'span', 'message-earlier'); row.append(element(doc, 'span', 'folded-author'), element(doc, 'span', 'folded-words')); earlierRows.set(card, row); }
-  const [author, words] = row.children;
+  const [author, said] = row.children;
   author.textContent = nameOf(item.author_id);
-  words.textContent = messagePreview(item);
+  said.textContent = messagePreview(item);
   const tab = headRows.get(card)?.parentElement === card ? headRows.get(card) : null;
   if (tab ? tab.nextElementSibling !== row : card.firstElementChild !== row) { if (tab) tab.after(row); else card.prepend(row); }
   card.dataset.earlier = 'true';
@@ -485,7 +486,7 @@ function paintStack(section, stack, byId, context) {
         if (focused && first) cardIn(first).focus({ preventScroll: true });
       };
       desired.push(button);
-      for (const item of row.items) if (item !== stack.head) { const entry = byId.get(item.id); entry.hidden = !state.only?.(item); desired.push(entry); }
+      for (const item of row.items) if (item !== stack.head) { const entry = byId.get(item.id); desired.push(entry); entry.hidden = !state.only?.(item); }
       continue;
     }
     if (row.kind === 'join') {
