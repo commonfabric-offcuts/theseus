@@ -13933,6 +13933,21 @@
    "check": {
     "node": "tests/ui_rails.test.mjs"
    }
+  },
+  {
+   "item": 523,
+   "act": "A back that finds another build while writing in the open Reader or New message sheet is not yet safe puts the address back, and the Reader or sheet says Theseus updated with Reload",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (popped) this.refuse(popped);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a back that finds another build"
+   }
   }
  ]
 }

@@ -1371,6 +1371,69 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
+  // Theseus updated said where the person writes (app.mjs updatedNotice): in the open Reader, and in the New message
+  // sheet, beside the topic line; reached by a back, whose address is put back (in-place-navigation.mjs, updated).
+  await check('reading edit build a back that finds another build while writing in the open Reader or New message sheet is not yet safe stays, puts the address back, and says Theseus updated there with Reload: at 320, 375 and 390 by touch and on a laptop, light and dark', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const surface of ['reader', 'sheet']) {
+        for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+          const name = `edit-build-back-${surface}-${width}`;
+          const { topic, away, ids, there } = await twoTopics(name);
+          const p = await open(name, device, away, there.note, EDIT_FAULTS);
+          await sized(p, device, width);
+          // A move in place on one build, so a back is the page's own.
+          await p.evaluate('(window.sameDocument = true)');
+          await moveTo(p, device, topic);
+          await arrived(p, topic, ids.mine);
+          await holdJournal(p);
+          onNext = !onNext; await restartOn(onNext ? next : null, p);
+          const field = surface === 'reader' ? '#writing-body' : '#inline-writing-body', notice = surface === 'reader' ? '#reader-notice' : '#inline-notice';
+          if (surface === 'reader') await openReader(p, device, ids.theirs, 'An agent says');
+          else { await press(p, device, '#new-message'); await until(() => p.evaluate(`document.querySelector('#new-message-sheet').open`), `${width}: New message opens`); }
+          const read = await holdBuildRead(p);
+          await p.evaluate('history.back()');
+          await read.out();
+          // While the back waits on the answer, the person writes, and the device has not kept the words yet.
+          const words = `Written in the ${surface} as Theseus updated (${width}).`;
+          await p.evaluate('window.holdJournal = true');
+          await into(p, device, field); await p.send('Input.insertText', { text: words });
+          await until(() => p.evaluate('window.journalHeld.length > 0'), `${width}: the device copy is out`);
+          await read.release();
+          const says = selector => p.evaluate(`(n => n && !n.hidden && n.getClientRects().length > 0 ? n.textContent : '')(document.querySelector(${JSON.stringify(selector)}))`);
+          await until(async () => (await says(notice)).startsWith('Theseus updated.'), `${width}: the ${surface} says Theseus updated`);
+          assert.ok((await p.evaluate(`document.querySelector('#topic-navigation-status').textContent`)).startsWith('Theseus updated.'), `${width}: and so does the topic line`);
+          await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + topic)}`), `${width}: the back is put back: the address names the page that stayed`);
+          assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: nothing loaded`);
+          assert.equal(await p.evaluate(surface === 'reader' ? `document.querySelector('#reader').open` : `document.querySelector('#new-message-sheet').open`), true, `${width}: the ${surface} stays open`);
+          assert.equal(await valueOf(p, field), words, `${width}: the words are in their box`);
+          const reload = await p.evaluate(`(b => { if (!b || !b.getClientRects().length) return null; const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            return { text: b.textContent, title: b.title, width: r.width, height: r.height, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, hit: b.contains(document.elementFromPoint(x, y)) }; })(document.querySelector(${JSON.stringify(notice + ' .updated-reload')}))`);
+          assert.ok(reload, `${width}: Reload shows in the ${surface}`);
+          assert.deepEqual([reload.text, reload.title, reload.inside, reload.hit], ['Reload', 'Reload Theseus', true, true], `${width}: Reload says so, with a tooltip, in the window, uncovered: ${JSON.stringify(reload)}`);
+          if (device === 'phone') assert.ok(reload.width >= 44 && reload.height >= 44, `${width}: Reload is a finger's size: ${JSON.stringify(reload)}`);
+          assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width}: nothing scrolls sideways`);
+          for (const look of ['light', 'dark']) { await scheme(p, look); await shot(p, `edit-build-back-${surface}-${width}-${look}`); }
+          await scheme(p, '');
+          // The words kept, Reload in the ${surface} loads the page that stayed, on the new build.
+          await letJournal(p);
+          await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), `${width}: the device keeps the words`);
+          await press(p, device, notice + ' .updated-reload');
+          await replaced(p, `${width}: Reload loads the page`);
+          await arrived(p, topic, ids.mine);
+          assert.equal(await pageBuild(p), await servedBuild(), `${width}: on the server's build`);
+          assert.deepEqual(p.errors, []);
+          await p.close();
+          void away;
+        }
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
   // Saves of the topic's writing to Theseus held unsent while window.holdDrafts is true (the page's fetch, as it leaves).
   const holdDrafts = p => p.evaluate(`(() => { window.holdDrafts = true; window.draftsHeld = 0; const send = window.fetch;
     window.fetch = function (input, init) { let body = null; try { body = JSON.parse(init?.body ?? 'null'); } catch {}
