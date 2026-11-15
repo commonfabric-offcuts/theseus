@@ -377,8 +377,12 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     const shows = async (release, details, label) => {
       for (const page of pages) {
         await front(page);
-        const line = await until(async () => { const l = await readRelease(page.p); return l && l.summary.startsWith(`Latest release: Release ${release} went live at `) && l; },
-          `${page.where}: ${label}: the release line repaints to release ${release}`);
+        // A page brought forward still shows what it read before until its read again lands: wait for these words.
+        let seen = null;
+        const line = await until(async () => { const l = seen = await readRelease(page.p);
+          return l && l.summary.startsWith(`Latest release: Release ${release} went live at `) && JSON.stringify(l.details) === JSON.stringify(details) && l; },
+          `${page.where}: ${label}: the release line repaints to release ${release} with ${JSON.stringify(details)}`).catch(error => {
+          throw Error(`${error.message}; it shows ${JSON.stringify(seen)}`); });
         if (!line.open) {
           const selector = 'details[data-key="release"] summary';
           await page.p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
