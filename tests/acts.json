@@ -1971,16 +1971,10 @@
      "web/in-place-navigation.mjs",
      "    if (way.landing === 'page' && inRails(at)) at.blur();\n",
      ""
-    ],
-    [
-     "web/in-place-navigation.mjs",
-     "    this.moving = true;\n    this.drawer?.close();\n",
-     "    this.moving = true;\n"
     ]
    ],
    "check": {
-    "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "node": "tests/ui_rails.test.mjs"
    }
   },
   {

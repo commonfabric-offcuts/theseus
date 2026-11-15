@@ -293,6 +293,18 @@ test('a move on this document\'s own build reads the served build first and move
   await shown.answer('A');
   assert.equal(between.shell.doc.body.dataset.ready, undefined, 'and not until the run of the place reached says so');
 
+  // A row in the drawer pressed: the focus leaves it before the drawer closes, so the drawer hands it to no button (not
+  // ☰ Outcomes), meanwhile and where the page stays; a press made outside the rails keeps its focus.
+  for (const [where, inRail] of [['a row in the rails', true], ['the page', false]]) {
+    const read = answerable(), pressed = shellAt('?topic=t1', { build: 'A', served: read.served }), order = [];
+    const row = { closest: selector => (inRail && selector === '#rail, #things' ? {} : null), blur: () => order.push('blur') };
+    pressed.shell.doc = { body: { dataset: {} }, activeElement: row };
+    pressed.shell.drawer = { close: () => order.push('close') };
+    pressed.shell.by = 'pointer';
+    pressed.shell.go({ kind: 'topic', id: 't2' });
+    assert.deepEqual(order, inRail ? ['blur', 'close'] : ['close'], `${where}: ` + (inRail ? 'the focus leaves the row before the drawer closes' : 'the focus stays'));
+  }
+
   const none = shellAt('?topic=t1', { served: () => assert.fail('a document with no build reads none') });
   none.shell.go({ kind: 'topic', id: 't2' });
   assert.deepEqual([none.moves.length, none.h.entries], [1, ['?topic=t2']], 'with no build of its own, the move is made at once');
