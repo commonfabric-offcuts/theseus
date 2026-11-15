@@ -11618,8 +11618,8 @@
     ],
     [
      "web/stack-feed.mjs",
-     "!typed && name === messagePreview(item)",
-     "!typed && name === firstLine(item.body)"
+     "!typed && name === messagePreview(stack.head)",
+     "!typed && name === firstLine(stack.head.body)"
     ]
    ],
    "check": {
@@ -11733,8 +11733,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (!edited || name === typed || !typed && name === messagePreview(item) && item.id === stack.head.id) {",
-     "    if (!edited || name === typed || !typed && name === messagePreview(item)) {"
+     "    if (!edited || name === typed || !typed && name === messagePreview(stack.head) && item.id === stack.head.id) {",
+     "    if (!edited || name === typed || !typed && name === messagePreview(stack.head)) {"
     ]
    ],
    "check": {
@@ -11835,8 +11835,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "!typed && name === messagePreview(item) && item.id === stack.head.id",
-     "!typed && name === String(item.body ?? '').split('\\n')[0] && item.id === stack.head.id"
+     "!typed && name === messagePreview(stack.head) && item.id === stack.head.id",
+     "!typed && name === String(stack.head.body ?? '').split('\\n')[0] && item.id === stack.head.id"
     ]
    ],
    "check": {

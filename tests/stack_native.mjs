@@ -7,6 +7,7 @@
 // Chrome for Testing (reader_persistence_native.mjs --reading) and in Safari's
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
+import { messagePreview } from '../web/message-preview.mjs';
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
@@ -3595,6 +3596,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await p.key('Enter');
         await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), `${device}: Return closes it`);
         assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, `${device}: the name unchanged sends nothing`);
+        // Typed in as shown, his words unchanged also name nothing: the field touched, only the line it is named by holds it.
+        await centre(p, `${card(ids.named)} .stack-name`);
+        await p.point(`${card(ids.named)} .stack-name`);
+        await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), `${device}: the name opens to rename again`);
+        await p.evaluate(`document.activeElement.select()`);
+        await p.send('Input.insertText', { text: his });
+        await p.key('Enter');
+        await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), `${device}: Return closes it again`);
+        assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, `${device}: his words typed in unchanged send nothing`);
         assert.equal((await actsOf(topic, ids.named))?.name ?? null, null, `${device}: and Core holds no typed name`);
       }
       // Its first message folded: the head row stands for it, with the same words and Folded.
@@ -3993,9 +4003,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // still its name once that message loads; another page holding any part of it shows it too.
   await check('reading stacks a name typed while a dossier\'s first message is not loaded names the dossier, and stays its name once that message loads', async () => {
     const topic = 'stack-name-partial';
-    // Two spaces in each reply's first line: the name field shows them as they are, and a name folds them.
-    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The old dossier root.', read: true }],
-      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Reply  ' + i, read: true }])]);
+    // Two spaces in each reply's first line: its row and the name field show it as messagePreview does, folded.
+    const messages = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The old dossier root.', read: true }],
+      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Reply  ' + i, read: true }])];
+    const ids = await seed(topic, messages), bodyOf = Object.fromEntries(messages.map(([key, message]) => [ids[key], message.body]));
     const p = await open(topic, 'laptop', topic, ids.r34);
     const loaded = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(id))}))`);
     assert.equal(await loaded(ids.root), false, 'the first message is outside the loaded page');
@@ -4033,30 +4044,29 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.key('z', 4);
     await until(async () => (await actsOf(topic, ids.root))?.name === null, '⌘Z clears the dossier\'s name in Core');
     await until(async () => (await again()) !== 'Siderail changes', 'and the other page no longer shows it');
-    // On the page holding only replies, the field opened and left untouched records nothing, though
-    // its first line's two spaces read as one in a name, and the shown reply's first line, typed in,
-    // names the dossier: the first message loaded shows it.
+    // On the page holding only replies, the field opened and left untouched records nothing, and the
+    // shown reply's line, typed in, names the dossier: the first message loaded shows it.
     const shownLine = await again(), qHead = await q.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
+    assert.equal(shownLine, messagePreview({ body: bodyOf[qHead] }), 'with no name, the row shows the reply at its head by its line');
     const qPen = `#messages .reply-stack[data-stack="${qHead}"] .stack-pen`;
     const qOpen = async what => { await centre(q, qPen); await q.point(qPen); await until(() => q.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), what); };
     await qOpen('the reply showing as the head opens to rename');
     await q.key('Enter');
     await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Return closes the untouched field');
     // The page sends an act within the press that makes it, so right after Return nothing has gone, and Core still
-    // holds no name: the folded first line differs from the empty name, and only the field's being untouched holds it.
+    // holds no name: the shown line differs from the empty name and is not the first message's, so only the field's
+    // being untouched holds it.
     assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, 'the untouched field sends no name at Return');
     assert.equal((await actsOf(topic, ids.root))?.name ?? null, null, 'and Core holds none');
     await qOpen('it opens again');
     await q.evaluate(`document.activeElement.select()`);
     await q.send('Input.insertText', { text: shownLine });
     await q.key('Enter');
-    assert.match(shownLine, /  /, 'the shown first line keeps its two spaces');
-    const folded = shownLine.replace(/\s+/g, ' ');
-    await until(async () => (await actsOf(topic, ids.root))?.name?.text === folded, `the shown first line typed in names the dossier (${folded})`);
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === shownLine, `the shown line typed in names the dossier (${shownLine})`);
     assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 1, 'the untouched field sent no name');
     // A page in the background reads nothing new until it is shown again: each page is brought forward to be read live.
     await p.send('Page.bringToFront');
-    await until(async () => (await named())?.text === folded, 'the page holding the first message shows the typed name');
+    await until(async () => (await named())?.text === shownLine, 'the page holding the first message shows the typed name');
     // Another reader names the dossier while the field is open here, untouched: Return puts nothing back.
     await q.send('Page.bringToFront');
     await qOpen('it opens once more');
@@ -4080,7 +4090,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // page reads, as it asks), each head row still names its own
   // dossier and a rename typed there goes to it, on a full page and on one holding only replies. On the page holding
   // only replies, a name typed shows before Core answers it; on the full page, a first message's first line with
-  // doubled spaces, typed in on it as the head, records nothing.
+  // doubled spaces, typed in on it as the head, records nothing: its row shows that line folded (messagePreview).
   await check('reading stacks a split or a join waiting for its answer leaves each head row naming its own dossier and a rename going to it, on a full page and one holding only replies', async () => {
     const HOLD = `(()=>{window.heldActs=[];window.views=[];const f=window.fetch;window.fetch=function(input,init){let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null}catch(e){}
       if(b&&b.name)window.views.push(b.name);if(b&&b.kind&&(window.holdKinds||[]).includes(b.kind))return new Promise(go=>window.heldActs.push(go)).then(()=>f.call(this,input,init));
@@ -4107,7 +4117,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
 
     // A full page: Old joined into Top, each named, and Plain, its first line with two spaces, named by it.
     const topic = 'stack-name-moved';
-    const ids = await seed(topic, [['plain', { sender: other, join: true, addressees: [facts.actor], body: 'Plain  words with two spaces', read: true }],
+    const plainBody = 'Plain  words with two spaces';
+    const ids = await seed(topic, [['plain', { sender: other, join: true, addressees: [facts.actor], body: plainBody, read: true }],
       ['plainReply', { sender: other, reply_to: 'plain', addressees: [facts.actor], body: 'Its reply.', read: true }],
       ['top', { sender: other, addressees: [facts.actor], body: 'The top dossier.', read: true }],
       ['topReply', { sender: other, reply_to: 'top', addressees: [facts.actor], body: 'Its reply.', read: true }],
@@ -4145,10 +4156,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal((await actsOf(topic, ids.old)).joined?.into, ids.top, 'joined for everyone');
     assert.equal((await actsOf(topic, ids.old)).name.text, 'Old renamed', 'and Old keeps its name');
     await until(async () => (await nameIn(p, ids.top)) === 'Top renamed', 'answered and read again, the row names Top');
-    // Plain's first message is its head: its first line typed in as the row shows it, two spaces and all, records nothing.
+    // Plain's first message is its head: its row shows its line folded, and its first line typed in, two spaces and
+    // all, records nothing.
     const plainLine = await nameIn(p, ids.plain), sentBefore = await names(p);
-    assert.equal(plainLine, 'Plain  words with two spaces', 'the row shows the first line with its two spaces');
-    await renameTo(p, ids.plain, plainLine, plainLine);
+    assert.equal(plainLine, messagePreview({ body: plainBody }), 'the row shows the first message by its line');
+    await renameTo(p, ids.plain, plainBody, plainLine);
     assert.equal(await names(p), sentBefore, 'the first line typed in on the first message sends no name');
     assert.equal((await actsOf(topic, ids.plain))?.name ?? null, null, 'and Core holds none');
     // A split answered reads the positions again at once, though no change is heard of meanwhile: the reads a change

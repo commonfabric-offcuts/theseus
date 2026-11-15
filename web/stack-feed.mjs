@@ -336,9 +336,9 @@ export class StackFeed {
     // A name is one line, its spaces made single, as Core keeps it.
     const single = words => String(words ?? '').replace(/\s+/g, ' ').trim(), name = single(text);
     this.arrange();
-    // Unchanged, or the line it is named by already (messagePreview), where that
-    // line is the first message's: nothing to record.
-    if (!edited || name === typed || !typed && name === messagePreview(item) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
+    // Unchanged, or the line its head row shows (headOf's preview of the head,
+    // messagePreview) where that head is the first message: nothing to record.
+    if (!edited || name === typed || !typed && name === messagePreview(stack.head) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);
