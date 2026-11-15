@@ -18,7 +18,7 @@ it is said, else the ask's.
 
 from .contract import LIMITS, READABLE, Refusal, organises, _body, _identifier, _prefix, _revision
 from .delivery import _now_ms
-from .outcome_asks import held_ask
+from .outcome_asks import held_ask, record_ask
 from .whispers import redact_topic
 
 
@@ -278,36 +278,42 @@ class TopicState:
                 newly.append(member)
         return newly
 
-    def _answered(self, db, topic, author, to=None):
+    def _answered(self, db, topic, author, to=None, reply_to=None):
         """Writing in a topic answers every ask there that waits on its author; whether one did.
 
-        A person's whisper (to: the agent it goes to) answers only that agent's asks, since only
-        it can read the answer: when the wait is from another's ask it stays, and when it is from
-        that agent's it moves to the oldest ask nobody has answered (Reactions._next_open_ask).
-        A wait someone said stays until it is said otherwise, and an ask an open record still
-        needs (a proposed target, an owner-gated stage: outcome_asks.held_ask) stays waiting."""
+        A person's whisper (to: the agent it goes to) answers only the ask it replies to (reply_to), when that is an
+        ask to its writer from that agent, the one who can read the answer, as their 👍 on it would (item 307): when
+        the topic's wait on them is from that ask it moves to the oldest ask nobody has answered, or ends
+        (Reactions._topic_ask_answered); a wait from an older ask stays on it. A whisper that replies to no such ask
+        answers nothing. A wait someone said stays until it is said otherwise, and an ask an open record still needs
+        (a proposed target, an owner-gated stage: outcome_asks.held_ask) stays waiting."""
         topic_id = topic["id"]
+        if to is not None:
+            ask = self._whispered_ask(db, topic, to, reply_to)
+            return ask is not None and self._topic_ask_answered(db, topic, author, ask)
         held = held_ask(db, topic_id, author)
         if held is not None:
             db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=(SELECT sent_ms FROM messages WHERE id=?) "
                        "WHERE topic_id=? AND actor_id=?", (held, held, topic_id, author))
             return False
-        row = db.execute("SELECT q.said,m.author_id,m.seq FROM topic_waiting q JOIN messages m ON m.id=q.ask_message_id "
-                         "WHERE q.topic_id=? AND q.actor_id=?", (topic_id, author)).fetchone()
+        row = db.execute("SELECT said FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL",
+                         (topic_id, author)).fetchone()
         if row is None:
             return False
-        if to is not None:
-            if row["author_id"] != to:
-                return False
-            following = self._next_open_ask(db, topic, author, row["seq"])
-            if following is not None:
-                self._wait_from(db, topic, author, following)
-                return True
         if row["said"]:
             db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (topic_id, author))
         else:
             db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic_id, author))
         return True
+
+    def _whispered_ask(self, db, topic, to, reply_to):
+        """The message a person's whisper to `to` replies to, {id, seq, sent_ms}, when `to` wrote it and no record answers
+        it (outcome_asks.record_ask), or None. It is an open ask to the writer only when the topic's wait on them is from
+        it, which Reactions._topic_ask_answered reads; any other message answers nothing."""
+        ask = db.execute("SELECT id,seq,sent_ms FROM messages WHERE id=? AND author_id=?", (reply_to, to)).fetchone() if reply_to else None
+        if ask is None or record_ask(db, ask["id"], topic["workspace_id"], topic["id"]):
+            return None
+        return ask
 
     def _waits_by_topic(self, db, topic_ids):
         """{topic_id: (waiting_on, asks)} for the given topics: who the topic was said to wait
