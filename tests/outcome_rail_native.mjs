@@ -1372,6 +1372,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await p.evaluate("document.getElementById('things-open').scrollIntoView({ block: 'center' })");
         await p.point('#things-open');
         await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open') && [...document.querySelectorAll('#things .things-sec')].some(d => d.checkVisibility())"), width + ': the right rail opens over the page with a section');
+        // It slides in: the keys are pressed once it stands inside the window, its slide over.
+        await until(() => p.evaluate("(t=>getComputedStyle(t).transform==='none'&&t.getBoundingClientRect().right<=innerWidth+0.5)(document.getElementById('things'))"), width + ': the right rail has slid into the window');
       };
       // What the keys are on, whether the rail is open, what is lit, and whether the place the keys are on can be seen there:
       // a stack's head shown as one row has no box of its own, only its row standing above it (stack-look.css), so that row is looked at.
@@ -2347,7 +2349,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       .slice(0,3).map(x=>(x.id||x.dataset.key||x.getAttribute('aria-label')||x.textContent.trim().replace(/\\s+/g,' ').slice(0,30)||x.tagName)+'<'+x.tagName.toLowerCase()+(x.type&&x.tagName==='INPUT'?' '+x.type:'')+'>')})(document.activeElement)`;
   // What a press may change in place of moving the focus (a section opened or folded, a stack shown, a message
   // folded to its row): a press that changed it acted, and is no dead end.
-  const ACTED = "[...document.querySelectorAll('[aria-expanded],details,[data-head-open],[aria-pressed]')].map(e=>(e.getAttribute('aria-expanded')??'')+(e.open?'o':'')+(e.dataset.headOpen??'')+(e.getAttribute('aria-pressed')??'')).join('')+'|'+document.querySelectorAll('.fold-line').length";
+  // (A stack switched to latest and unread hides its earlier replies: the messages that show are counted.)
+  const ACTED = "[...document.querySelectorAll('[aria-expanded],details,[data-head-open],[aria-pressed]')].map(e=>(e.getAttribute('aria-expanded')??'')+(e.open?'o':'')+(e.dataset.headOpen??'')+(e.getAttribute('aria-pressed')??'')).join('')+'|'+document.querySelectorAll('.fold-line').length+'|'+[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).length+'|'+document.querySelectorAll('#messages [hidden]').length";
   const treeStart = (p, scope) => () => p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('${scope} [role=treeitem]')].filter(e=>e.checkVisibility()))`);
   const arrowClosure = async (p, scope, start, skip = null) => {
     const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)}),skip=${JSON.stringify(skip)};
