@@ -188,6 +188,9 @@ jobs:
                           "cpus": out("sysctl", "-n", "hw.ncpu"),
                           "load_after": out("sysctl", "-n", "vm.loadavg")},
           }
+          # Preserve the event's base above. This is the base Git actually used to build the tested merge.
+          receipt["base_at_run"] = ({"ref": env.get("BASE_REF"), "sha": receipt["merge"]["first_parent"]}
+                                    if env.get("GITHUB_EVENT_NAME") == "pull_request" else None)
           json.dump(receipt, open(sys.argv[1], "w"), indent=1)
           PY
       - name: Keep the evidence
@@ -250,6 +253,14 @@ jobs:
           merge = receipts[0].get("merge") or {}
           if merge.get("sha") != env.get("GITHUB_SHA"):
               sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
+          bases_at_run = {json.dumps(r.get("base_at_run"), sort_keys=True) for r in receipts}
+          if len(bases_at_run) != 1:
+              sys.exit("the shards name different git-read bases")
+          base_at_run = receipts[0].get("base_at_run")
+          expected_base_at_run = ({"ref": env.get("BASE_REF"), "sha": merge.get("first_parent")}
+                                  if env.get("GITHUB_EVENT_NAME") == "pull_request" else None)
+          if base_at_run != expected_base_at_run:
+              sys.exit("the shard's git-read base differs from the tested merge's first parent")
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
           if not docs or not timed:
@@ -288,6 +299,7 @@ jobs:
                       "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
                       "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
               "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
+              "base_at_run": base_at_run,
               "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
               "merge": {key: merge.get(key) for key in ("sha", "tree", "first_parent", "second_parent")},
               "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
