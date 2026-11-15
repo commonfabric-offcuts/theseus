@@ -105,8 +105,18 @@ start. Words quoted from out of sight (from the ⋯, say) come into sight the
 same least way: from below, their end just above the reply; from above, their
 start at the top (their end at the bottom when they are taller than the
 room). So they stay while the reply and the keyboard change the message's
-room, until the message is scrolled; a message scrolled to its end is not
-pulled down as the reply grows with the quote. On a phone the ❝ Quote pill
+room, until the person scrolls the message, however they do it: the wheel,
+a finger, the keys, or a drag of its scrollbar. Any scroll the Reader did not
+make itself lets the words go, so the reply's next change of size moves
+nothing; only the browser's own pull of a message scrolled to its end, as its
+room grows there, is not the person's. What is kept is the words themselves:
+once the lines wrap anew (a phone turned, the window made narrower, Wide and
+Stacked changed) they are measured again where they now are, not held at the
+height they had. Words chosen by a drag let go at the very start of the next
+passage are kept in the passage holding the last word chosen, not the next
+one. Typing in the reply never pulls a message scrolled to its end down: the
+reply measures itself at no height at each key, which for that moment gives
+its room to the message, and the message is put back as it was. On a phone the ❝ Quote pill
 takes what is selected as the finger presses it, since the press itself can
 let the selection go.
 
@@ -328,6 +338,22 @@ press. Each time what showed of the words moves only as far as the reply or
 keyboard covers it, within two pixels. A line quoted from above what shows
 comes into sight at its top, and words taller than the screen quoted from
 above it come into sight with their end at its bottom.
+"quoting: one who has not scrolled keeps the quoted words in sight as the
+reply grows, and a scroll the person makes …" (1280×800 stacked, both
+engines) quotes words just above where the reply opens and types a line:
+they stay above the reply; then the message is scrolled back by a drag of its
+scrollbar (in Chrome; Safari's engine draws an overlay scrollbar a headless
+pointer cannot hold, so there it is scrolled from outside the page's code, as
+the drag scrolls it) and a line is deleted: the message stays where it was
+put. "phone: quoting at the end of a message …" quotes the last words above
+the reply of a message scrolled to its end, the keyboard going down and up
+again: the words still show. "typing in the reply leaves a message scrolled
+to its end at its end" types words with the message at its end. "quoting:
+words chosen to the very start of the next passage …" chooses a paragraph up
+to offset 0 of the next one, just above where the reply opens: the words
+chosen end just above the reply, not the next passage's line. "wide:
+quoting: once the lines wrap anew …" quotes the end of a long list item near
+the bottom of what shows, then narrows the window: the words still show.
 
 `tests/reader_compose_native.mjs` runs in Chrome for Testing and in
 Playwright's WebKit at 390×844 with touch, and at 1280×800 stacked and wide,
