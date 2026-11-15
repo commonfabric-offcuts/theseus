@@ -1,0 +1,8 @@
+{
+ "step": "images",
+ "cases": [
+  "images restoration footer touch gap does nothing and deliberate Send works"
+ ],
+ "label": "t16m-footer-head-2",
+ "snapshot": "a9d423cac6b7967d9d94fe4c6d6200c3b64f838f"
+}
