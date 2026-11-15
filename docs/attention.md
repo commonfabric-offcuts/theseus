@@ -141,6 +141,13 @@ wait ends by itself when that person next writes in the topic, whatever they
 write and whoever they name: writing there answers every ask that waits on
 them in that topic. A person's 👍 on one ask to them answers that ask alone,
 yes, and taking the 👍 back makes it wait again ([thumbs.md](thumbs.md#a-thumbs-up-answers-an-ask)).
+A person's whisper that replies to one ask to them, sent to the agent that
+asked it, answers that ask alone in the same way (item 307,
+[whispers.md](whispers.md#what-a-whisper-counts-for)): the ask stops waiting
+on them and "Waiting on you" goes out. The whisper stays between its two;
+everyone else sees only that the wait ended. A whisper that replies to
+nothing, to a message that is not such an ask, or to an ask sent to someone
+else, answers nothing, and neither does a whisper to anyone but whoever asked.
 Agents asking agents wait the same way. Asking yourself waits on nobody, and a
 tell waits on nobody.
 
@@ -152,9 +159,13 @@ so the wait shows how long they have been waited on. The row lives while
 either holds, and ends with neither:
 
 - a reply in the topic clears the ask and leaves a said wait as it was;
-- a person's 👍 on the ask the row holds moves it to their next open ask there,
-  or clears it, and leaves a said wait as it was; taking it back puts the ask
-  back when it is older than the one the row holds;
+- a person's 👍 on the ask the row holds, or their whisper replying to it to
+  whoever asked, moves it to their next open ask there, or clears it, and
+  leaves a said wait as it was; taking the 👍 back puts the ask back when it
+  is older than the one the row holds, unless they answered it meanwhile;
+- the next open ask passes over every ask the person has answered alone, by
+  their 👍 or their whispered reply, and an ask an open record still holds
+  waits whatever they write ([targets.md](targets.md));
 - `topic.update` changes only what was said: a new state ends the said waits
   and leaves each ask, and naming someone already asked makes the same row
   said as well;
@@ -201,9 +212,10 @@ messages without it carry no field and read as before.
 Nothing more is stored about whether it still holds anything. It holds for
 as long as it waits on someone by the rule above: the topic waits on them
 from an ask (its `topic_waiting` row), and this ask is not answered, by their
-writing in the topic after it or their 👍 on it (in a conversation, its
-`conversation_waits` row). So a reply or a 👍 that clears the ask clears
-every place below in the same act, and taking the 👍 back puts them back.
+writing in the topic after it, their whisper replying to it to whoever asked,
+or their 👍 on it (in a conversation, its `conversation_waits` row). So a
+reply, a whispered reply or a 👍 that clears the ask clears every place below
+in the same act, and taking the 👍 back puts them back.
 Archiving the topic answers nothing, but an archived topic counts nowhere
 (above), so while it is archived its asks hold nothing in any of the three
 places, and unarchiving it puts them back.
