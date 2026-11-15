@@ -2349,8 +2349,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
     const reached = new Set(), queue = [start];
     while (queue.length) { const at = queue.shift(); if (reached.has(at)) continue; reached.add(at); for (const edge of edges) if (edge.from === at) queue.push(edge.to); }
-    return { missing: nodes.filter(node => !reached.has(node.id)).map(node => node.label),
-      lost: edges.filter(edge => edge.to === 'page').map(edge => `${label(edge.from)} ${edge.key}`), count: nodes.length };
+    const missing = nodes.filter(node => !reached.has(node.id)).map(node => node.label);
+    // What each arrow did, for the evidence when a control is missed.
+    if (missing.length) console.log('arrow closure', scope, JSON.stringify({ start, missing, edges: edges.map(edge => `${label(edge.from)} ${edge.key} → ${label(edge.to)}`) }));
+    return { missing, lost: edges.filter(edge => edge.to === 'page').map(edge => `${label(edge.from)} ${edge.key}`), count: nodes.length };
   };
 
   await check('rail arrows ↑ above the outline\'s first row goes on up the side rail to New outcome, the chips and the logo block, ↓ below its last row reaches Keys, and the arrows reach every control in the side rail', async () => {
