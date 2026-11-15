@@ -197,7 +197,8 @@ class BuildTopicsCase(PipelineCase):
             self.committed(self.command("pipeline.piece_finish", {}, {"piece_id": piece}))
         answer = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True, "limit": 1})
         self.assertEqual([item["id"] for item in answer["items"]], ["t-2"], "the page holds the newest Build topic alone")
-        [now] = answer["building"]
+        self.assertEqual([item["id"] for item in answer["building"]], ["t1"], "t1, past the page, is the one being built")
+        now = answer["building"][0]
         self.assertEqual((now["id"], now["unread"], now["addressed"], [ask["actor_id"] for ask in now["asks"]], now["build"]), ("t1", 1, 1, ["owner"], True),
                          "t1, with what its row carries")
         later = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True, "limit": 1, "cursor": answer["next_cursor"]})
