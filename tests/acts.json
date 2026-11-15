@@ -11957,12 +11957,12 @@
   },
   {
    "item": 481,
-   "act": "A merged train whose merge commit is not on origin's release branch is refused",
+   "act": "A merged train whose merge commit is not on the release branch as GitHub holds it now is refused, whatever the live checkout last fetched",
    "break": [
     [
      "tools/train.py",
-     "    if not _contains(git, merge, tip,",
-     "    if False and not _contains(git, merge, tip,"
+     "    if status not in CONTAINED or compared.get(\"behind_by\") != 0 or base != merge:",
+     "    if False:"
     ]
    ],
    "check": {

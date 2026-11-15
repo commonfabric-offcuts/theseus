@@ -4,7 +4,8 @@ from __future__ import annotations
 
 tools/deploy.py --train FILE takes the record of a train that merged into the release branch. Everything it says
 is read again from git, and from GitHub through `gh api` (read-only), before anything is stopped; the first fact
-that does not hold, or cannot be read, refuses. merge_commit must be pull request pr's own merge commit, as git's
+that does not hold, or cannot be read, refuses. Whether the release branch holds the merge is GitHub's to say
+(on_branch): a remote-tracking ref in the live checkout is only what its last fetch saw. merge_commit must be pull request pr's own merge commit, as git's
 parents and GitHub's pulls/N say (pull_merge). docs/tools.md ("A merged train") is the contract.
 
 FILE: {"pr": N, "merge_commit": SHA, "merged_tree": TREE, "kind": "ordinary" | "judged-first",
@@ -39,8 +40,12 @@ DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/known_reds.py
                "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json")
 CONTROLLER = ".github/"
 MIGRATIONS = ("aim_next/migrations.py",)
-# GitHub's REST API paths for one workflow run, one check run and one pull request.
+# GitHub's REST API paths for one workflow run, one check run and one pull request, and its compare of a commit with a
+# branch's tip (repos/R/compare/BASE...HEAD).
 RUN_PATH, CHECK_PATH, PULL_PATH = "repos/%s/actions/runs/%d", "repos/%s/check-runs/%d", "repos/%s/pulls/%d"
+COMPARE_PATH = "repos/%s/compare/%s...%s"
+# GitHub's compare statuses that say the branch's tip is the commit or follows it.
+CONTAINED = ("identical", "ahead")
 # What the record keeps of each run and check GitHub lists.
 LISTED = ("id", "name", "head_sha", "status", "conclusion")
 
@@ -172,6 +177,23 @@ def listed(github, repository, kind, number):
     return dict({key: found.get(key) for key in LISTED}, kind=kind)
 
 
+def on_branch(github, repository, merge, release_branch):
+    """Refused unless GitHub's release_branch, as GitHub holds it now, contains merge: its compare of merge with the
+    branch's tip says the tip is merge or follows it, with merge as their merge base. A ref a clone last fetched is not
+    read: a branch force-pushed since then would still seem to hold what it dropped."""
+    path = COMPARE_PATH % (repository, merge, release_branch)
+    try:
+        compared = github.get(path)
+    except Unreadable as error:
+        raise Refused("whether %s is on %s could not be read from GitHub: %s" % (merge, release_branch, error))
+    if not isinstance(compared, dict):
+        raise Refused("GitHub's answer for %s is not a comparison" % path)
+    status, base = compared.get("status"), (compared.get("merge_base_commit") or {}).get("sha")
+    if status not in CONTAINED or compared.get("behind_by") != 0 or base != merge:
+        raise Refused("the merge commit %s is not on %s at GitHub (compared as %r, %r behind, merge base %r)"
+                      % (merge, release_branch, status, compared.get("behind_by"), base))
+
+
 def parents_of(git, commit):
     return _ask(git, "the parents of %s" % commit[:12], "rev-list", "--parents", "-n", "1", commit).split()[1:]
 
@@ -237,10 +259,7 @@ def judge(path, sha, live, release_branch, repository, git, github):
     if sha != merge:
         raise Refused("the deploy was asked for %s, but the train's merge commit is %s; the deploy ships the merge commit"
                       % (sha, merge))
-    branch = "refs/remotes/origin/" + release_branch
-    tip = _ask(git, "origin's %s" % release_branch, "rev-parse", "--verify", branch + "^{commit}").strip()
-    if not _contains(git, merge, tip, "%s is on origin's %s" % (merge[:12], release_branch)):
-        raise Refused("the merge commit %s is not on origin's %s (at %s)" % (merge, release_branch, tip))
+    on_branch(github, repository, merge, release_branch)
     for item in train["items"]:
         if not _contains(git, item["approved_head"], merge, "item %d's approved head is in %s" % (item["item"], merge[:12])):
             raise Refused("item %d's approved head %s is not in the merge commit %s" % (item["item"], item["approved_head"], merge))
@@ -299,5 +318,5 @@ def said(train):
         conclusions = ", ".join("%s %d %s" % (found["kind"], found["id"], found["conclusion"])
                                 for found in judgment["producer_runs"] + judgment["verdict_checks"])
         words = "judged at %s: %s (audit %s)" % (judgment["head"][:12], conclusions, judgment["audit"])
-    return "train: PR #%d (%s), merge commit %s on origin's %s; %s" % (
+    return "train: PR #%d (%s), merge commit %s on %s at GitHub; %s" % (
         train["pr"], train["kind"], train["merge_commit"][:12], train["release_branch"], words)

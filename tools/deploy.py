@@ -53,8 +53,8 @@ Config = collections.namedtuple(
 REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile", "runner_id", "routes")
 # outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: the profile of a member, not
 # its coordinator, that reads them, opens fix topics, writes the candidate's run and moves the release piece (D27).
-# release_branch, repository: the branch a merged train lands on (origin's) and the GitHub repository its runs are read
-# from (owner/name), which --train needs (tools/train.py).
+# release_branch, repository: the branch a merged train lands on and the GitHub repository that branch and its runs are
+# read from (owner/name), which --train needs (tools/train.py).
 OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile", "release_branch", "repository")
 
 

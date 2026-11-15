@@ -8,6 +8,7 @@ import ast
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import unittest
@@ -21,10 +22,12 @@ BRANCH, REPOSITORY, PR = "release/live73", "offcuts/theseus", 31
 
 
 class FakeGitHub:
-    """GitHub's REST answers from a table, by API path; a path it lacks is a read that failed, as gh's exit would be."""
+    """GitHub's REST answers from a table, by API path; a path it lacks is a read that failed, as gh's exit would be.
+    With origin (a bare repository standing for GitHub's copy), compare/BASE...BRANCH answers as GitHub's compare API
+    does, read from origin's own branch as it is now, whatever any clone last fetched."""
 
-    def __init__(self, runs=(), checks=(), pulls=()):
-        self.answers = {}
+    def __init__(self, runs=(), checks=(), pulls=(), origin=None):
+        self.answers, self.origin = {}, origin
         for found in pulls:
             self.answers["repos/%s/pulls/%d" % (REPOSITORY, found["number"])] = found
         for found in runs:
@@ -35,9 +38,27 @@ class FakeGitHub:
 
     def get(self, path):
         self.asked.append(path)
+        compared = re.fullmatch(r"repos/%s/compare/([0-9a-f]{40})\.\.\.(.+)" % re.escape(REPOSITORY), path)
+        if compared and self.origin is not None:
+            return self.compare(path, *compared.groups())
         if path not in self.answers:
             raise deploy.train_check.Unreadable("gh api %s exited 1: HTTP 404" % path)
         return self.answers[path]
+
+    def compare(self, path, base, branch):
+        """GitHub's compare of base with branch's tip: how far each is ahead of the other and their merge base; a 404
+        when either is not in GitHub's copy."""
+        def git(*args):
+            return subprocess.run(["git", "-C", str(self.origin)] + list(args), capture_output=True, text=True)
+        tip = git("rev-parse", "--verify", "-q", "refs/heads/%s^{commit}" % branch)
+        if tip.returncode != 0 or git("cat-file", "-e", base + "^{commit}").returncode != 0:
+            raise deploy.train_check.Unreadable("gh api %s exited 1: HTTP 404" % path)
+        tip = tip.stdout.strip()
+        ahead, behind = (int(git("rev-list", "--count", "%s..%s" % pair).stdout) for pair in ((base, tip), (tip, base)))
+        status = ("identical" if not ahead and not behind else "ahead" if not behind else "behind" if not ahead
+                  else "diverged")
+        return {"status": status, "ahead_by": ahead, "behind_by": behind, "base_commit": {"sha": base},
+                "merge_base_commit": {"sha": git("merge-base", base, tip).stdout.strip()}, "html_url": "https://x"}
 
 
 def listed(number, head, conclusion="success", status="completed", name="Checks"):
@@ -111,7 +132,7 @@ class Repositories:
 
     def hub(self, runs=(), checks=(), pull=None):
         """GitHub answering for runs, checks and the pull request the last merge closed (or pull)."""
-        return FakeGitHub(runs, checks, pulls=[pull or self.pull])
+        return FakeGitHub(runs, checks, pulls=[pull or self.pull], origin=self.origin)
 
     def has(self, ref):
         return subprocess.run(["git", "-C", str(self.work), "rev-parse", "--verify", "-q", ref], capture_output=True).returncode == 0
@@ -196,7 +217,7 @@ class DeployRefusesTrain(TrainCase):
 
     def test_an_ordinary_merged_train_is_planned_with_its_judgment_pending_and_no_local_check(self):
         out = self.trained(self.host(), self.train(self.merged, [self.head]), self.merged, self.hub())
-        self.assertIn("train: PR #31 (ordinary), merge commit %s on origin's %s; the hosted judgment is pending (PR #31)"
+        self.assertIn("train: PR #31 (ordinary), merge commit %s on %s at GitHub; the hosted judgment is pending (PR #31)"
                       % (self.merged[:12], BRANCH), out)
         self.assertEqual(self.records(), ["00-plan", "00-train", "01-live", "02-checkout", "02-release"])
         record = self.evidence_of("02-release")["record"]
@@ -230,11 +251,34 @@ class DeployRefusesTrain(TrainCase):
         other = self.branch("item-482", self.L, [("aim_next/other.py", "# item 482\n")])
         aside = self.merge(other, onto="release/another")
         self.refused_train(self.train(aside, [other]), aside, self.hub(),
-                           "the merge commit %s is not on origin's %s" % (aside, BRANCH))
-        # Merged but never pushed: the live checkout's origin does not have it on the branch either.
+                           "the merge commit %s is not on %s at GitHub" % (aside, BRANCH))
+        # Merged but never pushed: GitHub does not have it at all.
         self.again()
         unpushed = self.merge(self.branch("item-483", self.merged, [("aim_next/three.py", "# 483\n")]), push=False)
         self.refused_train(self.train(unpushed, [self.head]), unpushed, self.hub(), "could not be read")
+
+    def test_a_release_branch_force_pushed_without_the_merge_is_refused_though_the_live_checkout_never_fetched_it(self):
+        # The live checkout fetched the branch with the merge on it; then the branch was force-pushed back without it.
+        # The live checkout's origin ref still says the merge is there; GitHub's branch does not.
+        self.git(self.work, "push", "-q", "-f", "origin", "%s:refs/heads/%s" % (self.L, BRANCH))
+        stale = self.git(self.live, "rev-parse", "refs/remotes/origin/" + BRANCH)
+        self.assertEqual(stale, self.merged, "the live checkout has not fetched since the force-push")
+        github = self.hub()
+        self.refused_train(self.train(self.merged, [self.head]), self.merged, github,
+                           "the merge commit %s is not on %s at GitHub (compared as 'behind'" % (self.merged, BRANCH))
+        self.assertIn("repos/%s/compare/%s...%s" % (REPOSITORY, self.merged, BRANCH), github.asked)
+        self.assertEqual(self.git(self.live, "rev-parse", "refs/remotes/origin/" + BRANCH), stale,
+                         "the deploy reads GitHub; it does not fetch into the live checkout")
+
+    def test_a_merge_commit_on_the_release_branch_at_github_is_taken_whatever_the_live_checkout_last_fetched(self):
+        # The negative: the branch moved on past the merge on GitHub after the live checkout's last fetch; the merge is
+        # still on it, so the deploy goes on.
+        later = self.branch("item-485", self.merged, [("aim_next/later.py", "# 485\n")])
+        self.git(self.work, "push", "-q", "origin", "%s:refs/heads/%s" % (later, BRANCH))
+        self.assertEqual(self.git(self.live, "rev-parse", "refs/remotes/origin/" + BRANCH), self.merged)
+        github = self.hub()
+        self.trained(self.host(), self.train(self.merged, [self.head]), self.merged, github)
+        self.assertIn("repos/%s/compare/%s...%s" % (REPOSITORY, self.merged, BRANCH), github.asked)
 
     def test_an_approved_head_the_merge_commit_does_not_contain_is_refused(self):
         stray = self.branch("item-484", self.L, [("aim_next/stray.py", "# never merged\n")])
@@ -247,7 +291,7 @@ class DeployRefusesTrain(TrainCase):
                            "the merge commit's tree is %s, not the merged_tree %s" % (self.tree(self.merged), self.tree(self.L)))
 
     def test_a_read_that_fails_refuses(self):
-        for config, github, words in (({"release_branch": "release/nowhere"}, self.hub(), "origin's release/nowhere could not be read (git rev-parse"),
+        for config, github, words in (({"release_branch": "release/nowhere"}, self.hub(), "whether %s is on release/nowhere could not be read from GitHub: gh api repos/%s/compare/" % (self.merged, REPOSITORY)),
                                       ({"release_branch": BRANCH}, self.hub(), "the run 79 could not be read: gh api repos/%s/actions/runs/79 exited 1" % REPOSITORY)):
             with self.subTest(words):
                 self.again()
@@ -356,9 +400,9 @@ class DeployRefusesTrain(TrainCase):
         github = self.hub(pull=pulled(later, BRANCH, later_head))
         github.answers["repos/%s/pulls/%d" % (REPOSITORY, PR)] = pulled(later, BRANCH, later_head, number=PR + 1)
         self.refused_train(self.train(later, [self.head]), later, github, "is not PR #%d" % PR)
-        # GitHub could not be read: not an answer.
+        # GitHub could not be read for the pull request (its compare of the branch answers): not an answer.
         self.again()
-        self.refused_train(self.train(later, [self.head]), later, FakeGitHub(), "PR #%d could not be read: gh api repos/%s/pulls/%d exited 1"
+        self.refused_train(self.train(later, [self.head]), later, FakeGitHub(origin=self.origin), "PR #%d could not be read: gh api repos/%s/pulls/%d exited 1"
                            % (PR, REPOSITORY, PR))
 
     def test_an_ordinary_train_over_an_undeployed_train_that_changed_the_deploy_is_refused(self):

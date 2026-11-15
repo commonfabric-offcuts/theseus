@@ -138,7 +138,7 @@ The record is written after the verify, not before the stop, because it states t
 
 ### A merged train: `--train FILE`
 
-A train is a pull request that merges approved heads into the release branch the config names (`release_branch`, origin's). GitHub's hosted runners judge it: the Checks workflow produces the evidence and the Verdict check reads it. For an ordinary item the hosted judgment comes after the merge, so the deploy takes the merged train in place of a local release check, and its record says the judgment is pending until it lands. `FILE` is an absolute path to a JSON object:
+A train is a pull request that merges approved heads into the release branch the config names (`release_branch`, on GitHub). GitHub's hosted runners judge it: the Checks workflow produces the evidence and the Verdict check reads it. For an ordinary item the hosted judgment comes after the merge, so the deploy takes the merged train in place of a local release check, and its record says the judgment is pending until it lands. `FILE` is an absolute path to a JSON object:
 
 ```json
 {"pr": 31, "merge_commit": "FULL_SHA", "merged_tree": "FULL_TREE", "kind": "ordinary",
@@ -153,7 +153,7 @@ Before it lists a process, the deploy reads each fact again, from the live check
 
 1. The file is well formed: exactly those keys, a pull request number, full object names, at least one item with its approved head and review.
 2. `SHA` is the train's `merge_commit`: the deploy ships the merge commit, nothing else.
-3. The merge commit is on origin's `release_branch` (`refs/remotes/origin/BRANCH` in the live checkout; fetch before the deploy).
+3. The merge commit is on `release_branch` as GitHub holds it now: GitHub's compare of the merge commit with the branch (`repos/REPOSITORY/compare/MERGE...BRANCH`) says the branch's tip is the merge commit or follows it (`identical` or `ahead`, none behind), with the merge commit as their merge base. The live checkout's `refs/remotes/origin/BRANCH` is not read: it is only what its last fetch saw, so a branch force-pushed since then without the merge would still seem to hold it. The merge commit itself must be in the live checkout (fetch it before the deploy), or reading its tree refuses.
 4. Every approved head is the merge commit or one of its ancestors.
 5. The merge commit's tree is `merged_tree`.
 6. The merge commit is the pull request's own merge: it has two parents, and GitHub's `pulls/PR` says the pull request is merged into `release_branch`, names this commit as its `merge_commit_sha`, and names the commit's second parent as the pull request's head. A commit that only carries the merge's message, or the branch's tip copied in after another pull request merged, is refused.
@@ -236,7 +236,7 @@ The config is a JSON object. Paths for profiles and routes are relative to `inst
 | `runner_profile`, `runner_id`, `routes` | the runner's profile, `--runner-id` and routes file |
 | `python` | optional; absolute interpreter, default `/usr/bin/python3` |
 | `outcome`, `reporter_profile` | optional, together: the outcome whose checks the deploy measures, and the profile of a member who is not its coordinator, who reads them, opens fix topics, writes the run and moves the release piece |
-| `release_branch`, `repository` | optional; needed for `--train` and `tools/releases.py attach-judgment`: the branch trains merge into (origin's, such as `release/live73`) and GitHub's `owner/name` of the repository its runs and checks are read from |
+| `release_branch`, `repository` | optional; needed for `--train` and `tools/releases.py attach-judgment`: the branch trains merge into (on GitHub, such as `release/live73`) and GitHub's `owner/name` of the repository that branch, its runs and its checks are read from |
 
 An unknown or missing key is refused. Keep the live config beside the instance it describes, not in the repository.
 
