@@ -1584,26 +1584,30 @@ export async function railChecks({ check, page, until, control, view, facts, sho
 
   // Item 462: the ring a pressed row wears, at each width the page is drawn for, light and dark.
   await check('rail the row a press selects wears the keys\' ring at 320, 375, 390 and 1280, light and dark: on a laptop the row clicked, on a phone the drawer opened again on the row tapped, whole and with no sideways scroll', async () => {
-    const row = '#outline a[data-topic-id="t1"]';
+    await control({ method: 'navigation_topics', topics: [{ id: 'rail-width-t', title: 'Width topic' }] });
+    const row = '#outline a[data-topic-id="rail-width-t"]';
     const fits = p => p.evaluate(`(()=>{const r=document.activeElement.getBoundingClientRect();
       return {whole:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
     for (const size of ['w320', 'w375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
       const what = `${SIZES[size].width} ${theme}`, p = await open(`rail-ring-${size}-${theme}`, '/?topic=t1', size, theme);
       if (size === 'laptop') {
         await settled(p, what + ': the topic is up');
+        await until(() => p.evaluate(`Boolean(document.querySelector('${row}')?.getClientRects().length)`), what + ': the outline lists the other topic');
         await press(p, row);
+        await arrived(p, '?topic=rail-width-t', 'Width topic', what + ': the topic clicked opens');
       } else {
         await until(() => p.evaluate("document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outline #topic-navigation'))").catch(() => false), what + ': the topic is up');
         await tap(p, '#rail-open');
         await until(async () => (await drawer(p)).open, what + ': "☰ Outcomes" opens the drawer');
         await p.evaluate(`document.querySelector('${row}').scrollIntoView({block:'center'})`);
         await tap(p, row);
-        await until(async () => !(await drawer(p)).open, what + ': a tap on the row closes the drawer');
+        await arrived(p, '?topic=rail-width-t', 'Width topic', what + ': the topic tapped opens');
+        await until(async () => !(await drawer(p)).open, what + ': the drawer closes');
         await until(async () => await keyedAt(p) === 'topic-title', what + ': the focus is on the page\'s heading, not on a row the closed drawer hides');
         await tap(p, '#rail-open');
         await until(async () => (await drawer(p)).open, what + ': "☰ Outcomes" opens the drawer again');
       }
-      await pressedRow(p, 'topic:t1', what);
+      await pressedRow(p, 'topic:rail-width-t', what);
       assert.deepEqual(await fits(p), { whole: true, sideways: false }, what + ': the ringed row is whole in view, with no sideways scroll');
       await shot(p, `rail-pressed-row-${SIZES[size].width}-${theme}`);
       assert.deepEqual(p.errors, []); await p.close();
@@ -1937,7 +1941,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const waiting=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
       // Brought into view and held there: the outline may still be settling its own scroll as the page comes up.
       const press=async selector=>{await until(()=>p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector(${JSON.stringify(selector)}))`),selector+' is in view');return size==='phone'?tap(p,selector):p.point(selector);};
-      const showRail=async()=>{if(size==='phone'&&!((await drawer(p)).open))await tap(p,'#rail-open');};
+      // What lies on the middle of "☰ Outcomes", once the Reader closing has gone from over it.
+      const onControl=()=>p.evaluate(`(()=>{const c=document.getElementById('rail-open'),b=c.getBoundingClientRect(),e=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return c.contains(e)?'control':e?(e.id||e.className||e.tagName):null})()`);
+      const showRail=async()=>{if(size!=='phone'||(await drawer(p)).open)return;
+        try{await until(async()=>await onControl()==='control','nothing covers "☰ Outcomes"');}catch(error){throw Error(`${error.message}: ${await onControl()} does`);}
+        await tap(p,'#rail-open');};
       await showRail();
       await until(async()=>(await outline(p)).outcomes[oid]?.open,'outcome starts expanded');
       await p.evaluate(`document.querySelector(${JSON.stringify(name)}).scrollIntoView({block:'center'})`);
