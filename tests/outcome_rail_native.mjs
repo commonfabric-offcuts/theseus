@@ -30,7 +30,8 @@ import { fileURLToPath } from 'node:url';
 // in the messages comes into view with a tenth of its pane beyond it (379).
 // Run by reader_persistence_native.mjs with --rail; screenshots are
 // kept as rail-*.png for review.
-const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
+const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true },
+  w320: { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, w375: { width: 375, height: 812, deviceScaleFactor: 2, mobile: true } };
 const COMBOS = [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark']];
 
 export async function railChecks({ check, page, until, control, view, facts, shot }) {
@@ -1462,7 +1463,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       rails:document.querySelectorAll('#rail :focus-visible, #things :focus-visible').length}})()`);
   // The keys on the row pressed (as keyedAt names it), wearing their ring, and nothing else in the rails ringed.
   const pressedRow = async (p, row, what) => {
-    await until(async () => await keyedAt(p) === row, what + ': the keys are on the row pressed');
+    try { await until(async () => await keyedAt(p) === row, what + ': the keys are on the row pressed'); }
+    catch (error) { throw Error(`${error.message}: they are on ${await keyedAt(p)}; tree ${JSON.stringify(await keyTree(p))}; drawer ${JSON.stringify(await drawer(p))}; page errors ${JSON.stringify(p.errors)}`); }
     assert.deepEqual(await pressRing(p), { visible: true, ring: 'solid', rails: 1 }, what + ': it wears the keys\' ring, and nothing else in the rails does');
   };
   // From the row the keys are on, ↓ and ↑ (↑ and ↓ on the last row) move through the outline from there.
@@ -1578,6 +1580,34 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await pressedRow(phone, 'name:rail-ring-o', 'at 390, the drawer opened again');
     await shot(phone, 'rail-pressed-row-drawer');
     assert.deepEqual(phone.errors, []); await phone.close();
+  });
+
+  // Item 462: the ring a pressed row wears, at each width the page is drawn for, light and dark.
+  await check('rail the row a press selects wears the keys\' ring at 320, 375, 390 and 1280, light and dark: on a laptop the row clicked, on a phone the drawer opened again on the row tapped, whole and with no sideways scroll', async () => {
+    const row = '#outline a[data-topic-id="t1"]';
+    const fits = p => p.evaluate(`(()=>{const r=document.activeElement.getBoundingClientRect();
+      return {whole:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    for (const size of ['w320', 'w375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+      const what = `${SIZES[size].width} ${theme}`, p = await open(`rail-ring-${size}-${theme}`, '/?topic=t1', size, theme);
+      if (size === 'laptop') {
+        await settled(p, what + ': the topic is up');
+        await press(p, row);
+      } else {
+        await until(() => p.evaluate("document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outline #topic-navigation'))").catch(() => false), what + ': the topic is up');
+        await tap(p, '#rail-open');
+        await until(async () => (await drawer(p)).open, what + ': "☰ Outcomes" opens the drawer');
+        await p.evaluate(`document.querySelector('${row}').scrollIntoView({block:'center'})`);
+        await tap(p, row);
+        await until(async () => !(await drawer(p)).open, what + ': a tap on the row closes the drawer');
+        await until(async () => await keyedAt(p) === 'topic-title', what + ': the focus is on the page\'s heading, not on a row the closed drawer hides');
+        await tap(p, '#rail-open');
+        await until(async () => (await drawer(p)).open, what + ': "☰ Outcomes" opens the drawer again');
+      }
+      await pressedRow(p, 'topic:t1', what);
+      assert.deepEqual(await fits(p), { whole: true, sideways: false }, what + ': the ringed row is whole in view, with no sideways scroll');
+      await shot(p, `rail-pressed-row-${SIZES[size].width}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
   });
 
   await check('rail a press on a right-rail row that moves in place puts the focus on the page reached, with no ring, so Space rings nothing; Return on the row keeps the keys on it, with its ring', async () => {

@@ -11638,7 +11638,7 @@
    "break": [
     [
      "web/rails.mjs",
-     "    shell.drawerFocus = () => rail.opened();\n",
+     "    shell.drawerFocus = () => rail.drawerOpened();\n",
      ""
     ]
    ],

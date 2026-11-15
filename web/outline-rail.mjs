@@ -491,7 +491,7 @@ export class OutlineRail {
   // from the messages (reading), on the row of the place being read.
   focus({ reading = false } = {}) { return this.tree.focus(reading ? row => row.el.getAttribute('aria-current') === 'page' : null); }
   // The phone's drawer opens (rail-drawer.mjs): on the outline's own place, ringed once the person chose it.
-  opened() { return this.tree.show(); }
+  drawerOpened() { return this.tree.show(); }
   // The outline's own topic lists for an outcome (TopicRail, as the side rail
   // drew them), made the first time they are wanted.
   ownRail(outcome) {

@@ -23,7 +23,7 @@ shell.extend((doc, win) => {
     listen(doc, 'visibilitychange', () => rail.shown());
     panes.outline = rail;
     // The phone's drawer opens on the outline's place (rail-drawer.mjs).
-    shell.drawerFocus = () => rail.opened();
+    shell.drawerFocus = () => rail.drawerOpened();
   }
   if (things) {
     const rail = new ThingsRail({ host: things, backdrop: doc.getElementById('things-backdrop'), storage: storage(win) });
