@@ -253,7 +253,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       if (device === 'phone') {
         // Where a finger presses, each of the bar's buttons is at least 44px each way.
         const sizes = await p.evaluate(`[...document.querySelectorAll('${BAR} button')].filter(b=>!b.hidden).map(b=>{const r=b.getBoundingClientRect();return [b.dataset.act,Math.round(r.width),Math.round(r.height)]})`);
-        assert.ok(sizes.length === 3 && sizes.every(([, width, height]) => width >= 44 && height >= 44), `phone: the bar's buttons are 44px or more (${JSON.stringify(sizes)})`);
+        // 👍, Reply, Fold (item 473) and ⋯.
+        assert.ok(sizes.length === 4 && sizes.every(([, width, height]) => width >= 44 && height >= 44), `phone: the bar's buttons are 44px or more (${JSON.stringify(sizes)})`);
         // On a phone a tap on the count names who, as hover does; it does not take the thumbs-up back.
         await until(() => foldedRow(p, ids.plain), 'phone: given again, the thumbs-up folds the message again');
         await unfoldRow(p, device, ids.plain);

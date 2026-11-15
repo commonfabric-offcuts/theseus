@@ -4935,7 +4935,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // The keys reach it: Tab from the lit message goes through the bar.
         await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.long))}).focus({preventScroll:true})`);
         const reached = [];
-        for (let n = 0; n < 8; n++) { await p.key('Tab'); const act = await p.evaluate(`document.activeElement?.closest?.('.message-bar')?document.activeElement.dataset.act:null`); if (!act) break; reached.push(act); }
+        // The card's own star comes first, then the bar, then out of it.
+        for (let n = 0; n < 10; n++) {
+          await p.key('Tab');
+          const act = await p.evaluate(`document.activeElement?.closest?.('.message-bar')?document.activeElement.dataset.act:document.activeElement?.matches?.('.card-star')?'star':null`);
+          if (!act) break;
+          reached.push(act);
+        }
         for (const act of ['reply', 'full', 'fold', 'more']) assert.ok(reached.includes(act), `laptop: Tab reaches ${act} (${JSON.stringify(reached)})`);
         await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.long))}).focus({preventScroll:true})`);
       }
@@ -4961,13 +4967,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         ['solo', { sender: other, addressees: [facts.actor], body: 'aim-core again, on its own.', read: true }]]);
       const p = await open(topic, device, topic, ids.agent);
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages .reply-stack[data-stack="${ids.person}"]'))`), `${device}: both dossiers are drawn`);
-      const paint = (id, palette = null) => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack="${id}"]'),tab=s.querySelector(':scope > [data-id] .stack-head'),cs=getComputedStyle(s),ts=getComputedStyle(tab);
-        const probe=document.createElement('span');${palette ? `probe.className='agent-${palette}';probe.style.background='color-mix(in srgb,var(--agent-tag) 70%,var(--agent-card))';` : `probe.style.background='var(--stack-folder)';probe.style.cssText+=';position:absolute';`}document.body.append(probe);const want=getComputedStyle(probe).backgroundColor;probe.remove();
+      // The agent's folder as item 477 has it: its tag colour a step toward its card in light, its card a step toward
+      // the page's dark in dark (docs/reply-stacks.md, "The look").
+      const folderOf = (palette, theme) => theme === 'dark' ? 'color-mix(in srgb,var(--agent-card) 70%,#0b1113)' : 'color-mix(in srgb,var(--agent-tag) 70%,var(--agent-card))';
+      const paint = (id, palette = null, theme = 'light') => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack="${id}"]'),tab=s.querySelector(':scope > [data-id] .stack-head'),cs=getComputedStyle(s),ts=getComputedStyle(tab);
+        const probe=document.createElement('span');${palette ? `probe.className='agent-${palette}';probe.style.background=${JSON.stringify(folderOf(palette, theme))};` : `probe.style.background='var(--stack-folder)';`}document.body.append(probe);const want=getComputedStyle(probe).backgroundColor;probe.remove();
         const neutral=document.createElement('span');neutral.style.background='var(--stack-folder)';document.body.append(neutral);const plain=getComputedStyle(neutral).backgroundColor;neutral.remove();
         return {folder:cs.backgroundColor,tab:ts.backgroundColor,want,plain,color:s.dataset.color,edges:[cs.borderLeftWidth,ts.borderLeftWidth,cs.boxShadow.includes('inset')]}})()`);
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
-        const agent = await paint(ids.agent, 'peach'), person = await paint(ids.person);
+        const agent = await paint(ids.agent, 'peach', theme), person = await paint(ids.person);
         assert.equal(agent.color, 'agent', `${device} ${theme}: the agent's dossier is marked with its colour`);
         assert.deepEqual([agent.folder, agent.tab], [agent.want, agent.want], `${device} ${theme}: aim-core's folder and title bar are peach across their whole face: ${JSON.stringify(agent)}`);
         assert.notEqual(agent.folder, agent.plain, `${device} ${theme}: and not the neutral folder`);
@@ -5022,11 +5031,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   await check('reading stacks shown order: a New line waiting at the bottom for an older message sits above More messages, never below it after a one-message dossier put aside there, More closed or open', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'new-line-below-more-' + device;
+      // Nothing is read: what a reader has read is a watermark, so a message read after U would read U too.
       const ids = await seed(topic, [['u', { sender: other, join: true, addressees: [facts.actor], body: 'Unread, older than the page.' }],
-        ...fillers(30), ['x', { sender: other, addressees: [facts.actor], body: 'Stack X, a message on its own put aside.', read: true }]]);
+        ...fillers(30).map(([key, { read, ...said }]) => [key, said]), ['x', { sender: other, addressees: [facts.actor], body: 'Stack X, a message on its own put aside.' }]]);
       const newest = (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
       await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.x, operation_id: topic + '-aside', args: { through: newest } });
-      const p = await open(topic, device, topic, ids.f29);
+      const p = await open(topic, device, topic, ids.f29, 'window.holdReads = true;');
       const order = () => p.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length).map(e=>e.dataset.line?'line:'+e.dataset.line:e.classList.contains('stack-more')?'More':e.dataset.id===${JSON.stringify(ids.x)}?'x':null).filter(Boolean)`);
       await until(async () => (await order()).includes('line:older'), device + ': the New line waits at the bottom, saying more new messages lie below');
       assert.deepEqual(await order(), ['line:older', 'More'], device + ': with More closed, the line sits above More, not below it');
