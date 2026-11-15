@@ -47,6 +47,7 @@ from .outline_order import OutlineOrder, ORDER_SCHEMA
 from .stacks import Stacks, ACT_FRESH
 from .blocking import Blocking, BLOCKS_SCHEMA
 from .message_edit import MessageEdit, EDIT_SESSION_UP, MESSAGE_EDIT_UP
+from .invite import Invites
 from . import message_edit
 
 
@@ -162,7 +163,7 @@ class StoreOpenError(StoreError):
 
 
 class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
-            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit):
+            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit, Invites):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None):
         self.path = Path(db_path).resolve()
         # What reads the Mac's load for the Health view (health.machine_load when None).
