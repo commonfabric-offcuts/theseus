@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url';
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
 // and 390 wide, light and dark. Every page has the logo block (the wordmark
-// with its presence dot, the workspace name, the Health link and Turn on
-// notifications) first in its rail, or first in its main column where it has
-// no rail, with the guide's "? Pointer, keys and taps" under the name
-// (docs/interaction.md), and no header
-// bar or Refresh button. On a topic page and a Conversation the rail is the
+// with its presence dot and the guide's ? beside it (docs/interaction.md),
+// the workspace name and Turn on notifications) first in its rail, or first
+// in its main column where it has no rail, and the Health link last there:
+// on a topic and a Conversation at the foot of the outline, which keeps it
+// across moves in place (item 463). There is no header bar or Refresh
+// button. On a topic page and a Conversation the rail is the
 // outline of every outcome (item 272, docs/rails.md): each outcome's light,
 // name (its Conversation) and where it stands, its topics folded under it,
 // and "N new" and "N waiting on you" across them all; moving between those
@@ -109,7 +110,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const drawn = await until(async () => { const seen = await outline(t); return seen.outcomes.w1?.topics.some(row => row.id === 't1') && seen; }, at + ': the outline holds this outcome, open, with its topics');
       assert.deepEqual([drawn.outcomes.w1.open, drawn.outcomes.w1.href, drawn.outcomes.w1.topics.find(row => row.id === 't1').current], [true, '?conversation=w1', 'page'],
         at + ': the outcome being read is open, its name opens its Conversation, and the open topic is marked');
-      assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'guide-open', 'health-link', 'notify'], at + ': the wordmark, then the workspace name, the guide\'s ? (docs/interaction.md) under it, the Health link and Turn on notifications');
+      assert.deepEqual(topic.brand, ['wordmark', 'guide-open', 'instance-label', 'notify'], at + ': the wordmark, the guide\'s ? beside it (docs/interaction.md), then the workspace name and Turn on notifications; Health is not in the logo block');
       assert.equal(topic.dot, true, at + ': the wordmark carries its presence dot');
       assert.match(topic.name, new RegExp('^' + facts.actor + ' · '), at + ': the workspace name is filled in');
       assert.deepEqual([topic.outcomesShown, topic.railLabel], [false, 'Outcomes'], at + ': the outline stands for the old list of outcomes');
@@ -122,6 +123,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.deepEqual([outcome.headers, outcome.refresh, outcome.buttons], [0, false, 0], at + ': no header bar and no Refresh on the outcome page');
       assert.deepEqual([outcome.railShown, outcome.brandIn], [false, 'main'], at + ': the outcome page has no rail');
       assert.deepEqual(outcome.main.slice(0, 3), ['brand', 'outcomes-home', 'topic-header'], at + ': the logo block, ← Outcomes, then the outcome');
+      assert.equal(outcome.main.at(-1), 'health-link', at + ': with no rail, Health is last in main');
       assert.ok(outcome.scroll <= outcome.width, at + `: no sideways scroll on the outcome page (${outcome.scroll} of ${outcome.width})`);
       await shot(o, `rail-outcome-${size}-${theme}`);
       if (size === 'laptop' && theme === 'light') {
@@ -135,9 +137,64 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(() => h.evaluate('Boolean(document.querySelector("#workspaces a[data-workspace-id=w1]"))'), at + ': the outcomes are listed');
       const root = await top(h);
       assert.deepEqual([root.headers, root.refresh, root.buttons, root.railShown, root.main[0]], [0, false, 0, false, 'brand'], at + ': the home has the logo block first and no header or Refresh');
+      assert.equal(root.main.at(-1), 'health-link', at + ': with no rail, Health is last in main');
       assert.ok(root.scroll <= root.width, at + `: no sideways scroll on the home (${root.scroll} of ${root.width})`);
       await shot(h, `rail-home-${size}-${theme}`);
       assert.deepEqual(h.errors, []); await h.close();
+    }
+  });
+
+  // The logo block and the Health link as drawn in the rail (on a phone, the open drawer): the guide's ?
+  // (whether it shows, its size, right of the wordmark, overlapping neither the wordmark nor the
+  // workspace name, inside the rail), and Health (where it sits, below everything else shown in the
+  // rail, its size, inside the rail), and whether anything scrolls sideways.
+  const brandAndHealth = p => p.evaluate(`(()=>{const rail=document.getElementById('rail'),b=document.getElementById('guide-open'),w=document.querySelector('.wordmark'),
+    l=document.getElementById('instance-label'),a=document.getElementById('health-link');
+    const box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:Math.round(r.width),height:Math.round(r.height)}};
+    const meet=(x,y)=>x.left<y.right-0.5&&y.left<x.right-0.5&&x.top<y.bottom-0.5&&y.top<x.bottom-0.5;
+    const wm=box(w),lb=box(l),hl=box(a),rb=box(rail),g=b&&box(b);
+    // Shown as a person sees it: a closed Keys holds its words out of sight (content-visibility), so checkVisibility.
+    const others=[...rail.querySelectorAll('*')].filter(e=>e.checkVisibility()&&!e.contains(a)&&!a.contains(e));
+    const below=others.filter(e=>e.getBoundingClientRect().bottom>hl.top+1).map(e=>e.id||e.className||e.tagName.toLowerCase());
+    return {guide:g?{opacity:getComputedStyle(b).opacity,width:g.width,height:g.height,beside:g.left>=wm.right-1&&g.top<wm.bottom&&g.bottom>wm.top,
+        overlaps:meet(g,lb)||meet(g,wm),inside:g.right<=rb.right+0.5}:null,
+      health:{parent:a.parentElement?.id??'',last:a.parentElement?.lastElementChild===a,width:hl.width,height:hl.height,
+        lowest:below.length===0,below,inside:hl.left>=rb.left-0.5&&hl.right<=rb.right+0.5,words:a.textContent},
+      railScroll:rail.scrollWidth-rail.clientWidth,scroll:document.documentElement.scrollWidth,width:innerWidth}})()`);
+
+  await check('rail the logo block and Health at 320, 375 and 390 by touch and on a laptop, light and dark: the logo\'s ? shows on a phone as a full tap, and on a laptop only while pointed at; Health is last in the rail, fits, and is a full tap on a phone; nothing scrolls sideways', async () => {
+    const widths = [['320', { ...SIZES.phone, width: 320 }], ['375', { ...SIZES.phone, width: 375 }], ['390', SIZES.phone], ['laptop', SIZES.laptop]];
+    for (const [width, metrics] of widths) for (const theme of ['light', 'dark']) {
+      const at = `${width} ${theme}`;
+      const p = await page(`rail-brand-${width}-${theme}`, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await until(() => p.evaluate('Boolean(document.querySelector("#outline #topics a[data-topic-id=t1]"))'), at + ': the outline is drawn');
+      if (metrics.mobile) {
+        await tap(p, '#rail-open');
+        await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens the outline');
+      } else await p.point('#topic-title', 'move');
+      const seen = await brandAndHealth(p);
+      assert.ok(seen.guide, at + ': the logo block has its ?');
+      assert.deepEqual([seen.guide.beside, seen.guide.overlaps, seen.guide.inside], [true, false, true], at + ': the ? sits right of the wordmark, over nothing, inside the rail: ' + JSON.stringify(seen.guide));
+      if (metrics.mobile) {
+        assert.equal(seen.guide.opacity, '1', at + ': on a phone the ? always shows');
+        assert.ok(seen.guide.width >= 44 && seen.guide.height >= 44, at + `: the ? is a full tap (${seen.guide.width}×${seen.guide.height})`);
+      } else {
+        assert.equal(seen.guide.opacity, '0', at + ': on a laptop no ? shows until the logo block is pointed at');
+        await p.point('.wordmark', 'move');
+        await until(async () => (await brandAndHealth(p)).guide.opacity === '1', at + ': pointing at the logo shows its ?');
+      }
+      assert.deepEqual([seen.health.parent, seen.health.last, seen.health.lowest, seen.health.inside], ['outline', true, true, true],
+        at + ': Health is the last part of the outline, below everything else in the rail, inside it: ' + JSON.stringify(seen.health));
+      if (metrics.mobile) assert.ok(seen.health.height >= 44, at + `: Health is a full tap (${seen.health.height}px)`);
+      assert.ok(seen.scroll <= seen.width && seen.railScroll <= 0, at + `: nothing scrolls sideways (page ${seen.scroll} of ${seen.width}, rail ${seen.railScroll} over)`);
+      await shot(p, `rail-brand-${width}-${theme}`);
+      await p.evaluate("document.getElementById('health-link').scrollIntoView({block:'end'})");
+      await shot(p, `rail-health-${width}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
     }
   });
 
@@ -220,6 +277,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         const seen = await top(p);
         assert.deepEqual(seen.rail.slice(0, 5), ['brand', 'outcomes-home', 'conversation-navigation', 'pipeline-navigation', 'topic-navigation'],
           at + ': the logo block, ← Outcomes, the outcome\'s conversation, its Pipeline row, then the topics');
+        assert.equal(seen.rail.at(-1), 'health-link', at + ': Health is last in the rail');
         const row = await p.evaluate(`(()=>{const a=document.querySelector('#conversation-row a.conversation-row');return a&&{name:a.querySelector('.conversation-name').firstChild.textContent,href:a.getAttribute('href'),current:a.getAttribute('aria-current')}})()`);
         assert.deepEqual(row, { name: 'Isolated wiring', href: '?conversation=w1', current: null }, at + ': the row names the outcome and opens its conversation');
         assert.ok(seen.scroll <= seen.width, at + `: no sideways scroll on the pipeline page (${seen.scroll} of ${seen.width})`);
@@ -530,6 +588,40 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const reloaded = await until(async () => { const at = await placeOf(p).catch(() => null); return at?.ready && at.origin !== start.origin && at; }, 'the page loads again');
     assert.equal(reloaded.search, '?conversation=rail-move-o');
     await until(async () => { const seen = await outline(p); return seen.outcomes['rail-move-o']?.topics.length && seen.outcomes.w1 && JSON.stringify(await opens()) === JSON.stringify(['rail-move-o']); }, 'after a reload only the outcome being read is open');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail Health is last in the rail, at the foot of the outline, and stays the same element across moves in place with its words unchanged; the logo block holds no Health link', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-health-o', title: 'Health outcome', topic: { id: 'rail-health-t', title: 'Health topic' } });
+    const p = await page('rail-health', null, true, { url: facts.origin + '/?topic=t1' });
+    await until(async () => (await outline(p)).outcomes['rail-health-o'], 'the outline lists the other outcome');
+    const start = await placeOf(p);
+    const foot = () => p.evaluate(`(()=>{const links=document.querySelectorAll('#health-link'),a=links[0],o=document.getElementById('outline');
+      return {count:links.length,inOutline:a.parentElement===o,last:o.lastElementChild===a,inBrand:Boolean(a.closest('.brand')),same:a===window.healthKept,words:a.textContent,shown:a.getClientRects().length>0,said:window.healthSaid??null}})()`);
+    const before = await until(async () => { const seen = await foot(); return seen.words !== 'Health · checking' && seen; }, 'the Health link has read what is red');
+    assert.deepEqual([before.count, before.inOutline, before.last, before.inBrand, before.shown], [1, true, true, false, true], 'one Health link, the last part of the outline, not in the logo block: ' + JSON.stringify(before));
+    // From here, every change to the link's words and its leaving the page are written down.
+    await p.evaluate(`(()=>{const a=document.getElementById('health-link');window.railKept=document.getElementById('outline');window.railMark='this window';window.healthKept=a;window.healthSaid=[];
+      new MutationObserver(records=>{for(const r of records){if([...r.removedNodes].some(n=>n===a||n.contains?.(a)))window.healthSaid.push('removed');else if(a.contains(r.target))window.healthSaid.push(a.textContent)}})
+        .observe(document.body,{childList:true,subtree:true,characterData:true});return true})()`);
+    const kept = async (what) => {
+      const seen = await foot();
+      assert.deepEqual([seen.count, seen.same, seen.inOutline, seen.last, seen.shown], [1, true, true, true, true], what + ': the same Health link, still the outline\'s last part: ' + JSON.stringify(seen));
+      assert.deepEqual(seen.said.filter(words => words !== before.words), [], what + ': it never left the page and its words never changed: ' + JSON.stringify(seen.said));
+    };
+    await p.evaluate(`document.querySelector('.ol-outcome[data-workspace-id="rail-health-o"] .ol-name').scrollIntoView({block:'center'})`);
+    await p.point('.ol-outcome[data-workspace-id="rail-health-o"] .ol-name');
+    const conversation = await arrived(p, '?conversation=rail-health-o', null, 'the Conversation opens');
+    assert.deepEqual([conversation.origin, conversation.same, conversation.mark], [start.origin, true, 'this window'], 'in place: no load, the same outline, the same window');
+    await kept('to the Conversation');
+    await until(async () => (await outline(p)).outcomes['rail-health-o'].topics.some(row => row.id === 'rail-health-t'), 'its topics show under it');
+    await p.evaluate(`document.querySelector('#outline a[data-topic-id="rail-health-t"]').scrollIntoView({block:'center'})`);
+    await p.point('#outline a[data-topic-id="rail-health-t"]');
+    assert.equal((await arrived(p, '?topic=rail-health-t', 'Health topic', 'the topic opens')).origin, start.origin, 'in place');
+    await kept('to the topic');
+    await p.evaluate('history.back()');
+    assert.equal((await arrived(p, '?conversation=rail-health-o', null, 'back to the Conversation')).origin, start.origin, 'back, in place');
+    await kept('back');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

@@ -1,10 +1,14 @@
 # How Theseus answers the pointer, keys and taps
 
 One short page of the rules every screen follows. The page itself is in the
-app: press ? anywhere outside writing, or the small "? Pointer, keys and taps"
-under who you are at the top of the side rail, which on a phone "☰ Topics"
-opens (`web/interaction-guide.mjs`, the same words). Each rule there names
-the pointer's way, the keys' and the phone's.
+app: press ? anywhere outside writing, or the ? in a circle beside the
+Theseus logo (`web/interaction-guide.mjs`, the same words). On a laptop that
+? shows while the pointer is over the logo block, or the keys are in it (Tab
+from the wordmark reaches it), and takes no press while it does not show; on
+a phone it always shows, a full 44px tap, at the top of the side rail that
+"☰ Outcomes" opens or of a page with no rail (item 463). It is named and
+titled "Pointer, keys and taps". Each rule there names the pointer's way, the
+keys' and the phone's.
 
 ## The topic page
 
@@ -335,7 +339,12 @@ page painted. Its checks, by rule:
 - Show full message on a busy lane: "reading Show full message shows the whole
   message while the lit card's read ahead is slow …" holds that read ahead in
   the server and needs the whole message shown.
-- ?: "reading ? and the rail's "? Pointer, keys and taps" open the guide …".
+- ?: "reading ? and the ? beside the logo open the guide …" (the ? key, the
+  logo's ? by pointer, by the keys and by a tap, none shown on a laptop until
+  the logo block is pointed at or holds the keys, and no "? Pointer, keys and
+  taps" row left), in Chrome and Safari's engine; its size and place at 320,
+  375 and 390 and on a laptop, light and dark: "rail the logo block and Health
+  at 320 …".
 - Images: "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and
   takes the #img words out as one edit ⌘Z puts back; "reading Paste image: …"
