@@ -292,9 +292,12 @@ move to another build is a load.
 
 Native checks open a page on release 76 (`bb3a46da`), serve this build, move
 once, and Edit; they move on one build and on another at 320, 375 and 390 by
-touch and on a laptop; they hold writing and press Reload, once Theseus has the
-words and while only this device has them; and they reload on one build with
-words on this device only.
+touch and on a laptop, where the move to another build asks for no run of the
+old one; they hold writing and press Reload, once Theseus has the words and
+while only this device has them; they go back while writing in the open Reader
+and in the New message sheet, at the same widths, and find the address put back
+and Theseus updated said there; and they reload on one build with words on this
+device only.
 
 ## Known gaps
 
