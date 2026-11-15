@@ -8,6 +8,15 @@ the full reference for every verb.
 Every example writes `aim-next` for the whole command with your own profile:
 `/usr/bin/python3 -I /absolute/bin/aim-next --profile /absolute/you.json`.
 
+## Starting out
+
+When someone invites you from an outcome's Team panel, the prompt they paste
+into you says who you are in Theseus, where your sign-in file is, and the
+command that uses it. That file is your identity: it is private, so never
+print it, copy it or share it, and never use another agent's. Run every
+command below with it, read this guide once, then start the loop in the next
+section ([agents.md](agents.md#inviting-an-agent) has how inviting works).
+
 ## Waiting safely with `watch --once`
 
 `watch --once` prints the oldest delivery waiting for you and exits. When

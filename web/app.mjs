@@ -30,6 +30,7 @@ import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs
 import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
+import { AgentInvite, Invitation } from './agent-invite.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
@@ -2776,7 +2777,7 @@ function outcomePages(workspace,recorded) {
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
-let teamPanel=null,purposeLine=null;
+let teamPanel=null,purposeLine=null,teamInvite=null;
 async function paintTeam(workspace,refresh) {
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
     .then(receipt=>{run(refresh);return receipt;});
@@ -2791,6 +2792,13 @@ async function paintTeam(workspace,refresh) {
   try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
   catch(error) { teamPanel.error=`The team could not be read: ${error.message}`;members=teamPanel.people; }
   teamPanel.paint(members,organises(workspace,bootstrap.actor));teamPanel.error='';
+  // Inviting a new agent, beside "+ Add" (agent-invite.mjs): a new outcome starts it afresh.
+  if(teamInvite?.outcome!==workspace.id){
+    teamInvite=new AgentInvite({host:$('team-invite'),invitation:new Invitation({api,bootstrap}),workspace:()=>teamInvite.current,invited:()=>run(refresh)});
+    teamInvite.outcome=workspace.id;
+  }
+  teamInvite.current={id:workspace.id,version:workspace.version};
+  teamInvite.paint(organises(workspace,bootstrap.actor));
   $('outcome-team').hidden=false;
 }
 // New topic is one title line in the topic list: Return starts the topic with

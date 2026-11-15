@@ -433,11 +433,15 @@ def main():
         # One for the instance, kept across a server restart.
         gate = CommandGate()
 
+        # Where an invited agent's sign-in file is written, as beside the server's own profile (docs/agents.md).
+        sign_in = root / "sign-in"
+        sign_in.mkdir(mode=0o700)
+
         def serve(port=0):
             """The real server, with a session of its own: a restart (server_stop,
             then server_start) brings it back at the same address with a new one."""
             server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
-                                   max_reads=max_reads, port=port,
+                                   max_reads=max_reads, port=port, sign_in_folder=sign_in,
                                    live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
             if "--live" in sys.argv:
                 assert server.live_feed is not None, "The live fixture needs the native watch"
@@ -911,6 +915,30 @@ def main():
                         else:
                             answer = command("workspace.member_set", request["operation_id"], {"actor_id": request["member"], "present": request["present"]},
                                              {"workspace_id": workspace}, {"workspace_revision": version}, sender=sender)
+                    elif freshness and request["method"] == "team_outcome":
+                        # An outcome of the person's own, for the Team panel's cases: {"workspace_id", "title"}
+                        # ("id" is this control's own), with {"team": [...]} on it; {"owner": id} then hands it to
+                        # that member, so the person is one of its team who does not organise it.
+                        answer = command("workspace.create", request["operation_id"], {"id": request["workspace_id"], "title": request["title"],
+                                                                                     "team": request.get("team", [])})
+                        if request.get("owner"):
+                            command("workspace.owner_set", request["operation_id"] + "-owner", {"owner_id": request["owner"]},
+                                    {"workspace_id": request["workspace_id"]}, {"workspace_revision": 1})
+                    elif freshness and request["method"] == "sign_in_files":
+                        # The sign-in files written, each with its permissions and who it binds, never its contents.
+                        from aim_next.profile import read_binding
+                        answer = []
+                        for entry in sorted(sign_in.iterdir()):
+                            info = entry.lstat()
+                            answer.append({"name": entry.name, "mode": oct(info.st_mode & 0o777), "regular": entry.is_file() and not entry.is_symlink(),
+                                           "mine": info.st_uid == os.getuid(), "actor": read_binding(entry).actor_id})
+                    elif freshness and request["method"] == "sign_in_folder":
+                        # {"writable": false} makes the folder refuse a new file, as a full or locked disk would; true restores it.
+                        sign_in.chmod(0o700 if request["writable"] else 0o500)
+                        answer = {"writable": request["writable"]}
+                    elif freshness and request["method"] == "secrets":
+                        # What a sign-in file holds that the page must never show.
+                        answer = [binding["authority_id"], binding["authority_epoch"], binding["authority_path"]]
                     elif freshness and request["method"] == "coordinator":
                         # The owner chooses who answers in w1's conversation, bringing
                         # {"coordinator": id} and each of {"team": [...]} onto the team first.
