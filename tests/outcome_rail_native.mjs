@@ -2332,6 +2332,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
           await p.key(home); await p.key(key);
           edges.push({ from: node.id, key, to: await landed() });
         }
+        // → from each open row that holds a control of its own (the Notebook row's pencil).
+        const holders = await p.evaluate(`[...document.querySelectorAll('[data-arrow-node=${node.id}]')].filter(e=>e.checkVisibility()&&e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility())).length`);
+        for (let n = 0; n < holders; n++) {
+          await p.evaluate(`[...document.querySelectorAll('[data-arrow-node=${node.id}]')].filter(e=>e.checkVisibility()&&e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility()))[${n}]?.focus()`);
+          await p.key('ArrowRight');
+          edges.push({ from: node.id, key: 'ArrowRight', to: await landed() });
+        }
         continue;
       }
       for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
@@ -2395,9 +2402,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p = await arrowsAt('rail-arrows-drawer-' + size, '/?topic=t1', size, size === '390' ? 'dark' : 'light');
       await topicUp(p, size + ': the topic is up');
       await until(() => p.evaluate("(b=>{b?.focus();return Boolean(b)&&document.activeElement===b})(document.getElementById('rail-open'))"), size + ': ☰ Topics takes the focus');
+      // Each focus move from Return on, for the evidence if the focus does not end in the drawer.
+      await p.evaluate("(()=>{const d=e=>e?(e.id||e.tagName+':'+(e.getAttribute('aria-label')||e.textContent||'').trim().slice(0,24))+(e.isConnected?'':' (gone)'):'none';window.__focusMoves=[];for(const t of ['focusin','focusout'])document.addEventListener(t,e=>window.__focusMoves.push(t+' '+d(e.target)+' → '+d(e.relatedTarget)+' @'+Math.round(performance.now())),true)})()");
       await p.key('Enter');
       await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it')
-        .catch(async error => { throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({expanded:document.getElementById('rail-open').getAttribute('aria-expanded'),open:document.getElementById('rail').classList.contains('open'),active:(e=>e&&(e.id||e.tagName+':'+(e.textContent||'').trim().slice(0,30)))(document.activeElement)})")); });
+        .catch(async error => { throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({expanded:document.getElementById('rail-open').getAttribute('aria-expanded'),open:document.getElementById('rail').classList.contains('open'),active:(e=>e&&(e.id||e.tagName+':'+(e.textContent||'').trim().slice(0,30)))(document.activeElement),current:(e=>e?[e.textContent.trim().slice(0,30),e.isConnected,e.checkVisibility()]:null)(document.querySelector('#rail a[aria-current=page]')),moves:window.__focusMoves})")); });
       await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer')
         .catch(async error => { await shot(p, 'rail-arrows-drawer-missing-' + size); throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({rows:[...document.querySelectorAll('#outline [role=treeitem]')].map(e=>[e.textContent.trim().slice(0,30),e.checkVisibility()]),outline:document.getElementById('outline')?.innerHTML.length,open:document.getElementById('rail').className})")); });
       await p.evaluate("(rows=>(rows.find(e=>e.tabIndex===0)??rows[0]).focus())([...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()))");
@@ -2506,6 +2515,26 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.evaluate("document.querySelector('#things .notebook-create').focus()");
     await p.key('ArrowUp');
     assert.notEqual(await focusAt(p), 'things:New Notebook page', '↑ from the pencil moves too');
+    // The pencil is the Notebook row's own, as a card's speech bubble is: → from the open row gives it the focus,
+    // → from it goes on to the first page under the row, and ← from it comes back to the row.
+    const NOTEBOOK_ROW = "#things .things-sec[data-key=notebook] > summary";
+    const onRow = () => p.evaluate(`document.activeElement===document.querySelector('${NOTEBOOK_ROW}')`);
+    const onFirstPage = () => p.evaluate(`(r=>{const rows=[...r.parentElement.querySelectorAll('[role=treeitem]')].filter(e=>e!==r&&e.checkVisibility());return rows.length>0&&document.activeElement===rows[0]})(document.querySelector('${NOTEBOOK_ROW}'))`);
+    await p.evaluate(`(s=>{s.parentElement.open=true;s.focus()})(document.querySelector('${NOTEBOOK_ROW}'))`);
+    await until(() => p.evaluate(`document.querySelectorAll('${NOTEBOOK_ROW} ~ * [role=treeitem]').length > 0`), 'the open Notebook shows its pages as rows');
+    await p.key('ArrowRight');
+    assert.equal(await focusAt(p), 'things:New Notebook page', '→ on the open Notebook row gives its pencil the focus');
+    await p.key('ArrowRight');
+    assert.equal(await onFirstPage(), true, '→ from the pencil goes on to the first page under the row: ' + await focusAt(p));
+    await p.evaluate("document.querySelector('#things .notebook-create').focus()");
+    await p.key('ArrowLeft');
+    assert.equal(await onRow(), true, '← from the pencil comes back to the Notebook row: ' + await focusAt(p));
+    // A row with no control set in it keeps the tree's →: on a folded section it opens it, the focus staying.
+    const plain = await p.evaluate(`(d=>{if(!d)return null;d.open=false;d.querySelector(':scope > summary').focus();return d.dataset.key})([...document.querySelectorAll('#things .things-sec:not([hidden])')].find(d=>d.dataset.key!=='notebook'&&!d.querySelector(':scope > summary button')))`);
+    if (plain) {
+      await p.key('ArrowRight');
+      assert.equal(await p.evaluate(`(d=>d.open&&document.activeElement===d.querySelector(':scope > summary'))(document.querySelector('#things .things-sec[data-key=${plain}]'))`), true, `→ on the folded ${plain} section opens it and keeps the focus on its row`);
+    }
     const { missing, lost } = await arrowClosure(p, '#things', treeStart(p, '#things'));
     assert.deepEqual(missing, [], 'the arrows reach every control in the right rail from its sections');
     assert.deepEqual(lost, [], 'and no arrow there loses the focus to the page');
