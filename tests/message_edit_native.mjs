@@ -1300,7 +1300,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     const isBuild = event => event.request.url === facts.origin + '/api/build';
     p.intercept((payload, event) => isBuild(event));
     return { out: () => until(() => p.held.some(h => isBuild(h.event)), 'the move reads the build').catch(error => explained(p, error)),
-      release: async () => { p.intercept(null); for (const h of p.held.filter(h => isBuild(h.event))) await p.send('Fetch.continueResponse', { requestId: h.event.requestId }); } };
+      // Each read let go leaves the list, so a later hold on the same page waits for a read of its own.
+      release: async () => { p.intercept(null); for (const h of p.held.filter(h => isBuild(h.event))) { p.held.splice(p.held.indexOf(h), 1); await p.send('Fetch.continueResponse', { requestId: h.event.requestId }); } } };
   };
   // The page's device copy of writing held unwritten (journal.mjs) while window.holdJournal is true, so the writing is not yet safe.
   const holdJournal = p => p.evaluate(`import('/journal.mjs').then(({ RecoveryJournal }) => { window.journalHeld = [];
@@ -1472,7 +1473,9 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         assert.equal(await valueOf(p, '#inline-writing-body'), before + words, `${width} ${how}: the words are in their box`);
         // Said where the person is looking: in the New message sheet when it is open over the page, else by the topic line.
         const line = await p.evaluate(`(() => { const sheet = document.querySelector('#new-message-sheet').open, n = document.querySelector(sheet ? '#inline-notice' : '#topic-navigation-status');
-          const r = n.getBoundingClientRect(); return { sheet, text: n.hidden ? '' : n.textContent, inside: r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight }; })()`);
+          const r = n.getBoundingClientRect(); return { sheet, text: n.hidden ? '' : n.textContent, inside: r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+          rect: [r.left, r.top, r.right, r.bottom].map(Math.round), window: [innerWidth, innerHeight, Math.round(scrollY)], visual: visualViewport && [visualViewport.width, visualViewport.height, visualViewport.offsetTop].map(Math.round),
+          focus: document.activeElement?.id, display: getComputedStyle(n).display }; })()`);
         assert.deepEqual([line.text, line.inside], [STAYED, true], `${width} ${how}: said in the window where the person writes: ${JSON.stringify(line)}`);
         assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width} ${how}: nothing scrolls sideways`);
         if (look) { for (const scheme_ of ['light', 'dark']) { await scheme(p, scheme_); await shot(p, `edit-build-typed-${how}-${width}-${scheme_}`); } await scheme(p, ''); }
