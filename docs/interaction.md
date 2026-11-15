@@ -258,6 +258,47 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   it and goes to the messages, and nothing under it takes the keys. Touch is unchanged; on an
   iPad with a keyboard the same keys work.
 
+## The arrows everywhere
+
+From anywhere outside writing, an arrow lands the focus somewhere that makes
+sense, and the arrows reach everything a click reaches (item 301). Where a
+pane's own keys above say what an arrow does, they decide. Everywhere else an
+arrow that nothing used moves the focus to the nearest button, link or field
+that way on screen, as the eye goes: ↓ to what is straight below before what
+is a little nearer off to the side, ← and → along the row where something is
+beside, else to the nearest that way. What it reaches comes into view by the
+rule above. (`web/arrow-reach.mjs`)
+
+- **Past a pane's edge.** ↑ above the outline's first row goes on up the side
+  rail: New outcome, "N new" and "N waiting on you", then the logo block (the
+  wordmark, "? Pointer, keys and taps", Health, Turn on notifications); ↓
+  below its last row reaches Keys. ↑ above the right rail's first section
+  reaches its name, "Just this topic" and "All of this outcome". ↓ past the
+  last message goes on down the page: More messages, the People row, the
+  Notebook and the reply; ↑ from there comes back to the last message. Back
+  into a tree the arrows land on its one stop, the row the keys were last on.
+  On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
+  message above or below, as from the message.
+- **In a pane, off its keys.** On the logo block, the chips, Keys, the right
+  rail's name and chips, People and the Notebook, ↑ and ↓ move within that
+  pane, and ← and → too; past the pane's edge ← and → go on to the pane beside,
+  as from the messages.
+- **Every other page.** The Outcomes home, an outcome's own page, its pipeline,
+  an item, Health and the measurements have no panes: the arrows move between
+  their controls. With nothing focused, ↓ goes to the first control in view
+  from the top, ↑ to the last, → to the first from the left and ← to the first
+  from the right.
+- **In a pop-up** (the Reader, Topic settings, the guide, a sheet) the arrows
+  move only through it, never to the page behind; a menu, a radio group and a
+  picker keep their own arrows.
+- **Reading is kept.** A focused box that can still scroll that way (a long
+  message in the Reader) scrolls first. While the next control that way is out
+  of sight and the page can still scroll, the arrow scrolls the page, as it
+  always has, so the words between are read on the way; once it shows, the
+  next press lands on it.
+- **Never in writing.** In a field the arrows are the writing's, as everywhere
+  above.
+
 ## Everywhere
 
 - **Escape**, or ✕, closes the open pop-up and keeps the writing; a click or tap

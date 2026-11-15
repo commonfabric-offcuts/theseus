@@ -13,6 +13,7 @@
 // and went with the old element.
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
+import { reach } from './arrow-reach.mjs';
 
 const shown = el => el.isConnected && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 
@@ -22,8 +23,11 @@ export class KeyTree {
   // false, or undefined for a row that does not open) }. act(action, row,
   // rows): what the pane does for a key the tree does not answer itself. The
   // tree speaks through a polite status of its own (say).
-  constructor({ root, rows, act = () => false, label = null, doc = root.ownerDocument }) {
-    Object.assign(this, { root, rows, act, doc });
+  // column: where ↑ above the first row and ↓ below the last go on to, in the
+  // page's column the tree stands in (the side rail's logo block, its Keys;
+  // arrow-reach.mjs), else the tree's own root, where nothing lies beyond.
+  constructor({ root, rows, act = () => false, label = null, column = root, doc = root.ownerDocument }) {
+    Object.assign(this, { root, rows, act, column, doc });
     this.current = null; this.currentKey = null; this.wanted = false; this.queued = false; this.chosen = false; this.placing = false;
     root.setAttribute('role', 'tree');
     if (label) root.setAttribute('aria-label', label);
@@ -108,6 +112,10 @@ export class KeyTree {
     const rows = this.list(), row = this.rowOf(event.target, rows);
     if (!row) return;
     const at = rows.indexOf(row);
+    // Past the first row or the last, on to what lies that way in its column;
+    // while that is out of sight, the column scrolls toward it (arrow-reach.mjs).
+    const beyond = (action === 'up' && at === 0) || (action === 'down' && at === rows.length - 1);
+    if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }
     event.preventDefault();
     if (action === 'up') return this.go(rows[at - 1]);
     if (action === 'down') return this.go(rows[at + 1]);
