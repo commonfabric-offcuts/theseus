@@ -151,21 +151,30 @@ class TrainCase(Repositories, deploys.DeployCase):
         # The live instance records release 19 at the live commit.
         return GitHost(self.config, **dict({"releases": (deploys.page(deploys.release(19, self.L)), 0)}, **more))
 
-    def trained(self, host, train, sha, github, dry=True, known_reds=None):
+    def deployed(self, host, train, sha, github, dry=True, known_reds=None):
         with redirect_stdout(io.StringIO()) as out:
             with mock.patch.object(deploy, "run", host), \
                     mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")):
                 deploy.deploy(self.config, sha, self.evidence, None, dry, train=train, github=github, known_reds=known_reds)
         return out.getvalue()
 
+    def trained(self, host, train, sha, github, dry=True, known_reds=None):
+        """The deploy takes the train: its output; a refusal fails the test."""
+        try:
+            return self.deployed(host, train, sha, github, dry, known_reds)
+        except deploy.Refused as refusal:
+            self.fail("the deploy refused the train: %s" % refusal)
+
     def refused_train(self, train, sha, github, words, known_reds=None):
         """Refused at 00-train, naming words, before any process is listed or anything is stopped."""
         host = self.host()
         try:
-            self.trained(host, train, sha, github, known_reds=known_reds)
+            self.deployed(host, train, sha, github, known_reds=known_reds)
         except deploy.Refused as refusal:
             self.assertIn("train: ", str(refusal))
             self.assertIn(words, str(refusal))
+        except Exception as error:
+            self.fail("the deploy did not refuse the train, it raised %r" % error)
         else:
             self.fail("the deploy took the train")
         self.assertEqual(self.records(), ["00-train"])
@@ -368,6 +377,7 @@ class DeployRefusesTrain(TrainCase):
         github = self.hub(runs=[listed(101, self.merged)], checks=[listed(201, self.merged, conclusion="failure", name="Verdict")])
         out = self.trained(self.host(), self.train(self.merged, [self.head], judgment=judgment), self.merged, github)
         recorded = self.evidence_of("02-release")["record"]["measurements"]["train"]["judgment"]
+        self.assertIsInstance(recorded, dict, "the train's judgment is recorded, not left %r" % recorded)
         self.assertEqual((recorded["head"], recorded["audit"]), (self.merged, "m-audit"))
         self.assertEqual([(found["kind"], found["id"], found["head_sha"], found["conclusion"])
                           for found in recorded["producer_runs"] + recorded["verdict_checks"]],
@@ -394,7 +404,7 @@ class DeployRefusesTrain(TrainCase):
                 return GitHost.__call__(self, argv, **kw)
         host = Moving(self.config, releases=(deploys.page(deploys.release(19, self.L)), 0))
         try:
-            self.trained(host, self.train(self.merged, [self.head]), self.merged, self.hub())
+            self.deployed(host, self.train(self.merged, [self.head]), self.merged, self.hub())
         except deploy.Refused as refusal:
             self.assertIn("the live checkout is at %s now, not %s, which the train's changes were read from; nothing was stopped"
                           % (moved, self.L), str(refusal))
