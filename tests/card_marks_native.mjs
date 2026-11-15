@@ -137,6 +137,7 @@ const readCard = (p, id) => p.evaluate(selector => {
         box: box(mark.getBoundingClientRect()), masked: /url\(/.test(style.webkitMaskImage || style.maskImage || ''),
         opaque: (color[3] ?? 1) > 0.9, contrast: (hi + 0.05) / (lo + 0.05) };
     }),
+    star: card.querySelector(':scope > .message-author > .card-star') ? box(card.querySelector(':scope > .message-author > .card-star').getBoundingClientRect()) : null,
     inkBottom: Math.max(...inked.map(rect => rect.bottom)), below: next ? next.getBoundingClientRect().top - author.getBoundingClientRect().bottom : null,
     shape: `${author.getBoundingClientRect().height}px: ${parts}; then ${next ? next.tagName.toLowerCase() + '.' + next.className : 'nothing'}`,
   };
@@ -179,6 +180,8 @@ async function run() {
       for (const name of Object.keys(EXPECTED)) {
         const seen = await readCard(p, m[name]);
         assert.ok(seen.author.bottom - seen.inkBottom < 4, `${name}: its line holds no line that shows nothing (${seen.shape})`);
+        // The star, shown when the card is lit, has its place in the line inside the card, beside the time's last line.
+        if (seen.star) assert.ok(seen.star.right <= seen.card.right && seen.star.bottom > seen.time.top && seen.star.top < seen.time.bottom, `${name}: the star's place is inside the card, on the time's line (${seen.shape})`);
         assert.ok(Math.abs(seen.below - plainCard.below) < 1, `${name}: what follows its line starts as on a plain card (${seen.below} vs ${plainCard.below}; ${seen.shape})`);
       }
       if (width >= 760) {
