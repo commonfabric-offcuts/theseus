@@ -193,7 +193,11 @@ export async function healthChecks({ check, page, until, control, view, facts, s
         }
         const link = await readLink(p);
         assert.equal(link.color, link.alert, `${where}: the lit link in the theme's alert colour`);
-        if (metrics.mobile) assert.ok(link.height >= 24, `${where}: the link can be tapped (${link.height}px)`);
+        if (metrics.mobile) assert.ok(link.height >= 44, `${where}: the link is a full tap (${link.height}px)`);
+        // With no rail on the Health page, the link is last in main, marked as the page.
+        const place = await p.evaluate(`(()=>{const a=document.getElementById('health-link'),main=document.querySelector('main');
+          return {last:[...main.children].filter(e=>e.getClientRects().length>0).at(-1)===a,current:a.getAttribute('aria-current')}})()`);
+        assert.deepEqual([place.last, place.current], [true, 'page'], `${where}: Health is last in main, marked as the page`);
         // Open the agent's line: by touch on the phone, by click on the laptop.
         const selector = `details[data-key="agent:${agent}"] summary`;
         await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
@@ -207,6 +211,54 @@ export async function healthChecks({ check, page, until, control, view, facts, s
         assert.match(opened.text, /Why: the Codex app did not answer in time\./, `${where}: opened, it says why`);
         assert.ok(opened.scroll <= opened.viewport, `${where}: opened, still nothing sideways`);
         await shot(p, `health-${width}-${theme}`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    }
+  });
+
+  // The page's live socket can be closed, and new ones refused, as when the server cannot be reached.
+  const sockets = `(()=>{const Real=window.WebSocket;window.liveSockets=[];window.liveBlocked=false;
+    const Socket=function(url,protocols){if(window.liveBlocked)throw new Error('unreachable');const socket=new Real(url,protocols);window.liveSockets.push(socket);return socket;};
+    Socket.prototype=Real.prototype;Object.assign(Socket,{CONNECTING:0,OPEN:1,CLOSING:2,CLOSED:3});window.WebSocket=Socket;})()`;
+  // The link in a topic page's rail (on a phone, the open drawer): whether it is the outline's last part and below
+  // everything else shown in the rail, inside the rail, its height, and whether anything scrolls sideways.
+  const inRail = p => p.evaluate(`(()=>{const rail=document.getElementById('rail'),a=document.getElementById('health-link'),o=document.getElementById('outline'),shown=e=>e.getClientRects().length>0;
+    const r=a.getBoundingClientRect(),rb=rail.getBoundingClientRect(),others=[...rail.querySelectorAll('*')].filter(e=>shown(e)&&!e.contains(a)&&!a.contains(e));
+    return {foot:a.parentElement===o&&o.lastElementChild===a,lowest:others.every(e=>e.getBoundingClientRect().bottom<=r.top+1),inside:r.left>=rb.left-0.5&&r.right<=rb.right+0.5,
+      height:Math.round(r.height),scroll:document.documentElement.scrollWidth-innerWidth,railScroll:rail.scrollWidth-rail.clientWidth}})()`);
+
+  await check('health the link is last in a topic page\'s rail and fits at 320, 375 and 390 by touch and on a laptop, light and dark, lit and when it could not check', async () => {
+    await control({ method: 'health', action: 'fail', count: 3, reason: 'deadline' });
+    const phone = { width: 390, height: 844, deviceScaleFactor: 2, mobile: true };
+    for (const [width, metrics] of [['320', { ...phone, width: 320 }], ['375', { ...phone, width: 375 }], ['390', phone], ['laptop', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }]]) {
+      for (const theme of ['light', 'dark']) {
+        const where = `${width} ${theme}`;
+        const p = await page(`health-rail-${width}-${theme}`, null, true, { beforeNavigate: async q => {
+          await q.send('Page.addScriptToEvaluateOnNewDocument', { source: sockets });
+          await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+          await q.send('Emulation.setDeviceMetricsOverride', metrics);
+          if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        } });
+        await ready(p);
+        if (metrics.mobile) {
+          const b = await p.box('#rail-open'), x = b.x + b.width / 2, y = b.y + b.height / 2;
+          await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+          await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), `${where}: the drawer opens`);
+        }
+        for (const [state, words, act] of [['lit', 'Health · needs attention', null],
+          ['unread', "Health · couldn't check", () => p.evaluate('(()=>{window.liveBlocked=true;for(const socket of window.liveSockets)socket.close();return true})()')]]) {
+          if (act) await act();
+          const link = await until(async () => { const l = await readLink(p); return l.text === words && l; }, `${where}: the link says "${words}"`);
+          assert.equal(link.color, link.alert, `${where} ${state}: in the theme's alert colour`);
+          const seen = await inRail(p);
+          assert.deepEqual([seen.foot, seen.lowest, seen.inside], [true, true, true], `${where} ${state}: the outline's last part, below everything else in the rail, inside it: ${JSON.stringify(seen)}`);
+          if (metrics.mobile) assert.ok(seen.height >= 44, `${where} ${state}: a full tap (${seen.height}px)`);
+          assert.ok(seen.scroll <= 0 && seen.railScroll <= 0, `${where} ${state}: nothing scrolls sideways: ${JSON.stringify(seen)}`);
+          await p.evaluate("document.getElementById('health-link').scrollIntoView({block:'end'})");
+          await shot(p, `health-rail-${width}-${theme}-${state}`);
+        }
         assert.deepEqual(p.errors, []);
         await p.close();
       }
@@ -299,10 +351,6 @@ export async function healthChecks({ check, page, until, control, view, facts, s
   });
 
   await check('health while the live feed is down the link says it could not check, as the page says at its top, and once it is back says what is red at once, never its answer from before', async () => {
-    // The page's live socket can be closed, and new ones refused, as when the server cannot be reached.
-    const sockets = `(()=>{const Real=window.WebSocket;window.liveSockets=[];window.liveBlocked=false;
-      const Socket=function(url,protocols){if(window.liveBlocked)throw new Error('unreachable');const socket=new Real(url,protocols);window.liveSockets.push(socket);return socket;};
-      Socket.prototype=Real.prototype;Object.assign(Socket,{CONNECTING:0,OPEN:1,CLOSING:2,CLOSED:3});window.WebSocket=Socket;})()`;
     const p = await healthPage('health-feed-down', { beforeNavigate: q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: sockets }) });
     assert.deepEqual((await view('health_light', {})).red, []);
     await until(async () => (await readLink(p)).text === 'Health', 'the link is quiet while the feed is up');
