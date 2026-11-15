@@ -85,9 +85,10 @@ card face sets for light and dark, and held to the time (`.together`), so a
 line that wraps keeps them beside it; a message from before times were kept
 shows them after its name (`carriesOf` and `paintAuthor`, `web/marks.mjs`).
 The card's star (item 376) shows only on a lit card but always has its place
-after them; on a marked line it keeps to the time and marks (`aim.css`), so a
-line the marks fill wraps with them rather than leaving the star alone on a
-line that shows nothing, and the line still wraps within its own parts.
+after them. On a marked line that place is kept at the end of what comes
+before the star (the time and its marks, or Edited), and the star sits in it
+taking no width of its own (`aim.css`), so a line the marks fill wraps with
+its star rather than leaving the star alone on a line that shows nothing.
 A message that heads a reply stack shows them on the stack's head row too,
 beside who started it, since that row stands for the message while its card
 is folded into it (docs/reply-stacks.md, "The head").
