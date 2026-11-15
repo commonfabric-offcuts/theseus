@@ -68,16 +68,10 @@ export class NotebookSheet {
     this.dialog.append(this.root);
     // The sheet is put away as it closes, not when the browser's close event comes: that comes with the browser's
     // next frame, later still on a slow machine, after a key may have moved the focus on from the opener or opened
-    // the next page. The event still puts away a sheet the browser closed itself. A close of the sheet's own is its
-    // alone: heard first, it stops there, so the New message sheet's handler does not move the focus to New message
-    // and back, taking a Tab or a Space pressed since from where the person had moved it.
-    this.dialog.addEventListener('close', event => {
-      const own = this.closing || (this.showing && !this.dialog.open);
-      this.closing = false;
-      if (!own) return;
-      event.stopImmediatePropagation();
-      if (!this.dialog.open) this.closed();
-    }, true);
+    // the next page. The event still puts away a sheet the browser closed itself, and moves no focus. The New message
+    // composer, which shares the sheet, folds on it and moves the focus only on a close of its own (inline-composer.mjs),
+    // so a Tab or a Space pressed since keeps the focus where the person moved it.
+    this.dialog.addEventListener('close', () => { if (!this.dialog.open && this.showing) this.closed(); });
     // Only a press that starts and ends on the backdrop closes it, as every pop-up (on every page, the topic's
     // New message handler or not).
     let outside = false;
@@ -280,7 +274,7 @@ export class NotebookSheet {
   }
   close() {
     if (!this.showing) return;
-    this.dialog.close(); this.closing = true;
+    this.dialog.close();
     this.closed();
   }
   closed() {

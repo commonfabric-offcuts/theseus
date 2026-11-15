@@ -7393,6 +7393,36 @@
   },
   {
    "item": 396,
+   "act": "Closing a Notebook page folds the New message composer back to its line, its writing kept",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "      this.bar.fold();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "New message composer back to its line"
+   }
+  },
+  {
+   "item": 396,
+   "act": "Closing a Notebook page leaves the focus on what opened the page, not on New message",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "if (popped) document.querySelector('#new-message')",
+     "document.querySelector('#new-message')"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "New message composer back to its line"
+   }
+  },
+  {
+   "item": 396,
    "act": "A key the page does not use moves nothing behind the sheet",
    "break": [
     [

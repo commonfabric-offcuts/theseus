@@ -30,7 +30,16 @@ export class InlineComposer {
     this.sheet = document.querySelector('#new-message-sheet');
     document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
     document.querySelector('#new-message-close')?.addEventListener('click', () => this.sheet?.close());
-    this.sheet?.addEventListener('close', () => { this.bar.fold(); document.querySelector('#new-message')?.focus({ preventScroll: true }); });
+    // Every close of the sheet folds the composer back to its line. The focus
+    // goes to New message only when the sheet closing is the one New message
+    // popped up: a Notebook page in the sheet (notebook-sheet.mjs) gave the
+    // focus back to what opened it as it closed, and this event, a frame
+    // later, leaves it there, or wherever a key pressed since has moved it.
+    this.sheet?.addEventListener('close', () => {
+      const popped = this.popped; this.popped = false;
+      this.bar.fold();
+      if (popped) document.querySelector('#new-message')?.focus({ preventScroll: true });
+    });
     // Only a press that starts and ends on the sheet's backdrop puts it back.
     let outside = false;
     this.sheet?.addEventListener('pointerdown', event => { outside = event.target === this.sheet; });
@@ -98,7 +107,7 @@ export class InlineComposer {
   caret() { return this.input.caret(); }
   pop() {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
-    this.sheet.showModal();
+    this.sheet.showModal(); this.popped = true;
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
   }
