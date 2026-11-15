@@ -212,7 +212,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   ↑ from the filters goes on up to the header's buttons, and ↑ there, the
   top row, moves nothing; ↓ goes back down a row, and from the filters (or
   the header's buttons, with no filter shown) selects the first visible card
-  or stack in the feed (with a filter on, the first it shows). Coming to a
+  or stack in the feed (with a filter on, the first it shows), or with no
+  message yet goes on down the column to the reply. Coming to a
   row finds the button the keys were last on in it, else its first. ← and →
   move along a row; ← past its first goes to the outline and → past its
   last to the right rail, as from the messages, so → from New message goes
