@@ -1199,6 +1199,14 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     const there = await seed(name + '-away', [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'Another topic, open first.' }]]);
     return { topic: name, away: name + '-away', ids, there };
   };
+  // Each run of app.mjs the page asks the server for from here on (a move in place imports app.mjs?place=N), by its
+  // address: what the browser sent, so a run the server then refuses is listed too.
+  const runsAsked = p => {
+    const run = url => /\/app\.mjs\?place=/.test(url);
+    if (engine === 'webkit') { const asked = []; p.pw.on('request', request => { if (run(request.url())) asked.push(new URL(request.url()).pathname); }); return () => asked; }
+    const from = p.network.length;
+    return () => p.network.slice(from).filter(e => e.method === 'Network.requestWillBeSent' && run(e.params.request.url)).map(e => new URL(e.params.request.url).pathname);
+  };
   const PHONES = [320, 375, 390];
   const sized = async (p, device, width) => { if (device === 'phone' && width !== 390) await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true }); };
 
@@ -1237,9 +1245,11 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await sized(p, device, width);
         const first = await pageBuild(p);
         await p.evaluate('(window.sameDocument = true)');
+        const inPlace = runsAsked(p);
         await moveTo(p, device, topic);
         await arrived(p, topic, ids.mine);
         assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: on one build the move is made in place, with no load`);
+        assert.deepEqual(inPlace(), [`/b/${first}/app.mjs`], `${width}: by one run of app.mjs, under the page's own build`);
         assert.equal(await moveNotice(p), '', `${width}: and nothing is said`);
         // Writing in the composer, saved, before the deploy.
         const words = `Written before the deploy (${width}).`;
@@ -1249,9 +1259,11 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await p.evaluate('document.activeElement?.blur()');
         // Each width's page opened on the build the server served; the deploy is to the other one.
         onNext = !onNext; await restartOn(onNext ? next : null, p);
+        const across = runsAsked(p);
         await moveTo(p, device, away);
         await arrived(p, away, there.note);
         const served = await servedBuild();
+        assert.deepEqual(across(), [], `${width}: the move read the build and loaded, asking the server for no run of the page's old build`);
         assert.equal(await p.evaluate('window.sameDocument === true'), false, `${width}: across builds the move loads the place afresh, never running another build's code in this document`);
         assert.ok(served && first && served !== first, `${width}: the server serves another build than the page first had`);
         assert.equal(await pageBuild(p), served, `${width}: the page loaded runs the server's build`);

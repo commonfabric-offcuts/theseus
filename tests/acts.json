@@ -13850,7 +13850,7 @@
   },
   {
    "item": 523,
-   "act": "A move that finds the server serving another build loads the place afresh on it, never in place, and on one build moves in place saying nothing",
+   "act": "A move that finds the server serving another build loads the place afresh on it, asking for no run of the old build, and on one build moves in place by one run of its own build, saying nothing",
    "break": [
     [
      "web/in-place-navigation.mjs",
