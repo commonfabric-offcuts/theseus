@@ -98,11 +98,14 @@ the pointer's way, the keys' and the phone's.
   kept. At rest that composer sits among the messages, just above More: under
   the last dossier shown above More, and above the More line (or the end of the
   messages, where nothing is put aside). It is never moved while it is up over
-  the page, and goes to its place as it is put back. (docs/reader.md,
+  the page, a holder of its height keeping its place so the feed behind it does
+  not move, and goes to its place as it is put back. (docs/reader.md,
   `home` in `web/reply-stacks.mjs`, item 465)
 - **The Team.** The topic's people are its Team, on the title row's right,
   under the title (under the subtitle on a phone): a pill each and "+ Add" for
-  whoever may change them, as ever. They are among the header's buttons, so ←
+  whoever may change them, as ever. The label sits beside the first pill; the
+  people "+ Add" opens come in under the pills, taking no width of their own, so
+  the label and the subtitle stay where they were. They are among the header's buttons, so ←
   and → move along them with Topic settings and New message (below), and Tab
   reaches them in that order. (item 465)
 - **A Notebook page** opens in that sheet, over the feed, from wherever it is

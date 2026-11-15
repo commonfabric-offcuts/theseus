@@ -1146,7 +1146,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // Where each dossier, message and More of the feed is in the window, the page's scroll, and the list's height.
       const where = () => p.evaluate(`(()=>{const list=document.querySelector('#messages');
         const rows=[...list.children].filter(e=>e.getClientRects().length&&(e.matches('.reply-stack,.stack-more')||e.dataset.id));
-        return {scroll:scrollY,list:list.getBoundingClientRect().height,tops:Object.fromEntries(rows.map(e=>[e.dataset.stack??e.dataset.id??'More',e.getBoundingClientRect().top]))}})()`);
+        const sheet=document.querySelector('#new-message-sheet');
+        return {scroll:scrollY,list:list.getBoundingClientRect().height,tops:Object.fromEntries(rows.map(e=>[e.dataset.stack??e.dataset.id??'More',e.getBoundingClientRect().top])),
+          composer:{height:sheet.getBoundingClientRect().height,words:document.querySelector('#inline-writing-body').value,compose:document.querySelector('#inline-composer').dataset.compose??null}}})()`);
       const moved = (from, to) => [['scroll', from.scroll, to.scroll], ['list', from.list, to.list],
         ...Object.keys({ ...from.tops, ...to.tops }).map(key => [key, from.tops[key], to.tops[key]])].filter(([, x, y]) => !(Math.abs(x - y) <= 1));
       const ways = device === 'phone' ? [['✎', 'top']] : [['✎', 'top'], ['⌘Return', 'scrolled']];

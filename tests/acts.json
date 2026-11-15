@@ -7426,8 +7426,8 @@
    "act": "Opening the sheet over a feed read to its end moves nothing behind",
    "break": [
     [
-     "web/notebook-sheet.mjs",
-     "    this.dialog.before(this.holder);\n",
+     "web/sheet-holder.mjs",
+     "  dialog.before(holder);\n",
      ""
     ]
    ],
@@ -14031,6 +14031,81 @@
    "check": {
     "native": "header",
     "case": "header → and ← move from New message along the Team"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The New message composer popped up keeps its place among the dossiers, so nothing behind the backdrop moves, by ✎ and by ⌘Return",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    holdPlace(this.sheet);\n    this.sheet.showModal(); this.popped = true;",
+     "    this.sheet.showModal(); this.popped = true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the New message composer popped up"
+   }
+  },
+  {
+   "item": 465,
+   "act": "In Safari's engine too, the popped New message composer leaves every dossier behind it where it was",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    holdPlace(this.sheet);\n    this.sheet.showModal(); this.popped = true;",
+     "    this.sheet.showModal(); this.popped = true;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks the New message composer popped up"
+   }
+  },
+  {
+   "item": 465,
+   "act": "What keeps the sheet's place is drawn only while the sheet is up, so put back each dossier is where it was",
+   "break": [
+    [
+     "web/aim.css",
+     ".sheet-holder{display:none}.sheet-holder:has(+dialog[open]){display:block}",
+     ".sheet-holder{display:block}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the New message composer popped up"
+   }
+  },
+  {
+   "item": 465,
+   "act": "With + Add open, the Team's label stays beside its first pill, at the row's top",
+   "break": [
+    [
+     "web/aim.css",
+     "display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.6rem",
+     "display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:.6rem"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the Team with"
+   }
+  },
+  {
+   "item": 465,
+   "act": "With + Add open, the people to add take no width of their own, so the subtitle keeps its lines",
+   "break": [
+    [
+     "web/aim.css",
+     ".topic-people .participants>:is(.people-add,.notice){contain:inline-size}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the Team with"
    }
   }
  ]
