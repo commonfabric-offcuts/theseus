@@ -7,9 +7,9 @@
    the Conversation row, the Pipeline row and the topics. The page still reads them (a message's
    Add to pipeline follows the Pipeline row); they are not shown. */
 [data-rails] :is(#outcomes-home,#outcome-navigation,#conversation-navigation,#pipeline-navigation){display:none!important}
-/* The page's own topic list and the outcome's Notebook move into the outline, under the outcome
-   being read (outline-rail.mjs); until they do they wait out of sight. */
-[data-rails] #rail>:is(#topic-navigation,#outcome-references){display:none}
+/* The page's own topic list moves into the outline, under the outcome being read
+   (outline-rail.mjs); until it does it waits out of sight. */
+[data-rails] #rail>#topic-navigation{display:none}
 /* The rail keeps its scroll from page to page, so the page's own notice (a start that failed, with
    Reload this page) stays pinned at the top of it rather than scrolled out of sight. */
 @media(min-width:761px){[data-rails] #rail>#app-status:not([hidden]){position:sticky;top:0;z-index:3}}
@@ -76,14 +76,10 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .ol-adopted #topics a.nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
 .ol-adopted #outcome-empty{padding:.3rem .5rem;font-size:.85rem}
 .ol-own[hidden]{display:none}
-/* The outcome's Notebook, after its topics. */
-.ol-notes{margin:.5rem 0 0}
-.ol-notes>.rail-heading{margin:.3rem 0 .2rem}
-.ol-notes #outcome-references-list .nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
 /* "N new" and "N waiting on you" show only what they count: outcomes that hold some, and in them only those topics. */
 .outline[data-only=new] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.unread-count)),
 .outline[data-only=waiting] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.topic-state.mine)),
-.outline:is([data-only=new],[data-only=waiting]) .ol-topics :is(.topic-group,.ol-new-topic,.one-line,.rail-heading,#outcome-empty,.ol-notes){display:none!important}
+.outline:is([data-only=new],[data-only=waiting]) .ol-topics :is(.topic-group,.ol-new-topic,.one-line,.rail-heading,#outcome-empty){display:none!important}
 
 /* ---- The outcome's things ---- */
 .things{padding:1.3rem 1rem;background:var(--paper)}
@@ -101,9 +97,14 @@ a.things-name[href]{color:var(--accent)}
 .things-sec[hidden]{display:none}
 .things-sec>summary{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.75rem;cursor:pointer;font-weight:650;font-size:.9rem}
 .things-sec>summary .sum{color:var(--muted);font-weight:500;font-size:.82rem}
-/* A topic's Notebook pencil sits just after the section's name; the count keeps the end of the row (notebook-create.mjs). */
+/* The Notebook's pencil, the topic's or the outcome's, sits just after the section's name; the count keeps the end of the row (notebook-create.mjs). */
 .things-sec>summary .notebook-create{order:1;margin:0 auto 0 -.35rem}.things-sec>summary .sum{order:2}.things-sec>summary:has(.notebook-create){-webkit-tap-highlight-color:transparent}
 .things-body{padding:0 0 .6rem}
+/* More pages: a quiet line under the Notebook's rows, a full touch target. */
+.things-more{display:block;min-height:2.75rem;margin:.1rem 0 0;padding:.2rem .5rem;border-color:transparent;background:transparent;color:var(--accent);font-size:.85rem}
+@media(hover:hover){.things-more:hover{background:var(--soft)}}
+/* On a phone a Notebook page's row is a full touch target, as a topic's row is. */
+@media(max-width:760px){.things-sec[data-key=notebook] .things-list a.row{min-height:2.75rem;padding-block:.7rem}}
 .things-list{list-style:none;margin:0;padding:0}
 .things-list li{margin:.1rem 0}
 .things-list a.row,.things-list span.row{display:block;padding:.4rem .5rem;border-radius:.45rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.88rem}

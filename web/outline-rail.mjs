@@ -182,7 +182,7 @@ export class OutlineRail {
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own
     // has something to show; nothing in it acts meanwhile.
-    for (const outcome of this.outcomes.values()) for (const part of [outcome.adopted, outcome.notes]) if (part) part.inert = true;
+    for (const outcome of this.outcomes.values()) if (outcome.adopted) outcome.adopted.inert = true;
     if (!feed) return;
     // Under the page's header on a phone: how much is new in the other
     // outcomes, which opens the outline (rail-drawer.mjs opens on data-opens-rail).
@@ -317,7 +317,7 @@ export class OutlineRail {
     const own = part('div', { className: 'ol-own' });
     own.append(message, host, more, retry, done.details, archived.details, newTopic);
     topics.append(own);
-    outcome = { id, item, li, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, notes: null,
+    outcome = { id, item, li, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null,
       parts: { host, more, retry, message, done, archived } };
     // The name opens its Conversation. A click or a tap also folds its topics
     // when they are open and opens them when folded (item 320), and that
@@ -379,8 +379,9 @@ export class OutlineRail {
   }
   // The rows the keys move through, in order: each outcome's name, and under
   // an open one everything that can be pressed there (its topics, Done (N)
-  // and Archived (N) with the topics of one open, More and Retry, + New topic,
-  // its Notebook's pages). A title line being typed in is writing, not a row.
+  // and Archived (N) with the topics of one open, More and Retry, + New topic).
+  // The outcome's Notebook is the right rail's, never a row here. A title line
+  // being typed in is writing, not a row.
   treeRows() {
     const rows = [];
     for (const li of this.list.children) {
@@ -515,21 +516,18 @@ export class OutlineRail {
       return;
     }
     this.watch?.disconnect(); this.watch = null; this.watched = null;
-    this.adopt(fresh, outcome, rail);
+    this.adopt(fresh, outcome);
   }
   // The page's topic list goes under its outcome, and any list held for another goes back.
-  adopt(fresh, outcome, rail) {
+  adopt(fresh, outcome) {
     for (const other of this.outcomes.values()) if (other.adopted && other !== outcome) this.release(other);
-    outcome.adopted?.remove(); outcome.notes?.remove(); outcome.notes = null;
+    outcome.adopted?.remove();
     fresh.dataset.pagePart = ''; fresh.classList.add('ol-adopted');
     // New topic ends the outcome's list, in the order focus moves as well as on screen.
     const heading = fresh.querySelector(':scope > .rail-heading'), line = heading?.nextElementSibling?.classList.contains('one-line') ? heading.nextElementSibling : null;
     if (heading) fresh.append(heading, ...(line ? [line] : []));
     outcome.own.hidden = true;
     outcome.topics.prepend(fresh); outcome.adopted = fresh;
-    // The outcome's Notebook follows its topics, with its light and its pages opening in place.
-    const notes = rail.querySelector(':scope > #outcome-references');
-    if (notes) { notes.dataset.pagePart = ''; notes.classList.add('ol-notes'); fresh.after(notes); outcome.notes = notes; }
   }
   // The outcomes in the outline: those listed, and the outcome being read
   // even before the list is read, or when it is not one the list holds (a
@@ -544,7 +542,6 @@ export class OutlineRail {
   // An outcome no longer read gets the outline's own lists back.
   release(outcome) {
     outcome.adopted.remove(); outcome.adopted = null;
-    outcome.notes?.remove(); outcome.notes = null;
     outcome.own.hidden = false;
     if (this.isOpen(outcome.id)) this.ownRail(outcome).load();
   }
