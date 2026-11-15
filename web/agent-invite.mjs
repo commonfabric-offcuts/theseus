@@ -59,7 +59,7 @@ export class Invitation {
 
   async attempt(request) {
     try { return await this.api.command(copy(request)); }
-    catch (error) { throw Object.assign(Error(`Not confirmed: ${error.message}.${AGAIN}`, { cause: error }), { again: true }); }
+    catch (error) { throw Object.assign(Error(`Not confirmed: ${String(error.message).replace(/\.$/, '')}.${AGAIN}`, { cause: error }), { again: true }); }
   }
 
   settle(request, receipt) {

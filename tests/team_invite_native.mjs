@@ -38,7 +38,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
   let serial = 0;
   const outcome = async (title, more = {}) => {
     const id = `w-invite-${++serial}`;
-    await control({ method: 'team_outcome', operation_id: `invite-outcome-${serial}`, id, title, ...more });
+    await control({ method: 'team_outcome', operation_id: `invite-outcome-${serial}`, workspace_id: id, title, ...more });
     return id;
   };
   const open = async (name, workspace) => {
@@ -71,7 +71,8 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
   const said = p => text(p, '#team-invite .invite-state');
   const files = () => control({ method: 'sign_in_files' });
   const pressed = p => p.evaluate(`[...document.querySelectorAll('#team-invite .invite-harness .choice-chip')].map(c=>c.textContent+':'+c.getAttribute('aria-pressed'))`);
-  const teamIds = p => p.evaluate(`[...document.querySelectorAll('#team-people .pill-name,#team-people .chip > span:first-child')].map(e=>e.textContent)`);
+  // The team as the panel draws it: one chip per member, named by its ID.
+  const teamIds = p => p.evaluate(`[...document.querySelectorAll('#team-people .chips > :not(.add-chip)')].map(c=>c.firstChild.textContent)`);
   const phone = async (p, width, height) => {
     await p.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: true });
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
@@ -134,7 +135,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     // Core keeps the agent on the outcome's team, and the panel shows it.
     const members = (await view('workspace_members', { workspace_id: workspace })).items.map(item => [item.actor_id, item.kind, item.name]);
     assert.deepEqual(members.find(item => item[0] === 'release-scribe'), ['release-scribe', 'agent', 'Release scribe']);
-    await until(async () => (await teamIds(p)).includes('Release scribe'), 'the team shows the agent');
+    await until(async () => (await teamIds(p)).includes('release-scribe'), 'the team shows the agent');
     // The sign-in file: one, private to this user, binding the new agent.
     const written = await files();
     assert.equal(written.length, before + 1);
@@ -277,7 +278,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
       await until(async () => (await said(p))?.startsWith('Quiet helper is on the team, but its sign-in file could not be written in '), 'the file not written is said');
       assert.ok((await said(p)).endsWith('Try again: the same invitation writes it, and nothing else is repeated. Try again'), await said(p));
       assert.equal(await focused(p), 'text-action invite-retry', 'the focus is on Try again');
-      await until(async () => (await teamIds(p)).includes('Quiet helper'), 'the agent is on the team already');
+      await until(async () => (await teamIds(p)).includes('quiet-helper'), 'the agent is on the team already');
       assert.equal(await visible(p, '#invite-prompt-text'), false, 'no prompt without its sign-in file');
       assert.equal((await files()).some(file => file.actor === 'quiet-helper'), false);
       await fits(p, 'not written, Try again');

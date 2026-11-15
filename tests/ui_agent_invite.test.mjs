@@ -99,3 +99,9 @@ test('a busy or unconfirmed answer keeps the request', async () => {
   await invitation.send(workspace, 'Release scribe', 'codex');
   assert.deepEqual(api.sent[1], api.sent[0]);
 });
+
+test('a lost answer whose own words end a sentence is said with one full stop', async () => {
+  const api = core(() => { throw Error('Connection interrupted. Confirmation is unknown.'); });
+  await assert.rejects(new Invitation({ api, bootstrap }).send(workspace, 'Release scribe', 'codex'),
+    error => error.message === 'Not confirmed: Connection interrupted. Confirmation is unknown. Press Return to try once more.');
+});

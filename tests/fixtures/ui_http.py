@@ -916,14 +916,14 @@ def main():
                             answer = command("workspace.member_set", request["operation_id"], {"actor_id": request["member"], "present": request["present"]},
                                              {"workspace_id": workspace}, {"workspace_revision": version}, sender=sender)
                     elif freshness and request["method"] == "team_outcome":
-                        # An outcome of the person's own, for the Team panel's cases: {"id", "title"}, with
-                        # {"team": [...]} on it; {"owner": id} then hands it to that member, so the person is
-                        # one of its team who does not organise it.
-                        answer = command("workspace.create", request["operation_id"], {"id": request["id"], "title": request["title"],
+                        # An outcome of the person's own, for the Team panel's cases: {"workspace_id", "title"}
+                        # ("id" is this control's own), with {"team": [...]} on it; {"owner": id} then hands it to
+                        # that member, so the person is one of its team who does not organise it.
+                        answer = command("workspace.create", request["operation_id"], {"id": request["workspace_id"], "title": request["title"],
                                                                                      "team": request.get("team", [])})
                         if request.get("owner"):
                             command("workspace.owner_set", request["operation_id"] + "-owner", {"owner_id": request["owner"]},
-                                    {"workspace_id": request["id"]}, {"workspace_revision": 1})
+                                    {"workspace_id": request["workspace_id"]}, {"workspace_revision": 1})
                     elif freshness and request["method"] == "sign_in_files":
                         # The sign-in files written, each with its permissions and who it binds, never its contents.
                         from aim_next.profile import read_binding
