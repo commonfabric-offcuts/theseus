@@ -1346,7 +1346,21 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     window.fetch = function (input, init) { let body = null; try { body = JSON.parse(init?.body ?? 'null'); } catch {}
       if (window.holdDrafts && body?.kind === 'draft.save') { window.draftsHeld += 1; return new Promise(() => {}); } return send.call(this, input, init); }; return true; })()`);
 
-  await check('reading edit build Reload pressed once the words are kept on this device, before Theseus has them, loads the new build with the words', async () => {
+  // Words kept on this device only, which Theseus never had, come back after a load as the page offers them
+  // (tests/reader_persistence_native.mjs, "explicit device recovery"): Review versions shows them as writing kept on
+  // this device, and Recover this version puts them back in the box.
+  const recovered = async (p, words) => {
+    await until(() => p.evaluate(`!document.querySelector('#inline-review-versions').hidden`).catch(() => false), 'the page offers the versions kept on this device');
+    await p.point('#inline-review-versions');
+    const chosen = await until(() => p.evaluate(`(() => { const section = [...document.querySelectorAll('#review-content section')].find(e => e.querySelector('pre')?.textContent === ${JSON.stringify(words)}
+      && [...e.querySelectorAll('button')].some(b => b.textContent === 'Recover this version')); if (!section) return null; section.id = 'chosen-device-recovery';
+      return '#chosen-device-recovery button'; })()`), 'the words are among them, kept on this device');
+    await p.evaluate(`[...document.querySelectorAll(${JSON.stringify(chosen)})].find(b => b.textContent === 'Recover this version').id = 'chosen-device-recover'`);
+    await p.point('#chosen-device-recover');
+    await until(async () => await valueOf(p, '#inline-writing-body') === words, 'Recover this version puts the words back');
+  };
+
+  await check('reading edit build Reload pressed once the words are kept on this device, before Theseus has them, loads the new build, and the words come back as on any load', async () => {
     const next = anotherBuild();
     try {
       const { topic, away, there } = await twoTopics('edit-build-device');
@@ -1373,11 +1387,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       await replaced(p, 'Reload loads the page');
       await arrived(p, away, there.note);
       assert.equal(await pageBuild(p), await servedBuild(), 'on the server\'s build');
-      await until(async () => await valueOf(p, '#inline-writing-body') === words, 'with the words, from this device').catch(async error => {
-        const state = await p.evaluate(`({ value: document.querySelector('#inline-writing-body').value, saved: document.querySelector('#inline-save-state').textContent,
-          notice: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent) })`).catch(e => ({ unread: e.message }));
-        throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
-      });
+      await recovered(p, words);
       assert.deepEqual(p.errors, []);
       await p.close();
     } finally {
@@ -1386,7 +1396,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
-  await check('reading edit build on one build, a reload with the words kept on this device only, before Theseus has them, brings them back', async () => {
+  await check('reading edit build on one build, a reload with the words kept on this device only, before Theseus has them, brings them back as the page offers them', async () => {
     const { away, there } = await twoTopics('edit-build-device-same');
     const p = await open('edit-build-device-same', 'laptop', away, there.note, EDIT_FAULTS);
     const words = 'Written on one build, kept on this device only.';
@@ -1397,11 +1407,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     await p.evaluate('(window.sameDocument = true, location.reload(), true)');
     await replaced(p, 'the page reloads');
     await arrived(p, away, there.note);
-    await until(async () => await valueOf(p, '#inline-writing-body') === words, 'with the words, from this device').catch(async error => {
-      const state = await p.evaluate(`({ value: document.querySelector('#inline-writing-body').value, saved: document.querySelector('#inline-save-state').textContent,
-        notice: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent) })`).catch(e => ({ unread: e.message }));
-      throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
-    });
+    await recovered(p, words);
     assert.deepEqual(p.errors, []);
     await p.close();
   });
