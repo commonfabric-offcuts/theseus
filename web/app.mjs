@@ -1412,14 +1412,15 @@ async function messageEdited(key, version, read, current) {
   return done;
 }
 // Each card whose marks of the person's own note and saved reply changed
-// (TopicViews.takeYours): its author line, and then what the page puts back on
-// that line as it is drawn afresh (the reply arrow, the bar).
+// (TopicViews.takeYours): its author line, then what the page puts back on
+// that line as it is drawn afresh (the reply arrow, the bar), and the stacks,
+// whose head rows show their first message's marks.
 function repaintYours(ids) {
   for (const id of ids) {
     const item = views.messages.get(id), entry = messageEntries.get(id);
     if (item && entry) paintCardAuthor(cardIn(entry).querySelector(':scope > .message-author'), item);
   }
-  paintCardReading(); menu?.paint();
+  paintCardReading(); stackMessages(); menu?.paint();
 }
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
 // message's words, its excerpt cue, its folded line and its author line's

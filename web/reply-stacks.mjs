@@ -21,6 +21,7 @@ import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, position
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
+import { carriesNode, carriesOf } from './marks.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
 const states = new WeakMap();
@@ -315,8 +316,9 @@ function line(section, key, make) {
 
 const replies = n => (n === 1 ? 'reply' : 'replies');
 // The head's row, set into its card: its short name (renamed in place), who
-// started the stack, how many replied and who, what is new, and whether its
-// first message is folded.
+// started the stack and the marks of what that first message carries (an
+// image, the reader's own note and saved reply: marks.mjs, item 127), how many
+// replied and who, what is new, and whether its first message is folded.
 function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
@@ -335,7 +337,8 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   const meta = element(doc, 'span', 'stack-meta', `${head.count} ${replies(head.count)}`);
   if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
   if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));
-  row.replaceChildren(name, pen, element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)),
+  const carried = carriesNode(doc, carriesOf(stack.head));
+  row.replaceChildren(name, pen, element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)), ...(carried ? [carried] : []),
     ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
     ...(head.folded ? [element(doc, 'span', 'stack-folded', 'Folded')] : []),

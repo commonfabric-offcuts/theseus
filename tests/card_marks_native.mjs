@@ -191,6 +191,12 @@ async function run() {
     await p.keyboard.press('Meta+Enter');
     await until(p, selector => [...document.querySelectorAll(selector + ' .carry')].map(m => m.className).join() === 'carry carry-note', 'the sent reply takes its mark away, the note stays', card(m.plain));
     await until(p, () => [...document.querySelectorAll('.message-card .message-preview')].some(words => words.textContent.includes('Sending this one.')), 'the reply is a card of its own');
+    // Now the message heads a stack, whose head row stands for it while its card is folded in: the row shows its marks.
+    await until(p, selector => {
+      const marks = [...document.querySelectorAll(selector + ' > .stack-head > .card-carries > .carry')];
+      return marks.map(mark => mark.className).join() === 'carry carry-note' && marks.every(mark => mark.getBoundingClientRect().width >= 12);
+    }, 'the stack\'s head row shows the note\'s mark, beside who started it', card(m.plain));
+    assert.equal(await p.locator(card(m.plain) + ' > .stack-head .carry-note').getAttribute('aria-label'), WORDS.note);
     await p.keyboard.press('Escape');
     await until(p, () => !document.querySelector('#reader').open, 'the Reader closed');
     assert.deepEqual(await marksOf(m.plain), ['note']);

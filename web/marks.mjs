@@ -193,6 +193,19 @@ export const carryWords = { image: count => (count === 1 ? 'Has an image' : `Has
   note: 'Your private note, which only you can see', reply: 'Your reply, saved and not sent' };
 const carryMarks = carries => (carries ? [carries.images > 0 && ['image', carryWords.image(carries.images)],
   carries.note && ['note', carryWords.note], carries.reply && ['reply', carryWords.reply]].filter(Boolean) : []);
+// The marks as one group of glyphs, each named and titled in its words, or null when there are none. A stack's head
+// row, which stands for its first message while that message's card is folded into it, shows them too (reply-stacks.mjs).
+export function carriesNode(doc, carries, marks = carryMarks(carries)) {
+  if (!marks.length) return null;
+  const held = doc.createElement('span');
+  held.className = 'card-carries';
+  for (const [kind, words] of marks) {
+    const mark = doc.createElement('span');
+    mark.className = `carry carry-${kind}`; mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', words); mark.title = words;
+    held.append(mark);
+  }
+  return held;
+}
 
 // A card's author line: the name, an Unread pill when the message is marked,
 // joined to the name's last character (a whole grapheme) so a name that wraps
@@ -222,16 +235,7 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
     together.append(end, pill, spoken); author.append(together);
   }
   // The marks are joined to the time, so a line that wraps keeps them beside it.
-  let held = null;
-  if (marks.length) {
-    held = document.createElement('span');
-    held.className = 'card-carries';
-    for (const [kind, words] of marks) {
-      const mark = document.createElement('span');
-      mark.className = `carry carry-${kind}`; mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', words); mark.title = words;
-      held.append(mark);
-    }
-  }
+  const held = carriesNode(document, carries, marks);
   if (sent !== null) {
     const at = document.createElement('span'), time = timeNode(sent, document);
     at.className = 'message-time';
