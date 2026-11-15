@@ -267,6 +267,15 @@ move to another build is a load.
   for with a query outside a build: the run of a page opened before builds
   were stamped. A module asked for plainly outside a build is still the file
   as it stands, for a document that is not a page.
+- The page has one dynamic import, the run's `import('./app.mjs?place=N')`
+  (`in-place-navigation.mjs`); every other module is a static import, loaded
+  with the entry as the document opens. Under a build that import names the
+  document's own build, so another server refuses it and the move loads
+  instead (`shell.leave`). A page opened before builds were stamped imports
+  `/app.mjs?place=N`, which is refused too, so its next move loads the new
+  build. A page whose `index.html` came from one server and whose entry is
+  asked for after the next one started gets a refusal and does not start; a
+  reload opens it on the new build.
 - Before a move, the shell reads the served build. Meanwhile the phone's
   drawer closes and the page is not ready (`data-ready`), since a back has
   already changed the address. On the document's own build the move goes in
