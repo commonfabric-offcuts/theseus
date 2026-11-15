@@ -51,8 +51,8 @@ class TopicReadingCase(fixtures.ReaderCase):
                               expected={"draft_revision": revision}, actor=actor))
 
     def marks(self, message, actor="owner"):
-        item = self.page(actor)[message]
-        return item["your_note"], item["your_reply"]
+        yours = self.page(actor)[message]["yours"]
+        return yours["note"], yours["reply"]
 
     def test_your_note_is_the_readers_own_private_note_with_words_and_no_one_elses(self):
         message, other = self.post("Read me"), self.post("Another")
@@ -94,6 +94,7 @@ class TopicReadingCase(fixtures.ReaderCase):
         versions = [version for _, version in yours()]
         self.assertEqual([mid for mid, _ in yours()], [message] * 4)
         self.assertEqual(versions, sorted(set(versions)), "each change is newer than the one before")
+        self.assertEqual(self.page()[message]["yours"]["version"], versions[-1], "a page's item says the version its change names")
         self.note(message, "Theirs", actor="agent-a", note_id="theirs")
         self.assertEqual((len(yours()), len(yours("agent-a"))), (4, 1), "another's writing tells only their changes")
         self.save_draft("topic-draft", {"kind": "topic", "id": "t1"}, "t1", "To the topic")

@@ -12,12 +12,14 @@ indexes keyed by message, so a page never reads the topic's history:
   their own messages, whispers included, so it never names a message the
   reader cannot read.
 
-Two more say what the reader has written privately on each message (item 127),
+`yours` says what the reader has written privately on each message (item 127),
 from their own rows only, keyed by the message as a source:
 
-- `your_note`: the reader's private note on the message holds words.
-- `your_reply`: the reader's saved reply from the message holds words or an
-  image and is not on its way: a reply prepared to send leaves its draft empty.
+- `note`: the reader's private note on the message holds words.
+- `reply`: the reader's saved reply from the message holds words or an image
+  and is not on its way: a reply prepared to send leaves its draft empty.
+- `version`: grows with every save of either (writing_version), so a page
+  keeps the newer of two reads.
 """
 from __future__ import annotations
 
@@ -59,21 +61,20 @@ def message_key(message_id):
 
 
 def writing_fields(db, actor, items):
-    """Add `your_note` and `your_reply` to every item of one page."""
+    """Add `yours` to every item of one page."""
     keys = {message_key(item["id"]): item["id"] for item in items}
-    noted, saved = set(), set()
+    found = {mid: {"note": False, "reply": False, "version": 0} for mid in keys.values()}
     if keys:
         marks = ",".join("?" * len(keys))
-        for row in db.execute("SELECT source_key,payload FROM notes WHERE actor_id=? AND source_key IN (%s)" % marks, [actor] + list(keys)):
-            if json.loads(row["payload"]).get("body", "").strip():
-                noted.add(keys[row["source_key"]])
-        for row in db.execute("SELECT source_key,payload FROM drafts WHERE actor_id=? AND source_key IN (%s)" % marks, [actor] + list(keys)):
-            payload = json.loads(row["payload"])
-            if payload.get("body", "").strip() or payload.get("attachments"):
-                saved.add(keys[row["source_key"]])
+        for table, field in (("notes", "note"), ("drafts", "reply")):
+            for row in db.execute("SELECT source_key,revision,payload FROM %s WHERE actor_id=? AND source_key IN (%s)" % (table, marks), [actor] + list(keys)):
+                payload, yours = json.loads(row["payload"]), found[keys[row["source_key"]]]
+                yours["version"] += row["revision"]
+                # A note is its words; a reply is its words and its images.
+                if payload.get("body", "").strip() or field == "reply" and payload.get("attachments"):
+                    yours[field] = True
     for item in items:
-        item["your_note"] = item["id"] in noted
-        item["your_reply"] = item["id"] in saved
+        item["yours"] = found[item["id"]]
 
 
 def writing_version(db, actor, message_id):

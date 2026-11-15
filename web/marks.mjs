@@ -179,15 +179,33 @@ export function paintMarkButton(button, state) {
 
 export const marksWords = count => `${count} message${count === 1 ? '' : 's'} marked unread`;
 
+// What a card's message carries that the person may want to know at a glance
+// (item 127, docs/topic-reading.md): how many images it has, and whether the
+// person has a private note on it or a reply saved from it and not sent. Core
+// says the two for the reader alone (`yours`), so another's never shows.
+export function carriesOf(item) {
+  const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
+  return { images: attachments.filter(attachment => /^image\//.test(attachment?.content_type ?? '')).length,
+    note: item?.yours?.note === true, reply: item?.yours?.reply === true };
+}
+// Each mark's words: its accessible name and its tooltip.
+export const carryWords = { image: count => (count === 1 ? 'Has an image' : `Has ${count} images`),
+  note: 'Your private note, which only you can see', reply: 'Your reply, saved and not sent' };
+const carryMarks = carries => (carries ? [carries.images > 0 && ['image', carryWords.image(carries.images)],
+  carries.note && ['note', carryWords.note], carries.reply && ['reply', carryWords.reply]].filter(Boolean) : []);
+
 // A card's author line: the name, an Unread pill when the message is marked,
 // joined to the name's last character (a whole grapheme) so a name that wraps
 // keeps the pill on its last line, then the time. The name is held in
 // author-name spans, which an agent's card colors as one: split for a pill,
 // its first part is the start and its last character the end. sent is when
-// the message was sent, or null for one from before times were kept. edited:
-// its words were changed after it was sent (docs/message-edit.md), said last.
-export function paintAuthor(author, name, sent, marked, edited = false) {
-  const shows = JSON.stringify([name, sent, sent === null ? null : shownTime(sent), marked, edited]);
+// the message was sent, or null for one from before times were kept. carries
+// (carriesOf): beside the time, a small glyph for each thing the message
+// carries, a mark and not a control, named and titled in words. edited: its
+// words were changed after it was sent (docs/message-edit.md), said last.
+export function paintAuthor(author, name, sent, marked, edited = false, carries = null) {
+  const marks = carryMarks(carries);
+  const shows = JSON.stringify([name, sent, sent === null ? null : shownTime(sent), marked, edited, marks]);
   if (author.dataset.shows === shows) return;
   author.dataset.shows = shows;
   author.replaceChildren();
@@ -203,6 +221,23 @@ export function paintAuthor(author, name, sent, marked, edited = false) {
     end.className = 'author-name author-name-end'; end.append(last);
     together.append(end, pill, spoken); author.append(together);
   }
-  if (sent !== null) { const at = document.createElement('span'); at.className = 'message-time'; at.append(' · ', timeNode(sent, document)); author.append(at); }
+  // The marks are joined to the time, so a line that wraps keeps them beside it.
+  let held = null;
+  if (marks.length) {
+    held = document.createElement('span');
+    held.className = 'card-carries';
+    for (const [kind, words] of marks) {
+      const mark = document.createElement('span');
+      mark.className = `carry carry-${kind}`; mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', words); mark.title = words;
+      held.append(mark);
+    }
+  }
+  if (sent !== null) {
+    const at = document.createElement('span'), time = timeNode(sent, document);
+    at.className = 'message-time';
+    if (held) { const together = document.createElement('span'); together.className = 'together'; together.append(time, held); at.append(' · ', together); }
+    else at.append(' · ', time);
+    author.append(at);
+  } else if (held) author.append(held);
   if (edited) { const mark = document.createElement('span'); mark.className = 'message-edited'; mark.append(' · Edited'); author.append(mark); }
 }

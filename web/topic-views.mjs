@@ -3,6 +3,9 @@ import { oldestUnreadOf } from './unanswered.mjs';
 import { learnReactions, reactionsOf } from './reactions.mjs';
 import { laterActs, laterPosition } from './stack-order.mjs';
 import { revisionOf } from './message-edit-writing.mjs';
+// The version of the person's own writing on a message (0 before any, or from an older server), and the marks it shows.
+const yoursVersion = yours => (Number.isSafeInteger(yours?.version) ? yours.version : 0);
+const carried = yours => [yours?.note === true, yours?.reply === true];
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 // What places a dossier for the reader (docs/dossier-below-more.md): its first
@@ -73,6 +76,17 @@ export class TopicViews {
     // edits: each edited message as read since, loaded or not (takeEdits); quoted:
     // the latest revision read of each edited message only a loaded reply's line shows.
     this.revised = new Set(); this.edits = new Map(); this.quoted = new Map();
+    // yours: the messages whose card's marks of the person's own note and saved reply changed (item 127).
+    this.yours = new Set();
+  }
+  // The ids whose marks changed since the last call, once.
+  takeYours() { const ids = this.yours; this.yours = new Set(); return ids; }
+  // The later of two reads of the person's own writing on a message (yours, docs/topic-reading.md): each save raises
+  // its version, so a read that answers late never puts back a note or a reply since saved or sent.
+  laterYours(known, item) {
+    const later = yoursVersion(item.yours) >= yoursVersion(known?.yours) ? item.yours : known.yours;
+    if (known && JSON.stringify(carried(known.yours)) !== JSON.stringify(carried(later))) this.yours.add(item.id);
+    return later;
   }
   // The ids repainted for an edit since the last call, once.
   takeRevised() { const ids = this.revised; this.revised = new Set(); return ids; }
@@ -93,6 +107,7 @@ export class TopicViews {
   learnRevision(item, known = this.messages.get(item.id)) {
     if (!known || revisionOf(item) <= revisionOf(known)) return false;
     if (known.acts) item.acts = laterActs(known.acts, item.acts);
+    item.yours = this.laterYours(known, item);
     item.stack_position = laterPosition(known.stack_position, item.stack_position);
     this.messages.set(item.id, item); this.revised.add(item.id);
     this.requote(item);
@@ -170,10 +185,14 @@ export class TopicViews {
     for (const item of answer.items) {
       const known = this.messages.get(item.id);
       if (known && revisionOf(item) !== revisionOf(known)) {
-        if (!this.learnRevision(item, known) && (known.acts || item.acts)) known.acts = laterActs(known.acts, item.acts);
+        if (!this.learnRevision(item, known)) {
+          if (known.acts || item.acts) known.acts = laterActs(known.acts, item.acts);
+          known.yours = this.laterYours(known, item);
+        }
         this.runs.set(item.id, run); continue;
       }
       if (known?.acts) item.acts = laterActs(known.acts, item.acts);
+      item.yours = this.laterYours(known, item);
       item.stack_position = laterPosition(known?.stack_position, item.stack_position);
       this.messages.set(item.id, item); this.runs.set(item.id, run);
     }
@@ -185,6 +204,7 @@ export class TopicViews {
     if (!live) this.olderCursor = answer.next_cursor;
     this.paint('messages');
     if (this.revised.size) this.paint('edited');
+    if (this.yours.size) this.paint('yours');
     return true;
   }
   // Whether the line holds: a message at or above it (its own or a newer one)
@@ -455,6 +475,27 @@ export class TopicViews {
       if (!answer.items.length) return true;
       if (revisionOf(answer.items[0]) < version) throw behind();
       if (known ? this.learnRevision(answer.items[0]) : this.learnQuoted(answer.items[0])) this.paint('edited');
+      return true;
+    }
+    if (key.startsWith('yours:')) {
+      // The person's own note or saved reply on a message changed (an actor-scope change, item 127): a card this
+      // page shows reads it again, alone, in the shape of a page's item; one it does not show reads it as it loads.
+      const id = key.slice(6), known = this.messages.get(id);
+      if (!known) return true;
+      const refused = value => ['FORBIDDEN', 'INVALID_ARGUMENT'].includes((value?.details ?? value)?.error?.code);
+      let named;
+      try { named = await read('topic_messages', { topic_id: this.topicId, message_ids: [id] }); }
+      catch (error) { if (refused(error)) return current() ? true : false; throw error; }
+      if (!current()) return false;
+      if (refused(named)) return true;
+      const answer = checkedView(named, this.instanceId);
+      if (!Array.isArray(answer.items) || answer.items.length > 1 || answer.items.some(item => item?.id !== id || item.seq !== known.seq ||
+          !integer(item.yours?.version))) throw invalid('The message answer is for another message.');
+      if (!answer.items.length) return true;
+      if (answer.items[0].yours.version < version) throw behind();
+      const latest = this.messages.get(id);
+      latest.yours = this.laterYours(latest, answer.items[0]);
+      if (this.yours.size) this.paint('yours');
       return true;
     }
     if (key === 'acts') return this.readActs(version, read, current);

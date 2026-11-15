@@ -192,6 +192,9 @@ export class Freshness {
         // A message edited, by the person here or on another device (docs/message-edit.md): its key names the
         // message and the revision; a message this page has not loaded is read with its page.
         if (item.resource_kind === 'edit' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('edit:' + item.resource_id, item.version);
+        // The person's private note or saved reply on a message changed, here or on another device (item 127,
+        // docs/topic-reading.md): its key names the message, whose card says whether it has them.
+        if (item.resource_kind === 'yours' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('yours:' + item.resource_id, item.version);
         // The edit session of one of the person's messages moved: a page editing it learns another device took it.
         if (item.resource_kind === 'edit_session' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('edit_session:' + item.resource_id, item.version);
       }
