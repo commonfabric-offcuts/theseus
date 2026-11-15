@@ -3767,6 +3767,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one.', read: true }],
         ['two', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'Reply two.', read: true }],
         ['lone', { sender: other, addressees: [facts.actor], body: 'A message on its own.', read: true }]]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.two, operation_id: topic + '-star', args: { starred: true } });
       const p = await open(topic, device, topic, ids.root);
       await atWidth(p, device, width);
       await fullyOpen(p, device, ids);
@@ -3796,6 +3797,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(async () => (await readerOn(p))?.startsWith('Reply one'), `${at}: a press on its words opens the Reader`);
       await closeReader(p, device);
       assert.equal(await foldOf(topic, ids.one), false, `${at}: opening it folded nothing`);
+      // A starred reply stays open: a press on its header says so and folds nothing.
+      await centre(p, card(ids.two));
+      await twoTaps(p, device, ids.two, header(ids.two));
+      await until(async () => await said(p) === 'Starred messages stay open', `${at}: a press on a starred message's header says it stays open`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${at}: nothing is out after it`);
+      assert.deepEqual([await foldOf(topic, ids.two), (await folded(p, ids.two)).whole], [false, true], `${at}: the starred reply stays whole, in Core`);
+      await nothingElse('the starred header press');
       // The first message, as any message: its bar, a press on its header folds it under the title row, its row unfolds it.
       await centre(p, card(ids.root));
       if (device === 'laptop') {
