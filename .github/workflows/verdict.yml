@@ -801,7 +801,8 @@ jobs:
           # The train as the validator read it: its pull request, what it reverts (the named revert items, then each
           # reverting commit and the commit it reverts) and any other named items, then the items it shipped, which for
           # a train of reverts alone is none. git's reading, held to it in an earlier step on the pull request, the
-          # items and the merge commit, adds only what it could not read and the commits that name no item.
+          # items and the merge commit, supplies a git-only reading if validation returned no train. That reading
+          # identifies the commits; it neither supplies a validator result nor claims that their items shipped.
           vtrain = validation.get("train") if isinstance(validation, dict) else None
           gtrain = read("train.json")
           if isinstance(vtrain, dict):
@@ -821,9 +822,18 @@ jobs:
               lines.append("Train: " + ", ".join(parts))
               lines.append("Items shipped: %s; merge commit %s; read from %s" % (
                   ", ".join(str(i) for i in vtrain.get("items") or []) or "none", vtrain.get("merge_commit"), vtrain.get("items_source")))
+          elif push and isinstance(gtrain, dict):
+              parts = ["pull request #%s" % gtrain["pull_request"] if gtrain.get("pull_request") is not None else "no pull request named",
+                       "merge commit %s" % gtrain.get("head")]
+              parts.extend("%s %s" % (str(commit.get("sha"))[:8], commit.get("subject"))
+                           for commit in gtrain.get("commits") or [])
+              lines.append("")
+              lines.append("Train (git-only; validator returned no train): " + ", ".join(parts))
+              lines.append("Items named by Pipeline trailers (git-only, not a shipping verdict): " +
+                           (", ".join(str(i) for i in gtrain.get("items") or []) or "none"))
           elif push:
               lines.append("")
-              lines.append("Train: the validator gave none")
+              lines.append("Train: neither the validator nor git gave a reading")
           if push and isinstance(gtrain, dict):
               lines.extend("Train, as git reads it: %s" % why for why in gtrain.get("unread") or [])
               bare = [c for c in gtrain.get("commits") or [] if not c.get("items")]
