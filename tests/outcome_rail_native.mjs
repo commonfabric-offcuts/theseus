@@ -1638,6 +1638,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     // ← folds it; → opens it and shows its topics, the keys kept on it.
     await p.key('ArrowLeft');
     await until(async () => await expanded() === 'false', '← folds the open outcome');
+    // Folded, its pencil is no row of the tree, and says it is none, though the keys on the name still show it.
+    assert.deepEqual([(await keyTree(p)).rows.includes('outline:ol-pencil-w1'), await p.evaluate("document.getElementById('ol-pencil-w1').getAttribute('role')"), await shownPencils()],
+      [false, null, ['ol-pencil-w1']], 'folded, the outcome\'s pencil is no row of the tree and says it is none; the keys on its name still show it');
     await p.key('ArrowRight');
     await until(async () => await expanded() === 'true' && (await outline(p)).outcomes.w1.topics.length > 0, '→ on the folded outcome opens it and shows its topics');
     assert.equal(await keyedAt(p), 'name:w1', 'and the keys stay on it, not in the messages');
