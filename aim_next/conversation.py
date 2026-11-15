@@ -456,9 +456,9 @@ class Conversation:
             # A conversation keeps its items, what became of each, and its waits ask by ask.
             waited = self._conversation_record(db, actor, topic, message_id, snapshot, intent, private)
         else:
-            # Writing in the topic answers what was asked of the author there (a person's whisper, what the agent it
-            # goes to asked); an ask waits on whoever it asks.
-            waited = ([actor] if self._answered(db, topic, actor, private) else []) + (
+            # Writing in the topic answers what was asked of the author there (a person's whisper, the ask of the agent
+            # it goes to that it replies to); an ask waits on whoever it asks.
+            waited = ([actor] if self._answered(db, topic, actor, private, snapshot.get("reply_to")) else []) + (
                 self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else [])
         version = self._touch_topic(db, topic)
         for member in dict.fromkeys(waited):

@@ -24,7 +24,9 @@ def server_for_profile(profile_path, port, web_root=None, *, tailnet_origin=None
     return create_server(profile.store, profile.instance_id, profile.actor_id, web_root,
                          port=port, max_json_bytes=capabilities["limits"]["http_envelope_bytes"],
                          tailnet_origin=tailnet_origin,
-                         live=(profile.db_path, (profile.authority_path,)))
+                         live=(profile.db_path, (profile.authority_path,)),
+                         # An invited agent's sign-in file goes beside this one (docs/agents.md, "Inviting an agent").
+                         sign_in_folder=Path(profile_path).resolve().parent)
 
 
 def main(argv=None):
