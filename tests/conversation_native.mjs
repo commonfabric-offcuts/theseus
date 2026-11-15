@@ -968,7 +968,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
     const widths = async (want, label) => {
       for (const [width, mobile] of [[1280, false], [390, true], [375, true], [320, true]]) {
         await p.send('Emulation.setDeviceMetricsOverride', { width, height: mobile ? 844 : 900, deviceScaleFactor: 1, mobile });
-        await until(async () => JSON.stringify(await seen()) === JSON.stringify(want), `${width}px: ${label} (${JSON.stringify(await seen())})`);
+        // What the dossier's first message shows when it does not settle: its stack's state and each of its parts.
+        const first = () => quiet(p, `(c=>c&&{stack:{...c.closest('.reply-stack').dataset},card:{...c.dataset},lit:c.classList.contains('lit'),
+          parts:[...c.children].map(e=>e.className+':'+getComputedStyle(e).display)})(document.querySelector('#messages .message-card[data-id="${ids[0]}"]'))`);
+        try { await until(async () => JSON.stringify(await seen()) === JSON.stringify(want), `${width}px: ${label}`); }
+        catch (error) { throw new Error(`${error.message}: ${JSON.stringify(await seen())}, its first message ${JSON.stringify(await first())}`); }
         assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${width}px: ${label}: nothing scrolls sideways`);
       }
       await p.send('Emulation.setDeviceMetricsOverride', DESK);

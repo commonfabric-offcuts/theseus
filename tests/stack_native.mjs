@@ -3733,11 +3733,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await q.evaluate(`document.querySelectorAll('#messages .stack-earlier, #messages [data-earlier=true]').length`), 0, `${device}: no earlier row or earlier message's row`);
       assert.deepEqual(q.errors, []); await q.close();
     }
-    // Nine messages none of them read: open, the row says how many of the two earlier ones are new, in the red of new.
-    const fresh = await seed('stack-earlier-fresh', [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Nine, none read.' }],
-      ...Array.from({ length: 8 }, (_, n) => [`f${n + 1}`, { sender: other, reply_to: 'root', addressees: [facts.actor], body: `Nine, reply ${n + 1}.` }])]);
+    // Nine messages none of them read, a topic for each device since a visit reads what it shows: open, the row says
+    // how many of the two earlier ones are new, in the red of new.
     for (const device of Object.keys(DEVICES)) {
-      const q = await open(`stack-earlier-fresh-${device}`, device, 'stack-earlier-fresh', fresh.root);
+      const fresh = await seed('stack-earlier-fresh-' + device, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Nine, none read.' }],
+        ...Array.from({ length: 8 }, (_, n) => [`f${n + 1}`, { sender: other, reply_to: 'root', addressees: [facts.actor], body: `Nine, reply ${n + 1}.` }])]);
+      const q = await open(`stack-earlier-fresh-${device}`, device, 'stack-earlier-fresh-' + device, fresh.root);
       await dossierOpen(q, device, fresh.root);
       for (const width of device === 'phone' ? [390, 375, 320] : [1280]) {
         if (device === 'phone') await q.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
