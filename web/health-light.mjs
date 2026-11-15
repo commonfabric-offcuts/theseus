@@ -47,8 +47,13 @@ export class HealthLight {
   constructor({ link, read, feed = () => null }) {
     Object.assign(this, { link, read, feed });
     this.best = null; this.known = -1; this.floor = -1; this.failed = false;
-    this.running = null; this.again = false; this.asking = -1;
+    this.running = null; this.again = false; this.asking = -1; this.stopped = false;
   }
+
+  // The page that made it has gone (a move in place ends its run): the link
+  // stays with the next page, which paints it with a light of its own, so this
+  // one paints nothing more, not even an answer it still had on its way.
+  stop() { this.stopped = true; }
 
   facts() {
     return { best: this.best, known: this.known, floor: this.floor, failed: this.failed, feed: this.feed() };
@@ -107,6 +112,7 @@ export class HealthLight {
   }
 
   paint() {
+    if (this.stopped) return;
     const said = standing(this.facts());
     this.link.classList.toggle('red', said === 'lit' || said === 'unread');
     this.link.textContent = { checking: CHECKING_WORDS, unread: UNREAD_WORDS, lit: LIT_WORDS, quiet: 'Health' }[said];
