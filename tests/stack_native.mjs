@@ -4797,10 +4797,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await toolsShown(p, ids.root), false, `${device}: at rest the title bar shows no glyphs`);
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.solo))}).closest('.reply-stack')?.querySelector('.stack-tools')??null`), null, `${device}: a message on its own has no title bar glyphs`);
       if (device === 'laptop') {
-        // The pointer anywhere over the dossier shows them, over a reply as over the title bar; leaving it hides them.
-        await centre(p, words(ids.r2)); await p.point(words(ids.r2), 'move');
-        await until(() => toolsShown(p, ids.root), 'laptop: the pointer over a reply in the dossier shows its title bar\'s glyphs');
-        assert.equal((await lit(p)).includes(ids.root), false, 'laptop: though its first message is not lit');
+        // The pointer anywhere over the dossier shows them: over the folder itself, between its cards, where nothing
+        // lights; and they hide again once it leaves.
+        await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+        const [x, y, there] = await p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]'),r=s.getBoundingClientRect(),x=r.left+r.width/2,y=r.bottom-3,h=document.elementFromPoint(x,y);
+          return [x,y,h&&s.contains(h)&&!h.closest('[data-id], button')?h.className||h.tagName:null]})()`);
+        assert.ok(there, 'laptop: a point on the folder below its cards is the folder itself');
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await until(() => toolsShown(p, ids.root), 'laptop: the pointer over the folder shows its title bar\'s glyphs');
+        assert.deepEqual(await lit(p), [], 'laptop: with nothing lit');
         await away(p);
         await until(async () => !await toolsShown(p, ids.root), 'laptop: the pointer gone, they hide again');
       }
