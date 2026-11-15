@@ -980,7 +980,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await noAsideAtEachWidth(p, device, 'a Notebook page');
       await closeReader(p, device);
       await openReader(p, device, message, 'A message beside the Notebook page');
-      await becomes(async () => { const b = await asideButton(p); return [b.shown, b.name]; }, [true, 'Move below More: 1 message'], `${device}: a message the stacks hold has the button`);
+      // t1's own messages may join a stack of the fixture's: how many go is the counting cases' business.
+      await becomes(async () => { const b = await asideButton(p); return [b.shown, /^Move below More: \d+ messages?$/.test(b.name)]; }, [true, true], `${device}: a message the stacks hold has the button`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
