@@ -1923,8 +1923,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('#new-topic-title') && document.activeElement?.id==='new-topic'`), 'Escape closes the line and gives New topic the focus');
     // A row pressed, then a message: the message takes the pointer's place, and nothing in the rails wears a ring.
-    // The outline may still be bringing New topic into view: the row is pressed once it is in view.
+    // The outline may still be reading and drawing again after the line closed, and bringing New topic into view:
+    // the row is pressed once that is done and the row is in view.
     const t1 = '#outline a[data-topic-id="t1"]';
+    await settled(p, 'the outline has drawn what it read');
     await until(() => p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector('${t1}'))`), 'the topic\'s row is in view');
     await press(p, t1);
     await pressedRow(p, 'topic:t1', 'the topic being read');
