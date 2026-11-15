@@ -3733,6 +3733,23 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await q.evaluate(`document.querySelectorAll('#messages .stack-earlier, #messages [data-earlier=true]').length`), 0, `${device}: no earlier row or earlier message's row`);
       assert.deepEqual(q.errors, []); await q.close();
     }
+    // Nine messages none of them read: open, the row says how many of the two earlier ones are new, in the red of new.
+    const fresh = await seed('stack-earlier-fresh', [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Nine, none read.' }],
+      ...Array.from({ length: 8 }, (_, n) => [`f${n + 1}`, { sender: other, reply_to: 'root', addressees: [facts.actor], body: `Nine, reply ${n + 1}.` }])]);
+    for (const device of Object.keys(DEVICES)) {
+      const q = await open(`stack-earlier-fresh-${device}`, device, 'stack-earlier-fresh', fresh.root);
+      await dossierOpen(q, device, fresh.root);
+      for (const width of device === 'phone' ? [390, 375, 320] : [1280]) {
+        if (device === 'phone') await q.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        await becomes(async () => (await earlierLook(q, fresh)).button, '2 earlier messages · 2 new', `${device} ${width}px: the row counts the new among the earlier ones`);
+        const look = await q.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(earlierButton(fresh.root))}),f=b.querySelector('.stack-fresh'),r=b.getBoundingClientRect(),w=b.querySelector('.stack-earlier-words').getBoundingClientRect(),n=f.getBoundingClientRect();
+          const t=document.createElement('span');t.style.color='var(--stack-new)';b.append(t);const want=getComputedStyle(t).color;t.remove();
+          return {red:getComputedStyle(f).color===want&&want!==getComputedStyle(b).color,oneLine:Math.abs(w.top-n.top)<3,height:r.height>=44,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+        assert.deepEqual(look, { red: true, oneLine: true, height: true, sideways: false }, `${device} ${width}px: the count of new is red, on the row's one line`);
+      }
+      for (const theme of ['light', 'dark']) { await dossierTheme(q, theme); await shot(q, `stack-earlier-fresh-${device}-${theme}`); }
+      assert.deepEqual(q.errors, []); await q.close();
+    }
     const topic = 'stack-earlier-keys', ids = await earlierSeed(topic);
     const p = await open(topic, 'laptop', topic, ids.root);
     await dossierOpen(p, 'laptop', ids.root);

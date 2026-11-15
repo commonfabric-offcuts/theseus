@@ -945,8 +945,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
   await check('conversation Only new: an open dossier\'s earlier-messages row, closed or opened to its rows, gives way to the New messages among them and comes back when Only new is off', async () => {
     const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
     const topicId = await ownConversation('rv476');
-    const ids = [await say(topicId, 'rv476-root', 'Earlier check: the plan.')];
-    for (let n = 1; n <= 8; n++) ids.push(await say(topicId, `rv476-${n}`, `Earlier check: reply ${n}.`, { reply_to: ids[0] }));
+    // The person's own: each an item still waiting, so New, the replies included.
+    const mine = async (operation, body, args = {}) => (await control({ method: 'agent_message', operation_id: operation, topic_id: topicId,
+      whole_topic: !args.reply_to, sender: 'person', body, ...args })).result.message_id;
+    const ids = [await mine('rv476-root', 'Earlier check: the plan.')];
+    for (let n = 1; n <= 8; n++) ids.push(await mine(`rv476-${n}`, `Earlier check: reply ${n}.`, { reply_to: ids[0] }));
     const p = await open('rv476', '/?conversation=rv476', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
     const toggle = `.reply-stack[data-stack="${ids[0]}"] > .stack-toggle`;
     const fold = () => quiet(p, `document.querySelector('.reply-stack[data-stack="${ids[0]}"]')?.dataset.fold ?? null`);
@@ -971,12 +974,12 @@ export async function conversationChecks({ check, page, until, control, view, fa
       await p.send('Emulation.setDeviceMetricsOverride', DESK);
     };
     const cards = Array(9).fill('card');
-    await widths({ row: '2 earlier messages · 2 new', messages: ['tab', 'hidden', ...cards.slice(2)] }, 'open, the row says how many of the earlier ones are new');
+    await widths({ row: '2 earlier messages', messages: ['tab', 'hidden', ...cards.slice(2)] }, 'open, the row stands for the two earlier ones');
     await shot(p, 'conversation-earlier-row');
     await toggleOnlyNew(p, true);
     await widths({ row: null, messages: cards }, 'under Only new the row goes and the New ones among the earlier show as cards');
     await toggleOnlyNew(p, false);
-    await widths({ row: '2 earlier messages · 2 new', messages: ['tab', 'hidden', ...cards.slice(2)] }, 'Only new off, the row is back, closed');
+    await widths({ row: '2 earlier messages', messages: ['tab', 'hidden', ...cards.slice(2)] }, 'Only new off, the row is back, closed');
     await p.evaluate(`document.querySelector('.reply-stack[data-stack="${ids[0]}"] .stack-earlier').scrollIntoView({block:'center'})`);
     await p.point(`.reply-stack[data-stack="${ids[0]}"] .stack-earlier`);
     await widths({ row: null, messages: ['row', 'row', ...cards.slice(2)] }, 'opened, the earlier ones are rows');
