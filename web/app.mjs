@@ -799,7 +799,9 @@ function paintViews(kind) {
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
-      while (following && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
+      // A new card goes above the New message composer resting under the messages (item 465), so the stacks
+      // drawn next move no card past it.
+      while (following && following !== $('new-message-sheet') && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
       $('messages').insertBefore(entry, following);
       messageEntries.set(item.id, entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
