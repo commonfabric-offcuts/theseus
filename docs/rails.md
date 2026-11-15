@@ -77,13 +77,18 @@ section, which has its own pencil, and on the outcome's own page.
 On a phone the outline is a drawer behind "☰ Outcomes", which carries the
 total count and the light. In the header's row the outcome's name gives up
 its room first, down to none, and its place then costs nothing beyond the one
-gap between the pills, so "☰ Outcomes" and "Pipeline & pages" share the line,
-the name clipped between them, whenever the two pills and one gap fit the row:
-at 375 and 390 in every state, and at 320 with nothing new, with a count, or
-with a count of two digits and nothing waiting. Only where they do not fit (at
-320 with the light and a count) does "Pipeline & pages" go under, whole and
-inside the screen; nothing scrolls sideways. A line under the header says what is new in other outcomes and
-what waits there, and tapping it opens the drawer.
+gap between the pills, so "☰ Outcomes" and "Pipeline & pages" share the first
+line whenever the two pills and one gap fit the row: at 375 and 390 in every
+state, and at 320 with nothing new, with the light alone, with a count, or
+with a count of two digits and nothing waiting. The name sits between them,
+its words a gap from each pill. It is clipped only when its words are longer
+than the room left there (about 37 to 102px at 375 and 390, less at 320); a
+short name shows whole. Where the two pills and one gap do not fit, at 320
+with the light and a count of one digit or two, "Pipeline & pages" goes
+under, on the row's second line, whole and inside the screen. Nothing scrolls
+sideways: at every width and in every state, no part of the page ends past
+the screen's right edge. A line under the header says what is new in other
+outcomes and what waits there, and tapping it opens the drawer.
 
 ## The right rail
 

@@ -197,10 +197,11 @@ nothing scrolls sideways, and nothing depends on hover.
   the header at 320, 375, 390, a narrow laptop and a laptop, light and dark,
   …" measures which line each of the header's pills is on in each state of
   "☰ Outcomes" (nothing, a count, a count and the light, two digits with and
-  without the light): "Pipeline & pages" goes under it, whole, only when the
-  two pills and one gap do not fit the row (at 320 with the light and a
-  count); otherwise the outcome's name gives up its room and the two share
-  the line; nothing scrolls sideways.
+  without the light, the light alone): "Pipeline & pages" goes under it,
+  whole, only when the two pills and one gap do not fit the row (at 320 with
+  the light and a count); otherwise the outcome's name gives up its room and
+  the two share the line; no part of the page ends past the screen's right
+  edge.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).

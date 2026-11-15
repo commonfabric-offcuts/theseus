@@ -13864,6 +13864,51 @@
     "native": "rail",
     "case": "rail the header at 320"
    }
+  },
+  {
+   "item": 516,
+   "act": "At every width and in every state of \"☰ Outcomes\", no part of the page ends past the right edge of the screen it was opened at",
+   "break": [
+    [
+     "web/aim.css",
+     ".title-row{display:flex;align-items:flex-start;gap:.75rem}",
+     ".title-row{display:flex;align-items:flex-start;gap:.75rem;min-width:105vw}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320 with the light alone on \"☰ Outcomes\" (its count hidden), the two pills and one gap fit, so \"Pipeline & pages\" shares the line",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #rail-open .outcome-light{margin:0 0 0 .4rem}",
+     "[data-rails] #rail-open .outcome-light{margin:0 0 0 2.2rem}"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320 with a one-digit count and the light, the two pills and one gap do not fit in either engine, so \"Pipeline & pages\" goes under",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #rail-open .outcome-light{margin:0 0 0 .4rem}",
+     "[data-rails] #rail-open .outcome-light{margin:0}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
   }
  ]
 }
