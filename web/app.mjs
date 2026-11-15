@@ -2478,16 +2478,8 @@ function stayedWhy(error) {
   showLine(notice,error);
   // Said where the person is looking: the Reader or the New message sheet,
   // open over the page, covers the rail's notice, so it says why it stayed too.
-  const near=nearLine();
+  const near=$('reader').open?'reader-notice':$('new-message-sheet').open?'inline-notice':null;
   if(near)showLine($(near),error);else notice.scrollIntoView({block:'nearest'});
-}
-// Where the person writes, whose notice says why the page stayed beside the
-// topic line's: the Reader or the New message sheet open over the page, or the
-// composer the cursor is in, which keeps its place in the page, so a page put
-// back (a back refused) still shows it where the person was.
-function nearLine() {
-  const sheet = $('new-message-sheet');
-  return $('reader').open ? 'reader-notice' : sheet.open || sheet.contains(document.activeElement) ? 'inline-notice' : null;
 }
 // A move found Theseus updated while writing here was not yet safe, or changed as the move waited
 // (in-place-navigation.mjs, updated): the page stays, and says so where a refused move says why, with Reload,
@@ -2496,7 +2488,7 @@ function updatedNotice(reload) {
   const said = () => { const again = node('button', 'Reload'); again.type = 'button'; again.className = 'updated-reload'; again.title = 'Reload Theseus'; again.onclick = reload; return ['Theseus updated.', again]; };
   const notice = $('topic-navigation-status');
   showLine(notice, said());
-  const near = nearLine();
+  const near = $('reader').open ? 'reader-notice' : $('new-message-sheet').open ? 'inline-notice' : null;
   if (near) showLine($(near), said()); else notice.scrollIntoView({ block: 'nearest' });
 }
 // painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).

@@ -1471,12 +1471,12 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width} ${how}: nothing loaded`);
         assert.deepEqual(runs(), [], `${width} ${how}: and no run of the page was asked for`);
         assert.equal(await valueOf(p, '#inline-writing-body'), before + words, `${width} ${how}: the words are in their box`);
-        // Said where the person is writing too: in the composer the cursor is in, which keeps its place in the page,
-        // so a back put back, after which the browser puts back that entry's scroll, still shows it there, whole
-        // (within a pixel's rounding).
-        const line = await p.evaluate(`(() => { const n = document.querySelector('#inline-notice'), r = n.getBoundingClientRect();
-          return { sheet: document.querySelector('#new-message-sheet').open, text: n.hidden ? '' : n.textContent,
-          inside: r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1,
+        // Said where the person is looking: in the New message sheet when it is open over the page, else by the topic line,
+        // brought into the window (within a pixel's rounding). A back is put back by a traversal, after which the browser
+        // puts back that entry's scroll, as it does for any back the page refuses: there the line's words are checked.
+        const line = await p.evaluate(`(() => { const sheet = document.querySelector('#new-message-sheet').open, n = document.querySelector(sheet ? '#inline-notice' : '#topic-navigation-status');
+          const r = n.getBoundingClientRect(), whole = ${JSON.stringify(how === 'row')};
+          return { sheet, text: n.hidden ? '' : n.textContent, inside: !whole || r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1,
           rect: [r.left, r.top, r.right, r.bottom].map(Math.round), window: [innerWidth, innerHeight, Math.round(scrollY)], visual: visualViewport && [visualViewport.width, visualViewport.height, visualViewport.offsetTop].map(Math.round),
           focus: document.activeElement?.id, display: getComputedStyle(n).display }; })()`);
         assert.deepEqual([line.text, line.inside], [STAYED, true], `${width} ${how}: said in the window where the person writes: ${JSON.stringify(line)}`);
