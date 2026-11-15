@@ -106,12 +106,14 @@ export function topOf(list, entry) {
 // drawn, the messages last drawn as their folded row (folded), and the stacks
 // last drawn below More messages, by id (below). Item 476: the open dossiers
 // whose earlier-messages row was opened this visit (earlier), the messages
-// among those earlier ones shown whole this visit (whole), and the messages
-// last drawn as an earlier one's row (earlierRows). None is ever recorded.
+// among those earlier ones shown whole this visit (whole), the messages
+// last drawn as an earlier one's row (earlierRows), and, for each dossier drawn
+// open, the first message it showed then (held; stack-order.mjs, earlierOf),
+// so a message arriving hides nothing. None is ever recorded.
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {},
-    earlier: new Set(), whole: new Set(), earlierRows: new Set() });
+    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });
   return states.get(list);
 }
 
@@ -166,7 +168,7 @@ export function drawn(list, id) {
   if (stack && view.hidden(stack)) return false;
   const item = !stack ? { id } : stack.id === id ? stack.head : stack.replies.find(each => each.id === id);
   if (view.only) return Boolean(view.only(item));
-  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), earlier: state.earlier.has(stack.id) });
+  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
 }
 // The page as stepping reads it (stack-order.mjs, pageOf and stepTarget).
 export const stackPage = state => pageOf(state.stacks, shownView(state));
@@ -223,7 +225,7 @@ export function reveal(entry, { full = false } = {}) {
   if (section && entry.hidden) { state.levels.set(id, 'open'); changed = true; }
   if (section && full && own === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
   const stack = state.stacks.find(each => each.id === own || each.replies.some(item => item.id === own));
-  if (section && stack && (own !== id || full) && earlierOf(stack, levelOf(state, id)).some(item => item.id === own)) {
+  if (section && stack && (own !== id || full) && earlierOf(stack, levelOf(state, id), { held: state.held.get(id) ?? null }).some(item => item.id === own)) {
     if (!state.earlier.has(id)) { state.earlier.add(id); changed = true; }
     if (!state.whole.has(own)) { state.whole.add(own); changed = true; }
   }
@@ -233,14 +235,23 @@ export function reveal(entry, { full = false } = {}) {
   return entry;
 }
 
+// Whether a press at target falls on an earlier message's row as the page
+// draws it (item 476): the card is drawn as that row, the press is not on a
+// first message's tab above it, and Only new, which draws the card whole with
+// no row in it, is off. Anywhere else the card acts as any card does.
+export function onEarlierRow(entry, target) {
+  const card = cardIn(entry);
+  return card.dataset.earlier === 'true' && !target?.closest?.('.stack-head') && !card.closest('.only-new');
+}
+
 // A click on a message drawn as its folded row unfolds it (its head row's
 // click does, for a stack's first message: headClick). One drawn as an
 // earlier message's row shows whole in place, for this visit, recording
 // nothing (item 476). Answers whether the click was the row's.
-export function foldedClick(list, entry) {
+export function foldedClick(list, entry, event) {
   if (!entry) return false;
   const state = stackState(list), id = entry.dataset.id;
-  if (cardIn(entry).dataset.earlier === 'true' && state.earlierRows.has(id)) { state.whole.add(id); state.again(); return true; }
+  if (onEarlierRow(entry, event?.target) && state.earlierRows.has(id)) { state.whole.add(id); state.again(); return true; }
   if (cardIn(entry).dataset.folded !== 'true' || !state.folded.has(id)) return false;
   state.on?.unfold?.(id);
   return true;
@@ -259,7 +270,7 @@ export function headClick(list, entry, event) {
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
   // The first message drawn as an earlier one's row, under the tab: a press
   // there shows it whole, for this visit (item 476); the tab acts as before.
-  if (state.earlierRows.has(stack.id) && !event?.target?.closest?.('.stack-head')) { state.whole.add(stack.id); state.again(); return true; }
+  if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }
   if (state.folded.has(stack.id)) {
     if (state.levels.get(stack.id) !== 'open') setLevel(state, stack, 'open');
     state.on?.unfold?.(stack.id);
@@ -444,8 +455,15 @@ function paintStack(section, stack, byId, context) {
   // A folded first message is its head row alone, at every level. Open, with
   // more than seven messages, the earlier ones wait behind one row until it is
   // opened (item 476): a first message among them is its tab alone till then,
-  // and after that a row under the tab, until a press shows it whole.
-  const before = single ? [] : earlierOf(stack, level), earlierOpen = state.earlier.has(stack.id), headBefore = before.includes(stack.head);
+  // and after that a row under the tab, until a press shows it whole. The
+  // seven are counted when it is first drawn open, and the first of them is
+  // held, so a message arriving joins them below and hides nothing; any other
+  // level lets go of it, so the next opening counts again.
+  const drawnOpen = !single && level === 'open';
+  if (!drawnOpen) state.held.delete(stack.id);
+  const before = drawnOpen ? earlierOf(stack, level, { held: state.held.get(stack.id) ?? null }) : [], earlierOpen = state.earlier.has(stack.id), headBefore = before.includes(stack.head);
+  if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);
+  const held = state.held.get(stack.id) ?? null;
   const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && !state.folded.has(stack.id) && (!headBefore || earlierOpen);
   if (open && headBefore && !starred && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
@@ -462,7 +480,7 @@ function paintStack(section, stack, byId, context) {
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; show latest and unread replies' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
-  const rows = single ? [] : rowsOf(stack, { level, kept, unread, peeked: item => state.peeked.has(item.id), earlier: earlierOpen });
+  const rows = single ? [] : rowsOf(stack, { level, kept, unread, peeked: item => state.peeked.has(item.id), earlier: earlierOpen, held });
   // A reply drawn starred stays as an unread one does: its star taken off, here or elsewhere, never folds it away under the reader (item 413).
   for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);
   for (const row of rows) {
@@ -475,12 +493,14 @@ function paintStack(section, stack, byId, context) {
     if (row.kind === 'earlier') {
       // One row for the earlier messages, at the top of the folder (item 476):
       // a press shows them all as rows, for this visit, and moves nothing
-      // below More. The keys go on to the first of them when they were on it.
+      // below More. The keys go on to the first of them when they were on it
+      // and the press was not a finger's: on a phone the focus would light that
+      // message, and a tap lights nothing but the message it lands on.
       const button = line(section, 'earlier', () => { const node = element(doc, 'button', 'stack-earlier'); node.type = 'button'; return node; });
       button.replaceChildren(element(doc, 'span', 'stack-earlier-words', row.words), ...(row.fresh ? [element(doc, 'span', 'stack-fresh', ` · ${row.fresh} new`)] : []));
       button.title = `Show ${row.items.length === 1 ? 'it' : `all ${row.items.length}`} as rows, for this visit`;
-      button.onclick = () => {
-        const focused = doc.activeElement === button;
+      button.onclick = event => {
+        const focused = doc.activeElement === button && event?.pointerType !== 'touch';
         state.earlier.add(stack.id); state.again(); state.on?.earlier?.(stack, row.items.length);
         const first = entries(section.parentElement ?? section).find(each => each.dataset.id === row.items[0].id);
         if (focused && first) cardIn(first).focus({ preventScroll: true });

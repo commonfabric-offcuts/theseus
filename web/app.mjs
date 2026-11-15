@@ -783,7 +783,7 @@ function paintViews(kind) {
         // A stack's head row shows or hides its full message, or renames it (reply-stacks.mjs).
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         // A message the reader folded is one row: a press on it unfolds it (stack-feed.mjs).
-        if (foldedClick($('messages'), messageEntries.get(item.id))) return;
+        if (foldedClick($('messages'), messageEntries.get(item.id), event)) return;
         const name = event?.target?.closest?.('.author-name');
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
         return open(event);

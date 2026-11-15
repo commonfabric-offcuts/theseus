@@ -5284,7 +5284,7 @@
    "break": [
     [
      "web/app.mjs",
-     "        if (foldedClick($('messages'), messageEntries.get(item.id))) return;",
+     "        if (foldedClick($('messages'), messageEntries.get(item.id), event)) return;",
      "        if (false) return;"
     ]
    ],
@@ -13811,7 +13811,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return level === 'open' && all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
+     "  return all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
      "  return [];"
     ]
    ],
@@ -13825,7 +13825,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return level === 'open' && all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
+     "  return all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
      "  return [];"
     ]
    ],
@@ -13869,8 +13869,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (cardIn(entry).dataset.earlier === 'true' && state.earlierRows.has(id)) { state.whole.add(id); state.again(); return true; }",
-     "  if (cardIn(entry).dataset.earlier === 'true' && state.earlierRows.has(id)) { state.again(); return true; }"
+     "  if (onEarlierRow(entry, event?.target) && state.earlierRows.has(id)) { state.whole.add(id); state.again(); return true; }",
+     "  if (onEarlierRow(entry, event?.target) && state.earlierRows.has(id)) { state.again(); return true; }"
     ]
    ],
    "check": {
@@ -13884,8 +13884,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (state.earlierRows.has(stack.id) && !event?.target?.closest?.('.stack-head')) { state.whole.add(stack.id); state.again(); return true; }",
-     "  if (state.earlierRows.has(stack.id) && !event?.target?.closest?.('.stack-head')) { state.again(); return true; }"
+     "  if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }",
+     "  if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.again(); return true; }"
     ]
    ],
    "check": {
@@ -13964,8 +13964,8 @@
     ],
     [
      "web/reply-stacks.mjs",
-     "    earlier: new Set(), whole: new Set(), earlierRows: new Set() });",
-     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set() });"
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map() });"
     ],
     [
      "web/reply-stacks.mjs",
@@ -13991,6 +13991,125 @@
    "check": {
     "native": "conversation",
     "case": "Only new: an open dossier's earlier-messages row"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The newest seven are counted once, when the dossier is drawn open: held, a message arriving after that hides nothing, and held gone, they are counted afresh",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (at >= 0) return all.slice(0, at);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A message arriving in an open dossier hides nothing being read: the card being read, or an earlier message's row once the row is opened, stays shown where it was",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a message arriving in an open dossier hides nothing"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Changing an open dossier's state lets go of its newest seven: folded and opened again, they are counted afresh",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!drawnOpen) state.held.delete(stack.id);",
+     "  void drawnOpen;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a message arriving in an open dossier hides nothing"
+   }
+  },
+  {
+   "item": 476,
+   "act": "On a phone the first tap on an open dossier's tab lights it and the next folds it, its first message drawn as an earlier message's row or not",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      if (onEarlierRow(entry, event.target)) return;",
+     "      if (cardIn(entry).dataset.earlier === 'true') return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the first tap on an open dossier's tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A press on a dossier's tab acts as the tab, never as its first message's earlier row under it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  return card.dataset.earlier === 'true' && !target?.closest?.('.stack-head') && !card.closest('.only-new');",
+     "  return card.dataset.earlier === 'true' && !card.closest('.only-new');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the first tap on an open dossier's tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A finger's tap on the earlier-messages row lights nothing, so the dossier's tab still lights at its first tap",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        const focused = doc.activeElement === button && event?.pointerType !== 'touch';",
+     "        const focused = doc.activeElement === button;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the first tap on an open dossier's tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Under Only new a press on an earlier message's whole card, or on the first message's words, opens the Reader as on any card",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  return card.dataset.earlier === 'true' && !target?.closest?.('.stack-head') && !card.closest('.only-new');",
+     "  return card.dataset.earlier === 'true' && !target?.closest?.('.stack-head');"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "Only new: an open dossier's earlier-messages row"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The rail's Starred lands on a dossier's first message that is an earlier one: the row opens and that message shows whole",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (section && stack && (own !== id || full) && earlierOf(",
+     "  if (section && stack && own !== id && earlierOf("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "earlier-messages row is reached by Tab"
    }
   },
   {

@@ -115,19 +115,27 @@ export const LEVELS = ['folded', 'open'];
 // at the open level only; none in a dossier of RECENT or fewer, and none at
 // latest plus unread, which shows what it always did. A way of showing the
 // dossier, never recorded: every message stays in it, where it sits.
+// held: the id of the first message the dossier showed when the page drew it
+// open (reply-stacks.mjs), so the seven are counted once: a message arriving
+// after that hides nothing (docs/experience-guidelines.md, "Your place holds"),
+// and one loaded from before goes behind the row. Held gone from the dossier,
+// they are counted afresh.
 export const RECENT = 7;
-export function earlierOf(stack, level) {
+export function earlierOf(stack, level, { held = null } = {}) {
   const all = [stack.head, ...stack.replies];
-  return level === 'open' && all.length > RECENT ? all.slice(0, all.length - RECENT) : [];
+  if (level !== 'open') return [];
+  const at = held === null ? -1 : all.findIndex(item => item.id === held);
+  if (at >= 0) return all.slice(0, at);
+  return all.length > RECENT ? all.slice(0, all.length - RECENT) : [];
 }
 
 // Whether a reply shows at the stack's level. A reader's stars stay visible;
 // kept(item) holds replies that were unread or starred when this partial view
 // drew them (reply-stacks.mjs). A fold never decides this:
 // a folded reply shows where it would, as its one-line row (rowFolded). Open,
-// an earlier reply (earlierOf) shows once its row was opened (earlier).
-export function shown(stack, item, { level = 'folded', kept = () => false, earlier = false } = {}) {
-  if (!earlier && earlierOf(stack, level).includes(item)) return false;
+// an earlier reply (earlierOf, held) shows once its row was opened (earlier).
+export function shown(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
+  if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
   return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);
@@ -153,11 +161,12 @@ const messages = n => (n === 1 ? 'message' : 'messages');
 // says whether it reads as its one-line row (folded, rowFolded). Open, a
 // dossier of more than RECENT messages begins with { kind: 'earlier', items,
 // words, fresh }, one row for its earlier messages (earlierOf, the first
-// message among them), and their replies are drawn only once it is opened
-// (earlier), each { kind: 'reply', item, earlier: true } in its place.
-export function rowsOf(stack, { level = 'folded', kept, unread = () => false, peeked = () => false, earlier = false } = {}) {
-  const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept, earlier });
-  const earliest = earlierOf(stack, level);
+// message among them, held as earlierOf takes it), and their replies are
+// drawn only once it is opened (earlier), each { kind: 'reply', item,
+// earlier: true } in its place.
+export function rowsOf(stack, { level = 'folded', kept, unread = () => false, peeked = () => false, earlier = false, held = null } = {}) {
+  const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept, earlier, held });
+  const earliest = earlierOf(stack, level, { held });
   if (earliest.length && !earlier) rows.push({ kind: 'earlier', items: earliest, words: `${earliest.length} earlier ${messages(earliest.length)}`, fresh: earliest.filter(unread).length });
   let run = [], before = true;
   const flush = () => {

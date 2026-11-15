@@ -202,21 +202,31 @@ their acts.
   folder for the rest: "8 earlier messages", with how many of them are new
   in red. The seven are the last seven as the dossier reads (its first message,
   then every other oldest first), so the first message is among the earlier
-  ones; until the row is opened it shows as the tab alone. The row is a button,
+  ones; until the row is opened it shows as the tab alone. They are counted
+  when the page draws the dossier open, and the page holds the first of them:
+  a message arriving after that joins the cards below and hides nothing, so
+  what is being read stays where it is (Your place holds, in
+  `docs/experience-guidelines.md`), and one loaded from before goes behind the
+  row. Any other state lets go of that, so the next opening counts again. The row is a button,
   a short line as wide as its words and 44px to touch, reached by Tab, with a
   tooltip saying what it does. A press (a tap, Return or Space) shows every
   earlier message as one row in its place, oldest first, who wrote it and its
   line, as a folded message reads but saying nothing of a fold, since none is
   made; the first message's row sits under the tab. The keys go on to the
-  first of them when they were on the row. A message the reader folded keeps
+  first of them when they were on the row; a tap lights nothing, so on a phone
+  the dossier's tab still lights at its first tap and acts at the next, as on
+  any open dossier. A message the reader folded keeps
   its own row and a starred one shows whole. A press on a row (one tap on a
   phone) shows that message whole in its place, its images with it, and from
-  there it opens in the Reader as any card does. A link, search or Starred
+  there it opens in the Reader as any card does. Under Only new, which shows
+  such a message as a whole card with no row in it, a press on it acts as on
+  any card. A link, search or Starred
   that lands on an earlier message opens the row and shows that message whole.
   All of this is the page's own for this visit: nothing is sent, nothing
   moves below More, and a reload, changing the dossier's state, or coming back
   to it off screen closes the row again (`earlierOf` and `rowsOf` in
-  `web/stack-order.mjs`, `earlier` and `whole` in the page's stack state).
+  `web/stack-order.mjs`, `earlier`, `whole` and `held` in the page's stack
+  state, `onEarlierRow` for where a press falls).
   Latest plus unread, and a dossier of seven or fewer, are unchanged.
 - **First messages.** A stack's first message folds into its head row, which already
   says who began the stack and its short name: the row adds "Folded", the
@@ -556,7 +566,11 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | earlier messages: which they are, the row's words and count of new, opened rows in place, a fold and a star among them, a join line, seven or fewer showing none | `tests/ui_stack_order.test.mjs` (`earlierOf`, `rowsOf`) |
 | on the page: the newest seven and the row, opened to rows in place, a row shown whole with its image and opened in the Reader, the first message's row, nothing sent, nothing below More, a reload closing the row with the order, the name and the folds Core holds unchanged, at a laptop's width and 390, 375 and 320 on a phone, light and dark | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an open dossier of more than seven …" |
 | under Only new: the row, closed or opened, giving way to the New messages among the earlier ones as whole cards with no row inside them, and back when it is off, at a laptop's width and 390, 375 and 320 | `tests/conversation_native.mjs`, "conversation Only new: an open dossier's earlier-messages row …" |
-| the row reached by Tab and opened by Return, the keys going on to the first earlier message; a link to an earlier message opening the row and showing it whole; the row's count of new in red on its one line at a laptop's width and 390, 375 and 320; a dossier of seven showing no row | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks the earlier-messages row is reached by Tab …" |
+| the row reached by Tab and opened by Return, the keys going on to the first earlier message; a link to an earlier message opening the row and showing it whole; the rail's Starred landing on the dossier's first message, an earlier one, opening the row and showing it whole; the row's count of new in red on its one line at a laptop's width and 390, 375 and 320; a dossier of seven showing no row | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks the earlier-messages row is reached by Tab …" |
+| the seven counted when the dossier is drawn open: which is held, a message arriving after that hiding nothing, held gone counted afresh | `tests/ui_stack_order.test.mjs`, "the newest seven are counted when the dossier is drawn open …" |
+| on the page: a reply arriving in an open dossier of seven, or of ten with the reader on its oldest card, then on an earlier message's row once the row is opened, leaving each shown where it was; folded and opened again, counted afresh; at a laptop's width and 390, 375 and 320 | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a message arriving in an open dossier hides nothing being read …" |
+| on a phone the dossier's tab lighting at its first tap and folding at its next, its first message whole (seven), its tab alone behind the closed row, or that row opened by a tap, at 390, 375 and 320 | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks on a phone the first tap on an open dossier's tab lights it …" |
+| under Only new a press on an earlier message's whole card, or on the first message's words, opening the Reader | `tests/conversation_native.mjs`, "conversation Only new: an open dossier's earlier-messages row …" |
 
 `tests/acts.json` names the break each act must catch.
 
