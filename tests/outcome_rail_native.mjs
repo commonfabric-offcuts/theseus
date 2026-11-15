@@ -1252,6 +1252,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       state:state.hidden?null:{text:state.textContent,quiet:state.classList.contains('quiet')},search:location.search}})()`);
   // How many commands of a kind the page has sent: its fetch is called within the key's own keydown
   // (quick-create.mjs awaits nothing before it), so the record is whole once the key has been pressed.
+  // A pencil brought into view in its rail, as a person scrolls to it: once it is wholly inside the window.
+  const inView = (p, selector, what) => until(() => p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector(${JSON.stringify(selector)}))`), what);
   const commandsSent = async (p, key, kind) => (await recorded(p, key)).filter(entry => entry.request === '/api/command' && entry.name === kind).length;
   await check('rail each pencil\'s title line, at 320, 375 and 390 in the open drawer and on a laptop, light and dark, open, refused when empty, busy while it starts and refused by the server, is under its row or heading and clear of it, in the rail with nothing over it; a second Return while busy sends nothing more, the server\'s refusal keeps the title and makes nothing, Escape closes the line, and Return again makes it', async () => {
     const specs = [
@@ -1266,7 +1268,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         if (phone) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
         await q.send('Page.addScriptToEvaluateOnNewDocument', { source: recordRequests(key) });
       } });
-      await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && Boolean(document.querySelector("#outline .ol-outcome[data-workspace-id=w1]"))'), at + ': the rail is ready');
+      // Up with nothing more on its way, so no row moves under a press (every outcome the earlier checks made is listed).
+      await settled(p, at + ': the page and its rails are up');
       if (phone) { await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens the drawer'); }
       const place = () => p.evaluate(`({search:location.search,open:document.querySelector('.ol-outcome[data-workspace-id=w1]').hasAttribute('data-open')})`);
       const titles = {};
@@ -1283,7 +1286,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         };
         const before = await place();
         // Open: one press on the pencil, the cursor in the empty line, nothing said yet.
-        await p.evaluate(`document.querySelector(${JSON.stringify(spec.pencil)}).scrollIntoView({block:'center'})`);
+        await inView(p, spec.pencil, said + ': its pencil is brought into view');
         if (phone) await tap(p, spec.pencil); else await p.point(spec.pencil);
         await until(() => p.evaluate(`document.activeElement?.id===${words}`), said + ': the press opens the line, the cursor in it');
         await looks('open', { focused: true, busy: null, state: null });
@@ -1319,7 +1322,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(!(await view('workspaces', { limit: 100 })).items.some(item => item.title === titles.outcome), at + ': Core holds no outcome by the refused title');
       if (width === 390 && theme === 'light') {
         // The refused title's line again, and Return sends it once more: the outcome is made, and its page opens.
-        await p.evaluate(`document.getElementById('outline-new-outcome').scrollIntoView({block:'center'})`);
+        await inView(p, '#outline-new-outcome', at + ': the New outcome pencil is brought into view');
         await tap(p, '#outline-new-outcome');
         await until(() => p.evaluate(`document.activeElement?.id==='outline-new-outcome-title'`), at + ': the New outcome line again, the cursor in it');
         assert.equal(await p.evaluate(`document.getElementById('outline-new-outcome-title').value`), titles.outcome, at + ': the refused title is still there');
