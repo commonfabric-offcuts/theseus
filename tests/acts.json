@@ -11971,6 +11971,20 @@
   },
   {
    "item": 481,
+   "act": "The release check's deploy-refusals step runs every test of the train refusals beside the deploy's own refusals",
+   "break": [
+    [
+     "tools/release_check.py",
+     "\"-k\", \"test_tools_deploy.DeployRefuses\", \"-k\", \"test_tools_train.\", \"-v\"]",
+     "\"-k\", \"test_tools_deploy.DeployRefuses\", \"-v\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 481,
    "act": "A merged train whose approved head is not in its merge commit is refused",
    "break": [
     [
