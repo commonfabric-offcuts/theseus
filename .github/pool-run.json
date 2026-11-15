@@ -1,0 +1,11 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks the lit card's ring keeps its bottom side above the next card",
+  "reading stacks a fold line in a dossier answers the pointer",
+  "reading stacks give only the current message or stack one strong highlight",
+  "reading stacks a message placed on its own folds in place"
+ ],
+ "label": "green-chrome-37b70bc7-1",
+ "snapshot": "37b70bc764e34eca18b2e4436a4be27b8c10d547"
+}
