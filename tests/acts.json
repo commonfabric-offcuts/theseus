@@ -3086,8 +3086,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        return {\"name\": {\"text\": value[\"name\"], \"by\": row[\"actor_id\"], \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}",
-     "        return {\"name\": {\"text\": value[\"name\"], \"by\": None, \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}"
+     "dict({\"text\": value[\"name\"], \"by\": row[\"actor_id\"], \"at_ms\": row[\"at_ms\"]}",
+     "dict({\"text\": value[\"name\"], \"by\": None, \"at_ms\": row[\"at_ms\"]}"
     ]
    ],
    "check": {
@@ -13803,6 +13803,218 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 479,
+   "act": "Core takes a minted name only from the dossier's namer: the outcome's coordinator, or with none the first agent that replied",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if namer != actor:",
+     "            if namer is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A dossier anyone ever named, a mint included, is never minted: a typed name wins and a second reply mints nothing more",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return None, \"named\"",
+     "        pass"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "With no coordinator the first agent to reply names the dossier, after any person's reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ORDER BY a.kind<>'agent',m.seq LIMIT 1",
+     "ORDER BY m.seq LIMIT 1"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A whisper counts as no reply for a minted name",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "WHERE m.id<>:root AND m.private_to IS NULL ORDER BY",
+     "WHERE m.id<>:root ORDER BY"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The outcome's coordinator names a dossier only when an agent coordinates it, and then it alone",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return coordinator[0], \"coordinator\"",
+     "        pass"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A minted name is two to five words",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if not MINT_WORDS[0] <= len(name.split()) <= MINT_WORDS[1]:",
+     "        if not name:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A minted name reads with minted true; a typed name and one an older Core kept read as before",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "**({\"minted\": True} if value.get(\"minted\") is True else {})",
+     "**{}"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A delivery tells an agent to mint only when it names the dossier",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if dossier_namer(db, root)[0] != recipient:",
+     "        if dossier_namer(db, root)[0] is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The hosted notice says the mint to run once per dossier, on the namer's delivery",
+   "break": [
+    [
+     "aim_next/hosted_notice.py",
+     "        if name_it and name_it[\"root_id\"] in to_name:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "inbox says the mint to run once per dossier",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "                if item[\"name_it\"][\"root_id\"] in to_name:",
+     "                if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A reply that makes its agent the namer says the mint to run",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "        elif found[\"namer\"] == self.actor:",
+     "        elif False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "mint is fenced on the name revision the agent was told, so a person's rename meanwhile refuses it",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "        expected = found[\"name_revision\"] if options.expected is None else options.expected",
+     "        expected = found[\"name_revision\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The head knows who minted its name, from the first message's acts or the position",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "mintedBy: typed?.text && typed.minted === true ? typed.by : null",
+     "mintedBy: null"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The dossier's tab says Named by the agent that minted its name",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const minted = head.mintedBy ? element(doc, 'span', 'stack-named', `Named by ${nameOf(head.mintedBy)}`) : null;",
+     "  const minted = null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "minted name"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The tab's Named by shows whole at phone widths: the count gives way first",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-named{flex:0 1 auto;min-width:0;",
+     ".stack-named{flex:1 1 0;min-width:0;max-width:max-content;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "minted name"
    }
   }
  ]
