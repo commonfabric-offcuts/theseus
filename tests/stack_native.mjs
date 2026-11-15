@@ -323,10 +323,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const said = p => p.evaluate(`document.getElementById('stack-said')?.textContent ?? ''`);
   const alertColour = p => p.evaluate(`(()=>{const s=document.createElement('span');s.style.color='var(--alert)';document.body.append(s);const c=getComputedStyle(s).color;s.remove();return c})()`);
   const focusedOn = p => p.evaluate(`document.activeElement?.closest?.('[data-id]')?.dataset.id ?? null`);
-  // A right click (two fingers' click on a trackpad) on target, where a person opens a message's menu with no bar.
+  // A right click (two fingers' click on a trackpad) on a card, where a person opens a message's menu with no bar:
+  // in its corner, clear of its words, as Safari's engine selects the word a right click lands on, and the page leaves
+  // a right click on selected words to the browser's own menu.
   const rightClick = async (p, selector) => {
     await centre(p, selector);
-    const b = await p.box(selector), x = b.x + Math.min(12, b.width / 2), y = b.y + b.height / 2;
+    const b = await p.box(selector), x = b.x + 8, y = b.y + 8;
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
     await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
@@ -335,7 +337,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // on a laptop its menu is the right click's.
   const menuOf = async (p, device, id) => {
     await light(p, device, id);
-    if (device !== 'phone' && await bar(p) === null) await rightClick(p, card(id) + ' > .message-folded > .folded-author');
+    if (device !== 'phone' && await bar(p) === null) await rightClick(p, card(id));
     else await press(p, device, '.message-bar [data-act=more]');
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: ⋯ opens the menu`);
     return p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
@@ -859,6 +861,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await shot(p,'stack-aside-swipe-folded');
     // A reload finds the order and the folds as Core holds them.
     await p.close(); p = await open('stack-aside-swipe-reload', 'phone', topic, ids.root);
+    // Read now, they are drawn at latest and unread no longer; every message is there once the dossier is fully open.
+    const toggle = `${section} > .stack-toggle`;
+    if ((await look(p, ids, 'root')).fold !== 'open') { await centre(p, toggle); await press(p, 'phone', toggle); }
     await becomes(shown, [ids.one+':row', ids.two+':row'], 'after a reload, the same rows in the same order');
     // The title bar alone moves the dossier: below More, and back with a swipe left there.
     await drag(`${section} .stack-head`);
@@ -3046,7 +3051,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await centre(p, card(ids.three));
     await p.point(card(ids.three) + ' > .message-folded > .folded-author', 'move');
     await until(async () => (await lit(p)).includes(ids.three) && await bar(p) === null, 'the pointer lights the folded row, with no bar in a dossier (item 471)');
-    await rightClick(p, card(ids.three) + ' > .message-folded > .folded-author');
+    await rightClick(p, card(ids.three));
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'a right click opens the folded message\'s menu');
     const offered = await p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
     assert.ok(offered.includes('Unfold') && !offered.includes('Fold'), `a folded message offers Unfold: ${offered}`);
@@ -3722,7 +3727,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         return {root:name(ids.root),whole:name(ids.whole),loneWhole:name(ids.loneWhole),bare:row(ids.bare),thumbed:row(ids.thumbed),lone:row(ids.lone),
           title:s.querySelector('.stack-head > .stack-name').textContent,
           order:[...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>Object.keys(ids).find(k=>ids[k]===e.dataset.id)),
-          reachable:Object.keys(ids).filter(k=>shown(c(k))),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+          reachable:Object.keys(ids).filter(k=>shown(c(ids[k]))),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
       let seen = null;
       for (const width of widthsOf(device)) {
         await atWidth(p, device, width);
@@ -3762,6 +3767,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one.', read: true }],
         ['two', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'Reply two.', read: true }],
         ['lone', { sender: other, addressees: [facts.actor], body: 'A message on its own.', read: true }]]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.two, operation_id: topic + '-star', args: { starred: true } });
       const p = await open(topic, device, topic, ids.root);
       await atWidth(p, device, width);
       await fullyOpen(p, device, ids);
@@ -3791,6 +3797,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(async () => (await readerOn(p))?.startsWith('Reply one'), `${at}: a press on its words opens the Reader`);
       await closeReader(p, device);
       assert.equal(await foldOf(topic, ids.one), false, `${at}: opening it folded nothing`);
+      // A starred reply stays open: a press on its header says so and folds nothing.
+      await centre(p, card(ids.two));
+      await twoTaps(p, device, ids.two, header(ids.two));
+      await until(async () => await said(p) === 'Starred messages stay open', `${at}: a press on a starred message's header says it stays open`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${at}: nothing is out after it`);
+      assert.deepEqual([await foldOf(topic, ids.two), (await folded(p, ids.two)).whole], [false, true], `${at}: the starred reply stays whole, in Core`);
+      await nothingElse('the starred header press');
       // The first message, as any message: its bar, a press on its header folds it under the title row, its row unfolds it.
       await centre(p, card(ids.root));
       if (device === 'laptop') {
