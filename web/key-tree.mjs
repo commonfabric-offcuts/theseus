@@ -21,34 +21,43 @@ export class KeyTree {
   // each { el, level, set, key, parent (a row's el, or null), expanded (true,
   // false, or undefined for a row that does not open) }. act(action, row,
   // rows): what the pane does for a key the tree does not answer itself. The
-  // tree speaks through a polite status of its own (say).
-  constructor({ root, rows, act = () => false, label = null, doc = root.ownerDocument }) {
-    Object.assign(this, { root, rows, act, doc });
-    this.current = null; this.currentKey = null; this.wanted = false; this.queued = false; this.chosen = false; this.placing = false;
+  // tree speaks through a polite status of its own (say). also: rows drawn
+  // outside root (the outline's heading pencil), which the tree owns
+  // (aria-owns) and hears as its own.
+  constructor({ root, rows, act = () => false, label = null, also = [], doc = root.ownerDocument }) {
+    Object.assign(this, { root, rows, act, doc, also });
+    this.current = null; this.currentKey = null; this.wanted = false; this.queued = false; this.chosen = false; this.placing = false; this.marked = new Set();
     root.setAttribute('role', 'tree');
     if (label) root.setAttribute('aria-label', label);
     this.status = doc.createElement('span');
     this.status.className = 'sr-only'; this.status.setAttribute('role', 'status');
     root.after(this.status);
-    root.addEventListener('keydown', event => this.key(event));
-    root.addEventListener('focusin', event => {
+    if (also.some(el => !el.id)) throw Error('A row drawn outside the tree needs an id, for the tree to own it');
+    if (also.length) root.setAttribute('aria-owns', also.map(el => el.id).join(' '));
+    for (const part of [root, ...also]) this.hear(part);
+    this.watch = new (doc.defaultView.MutationObserver)(() => this.soon());
+    this.watch.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'open', 'aria-current', 'disabled', 'inert'] });
+    this.refresh();
+  }
+  // Whether an element is in the pane: under its root, or one of its own rows drawn outside it.
+  holds(el) { return Boolean(el) && (this.root.contains(el) || this.also.some(part => part.contains(el))); }
+  hear(part) {
+    part.addEventListener('keydown', event => this.key(event));
+    part.addEventListener('focusin', event => {
       const row = this.rowOf(event.target);
       this.wanted = true;
       // A row the person moved to; not one the tree put the focus on while the row it keeps is away.
       if (row && !this.placing) { this.chosen = true; this.visit(row); }
     });
-    root.addEventListener('focusout', event => {
+    part.addEventListener('focusout', event => {
       // Focus that leaves for somewhere else in the page is gone from the
       // pane; focus whose row was taken out of the page, or made inert while
       // the next run draws it again (a move in place), is given back to the
       // row drawn in its place.
       const left = event.target;
-      if (event.relatedTarget && !root.contains(event.relatedTarget)) this.wanted = false;
-      else if (!event.relatedTarget) queueMicrotask(() => { if (left.isConnected && !left.closest('[inert]') && !root.contains(this.doc.activeElement)) this.wanted = false; });
+      if (event.relatedTarget && !this.holds(event.relatedTarget)) this.wanted = false;
+      else if (!event.relatedTarget) queueMicrotask(() => { if (left.isConnected && !left.closest('[inert]') && !this.holds(this.doc.activeElement)) this.wanted = false; });
     });
-    this.watch = new (doc.defaultView.MutationObserver)(() => this.soon());
-    this.watch.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'open', 'aria-current', 'disabled', 'inert'] });
-    this.refresh();
   }
   // Drawn again once the changes under way have landed.
   soon() { if (this.queued) return; this.queued = true; queueMicrotask(() => { this.queued = false; this.refresh(); }); }
@@ -74,10 +83,14 @@ export class KeyTree {
       el.setAttribute('aria-level', String(row.level));
       el.setAttribute('aria-setsize', String(set.length));
       el.setAttribute('aria-posinset', String(set.indexOf(row) + 1));
-      // A row that does not open keeps what its own control says of itself (+ New topic's line, say).
+      // A row that does not open keeps what its own control says of itself (a pencil's title line, say).
       if (row.expanded !== undefined) el.setAttribute('aria-expanded', String(row.expanded));
       if (el !== this.current) el.tabIndex = -1;
     }
+    // A control still on show that is no row now (a folded outcome's pencil) no longer says it is one.
+    const now = new Set(rows.map(row => row.el));
+    for (const el of this.marked) if (!now.has(el) && shown(el)) for (const name of ['role', 'aria-level', 'aria-setsize', 'aria-posinset']) el.removeAttribute(name);
+    this.marked = now;
     const focused = this.doc.activeElement, before = this.current;
     const reading = rows.find(row => row.el.getAttribute('aria-current') === 'page');
     const kept = rows.find(row => row.key === this.currentKey);

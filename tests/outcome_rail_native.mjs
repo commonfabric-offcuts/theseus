@@ -154,13 +154,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // level and place and every outcome whether it is open, that it has no fold
   // triangle, the ring on the focused row, and the rows shown.
   const keyTree = p => p.evaluate(`(()=>{const t=document.querySelector('#outline .ol-list'),shown=e=>e.checkVisibility();
-    const items=[...t.querySelectorAll('[role=treeitem]')].filter(shown),focus=document.activeElement;
+    const owned=(t.getAttribute('aria-owns')??'').split(' ').filter(Boolean).map(id=>document.getElementById(id)).filter(Boolean);
+    const items=[...owned,...t.querySelectorAll('[role=treeitem]')].filter(e=>shown(e)&&e.getAttribute('role')==='treeitem'),focus=document.activeElement;
     const said=e=>e.dataset.topicId?'topic:'+e.dataset.topicId:e.classList.contains('ol-name')?'name:'+e.closest('.ol-outcome').dataset.workspaceId:'outline:'+(e.id||e.textContent.trim());
-    return {role:t.getAttribute('role'),stops:[...t.querySelectorAll('a[href],button,summary,input,textarea,[tabindex]')].filter(e=>shown(e)&&e.tabIndex>=0).length,
+    return {role:t.getAttribute('role'),stops:[...owned,...t.querySelectorAll('a[href],button,summary,input,textarea,[tabindex]')].filter(e=>shown(e)&&e.tabIndex>=0).length,
       folds:t.querySelectorAll('.ol-fold').length===0,
       named:items.length>0&&items.every(e=>['aria-level','aria-setsize','aria-posinset'].every(a=>e.hasAttribute(a))),
       names:[...t.querySelectorAll('.ol-name')].filter(shown).every(e=>['true','false'].includes(e.getAttribute('aria-expanded'))),
-      ring:focus&&t.contains(focus)?getComputedStyle(focus).outlineStyle:null,rows:items.map(said),
+      ring:focus&&(t.contains(focus)||owned.includes(focus))?getComputedStyle(focus).outlineStyle:null,rows:items.map(said),
       said:t.nextElementSibling?.getAttribute('role')==='status'?t.nextElementSibling.textContent:null}})()`);
   // The outcomes shown in the outline, top to bottom.
   const outcomeOrder = p => p.evaluate(`[...document.querySelectorAll('#outline .ol-outcome')].filter(li=>!li.hidden).map(li=>li.dataset.workspaceId)`);
@@ -239,7 +240,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.point('#instance-label');
     const order = [];
     for (let n = 0; n < 12 && !/^(topic|name):/.test(order.at(-1) ?? ''); ++n) { await p.key('Tab'); order.push(await keyedAt(p)); }
-    assert.deepEqual(order.slice(-2), ['outline:outline-new-outcome', 'topic:t1'], 'Tab reaches New outcome, then the outline on the topic being read: ' + order.join(' '));
+    // The Outcomes heading's pencil is a row of the outline (item 305), not a Tab stop of its own.
+    assert.equal(order.at(-1), 'topic:t1', 'Tab reaches the outline on the topic being read: ' + order.join(' '));
+    assert.ok(!order.includes('outline:outline-new-outcome'), 'and passes no New outcome on its way: ' + order.join(' '));
     const seen = await keyTree(p);
     assert.deepEqual([seen.role, seen.stops, seen.folds, seen.named, seen.names], ['tree', 1, true, true, true],
       'the outline is one tree with one Tab stop; each row says its level and place, each outcome whether it is open, and there is no fold triangle');
@@ -367,40 +370,76 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
-  await check('rail at 390 New topic in the open drawer shows its title line at once, focused, in the drawer; Escape closes the line, and Return starts the topic', async () => {
-    for (const theme of ['light', 'dark']) {
-      const p = await open('rail-new-topic-' + theme, '/?topic=t1', 'phone', theme);
-      await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), theme + ': the rail is ready');
+  // The pencils of the outline as drawn (item 305): the Outcomes heading's, and each outcome's shown, with
+  // what shows of it (its opacity), its box against its row's name and the rail, its name and tooltip,
+  // whether its title line is open, and whether its glyph is New message's.
+  const pencils = p => p.evaluate(`(()=>{const glyph=document.querySelector('#new-message svg path')?.getAttribute('d'),rail=document.getElementById('rail').getBoundingClientRect();
+    const seen=(e,name)=>{if(!e)return null;const b=e.getBoundingClientRect(),n=name?.getBoundingClientRect();
+      return {shown:Number(getComputedStyle(e).opacity),width:Math.round(b.width),height:Math.round(b.height),label:e.getAttribute('aria-label'),tip:e.title,
+        expanded:e.getAttribute('aria-expanded'),glyph:Boolean(glyph)&&e.querySelector('svg path')?.getAttribute('d')===glyph,
+        inRail:b.left>=rail.left-0.5&&b.right<=rail.right+0.5,besideName:n?b.left>=n.right-0.5&&b.top<n.bottom&&b.bottom>n.top:null}};
+    return {heading:seen(document.getElementById('outline-new-outcome')),
+      outcomes:Object.fromEntries([...document.querySelectorAll('#outline .ol-outcome')].filter(li=>!li.hidden).map(li=>[li.dataset.workspaceId,seen(li.querySelector('.ol-new-topic'),li.querySelector('.ol-name'))])),
+      plusRows:[...document.querySelectorAll('#outline button,#outline a')].filter(e=>e.getClientRects().length&&/^\\+?\\s*New topic$/.test(e.textContent.trim())).length,
+      pageButton:document.getElementById('new-topic').getClientRects().length>0}})()`);
+  await check('rail at 320, 375 and 390 the pencil beside the outcome in the open drawer always shows, 44px, and one tap shows the New topic title line, focused, in the drawer, opening and folding nothing; an empty Return is refused in plain words; Escape closes the line, and Return starts the topic', async () => {
+    for (const [width, theme] of [[320, 'light'], [320, 'dark'], [375, 'light'], [375, 'dark'], [390, 'light'], [390, 'dark']]) {
+      const at = `${width} ${theme}`;
+      const p = await page('rail-new-topic-' + width + '-' + theme, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', { ...SIZES.phone, width });
+        await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && Boolean(document.querySelector("#outline .ol-outcome[data-workspace-id=w1]"))'), at + ': the rail is ready');
       await tap(p, '#rail-open');
-      await until(async () => (await drawer(p)).open, theme + ': "☰ Outcomes" opens it');
-      // The page's topic list, New topic at its end, shows once it has moved into the outline (docs/rails.md).
-      await until(() => p.evaluate('document.getElementById("new-topic").getClientRects().length > 0'), theme + ': New topic is in the open drawer');
-      // One tap: the line shows in the open drawer, under the Topics heading, with the focus in it.
-      const line = () => p.evaluate(`(()=>{const l=document.getElementById('new-topic-title'),r=document.getElementById('rail'),b=l?.getBoundingClientRect(),d=r.getBoundingClientRect();
-        return {shown:Boolean(l)&&l.getClientRects().length>0&&b.top>=d.top&&b.bottom<=d.bottom&&b.left>=d.left&&b.right<=d.right,focused:document.activeElement===l,open:r.classList.contains('open'),active:document.activeElement?.id??null}})()`);
-      const tapped = () => until(() => p.evaluate('document.getElementById("new-topic").getAttribute("aria-expanded")==="true"'), theme + ': the tap reached New topic');
-      // New topic ends the outcome's list in the outline, below its topics.
-      await p.evaluate('document.getElementById("new-topic").scrollIntoView({block:"center"})');
-      await tap(p, '#new-topic'); await tapped();
-      assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'new-topic-title' }, theme + ': one tap shows the line, focused, in the open drawer');
+      await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens it');
+      // On a phone every pencil shows, at least 44px, beside its outcome's name and inside the drawer; no + New topic row is left.
+      const drawn = await pencils(p), titles = Object.fromEntries((await view('workspaces', { limit: 100 })).items.map(item => [item.id, item.title]));
+      assert.ok(drawn.outcomes.w1 && drawn.heading, at + ': the outcome being read and the Outcomes heading each have a pencil: ' + JSON.stringify(drawn));
+      for (const [id, pen] of [['heading', drawn.heading], ...Object.entries(drawn.outcomes)]) {
+        assert.deepEqual([pen.shown, pen.width >= 44, pen.height >= 44, pen.glyph, pen.inRail], [1, true, true, true, true], `${at}: ${id}'s pencil always shows, 44px, New message's glyph, in the drawer: ${JSON.stringify(pen)}`);
+        if (id !== 'heading') assert.deepEqual([pen.besideName, pen.label, pen.tip], [true, `New topic in ${titles[id]}`, 'New topic'], `${at}: ${id}'s pencil sits beside its name, named and with its tooltip: ${JSON.stringify(pen)}`);
+      }
+      assert.deepEqual([drawn.heading.label, drawn.heading.tip], ['New outcome', 'New outcome'], at + ': the heading\'s pencil is New outcome');
+      assert.deepEqual([drawn.plusRows, drawn.pageButton], [0, false], at + ': no + New topic row is left in the outline, nor the page\'s own New topic');
+      // One tap: the line shows in the open drawer, under the outcome's row, with the focus in it; the outcome stays open and the page stays.
+      const line = () => p.evaluate(`(()=>{const l=document.getElementById('ol-new-topic-w1'),r=document.getElementById('rail'),b=l?.getBoundingClientRect(),d=r.getBoundingClientRect(),row=document.querySelector('.ol-outcome[data-workspace-id=w1] .ol-row');
+        return {shown:Boolean(l)&&l.getClientRects().length>0&&b.top>=d.top&&b.bottom<=d.bottom&&b.left>=d.left&&b.right<=d.right,focused:document.activeElement===l,open:r.classList.contains('open'),active:document.activeElement?.id??null,
+          underRow:Boolean(l)&&row.nextElementSibling===l.closest('.one-line')}})()`);
+      const place = () => p.evaluate(`({search:location.search,open:document.querySelector('.ol-outcome[data-workspace-id=w1]').hasAttribute('data-open')})`);
+      const tapped = () => until(() => p.evaluate('document.getElementById("ol-pencil-w1").getAttribute("aria-expanded")==="true"'), at + ': the tap reached the pencil');
+      const before = await place();
+      await p.evaluate('document.getElementById("ol-pencil-w1").scrollIntoView({block:"center"})');
+      await tap(p, '#ol-pencil-w1'); await tapped();
+      assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'ol-new-topic-w1', underRow: true }, at + ': one tap shows the line, focused, under the outcome, in the open drawer');
+      assert.deepEqual(await place(), before, at + ': the tap opened and folded nothing, and the page stayed');
       const seen = await p.evaluate('({scroll:document.documentElement.scrollWidth,width:innerWidth})');
-      assert.ok(seen.scroll <= seen.width, theme + `: no sideways scroll (${seen.scroll} of ${seen.width})`);
-      await shot(p, 'rail-new-topic-' + theme);
-      // Escape closes the line and gives New topic the focus; the drawer stays open.
+      assert.ok(seen.scroll <= seen.width, at + `: no sideways scroll (${seen.scroll} of ${seen.width})`);
+      await shot(p, `rail-new-topic-${width}-${theme}`);
+      // Refused: Return with no title says so in plain words, keeps the line, and nothing scrolls sideways.
+      await p.key('Enter');
+      await until(() => p.evaluate(`document.querySelector('#ol-new-topic-w1 + .one-line-state')?.textContent==='Type the topic’s title, then press Return.'`), at + ': an empty Return is refused in plain words');
+      const refused = await p.evaluate(`(()=>{const s=document.querySelector('#ol-new-topic-w1 + .one-line-state'),b=s.getBoundingClientRect(),d=document.getElementById('rail').getBoundingClientRect();
+        return {inRail:b.left>=d.left&&b.right<=d.right,scroll:document.documentElement.scrollWidth<=innerWidth,focused:document.activeElement?.id}})()`);
+      assert.deepEqual(refused, { inRail: true, scroll: true, focused: 'ol-new-topic-w1' }, at + ': the refusal shows in the drawer, the line keeps the focus, nothing scrolls sideways');
+      await shot(p, `rail-new-topic-refused-${width}-${theme}`);
+      // Escape closes the line and gives the pencil the focus; the drawer stays open.
       await p.key('Escape');
-      await until(() => p.evaluate('!document.getElementById("new-topic-title")'), theme + ': Escape closes the line');
-      assert.deepEqual(await drawer(p), { open: true, backdrop: true, inert: true, expanded: 'true', focus: 'new-topic' }, theme + ': the drawer stays open, the focus on New topic');
-      // Again, and Return starts the topic: it opens first on the page, the drawer folded.
-      // New topic ends the outcome's list in the outline, below its topics.
-      await p.evaluate('document.getElementById("new-topic").scrollIntoView({block:"center"})');
-      await tap(p, '#new-topic'); await tapped();
-      assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'new-topic-title' }, theme + ': the line again');
-      const title = 'Started from the drawer ' + theme;
-      await p.send('Input.insertText', { text: title }); await p.key('Enter');
-      await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("topic") && document.querySelector("#topic-title").textContent===${JSON.stringify(title)}`).catch(() => false), theme + ': the new topic opens');
-      const after = await top(p);
-      assert.deepEqual([(await drawer(p)).open, after.rail, after.main[0]], [false, [], 'topic-header'], theme + ': with the rail folded and the new topic first');
-      await shot(p, 'rail-new-topic-started-' + theme);
+      await until(() => p.evaluate('!document.getElementById("ol-new-topic-w1")'), at + ': Escape closes the line');
+      assert.deepEqual(await drawer(p), { open: true, backdrop: true, inert: true, expanded: 'true', focus: 'ol-pencil-w1' }, at + ': the drawer stays open, the focus on the pencil');
+      if (width === 390) {
+        // Again, and Return starts the topic: it opens first on the page, the drawer folded.
+        await tap(p, '#ol-pencil-w1'); await tapped();
+        assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'ol-new-topic-w1', underRow: true }, at + ': the line again');
+        const title = 'Started from the drawer ' + theme;
+        await p.send('Input.insertText', { text: title }); await p.key('Enter');
+        await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("topic") && document.querySelector("#topic-title").textContent===${JSON.stringify(title)}`).catch(() => false), at + ': the new topic opens');
+        const id = await p.evaluate('new URL(location.href).searchParams.get("topic")');
+        assert.equal((await view('topic', { topic_id: id })).topic.workspace_id, 'w1', at + ': the topic is in the outcome whose pencil was tapped');
+        const after = await top(p);
+        assert.deepEqual([(await drawer(p)).open, after.rail, after.main[0]], [false, [], 'topic-header'], at + ': with the rail folded and the new topic first');
+        await shot(p, 'rail-new-topic-started-' + theme);
+      }
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
@@ -789,7 +828,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail the chips show only the outcomes with something new or waiting on the reader, ⇧⌘→ and ⇧⌘← open and fold every outcome until the next place tidies them, and + New topic under another outcome starts a topic there', async () => {
+  await check('rail the chips show only the outcomes with something new or waiting on the reader, ⇧⌘→ and ⇧⌘← open and fold every outcome until the next place tidies them, and the pencil beside another outcome starts a topic there', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-chip-ask', title: 'Asking for the chips', topic: { id: 'rail-chip-ask-t', title: 'Chip ask topic' } });
     await control({ method: 'agent_message', operation_id: 'rail-chip-ask', body: 'Which one?', topic_id: 'rail-chip-ask-t', addressees: [facts.actor], intent: 'ask' });
     const p = await page('rail-chips', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
@@ -813,15 +852,15 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     };
     await only('#outline-only-new', 'fresh', item => item.unread > 0, '"N new"');
     await only('#outline-only-waiting', 'waiting', asking, '"N waiting on you"');
-    // ⇧⌘→ opens every outcome, and ⇧⌘← folds every one, from anywhere in the outline: here, New outcome.
+    // ⇧⌘→ opens every outcome, and ⇧⌘← folds every one, from anywhere in the outline: here, its chip "N waiting on you".
     const opens = async () => Object.values((await outline(p)).outcomes).map(row => row.open);
     assert.deepEqual((await opens()).filter(open => open).length, 1, 'only the outcome being read is open');
     await tabToOutline(p);
     await p.key('Tab', 8);
-    assert.equal(await keyedAt(p), 'outline:outline-new-outcome', 'Shift-Tab from the outline is its New outcome');
+    assert.equal(await keyedAt(p), 'outline:outline-only-waiting', 'Shift-Tab from the outline is its chip "N waiting on you"');
     await p.key('ArrowRight', 12);
     await until(async () => (await opens()).every(open => open), '⇧⌘→ opens every outcome');
-    assert.equal(await keyedAt(p), 'outline:outline-new-outcome', 'the keys stay where they were');
+    assert.equal(await keyedAt(p), 'outline:outline-only-waiting', 'the keys stay where they were');
     await p.key('ArrowLeft', 12);
     await until(async () => (await opens()).every(open => !open), '⇧⌘← folds every outcome, the one being read too');
     // From a row: open every one, then fold every one with the keys on a topic: they go to its outcome.
@@ -835,19 +874,19 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     // Nothing of it is kept: a reload starts tidy, the outcome being read open, every other folded.
     await reloaded(p, 'the page loads again');
     await until(async () => { const rows = Object.values((await outline(p)).outcomes); return rows.length === everyId.length && rows.filter(row => row.open).length === 1 && (await outline(p)).outcomes.w1.open; }, 'after a reload only the outcome being read is open');
-    // + New topic under another outcome, while reading this one: ⌘→ opens it from the keys; the topic starts there and opens in place.
+    // The pencil beside another outcome, while reading this one: ⌘→ opens it from the keys; the topic starts there and opens in place.
     const before = await placeOf(p);
     await keysTo(p, 'name:rail-chip-ask');
     await p.key('ArrowRight', 4);
     await until(async () => (await outline(p)).outcomes['rail-chip-ask'].topics.some(row => row.id === 'rail-chip-ask-t'), 'its topics show under it');
-    await press(p, '.ol-outcome[data-workspace-id="rail-chip-ask"] .ol-new-topic');
+    await press(p, '#ol-pencil-rail-chip-ask');
     await until(() => p.evaluate("document.activeElement?.id==='ol-new-topic-rail-chip-ask'"), 'its title line shows, focused');
     const title = 'Started under another outcome';
     await p.send('Input.insertText', { text: title }); await p.key('Enter');
     const opened = await until(async () => { const at = await placeOf(p); return at.ready && at.title === title && at; }, 'the new topic opens');
     assert.equal(opened.origin, before.origin, 'in place');
     const id = new URLSearchParams(opened.search).get('topic');
-    assert.equal((await view('topic', { topic_id: id })).topic.workspace_id, 'rail-chip-ask', 'the topic is in the outcome whose + New topic was pressed');
+    assert.equal((await view('topic', { topic_id: id })).topic.workspace_id, 'rail-chip-ask', 'the topic is in the outcome whose pencil was pressed');
     await settled(p, 'up');
     const seen = await rails(p);
     assert.deepEqual([seen.holder, seen.currentTopics], ['rail-chip-ask', ['rail-chip-ask/' + id]], 'and the outline shows it under that outcome, marked as the page');
@@ -1585,29 +1624,117 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const railRings = p => p.evaluate(`[...document.querySelectorAll('#rail :focus-visible, #things :focus-visible')].map(e=>e.getAttribute('href')??e.dataset.topicId??e.className??e.tagName)`);
   const ringed = p => p.evaluate('getComputedStyle(document.activeElement).outlineStyle');
 
-  await check('rail → on an open outcome goes into the messages, as on a topic; on a folded one it opens it, and ↓ reaches its topics', async () => {
+  await check('rail → on a folded outcome opens it, the next → lands on its pencil with a ring, and the next goes into the messages; Return on the pencil opens the New topic line; ↑ from the first outcome lands on the Outcomes pencil, where Return opens the New outcome line', async () => {
     const p = await open('rail-open-right', '/?topic=t1');
     await settled(p, 'the topic is up');
     await keysTo(p, 'name:w1');
     const expanded = () => p.evaluate("document.querySelector('.ol-outcome[data-workspace-id=w1] .ol-name').getAttribute('aria-expanded')");
-    assert.equal(await expanded(), 'true', 'the outcome being read is open');
-    await p.key('ArrowRight');
-    assert.match(await keyedAt(p), /^message:/, '→ on the open outcome goes into the messages');
-    assert.equal(await expanded(), 'true', 'and leaves it open');
-    // Back: ← lands on the topic being read; ↑ to the outcome, ← folds it, → opens it and keeps the keys on it.
-    await p.key('ArrowLeft');
-    assert.equal(await keyedAt(p), 'topic:t1', '← from the messages comes back to the topic being read');
-    await p.key('ArrowUp');
-    for (let n = 0; n < 12 && await keyedAt(p) !== 'name:w1'; ++n) await p.key('ArrowUp');
-    assert.equal(await keyedAt(p), 'name:w1');
+    // What has the keys, with its ring and how much of it shows.
+    const keyed = () => p.evaluate(`(()=>{const e=document.activeElement;return {id:e.id,ring:getComputedStyle(e).outlineStyle,shown:Number(getComputedStyle(e).opacity)}})()`);
+    // The keys on an outcome's name show its pencil, and no other's.
+    const shownPencils = () => p.evaluate(`[...document.querySelectorAll('#outline .ol-pencil')].filter(e=>e.getClientRects().length&&Number(getComputedStyle(e).opacity)>0).map(e=>e.id)`);
+    await p.point('#topic-title', 'move');
+    assert.deepEqual(await shownPencils(), ['ol-pencil-w1'], 'the keys on the outcome\'s name show its pencil, and only its');
+    // ← folds it; → opens it and shows its topics, the keys kept on it.
     await p.key('ArrowLeft');
     await until(async () => await expanded() === 'false', '← folds the open outcome');
     await p.key('ArrowRight');
-    await until(async () => await expanded() === 'true', '→ on the folded outcome opens it');
+    await until(async () => await expanded() === 'true' && (await outline(p)).outcomes.w1.topics.length > 0, '→ on the folded outcome opens it and shows its topics');
     assert.equal(await keyedAt(p), 'name:w1', 'and the keys stay on it, not in the messages');
+    // The next → lands on its pencil, which shows with a ring; the outcome stays open.
+    await p.key('ArrowRight');
+    assert.deepEqual(await keyed(), { id: 'ol-pencil-w1', ring: 'solid', shown: 1 }, 'the next → lands on its pencil, shown and ringed');
+    assert.equal(await expanded(), 'true', 'and leaves the outcome open');
+    // Return on the pencil opens the New topic line under the outcome, the cursor in it; Escape gives the pencil back.
+    await p.key('Enter');
+    await until(() => p.evaluate("document.activeElement?.id==='ol-new-topic-w1'"), 'Return on the pencil opens the New topic line, the cursor in it');
+    assert.equal(await placeOf(p).then(at => at.search), '?topic=t1', 'and the page stays where it was');
+    await p.key('Escape');
+    await until(() => p.evaluate("!document.getElementById('ol-new-topic-w1') && document.activeElement?.id==='ol-pencil-w1'"), 'Escape closes the line and gives the pencil the keys');
+    // The next → goes on into the messages; ← comes back to the topic being read.
+    await p.key('ArrowRight');
+    assert.match(await keyedAt(p), /^message:/, 'the next → goes into the messages');
+    assert.equal(await expanded(), 'true', 'and leaves the outcome open');
+    await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'topic:t1', '← from the messages comes back to the topic being read');
+    // ↑ from the first outcome lands on the Outcomes heading's pencil, shown and ringed; ↓ goes back.
+    const first = (await outcomeOrder(p))[0];
+    for (let n = 0; n < 40 && await keyedAt(p) !== 'name:' + first; ++n) await p.key('ArrowUp');
+    assert.equal(await keyedAt(p), 'name:' + first, '↑ reaches the first outcome');
+    await p.key('ArrowUp');
+    assert.deepEqual(await keyed(), { id: 'outline-new-outcome', ring: 'solid', shown: 1 }, '↑ from the first outcome lands on the Outcomes pencil, shown and ringed');
+    assert.deepEqual((await keyTree(p)).rows[0], 'outline:outline-new-outcome', 'the first row of the outline\'s tree');
     await p.key('ArrowDown');
-    const rows = (await keyTree(p)).rows;
-    assert.equal(await keyedAt(p), rows[rows.indexOf('name:w1') + 1], '↓ reaches its first topic');
+    assert.equal(await keyedAt(p), 'name:' + first, '↓ goes back to the first outcome');
+    await p.key('ArrowUp');
+    // Return there opens the New outcome line under the heading, the cursor in it.
+    await p.key('Enter');
+    await until(() => p.evaluate("document.activeElement?.id==='outline-new-outcome-title'"), 'Return on the Outcomes pencil opens the New outcome line, the cursor in it');
+    assert.equal(await p.evaluate("document.getElementById('outline-new-outcome').getAttribute('aria-expanded')"), 'true');
+    await p.key('Escape');
+    await until(() => p.evaluate("!document.getElementById('outline-new-outcome-title') && document.activeElement?.id==='outline-new-outcome'"), 'Escape closes it and gives the pencil the keys');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail on a laptop each pencil is quiet until the pointer is on its row or heading: then it shows, and a press opens the New topic line under the row, opening and folding nothing, and Return starts the topic in that outcome; no + New topic row is left, and the outcome page keeps its own New topic, light and dark', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-pencil', title: 'Pencil outcome', topic: { id: 'rail-pencil-t', title: 'Pencil topic' } });
+    const titles = Object.fromEntries((await view('workspaces', { limit: 100 })).items.map(item => [item.id, item.title]));
+    const showing = drawn => [...(drawn.heading.shown ? ['heading'] : []), ...Object.entries(drawn.outcomes).filter(([, pen]) => pen.shown).map(([id]) => id)];
+    const hover = async selector => { await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`); await p.point(selector, 'move'); };
+    const opened = () => p.evaluate(`({search:location.search,open:[...document.querySelectorAll('#outline .ol-outcome')].filter(li=>li.hasAttribute('data-open')).map(li=>li.dataset.workspaceId)})`);
+    const lineUnder = id => p.evaluate(`(()=>{const l=document.getElementById('ol-new-topic-${id}');return Boolean(l)&&document.activeElement===l&&document.querySelector('.ol-outcome[data-workspace-id="${id}"] .ol-row').nextElementSibling===l.closest('.one-line')})()`);
+    let p;
+    for (const theme of ['light', 'dark']) {
+      p = await open('rail-pencil-' + theme, '/?topic=t1', 'laptop', theme);
+      await settled(p, theme + ': the topic is up');
+      await until(() => p.evaluate("Boolean(document.querySelector('#outline .ol-outcome[data-workspace-id=rail-pencil]'))"), theme + ': the outline lists the second outcome');
+      // The pointer off the outline and the keys in none of it: no pencil shows, though each is there, 44px, named, with its tooltip.
+      await p.point('#topic-title', 'move');
+      let drawn = await pencils(p);
+      assert.ok(drawn.heading && drawn.outcomes.w1 && drawn.outcomes['rail-pencil'], theme + ': the heading and each outcome have a pencil: ' + JSON.stringify(drawn));
+      assert.deepEqual(showing(drawn), [], theme + ': with the pointer off the outline and the keys elsewhere, no pencil shows: ' + JSON.stringify(drawn));
+      assert.deepEqual([drawn.plusRows, drawn.pageButton], [0, false], theme + ': no + New topic row is left in the outline, nor the page\'s own New topic');
+      for (const [id, pen] of [['heading', drawn.heading], ...Object.entries(drawn.outcomes)]) {
+        assert.deepEqual([pen.width >= 44, pen.height >= 44, pen.glyph, pen.inRail], [true, true, true, true], `${theme}: ${id}'s pencil is 44px, New message's glyph, in the rail: ${JSON.stringify(pen)}`);
+        if (id !== 'heading') assert.deepEqual([pen.besideName, pen.label, pen.tip], [true, `New topic in ${titles[id]}`, 'New topic'], `${theme}: ${id}'s pencil sits beside its name, named and with its tooltip: ${JSON.stringify(pen)}`);
+      }
+      assert.deepEqual([drawn.heading.label, drawn.heading.tip], ['New outcome', 'New outcome'], theme + ': the heading\'s pencil is New outcome');
+      // The pointer on a folded outcome's row shows its pencil, and only its; on the heading, the heading's.
+      await hover('.ol-outcome[data-workspace-id="rail-pencil"] .ol-name');
+      assert.deepEqual(showing(await pencils(p)), ['rail-pencil'], theme + ': the pointer on a folded outcome shows its pencil, and only its');
+      await shot(p, 'rail-pencil-hover-' + theme);
+      await hover('#outline-heading');
+      assert.deepEqual(showing(await pencils(p)), ['heading'], theme + ': the pointer on the heading shows its pencil, and only its');
+      await shot(p, 'rail-pencil-heading-' + theme);
+      // A press on the open outcome's pencil opens its line under its row; it stays open, and a second press closes the line.
+      const before = await opened();
+      assert.deepEqual(before, { search: '?topic=t1', open: ['w1'] }, theme + ': only the outcome being read is open');
+      await press(p, '#ol-pencil-w1');
+      await until(() => lineUnder('w1'), theme + ': a press on the open outcome\'s pencil opens its New topic line under its row, focused');
+      assert.deepEqual(await opened(), before, theme + ': and folds nothing');
+      await press(p, '#ol-pencil-w1');
+      await until(() => p.evaluate("!document.getElementById('ol-new-topic-w1')"), theme + ': a second press closes the line');
+      assert.deepEqual(await opened(), before, theme + ': and still folds nothing');
+      // A press on a folded outcome's pencil opens its line under its row; it stays folded and the page stays.
+      await press(p, '#ol-pencil-rail-pencil');
+      await until(() => lineUnder('rail-pencil'), theme + ': a press on the folded outcome\'s pencil opens its New topic line under its row, focused');
+      assert.deepEqual(await opened(), before, theme + ': and opens nothing');
+      // With the pointer gone, the pencil shows while its line is open.
+      await p.point('#topic-title', 'move');
+      drawn = await pencils(p);
+      assert.deepEqual([showing(drawn), drawn.outcomes['rail-pencil'].expanded], [['rail-pencil'], 'true'], theme + ': the pencil whose line is open shows, and only it');
+      await shot(p, 'rail-pencil-line-' + theme);
+      // Return starts the topic in that outcome, in place.
+      const title = 'Started from the pencil ' + theme;
+      await p.send('Input.insertText', { text: title }); await p.key('Enter');
+      const at = await until(async () => { const now = await placeOf(p).catch(() => null); return now?.ready && now.title === title && now; }, theme + ': the new topic opens');
+      assert.equal((await view('topic', { topic_id: new URLSearchParams(at.search).get('topic') })).topic.workspace_id, 'rail-pencil', theme + ': in the outcome whose pencil was pressed');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // The outcome's own page keeps its own New topic.
+    p = await open('rail-pencil-outcome-page', '/?workspace=w1');
+    await until(() => p.evaluate('document.body.dataset.ready==="true" && !document.getElementById("new-topic").disabled && document.getElementById("new-topic").getClientRects().length > 0'), 'the outcome page shows its own New topic');
+    assert.equal(await p.evaluate('document.getElementById("new-topic").textContent'), 'New topic');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

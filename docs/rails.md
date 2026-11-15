@@ -28,7 +28,21 @@ triangle: the name has the rail's width. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
 while something in them is unread, and Done (N) and Archived (N) below.
-Each outcome ends with + New topic.
+
+- **Pencils.** A pencil means "new", the same glyph as New message and a new
+  Notebook page (item 305). A quiet pencil beside an outcome's name starts a
+  new topic there: a press opens the New topic title line under the row,
+  folded or open, and Return starts the topic and opens it (docs/openings.md,
+  "Client behavior"). The press opens and folds nothing, and the page stays.
+  The pencil beside the Outcomes heading is New outcome: a press opens its
+  title line under the heading. On a laptop a pencil shows while the pointer
+  is on its row (or the heading) or the keys are on that row or on the pencil,
+  and while its title line is open; on a phone's width, or wherever nothing
+  hovers, every pencil shows. Each is 44px to press, named ("New topic in …",
+  "New outcome"), with its tooltip. There is no + New topic row: the page's
+  own New topic, pulled into the outline under the outcome being read, stays
+  out of sight there, and stays on the outcome page and the pages with the
+  side rail.
 
 - **Counts.** A folded outcome counts everything new inside it, and what was
   sent to the reader by name. An open outcome counts only its Conversation,
@@ -56,7 +70,10 @@ Each outcome ends with + New topic.
   order. There is no "Not in an outcome" group.
 - **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
   its rows, Return opens one, → and ← take the tree's steps and then move to
-  the messages (→ on an open outcome goes straight there, as on a topic), and
+  the messages: → on a folded outcome opens it and shows its topics, the next
+  lands on its pencil (ringed), and the next goes on into the messages; Return
+  on the pencil opens the New topic line. ↑ from the first outcome lands on
+  the Outcomes heading's pencil, where Return opens the New outcome line.
   ⌘Return starts a new message in the row's topic or the outcome's
   Conversation. A "Keys" line under the outline lists them in plain words.
   The row the keys reach comes into view by the one rule for what the keys

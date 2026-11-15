@@ -53,7 +53,9 @@ and the writing. Focus stays visible and follows what the person did.
   one stop, on the topic being read: no fold triangle, the next Tab leaves it
   and Shift-Tab comes back", "rail the arrows move through the outline as a
   tree" and "rail → and ← move between the outline, the messages and the right
-  rail". `tests/reader_colors_native.mjs`
+  rail"; "rail → on a folded outcome opens it, the next → lands on its pencil
+  with a ring, …" reaches each pencil by the keys and presses it with Return.
+  `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
 - `tests/fence_copy_native.mjs` (`native-fence-copy`) checks keyboard activation on the copy glyph and its feed card in Chromium and WebKit.
@@ -118,7 +120,9 @@ appears once the person starts the act it belongs to. A word, a glyph or a small
 mark in a line beats a boxed button. Marks on a card sit in the card's own line.
 
 - `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
-  no page has a header bar or Refresh; …".
+  no page has a header bar or Refresh; …"; "rail on a laptop each pencil is
+  quiet until the pointer is on its row or heading: …" (a pencil, not a
+  + New topic row, and none shown on a row neither pointed at nor keyed).
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
@@ -188,6 +192,9 @@ nothing scrolls sideways, and nothing depends on hover.
   paging workspace denial retry and narrow touch targets".
 - `tests/reader_openings_native.mjs` (`native-openings`): "openings 390px touch
   an opening types adds a participant saves and sends by tap".
+- `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
+  at 320, 375 and 390 the pencil beside the outcome in the open drawer always
+  shows, 44px, …", in both themes.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).
