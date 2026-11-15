@@ -13967,6 +13967,21 @@
     "native": "rail",
     "case": "rail arrows a control out of sight"
    }
+  },
+  {
+   "item": 301,
+   "act": "From a control inside a tree's row (the pencil in the Notebook's heading) the arrows go on to the rows below and above",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "return Boolean(widget) && (widget === at || widget.getAttribute('role') !== 'treeitem');",
+     "return Boolean(widget);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
   }
  ]
 }

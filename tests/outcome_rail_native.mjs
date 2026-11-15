@@ -2384,8 +2384,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.evaluate("document.getElementById('rail-open').focus()");
       await p.key('Enter');
       await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it');
-      await until(() => p.evaluate("Boolean(document.querySelector('#outline [role=treeitem][tabindex=\"0\"]')?.checkVisibility())"), size + ': the outline shows in the drawer');
-      await p.evaluate("document.querySelector('#outline [role=treeitem][tabindex=\"0\"]').focus()");
+      await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer');
+      await p.evaluate("(rows=>(rows.find(e=>e.tabIndex===0)??rows[0]).focus())([...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()))");
       await p.key('Home');
       const up = await walk(p, 'ArrowUp');
       assert.ok(!up.includes('page'), `${size}: no arrow loses the focus: ${up.join(' → ')}`);
@@ -2484,6 +2484,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const down = await walk(p, 'ArrowDown', 6, at => at.startsWith('things:row:'));
     assert.ok(!down.includes('page'), 'never lost: ' + down.join(' → '));
     assert.ok((await focusAt(p)).startsWith('things:row:'), '↓ comes back to the sections: ' + down.join(' → '));
+    // From the pencil in the Notebook's heading, a control inside a row, ↓ goes on to the row below and ↑ above it.
+    await p.evaluate("document.querySelector('#things .notebook-create').focus()");
+    await p.key('ArrowDown');
+    assert.match(await focusAt(p), /^things:row:/, '↓ from the Notebook heading\'s pencil lands on the row below');
+    await p.evaluate("document.querySelector('#things .notebook-create').focus()");
+    await p.key('ArrowUp');
+    assert.notEqual(await focusAt(p), 'things:New Notebook page', '↑ from the pencil moves too');
     const { missing, lost } = await arrowClosure(p, '#things', 'tree');
     assert.deepEqual(missing, [], 'the arrows reach every control in the right rail from its sections');
     assert.deepEqual(lost, [], 'and no arrow there loses the focus to the page');

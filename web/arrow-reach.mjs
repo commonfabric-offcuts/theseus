@@ -153,6 +153,14 @@ function scrollsOn(el, way, view) {
   return scrolling(view.getComputedStyle(el), way === 'up' || way === 'down') && room(el, way);
 }
 
+// A widget that keys its own arrows, or a control inside one; but a control
+// inside a tree's row (a pencil in a section's heading) is not the row, which
+// keys only itself (key-tree.mjs).
+function owned(at) {
+  const widget = at?.closest?.(OWNS);
+  return Boolean(widget) && (widget === at || widget.getAttribute('role') !== 'treeitem');
+}
+
 // A one-line field has no line above or below its own, and an empty box has
 // no line at all: ↑ and ↓ there go on to the control that way, so a field the
 // arrows land in never holds them. ← and → stay the writing's, and so do ↑ and
@@ -178,7 +186,7 @@ export function arrowReach(doc, { managed = () => false, region = () => null, be
     const way = WAYS[event.key];
     if (!way || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const at = doc.activeElement;
-    if ((at?.closest?.(FIELD) && !leavesLine(at, way)) || at?.closest?.(OWNS) || managed(at, way) || scrollsOn(at, way, view)) return;
+    if ((at?.closest?.(FIELD) && !leavesLine(at, way)) || owned(at) || managed(at, way) || scrollsOn(at, way, view)) return;
     const nothing = onNothing(at, doc), within = nothing ? null : region(at);
     const moved = within ? reach(at, way, { within, doc }) || beyond(at, way) : reach(nothing ? null : at, way, { doc });
     if (moved) event.preventDefault();
