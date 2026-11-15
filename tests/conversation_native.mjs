@@ -167,18 +167,29 @@ export async function conversationChecks({ check, page, until, control, view, fa
     };
     await waiting(true);
     assert.deepEqual(await waits(), [person], 'Core: the ask waits on the reader');
-    // The bar's 👍, pressed as a person presses it: the pointer rests on the ask's card, then clicks the bar's 👍.
-    // A 👍 given folds the ask for the reader (item 377, docs/reply-stacks.md): then its one-line row lights the same way.
+    // The 👍, pressed as a person presses it: the pointer rests on the ask's card, then clicks the bar's 👍. A 👍
+    // given folds the ask for the reader (item 377, docs/reply-stacks.md); the ask answers the item, so the two are a
+    // dossier, where a folded row has no bar and shows its own 👍 once someone has given one (item 471): that 👍 is
+    // pressed, and a row with none is pressed first, which unfolds it.
     const thumb = async on => {
-      const card = `#messages .message-card[data-id="${ask}"]`;
-      const folded = await quiet(p, `document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`);
-      const words = folded ? `${card} > .message-folded > .folded-author` : `${card} > .message-preview`;
-      await p.evaluate(`document.querySelector(${JSON.stringify(words)}).scrollIntoView({block:'center'})`);
+      const card = `#messages .message-card[data-id="${ask}"]`, own = `${card} > .message-folded > .folded-thumb`;
+      const centre = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+      const folded = () => quiet(p, `document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`);
+      const done = () => until(async () => (await view('reactions', { message_id: ask })).reactions.thumbs.some(t => t.actor_id === person && t.answered === true) === on,
+        `Core holds the 👍 ${on ? 'as a yes' : 'taken back'}`);
+      if (await folded() && await quiet(p, `Boolean(document.querySelector(${JSON.stringify(own)})?.getClientRects().length)`)) {
+        await centre(own); await p.point(own); await done(); return;
+      }
+      if (await folded()) {
+        await centre(`${card} > .message-folded > .folded-author`); await p.point(`${card} > .message-folded > .folded-author`);
+        await until(async () => !await folded(), 'a press on the row unfolds the ask');
+      }
+      const words = `${card} > .message-preview`;
+      await centre(words);
       await p.point(words, 'move');
       await until(() => quiet(p, `(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=thumb]')))(document.querySelector('.message-bar'))`), 'the ask lights, with its bar');
       await p.point('.message-bar [data-act=thumb]');
-      await until(async () => (await view('reactions', { message_id: ask })).reactions.thumbs.some(t => t.actor_id === person && t.answered === true) === on,
-        `Core holds the 👍 ${on ? 'as a yes' : 'taken back'}`);
+      await done();
     };
     await thumb(true);
     assert.deepEqual(await waits(), [], 'Core: the 👍 answered the ask, and the waits agents read say so');
