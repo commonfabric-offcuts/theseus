@@ -2974,7 +2974,7 @@ test('a folded message the person marked unread carries the pill on its line, th
   const between = (from, through) => messages(from, through).map(item => ({ ...item, addressees: item.seq === 5 ? ['agent-b'] : [] }));
   const at = (from, through, next) => ({ instance_id: 'fixture', items: between(from, through), next_cursor: next, relevant_versions: { topic: 1 }, oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 });
   views.messagesPage(at(10, 19, 10), { initial: true }); await settle();
-  const marker = f.get('messages').children.at(-1);
+  const marker = listed(f).at(-1);
   const pages = [at(1, 9, null)], view = f.api.view;
   f.api.view = async (name, args) => name === 'topic_messages' ? pages.shift() : view(name, args);
   await marker.onclick(); await settle();
@@ -3020,7 +3020,7 @@ test('the New line for a message further back sits at the bottom, and pressing i
   views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
   const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
-  const marker = f.get('messages').children.at(-1);
+  const marker = listed(f).at(-1);
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   assert.equal(text(marker), 'More new below', 'a line without a time says none');
   // While the line says more new messages lie below, it is the one control
@@ -3050,7 +3050,7 @@ test('once the line is in its place, More messages loads what is older again', a
   assert.equal(f.get('more-messages').hidden, true, 'hidden while the line says more new below');
   const view = f.api.view;
   f.api.view = async (name, args) => name === 'topic_messages' ? at(10, 19, 10) : view(name, args);
-  await f.get('messages').children.at(-1).onclick(); await settle();
+  await listed(f).at(-1).onclick(); await settle();
   assert.equal(f.get('messages').children.find(child => child.dataset.line)?.dataset.line, 'new', 'the line is in its place');
   assert.equal(f.get('more-messages').hidden, false, 'More messages is back, with older messages left to load');
 });
@@ -3063,11 +3063,11 @@ test('the older-below line fades once what it leads to is read elsewhere, and Mo
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.messagesPage({ ...page(20, 29, 20), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 }, { initial: true }); await settle();
-  const marker = f.get('messages').children.at(-1);
+  const marker = listed(f).at(-1);
   assert.deepEqual([marker.dataset.line, marker.inert, f.get('more-messages').hidden], ['older', false, true], 'the line waits at the bottom, and More is hidden');
   const unread = async (oldest, at) => { await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: oldest, commit_seq: at })); await settle(); };
   await unread(null, 2);
-  assert.equal(f.get('messages').children.at(-1), marker, 'read elsewhere, the line stays in its place');
+  assert.equal(listed(f).at(-1), marker, 'read elsewhere, the line stays in its place');
   assert.deepEqual([marker.className, marker.inert], ['new-line new-line-older new-line-read', true], 'faded and inert');
   assert.equal(f.get('more-messages').hidden, false, 'More messages is back in its place');
   f.paintViews('memory');
@@ -3094,9 +3094,9 @@ test('pressing the older-below line while the page may not read stops at once an
   f.api.view = async (name, args) => { if (name === 'topic_messages') reads.push(args.cursor); return view(name, args); };
   // The runtime changed: the page asks for a review before it reads again.
   f.registry.runtime.current = { authority_id: 'other', authority_epoch: 'e2' };
-  await f.get('messages').children.at(-1).onclick(); await settle();
+  await listed(f).at(-1).onclick(); await settle();
   assert.deepEqual(reads, [], 'nothing was read');
-  assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
+  assert.equal(listed(f).at(-1).dataset.line, 'older', 'the line still waits at the bottom');
 });
 
 test('during a visit the New line holds as the person reads, fades once nothing above it is unread, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {

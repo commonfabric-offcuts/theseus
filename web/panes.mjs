@@ -91,12 +91,11 @@ export const panes = {
   },
 };
 
-// Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs). The New message
-// composer resting among the messages (item 465) keeps its own keys, as it did at the page's end.
+// Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs).
 export function inFeed(doc) {
   const at = doc.activeElement;
   if (pageItself(at, doc)) return true;
-  return Boolean(doc.getElementById('messages')?.contains(at) && !at.closest('.composer-home'));
+  return Boolean(doc.getElementById('messages')?.contains(at));
 }
 
 // The button the keys land on in a row they come to: the one they were last on

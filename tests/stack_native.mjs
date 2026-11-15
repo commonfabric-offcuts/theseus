@@ -980,8 +980,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(async () => (await shown()).order, ['c', 'a', 'composer', 'More'], `${device}: put back, it takes its place between the last dossier above More and the More line`);
       assert.equal(await p.evaluate(`document.querySelector('#inline-writing-body').value`), 'Writing while the feed changes.', `${device}: with the writing kept`);
       if (device === 'laptop') {
-        // Among the messages, the composer keeps its own keys as it did at the page's end: ← and → on its + do not
-        // take the focus out of it to the outline or the right rail, as they do from a message.
+        // Among the messages, the composer keeps its own keys as it did at the page's end (the feed's keys pass over
+        // what is in a dialog, pane-keys.mjs): ← and → on its + do not take the focus out of it.
         await p.evaluate(`document.querySelector('#inline-plus-button').focus()`);
         assert.equal(await p.evaluate(`document.activeElement?.id === 'inline-plus-button' && Boolean(document.activeElement.getClientRects().length)`), true, 'the resting composer\'s + has the focus');
         for (const key of ['ArrowRight', 'ArrowLeft']) {

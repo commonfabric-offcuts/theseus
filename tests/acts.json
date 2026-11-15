@@ -13866,21 +13866,6 @@
   },
   {
    "item": 465,
-   "act": "The composer resting among the messages keeps its own arrow keys, as at the page's end",
-   "break": [
-    [
-     "web/panes.mjs",
-     "?.contains(at) && !at.closest('.composer-home'));",
-     "?.contains(at));"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the New message composer rests"
-   }
-  },
-  {
-   "item": 465,
    "act": "A New line for a message further back is still drawn with the composer under the messages, and sits above it",
    "break": [
     [
