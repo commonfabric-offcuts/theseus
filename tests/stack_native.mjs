@@ -479,15 +479,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await p.key('ArrowUp');
       assert.equal(await keyed(), 'chip', `${device}: and on to Show agent coordination`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'new-message', `${device}: and on up past it to New message, never staying on the chip`);
+      assert.equal(await keyed(), 'add', `${device}: and on up past it to "+ Add", the header's button the keys were last on, never staying on the chip`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
 
   // Item 403: the row of filters over the feed is a row of its own under the header's buttons. ← and → move along it,
   // "Read it" among them, and past either end go on to the outline and the right rail as from the messages, where those
-  // are on screen; the header's buttons end at their own row, so → from New message goes to the right rail, not on to a
-  // filter. No arrow presses a filter.
+  // are on screen; the header's buttons end at their own row, so → from its last, the Team's "+ Add", goes to the right
+  // rail, not on to a filter. No arrow presses a filter.
   await check('reading coordination ← and → move along the filters\' row, Read it among them, and past either end to the outline and the right rail; ↑ and ↓ go between it and the header\'s buttons, and no arrow presses one', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-coordination-row-' + device, laptop = device === 'laptop';

@@ -768,8 +768,11 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-long-' + device;
       const body = Array.from({ length: 80 }, (_, i) => `Line ${i} of a long message that runs on past what a card shows.`).join('\n');
-      const ids = await seed(topic, [['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }],
-        ...Array.from({ length: 6 }, (_, i) => ['after' + i, { sender: 'aim-core', join: i === 0, addressees: [facts.actor], body: 'A short message ' + i + '.' }])]);
+      // Older messages below it leave the page room to scroll on past the box's edge: the topic's Team is in its header
+      // now (item 465), so the page no longer runs on below the feed.
+      const ids = await seed(topic, [...Array.from({ length: 3 }, (_, i) => ['before' + i, { sender: 'aim-core', join: i === 0, addressees: [facts.actor], body: 'An earlier message ' + i + '.' }]),
+        ['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }],
+        ...Array.from({ length: 6 }, (_, i) => ['after' + i, { sender: 'aim-core', addressees: [facts.actor], body: 'A short message ' + i + '.' }])]);
       const p = await open('reading-long-' + device, device, topic, ids.long);
       const preview = card(ids.long);
       const state = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(preview)}),s=getComputedStyle(e),b=e.getBoundingClientRect();
