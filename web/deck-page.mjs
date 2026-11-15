@@ -827,7 +827,7 @@ export class DeckPage {
     }
     return holder;
   }
-  picture(figure, image) { figure.append(this.node('figcaption', 'muted', image.name || 'Image')); }
+  picture(figure, image) { if (!figure.querySelector(':scope > .deck-image-name')) figure.prepend(this.node('figcaption', 'deck-image-name', image.name || 'Image')); }
   // × on an image in a card box: the image leaves the card; the box keeps the focus.
   unpicture(editing, image) {
     if (this.editing !== editing || this.readOnly) return;
