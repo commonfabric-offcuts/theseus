@@ -110,6 +110,12 @@ const readCard = (p, id) => p.evaluate(selector => {
   const box = rect => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height });
   const author = card.querySelector(':scope > .message-author'), time = author.querySelector('.message-time time');
   const lines = time ? [...time.getClientRects()] : [];
+  // Where the line's own words and glyphs end, and where what follows the line begins: an empty line wrapped
+  // inside it, or a row pushed below it, shows as a gap a plain card does not have.
+  const range = document.createRange(); range.selectNodeContents(author);
+  const inked = [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
+  const next = author.nextElementSibling;
+  const parts = [...author.querySelectorAll('*')].map(el => `${el.tagName.toLowerCase()}.${el.className}@${Math.round(el.getBoundingClientRect().top)}+${Math.round(el.getBoundingClientRect().height)}`).join(' ');
   // A color's luminance and the contrast of two (WCAG 2), from the computed rgb() or rgba().
   const rgb = color => color.match(/[\d.]+/g).map(Number);
   const luminance = ([r, g, b]) => [r, g, b].map(v => (v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
@@ -126,6 +132,8 @@ const readCard = (p, id) => p.evaluate(selector => {
         box: box(mark.getBoundingClientRect()), masked: /url\(/.test(style.webkitMaskImage || style.maskImage || ''),
         opaque: (color[3] ?? 1) > 0.9, contrast: (hi + 0.05) / (lo + 0.05) };
     }),
+    inkBottom: Math.max(...inked.map(rect => rect.bottom)), below: next ? next.getBoundingClientRect().top - author.getBoundingClientRect().bottom : null,
+    shape: `${author.getBoundingClientRect().height}px: ${parts}; then ${next ? next.tagName.toLowerCase() + '.' + next.className : 'nothing'}`,
   };
 }, card(id));
 
@@ -160,6 +168,14 @@ async function run() {
       assert.equal(await p.getByRole('img', { name: WORDS.note, exact: true }).count(), 3);
       assert.equal(await p.getByRole('img', { name: WORDS.reply, exact: true }).count(), 2);
       assert.equal(await p.locator(card(m.all)).getAttribute('aria-label'), null, 'the card keeps the name its words give it');
+      // No empty line and no pushed row, at any width: a marked card's line ends where its words and glyphs end, and
+      // what follows it starts as far below as on a plain card.
+      const plainCard = await readCard(p, m.plain);
+      for (const name of Object.keys(EXPECTED)) {
+        const seen = await readCard(p, m[name]);
+        assert.ok(seen.author.bottom - seen.inkBottom < 4, `${name}: its line holds no empty line (${seen.shape})`);
+        assert.ok(Math.abs(seen.below - plainCard.below) < 1, `${name}: what follows its line starts as on a plain card (${seen.below} vs ${plainCard.below}; ${seen.shape})`);
+      }
       if (width >= 760) {
         // No new row: a card with all three marks keeps a one-line author line, as a plain card's.
         const plain = await readCard(p, m.plain), all = await readCard(p, m.all);
