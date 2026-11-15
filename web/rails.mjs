@@ -34,15 +34,16 @@ shell.extend((doc, win) => {
   listen(doc, 'keydown', event => { if (doc.documentElement.hasAttribute('data-rails')) feedKey(event, doc); });
   // An arrow nothing else used lands on the nearest control that way, on
   // every page (arrow-reach.mjs). On a topic and a Conversation the panes'
-  // own keys decide in the messages, on the buttons at the top of the feed and
-  // in the rails' trees; anywhere else in a pane (the logo block, the chips,
+  // own keys decide in the messages (and from the page itself, while there are
+  // messages to light), on the buttons at the top of the feed and in the
+  // rails' trees; anywhere else in a pane (the logo block, the chips,
   // People, the right rail's name) the arrows move within that pane, and ← and
   // → past its edge go on to the pane beside, as from the messages.
   const feed = () => doc.documentElement.hasAttribute('data-rails');
   const PANES = [['#rail', 'outline'], ['#main', 'feed'], ['#things', 'things']];
   arrowReach(doc, {
     listen,
-    managed: at => feed() && (onNothing(at, doc) || Boolean(doc.getElementById('messages')?.contains(at)) || headerRows(doc).some(row => row.buttons.includes(at))),
+    managed: at => feed() && ((onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) || Boolean(doc.getElementById('messages')?.contains(at)) || headerRows(doc).some(row => row.buttons.includes(at))),
     region: at => feed() ? at.closest('.message-bar') ?? at.closest(PANES.map(([pane]) => pane).join(',')) : null,
     beyond: (at, way) => {
       const pane = PANES.find(([selector]) => at.closest(selector))?.[1];

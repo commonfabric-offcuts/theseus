@@ -2302,11 +2302,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // pressed, natively, and where the focus lands is read; from a tree, ↑ above
   // its first row and ↓ below its last. What the arrows reach from start, and
   // every press that lost the focus to the page. start: a mark ('tree'), or a
-  // step whose landing is the start.
-  const arrowClosure = async (p, scope, start) => {
-    const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)});
+  // step whose landing is the start. skip: controls left out (a deck's cards,
+  // which key their own arrows).
+  const arrowClosure = async (p, scope, start, skip = null) => {
+    const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)}),skip=${JSON.stringify(skip)};
       const shown=e=>e.checkVisibility({visibilityProperty:true})&&!e.disabled&&!e.closest('[inert],[aria-hidden=true]')&&e.getBoundingClientRect().width>0;
-      const all=[...root.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(e=>(e.tabIndex>=0||e.getAttribute('role')==='treeitem')&&shown(e));
+      const all=[...root.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(e=>(e.tabIndex>=0||e.getAttribute('role')==='treeitem')&&shown(e)&&!(skip&&e.closest(skip)));
       const out=[];all.forEach((e,i)=>{const id=e.getAttribute('role')==='treeitem'?'tree':'n'+i;e.dataset.arrowNode=id;
         if(!out.some(o=>o.id===id))out.push({id,label:id==='tree'?'the tree':(e.id||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40)||e.tagName)})});return out})()`);
     const label = id => nodes.find(node => node.id === id)?.label ?? id;
@@ -2498,11 +2499,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail arrows on the Outcomes home, an outcome\'s page and its pipeline, with nothing focused ↓ lands on a control in view, and the arrows go on from it, never to the page, at 1280, 390, 375 and 320', async () => {
+  await check('rail arrows on the Outcomes home, an outcome\'s page, its pipeline and its Conversation, with nothing focused ↓ lands on a control in view, and the arrows go on from it, never to the page, at 1280, 390, 375 and 320', async () => {
     await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-arrows-pipeline', target: { workspace_id: 'w1' }, args: { enabled: true } });
     try {
       for (const size of ['laptop', '390', '375', '320']) for (const [name, url, reaches] of [
-        ['home', '/', /^main:w1$|Isolated wiring/], ['outcome', '/?workspace=w1', /topic|t1|New topic/i], ['pipeline', '/?pipeline=w1', /./]]) {
+        ['home', '/', /^main:w1$|Isolated wiring/], ['outcome', '/?workspace=w1', /topic|t1|New topic/i], ['pipeline', '/?pipeline=w1', /./], ['conversation', '/?conversation=w1', /./]]) {
         const p = await arrowsAt(`rail-arrows-${name}-${size}`, url, size, size === '390' ? 'dark' : 'light');
         await until(() => p.evaluate('document.body?.dataset.ready==="true"').catch(() => false), `${size} ${name}: the page is up`);
         await p.evaluate("document.activeElement?.blur()");
@@ -2567,6 +2568,46 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(scrolls.length >= 3, said + ': it is not reached in one press, the words between scrolled past first');
       assert.ok(scrolls.every(step => step.at === from && step.by > 0 && step.by <= h / 3 + 1), said + ': each press before it scrolls down a third of a window at most, the focus staying');
       assert.equal(await inView(p), true, said + ': and it shows');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('rail arrows on a Notebook page\'s cards ↑ above the first card goes on to the page\'s controls, ↓ comes back to the cards, ← and → where the deck changes nothing go on too, and the arrows reach every control on the page, at 1280, 390, 375 and 320 and in the composer\'s sheet', async () => {
+    await control({ method: 'outcome_reference', operation_id: 'rail-arrows-deck', item_id: 'rail-arrows-deck', title: 'Arrow deck', body: '## A card\n\nWords.\n\n## Another card\n\nMore words.\n' });
+    const inDeck = p => p.evaluate("Boolean(document.activeElement?.closest?.('.deck-card'))");
+    // ↑ from the cards until the focus leaves them: where it went at each press.
+    const outOfDeck = async p => { const seen = []; for (let n = 0; n < 10 && await inDeck(p); n++) { await arrowPress(p, 'ArrowUp'); seen.push(await focusAt(p)); } return seen; };
+    for (const [size, url] of [['laptop', '/?cards=rail-arrows-deck'], ['390', '/?cards=rail-arrows-deck'], ['375', '/?cards=rail-arrows-deck'], ['320', '/?cards=rail-arrows-deck'], ['laptop', '/?topic=t1&page=rail-arrows-deck']]) {
+      const where = `${size} ${url}`;
+      const p = await arrowsAt('rail-arrows-deck-' + size, url, size, size === '390' ? 'dark' : 'light');
+      await until(() => p.evaluate("document.body?.dataset.ready==='true' && [...document.querySelectorAll('.deck-card')].some(e=>e.checkVisibility())").catch(() => false), where + ': the cards are up');
+      // On the first card, as the page puts the keys there (or ↓ from nothing picks it).
+      if (!await inDeck(p)) { await p.evaluate("document.activeElement?.blur()"); await p.key('ArrowDown'); }
+      assert.equal(await inDeck(p), true, where + ': the keys are on a card');
+      const up = await outOfDeck(p);
+      const out = await p.evaluate("(e=>e&&e!==document.body&&!e.closest('.deck-card'))(document.activeElement)");
+      assert.equal(out, true, `${where}: ↑ above the first card goes on out of the cards: ${up.join(' → ')}`);
+      assert.ok(!up.includes('page'), `${where}: and never to the page: ${up.join(' → ')}`);
+      assert.equal(await inView(p), true, where + ': to a control in view');
+      const above = await focusAt(p);
+      await p.key('ArrowDown');
+      assert.equal(await inDeck(p), true, `${where}: ↓ from ${above} comes back to the cards`);
+      if (size === 'laptop' || size === '390') await shot(p, `rail-arrows-deck-${size}${url.includes('page=') ? '-sheet' : ''}`);
+      // At a laptop, a top-level card with no children and nothing to show beside it: ← changes nothing on it, and
+      // goes on to the rail beside. (On a phone the card fills the width: nothing lies beside it.)
+      if (size === 'laptop' && !url.includes('page=')) {
+        const cardAt = await focusAt(p);
+        await p.key('ArrowLeft');
+        const left = await focusAt(p);
+        assert.ok(left !== 'page' && left !== cardAt && !(await inDeck(p)), `${where}: ← on a top-level card goes on out of the cards, not ${left}`);
+      }
+      // Every control on the page (in the sheet, the sheet's) is reached from the one above the cards.
+      const scope = url.includes('page=') ? '#new-message-sheet' : 'body';
+      const first = async () => { await p.evaluate("document.querySelector('.deck-card[tabindex=\"0\"]').focus()"); await outOfDeck(p); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
+      const { missing, lost, count } = await arrowClosure(p, scope, first, '.deck-cards');
+      assert.ok(count > 2, `${where}: the page has its controls (${count})`);
+      assert.deepEqual(missing, [], `${where}: the arrows reach every control from the cards`);
+      assert.deepEqual(lost, [], `${where}: and none loses the focus to the page`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });

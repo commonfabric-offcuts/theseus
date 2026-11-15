@@ -278,6 +278,9 @@ rule above. (`web/arrow-reach.mjs`)
   Notebook and the reply; ↑ from there comes back to the last message. Into a
   tree from beside it (a pencil in a section's heading, the chips above it)
   the arrows land on the row nearest that way, which becomes its stop.
+  On a Notebook page's cards, ↑ above the first card and ↓ below the last go
+  on to the page's controls, and so do ← and → where the deck changes nothing
+  (docs/decks.md).
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
   message above or below, as from the message.
 - **In a pane, off its keys.** On the logo block, the chips, Keys, the right
@@ -288,7 +291,8 @@ rule above. (`web/arrow-reach.mjs`)
   an item, Health and the measurements have no panes: the arrows move between
   their controls. With nothing focused, ↓ goes to the first control in view
   from the top, ↑ to the last, → to the first from the left and ← to the first
-  from the right.
+  from the right. So it is on a topic or a Conversation with no messages yet,
+  where there is no message for ↓ to light.
 - **On a phone**, in the side rail's drawer, the arrows move as they do beside
   the topic: the outline's rows, New outcome, the chips and the logo block,
   never the page behind the drawer.
@@ -437,8 +441,12 @@ rail's chips, "rail arrows ↑ above the right rail's first section reaches …"
 below the messages, "rail arrows ↓ past the last message goes on down the page
 …" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
 → move along its buttons, …"; the pages with no panes and a one-line field,
-"rail arrows on the Outcomes home, an outcome's page and its pipeline, …" (at
-1280, 390, 375 and 320); the pop-ups, "rail arrows in Topic settings and the
+"rail arrows on the Outcomes home, an outcome's page, its pipeline and its
+Conversation, …" (at
+1280, 390, 375 and 320); a Notebook page's cards, "rail arrows on a Notebook
+page's cards ↑ above the first card …"; a control out of sight, "rail arrows
+a control out of sight is scrolled toward …"; the phone's drawer, "rail
+arrows on a phone, in the side rail's drawer, …"; the pop-ups, "rail arrows in Topic settings and the
 Reader move between their controls …"; and writing, "rail arrows in writing
 are the writing's: …". Where an arrow lands by the geometry:
 `tests/ui_arrow_reach.test.mjs`.

@@ -141,7 +141,12 @@ tree: on a card with no children showing, ← goes up to its parent, and on a
 card with none folded away, → gives the focus to its speech bubble. ⌘← and ⌘→
 fold and show the same way, ⌘→ going down to the first child of a card whose
 children show, and the browser never takes them for Back and Forward on the
-cards.
+cards. Where a plain ← or → would change nothing (a top-level card with no
+children folded and no speech bubble), and past the first card or the last
+with ↑ or ↓, the arrow goes on to what lies that way on the page: the bar
+above the cards, the header, the rail (docs/interaction.md, "The arrows
+everywhere"). With nothing focused the arrows stay the deck's, picking a
+card.
 ⇧⌘← folds every card's children away and ⇧⌘→ shows them all again. ↑ and ↓ pass over
 folded cards, a phone's swipe holds only the cards that show, and the count
 says how many are folded away. An act that puts a card under a folded card,

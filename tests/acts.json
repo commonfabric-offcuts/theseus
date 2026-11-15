@@ -13946,7 +13946,7 @@
     [
      "web/arrow-reach.mjs",
      " && (sign > 0 ? box[lo] > from[lo] && box[hi] > from[hi] : box[hi] < from[hi] && box[lo] < from[lo]));",
-     "));"
+     ");"
     ]
    ],
    "check": {
@@ -13981,6 +13981,51 @@
    "check": {
     "native": "rail",
     "case": "rail arrows ↑ above the right rail"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ above a Notebook page's first card goes on to the page's controls above the cards, and ↓ comes back",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (plainArrow && (up || down) && this.beside(this.picked, up ? -1 : 1) === this.picked && this.handOn(up ? 'up' : 'down')) { event.preventDefault(); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a Notebook page's cards"
+   }
+  },
+  {
+   "item": 301,
+   "act": "← on a card where the deck changes nothing goes on to what lies that way",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (plainArrow && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !this.treeMoves(event.key === 'ArrowLeft') && this.handOn(event.key === 'ArrowLeft' ? 'left' : 'right')) { event.preventDefault(); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a Notebook page's cards"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a Conversation with no messages yet, ↓ with nothing focused lands on a control and the arrows reach every control",
+   "break": [
+    [
+     "web/rails.mjs",
+     "(onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]')))",
+     "onNothing(at, doc)"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
    }
   }
  ]
