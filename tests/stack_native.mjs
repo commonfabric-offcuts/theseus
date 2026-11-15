@@ -831,9 +831,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // whether any control of the Reader's header covers another (a phone's header has the least room).
       const button = () => p.evaluate(`(()=>{const b=document.querySelector('#reader-aside'),r=b.getBoundingClientRect(),star=document.querySelector('#reader-star');
         const els=[...document.querySelectorAll('#reader .reader-header button, #reader .reader-header h2')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().width>=1);
-        const over=[];for(const e of els)for(const f of els){const x=e.getBoundingClientRect(),y=f.getBoundingClientRect();if(els.indexOf(e)<els.indexOf(f)&&!e.contains(f)&&!f.contains(e)&&!(x.right<=y.left+0.5||y.right<=x.left+0.5||x.bottom<=y.top+0.5||y.bottom<=x.top+0.5))over.push((e.id||e.className||e.tagName)+'/'+(f.id||f.className||f.tagName));}
+        // What shows of each: a title's button is clipped by its heading, which cuts it off with an ellipsis.
+        const seen=e=>{const r=e.getBoundingClientRect(),h=e.parentElement.closest('#reader .reader-header h2');if(!h)return r;const c=h.getBoundingClientRect();return {left:Math.max(r.left,c.left),right:Math.min(r.right,c.right),top:Math.max(r.top,c.top),bottom:Math.min(r.bottom,c.bottom)}};
+        const over=[];for(const e of els)for(const f of els){const x=seen(e),y=seen(f);if(els.indexOf(e)<els.indexOf(f)&&!e.contains(f)&&!f.contains(e)&&!(x.right<=y.left+0.5||y.right<=x.left+0.5||x.bottom<=y.top+0.5||y.bottom<=x.top+0.5))over.push((e.id||e.className||e.tagName)+'/'+(f.id||f.className||f.tagName));}
         const header=document.querySelector('#reader .reader-header').getBoundingClientRect();
-        return {shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed'),
+        return {header:Math.round(header.height),shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed'),
           glyph:Boolean(b.querySelector('svg')),besideStar:b.previousElementSibling===star,size:[Math.round(r.width),Math.round(r.height)],over,inside:r.left>=header.left-0.5&&r.right<=header.right+0.5,
           sideways:document.documentElement.scrollWidth>innerWidth}})()`);
       await openReader(p, device, ids.two, 'The newest reply');
@@ -845,10 +847,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const at = await button();
         assert.deepEqual([at.name, at.title, at.count, at.pressed, at.glyph, at.besideStar], ['Move below More: 3 messages', 'Move below More: 3 messages', '3', 'false', true, true],
           `${device} ${width}: an archive glyph named Move below More, with the stack's 3 messages: ${JSON.stringify(at)}`);
-        if (device === 'phone') assert.ok(at.size[0] >= 44 && at.size[1] >= 44, `${width}: 44px under a finger: ${at.size}`);
-        assert.deepEqual([at.over, at.inside, at.sideways], [[], true, false], `${device} ${width}: no control of the header covers another, and nothing scrolls sideways: ${JSON.stringify(at)}`);
         for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-${device}-${width}-${theme}`); }
         await dossierTheme(p, 'light');
+        if (device === 'phone') assert.ok(at.size[0] >= 44 && at.size[1] >= 44, `${width}: 44px under a finger: ${at.size}`);
+        assert.deepEqual([at.over, at.inside, at.sideways], [[], true, false], `${device} ${width}: no control of the header covers another, and nothing scrolls sideways: ${JSON.stringify(at)}`);
+        assert.ok(at.header < 100, `${device} ${width}: the Reader's header is not stretched: ${at.header}px`);
       }
       await press(p, device, '#reader-aside');
       await until(async () => (await position(ids.root)).below, `${device}: Core holds the dossier below More`);
@@ -860,7 +863,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const moved = await button();
       assert.deepEqual([moved.name, moved.title, moved.count, await readerOn(p).then(text => text?.startsWith('The newest reply'))],
         ['Bring back above More: 3 messages', 'Bring back above More: 3 messages', '3', true], `${device}: it offers Bring back, and the Reader stays on the message: ${JSON.stringify(moved)}`);
-      if (device === 'laptop') assert.equal(await p.evaluate(`document.activeElement?.id`), 'reader-aside', 'the focus stays on the button');
+      // The focus stays in the Reader (on the button where a press focuses it, as Chrome's does), never on More.
+      assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('#reader')) && !document.activeElement.closest('#messages')`), true, `${device}: the focus stays in the Reader`);
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-${device}-pressed-${theme}`); }
       await dossierTheme(p, 'light');
       await press(p, device, '#reader-aside');
