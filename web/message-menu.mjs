@@ -242,8 +242,6 @@ export class MessageMenu {
     }
     this.lit = entry;
     if (!entry) { this.bar.hidden = true; return; }
-    // The bar is a part of the lit card's face (stack-motion.mjs).
-    this.bar.dataset.faceOf = entry.dataset.id;
     this.host.dataset.lastMessage = entry.dataset.id;
     entry.classList.add('lit'); cardIn(entry).classList.add('lit');
     this.paintBar();
@@ -432,16 +430,12 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 // that do the same, shown at the item's end.
 // sheet: on a phone (a narrow window) the menu opens as a sheet from the
 // bottom of the window, its items full width, rather than under its button.
-// face: the id of the message whose card the menu is opened for and drawn
-// over, or null for one drawn elsewhere (the Reader's).
-export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, face = null, doc = globalThis.document, win = globalThis }) {
+export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, doc = globalThis.document, win = globalThis }) {
   if (open?.anchor === anchor && !at) { open.close(true); return null; }
   open?.close(false);
   if (!items.length) return null;
   const root = element(doc, 'div', { className: 'message-menu-list' });
   root.setAttribute('role', 'menu'); root.setAttribute('aria-label', label);
-  // It is a part of its card's face (stack-motion.mjs).
-  if (face !== null) root.dataset.faceOf = face;
   const buttons = items.map(item => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
     button.setAttribute('role', 'menuitem');

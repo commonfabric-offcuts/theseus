@@ -18,15 +18,10 @@ export class PressHold {
     this.waiting = new Map();
     // Those waiting for the press and its click to be over (over()).
     this.overs = [];
-    // It listens on the window, ahead of the document: a press the page is
-    // kept from hearing (one begun on a reply still sliding in, stack-motion.mjs)
-    // still holds the repaints, as any held press does. The page makes this
-    // before StackMotion, so it is heard first.
-    const win = doc.defaultView;
-    win.addEventListener('pointerdown', event => { if (event.isPrimary && event.button === 0) this.down = true; }, true);
+    doc.addEventListener('pointerdown', event => { if (event.isPrimary && event.button === 0) this.down = true; }, true);
     const end = () => this.end();
-    for (const name of ['pointerup', 'pointercancel', 'contextmenu']) win.addEventListener(name, end, true);
-    win.addEventListener('blur', end);
+    for (const name of ['pointerup', 'pointercancel', 'contextmenu']) doc.addEventListener(name, end, true);
+    doc.defaultView.addEventListener('blur', end);
   }
   // Runs paint now, or once the press held down ends.
   after(name, paint) {

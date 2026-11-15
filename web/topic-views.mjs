@@ -155,7 +155,6 @@ export class TopicViews {
       if (known && (known.seq !== item.seq || known.author_id !== item.author_id ||
           revisionOf(known) === revisionOf(item) && known.body !== item.body)) throw invalid('An immutable message changed.');
     }
-    const addedIds = answer.items.filter(item => !this.messages.has(item.id)).map(item => item.id);
     // A page is contiguous in the topic. It extends the run it continues (the
     // newest message for a live page, the oldest for an older page) and joins
     // every run it overlaps; a page that does neither, such as the newest page
@@ -183,7 +182,7 @@ export class TopicViews {
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live) this.olderCursor = answer.next_cursor;
-    this.paint('messages', { initial, live, addedIds });
+    this.paint('messages');
     if (this.revised.size) this.paint('edited');
     return true;
   }

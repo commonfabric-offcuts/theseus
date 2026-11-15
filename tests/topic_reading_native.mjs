@@ -109,17 +109,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // animation frames, as a person aims at a still target: a row filled in above the feed (the outline
   // rail at phone width) moves the cards with no scroll, and a point measured before that lands on
   // whatever moved under it. A page not shown draws no frames, and is measured as it stands.
-  // A reply sliding onto its deck takes no tap (item 412), so the tap waits for it to land.
   // during: what happens while the finger is down, before it lifts. WebKit's touchscreen only taps whole
   // (webkit_native.mjs), so there it happens just before the tap.
   const tap = async (p, selector, at = 'corner', during = null) => {
     const aim = await until(() => p.evaluate(`new Promise(done=>{const t=document.querySelector(${JSON.stringify(selector)}),
       rect=()=>{const b=t&&(${at === 'first'}?t.getClientRects()[0]:t.getBoundingClientRect());return b?{x:b.x,y:b.y,width:b.width,height:b.height}:null},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),
       look=()=>{const b=rect();if(!b)return {b};const x=${at === 'corner'}?b.x+Math.min(12,b.width/2):b.x+b.width/2,y=${at === 'corner'}?b.y+Math.min(12,b.height/2):b.y+b.height/2,
-        h=document.elementFromPoint(x,y);return {b,x,y,sliding:Boolean(h?.closest('[data-stack-motion=arrival]')),inside:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
+        h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
       if(document.hidden)return done(look());
-      const first=rect();requestAnimationFrame(()=>{const second=rect();requestAnimationFrame(()=>{const seen=same(first,second)&&same(second,rect())?look():null;done(seen?.sliding?null:seen)})})})`),
-      `${selector} holds its place across two frames, with no reply sliding over it, before a tap`);
+      const first=rect();requestAnimationFrame(()=>{const second=rect();requestAnimationFrame(()=>done(same(first,second)&&same(second,rect())?look():null))})})`),
+      `${selector} holds its place across two frames before a tap`);
     const { b, x, y } = aim;
     assert.ok(b && b.width > 0 && b.height > 0, `visible target ${selector}`);
     assert.ok(aim.inside, `${selector} is inside the window before a tap`);
