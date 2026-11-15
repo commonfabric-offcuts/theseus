@@ -2376,7 +2376,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'topic_state', operation_id: 'rail-build-done-review', topic_id: 'rb-review', args: { state: 'review', note: 'Live in release 5' } });
     await until(async () => (await buildRail(p)).rows.find(row => row.id === 'rb-review')?.group === 'Ready for review', 'Ready for review again');
     // The Done line is kept open on this browser for every outcome; put it back as it was.
-    await p.evaluate("for (const key of Object.keys(localStorage)) if (key.startsWith('aim-next.topic-lists.')) localStorage.removeItem(key)");
+    await p.evaluate("(()=>{for (const key of Object.keys(localStorage)) if (key.startsWith('aim-next.topic-lists.')) localStorage.removeItem(key); return true})()");
     assert.deepEqual(p.errors, []); await p.close();
   });
 
