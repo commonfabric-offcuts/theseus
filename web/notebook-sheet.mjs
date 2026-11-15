@@ -66,15 +66,12 @@ export class NotebookSheet {
     this.body = node('div', 'notebook-sheet-pages');
     this.root.append(head, this.body);
     this.dialog.append(this.root);
-    // The sheet is put away as it closes, not when the browser's close event comes, which can come after a key
-    // has already opened the next page. The event still puts away a sheet the browser closed itself, and gives the
-    // focus back again after the New message sheet's own close handler has taken it.
-    this.dialog.addEventListener('close', () => {
-      if (this.dialog.open) return;
-      if (this.showing) this.closed();
-      const back = this.returnFocus; this.returnFocus = null;
-      if (back?.isConnected) back.focus({ preventScroll: true });
-    });
+    // The sheet is put away as it closes, not when the browser's close event comes: that comes with the browser's
+    // next frame, later still on a slow machine, after a key may have moved the focus on from the opener or opened
+    // the next page. The event still puts away a sheet the browser closed itself, and moves no focus. The New message
+    // composer, which shares the sheet, folds on it and moves the focus only on a close of its own (inline-composer.mjs),
+    // so a Tab or a Space pressed since keeps the focus where the person moved it.
+    this.dialog.addEventListener('close', () => { if (!this.dialog.open && this.showing) this.closed(); });
     // Only a press that starts and ends on the backdrop closes it, as every pop-up (on every page, the topic's
     // New message handler or not).
     let outside = false;
@@ -123,7 +120,6 @@ export class NotebookSheet {
   async open(id, { opener = null, write = null } = {}) {
     if (!this.dialog) return false;
     const serial = ++this.serial;
-    this.returnFocus = null;
     // The New message sheet, popped up, goes back to the page's end first, its writing kept; a page opened from
     // the Reader's words takes the Reader's place, its reply kept, so one window stands over the feed.
     if (!this.showing) this.hold();
@@ -298,7 +294,7 @@ export class NotebookSheet {
     const place = this.place; this.place = null;
     if (!place) return;
     if (globalThis.scrollX !== place.x || globalThis.scrollY !== place.y) globalThis.scrollTo({ left: place.x, top: place.y, behavior: 'instant' });
-    if (place.opener?.isConnected) { place.opener.focus({ preventScroll: true }); this.returnFocus = place.opener; }
+    if (place.opener?.isConnected) place.opener.focus({ preventScroll: true });
   }
 
   // A card's reply stack: the page closes, kept as it is, and the stack opens. Should the stack be in another
