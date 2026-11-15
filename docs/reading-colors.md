@@ -137,6 +137,15 @@ its border in the quiet text color (`--muted`) on all four sides, at 3:1 or
 better against its hover fill. That is the signal your own card already
 gives, and not a colored edge.
 
+A dossier an agent began wears the same colour on its folder and its title
+bar, across their whole face (item 477, `docs/reply-stacks.md`, "The look"):
+the folder is the agent's tag colour mixed a little toward its card, a step
+deeper than the cards it holds, and its tab's words keep 4.5:1 or better on it
+in every palette colour, light and dark (`tests/ui_folder_colour.test.mjs`).
+A person's dossier keeps the neutral folder. Here too there is no coloured
+edge or bar: a folder and its title bar are the only places a dossier wears
+its first poster's colour.
+
 `topic_messages` items carry `author_kind` (`human` or `agent`, from the
 actor record), and only an `agent` card is tinted. `web/author-colors.mjs`
 gives the team's agents fixed colors and every other agent olive, which no

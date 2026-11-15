@@ -508,8 +508,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "!at?.closest?.('dialog, .message-menu-list')) this.light(null);",
-     "!at?.closest?.('dialog, .message-menu-list')) return;"
+     "!at?.closest?.('dialog')) this.light(null);",
+     "!at?.closest?.('dialog')) return;"
     ]
    ],
    "check": {
@@ -5785,8 +5785,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "if (stack && positionOf(stack)?.below) { state.here.set(own",
-     "if (false) { state.here.set(own"
+     "if (stack && positionOf(stack)?.below) {\n    const mark",
+     "if (false) {\n    const mark"
     ]
    ],
    "check": {
@@ -6974,8 +6974,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "if (stack && positionOf(stack)?.below) { state.here.set(own, placeOf(positionOf(stack))); changed = true; }",
-     "if (stack && positionOf(stack)?.below && !state.here.has(own)) { state.here.set(own, placeOf(positionOf(stack))); changed = true; }"
+     "if (stack && positionOf(stack)?.below) {\n    const mark",
+     "if (stack && positionOf(stack)?.below && !state.here.has(own)) {\n    const mark"
     ]
    ],
    "check": {
@@ -6989,8 +6989,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "    try { await this.readPositions(read, current); }\n    finally { if (changed) this.paint('acts'); }",
-     "    await this.readPositions(read, current);\n    if (changed) this.paint('acts');"
+     "    try { await this.readPositions(read, current); }\n    finally {\n      if (changed) this.paint('acts');",
+     "    await this.readPositions(read, current);\n    {\n      if (changed) this.paint('acts');"
     ]
    ],
    "check": {
@@ -8419,8 +8419,8 @@
    "break": [
     [
      "web/app.mjs",
-     "redrawn: () => paintReaderStar() });",
-     "redrawn: () => {} });"
+     "redrawn: () => paintReaderStar(),",
+     "redrawn: () => {},"
     ]
    ],
    "check": {
@@ -13803,6 +13803,371 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A dossier's title bar shows Reply, Move below More and ⋯ at its right, each named with its tooltip",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!single) paintTools(p.tools, stack, shown, context);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's glyphs show while the pointer is over the dossier",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *):is(:hover,:focus-within,",
+     ".reply-stack:not(.only-new *):is(:active,:focus-within,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "By touch each title bar glyph is 44px square",
+   "break": [
+    [
+     "web/stack-look.css",
+     "@media(pointer:coarse){:root{--stack-tool-size:2.75rem}",
+     "@media(pointer:coarse){:root{--stack-tool-size:1.75rem}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The tab's name leaves room for the title bar's glyphs, which never sit over it",
+   "break": [
+    [
+     "web/stack-look.css",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r)));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's Reply opens the Reader on the dossier's first message, the cursor in its reply",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },",
+     "reply: () => {},"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's Reply opens the Reader"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's ⋯ opens the menu the first message's own ⋯ gives",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (item) this.menu(item, anchor);",
+     "if (item) this.menu({ ...item, id: '' }, anchor);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's Reply opens the Reader"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's tray glyph moves the dossier below More, and brings it back from there",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "state.on?.aside?.(stack, !positionOf(stack)?.below)",
+     "state.on?.aside?.(stack, true)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's Reply opens the Reader"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The message bar's Reply is a named glyph, not the word",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "reply: make('reply', '', 'Reply (Return)'),",
+     "reply: make('reply', 'Reply', 'Reply (Return)'),"
+    ],
+    [
+     "web/message-menu.mjs",
+     "showGlyph(this.buttons.reply, 'reply', doc); ",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the message bar's Reply is a glyph"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The message bar offers Show full message only on a message its card cuts off",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "full.hidden = card.hidden || !this.clipped(card, item);",
+     "full.hidden = card.hidden;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the message bar's Reply is a glyph"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The message bar's Show full message shows the message whole in its card",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (name === 'full') return Promise.resolve(this.showFull(card, item))",
+     "if (name === 'full') return Promise.resolve(null)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the message bar's Reply is a glyph"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The message bar's Fold folds the message for the reader in Core, and Unfold unfolds it",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (name === 'fold') return this.fold(item);",
+     "if (name === 'fold') return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the message bar's Reply is a glyph"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The message bar's Fold says Unfold on a folded message",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "const words = folding === 'unfold' ? 'Unfold' : 'Fold';",
+     "const words = 'Fold';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the message bar's Reply is a glyph"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A starred message's bar offers no Fold",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return acts.folded ? 'unfold' : acts.starred ? null : 'fold';",
+     "return acts.folded ? 'unfold' : 'fold';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the message bar's Reply is a glyph"
+   }
+  },
+  {
+   "item": 477,
+   "act": "A dossier an agent began wears that agent's colour on its folder and title bar",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "paintFolderColor(section, stack, single ? () => null : colorOf);",
+     "paintFolderColor(section, stack, () => null);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier an agent began wears its colour"
+   }
+  },
+  {
+   "item": 477,
+   "act": "A person's dossier keeps the neutral folder",
+   "break": [
+    [
+     "web/app.mjs",
+     "colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null)",
+     "colorOf: item => agentShown(item.author_id)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier an agent began wears its colour"
+   }
+  },
+  {
+   "item": 477,
+   "act": "A folder follows the colour the reader chooses for its agent, and Default gives its own back",
+   "break": [
+    [
+     "web/app.mjs",
+     "  paintFolderColors($('messages'));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier an agent began wears its colour"
+   }
+  },
+  {
+   "item": 477,
+   "act": "A coloured folder's meta words keep 4.5:1 on it in light",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-meta-ink:#4a545b;",
+     "--stack-meta-ink:#59636a;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_folder_colour.test.mjs"
+   }
+  },
+  {
+   "item": 477,
+   "act": "A coloured folder's words keep 4.5:1 on it and under the pointer in dark",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-folder-ink:#d3dcd9;--stack-meta-ink:#a8b8b5;",
+     "--stack-folder-ink:#d3dcd9;--stack-meta-ink:#9aaba8;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_folder_colour.test.mjs"
+   }
+  },
+  {
+   "item": 477,
+   "act": "A coloured folder is only its own colours, with no coloured edge",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-folder-ink:#2f363b;--stack-meta-ink:#4a545b;--stack-star:#6b4b12;--stack-new:#9f1f15}",
+     "--stack-folder-ink:#2f363b;--stack-meta-ink:#4a545b;--stack-star:#6b4b12;--stack-new:#9f1f15;border-left:3px solid var(--agent-tag)}"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_folder_colour.test.mjs"
+   }
+  },
+  {
+   "item": 426,
+   "act": "While the Reader is open, another device's Move below More or Bring back on its unloaded neighbour's dossier changes what ↓ offers",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "      this.invalidate('neighbors', version, true);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "changes what ↓ offers at once"
+   }
+  },
+  {
+   "item": 426,
+   "act": "Every acts read asks for the Reader's neighbours afresh",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "      this.invalidate('neighbors', version, true);\n",
+     "      this.invalidate('neighbors', version);\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 426,
+   "act": "A New line waiting at the bottom for an older message sits above More, never after a dossier below it",
+   "break": [
+    [
+     "web/unanswered.mjs",
+     "const next = card ? cards[cards.indexOf(card) + 1] ?? null : more;",
+     "const next = card ? cards[cards.indexOf(card) + 1] ?? null : null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a New line waiting at the bottom for an older message sits above More"
+   }
+  },
+  {
+   "item": 426,
+   "act": "A message loaded inside a dossier counts among what is loaded for the New line",
+   "break": [
+    [
+     "web/unanswered.mjs",
+     "  return [...(node.children ?? [])].reduce(oldestIn, own);",
+     "  return own;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unanswered.test.mjs"
+   }
+  },
+  {
+   "item": 426,
+   "act": "A link followed while the page holds an older place than Core keeps the dossier where it sits once the page reads Core's place",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "return mark?.pending ? placeOf(positionOf(stack)) : mark?.place ?? null;",
+     "return mark?.place ?? null;"
+    ],
+    [
+     "web/stack-feed.mjs",
+     "if (read && position?.below) mark.place = placeOf(position);",
+     "if (read && position?.below) mark.place = mark.place;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a link followed while the page holds an older place"
    }
   }
  ]

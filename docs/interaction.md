@@ -60,7 +60,9 @@ the pointer's way, the keys' and the phone's.
   are not the keys moving a selection, such as a page opening at a message or
   the phone's drawer opening on the topic being read, keep their own ways.
   (`web/reveal.mjs`, `shownSelected` in `web/reply-stacks.mjs`)
-- **Return**, or **Reply** on the bar (a phone's way), opens the Reader on the
+- **Return**, or **Reply** on the bar (a phone's way; its glyph is an arrow
+  turning back, named Reply (Return), docs/reply-stacks.md, "The title bar and
+  the message bar"), opens the Reader on the
   lit message with the cursor in the reply and nothing quoted; to quote part of
   it, select that part in the Reader and press Return. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does: Return
