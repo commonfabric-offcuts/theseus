@@ -3909,7 +3909,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   await check('reading stacks a message placed on its own folds in place under a swipe right and unfolds under a swipe left, and never goes below More (item 472)', async () => {
     const topic = 'stack-placed-swipe';
     const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
-      ['placed', { sender: other, addressees: [facts.actor], body: 'A message the reader placed on its own, to swipe.', read: true }],
+      ['placed', { sender: other, join: true, addressees: [facts.actor], body: 'A message the reader placed on its own, to swipe.', read: true }],
       ['plain', { sender: other, addressees: [facts.actor], body: 'Another message on its own, nobody placed it.', read: true }]]);
     await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: ids.placed, operation_id: `${topic}-place`, args: { key: 1 } });
     const section = `#messages .reply-stack[data-stack="${ids.placed}"]`;
@@ -3957,18 +3957,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const x=document.createElement('canvas').getContext('2d');x.fillStyle=ring;x.fillRect(0,0,1,1);
         const s=c.closest('.reply-stack'),shown=[...s.querySelectorAll(':scope > [data-id], :scope > .stack-replies > [data-id]')].filter(e=>e.getClientRects().length);
         const entry=shown.find(e=>e.contains(c)),next=shown[shown.indexOf(entry)+1],last=shown.at(-1);
-        const words=next&&[...next.querySelectorAll('.message-author, .message-folded, .fold-line')].find(e=>e.getClientRects().length);
+        const walk=next&&document.createTreeWalker(next,NodeFilter.SHOW_TEXT,{acceptNode:t=>t.textContent.trim()&&t.parentElement.getClientRects().length?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP});
+        const text=walk?.nextNode(),range=document.createRange();if(text)range.selectNodeContents(text);
         return {left:b.left,right:b.right,bottom:b.bottom,covered:entry.dataset.stackCovered,scrollsInPlace:c.classList.contains('scroll-in-place'),scrollTop:c.scrollTop,
-          nextWords:words?.getBoundingClientRect().top??null,last:last===entry?null:last.getBoundingClientRect().bottom,ring:[...x.getImageData(0,0,1,1).data].slice(0,3),innerWidth,innerHeight}})()`);
+          nextWords:text?range.getBoundingClientRect().top:null,last:last===entry?null:last.getBoundingClientRect().bottom,ring:[...x.getImageData(0,0,1,1).data].slice(0,3),innerWidth,innerHeight}})()`);
       assert.equal(box.covered, 'true', `${at}: the next card overlaps ${key}`);
       assert.ok(box.bottom + 3 < box.innerHeight, `${at}: ${key}'s bottom edge is in the window: ${JSON.stringify(box)}`);
-      assert.ok(box.nextWords >= box.bottom + 2 - .5, `${at}: the ring below ${key} stays clear of the next card's words: ${JSON.stringify(box)}`);
       const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
       const scale = image.width / box.innerWidth, y = Math.floor((box.bottom + 1) * scale);
       const xs = [0.3, 0.5, 0.7].map(f => Math.floor((box.left + (box.right - box.left) * f) * scale));
       const got = xs.map(x => image.pixel(x, y));
       const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 24);
       assert.ok(got.every(px => near(px, box.ring)), `${at}: the ring's bottom side shows over the next card below ${key}: ring ${JSON.stringify(box.ring)}, screen ${JSON.stringify(got)}, ${JSON.stringify(box)}`);
+      assert.ok(box.nextWords >= box.bottom + 2 - .5, `${at}: the ring below ${key} stays clear of the words the next card or line shows first: ${JSON.stringify(box)}`);
       let below = null;
       if (box.last !== null && box.last + 3 < box.innerHeight) {
         below = image.pixel(Math.floor((box.left + (box.right - box.left) / 2) * scale), Math.floor((box.last + 1) * scale));

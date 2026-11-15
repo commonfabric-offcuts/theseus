@@ -519,7 +519,9 @@ one's bottom edge, so its ring's bottom side is drawn again above that card,
 the ring alone and never the card, so the next card's words stay uncovered
 (item 430). The dossier draws that ring on the lit card's own box, not inside
 the card, so a long message read in place, scrolled or not, and a fold line,
-each of which clips what is inside it, keep it too. A message between others keeps its quiet fold line in a dossier,
+each of which clips what is inside it, keep it too. A fold line over the
+card before it keeps its words below that card's edge, as a card's padding
+does, so that ring crosses none of them. A message between others keeps its quiet fold line in a dossier,
 and the line answers the pointer and shows when it is open, as anywhere. The enclosing stack does not
 also light up for a selected message. Stale keyboard focus, unread state and
 hover on an unselected message do not get another strong border. A placed message

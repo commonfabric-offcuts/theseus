@@ -14092,6 +14092,21 @@
   },
   {
    "item": 430,
+   "act": "A fold line over a lit card keeps its words below that card's edge, clear of the ring drawn over it",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .stack-replies>.message-fold[data-stack-overlap=true]>.fold-line{padding-top:calc(.3rem + var(--stack-overlap))}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+   }
+  },
+  {
+   "item": 430,
    "act": "The lit first message's ring keeps its bottom side above the first reply",
    "break": [
     [

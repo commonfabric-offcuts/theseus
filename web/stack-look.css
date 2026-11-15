@@ -216,6 +216,9 @@
 .reply-stack:not(.only-new *) .message-fold>.fold-line:hover{background:var(--soft);color:var(--ink)}
 .reply-stack:not(.only-new *) .message-fold>.fold-line[aria-expanded=true]{color:var(--ink)}
 .reply-stack:not(.only-new *) .message-fold[data-stack-covered=true]>.fold-line[aria-expanded=false]{min-height:var(--stack-folded-height);padding-bottom:calc(.3rem + var(--stack-overlap))}
+/* A fold line over the card before it keeps its words below that card's edge, as a card's padding does, so the ring
+   a lit card above draws over the line crosses none of them (item 430). */
+.reply-stack:not(.only-new *) .stack-replies>.message-fold[data-stack-overlap=true]>.fold-line{padding-top:calc(.3rem + var(--stack-overlap))}
 /* In a placed message's folder agent badges protrude; the letters align with
    the message's words. Only the first fragment moves when an Unread pill holds
    the final grapheme. */
