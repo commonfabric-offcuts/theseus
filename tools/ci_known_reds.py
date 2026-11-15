@@ -7,6 +7,8 @@ own evidence parsers; all executable non-stdlib code is the controller commit.
 Raw verdicts remain raw. Mutation results are advisory on trains.
 """
 import argparse
+import ast
+from contextlib import contextmanager
 import datetime
 from collections import Counter, namedtuple
 from functools import lru_cache
@@ -395,7 +397,95 @@ def _final_json(text):
     except ValueError:
         return None
 
-def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False):
+def source_catalog(root, commit):
+    """Interpret catalog data, never the source module's imports or statements."""
+    try:
+        tree = ast.parse(source(root,commit,'tools/release_check.py').decode())
+    except SyntaxError as error:
+        raise Refused('unreadable source catalog: '+str(error))
+    definitions = {}
+    for node in tree.body:
+        if not isinstance(node,ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target,ast.Name):
+                definitions[target.id] = (node.value,None)
+            elif isinstance(target,(ast.Tuple,ast.List)):
+                for i,part in enumerate(target.elts):
+                    if isinstance(part,ast.Name):
+                        definitions[part.id] = (node.value,i)
+    resolved, resolving = {}, set()
+    def named(name):
+        if name in resolved:
+            return resolved[name]
+        require(name in definitions and name not in resolving, 'unreadable catalog constant: '+name)
+        resolving.add(name)
+        expression,index = definitions[name]
+        value = data(expression,{})
+        if index is not None:
+            value = value[index]
+        resolving.remove(name)
+        resolved[name] = value
+        return value
+    def data(node, scope):
+        if isinstance(node,ast.Constant) and isinstance(node.value,(str,int,type(None))):
+            return node.value
+        if isinstance(node,ast.Name):
+            return scope[node.id] if node.id in scope else named(node.id)
+        if isinstance(node,(ast.Tuple,ast.List)):
+            values = [data(n,scope) for n in node.elts]
+            return tuple(values) if isinstance(node,ast.Tuple) else values
+        if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Add):
+            return data(node.left,scope)+data(node.right,scope)
+        if isinstance(node,ast.Attribute) and node.attr in NativeStep._fields:
+            value = data(node.value,scope)
+            require(isinstance(value,NativeStep),'catalog attribute is not NativeStep data')
+            return getattr(value,node.attr)
+        if isinstance(node,ast.Call) and isinstance(node.func,ast.Name):
+            require(not any(k.arg is None for k in node.keywords),'catalog unpacking is unsupported')
+            args,kwargs = [data(n,scope) for n in node.args],{k.arg:data(k.value,scope) for k in node.keywords}
+            if node.func.id == 'tuple' and len(args) == 1 and not kwargs:
+                return tuple(args[0])
+            if node.func.id == 'NativeStep':
+                return NativeStep(*args,**kwargs)
+        if isinstance(node,(ast.ListComp,ast.GeneratorExp)):
+            require(len(node.generators)==1,'catalog needs a single data comprehension')
+            gen = node.generators[0]
+            require(not gen.is_async and not gen.ifs and isinstance(gen.target,ast.Name),'unsupported catalog comprehension')
+            values = data(gen.iter,scope)
+            require(isinstance(values,(list,tuple)) and len(values)<=1024,'catalog data iteration is not bounded')
+            return [data(node.elt,dict(scope,**{gen.target.id:value})) for value in values]
+        raise Refused('catalog expression is not supported data: '+type(node).__name__)
+    steps,required = tuple(named('NATIVE_STEPS')),tuple(named('REQUIRED'))
+    require(0<len(steps)<=1024 and all(isinstance(s,NativeStep) for s in steps),'invalid head native catalog')
+    for step in steps:
+        require(all(isinstance(v,str) and v for v in (step.name,step.harness,step.results)), 'invalid native step fields')
+        require(step.harness.startswith('tests/') and '..' not in Path(step.harness).parts and '/' not in step.results,'unsafe native catalog path')
+        require(isinstance(step.flags,(tuple,list)) and all(isinstance(v,str) for v in step.flags),'invalid native flags')
+    native = {'native-'+s.name:s for s in steps}
+    require(len(native)==len(steps),'duplicate head native step')
+    require(unique(list(required),'head required steps')==set(native)|{'python-units','node-units','deploy-refusals','wake-replay'},'head required catalog is incomplete')
+    return {'NATIVE_STEPS':steps,'NATIVE':native,'REQUIRED':required,'COMPOSE':named('COMPOSE'),'REPLAY_FILE':named('REPLAY_FILE')}
+
+
+@contextmanager
+def catalog_context(root,commit):
+    catalog = source_catalog(root,commit)
+    previous = {name:globals()[name] for name in catalog}
+    globals().update(catalog)
+    try:
+        yield catalog
+    finally:
+        globals().update(previous)
+
+
+def read_evidence(*args,**kwargs):
+    root,commit = args[3:5]
+    with catalog_context(root,commit):
+        return _read_evidence(*args,**kwargs)
+
+
+def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False):
     candidate_root = root
     traffic = json.loads(source(root, commit, REPLAY_FILE))
     provenance, summary = read_json(provenance_path), read_json(summary_path)
@@ -682,13 +772,17 @@ def train_identity(root,commit,binding):
     base = binding['merge']['first_parent']
     item_head = p['head_sha'] if p['event'] == 'pull_request' else binding['merge'].get('second_parent') or commit
     messages = git(root,'log','--format=%B%x00',base+'..'+item_head).decode().split('\0')
-    items = set()
+    items, named_items = set(), []
     for message in messages:
         trailers = subprocess.run(['git','interpret-trailers','--parse'],input=message,text=True,capture_output=True,check=True).stdout
         for line in trailers.splitlines():
+            if line.startswith('Train-Item:'):
+                value = line.partition(':')[2].strip()
+                if value and value not in named_items:
+                    named_items.append(value)
             if line.startswith('Pipeline:'):
                 items.update(int(n) for n in re.findall(r'(?<![A-Za-z0-9])[1-9][0-9]*(?![A-Za-z0-9])',line.partition(':')[2]))
-    return {'pull_request':number,'items':sorted(items),'merge_commit':commit,'items_source':'Pipeline trailers in newly merged history'}
+    return {'pull_request':number,'items':sorted(items),'merge_commit':commit,'items_source':'Pipeline trailers in newly merged history','named_items':named_items}
 
 
 def main(argv=None):
