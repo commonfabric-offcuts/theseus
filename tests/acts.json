@@ -14143,8 +14143,22 @@
    "break": [
     [
      "aim_next/memory.py",
-     "retained = [] if creating else [ref[\"id\"] for row in db.execute(\"SELECT attachments FROM memory_revisions WHERE item_id=?\", (item_id,))",
-     "retained = [] if creating else [ref[\"id\"] for row in db.execute(\"SELECT attachments FROM memory_revisions WHERE item_id=? AND revision=?\", (item_id, revision))"
+     "        return media_id in self.current or self.db.execute(",
+     "        return media_id in self.current or None and self.db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A revise reads the revision it follows, not the page's history, so an ordinary save costs the same however many revisions the page has",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        retained = () if creating else _Carried(db, item_id, json.loads(current[\"attachments\"]))",
+     "        retained = [] if creating else [ref[\"id\"] for row in db.execute(\"SELECT attachments FROM memory_revisions WHERE item_id=?\", (item_id,)) for ref in json.loads(row[\"attachments\"])]"
     ]
    ],
    "check": {
