@@ -13939,6 +13939,61 @@
    }
   },
   {
+   "item": 476,
+   "act": "Opening the earlier-messages row sends nothing: a fold among the earlier messages stays the reader's own, and after a reload it is still its row",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        state.earlier.add(stack.id); state.again(); state.on?.earlier?.(stack, row.items.length);",
+     "        state.earlier.add(stack.id); for (const item of row.items) state.on?.unfold?.(item.id); state.again(); state.on?.earlier?.(stack, row.items.length);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The earlier-messages row is the page's own for this visit: nothing keeps it open, so after a reload the dossier opened shows it closed again",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        state.earlier.add(stack.id); state.again(); state.on?.earlier?.(stack, row.items.length);",
+     "        state.earlier.add(stack.id); sessionStorage.setItem('earlier', JSON.stringify([...state.earlier])); state.again(); state.on?.earlier?.(stack, row.items.length);"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set() });"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "  state.earlier.delete(stack.id); for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);",
+     "  for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Under Only new the earlier-messages row, closed or opened, gives way to the New messages among the earlier ones as whole cards, with no row inside them, and comes back when Only new is off",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".only-new :is(.stack-earlier,.message-earlier){display:none}",
+     ".only-new .stack-earlier{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "Only new: an open dossier's earlier-messages row"
+   }
+  },
+  {
    "item": 474,
    "act": "A message's images show as thumbnails in its card, on the topic page and in a dossier",
    "break": [

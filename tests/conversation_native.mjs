@@ -963,10 +963,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
       await until(async () => await fold() !== was, 'the dossier changes level');
     }
     assert.equal(await fold(), 'open', 'the dossier is open');
-    // The row's words while it shows, and each of the nine: whether it shows, and as a row or a card.
-    const seen = () => quiet(p, `(()=>{const s=document.querySelector('.reply-stack[data-stack="${ids[0]}"]'),b=s.querySelector('.stack-earlier'),shown=e=>e.getClientRects().length>0;
-      return {row:b&&shown(b)?b.textContent:null,messages:${JSON.stringify(ids)}.map(id=>{const c=document.querySelector('#messages .message-card[data-id="'+id+'"]');
-        return !c||!shown(c)?'hidden':shown(c.querySelector(':scope > .message-preview'))?'card':c.querySelector(':scope > .message-earlier')&&shown(c.querySelector(':scope > .message-earlier'))?'row':'tab'})}})()`);
+    // The row's words while it shows, and each of the nine: whether it shows, and as a row or a card. A card that
+    // also shows an earlier message's row inside it reads 'card+row': under Only new a card is the card alone.
+    const seen = () => quiet(p, `(()=>{const s=document.querySelector('.reply-stack[data-stack="${ids[0]}"]'),b=s.querySelector('.stack-earlier'),shown=e=>Boolean(e)&&e.getClientRects().length>0;
+      return {row:b&&shown(b)?b.textContent:null,messages:${JSON.stringify(ids)}.map(id=>{const c=document.querySelector('#messages .message-card[data-id="'+id+'"]'),r=c?.querySelector(':scope > .message-earlier');
+        return !c||!shown(c)?'hidden':shown(c.querySelector(':scope > .message-preview'))?(shown(r)?'card+row':'card'):shown(r)?'row':'tab'})}})()`);
     const widths = async (want, label) => {
       for (const [width, mobile] of [[1280, false], [390, true], [375, true], [320, true]]) {
         await p.send('Emulation.setDeviceMetricsOverride', { width, height: mobile ? 844 : 900, deviceScaleFactor: 1, mobile });
