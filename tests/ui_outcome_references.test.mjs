@@ -175,14 +175,19 @@ test('a page read before and revised since carries its new revisions as a count 
   assert.equal(spoken(current), ', changed since you read it, 1 new revision');
 });
 
-test('the Notebook pages sit in the sidebar beside the topics, with the failure said above their rows', () => {
+// Item 464: the side rail lists no Notebook. The outcome's pages are on its own
+// page, after its topics (app.mjs moves the section there), and a topic's page
+// and a Conversation list them on the right rail (things-rail.mjs).
+test('the outcome Notebook is no section of the side rail: it waits in the page for the outcome\'s own page, its failure said above its rows', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
   const rail = /<nav\b[^>]*\bclass="rail"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? '';
   const main = /<main[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '';
-  const section = /<section id="outcome-references"[^>]*>([\s\S]*?)<\/section>/.exec(rail)?.[1] ?? '';
-  assert.ok(section, 'the Notebook is in the sidebar');
-  assert.doesNotMatch(main, /outcome-references/, 'and no longer a closed line above the topic');
-  assert.ok(rail.indexOf('id="outcome-references"') > rail.indexOf('id="topic-navigation"'), 'after the topics');
+  assert.ok(rail.includes('id="topic-navigation"'), 'the side rail is read');
+  assert.doesNotMatch(rail, /outcome-references|notebook-heading|Outcome Notebook|notebook-create/, 'nothing of the outcome Notebook is in the side rail');
+  const section = /<section id="outcome-references"[^>]*>([\s\S]*?)<\/section>/.exec(main)?.[0] ?? '';
+  assert.ok(section, 'the section waits in the page');
+  assert.match(section, /^<section id="outcome-references"[^>]*\bhidden>/, 'hidden until the outcome\'s own page shows it');
+  assert.ok(main.indexOf('id="outcome-references"') < main.indexOf('id="page-here"'), 'before the page that opens in place');
   // Named for the outcome, so neither eyes nor a screen reader take it for the topic's own Notebook.
   assert.match(section, /<h2 id="notebook-heading">Outcome Notebook<\/h2>/);
   const topicNotebook = /<section id="notebook"[^>]*>[\s\S]*?<h2>([^<]*)<\/h2>/.exec(main)?.[1];
@@ -191,8 +196,9 @@ test('the Notebook pages sit in the sidebar beside the topics, with the failure 
   assert.doesNotMatch(section, /<details/);
   assert.ok(section.indexOf('id="outcome-references-status"') < section.indexOf('id="outcome-references-list"'));
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
-  assert.match(css, /#outcome-references-list \.nav-item\{min-height:44px;/, 'a page row is as tall as a topic row');
-  assert.match(css, /@media\(max-width:760px\)\{#outcome-references\{[^}]*\}#outcome-references-list\{display:flex;overflow:auto;/, 'and scrolls sideways on a phone as topics do');
+  assert.match(css, /#outcome-references-list \.nav-item\{min-height:44px;/, 'a page row is a full touch target');
+  const rails = readFileSync(new URL('../web/rails.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css + rails, /ol-notes|\.rail\.open #outcome-references/, 'no rule draws it in the side rail or its drawer');
 });
 
 // The pencil (items 371 and 383): shown only to someone Core lets write the outcome's Notebook, as its answer says.

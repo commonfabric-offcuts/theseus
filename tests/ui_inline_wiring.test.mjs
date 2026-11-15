@@ -316,15 +316,17 @@ test('inline startup failure disables ownerless input but paints lists, enables 
   assert.equal(f.get('inline-retry').hidden, true);
   assert.equal(f.events.filter(e => e[0] === 'registry').length, 1); assert.equal(f.events.filter(e => e[0] === 'journal').length, 1);
 });
-test('the rail\'s reads begin after the primary composer is initialized, and a topic page reads no list of outcomes',async()=>{
+test('the rail\'s reads begin after the primary composer is initialized, and a topic page reads no list of outcomes and no outcome Notebook',async()=>{
   const f=fixture(),order=[],read=f.api.view;
   f.api.view=async(name,args)=>{order.push(name==='memory_items'?name+':'+args.owner_scope?.kind:name);return read(name,args);};
   f.registry.initializeInline=async()=>{order.push('composer');f.registry.inline=f.p;return f.p;};
   await f.initialize();await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(order.includes('workspace_topics')&&order.includes('memory_items:workspace'));
+  assert.ok(order.includes('workspace_topics'));
   assert.ok(order.indexOf('composer')<order.indexOf('workspace_topics'));
-  assert.ok(order.indexOf('composer')<order.indexOf('memory_items:workspace'),'the outcome\'s Notebook pages too');
   assert.equal(order.includes('workspaces'),false,'inside an outcome the rail shows only that outcome');
+  // Item 464: the side rail lists no Notebook; the right rail reads the outcome's when it shows it (things-rail.mjs).
+  assert.equal(order.includes('memory_items:workspace'),false,'the page reads no outcome Notebook for the side rail');
+  assert.deepEqual(f.get('outcome-references-list').children,[],'and lists none');
 });
 test('a recheck replaces only the rechecked rows the page lists, at once, and only for an editor the registry still holds',async()=>{
   const f=fixture(),applied=[],validation=new Promise(()=>{});let holds=true;
@@ -1799,7 +1801,6 @@ test('no card is read on screen until every fill drawn above the messages has ha
     { fill: 'the marks line', page: 'topic', holds: name => name === 'marks', above: true },
     { fill: 'the conversation\'s Show row', page: 'conversation', holds: name => name === 'conversation', above: true },
     { fill: 'the topics rail', page: 'topic', holds: name => name === 'workspace_topics', above: false },
-    { fill: 'the outcome Notebook', page: 'topic', holds: (name, args) => name === 'memory_items' && args.owner_scope?.kind === 'workspace', above: false },
     { fill: 'the conversation row', page: 'topic', holds: name => name === 'conversation', above: false },
     { fill: 'the Pipeline row', page: 'topic', holds: name => name === 'pipeline_row', above: false },
     { fill: '← Outcomes with its light', page: 'topic', holds: (name, args) => name === 'attention' && args.workspace_id === 'w1', above: false },
@@ -2734,8 +2735,9 @@ test('a commit\'s rail reload leaves a freshness pass already reading alone', as
 
 // The stream's return rereads a page's lists only when a reload could not read
 // them: anything saved while it was down changes its first number, which comes
-// as a commit.
-for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspace', 'workspace_topics']], ['?topic=t1', ['workspace_topics', 'memory_items']]]) {
+// as a commit. A topic's page lists no outcome Notebook (item 464); its own
+// Notebook is read with the topic's changes.
+for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspace', 'workspace_topics']], ['?topic=t1', ['workspace_topics']]]) {
   test(`the stream coming back rereads the lists on ${route} only after a reload that failed`, async () => {
     const f = fixture('https://fixture/' + route), live = stream(), failing = new Set();
     if (route !== '?topic=t1') f.inject({ api: f.api, bootstrap: f.bootstrap });
@@ -2811,9 +2813,9 @@ for (const route of ['?new=outcome&intent=i1']) {
   });
 }
 
-// Beside a new topic the rail shows only its outcome: its topics and its
-// Notebook pages, read again after each commit with the opening itself.
-test('the rail beside a new topic shows its outcome, and each commit reads it and the opening once, never the list of outcomes', async () => {
+// Beside a new topic the rail shows only its outcome: its topics, read again
+// after each commit with the opening itself. It lists no Notebook (item 464).
+test('the rail beside a new topic shows its outcome, and each commit reads it and the opening once, never the list of outcomes or the outcome Notebook', async () => {
   const f = fixture('https://fixture/?workspace=w1&opening=o1&opening_topic=t9'), live = stream();
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   f.api.view = async (name, args) => { f.calls.push({ name, args });
@@ -2821,11 +2823,11 @@ test('the rail beside a new topic shows its outcome, and each commit reads it an
   await f.initialize(); await drain();
   const count = name => f.calls.filter(call => call.name === name).length, follows = () => f.events.filter(e => e[0] === 'opening-follow').length;
   assert.equal(f.get('body').dataset.ready, 'true');
-  assert.deepEqual([count('workspace_topics'), count('memory_items'), follows()], [1, 1, 1], 'the first read');
+  assert.deepEqual([count('workspace_topics'), count('memory_items'), follows()], [1, 0, 1], 'the first read');
   assert.equal(f.get('outcome-navigation').hidden, true, 'no list of outcomes in the rail');
   assert.equal(f.get('rail')['aria-label'], 'This outcome');
   await commit(live, 2);
-  assert.deepEqual([count('workspace_topics'), count('memory_items'), follows()], [2, 2, 2], 'a commit reads the rail and the opening again');
+  assert.deepEqual([count('workspace_topics'), count('memory_items'), follows()], [2, 0, 2], 'a commit reads the rail and the opening again');
   assert.equal(count('workspaces'), 0, 'and never the list of outcomes');
 });
 

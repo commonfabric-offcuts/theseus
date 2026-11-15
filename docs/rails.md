@@ -69,9 +69,10 @@ Each outcome ends with + New topic.
   the outline under its outcome, so nothing above it pushes it down as it is
   pressed, and its guard, its paging and its live updates are the page's own.
 
-Under the outcome being read, after its topics, is the outcome's Notebook, as
-the side rail had it: its pages wear their light until opened, and open in
-place with what changed. It moves into the outline with the topic list.
+The outline lists no Notebook (item 464): under the outcome being read come
+its topics and New topic, and then the next outcome, for the pointer and the
+keys alike. The outcome's Notebook pages are in the right rail's Notebook
+section, which has its own pencil, and on the outcome's own page.
 
 On a phone the outline is a drawer behind "☰ Outcomes", which carries the
 total count and the light. A line under the header says what is new in other
@@ -94,9 +95,11 @@ says so in one quiet line.
 - **Waiting for…** is the Now and Next items the reader raised, at their
   stage, and the reader's Conversation posts nobody has taken up yet.
 - **Notebook pages** come from `memory_items`: the topic's own pages on a
-  topic, the outcome's otherwise, each with its light. On a topic its heading
-  carries the pencil that starts a new page there (docs/notebook-pages.md), so
-  it shows with No pages yet when the topic has none.
+  topic, the outcome's otherwise, each with its light. Its heading carries the
+  pencil that starts a new page in the Notebook it lists, the topic's or the
+  outcome's, for someone Core lets write it (docs/notebook-pages.md), so it
+  shows with No pages yet when that Notebook has none. It lists 20 pages, its
+  count saying "20+" while there are more, and More pages brings 20 more.
 - **Previews and pull requests** are links people posted in messages: a
   build on the tailnet or this machine, or an address that names a preview or
   a mockup, and GitHub pull requests. On a whole outcome they come from its
@@ -246,8 +249,6 @@ the foreground lane. The right rail reads in the background lane.
 - The old sections the outline stands for (the outcomes list, the
   Conversation and Pipeline rows) are still read by the page, hidden, since
   other parts of the page follow them.
-- The outcome's Notebook shows under its outcome in the outline and, on a
-  Conversation or with "All of this outcome", in the right rail too.
 - Waits in outcomes the reader cannot list are not in the outline's totals.
 - ⌘→ opens another outcome's topics only from the keys; there is no
   pointer's way to look without going there.

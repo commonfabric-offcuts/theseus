@@ -228,8 +228,8 @@ bubble without a count.
 
 A page opens in the composer over the feed (item 396, `web/notebook-sheet.mjs`):
 the New message sheet comes up with the page in it, from every place a page is
-opened as it stands: a row of the outline's Outcome Notebook, a card of the
-topic's own Notebook, a row of the right rail's Notebook, a row on the
+opened as it stands: a card of the topic's own Notebook, a row of the right
+rail's Notebook (the topic's, or the outcome's), a row on the
 outcome's own page, a link to a page as it stands, the pencil that starts a
 page (its first card ready to write), and Edit page in the ⋯ of the Reader
 showing a page at a revision. Over the outcome's own page, which has no feed,

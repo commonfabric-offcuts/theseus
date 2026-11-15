@@ -5946,8 +5946,8 @@
    "break": [
     [
      "web/things-rail.mjs",
-     "return items && this.notebookCreate?.available ?",
-     "return false && items && this.notebookCreate?.available ?"
+     "return items && this.creators.get(found.byTopic ? 'topic' : 'outcome')?.available ?",
+     "return false && items && this.creators.get(found.byTopic ? 'topic' : 'outcome')?.available ?"
     ]
    ],
    "check": {
@@ -7333,7 +7333,7 @@
   },
   {
    "item": 396,
-   "act": "A page opened from the outline comes up in the New message sheet over the feed",
+   "act": "A page opened from the right rail comes up in the New message sheet over the feed",
    "break": [
     [
      "web/notebook-sheet.mjs",
@@ -7343,7 +7343,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "a page opened from the outline"
+    "case": "in the composer: a page opened from the right rail"
    }
   },
   {
@@ -7358,7 +7358,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "a page opened from the outline"
+    "case": "in the composer: a page opened from the right rail"
    }
   },
   {
@@ -7373,7 +7373,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "a page opened from the outline"
+    "case": "in the composer: a page opened from the right rail"
    }
   },
   {
@@ -7763,7 +7763,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "a page opened from the outline"
+    "case": "in the composer: a page opened from the right rail"
    }
   },
   {
@@ -7772,7 +7772,7 @@
    "break": [
     [
      "web/app.mjs",
-     "open: route => openNotebook(route.id, { write: route.write, opener: host.querySelector('.notebook-create') })",
+     "open: (route, opener) => openNotebook(route.id, { write: route.write, opener })",
      "open: route => openDestination(route, 'Notebook')"
     ]
    ],
@@ -11570,6 +11570,131 @@
    ],
    "check": {
     "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 464,
+   "act": "The side rail shows no Outcome Notebook, pencil and all, on a topic, a Conversation, a pipeline page or an outcome's page",
+   "break": [
+    [
+     "web/index.html",
+     "      <section id=\"outcome-references\" class=\"notebook-navigation\" aria-labelledby=\"notebook-heading\" hidden>\n      <div class=\"rail-heading\"><h2 id=\"notebook-heading\">Outcome Notebook</h2></div>\n      <div id=\"outcome-references-status\" class=\"notice\" role=\"status\" hidden></div>\n      <div id=\"outcome-references-list\" aria-labelledby=\"notebook-heading\"></div>\n      <button id=\"more-references\" type=\"button\" hidden>More pages</button>\n      </section>\n",
+     ""
+    ],
+    [
+     "web/index.html",
+     "      <section id=\"topic-navigation\" aria-label=\"Topics\">\n",
+     "      <section id=\"outcome-references\" class=\"notebook-navigation\" aria-labelledby=\"notebook-heading\" hidden>\n      <div class=\"rail-heading\"><h2 id=\"notebook-heading\">Outcome Notebook</h2></div>\n      <div id=\"outcome-references-status\" class=\"notice\" role=\"status\" hidden></div>\n      <div id=\"outcome-references-list\" aria-labelledby=\"notebook-heading\"></div>\n      <button id=\"more-references\" type=\"button\" hidden>More pages</button>\n      </section>\n      <section id=\"topic-navigation\" aria-label=\"Topics\">\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the side rail shows no Outcome Notebook"
+   }
+  },
+  {
+   "item": 464,
+   "act": "The right rail's Notebook pencil starts a page in the whole outcome's Notebook, on a Conversation and with All of this outcome",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "    if (make && handles.workspaceId) this.creators.set('outcome', make(details, { kind: 'workspace', id: handles.workspaceId }));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook creation pencil opens a title line"
+   }
+  },
+  {
+   "item": 464,
+   "act": "The right rail's outcome pencil shows only to someone Core lets write the outcome's Notebook",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "found.byTopic && found.notebook !== null && found.notebookMayWrite);",
+     "found.byTopic && found.notebook !== null);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "a draft page in a reached outcome"
+   }
+  },
+  {
+   "item": 464,
+   "act": "An empty whole-outcome Notebook keeps the right rail's Notebook heading, No pages yet and its pencil",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "return items && this.creators.get(found.byTopic ? 'topic' : 'outcome')?.available ?",
+     "return false && items && this.creators.get(found.byTopic ? 'topic' : 'outcome')?.available ?"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook the right rail lists a whole outcome's Notebook"
+   }
+  },
+  {
+   "item": 464,
+   "act": "More pages in the right rail's Notebook brings twenty more pages, and the rail keeps them",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "this.notebookWant = items.length + NOTEBOOK_PAGE;",
+     "this.notebookWant = items.length;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook the right rail lists a whole outcome's Notebook"
+   }
+  },
+  {
+   "item": 464,
+   "act": "More pages pressed from the keys hands the focus to the first page it brought",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "=== this.doc.body) brought.focus();",
+     "=== this.doc.body) void brought;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook the right rail lists a whole outcome's Notebook"
+   }
+  },
+  {
+   "item": 464,
+   "act": "On a phone a Notebook page's row in the right rail's sheet is 44 points tall",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(max-width:760px){.things-sec[data-key=notebook] .things-list a.row{min-height:2.75rem;padding-block:.7rem}}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook at 390 wide"
+   }
+  },
+  {
+   "item": 464,
+   "act": "The Reader on a topic's page offers a revision made since of an outcome's Notebook page it shows",
+   "break": [
+    [
+     "web/app.mjs",
+     "read = await loadReadState(), shown = await loadShownPage();",
+     "read = await loadReadState(), shown = true;"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live the outcome Notebook pages are on the right rail"
    }
   }
  ]

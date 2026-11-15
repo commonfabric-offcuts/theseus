@@ -2132,4 +2132,109 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await landed(k, '?conversation=w1');
     assert.deepEqual(k.errors, []); await k.close();
   });
+
+  // Item 464: the outcome's Notebook leaves the side rail, pencil and all. The right rail lists it on a topic and a
+  // Conversation (notebook_pages_native.mjs), and the outcome's own page after its topics. Two outcomes of the
+  // person's: one with a page (which the side rail listed under its topics), one with none (where it kept its heading
+  // and its pencil for the person, who may write it).
+  const notebookOutcomes = async () => {
+    for (const [outcome, topic] of [['rail-nb-o', 'rail-nb-t'], ['rail-nb-none', 'rail-nb-none-t']]) {
+      await control({ method: 'light_outcome', outcome, title: outcome === 'rail-nb-o' ? 'Notebook outcome' : 'Empty Notebook outcome', topic: { id: topic, title: topic === 'rail-nb-t' ? 'Notebook topic' : 'Empty Notebook topic' } });
+    }
+    await control({ method: 'outcome_reference', operation_id: 'rail-nb-page', item_id: 'rail-nb-page', workspace_id: 'rail-nb-o', title: 'Rail plan', body: 'The plan the rail no longer lists.' });
+  };
+  // Whatever of the outcome's Notebook the side rail holds: its section, a pencil, a page's row, the heading's words
+  // anywhere in it, and the page's title shown in it.
+  const sideNotebook = p => p.evaluate(`(()=>{const r=document.getElementById('rail'),v=e=>e.checkVisibility();
+    return {parts:r.querySelectorAll('#outcome-references, .notebook-create, .reference, .ol-notes').length,
+      words:[...r.querySelectorAll('*')].filter(e=>v(e)&&[...e.childNodes].some(n=>n.nodeType===3&&/Outcome Notebook|Rail plan|More pages/.test(n.textContent))).length}})()`);
+  const SIZE_464 = { laptop: SIZES.laptop, 390: SIZES.phone, 375: { width: 375, height: 760, deviceScaleFactor: 2, mobile: true }, 320: { width: 320, height: 700, deviceScaleFactor: 2, mobile: true } };
+  const openAt = (name, url, size, theme) => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
+    await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+    await q.send('Emulation.setDeviceMetricsOverride', SIZE_464[size]);
+    if (SIZE_464[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  } });
+
+  await check('rail the side rail shows no Outcome Notebook on a topic, a Conversation, a pipeline page or the outcome\'s page, with pages or none, at 320 375 390 and a laptop, light and dark', async () => {
+    await notebookOutcomes();
+    await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-nb-pipeline', target: { workspace_id: 'rail-nb-o' }, workspace_id: 'rail-nb-o', args: { enabled: true } });
+    const places = [['topic', '/?topic=rail-nb-t'], ['conversation', '/?conversation=rail-nb-o'], ['empty', '/?topic=rail-nb-none-t'], ['pipeline', '/?pipeline=rail-nb-o'], ['outcome', '/?workspace=rail-nb-o']];
+    for (const size of ['laptop', 390, 375, 320]) for (const theme of ['light', 'dark']) for (const [kind, url] of places) {
+      // The pipeline page and the outcome's page, which keep the side rail they had, at the widest and narrowest.
+      if (['pipeline', 'outcome'].includes(kind) && ![ 'laptop', 320].includes(size)) continue;
+      const at = `${kind} ${size} ${theme}`, phone = SIZE_464[size].mobile;
+      const p = await openAt(`rail-nb-${kind}-${size}-${theme}`, url, size, theme);
+      // Drawn as far as it goes: a feed page's outline holds its topics; the pipeline page's rail its topics; the
+      // outcome's page lists its pages after its topics in the page itself.
+      await until(() => p.evaluate(kind === 'outcome' ? `document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outcome-page #outcome-references-list .reference'))`
+        : kind === 'pipeline' ? `document.body?.dataset.ready==='true' && Boolean(document.querySelector('#rail #topics a[data-topic-id=rail-nb-t]'))`
+        : `document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outline #topic-navigation a[data-topic-id]')) && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'`).catch(() => false), at + ': the page is drawn');
+      if (phone && kind !== 'outcome') {
+        await tap(p, '#rail-open');
+        await until(async () => (await drawer(p)).open, at + ': the side rail opens over the page');
+      }
+      assert.deepEqual(await sideNotebook(p), { parts: 0, words: 0 }, at + ': the side rail holds nothing of the outcome\'s Notebook');
+      const width = await p.evaluate('[document.documentElement.scrollWidth, innerWidth]');
+      assert.ok(width[0] <= width[1], `${at}: no sideways scroll (${width})`);
+      if (['topic', 'conversation'].includes(kind)) {
+        // The outcome's page is on the right rail instead: on the Conversation from the start, on a topic one tap away.
+        if (phone) { await tap(p, '#rail-backdrop'); await until(async () => !(await drawer(p)).open, at + ': the side rail closes'); }
+        if (!await p.evaluate("matchMedia('(min-width: 1181px)').matches")) {
+          await (phone ? tap(p, '#things-open') : p.point('#things-open'));
+          await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open')"), at + ': the right rail opens');
+        }
+        if (kind === 'topic') {
+          const chip = '#things .things-scope .chip:last-child';
+          await (phone ? tap(p, chip) : p.point(chip));
+          await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')==='true'`), at + ': All of this outcome');
+        }
+        await until(() => p.evaluate(`Boolean(document.querySelector('#things .things-sec[data-key="notebook"] a.row[href$="page=rail-nb-page"]')?.checkVisibility())`), at + ': the right rail lists the page');
+        await shot(p, `rail-nb-${kind}-${size}-${theme}-things`);
+      } else if (kind === 'outcome') {
+        assert.equal(await p.evaluate(`document.querySelector('#topic-navigation').compareDocumentPosition(document.querySelector('#outcome-references'))===Node.DOCUMENT_POSITION_FOLLOWING && !document.querySelector('#rail').contains(document.querySelector('#outcome-references'))`),
+          true, at + ': the outcome\'s own page lists its pages after its topics, outside any rail');
+      }
+      await shot(p, `rail-nb-${kind}-${size}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('rail ↑ and ↓ in the outline step from the last row under an open outcome straight to the next outcome and back, with no Notebook row between, on a topic and after a move to its Conversation', async () => {
+    await notebookOutcomes();
+    const p = await open('rail-nb-keys', '/?topic=rail-nb-t');
+    await settled(p, 'the topic is up');
+    // The rows under rail-nb-o as the tree lists them, and the outcome after it.
+    const span = async () => {
+      const rows = (await keyTree(p)).rows, from = rows.indexOf('name:rail-nb-o');
+      const next = rows.findIndex((row, n) => n > from && row.startsWith('name:'));
+      assert.ok(from >= 0 && next > from, 'the outline lists the outcome and one after it: ' + rows);
+      return { under: rows.slice(from, next), next: rows[next] };
+    };
+    // Where the keys are, and whether what holds the focus is a row on show in the outline.
+    const keyed = async () => ({ at: await keyedAt(p), live: await p.evaluate("(e=>Boolean(e&&e.isConnected&&e.checkVisibility()&&e.closest('#outline')&&e.getAttribute('role')==='treeitem'))(document.activeElement)") });
+    const walk = async (start, label) => {
+      const { under, next } = await span();
+      assert.deepEqual(under.filter(row => /^outline:(|Rail plan|More pages|.*Notebook.*)$/.test(row)), [], `${label}: no Notebook row under the outcome: ${under}`);
+      // ↓ from where the keys are visits every row after it in turn, skipping none, to the next outcome.
+      const seen = [];
+      for (let n = 0; n <= under.length && (await keyedAt(p)) !== next; n++) { await p.key('ArrowDown'); const k = await keyed(); assert.ok(k.live, `${label}: ↓ lands on a row on show, not ${k.at}`); seen.push(k.at); }
+      assert.deepEqual(seen, [...under.slice(under.indexOf(start) + 1), next], `${label}: ↓ visits each row in turn and then the next outcome`);
+      // ↑ from the next outcome comes back to the last row under this one.
+      await p.key('ArrowUp');
+      assert.deepEqual(await keyed(), { at: under.at(-1), live: true }, `${label}: ↑ comes back to the last row under the outcome`);
+      return under;
+    };
+    await tabToOutline(p);
+    assert.equal(await keyedAt(p), 'topic:rail-nb-t', 'the keys start on the topic being read');
+    await walk('topic:rail-nb-t', 'on the topic');
+    // Return on the outcome's row opens its Conversation in place; the keys stay in the outline and walk the same.
+    for (let n = 0; n < 12 && (await keyedAt(p)) !== 'name:rail-nb-o'; n++) await p.key('ArrowUp');
+    assert.equal(await keyedAt(p), 'name:rail-nb-o');
+    await p.key('Enter');
+    await arrived(p, '?conversation=rail-nb-o', null, 'Return on the outcome opens its Conversation in place');
+    await until(async () => (await keyedAt(p)) === 'name:rail-nb-o', 'the keys stay on the outcome');
+    await settled(p, 'the Conversation is up');
+    await walk('name:rail-nb-o', 'on the Conversation');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
 }
