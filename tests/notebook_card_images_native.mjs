@@ -320,16 +320,19 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     if (size !== 'laptop') await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
   } });
   // Each page image drawn in what the selector names: its name as it shows, whether its picture has loaded, its width
-  // and height as drawn and as the image is, and the width of the words it stands in; and every image read.
-  const drawnImages = (p, scope) => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(scope + ' .page-image')})].map(f=>{const i=f.querySelector(':scope > img.image-thumb'),r=i?.getBoundingClientRect(),
+  // and height as drawn (inside its border) and as the image is, and the room the words leave its picture; and every
+  // image read.
+  const drawnImages = (p, scope) => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(scope + ' .page-image')})].map(f=>{const i=f.querySelector(':scope > img.image-thumb'),
     w=f.parentElement,s=getComputedStyle(w),inner=w.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight);
-    return {name:f.querySelector(':scope > .page-image-name').textContent,shown:Boolean(i&&!i.hidden&&i.complete&&i.naturalWidth>0),width:r?Math.round(r.width):0,height:r?Math.round(r.height):0,
-      natural:i?i.naturalWidth:0,room:Math.floor(inner)}})`);
+    const b=i?getComputedStyle(i):null,edge=b?parseFloat(b.borderLeftWidth)+parseFloat(b.borderRightWidth):0;
+    return {name:f.querySelector(':scope > .page-image-name').textContent,shown:Boolean(i&&!i.hidden&&i.complete&&i.naturalWidth>0),width:i?i.clientWidth:0,height:i?i.clientHeight:0,
+      natural:i?i.naturalWidth:0,room:inner-(b?.boxSizing==='border-box'?edge:0)}})`);
   const imageReads = (p, from) => p.calls.slice(from).filter(call => call.url.endsWith('/api/media/read')).map(call => [call.payload?.media_id, call.payload?.source_ref?.kind, call.payload?.source_ref?.id]);
   // An image at the size it reads at: as wide as it is, or as the words when it is wider, never a thumbnail.
   const readingSize = (image, said) => {
-    assert.equal(image.width, Math.min(image.natural, image.room), `${said}: the image is as wide as it is, or as the words: ${JSON.stringify(image)}`);
-    assert.equal(image.height, Math.round(image.width * 300 / 480), `${said}: in proportion: ${JSON.stringify(image)}`);
+    // A browser counts a box's width in whole pixels (clientWidth), so the room it fills may round either way.
+    assert.ok(Math.abs(image.width - Math.min(image.natural, image.room)) <= 1, `${said}: the image is as wide as it is, or as the words: ${JSON.stringify(image)}`);
+    assert.ok(Math.abs(image.height - image.width * 300 / 480) <= 1, `${said}: in proportion: ${JSON.stringify(image)}`);
   };
 
   await check('notebook card images the Reader shows a card\'s image at its reading size, read through the page; an image the page does not carry shows its name alone and reads nothing; a line that is words stays words; at 320, 390 and a laptop, light and dark', async () => {
