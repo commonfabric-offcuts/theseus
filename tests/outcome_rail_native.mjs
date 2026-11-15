@@ -2314,11 +2314,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const out=[];all.forEach((e,i)=>{const id=tree(e)??'n'+i;e.dataset.arrowNode=id;
         if(!out.some(o=>o.id===id))out.push({id,label:id.startsWith('tree')?'the tree '+(e.closest('[role=tree]')?.getAttribute('aria-label')??''):(e.id||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40)||e.tagName)})});return out})()`);
     const label = id => nodes.find(node => node.id === id)?.label ?? id;
-    // Where a press lands; a control that was not marked (the feed itself, a row drawn since) is marked as it is
-    // found, and the arrows are pressed from it too.
+    // Where a press lands; a control that was not marked (the feed itself, a row drawn since, a tree whose rows
+    // took their tree words since) is marked as it is found, and the arrows are pressed from it too.
     const landed = async () => { const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree'+Math.max(0,[...document.querySelectorAll('[role=tree]')].indexOf(e.closest('[role=tree]')));
       if(!e.dataset.arrowNode){window.__arrowFound=(window.__arrowFound??0)+1;e.dataset.arrowNode='found'+window.__arrowFound}return e.dataset.arrowNode})(document.activeElement)`);
-      if (at.startsWith('found') && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)") });
+      if (at !== 'page' && at !== 'out' && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)") });
       return at; };
     const explore = [...nodes];
     // A start given as a step: where that step, taken once the controls are marked, lands.
