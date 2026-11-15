@@ -12153,12 +12153,40 @@
   },
   {
    "item": 481,
-   "act": "A failed case the merged base's policy admits is a known red, recorded as taken by the policy",
+   "act": "A failed case the live commit's policy admits is a known red, recorded as taken by the policy",
    "break": [
     [
      "tools/known_reds.py",
      "            if review is not None:\n                taken_by = \"policy\"",
      "            if False:\n                taken_by = \"policy\""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The known-reds policy is read at the live commit, the event base, never at the candidate, so a candidate's own admission never counts for it",
+   "break": [
+    [
+     "tools/deploy.py",
+     "                                           lambda base: policy_reds(config, base, sha))",
+     "                                           lambda base: policy_reds(config, sha, sha))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The policy's plan is chosen with the live commit as its approved base, so what the candidate retires from it must be the plan's reviewed retirements",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            plan, _ = ci_known_reds.select_plan(policy, root, commit, base)\n",
+     "            plan, _ = ci_known_reds.select_plan(policy, root, commit)\n"
     ]
    ],
    "check": {
@@ -12349,7 +12377,7 @@
     ],
     [
      "tools/known_reds.py",
-     "            plan, _ = ci_known_reds.select_plan(policy, root, commit)\n",
+     "            plan, _ = ci_known_reds.select_plan(policy, root, commit, base)\n",
      "            pass\n"
     ]
    ],

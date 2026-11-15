@@ -3,9 +3,10 @@ from __future__ import annotations
 """Item 178: browser cases a release check failed that are already known to fail.
 
 tools/deploy.py --known-reds FILE takes a release-check summary that did not pass only when every failure in it is a
-browser case FILE lists, and each is known (item 481): the merged base's policy admits it (.github/check-baseline.json
-at the deployed commit, loaded and matched as tools/ci_known_reds.py loads and matches it: the case's identity and its
-failure's fingerprint, Admissions), or a release-check summary of the live commit
+browser case FILE lists, and each is known (item 481): the policy at the event base admits it (.github/check-baseline.json
+at the live commit, never the candidate's copy, loaded and matched as tools/ci_known_reds.py loads and matches it with
+the pull request's event base: the case's identity and its failure's fingerprint, Admissions), or a release-check
+summary of the live commit
 shows that same case failing in a run of the same step that ended as it should. Nothing is run again: both runs are
 read from the evidence each summary keeps beside it. The cases stay failures: the deploy records them as known reds,
 never as passes. docs/tools.md ("Known reds") is the contract.
@@ -40,7 +41,7 @@ COMPOSE_PHASES = ["run:chromium", "run:webkit", "runAnswering:chromium", "runAns
 # The composer's end-of-run record. A live run from before the harness wrote it has none of these fields; one with any of
 # them is read as a run that writes it.
 COMPOSE_END = ("fixtureExitCode", "fixtureExitSignal", "plannedPhases", "completedPhases", "harnessCompleted")
-# The merged base's policy of expected browser failures, which GitHub's classifier reads (docs/ci-known-reds.md).
+# The policy of expected browser failures, which GitHub's classifier reads at the event base (docs/ci-known-reds.md).
 POLICY = ".github/check-baseline.json"
 # Item 482: an owner's acceptance of named cases, which a red's live_summary may name in place of a live summary.
 OWNER_KEYS = ("owner_acceptance", "cases", "by", "message", "why")
@@ -233,25 +234,27 @@ def live_cases(red, live_commit):
 
 class Admissions:
     """The reds a policy file admits, read and matched exactly as GitHub's classifier reads and matches them
-    (tools/ci_known_reds.py): the policy is one its load_policy() takes, read against root's git; a failed case is
-    admitted only when commit's test definitions are a plan the policy reviewed (select_plan(), as the classifier asks
-    before it matches anything; at a commit where none is, the policy admits nothing and unreviewed says why, but it
-    refuses nothing, so each red falls to its live summary), its identity (key(): name, phase, engine, expectedFailure)
-    is an admission of that plan, and the fingerprint of its failure (its assertion, values and test-source chain, read
-    at commit) is that admission's. The one thing not compared is the runner profile: a local release check does not
-    run on GitHub's runners."""
+    (tools/ci_known_reds.py): the policy is base's (the event base: the classifier reads the policy at the pull
+    request's base, never the candidate's copy, so a candidate's own admission never counts for it), one its
+    load_policy() takes, read against root's git; a failed case is admitted only when commit's test definitions are a
+    plan the policy reviewed, with base as the approved base (select_plan(), as the classifier asks before it matches
+    anything; at a commit where none is, the policy admits nothing and unreviewed says why, but it refuses nothing, so
+    each red falls to its live summary), its identity (key(): name, phase, engine, expectedFailure) is an admission of
+    that plan, and the fingerprint of its failure (its assertion, values and test-source chain, read at commit) is that
+    admission's. The one thing not compared is the runner profile: a local release check does not run on GitHub's
+    runners."""
 
-    def __init__(self, policy, root, commit):
+    def __init__(self, policy, root, commit, base):
         from tools import ci_known_reds
         self.ci, self.root, self.commit = ci_known_reds, root, commit
         try:
             ci_known_reds.load_policy(policy, root)
         except (ci_known_reds.Refused, KeyError, TypeError, AttributeError, ValueError) as error:
             # A malformed field the classifier would crash on is no more a policy it takes than one it refuses.
-            raise Refused("%s at %s is not a policy GitHub's classifier takes (%s)" % (POLICY, commit[:12], error))
+            raise Refused("%s at %s is not a policy GitHub's classifier takes (%s)" % (POLICY, base[:12], error))
         self.reds, self.unreviewed = {}, None
         try:
-            plan, _ = ci_known_reds.select_plan(policy, root, commit)
+            plan, _ = ci_known_reds.select_plan(policy, root, commit, base)
         except ci_known_reds.Refused as error:
             self.unreviewed = "the tests at %s are not ones it reviewed: %s" % (commit[:12], error)
             return
@@ -269,13 +272,14 @@ class Admissions:
         return (red["review"], None) if same else (None, "different assertion, values or source chain")
 
 
-def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
+def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
     """What the known reds accept of a summary that judge_summary found describes the commit, or Refused naming the
     first condition that fails.
 
     unpassed: judge_summary's reasons the run did not pass; [] takes every listed red as not needed. live_head(): the
-    live checkout's HEAD, as the deploy reads it. policy(): the Admissions of POLICY at the deployed commit, None when
-    that commit keeps none, or Refused when it cannot be read or is not a policy GitHub's classifier takes. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
+    live checkout's HEAD, as the deploy reads it. policy(base): the Admissions of POLICY at base, the live HEAD the
+    known reds were read beside (the event base, never the candidate), None when that commit keeps none, or Refused when
+    it cannot be read or is not a policy GitHub's classifier takes. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
     review}], not_needed: [{step, case}]}; accepted is empty only for a summary that passed."""
     known = load(path)
     listed = {(red["step"], red["case"]): red for red in known["reds"]}
@@ -286,7 +290,7 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
     head = live_head()
     if known["live_commit"] != head:
         raise Refused("the known reds were read beside %s, but %s is live" % (known["live_commit"], head))
-    admits = policy()
+    admits = policy(head)
     summary = json.loads(Path(summary_path).read_text())
     failures = candidate_failures(summary, Path(summary_path).parent)
     for step in sorted(failures):
@@ -302,10 +306,10 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
             if review is not None:
                 taken_by = "policy"
             elif differs is not None and red["live_summary"] is None:
-                raise Refused("%s %r: %s at the deployed commit admits it, but not this failure (%s)"
+                raise Refused("%s %r: %s at the live commit admits it, but not this failure (%s)"
                               % (step, case, POLICY, differs))
             elif red["live_summary"] is None:
-                raise Refused("%s %r is not admitted by %s at the deployed commit, and no live summary names it%s"
+                raise Refused("%s %r is not admitted by %s at the live commit, and no live summary names it%s"
                               % (step, case, POLICY, unreviewed))
             else:
                 failed, acceptance = live_cases(red, known["live_commit"])
@@ -313,7 +317,7 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
                 if acceptance is not None:
                     taken["acceptances"][red["live_summary"]] = {"by": acceptance["by"], "message": acceptance["message"]}
                 if case not in failed:
-                    raise Refused("%s %r is not admitted by %s at the deployed commit, nor among the cases that failed in %s "
+                    raise Refused("%s %r is not admitted by %s at the live commit, nor among the cases that failed in %s "
                                   "on the live commit%s" % (step, case, POLICY, red["live_summary"], unreviewed))
             taken["accepted"].append({"step": step, "case": case, "live_summary": red["live_summary"],
                                       "live_commit": known["live_commit"], "why": red["why"], "taken_by": taken_by,

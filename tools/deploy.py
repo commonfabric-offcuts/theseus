@@ -373,25 +373,26 @@ def skip_basis(config, sha):
     return live, release_check.seen(config.live, sha, release_check.changed_paths(config.live, live, sha, git), git)
 
 
-def policy_reds(config, sha):
-    """Item 481: the reds the merged base's policy (.github/check-baseline.json at SHA) admits, read from the live
-    checkout's git and matched as GitHub's classifier matches them (known_reds.Admissions); None when SHA keeps no
-    policy. A read that fails, or a policy that classifier would not load, is refused, not taken as no policy."""
-    listed = run(["git", "-C", str(config.live), "ls-tree", "--name-only", sha, "--", known_reds_check.POLICY])
+def policy_reds(config, base, sha):
+    """Item 481: the reds the policy at the event base (.github/check-baseline.json at BASE, the live commit) admits for
+    SHA, read from the live checkout's git and matched as GitHub's classifier matches them (known_reds.Admissions); None
+    when BASE keeps no policy. The candidate's own copy is never read, so its own admissions never count for it. A read
+    that fails, or a policy that classifier would not load, is refused, not taken as no policy."""
+    listed = run(["git", "-C", str(config.live), "ls-tree", "--name-only", base, "--", known_reds_check.POLICY])
     if listed.returncode != 0:
         raise known_reds_check.Refused("whether %s keeps %s could not be read (exit %s): %s" % (
-            sha[:12], known_reds_check.POLICY, listed.returncode, listed.stderr.strip()[:300]))
+            base[:12], known_reds_check.POLICY, listed.returncode, listed.stderr.strip()[:300]))
     if not listed.stdout.strip():
         return None
-    shown = run(["git", "-C", str(config.live), "show", "%s:%s" % (sha, known_reds_check.POLICY)])
+    shown = run(["git", "-C", str(config.live), "show", "%s:%s" % (base, known_reds_check.POLICY)])
     try:
         policy = json.loads(shown.stdout) if shown.returncode == 0 else None
     except ValueError:
         policy = None
     if policy is None:
         raise known_reds_check.Refused("%s at %s could not be read (exit %s): %s" % (
-            known_reds_check.POLICY, sha[:12], shown.returncode, (shown.stderr or shown.stdout).strip()[:300]))
-    return known_reds_check.Admissions(policy, config.live, sha)
+            known_reds_check.POLICY, base[:12], shown.returncode, (shown.stderr or shown.stdout).strip()[:300]))
+    return known_reds_check.Admissions(policy, config.live, sha, base)
 
 
 def live_head(config):
@@ -621,7 +622,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     if known_reds is not None and not foreign:
         try:
             known = known_reds_check.judge(known_reds, summary, unpassed, lambda: live_head(config),
-                                           lambda: policy_reds(config, sha))
+                                           lambda base: policy_reds(config, base, sha))
         except known_reds_check.Refused as refusal:
             known = {"file": str(known_reds), "refused": str(refusal)}
     if trained is None:
@@ -636,7 +637,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     for red in accepted:
         if red["taken_by"] == "policy":
             print("known red: %s %r failed; %s at %s admits it (review %s): %s"
-                  % (red["step"], red["case"], known_reds_check.POLICY, sha[:12], red["review"], red["why"]))
+                  % (red["step"], red["case"], known_reds_check.POLICY, known["live_commit"][:12], red["review"], red["why"]))
         elif red["taken_by"] == "owner_acceptance":
             acceptance = known["acceptances"][red["live_summary"]]
             print("known red: %s %r failed; an owner's acceptance took it (%s, by %s in %s): %s"

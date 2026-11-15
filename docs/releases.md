@@ -64,8 +64,8 @@ failed in `native`:
                  "live_summary": "/abs/live-check/summary.json", "why": "one line"}]}
 ```
 
-Each known red also says what took it in `taken_by`: `policy` (the release
-branch's policy admits it), `live` (the live release's check failed it) or
+Each known red also says what took it in `taken_by`: `policy` (the policy at
+the live commit admits it), `live` (the live release's check failed it) or
 `owner_acceptance` (an owner's acceptance file, which `live_summary` names).
 `known_reds` is left out when there are none, so a record without it reads as
 before, and a reader that does not know it ignores it, as it does `skipped`.
