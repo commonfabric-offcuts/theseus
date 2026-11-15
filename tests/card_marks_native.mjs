@@ -195,7 +195,8 @@ const readHead = (p, id) => p.evaluate(selector => {
     const range = document.createRange(); range.selectNodeContents(text);
     const words = range.getBoundingClientRect();
     let clip = text.parentElement;
-    while (clip !== row && getComputedStyle(clip).overflowX === 'visible') clip = clip.parentElement;
+    // A part laid out by its children alone (display: contents) has no box, so it clips nothing.
+    while (clip !== row && (getComputedStyle(clip).overflowX === 'visible' || getComputedStyle(clip).display === 'contents')) clip = clip.parentElement;
     const edge = clip.getBoundingClientRect(), cut = clip.scrollWidth > clip.clientWidth + 0.5, style = getComputedStyle(clip);
     const pen = document.createElement('canvas').getContext('2d');
     pen.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
@@ -378,12 +379,13 @@ async function run() {
     await p.keyboard.type('A thought of mine.');
     await p.keyboard.press('Meta+Enter');
     await until(p, () => document.querySelector('#toggle-note').textContent === 'Show note', 'the note saved, back on the reply');
-    await until(p, selector => [...document.querySelectorAll(selector + ' .carry')].map(m => m.className).join() === 'carry carry-note', 'the card marks the note', card(m.plain));
+    await until(p, selector => [...document.querySelectorAll(selector + ' > .message-author .carry')].map(m => m.className).join() === 'carry carry-note', 'the card marks the note', card(m.plain));
     await p.locator('#writing-body').click();
     await p.keyboard.type('Sending this one.');
-    await until(p, selector => [...document.querySelectorAll(selector + ' .carry')].map(m => m.className).join() === 'carry carry-note,carry carry-reply', 'the card marks the saved reply', card(m.plain));
+    await until(p, selector => [...document.querySelectorAll(selector + ' > .message-author .carry')].map(m => m.className).join() === 'carry carry-note,carry carry-reply', 'the card marks the saved reply', card(m.plain));
     await p.keyboard.press('Meta+Enter');
-    await until(p, selector => [...document.querySelectorAll(selector + ' .carry')].map(m => m.className).join() === 'carry carry-note', 'the sent reply takes its mark away, the note stays', card(m.plain));
+    // The card's own line: its send accepted makes the message a stack's head at once, whose row shows its marks too (below).
+    await until(p, selector => [...document.querySelectorAll(selector + ' > .message-author .carry')].map(m => m.className).join() === 'carry carry-note', 'the sent reply takes its mark away, the note stays', card(m.plain));
     await until(p, () => [...document.querySelectorAll('.message-card .message-preview')].some(words => words.textContent.includes('Sending this one.')), 'the reply is a card of its own');
     // Now the message heads a stack, whose head row stands for it while its card is folded in: the row shows its marks.
     await until(p, selector => {
