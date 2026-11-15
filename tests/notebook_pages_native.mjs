@@ -3,11 +3,13 @@ import { readFile } from 'node:fs/promises';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
 
 // Notebook pages in the real browser against the real server: an outcome's
-// pages sit in the sidebar after its topics; a page the reader has read and
+// pages are listed on the right rail of a topic (All of this outcome) and of
+// its Conversation, never in the side rail (item 464), with More pages for the
+// rest; a page the reader has read and
 // an agent revised since wears its new revisions as a count, live, with no
 // reload; opening it shows what changed since, as marked words, and puts the
 // light out; a page in the topic's own Notebook wears the same light; at 390 wide, in light and in dark, the pages are in the
-// rail "☰ Topics" opens over the topic, nothing leaves the screen and the changed words stay readable; on the outcome's own page the pages
+// sheet "Pipeline & pages" opens over the topic, nothing leaves the screen and the changed words stay readable; on the outcome's own page the pages
 // follow the topics; a page opens in the composer over the feed (item 396), and what changed shows there; and a page's link opens the page as
 // it stands in the composer, or at a revision in the Reader or in place, from the address bar
 // or from a message's words, and the Reader's ⋯ copies it. On the cards page,
@@ -157,7 +159,10 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await until(()=>q.evaluate("document.querySelector('#notebook-text')?.value.includes('Written in Cards.')"),'reload reads the saved revision');
     assert.deepEqual(p.errors,[]); assert.deepEqual(q.errors,[]); await q.close();
   });
-  const id = 'notebook-release-plan', row = `#outcome-references-list .reference[data-id="${id}"]`;
+  // The outcome's page on the right rail (its Notebook section, with All of this outcome on a topic), and on the outcome's own page.
+  const RAIL_NOTEBOOK = '#things .things-sec[data-key="notebook"]', PENCIL = RAIL_NOTEBOOK + ' > summary .notebook-create:not([hidden])';
+  const railRow = page => `${RAIL_NOTEBOOK} a.row[href$="page=${page}"]`;
+  const id = 'notebook-release-plan', row = railRow(id), pageRow = `#outcome-references-list .reference[data-id="${id}"]`;
   const light = p => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(row + ' .unread-count')});return b?{text:b.textContent,className:b.className,said:document.querySelector(${JSON.stringify(row + ' .sr-only')})?.textContent}:null})()`);
   const listed = async () => (await view('memory_items', { owner_scope: { kind: 'workspace', id: 'w1' } })).items.find(item => item.id === id);
   let revision = 0;
@@ -167,14 +172,57 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       : await control({ method: 'memory_revise', operation_id: `${id}-revise-${revision}`, item_id: id, expected_revision: revision, title: 'Release plan', body });
     assert.equal(answer.status, 'committed', JSON.stringify(answer)); revision += 1;
   };
-  const openRow = async p => {
-    await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
+  const openRow = async (p, at = row) => {
+    await p.evaluate(`document.querySelector(${JSON.stringify(at)}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
     await until(()=>p.evaluate(`new Promise(resolve=>{
-      const e=document.querySelector(${JSON.stringify(row)});e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
+      const e=document.querySelector(${JSON.stringify(at)});e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
       const a=e.getBoundingClientRect();requestAnimationFrame(()=>{const b=e.getBoundingClientRect();resolve(a.top===b.top&&a.bottom===b.bottom&&b.top>=0&&b.bottom<=innerHeight);});
     })`),'Notebook row stays in view across an animation frame');
-    await p.point(row);
+    await p.point(at);
     await sheetShows(p, 'Release plan');
+  };
+  // The right rail shows the whole outcome's things: on a topic, once All of this outcome is pressed (a Conversation
+  // shows them from the start); on a phone or a middle width, in the sheet "Pipeline & pages" opens. A press aims
+  // once its target holds its place, as a finger does.
+  const steady = async (p, selector) => {
+    let last = null;
+    await until(async () => { const now = await p.box(selector), same = Boolean(last && now) && ['x','y','width','height'].every(key => now[key] === last[key]); last = now; return same; }, selector + ' holds its place');
+    return last;
+  };
+  const aim = async (p, selector) => {
+    const b = await steady(p, selector);
+    if (!await p.evaluate("matchMedia('(pointer:coarse)').matches")) return p.point(selector);
+    const x = b.x + b.width/2, y = b.y + b.height/2;
+    await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x,y}]});
+    await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+  };
+  const wholeOutcome = async p => {
+    await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector('#things-open'))`), 'the page is up');
+    if (!await p.evaluate("matchMedia('(min-width: 1181px)').matches || document.documentElement.hasAttribute('data-things-open')")) {
+      await aim(p, '#things-open');
+      await until(() => p.evaluate(`document.documentElement.hasAttribute('data-things-open')`), 'the right rail opens');
+    }
+    const chip = '#things .things-scope .chip:last-child';
+    await until(() => p.evaluate(`document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'`), 'the right rail has read');
+    if (await p.evaluate(`!document.querySelector('#things .things-scope').hidden && document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')!=='true'`)) {
+      await p.evaluate(`document.querySelector(${JSON.stringify(chip)}).scrollIntoView({block:'nearest',behavior:'instant'})`);
+      await aim(p, chip);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')==='true' && document.querySelector('#things .things-sections').getAttribute('aria-busy')!=='true'`), 'the right rail shows the whole outcome');
+    }
+  };
+  // A page on the right rail's Notebook, pressing More pages as a reader would while it lists only the first pages
+  // (the checks before leave many).
+  const railLists = async (p, page) => {
+    const at = railRow(page), more = RAIL_NOTEBOOK + ' .things-more';
+    const look = () => p.evaluate(`(()=>{const s=e=>Boolean(e&&e.getClientRects().length);return {here:s(document.querySelector(${JSON.stringify(at)})),more:s(document.querySelector(${JSON.stringify(more)})),
+      rows:document.querySelectorAll(${JSON.stringify(RAIL_NOTEBOOK + ' .things-list a.row')}).length}})()`);
+    for (;;) {
+      const now = await until(async () => { const seen = await look(); return seen.here || seen.more ? seen : null; }, `the right rail lists ${page}`);
+      if (now.here) return at;
+      await p.evaluate(`document.querySelector(${JSON.stringify(more)}).scrollIntoView({block:'center',behavior:'instant'})`);
+      await aim(p, more);
+      await until(async () => { const seen = await look(); return seen.here || seen.rows > now.rows; }, `More pages brings more than ${now.rows}`);
+    }
   };
   // A page opens in the composer over the feed (item 396), what changed since it was read above its cards.
   const SHEET_PAGE = '#new-message-sheet .notebook-sheet-page:not([hidden])', CHANGES = SHEET_PAGE + ' .notebook-sheet-changes';
@@ -193,13 +241,16 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   })()`);
 
   await check('notebook creation pencil opens a title line and creates the exact scoped page ready to write', async () => {
-    // A topic's pencil sits beside the Notebook section of the right rail, also
-    // for a topic whose Notebook is still empty; the outcome's sits in the outline.
+    // Every pencil sits beside the right rail's Notebook heading: the topic's while it lists the topic's pages, also
+    // for a topic whose Notebook is still empty; the outcome's while it lists the outcome's, on a Conversation and on a
+    // topic with All of this outcome. The side rail has none (item 464).
     const empty = ['t-notebook-empty', 't-notebook-empty-phone'];
     await control({method:'navigation_topics', topics:empty.map(id => ({id, title:'No pages yet'}))});
     for (const [scope, phone] of [[{kind:'workspace',id:'w1'},false],[{kind:'topic',id:'t1'},false],[{kind:'topic',id:empty[0]},false],[{kind:'topic',id:empty[1]},true],[{kind:'workspace',id:'w1'},true]]) {
       const label = scope.id + (phone ? '-phone' : '-desktop'), name = 'Create notes in ' + label;
-      const p = await page('notebook-create-' + label, null, true, {url: `${facts.origin}/?topic=${scope.kind === 'topic' ? scope.id : 't1'}`, beforeNavigate: async q => {
+      // The outcome's pencil: on its Conversation at a laptop's width, on a topic's All of this outcome on a phone.
+      const where = scope.kind === 'topic' ? `?topic=${scope.id}` : phone ? '?topic=t1' : '?conversation=w1';
+      const p = await page('notebook-create-' + label, null, true, {url: `${facts.origin}/${where}`, beforeNavigate: async q => {
         if (phone) {
           await q.send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
           await q.send('Emulation.setTouchEmulationEnabled', {enabled:true,maxTouchPoints:1});
@@ -215,27 +266,27 @@ export async function notebookChecks({ check, page, until, control, view, facts,
         await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x,y}]});
         await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
       };
-      const host = scope.kind === 'workspace' ? '#outcome-references' : '#things .things-sec[data-key="notebook"]';
-      const button = host + (scope.kind === 'workspace' ? ' .notebook-create' : ' > summary .notebook-create'), input = host + ' input';
-      if (phone) {
-        const opener = scope.kind === 'workspace' ? '#rail-open' : '#things-open';
-        await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(opener)}))`), 'the page is up');
-        await press(opener);
-        await until(() => p.evaluate(scope.kind === 'workspace' ? `document.getElementById('rail').classList.contains('open')` : `document.documentElement.hasAttribute('data-things-open')`), 'the Notebook drawer opens');
+      const host = RAIL_NOTEBOOK, button = PENCIL, input = host + ' input';
+      if (scope.kind === 'workspace') await wholeOutcome(p);
+      else if (phone) {
+        await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector('#things-open'))`), 'the page is up');
+        await press('#things-open');
+        await until(() => p.evaluate(`document.documentElement.hasAttribute('data-things-open')`), 'the Notebook drawer opens');
       }
       await until(() => p.evaluate(`document.body.dataset.ready==='true' && document.querySelector(${JSON.stringify(button)})?.checkVisibility()===true`), 'the Notebook pencil is available');
-      if (scope.kind === 'topic') {
-        // Beside the rail's Notebook heading, and nowhere in the page between the rails.
-        const where = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)}).getBoundingClientRect(),h=document.querySelector(${JSON.stringify(host + ' > summary')}).getBoundingClientRect();
-          return {heading:document.querySelector(${JSON.stringify(host + ' > summary > span')}).textContent,beside:b.top>=h.top-1&&b.bottom<=h.bottom+1&&b.right<=h.right+1,
-            inMain:document.querySelectorAll('#main .notebook-create').length,inRail:document.querySelectorAll('#things .notebook-create').length}})()`);
-        assert.deepEqual(where, {heading:'Notebook',beside:true,inMain:0,inRail:1}, 'the topic pencil is beside the right rail\'s Notebook heading');
-        if (empty.includes(scope.id)) assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(host + ' .things-body')}).textContent`), 'No pages yet.', 'an empty topic Notebook keeps its heading');
-      }
+      // Beside the rail's Notebook heading, one pencil showing, and none in the page between the rails or in the side rail.
+      const placed = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)}),r=b.getBoundingClientRect(),h=document.querySelector(${JSON.stringify(host + ' > summary')}).getBoundingClientRect();
+        return {heading:document.querySelector(${JSON.stringify(host + ' > summary > span')}).textContent,beside:r.top>=h.top-1&&r.bottom<=h.bottom+1&&r.right<=h.right+1,
+          inMain:document.querySelectorAll('#main .notebook-create').length,inRail:[...document.querySelectorAll('#things .notebook-create')].filter(e=>e.checkVisibility()).length,
+          inSide:document.querySelectorAll('#rail .notebook-create, #rail #outcome-references').length,name:[b.getAttribute('aria-label'),b.title],
+          touch:Math.round(r.width)>=44&&Math.round(r.height)>=44}})()`);
+      assert.deepEqual(placed, {heading:'Notebook',beside:true,inMain:0,inRail:1,inSide:0,name:['New Notebook page','New Notebook page'],touch:true},
+        `the ${scope.kind === 'topic' ? 'topic' : 'outcome'} pencil is beside the right rail's Notebook heading, and the side rail has none`);
+      if (empty.includes(scope.id)) assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(host + ' .things-body')}).textContent`), 'No pages yet.', 'an empty topic Notebook keeps its heading');
       await p.evaluate(`document.querySelector(${JSON.stringify(button)}).scrollIntoView({block:'center'})`);
       await press(button);
       await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(input)})`), 'one title line, focused');
-      if (scope.kind === 'topic') await shot(p, 'notebook-create-' + label + '-line');
+      await shot(p, 'notebook-create-' + label + '-line');
       await p.send('Input.insertText', {text:'Cancelled notes'});
       await p.key('Escape');
       assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), false, 'Escape closes the line');
@@ -269,6 +320,101 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     }
   });
 
+  // Item 464: the side rail lists no Notebook, so the right rail lists every page of a whole outcome's: twenty, then
+  // More pages for twenty more, read again with the rail from then on. Each state of the section, at a laptop's width
+  // and a phone's narrowest (320, 375, 390) in light and dark: pages with More, every page once More has brought them,
+  // and an empty Notebook with its pencil and its title line open. The keys and a finger reach More, and the keys
+  // never land on what it leaves behind.
+  await check('notebook the right rail lists a whole outcome\'s Notebook, twenty and then More pages, with its pencil, and the empty Notebook with its pencil and title line, at 320 375 390 and a laptop, light and dark', async () => {
+    const many = 'nb-rail-many', none = 'nb-rail-none', count = 23;
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: many, title: 'Many pages' }, { id: none, title: 'No pages' }] });
+    for (let n = 1; n <= count; n++) {
+      const item = `nb-rail-page-${String(n).padStart(2, '0')}`;
+      assert.equal((await control({ method: 'outcome_reference', operation_id: item, item_id: item, workspace_id: many, title: `Rail page ${n}`, body: `Page ${n}.` })).status, 'committed');
+    }
+    const SIZE = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, 320: { width: 320, height: 700, deviceScaleFactor: 2, mobile: true },
+      375: { width: 375, height: 760, deviceScaleFactor: 2, mobile: true }, 390: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
+    const ROWS = RAIL_NOTEBOOK + ' .things-list a.row', MORE = RAIL_NOTEBOOK + ' .things-more';
+    // The section as drawn: its rows, its count, More, the pencil, and where each sits.
+    const section = p => p.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(RAIL_NOTEBOOK)}),s=d.querySelector(':scope > summary'),v=e=>Boolean(e?.checkVisibility());
+      const box=e=>{const r=e.getBoundingClientRect();return {x:r.left,y:r.top,r:r.right,b:r.bottom}},cross=(a,b)=>Math.min(a.r,b.r)-Math.max(a.x,b.x)>0.5&&Math.min(a.b,b.b)-Math.max(a.y,b.y)>0.5;
+      const pencil=[...s.querySelectorAll('.notebook-create')].find(v),more=d.querySelector('.things-more'),sheet=document.getElementById('things').getBoundingClientRect();
+      const parts=[s.querySelector(':scope > span'),pencil,s.querySelector('.sum')].filter(v).map(box);
+      const phone=matchMedia('(max-width: 760px)').matches;
+      return {rows:[...d.querySelectorAll('.things-list a.row')].length,short:[...d.querySelectorAll('.things-list a.row')].filter(a=>phone&&Math.round(a.getBoundingClientRect().height)<44).length,sum:s.querySelector('.sum').textContent,more:v(more)?more.textContent:null,
+        quiet:d.querySelector('.things-quiet')?.textContent??null,pencil:pencil?[pencil.getAttribute('aria-label'),pencil.title]:null,
+        overlaps:parts.flatMap((a,i)=>parts.slice(i+1).filter(b=>cross(a,b))).length,
+        small:[pencil,v(more)?more:null].filter(Boolean).map(e=>e.getBoundingClientRect()).filter(r=>matchMedia('(max-width: 760px)').matches&&(Math.round(r.width)<44||Math.round(r.height)<44)).length,
+        inside:[pencil,v(more)?more:null].filter(Boolean).every(e=>{const r=e.getBoundingClientRect();return r.left>=sheet.left-0.5&&r.right<=sheet.right+0.5}),
+        sideways:document.documentElement.scrollWidth>innerWidth,side:document.querySelectorAll('#rail .notebook-create, #rail #outcome-references, #rail .reference').length}})()`);
+    for (const size of ['laptop', 390, 375, 320]) for (const scheme of ['light', 'dark']) {
+      const label = `${size}-${scheme}`, phone = size !== 'laptop';
+      // Every page the outcome holds now: the twenty-three, and one more for each size and scheme before this one.
+      const all = (await view('memory_items', { owner_scope: { kind: 'workspace', id: many }, limit: 100 })).items.length;
+      const at = (name, url) => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', SIZE[size]);
+        if (phone) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      // Pages with More: twenty, the count saying there are more, the outcome's pencil beside the name.
+      let p = await at('nb-rail-many-' + label, `/?conversation=${many}`);
+      await wholeOutcome(p);
+      await until(async () => (await section(p)).more === 'More pages', 'the section lists its first pages and More pages');
+      assert.deepEqual(await section(p), { rows: 20, short: 0, sum: '20+', more: 'More pages', quiet: null, pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
+        `${label}: twenty pages, each a full touch target on a phone, More pages, the pencil clear of the name and the count`);
+      for (const part of [ROWS, MORE]) assert.ok(await contrast(p, part) >= 4.5, `${label}: ${part} reads`);
+      await p.evaluate(`document.querySelector(${JSON.stringify(MORE)}).scrollIntoView({block:'center',behavior:'instant'})`);
+      await shot(p, 'notebook-rail-more-' + label);
+      if (size === 'laptop' && scheme === 'light') {
+        // The keys: ↓ from the last page reaches More, Return brings the rest and the focus lands on the first of them;
+        // ↓ goes on through them and past the section, never to the More that went.
+        await p.evaluate(`document.querySelectorAll(${JSON.stringify(ROWS)})[19].focus()`);
+        await p.key('ArrowDown');
+        assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(MORE)})`), true, '↓ from the last page is More');
+        await p.key('Enter');
+        await until(async () => (await section(p)).rows === all, 'Return on More brings the rest');
+        await until(() => p.evaluate(`document.activeElement?.textContent==='Rail page 21'`), 'the focus lands on the first page More brought');
+        const walk = [];
+        for (let n = 0; n < 4; n++) { await p.key('ArrowDown'); walk.push(await p.evaluate(`(e=>e.closest('.things-sec')?.dataset.key+':'+(e.matches('summary')?'section':e.textContent.trim()))(document.activeElement)`)); }
+        assert.deepEqual(walk.slice(0, 2), ['notebook:Rail page 22', 'notebook:Rail page 23'], '↓ goes on through the pages More brought');
+        assert.notEqual(walk[2], 'notebook:More pages', 'and never to the More that went');
+        assert.match(walk[2], /:section$/, 'past the last page, the next section');
+        await p.key('ArrowUp');
+        assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Rail page 23', '↑ comes back to the last page');
+      } else {
+        await aim(p, MORE);
+        await until(async () => (await section(p)).rows === all, 'More pages brings the rest');
+      }
+      // Every page, once More has brought them: the count says so and More has gone; a reload of the rail keeps them.
+      await until(async () => (await section(p)).more === null, 'More goes once nothing is left');
+      assert.deepEqual(await section(p), { rows: all, short: 0, sum: String(all), more: null, quiet: null, pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
+        `${label}: every page, and no More`);
+      await control({ method: 'outcome_reference', operation_id: `nb-rail-late-${label}`, item_id: `nb-rail-late-${label}`, workspace_id: many, title: `Late page ${label}`, body: 'Late.' });
+      await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].some(a=>a.textContent.startsWith('Late page ${label}'))`), 'a page added since shows, and the rest stay');
+      assert.equal((await section(p)).rows, all + 1, 'the pages More brought stay listed');
+      await shot(p, 'notebook-rail-all-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
+      // An empty Notebook: its heading, No pages yet and the pencil, whose title line opens in the section.
+      p = await at('nb-rail-none-' + label, `/?conversation=${none}`);
+      await wholeOutcome(p);
+      await until(async () => (await section(p)).quiet === 'No pages yet.', 'the empty Notebook keeps its heading and its pencil');
+      assert.deepEqual(await section(p), { rows: 0, short: 0, sum: '', more: null, quiet: 'No pages yet.', pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
+        `${label}: the empty Notebook`);
+      await shot(p, 'notebook-rail-empty-' + label);
+      await aim(p, PENCIL);
+      const line = RAIL_NOTEBOOK + ' input';
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(line)})`), 'the title line opens, focused');
+      const fits = await p.evaluate(`(()=>{const i=document.querySelector(${JSON.stringify(line)}).getBoundingClientRect(),t=document.getElementById('things').getBoundingClientRect();
+        return {inside:i.left>=t.left-0.5&&i.right<=t.right+0.5,sideways:document.documentElement.scrollWidth>innerWidth,label:document.querySelector(${JSON.stringify(line)}).getAttribute('aria-label')}})()`);
+      assert.deepEqual(fits, { inside: true, sideways: false, label: 'New Notebook page title' }, `${label}: the title line stands inside the rail`);
+      await shot(p, 'notebook-rail-line-' + label);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(line)})`), 'Escape closes the line');
+      assert.equal((await view('memory_items', { owner_scope: { kind: 'workspace', id: none } })).items.length, 0, 'and writes nothing');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // A page opened on a phone (390 wide, touch) or a laptop, and a press there: a finger aims once the target holds
   // its place, as on a phone; a laptop clicks.
   const opened = async (name, url, phone, script = null) => page(name, null, true, { url, beforeNavigate: async q => {
@@ -292,7 +438,6 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     if(t&&globalThis.statusesSeen.at(-1)!==t)globalThis.statusesSeen.push(t);}).observe(document,{subtree:true,childList:true,characterData:true});`;
   const visible = (p, selector) => p.evaluate(`document.querySelector(${JSON.stringify(selector)})?.checkVisibility()===true`);
   const menuItems = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
-  const RAIL_NOTEBOOK = '#things .things-sec[data-key="notebook"]', PENCIL = RAIL_NOTEBOOK + ' > summary .notebook-create';
   const openRail = async (p, phone) => {
     await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector('#things-open'))`), 'the page is up');
     if (!phone) return;
@@ -460,6 +605,16 @@ export async function notebookChecks({ check, page, until, control, view, facts,
         assert.equal((await control({ method: 'targets', kind, operation_id: `${outcome}-${kind}`, workspace_id: outcome, args })).status, 'committed');
       const current = await view('memory_current', { item_id: id });
       assert.deepEqual([current.draft, current.reader_may_write], [true, false], 'Core holds a draft its writer may no longer write');
+      // On the right rail of its Conversation the page is listed, marked a draft, with no pencil: Core no longer lets
+      // its writer start a page there either (reader_may_write), and the side rail lists no Notebook (item 464).
+      assert.equal((await view('memory_items', { owner_scope: { kind: 'workspace', id: outcome } })).reader_may_write, false);
+      p = await opened('nb-reached-rail-' + label, `${facts.origin}/?conversation=${outcome}`, phone);
+      await openRail(p, phone);
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(railRow(id) + ' .draft-mark')})?.checkVisibility())`), 'the right rail lists the page, marked a draft');
+      assert.deepEqual(await p.evaluate(`[[...document.querySelectorAll('#things .notebook-create')].filter(e=>e.checkVisibility()).length,document.querySelectorAll('#rail .notebook-create, #rail #outcome-references').length]`), [0, 0],
+        'no pencil on the right rail for a reader Core does not let write, and none in the side rail');
+      await shot(p, 'notebook-reached-rail-' + label);
+      assert.deepEqual(p.errors, []); await p.close();
       // In the composer: on a phone at 320 wide, the narrowest head.
       p = await page('nb-reached-sheet-' + label, null, true, { url: `${facts.origin}/?workspace=${outcome}&page=${id}`, beforeNavigate: async q => {
         await q.send('Page.addScriptToEvaluateOnNewDocument', { source: SIGNS });
@@ -498,11 +653,13 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     }
   });
 
-  await check('notebook a page read and revised since wears its new revisions in the sidebar until opened, and opening it shows what changed', async () => {
+  await check('notebook a page read and revised since wears its new revisions on the right rail until opened, and opening it shows what changed', async () => {
     await revise('Ship on Friday.\nDan reviews the notes.\n');
     const p = await page('notebook-light', null, true);
-    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the page is listed in the sidebar');
-    assert.equal(await p.evaluate(`document.querySelector('.rail').contains(document.querySelector(${JSON.stringify(row)}))`), true);
+    await wholeOutcome(p);
+    await railLists(p, id);
+    assert.deepEqual(await p.evaluate(`[document.querySelector('#things').contains(document.querySelector(${JSON.stringify(row)})),document.querySelectorAll('#rail .reference, #rail #outcome-references').length]`), [true, 0],
+      'the page is listed on the right rail, and the side rail lists no Notebook');
     assert.equal(await light(p), null, 'a page never read wears no light');
     await openRow(p);
     await until(async () => (await listed())?.read_revision === 1, 'Core records the read');
@@ -515,7 +672,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     const looks = await p.evaluate(`(()=>{const s=getComputedStyle(document.querySelector(${JSON.stringify(row + ' .unread-count')}));return [s.backgroundColor,s.borderRadius,s.fontSize]})()`);
     const probe = await p.evaluate(`(()=>{const b=document.createElement('span');b.className='unread-count';document.querySelector('#topics').append(b);const s=getComputedStyle(b);const v=[s.backgroundColor,s.borderRadius,s.fontSize];b.remove();return v})()`);
     assert.deepEqual(looks, probe);
-    await shot(p, 'notebook-sidebar-light');
+    await shot(p, 'notebook-rail-light');
     await openRow(p);
     await until(() => changesShown(p), 'what changed shows above the page');
     const changes = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(CHANGES)}),q=s=>[...c.querySelectorAll(s)].map(e=>e.lastChild.previousSibling.textContent);
@@ -555,6 +712,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await until(async () => (await cardLight(p)) === null, 'the light goes out once the page is read');
     // A page with nothing to compare, opened next, carries none of the changes just shown.
     await closeSheet(p);
+    await wholeOutcome(p);
+    await railLists(p, id);
     await openRow(p);
     await until(async () => (await listed())?.read_revision === (await listed())?.revision, 'it is read as it stands');
     assert.equal(await changesShown(p), false, 'the next page shows none of the first page\'s changes');
@@ -567,20 +726,21 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       const p = await page(`notebook-phone-${scheme}`, null, true);
       await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
       await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
-      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the page is listed');
+      // On a phone the pages are in the right rail's sheet, "Pipeline & pages" over the topic, with All of this outcome.
+      await wholeOutcome(p);
+      await railLists(p, id);
       await revise(`Ship on ${scheme === 'light' ? 'Tuesday' : 'Wednesday'}.\nDan reviews the notes, and Warp signs off.\n`);
       await until(() => light(p), 'the light comes on');
-      // On a phone the pages are in the rail, folded behind "☰ Topics" over the topic.
-      await p.point('#rail-open');
-      await until(() => p.evaluate("document.getElementById('rail').classList.contains('open')"), 'the rail opens over the topic');
-      const fit = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(row)}).getBoundingClientRect(),d=document.getElementById('rail').getBoundingClientRect();
-        return {page:document.documentElement.scrollWidth,height:r.height,left:r.left,right:r.right,drawer:[d.left,d.right]}})()`);
+      await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center',behavior:'instant'})`);
+      const fit = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(row)}).getBoundingClientRect(),d=document.getElementById('things').getBoundingClientRect();
+        return {page:document.documentElement.scrollWidth,height:r.height,left:r.left,right:r.right,drawer:[d.left,d.right],side:document.querySelectorAll('#rail .reference, #rail #outcome-references').length}})()`);
       assert.ok(fit.page <= 390, `no sideways page scroll: ${fit.page}`);
-      assert.ok(fit.height >= 44 && fit.left >= fit.drawer[0] && fit.right <= fit.drawer[1] + 0.5, `a touch-sized row inside the open rail: ${JSON.stringify(fit)}`);
+      assert.ok(fit.height >= 44 && fit.left >= fit.drawer[0] && fit.right <= fit.drawer[1] + 0.5, `a touch-sized row inside the open sheet: ${JSON.stringify(fit)}`);
+      assert.equal(fit.side, 0, 'the side rail lists no Notebook');
       assert.ok(await contrast(p, row) >= 4.5, 'the row title is readable');
-      await shot(p, `notebook-phone-${scheme}-sidebar`);
+      await shot(p, `notebook-phone-${scheme}-rail`);
       await openRow(p);
-      assert.equal(await p.evaluate("document.getElementById('rail').classList.contains('open')"), false, 'opening the page folds the rail away');
+      assert.equal(await p.evaluate("document.documentElement.hasAttribute('data-things-open')"), false, 'opening the page puts the sheet away');
       await until(() => changesShown(p), 'what changed shows');
       const box = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(CHANGES)}).getBoundingClientRect(),d=document.querySelector('#new-message-sheet').getBoundingClientRect();return {left:c.left,right:c.right,page:document.documentElement.scrollWidth,sheet:[d.left,d.right]}})()`);
       assert.ok(box.left >= 0 && box.right <= 390 && box.page <= 390 && box.sheet[0] >= 0 && box.sheet[1] <= 390, `the changes stay inside the screen: ${JSON.stringify(box)}`);
@@ -596,6 +756,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   });
 
   await check('notebook an outcome page lists its pages after its topics with the same light, and one opens in the composer with what changed', async () => {
+    const row = pageRow, light = p => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(pageRow + ' .unread-count')});return b?{text:b.textContent}:null})()`);
     const p = await page('notebook-outcome', null, true, { url: facts.origin + '/?workspace=w1' });
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the page is listed on the outcome page');
     assert.equal(await p.evaluate(`document.querySelector('#outcome-page').contains(document.querySelector(${JSON.stringify(row)})) &&

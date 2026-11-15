@@ -5,8 +5,10 @@
 // its rail, or of its main column where it has no rail; there is no header bar.
 
 // Top to bottom. Each section shows only when it has something; the
-// conversation and the pipeline join when their pieces land.
-export const RAIL_ORDER = ['conversation', 'pipeline', 'topics', 'notebook', 'skills'];
+// conversation and the pipeline join when their pieces land. The outcome's
+// Notebook is not among them: it is on the right rail of a topic and a
+// Conversation, and on the outcome's own page (docs/notebook-pages.md).
+export const RAIL_ORDER = ['conversation', 'pipeline', 'topics', 'skills'];
 
 // Page kinds inside an outcome: 'workspace' (the outcome's own page), 'topic',
 // 'opening' (a new topic), 'skill' (a tool's page) and 'pipeline'. The

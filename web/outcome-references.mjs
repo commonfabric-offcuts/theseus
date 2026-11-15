@@ -1,9 +1,10 @@
 import { PAGE, paintChanged } from './topic-navigation.mjs';
 
-// The outcome's own Notebook pages, in the sidebar beside its topics: what
-// every topic in the outcome stands on, such as its architecture, ways of
-// working and guidelines. Each page is a row like a topic's, by title, and
-// opens in the Reader. A page the reader read before and that was revised
+// The outcome's own Notebook pages, on the outcome's own page after its
+// topics: what every topic in the outcome stands on, such as its architecture,
+// ways of working and guidelines. Each page is a row like a topic's, by title,
+// and opens in the composer over the page. The side rail lists none; a topic
+// and a Conversation list them on the right rail (things-rail.mjs). A page the reader read before and that was revised
 // since carries the count of its new revisions until they open it again. A reader outside the outcome cannot list its Notebook
 // and sees nothing; a read that fails says so and keeps what was last shown.
 // The topic's changes do not cover the outcome's Notebook, so each read tells

@@ -37,6 +37,8 @@ export const SECTIONS = [
 // How far back the rail looks for links and images in a whole outcome: its
 // Conversation and its most recently active topics, each their newest messages.
 export const OUTCOME_TOPICS = 6, MESSAGES = 50;
+// How many Notebook pages the section lists at first, and how many more each More pages brings.
+export const NOTEBOOK_PAGE = 20;
 
 // Every web address in a message's words, with the words a Markdown link gave
 // it, without the punctuation that ends a sentence after it.
@@ -124,6 +126,9 @@ export class ThingsRail {
   constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView }) {
     Object.assign(this, { host, backdrop, storage, doc, win });
     this.handles = null; this.scope = 'outcome'; this.unlisten = null; this.stale = false; this.serial = 0; this.folds = null;
+    // The Notebook section's pencils, by the scope each writes in ('topic', 'outcome'); how many of its
+    // pages the person has asked to see; and the first page More brought, which takes the focus from More.
+    this.creators = new Map(); this.notebookWant = NOTEBOOK_PAGE; this.notebookFrom = null;
     // Each place's messages and images, with the version of the topic they were read at (readPlace).
     this.kept = new Map();
     this.reload = reloader(() => this.load());
@@ -231,7 +236,8 @@ export class ThingsRail {
     this.close(false);
     this.host.hidden = !feed;
     this.unlisten?.(); this.unlisten = null; this.handles = null;
-    this.notebookCreate?.remove(); this.notebookCreate = null;
+    for (const creator of this.creators.values()) creator.remove();
+    this.creators.clear(); this.notebookWant = NOTEBOOK_PAGE;
     this.serial += 1;
     this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';
     this.paintHead(); this.clear();
@@ -251,13 +257,13 @@ export class ThingsRail {
     this.scope = handles.route.kind === 'topic' ? 'topic' : 'outcome';
     this.paintHead(); this.clear();
     this.unlisten = handles.live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') this.changed(); }) ?? null;
-    // A topic's new Notebook page starts from the pencil beside this section's
-    // heading (docs/notebook-pages.md); it shows while the topic's own pages do,
-    // and goes as the next run begins.
-    if (handles.route.kind === 'topic' && handles.topic) {
-      this.notebookCreate = handles.notebookCreate?.(this.sections.get('notebook').details, { kind: 'topic', id: handles.topic.id }) ?? null;
-      this.notebookCreate?.setAvailable(false);
-    }
+    // A new Notebook page starts from the pencil beside this section's heading
+    // (docs/notebook-pages.md): the topic's while the topic's own pages show,
+    // the outcome's while the outcome's do. Both go as the next run begins.
+    const details = this.sections.get('notebook').details, make = handles.notebookCreate;
+    if (make && handles.route.kind === 'topic' && handles.topic) this.creators.set('topic', make(details, { kind: 'topic', id: handles.topic.id }));
+    if (make && handles.workspaceId) this.creators.set('outcome', make(details, { kind: 'workspace', id: handles.workspaceId }));
+    for (const creator of this.creators.values()) creator.setAvailable(false);
     this.stale = true;
     if (this.shows()) this.reload();
   }
@@ -283,14 +289,14 @@ export class ThingsRail {
   choose(scope) {
     if (this.scope === scope) return;
     this.serial += 1;
-    this.scope = scope; this.paintHead(); this.clear();
+    this.scope = scope; this.notebookWant = NOTEBOOK_PAGE; this.paintHead(); this.clear();
     this.reload();
   }
   // Nothing of the place or scope before stays on screen: every section goes,
   // with its words, until this one's read lands.
   clear() {
     for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
-    this.notebookCreate?.setAvailable(false);
+    for (const creator of this.creators.values()) creator.setAvailable(false);
     this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
     this.drawnOnce = false; this.holder.setAttribute('aria-busy', 'true');
   }
@@ -328,7 +334,7 @@ export class ThingsRail {
     const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
     const pipeline = settle(this.readPipeline(view, workspace));
     const stars = settle(view('stars', { limit: 50 }));
-    const notebook = byTopic && !readable(topicId) ? settle(Promise.resolve(null)) : settle(view('memory_items', { owner_scope: byTopic ? { kind: 'topic', id: topicId } : { kind: 'workspace', id: workspace }, limit: 20 }));
+    const notebook = byTopic && !readable(topicId) ? settle(Promise.resolve(null)) : settle(this.readNotebook(view, byTopic ? { kind: 'topic', id: topicId } : { kind: 'workspace', id: workspace }));
     const places = (byTopic ? [this.topicPlace(handles)] : await this.outcomePlaces(view, workspace)).filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, byTopic ? 24 : 12)));
@@ -340,7 +346,7 @@ export class ThingsRail {
     for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
     const conversation = found.find(read => read.value?.place.conversation)?.value.messages ?? [];
     this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value === null ? null : notes.value?.items ?? (notes.error ? undefined : []),
-      notebookMayWrite: notes.value?.reader_may_write === true,
+      notebookMayWrite: notes.value?.reader_may_write === true, notebookNext: notes.value?.next ?? null,
       messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation, stars: starred.value?.items ?? (starred.error ? undefined : []) });
     this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
     this.message.hidden = this.retry.hidden = !failed.length;
@@ -376,6 +382,19 @@ export class ThingsRail {
     this.kept.set(place.id, { version: place.version, limit, value });
     return value;
   }
+  // The Notebook's pages from its first, as many as the person has asked for
+  // (NOTEBOOK_PAGE, and as many again for each More pages), in Core's pages;
+  // next says whether there are more, and whether the reader may write in it
+  // comes with the first page.
+  async readNotebook(view, owner_scope) {
+    const items = [], want = this.notebookWant, most = this.handles?.pageMax ?? NOTEBOOK_PAGE;
+    let cursor = null, mayWrite;
+    do {
+      const answer = await view('memory_items', { owner_scope, limit: Math.max(1, Math.min(most, want - items.length)), ...(cursor === null ? {} : { cursor }) });
+      items.push(...(answer.items ?? [])); cursor = answer.next_cursor ?? null; mayWrite ??= answer.reader_may_write;
+    } while (cursor !== null && items.length < want);
+    return { items, next: cursor, reader_may_write: mayWrite };
+  }
   async readPipeline(view, workspace) {
     const now = await view('pipeline', { workspace_id: workspace, section: 'now', limit: 100 });
     if (now.pipeline === null) return null;
@@ -389,8 +408,8 @@ export class ThingsRail {
     const reader = this.handles.bootstrap.actor, nowMs = clock.now();
     const items = found.pipeline ? this.pipelineRows(found.pipeline, found.byTopic ? found.topicId : null) : null;
     const { previews, prs } = thingsIn(found.messages);
-    // The pencil shows only to someone Core lets write the topic's Notebook (reader_may_write).
-    if (found.notebook !== undefined) this.notebookCreate?.setAvailable(found.byTopic && found.notebook !== null && found.notebookMayWrite);
+    // The pencil of the Notebook listed shows only to someone Core lets write it (reader_may_write).
+    if (found.notebook !== undefined) for (const [scope, creator] of this.creators) creator.setAvailable((scope === 'topic') === found.byTopic && found.notebook !== null && found.notebookMayWrite);
     const shown = {
       starred: found.stars === undefined ? undefined : this.starredSection(found.stars, found, reader),
       pipeline: found.pipeline === undefined ? undefined : this.pipelineSection(items, found, nowMs),
@@ -416,6 +435,12 @@ export class ThingsRail {
         part.body.replaceChildren(section.node());
       }
       if (appears) part.details.open = this.folds.isOpen(key);
+    }
+    // More pages, pressed with the focus on it, hands the focus to the first page it brought once it has gone.
+    const brought = this.notebookFrom === null ? null : this.sections.get('notebook').body.querySelectorAll('.things-list a.row')[this.notebookFrom];
+    if (brought) {
+      this.notebookFrom = null;
+      if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) brought.focus();
     }
     this.nothing.hidden = any;
     this.nothing.textContent = found.byTopic ? 'This topic refers to nothing yet. “All of this outcome” shows the rest.' : 'Nothing here yet.';
@@ -493,15 +518,22 @@ export class ThingsRail {
   }
   notebookSection(items, found) {
     if (!items?.length) {
-      // An empty topic Notebook keeps its heading, and with it the pencil that starts its first page.
-      return items && this.notebookCreate?.available ? { sum: '', key: 'note-none', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'No pages yet.' }) } : null;
+      // An empty Notebook keeps its heading, and with it the pencil that starts its first page.
+      return items && this.creators.get(found.byTopic ? 'topic' : 'outcome')?.available ? { sum: '', key: 'note-none', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'No pages yet.' }) } : null;
     }
-    const doc = this.doc, scope = found.byTopic ? { kind: 'topic', id: found.topicId } : { kind: 'workspace', id: this.handles.workspaceId };
-    return { sum: String(items.length), key: JSON.stringify(['note', scope, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true])]), node: () => element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
-      const link = this.placeLink({ ...scope, page: item.id }, item.title || 'Notebook page');
-      paintChanged(link, item);
-      return element(doc, 'li', {}, link);
-    })) };
+    const doc = this.doc, scope = found.byTopic ? { kind: 'topic', id: found.topicId } : { kind: 'workspace', id: this.handles.workspaceId }, more = found.notebookNext !== null;
+    return { sum: `${items.length}${more ? '+' : ''}`, key: JSON.stringify(['note', scope, more, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true])]), node: () => {
+      const list = element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
+        const link = this.placeLink({ ...scope, page: item.id }, item.title || 'Notebook page');
+        paintChanged(link, item);
+        return element(doc, 'li', {}, link);
+      }));
+      if (!more) return list;
+      // The rest of the Notebook, a page of it at a time, read again with the rail from then on.
+      const button = element(doc, 'button', { type: 'button', className: 'things-more', textContent: 'More pages' });
+      button.onclick = () => { this.notebookWant = items.length + NOTEBOOK_PAGE; this.notebookFrom = this.doc.activeElement === button ? items.length : null; this.reload(); };
+      return element(doc, 'div', {}, list, button);
+    } };
   }
   linkSection(rows, nowMs, reader, href, note = null) {
     if (!rows.length) return null;

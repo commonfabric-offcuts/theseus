@@ -36,10 +36,9 @@ function page() {
   el('div', 'topic-navigation-status', 'notice', rail);
   const outcomes = el('section', 'outcome-navigation', '', rail); el('h2', 'outcomes-heading', '', outcomes); el('button', 'new-outcome', '', outcomes);
   const topics = el('section', 'topic-navigation', '', rail); el('button', 'new-topic', '', topics); el('div', 'topics', '', topics);
-  const notebook = el('section', 'outcome-references', '', rail);
   // Sections the conversation, pipeline and skills pieces add, as nodes in the rail.
   const conversation = el('section', 'conversation-row', '', rail), pipeline = el('section', 'pipeline-row', '', rail), skills = el('section', 'skills-navigation', '', rail);
-  return { doc, rail, main, brand, wordmark, home, outcomes, topics, notebook, conversation, pipeline, skills, byId };
+  return { doc, rail, main, brand, wordmark, home, outcomes, topics, conversation, pipeline, skills, byId };
 }
 const ids = host => host.children.map(node => node.id || node.className);
 // lastHere: the outcome the last answer was read about (null: none).
@@ -48,15 +47,16 @@ const attention = () => ({ here: null, last: null, lastHere: null, refreshed: 0,
 
 test('inside an outcome the rail hides the outcomes list, says "This outcome", and orders its sections', () => {
   const p = page(), opened = [];
-  const sections = [{ name: 'skills', node: p.skills }, { name: 'notebook', node: p.notebook }, { name: 'topics', node: p.topics },
+  const sections = [{ name: 'skills', node: p.skills }, { name: 'topics', node: p.topics },
     { name: 'pipeline', node: p.pipeline }, { name: 'conversation', node: p.conversation }];
   new OutcomeScope({ workspaceId: 'w1', kind: 'topic', rail: p.rail, home: p.home, sections, open: (target, title) => opened.push([target, title]) });
   assert.equal(p.outcomes.hidden, true, 'no list of outcomes, no Outcomes heading, no New outcome');
   assert.equal(p.topics.hidden, false); assert.equal(p.byId.get('new-topic').hidden, false, 'New topic stays');
   assert.equal(p.rail.getAttribute('aria-label'), 'This outcome');
-  assert.deepEqual(RAIL_ORDER, ['conversation', 'pipeline', 'topics', 'notebook', 'skills']);
+  // The outcome's Notebook is no section of the side rail (item 464): the right rail and the outcome's own page list it.
+  assert.deepEqual(RAIL_ORDER, ['conversation', 'pipeline', 'topics', 'skills']);
   assert.deepEqual(ids(p.rail).filter(id => id !== 'outcome-navigation'),
-    ['brand', 'app-status', 'wakes-status', 'updates-status', 'outcomes-home', 'topic-navigation-status', 'conversation-row', 'pipeline-row', 'topic-navigation', 'outcome-references', 'skills-navigation']);
+    ['brand', 'app-status', 'wakes-status', 'updates-status', 'outcomes-home', 'topic-navigation-status', 'conversation-row', 'pipeline-row', 'topic-navigation', 'skills-navigation']);
   for (const control of [p.home, p.wordmark]) {
     assert.equal(typeof control.onclick, 'function', 'each opens the Outcomes home');
     let prevented = false;
@@ -70,11 +70,11 @@ test('inside an outcome the rail hides the outcomes list, says "This outcome", a
 test('the rail places only the sections it is given, and loads each one', async () => {
   const p = page(), loads = [];
   const scope = new OutcomeScope({ workspaceId: 'w1', kind: 'opening', rail: p.rail, home: p.home, open() {},
-    sections: [{ name: 'notebook', node: p.notebook, load: () => { loads.push('notebook'); return true; } }, { name: 'topics', node: p.topics, load: () => { loads.push('topics'); return false; } }] });
+    sections: [{ name: 'skills', node: p.skills, load: () => { loads.push('skills'); return true; } }, { name: 'topics', node: p.topics, load: () => { loads.push('topics'); return false; } }] });
   const at = id => ids(p.rail).indexOf(id);
-  assert.ok(at('topic-navigation-status') < at('topic-navigation') && at('topic-navigation') < at('outcome-references'), 'topics, then the Notebook, under "← Outcomes"');
+  assert.ok(at('topic-navigation-status') < at('topic-navigation') && at('topic-navigation') < at('skills-navigation'), 'topics, then skills, under "← Outcomes"');
   assert.equal(await scope.load(), false, 'a section that could not be read makes the load false');
-  assert.deepEqual(loads.sort(), ['notebook', 'topics']);
+  assert.deepEqual(loads.sort(), ['skills', 'topics']);
 });
 
 test('how many other outcomes wait on the reader', () => {

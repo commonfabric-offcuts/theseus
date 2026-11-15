@@ -1179,6 +1179,21 @@ function loadMarks() {
 }
 // The topic's own Notebook pages' read state, as loadMarks: nothing for a
 // denied topic, and owed while the runtime changed.
+// A Notebook page in the Reader that the topic's own changes do not cover (an
+// outcome's page, or one of the topic's not loaded): each commit reads where it
+// stands now, so the Reader offers a revision made since (docs/notebook-pages.md).
+// A page the reader may no longer read has nothing to offer.
+async function loadShownPage() {
+  const ref = registry?.current?.source?.source_ref, id = ref?.kind === 'memory' ? ref.id : null;
+  if (!id || views.memory.has(id) || topicUnavailable) return true;
+  if (authorityReviewPending()) return false;
+  try {
+    const answer = checkedView(await registry.cleanup.list(options => api.view('memory_current', { item_id: id }, options)), bootstrap.instance_id);
+    if (answer?.source_ref?.id !== id) throw Error('The Notebook page could not be confirmed.');
+    views.revisions.observe(id, answer.source_ref.revision); reader.paintOffer();
+    return true;
+  } catch (error) { return readFailure(error).kind === 'forbidden'; }
+}
 function loadReadState() {
   if (topicUnavailable) return Promise.resolve(true);
   if (authorityReviewPending()) return Promise.resolve(false);
@@ -2082,19 +2097,6 @@ async function initialize() {
     // Read once: the outline takes this list in from then on (outline-rail.mjs).
     updated: () => { $('topic-navigation').dataset.listed = ''; },
   });
-  outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'),
-    create: () => notebookCreator($('outcome-references'), {kind:'workspace',id:topic.workspace_id}),
-    list: $('outcome-references-list'), more: $('more-references'), message: $('outcome-references-status'), pageMax: pageMax(),
-    denied: error => readFailure(error).kind === 'forbidden',
-    read: async args => {
-      if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
-      const answer = checkedView(await registry.cleanup.list(options => api.view('memory_items', { owner_scope: { kind: 'workspace', id: topic.workspace_id }, ...args }, options)), bootstrap.instance_id);
-      if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
-      return answer;
-    },
-    open: (ref, row) => run(() => openNotebook(ref.id, { opener: row })),
-    seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
-  });
   // The rail shows only this topic's outcome. A message's Add to pipeline
   // follows the Pipeline row's read.
   const pipeline = pipelineSection(topic.workspace_id, false, paintReaderMark); pipelineRow = pipeline.row;
@@ -2103,8 +2105,7 @@ async function initialize() {
   let conversationRead = null;
   outcomeScope = new OutcomeScope({ workspaceId: topic.workspace_id, kind: 'topic', rail: document.querySelector('.rail'), home: $('outcomes-home'),
     attention, open: openDestination, sections: [{ name: 'conversation', node: $('conversation-navigation'), load: () => (conversationRead = loadConversation()) }, pipeline,
-      { name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
-      { name: 'notebook', node: $('outcome-references'), load: () => outcomeReferences.load() }] });
+      { name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() }] });
   placeBrand(document.querySelector('.rail'));
   outcomeScope.load();
   const conversationShown = conversationRead;
@@ -2112,11 +2113,12 @@ async function initialize() {
   // and paged; the open Reader's button follows them. The New line follows
   // what the person has read, here or anywhere else. The topic's own Notebook
   // pages' read state is read again too, so a page read since, here or
-  // elsewhere, loses its light.
+  // elsewhere, loses its light; and an outcome's page in the Reader is read
+  // where it stands, so the Reader offers a revision made since.
   commitReload = followCommits(async () => {
-    const sections = await outcomeScope.load(), marked = await loadMarks(), unread = await loadUnread(), read = await loadReadState();
+    const sections = await outcomeScope.load(), marked = await loadMarks(), unread = await loadUnread(), read = await loadReadState(), shown = await loadShownPage();
     await wakeLights.load(); participantsPanel?.paint();
-    return sections !== false && marked !== false && unread !== false && read !== false;
+    return sections !== false && marked !== false && unread !== false && read !== false && shown !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('updates-retry').onclick = () => run(async () => {
@@ -2149,7 +2151,7 @@ async function initialize() {
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
     open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
-    // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages.
+    // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages and the outcome's.
     unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
@@ -2658,13 +2660,12 @@ async function initializePipelinePage(route) {
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
     open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
-  outcomeReferences=outcomePages(route.id,()=>{});
+  pagesInPlace(route.id,()=>{});
   // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
   here={workspaceId:route.id,title:route.id,view:null,page:false,has:false,onlyNew:false,items:new Map()};
   try { const workspace=(await pipelineView('workspace',{workspace_id:route.id})).workspace;here.title=workspace.title;here.has=hasConversation(workspace); } catch {}
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'pipeline',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},
-      {name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
@@ -2723,17 +2724,16 @@ async function initializeMeasurementsPage(route) {
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
     open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
-  outcomeReferences=outcomePages(route.id,()=>{});
+  pagesInPlace(route.id,()=>{});
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'measurements',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},
-      {name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
+    sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
 }
 function notebookCreator(host, scope) {
   // A new page opens in the composer over the page, its first card ready to write.
-  return new NotebookCreate({ host, scope, api, bootstrap, open: route => openNotebook(route.id, { write: route.write, opener: host.querySelector('.notebook-create') }) });
+  return new NotebookCreate({ host, scope, api, bootstrap, open: (route, opener) => openNotebook(route.id, { write: route.write, opener }) });
 }
 // A card's ask goes to the page's topic, or to its outcome's conversation, and to an agent there (docs/decks.md).
 async function notebookAskIn(scope) {
@@ -2769,18 +2769,23 @@ function notebookSheetOf() {
 }
 function openNotebook(id, options = {}) { return notebookSheetOf().open(id, options); }
 
-// An outcome's Notebook pages on its own page, each opening in place.
-function outcomePages(workspace,recorded) {
-  const view=async(name,args)=>checkedView(await api.view(name,args,{readClass:'foreground'}),bootstrap.instance_id);
+// An outcome's Notebook page opening in place, on a page of the outcome's with no
+// topic of its own: the outcome's page, its pipeline, its Measurements, a new topic.
+function pagesInPlace(workspace,recorded) {
   const reads=new PageReads({recorded,send:(id,revision)=>{
     const {authority_id,authority_epoch}=bootstrap.authority;
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  const here=pageHere=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref),cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+}
+// The outcome's own page lists its Notebook pages after its topics, each opening
+// in the composer over it; the side rail lists none (docs/notebook-pages.md).
+function outcomePages(workspace,recorded) {
+  pagesInPlace(workspace,recorded);
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
     message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
-    read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
+    read:args=>pipelineView('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
@@ -2838,10 +2843,10 @@ async function initializeOpeningPage(route) {
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
     open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
-  outcomeReferences=outcomePages(route.workspace,()=>{});
+  pagesInPlace(route.workspace,()=>{});
   here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,has:hasConversation(answer.workspace),onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},{name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),draft.follow().catch(()=>false)])).every(read=>read!==false))();
   document.body.dataset.ready='true';
