@@ -14046,6 +14046,21 @@
    }
   },
   {
+   "item": 472,
+   "act": "In Safari's engine a swipe left on the same page, a real gesture after a swipe right, unfolds a message placed on its own",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {",
+     "if (!swipe) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks a message placed on its own folds in place"
+   }
+  },
+  {
    "item": 430,
    "act": "The lit reply's ring keeps its bottom side above the next card",
    "break": [

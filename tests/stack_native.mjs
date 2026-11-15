@@ -3349,15 +3349,29 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t0 + 0.65 });
   };
   // Two fingers on the trackpad over a card, the pointer resting on it, as the trackpad case sends them (natural
-  // scrolling: fingers moving right give a negative deltaX); done once the window has heard every delta, which it gives back.
-  const HEARD_WHEELS = `addEventListener('wheel',e=>{(window.wheels??=[]).push({x:e.deltaX,y:e.deltaY,prevented:e.defaultPrevented})},{passive:true})`;
+  // scrolling: fingers moving right give a negative deltaX), stamped as a real trackpad's events are: one gesture's
+  // events close together, and the next gesture on the page beginning 300 ms or more after the last event of the one
+  // before, the fingers lifted and set down again (the page tells one swipe from the next by a pause of 250 ms, by the
+  // events' own times). Chrome takes each event's stamp from CDP: 16 ms apart, from 300 ms after the last gesture's last
+  // stamp, or now if that is later. Safari's engine in this harness stamps each event itself as it dispatches it, on a
+  // frame after the last: there the gesture begins on the first frame whose time, on the page's own clock, is 300 ms past
+  // the last wheel event the page heard. Done once the window has heard every delta, which it gives back.
+  const HEARD_WHEELS = `addEventListener('wheel',e=>{(window.wheels??=[]).push({x:e.deltaX,y:e.deltaY,prevented:e.defaultPrevented,at:e.timeStamp});window.lastWheel=e.timeStamp},{passive:true})`;
   const SWIPE_RIGHT = [[-30, 0], [-30, 0], [-30, 0], [-30, 0], [-18, 0], [-10, 0], [-5, 0], [-2, 0], [-1, 0]];
+  const GESTURE_GAP = 300, lastStamp = new WeakMap();
   // modifiers: the keys held, as CDP numbers them (1 Option, 2 Ctrl); Safari's engine in this harness turns the wheel with none.
   const trackpad = async (p, selector, steps, modifiers = 0) => {
     await centre(p, selector);
     const b = await p.box(selector), x = b.x + b.width / 2, y = Math.max(b.y, 0) + Math.min(b.height / 2, 40);
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-    for (const [deltaX, deltaY] of steps) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY, modifiers });
+    if (engine === 'chrome') {
+      const at = Math.max(await p.evaluate('performance.timeOrigin + performance.now()'), (lastStamp.get(p) ?? -Infinity) + GESTURE_GAP);
+      lastStamp.set(p, at + 16 * (steps.length - 1));
+      for (const [n, [deltaX, deltaY]] of steps.entries()) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY, modifiers, timestamp: (at + 16 * n) / 1000 });
+    } else {
+      await p.evaluate(`new Promise(begin=>{const due=(window.lastWheel??-Infinity)+${GESTURE_GAP},frame=t=>t>=due?begin():requestAnimationFrame(frame);requestAnimationFrame(frame)})`);
+      for (const [deltaX, deltaY] of steps) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY, modifiers });
+    }
     const sum = steps.reduce((all, [dx, dy]) => [all[0] + dx, all[1] + dy], [0, 0]), got = [];
     await until(async () => { got.push(...await p.evaluate('(window.wheels??[]).splice(0)')); return got.reduce((all, w) => all + w.x, 0) === sum[0] && got.reduce((all, w) => all + w.y, 0) === sum[1]; },
       `the window heard the gesture over ${selector}`);
@@ -3905,8 +3919,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
 
   // Item 472: a message the reader placed on its own is a section with no title bar, so a swipe over it is a swipe over a
   // message, as anywhere: right folds it in place, for the reader alone, and it stays where it was placed, above More;
-  // left unfolds it. Two fingers on a laptop's trackpad in both engines, and a finger on a phone in Chrome; the swipe
-  // left comes on a new document, as in the trackpad case.
+  // left unfolds it, on the same page. Two fingers on a laptop's trackpad in both engines, each gesture stamped as a real
+  // trackpad's (trackpad), and a finger on a phone in Chrome.
   await check('reading stacks a message placed on its own folds in place under a swipe right and unfolds under a swipe left, and never goes below More (item 472)', async () => {
     const topic = 'stack-placed-swipe';
     const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
@@ -3926,7 +3940,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const ways = [['laptop', (p, way) => trackpad(p, card(ids.placed), way > 0 ? SWIPE_RIGHT : SWIPE_RIGHT.map(([x, y]) => [-x, y]))]];
     if (engine === 'chrome') ways.push(['phone', (p, way) => drag(p, card(ids.placed), way)]);
     for (const [device, swipe] of ways) {
-      let p = await open(`${topic}-${device}`, device, topic, ids.placed, HEARD_WHEELS);
+      const p = await open(`${topic}-${device}`, device, topic, ids.placed, HEARD_WHEELS);
       await becomes(() => state(p), { single: 'true', shown: true, row: false, more: false }, `${device}: the placed message is a section of its own, with no title bar, above no More`);
       await swipe(p, 1);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: every act sent is answered`);
@@ -3934,12 +3948,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(() => state(p), { single: 'true', shown: true, row: true, more: false }, `${device}: it is its row, where it was placed, and nothing went below More`);
       assert.equal((await actsOf(topic, ids.placed, other))?.folded ?? false, false, `${device}: another reader's view of it is unchanged`);
       await shot(p, `stack-placed-swipe-${device}`);
-      // A new document is a new gesture, as the trackpad case reloads before its swipe left: the fold is read from Core.
-      await p.close(); p = await open(`${topic}-${device}-reload`, device, topic, ids.placed, HEARD_WHEELS);
-      await becomes(() => state(p), { single: 'true', shown: true, row: true, more: false }, `${device}: after a reload it is still its row, where it was placed`);
       await swipe(p, -1);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: every act sent is answered`);
-      assert.deepEqual(await core(), { folded: false, aside: null, placed: 'number' }, `${device}: a swipe left unfolds it in Core, still placed`);
+      assert.deepEqual(await core(), { folded: false, aside: null, placed: 'number' }, `${device}: a swipe left on the same page unfolds it in Core, still placed`);
       await becomes(() => state(p), { single: 'true', shown: true, row: false, more: false }, `${device}: it reads whole again, where it was placed`);
       assert.deepEqual(p.errors, []); await p.close();
     }
