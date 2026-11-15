@@ -2378,7 +2378,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const explore = [...nodes];
     // A start given as a step: where that step, taken once the controls are marked, lands.
     if (typeof start === 'function') { await start(); start = await landed(); }
-    const edges = [], dead = [];
+    const edges = [], dead = [], skipped = new Set();
     for (let i = 0; i < explore.length; i++) {
       const node = explore[i];
       if (node.id.startsWith('tree')) {
@@ -2404,7 +2404,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown']) {
         await p.evaluate(REMARK);
         const ok = await p.evaluate(`(e=>{if(!e||!e.isConnected||(e.matches('textarea,[contenteditable]')&&(e.value??e.textContent)!=='')||(e.matches('select')&&${key === 'ArrowUp' || key === 'ArrowDown'}))return false;e.focus();return document.activeElement===e})(document.querySelector('[data-arrow-node="${node.id}"]'))`);
-        if (!ok) continue;
+        if (!ok) { skipped.add(node.id); continue; }
         // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
         let to = node.id;
         const before = await p.evaluate(ACTED);
@@ -2420,9 +2420,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
     const reached = new Set(), queue = [start];
     while (queue.length) { const at = queue.shift(); if (reached.has(at)) continue; reached.add(at); for (const edge of edges) if (edge.from === at) queue.push(edge.to); }
-    const missing = nodes.filter(node => !reached.has(node.id)).map(node => node.label);
+    // A control that stopped showing while the arrows were pressed (More outcomes, once every outcome is drawn)
+    // is none the arrows must reach; it is named in the evidence as gone.
+    await p.evaluate(REMARK);
+    const unreached = nodes.filter(node => !reached.has(node.id));
+    const showing = await p.evaluate(`${JSON.stringify(unreached.map(node => node.id))}.map(id=>id.startsWith('tree')?${'true'}:[...document.querySelectorAll('[data-arrow-node="'+id+'"]')].some(e=>e.checkVisibility({visibilityProperty:true})&&!e.closest('[inert]')))`);
+    const gone = unreached.filter((node, at) => !showing[at]).map(node => node.label);
+    const missing = unreached.filter((node, at) => showing[at]).map(node => node.label);
+    if (gone.length) console.log('arrow closure', scope, 'gone while pressed', JSON.stringify(gone));
     // What each arrow did, for the evidence when a control is missed.
-    if (missing.length || dead.length) console.log('arrow closure', scope, JSON.stringify({ start, missing, dead, edges: edges.map(edge => `${label(edge.from)} ${edge.key} → ${label(edge.to)}`) }));
+    if (missing.length || dead.length) console.log('arrow closure', scope, JSON.stringify({ start, missing, dead, skipped: [...skipped].map(label), edges: edges.map(edge => `${label(edge.from)} ${edge.key} → ${label(edge.to)}`) }));
     return { missing, lost: edges.filter(edge => edge.to === 'page').map(edge => `${label(edge.from)} ${edge.key}`), dead, count: nodes.length };
   };
 

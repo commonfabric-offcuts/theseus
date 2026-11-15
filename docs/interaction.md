@@ -481,5 +481,6 @@ form …"; and a topic and a Conversation at every width, the header's top row
 and nothing focused among them, "rail arrows on a topic and a Conversation …"
 (at 320, 375, 390, 820, 1024 and 1280). Each case that marks every control
 also fails on a press that leaves the focus where it was while a control lies
-straight that way. Where an arrow lands by the geometry, and which arrows a
+straight that way, unless the press acted there (opened or folded something,
+switched a stack, or said so in a live region). Where an arrow lands by the geometry, and which arrows a
 form control keeps: `tests/ui_arrow_reach.test.mjs`.
