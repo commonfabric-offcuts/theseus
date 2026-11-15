@@ -13821,6 +13821,20 @@
   },
   {
    "item": 475,
+   "act": "An edit's correction to an agent is no receipt: only a delivery of the first revision is",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND d.revision=1 AND a.kind='agent'",
+     " AND a.kind='agent'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
    "act": "A reply by anyone else after it in its dossier ends the wait, and nothing else does",
    "break": [
     [
@@ -13883,6 +13897,34 @@
      "web/card-reading.mjs",
      "if (item.author_id !== viewer && typeof root === 'string'",
      "if (typeof root === 'string'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving with no dossier root ends no wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " && typeof root === 'string' &&",
+     " &&"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving with no sequence ends no wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " && Number.isSafeInteger(item.seq)) latest",
+     ") latest"
     ]
    ],
    "check": {

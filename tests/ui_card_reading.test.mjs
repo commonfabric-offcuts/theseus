@@ -110,6 +110,21 @@ test('a message that arrives ends the wait on the reader\'s earlier messages in 
   assert.deepEqual(learnAnswered(messages, 'tony').map(item => item.id), ['x'], 'an agent\'s reply ends it as a person\'s does');
 });
 
+// A message whose dossier or place in the topic the page does not know is in no dossier, and after nothing: it ends no
+// wait, even on a waiting message whose own dossier is not known either.
+test('a message with no dossier root or no sequence ends no wait', () => {
+  const messages = new Map([
+    ['w', { id: 'w', seq: 1, author_id: 'tony', awaiting_reply: true }],
+    ['r', { id: 'r', seq: 2, author_id: 'tony', stack_position: { root_id: 'r' }, awaiting_reply: true }],
+    ['n', { id: 'n', seq: 3, author_id: 'dan' }],
+    ['s', { id: 's', author_id: 'dan', stack_position: { root_id: 'r' } }],
+  ]);
+  assert.deepEqual(learnAnswered(messages, 'tony'), [], 'neither a message with no root nor one with no sequence is a reply');
+  assert.deepEqual([...messages.values()].map(item => item.awaiting_reply), [true, true, undefined, undefined], 'both waits stand');
+  messages.set('t', { id: 't', seq: 4, author_id: 'dan', stack_position: { root_id: 'r' } });
+  assert.deepEqual(learnAnswered(messages, 'tony').map(item => item.id), ['r'], 'a reply with both ends the wait in its dossier');
+});
+
 test('the dots on a waiting message are the Conversation\'s three, named in words, and go once it waits no more', () => {
   const doc = miniDocument(), card = doc.createElement('button');
   card.append(doc.createElement('span'));

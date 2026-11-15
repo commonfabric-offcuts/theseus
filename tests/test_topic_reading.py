@@ -89,6 +89,23 @@ class TopicReadingCase(fixtures.ReaderCase):
         item = self.committed(self.command("message.post", {"body": "Where are we?"}, target={"topic_id": conversation}))["message_id"]
         self.assertIs(self.awaiting(topic=conversation)[item], False, "a conversation's item has its own dots")
 
+    def test_a_correction_of_an_edit_is_no_receipt_only_the_first_revision_delivered_counts(self):
+        # Item 475, B1: an edit queues a revision-2 correction to every agent that read the old words
+        # (docs/message-edit.md); that is not the agent receiving the message.
+        self.participation("agent-a", False)
+        alone = self.post("Notes to myself", actor="owner")
+        asked = self.post("For agent-b", actor="owner", addressees=["agent-b"], intent="tell")
+        self.awaiting("agent-b")  # agent-b, on the team, reads the topic: it was handed both messages' words
+        for message, words in ((alone, "Notes to myself, edited"), (asked, "For agent-b, edited")):
+            self.committed(self.command("message.edit", {"body": words}, target={"message_id": message},
+                                        expected={"message_revision": 1}))
+        self.assertEqual(self.sql("SELECT revision FROM deliveries d JOIN actors a ON a.id=d.recipient_id "
+                                  "WHERE d.message_id=? AND a.kind='agent'", (alone,)), [(2,)],
+                         "the fixture holds: agent-b's only delivery of the first message is the edit's correction")
+        page = self.awaiting()
+        self.assertIs(page[alone], False, "a correction alone is no receipt: no agent received the first revision")
+        self.assertIs(page[asked], True, "an agent handed the first revision received it, edited or not")
+
     def test_reading_the_wait_changes_nothing_stored(self):
         # A read records which words it handed (message_exposures, docs/message-edit.md), as every read does; the
         # records the wait is read from, and every act, stay as they were.

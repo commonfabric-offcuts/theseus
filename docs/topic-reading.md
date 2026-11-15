@@ -28,9 +28,13 @@ is placed in its dossier:
   it in its dossier. An agent received it when Core delivered its first
   revision to an agent: one it was addressed to, or one taking part and
   switched on when it was sent (the deliveries `message.send` and
-  `message.post` write). False on every other message, the reader's own
-  included. It is read from the messages and deliveries as they stand, never
-  stored, so a reload, another device and the CLI all read the same.
+  `message.post` write). The correction an edit queues to an agent that
+  read the old words is a later revision's delivery (docs/message-edit.md),
+  so it is no receipt: a message no agent was handed when it was sent does
+  not wait because it was edited after an agent read it. False on every
+  other message, the reader's own included. It is read from the messages and
+  deliveries as they stand, never stored, so a reload, another device and
+  the CLI all read the same.
 
 No table, command or schema step.
 
@@ -57,13 +61,15 @@ Core says it (`awaiting_reply`, above), so a reload keeps it and nothing on
 the page decides it. A message arriving while the page is open ends the
 dots at once by the same rule (`learnAnswered`, `web/card-reading.mjs`):
 written by someone else, after the waiting message, in its dossier (its
-`stack_position.root_id`). A message folded to one line shows only that
-line, without its dots.
+`stack_position.root_id`). A message with no dossier root or no sequence
+is in no dossier and after nothing, so it ends no wait. A message folded to
+one line shows only that line, without its dots.
 
 Checks: `tests/test_topic_reading.py` (Core: addressee, taking part, whisper,
 conversation, a person's reply, the reader's own reply, a message outside the
-dossier, and nothing stored by reading it), `tests/ui_card_reading.test.mjs`
-(the page's rule and the dots), and `tests/topic_reading_native.mjs`
+dossier, an edit's correction to an agent that read the topic, and nothing
+stored by reading it), `tests/ui_card_reading.test.mjs` (the page's rule, a
+message with no dossier root or sequence, and the dots), and `tests/topic_reading_native.mjs`
 (`native-reading`, `native-webkit-reading`): "reading dots after the person
 posts to an agent …", "reading dots never show where no agent receives the
 message …" and "reading dots on a waiting message sit inside its card …"
