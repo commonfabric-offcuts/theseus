@@ -11711,6 +11711,21 @@
     "native": "rail",
     "case": "rail outcome clicks toggle"
    }
+  },
+  {
+   "item": 462,
+   "act": "However the Reader closes, what opened it gets the focus back wearing the ring it wore: Waiting on you tapped on a phone is ringed again when its question is closed",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    if (back === this.opener && this.openerRinged) back.focus({ preventScroll: true, focusVisible: true });",
+     "    if (back === this.opener && this.openerRinged) back.focus({ preventScroll: true });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail outcome clicks toggle"
+   }
   }
  ]
 }

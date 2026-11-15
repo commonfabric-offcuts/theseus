@@ -1974,8 +1974,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const waitingRow=await p.evaluate(`'outline:'+document.querySelector(${JSON.stringify(waiting)}).textContent.trim()`);
       await press(waiting);
       await until(()=>p.evaluate('document.querySelector("#reader").open'),size+': the question opens in the Reader again');
-      await p.key('Escape');
-      await until(async()=>!await readerOpen(p),size+': Escape closes the Reader again');
+      // Closed as each size closes it: Escape on a laptop, its close button tapped on a phone, the drawer still open under it.
+      if(size==='phone')await tap(p,'#reader-close');else await p.key('Escape');
+      await until(async()=>!await readerOpen(p),size+': the Reader closes again');
       await pressedRow(p,waitingRow,size+': Waiting on you');
       await stepsFrom(p,waitingRow,size+': Waiting on you');
       if(size==='laptop'){await p.key('ArrowRight');assert.match(await keyedAt(p),/^message:/,'→ from Waiting on you goes into the messages');}

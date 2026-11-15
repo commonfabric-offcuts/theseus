@@ -312,7 +312,12 @@ export class Reader {
     this.notice('');
     this.$('source-update').hidden = true;
     this.$('source-changes').hidden = true;
-    this.opener = opener ?? this.opener ?? document.activeElement;
+    // Whether the opener wore the keys' ring as the Reader opened, to wear it
+    // again when the focus goes back (a row of the outline a press or the keys
+    // chose, item 462), however the Reader is closed.
+    const next = opener ?? this.opener ?? document.activeElement;
+    if (next !== this.opener) this.openerRinged = Boolean(next?.matches?.(':focus-visible'));
+    this.opener = next;
     this.disarm();
     this.topics = topics;
     this.paintTitle(source, topics);
@@ -1073,7 +1078,8 @@ export class Reader {
     // An opener the open itself hid (Read it, once the last mark clears)
     // hands focus to the page rather than dropping it to the body.
     const back = this.opener?.isConnected && this.opener.checkVisibility?.() !== false ? this.opener : document.getElementById('main');
-    back?.focus({ preventScroll: true });
+    if (back === this.opener && this.openerRinged) back.focus({ preventScroll: true, focusVisible: true });
+    else back?.focus({ preventScroll: true });
   }
 
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }

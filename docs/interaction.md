@@ -200,7 +200,10 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   keeps its place, so going there and back never loses it; after a move in
   place the outline keeps its place and the messages' is the new page's.
   Escape in the Reader gives the focus back to the message, so the arrows
-  work again.
+  work again. However the Reader closes, what opened it gets the focus back
+  wearing the ring it wore as the Reader opened: Waiting on you, pressed or
+  chosen with the keys in the outline, is ringed again when the question it
+  opened is closed.
 - **The buttons at the top of the feed.** These are two rows: the
   header's buttons (Topic settings, New message, and the others drawn there,
   such as "Pipeline & pages" below 1181px), and under them the view filters
