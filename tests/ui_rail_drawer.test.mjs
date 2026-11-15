@@ -15,6 +15,7 @@ const SIMPLE = {
   'button:not([disabled])': e => e.tag === 'button' && !e.disabled,
   '#rail-open': e => e.id === 'rail-open',
   '[data-opens-rail]': e => 'data-opens-rail' in e.attrs,
+  '[inert]': e => e.inert,
 };
 const matches = (e, selector) => selector.split(', ').some(one => {
   if (!SIMPLE[one]) throw Error('unexpected selector ' + one);
@@ -36,6 +37,7 @@ function page({ current = 't2' } = {}) {
     closest(selector) { for (let at = this; at; at = at.parent) if (matches(at, selector)) return at; return null; }
     all() { return this.children.flatMap(kid => [kid, ...kid.all()]); }
     querySelector(selector) { return this.all().find(e => matches(e, selector)) ?? null; }
+    querySelectorAll(selector) { return this.all().filter(e => matches(e, selector)); }
     focus(options) { doc.activeElement = this; this.focusedWith = options ?? {}; }
     scrollIntoView(options) { this.scrolled.push(options); }
   }
@@ -80,6 +82,22 @@ test('the drawer starts closed, and "☰ Topics" opens it over the topic, on the
   assert.deepEqual(p.topics[1].scrolled, [{ block: 'center' }], 'the open topic is brought to the middle, so a lit topic beside it shows whole');
   p.press(p.control);
   assert.deepEqual(p.state(), SHUT, '"☰ Topics" again closes it');
+});
+
+test('the drawer opens on the open topic where it is live, never in a list kept on show, inert, while the outline draws its own', () => {
+  const p = page();
+  // The list the run before drew stays in view, before the new one, and nothing in it acts (outline-rail.mjs).
+  const kept = new p.El('ul'); kept.inert = true;
+  const stale = new p.El('a', { classes: ['nav-item'], attrs: { href: '/?topic=t2', 'aria-current': 'page' } });
+  kept.add(stale); p.rail.children.unshift(kept); kept.parent = p.rail;
+  p.press(p.control);
+  assert.equal(p.doc.activeElement, p.topics[1], 'the focus is on the live open topic, not the inert one before it');
+  // With only inert places, the first live control.
+  p.press(p.control);
+  for (const topic of p.topics) delete topic.attrs['aria-current'];
+  kept.children.unshift(new p.El('a', { attrs: { href: '/' } })); kept.children[0].parent = kept;
+  p.press(p.control);
+  assert.equal(p.doc.activeElement, p.wordmark, 'no live open topic: the first live place, past the inert list');
 });
 
 test('with no open topic in it, the drawer opens on the first place it can go', () => {

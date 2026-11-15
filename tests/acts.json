@@ -14101,6 +14101,20 @@
     "native": "rail",
     "case": "rail arrows ↑ above the right rail"
    }
+  },
+  {
+   "item": 301,
+   "act": "The phone drawer opens with the focus on the live open topic, never on one in a list the outline keeps on show, inert, while it draws its own",
+   "break": [
+    [
+     "web/rail-drawer.mjs",
+     "find(el => !el.closest('[inert]')) ?? null;",
+     "find(() => true) ?? null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rail_drawer.test.mjs"
+   }
   }
  ]
 }

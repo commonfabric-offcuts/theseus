@@ -35,7 +35,10 @@ export function railDrawer(doc = document, win = doc.defaultView, listen = (targ
     if (page) page.inert = open;
     control()?.setAttribute('aria-expanded', String(open));
     if (open) {
-      const here = rail.querySelector('a[aria-current="page"]') ?? rail.querySelector('a[href], button:not([disabled])');
+      // Of what is live: a list the outline keeps on show, inert, while a run draws its own
+      // (outline-rail.mjs) holds the same open topic, and the focus could not go there.
+      const live = selector => [...rail.querySelectorAll(selector)].find(el => !el.closest('[inert]')) ?? null;
+      const here = live('a[aria-current="page"]') ?? live('a[href], button:not([disabled])');
       here?.focus({ preventScroll: true }); here?.scrollIntoView({ block: 'center' });
     } else if (restore || inside) control()?.focus({ preventScroll: true });
   };

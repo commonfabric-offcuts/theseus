@@ -300,7 +300,9 @@ rule above. (`web/arrow-reach.mjs`)
   where there is no message for ↓ to light.
 - **On a phone**, in the side rail's drawer, the arrows move as they do beside
   the topic: the outline's rows, New outcome, the chips and the logo block,
-  never the page behind the drawer.
+  never the page behind the drawer. The drawer opens with the focus on the
+  open topic where it is live, never on its copy in a list the outline keeps
+  on show, inert, while it draws its own, so the arrows always start there.
 - **In a pop-up** (the Reader, Topic settings, the guide, a sheet) the arrows
   move only through it, never to the page behind; a menu, a radio group and a
   picker keep their own arrows.
