@@ -12568,6 +12568,91 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 483,
+   "act": "A screenshot that gets no answer, from a page that stopped answering, fails its case at its own bound instead of holding the step until the job is cancelled",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "const timer = timers.set(",
+     "const timer = method === 'Page.captureScreenshot' ? undefined : timers.set("
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A browser command that gets no answer fails naming its method, the page it was sent to and its bound",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "reject(Error(`CDP timed out: ${method}${where}, no answer in ${seconds(bound)}`));",
+     "reject(Error(`CDP timed out: ${method}`));"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A fixture control or a view read from the fixture's server that gets no answer fails its case at its bound, naming it",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "    timer = timers.set(() => { onTimeout();",
+     "    timer = undefined && timers.set(() => { onTimeout();"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case's start, with its time, is on the step's log before the case runs, so a run cancelled mid-case shows which case was running and since when",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "started: name => { const started = now().toISOString(); write(JSON.stringify({ case: name, started }) + '\\n'); return started; },",
+     "started: name => now().toISOString(),"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case's result line, written after its cleanup, gives when it started and when it finished",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "finished: (result, started) => write(JSON.stringify({ ...result, started, finished: now().toISOString() }) + '\\n'),",
+     "finished: result => write(JSON.stringify(result) + '\\n'),"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "In the navigation step, a real page that stops answering fails its call naming the page, at the bound, and is still closed so the cases after it run",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "    pageNames.set(sessionId, suffix);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness a page that stops answering"
+   }
   }
  ]
 }

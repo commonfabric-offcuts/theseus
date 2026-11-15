@@ -34,7 +34,7 @@ import { readingChecks } from './topic_reading_native.mjs';
 import { navigationChecks } from './reader_navigation_native.mjs';
 import { departureChecks, assertDepartureTrace } from './reader_departure_native.mjs';
 import { ReleaseRule } from './release-rule.mjs';
-import { protocol, bounded, stamps } from './native-calls.mjs';
+import { protocol, bounded, stamps, CALL_BOUND_MS } from './native-calls.mjs';
 import { FELL } from './press-fell.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -67,16 +67,23 @@ const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
 createInterface({ input: fixture.stdout }).on('line', line => {
   const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
+  // An answer after its control's bound finds no one waiting.
+  if (!request) return;
   if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
 });
 const fixtureExit = new Promise(resolve => fixture.once('exit', code => {
   for (const request of requests.values()) request.reject(Error(`Fixture exited ${code}: ${fixtureErrors}`));
   resolve(code);
 }));
-const control = data => bounded(new Promise((resolve, reject) => {
-  const id = ++fixtureSerial; requests.set(id, { resolve, reject });
-  fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
-}));
+// Every control, like every browser call, has a bound (native-calls.mjs).
+const control = data => {
+  const id = ++fixtureSerial;
+  return bounded(new Promise((resolve, reject) => {
+    requests.set(id, { resolve, reject });
+    fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
+  }), `fixture control ${data.method}`, { onTimeout: () => requests.delete(id) });
+};
+// A line when each case starts and one when it ends (native-calls.mjs).
 const stamp = stamps();
 const results = [], hashes = {}, observations = [];
 for (const filename of [...(mode==='--reading'?['tests/topic_reading_native.mjs','web/reveal.mjs','web/message-menu.mjs','web/reactions.mjs','web/card-reading.mjs','web/card-scroll.mjs','web/interaction-guide.mjs','web/reply-stacks.mjs','tests/stack_native.mjs', 'tests/stack_motion_native.mjs', 'web/stack-motion.mjs','tests/message_edit_native.mjs','web/message-edit.mjs','web/message-edit-writing.mjs','web/stack-order.mjs','web/stack-feed.mjs','web/stack-look.css','web/things-rail.mjs','aim_next/stacks.py','web/fold.mjs','web/rail-drawer.mjs','aim_next/reactions.py','aim_next/topic_reading.py','web/at-names.mjs','web/whisper-choice.mjs','aim_next/addressing.py','aim_next/drafts.py']:[]), ...(mode==='--forms'?['tests/form_rules_native.mjs','web/quick-create.mjs','web/outcome-purpose.mjs','web/people.mjs','web/opening-view.mjs','web/creation-view.mjs','aim_next/openings.py','aim_next/store.py']:[]), ...(mode==='--conversation'?['tests/conversation_native.mjs','web/outcome-conversation.mjs','web/message-menu.mjs','web/reactions.mjs','aim_next/reactions.py','web/whisper-choice.mjs','web/outcome-scope.mjs','web/topic-navigation.mjs','aim_next/standing_conversation.py','aim_next/conversation.py']:[]), ...(mode==='--header'?['tests/topic_header_native.mjs','tests/links_native.mjs','tests/png-bands.mjs','web/topic-header.mjs','web/topic-settings.mjs','web/topic-state.mjs','web/people.mjs','web/links.mjs','web/dismiss.mjs','web/fold.mjs','web/message-menu.mjs','web/app-session.mjs']:[]), ...(mode==='--health'?['tests/health_native.mjs','web/health.mjs','web/health-light.mjs','web/topic-navigation.mjs','aim_next/health.py','aim_next/runner.py','aim_next/live.py','aim_next/store.py']:[]), ...(mode==='--targets'?['tests/targets_native.mjs','web/targets.mjs','web/targets-words.mjs','web/charts.mjs','web/outcomes.mjs','web/topic-navigation.mjs','web/app.mjs','aim_next/checks.py','aim_next/outcome_kind.py','aim_next/outcome_rules.py']:[]), ...(mode==='--pipeline'?['tests/pipeline_native.mjs','web/pipeline.mjs','web/pipeline-words.mjs','web/topic-navigation.mjs','web/outcome-scope.mjs','web/app.mjs','aim_next/pipeline.py','aim_next/outcome_rules.py','aim_next/blocking.py']:[]), ...(mode==='--rail'?['tests/outcome_rail_native.mjs','web/outcome-scope.mjs','web/outcomes.mjs','web/outcome-light.mjs','web/opening.mjs','web/creation.mjs','web/topic-state.mjs','web/attention.mjs','aim_next/topic_state.py']:[]), ...(mode==='--wakes'?['tests/wakes_native.mjs','web/wake-lights.mjs','web/people.mjs','aim_next/wake_health.py','aim_next/runner.py']:[]), ...(mode==='--sources'?['tests/topic_sources_native.mjs','web/quick-create.mjs','web/opening.mjs','web/opening-view.mjs','web/topic-navigation.mjs','aim_next/sources.py','aim_next/openings.py']:[]), ...(mode==='--duties'?['tests/topic_duties_native.mjs','web/topic-state.mjs','aim_next/responsibility.py']:[]), ...(mode==='--notebook'?['web/notebook-page.mjs','web/notebook-writing.mjs','web/notebook-images.mjs','web/deck-page.mjs','web/deck.mjs','web/image-pick.mjs','tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','web/notebook-sheet.mjs','web/outcome-references.mjs','web/page-reads.mjs','web/page-changes.mjs','web/page-here.mjs','web/topic-navigation.mjs','web/live.mjs','aim_next/live.py','aim_next/memory.py']:[]), ...(mode==='--list'?['tests/topic_list_native.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py','aim_next/store.py']:[]), ...(mode==='--light'?['tests/outcome_light_native.mjs','web/outcome-light.mjs','web/outcome-light-words.mjs','web/outcomes.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/outcome_light.py','aim_next/outcome_rules.py','aim_next/blocking.py','aim_next/work.py','aim_next/topic_state.py','aim_next/store.py']:[]), ...(mode==='--work'?['tests/topic_work_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','web/people.mjs','aim_next/work.py','aim_next/conversation.py','aim_next/topic_state.py']:[]), ...(mode==='--whispers'?['tests/whisper_native.mjs','web/whisper-choice.mjs','aim_next/whispers.py','aim_next/conversation.py']:[]), ...(mode==='--asks'?['tests/reader_asks_native.mjs','web/whisper-choice.mjs','web/people.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py']:[]), ...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/agent_colors_native.mjs','tests/new_line_native.mjs','web/unanswered.mjs','tests/fold_native.mjs','web/fold.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py','web/author-colors.mjs','web/marks.mjs','web/colors.mjs','web/color-picker.mjs','web/people.mjs','aim_next/colors.py','aim_next/delivery.py','aim_next/conversation.py','web/read-through.mjs']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/lines.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/press-hold.mjs', 'web/times.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/image-rows.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', 'tests/press-fell.mjs', 'tests/native-calls.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', ...(mode === '--inline' ? ['tests/reader_inline_native.mjs', 'tests/reader_images_native.mjs'] : ['tests/reader_freshness_native.mjs']), ...(mode === '--live' ? ['web/live.mjs', 'web/session-renewal.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'web/read-through.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
@@ -94,6 +101,9 @@ const profile = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-persistence-'))
 const downloadPath = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-download-'));
 let chrome, chromeExit, socket, cdp, facts, finalHealth, fixtureExitCode;
 const pages = new Set();
+// Each page's name (page()'s suffix) by its session and by its target, so a
+// call that gets no answer, or a page that will not close, is named.
+const pageNames = new Map();
 const freshnessPages = new Map();
 // Every connected page of the running case, in every mode, for failed-case diagnostics.
 const connectedPages = new Map();
@@ -119,7 +129,7 @@ try {
   socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`);
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   phases.browserReady = Date.now();
-  const browser = protocol({ send: text => socket.send(text), open: () => socket.readyState === WebSocket.OPEN });
+  const browser = protocol({ send: text => socket.send(text), open: () => socket.readyState === WebSocket.OPEN, pageOf: sessionId => pageNames.get(sessionId) ?? null });
   const listeners = new Map();
   const browserEvents = [];
   socket.addEventListener('message', event => {
@@ -137,7 +147,9 @@ try {
   let recoveryContext;
   const page = async (suffix, hint, connected = false, setup = {}) => {
     const { targetId } = await cdp('Target.createTarget', { url: 'about:blank', ...(setup.newWindow ? { newWindow: true } : {}), ...(recoveryContext ? { browserContextId: recoveryContext } : {}) }); pages.add(targetId);
+    pageNames.set(targetId, suffix);
     const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
+    pageNames.set(sessionId, suffix);
     const send = (method, params) => cdp(method, params, sessionId);
     const evaluate = async expression => {
       const answer = await send('Runtime.evaluate', { expression: `(async()=>(${expression}))()`, returnByValue: true, awaitPromise: true });
@@ -378,11 +390,12 @@ try {
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     const timing = { name, started: Date.now() };
     runningCase = name;
-    // Image and epoch recovery cases leave copies, layout preferences and
-    // abandoned recovery rows behind, some deliberately. Each gets a fresh
-    // owned storage context, shared only by that case's tabs.
-    if (/^images /.test(name) || /^epoch recovery /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
+    const started = stamp.started(name);
     try {
+      // Image and epoch recovery cases leave copies, layout preferences and
+      // abandoned recovery rows behind, some deliberately. Each gets a fresh
+      // owned storage context, shared only by that case's tabs.
+      if (/^images /.test(name) || /^epoch recovery /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
       timing.actionStarted = Date.now();
       await action();
       for (const p of connectedPages.values()) await releasesSettled(p);
@@ -422,12 +435,18 @@ try {
         }
         if(p.errors.length)observations.push({name:'interception failure lifecycle',case:name,targetId,errors:p.errors,network:p.network.filter(e=>['Network.loadingFailed','Network.requestWillBeSent'].includes(e.method))});
       }
-      for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear();
+      // A page or context that will not close fails this case, by name, and
+      // the next case still runs in a fresh context of its own.
+      const unclosed = [];
+      const tidy = async (what, act) => { try { await act(); } catch (error) { unclosed.push(`${what}: ${error.message}`); } };
+      for (const targetId of pages) await tidy(`closing page ${pageNames.get(targetId) ?? targetId}`, () => cdp('Target.closeTarget', { targetId }));
+      pages.clear(); listeners.clear(); pageNames.clear();
       freshnessPages.clear(); connectedPages.clear();
-      if (recoveryContext) { await cdp('Target.disposeBrowserContext', { browserContextId: recoveryContext }); recoveryContext = null; }
+      if (recoveryContext) { const browserContextId = recoveryContext; recoveryContext = null; await tidy("disposing the case's browser context", () => cdp('Target.disposeBrowserContext', { browserContextId })); }
+      if (unclosed.length) { const result = results.at(-1); result.passed = false; result.instrumentError = [result.instrumentError, `cleanup: ${unclosed.join('; ')}`].filter(Boolean).join('\n'); }
       timing.cleanupEnded = Date.now(); phases.cases.push(timing);
     }
-    stamp.finished(results.at(-1));
+    stamp.finished(results.at(-1), started);
   };
 
   if (mode === '--journal') {
@@ -622,8 +641,12 @@ try {
     assert.equal(await a.evaluate('j.own(editor.key)'), null, 'unsupported write does not commit a pretend recovery copy');
   });
   } else {
-    const view = (name, args) => bounded(fetch(facts.origin + '/api/view', { method: 'POST', headers: {
-      Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, args }) }).then(response => response.json()));
+    const view = (name, args) => {
+      const abort = new AbortController();
+      return bounded(fetch(facts.origin + '/api/view', { method: 'POST', signal: abort.signal, headers: {
+        Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, args }) }).then(response => response.json()),
+        `view ${name}`, { onTimeout: () => abort.abort() });
+    };
     const field = page => page.evaluate('document.querySelector("#writing-body").value');
     const replace = async (page, text) => {
       await page.point('#writing-body'); await page.key('a', 4);
@@ -719,6 +742,20 @@ try {
         observations.push({ name: 'harness release rule', excused: [...p.excusedReleases], failed: [...p.failedReleases] });
         await assert.rejects(p.close(), /every interception release the page did not give up succeeded/, 'closing the page applies the rule');
         assert.equal(connectedPages.has(p.targetId), false, 'the refused page is closed all the same');
+      });
+      // A page that stops answering, mid-call, on a real renderer: the call
+      // fails at its bound naming its method and page, the case's cleanup
+      // still closes the page, and the cases after it run (native-calls.mjs,
+      // whose unit holds every bound, the screenshot's included).
+      await check('navigation harness a page that stops answering fails its call by name at the bound and is still closed', async () => {
+        const p = await page('stops-answering', null, true);
+        assert.equal(await p.evaluate('document.body.dataset.ready'), 'true', 'the page answers until it is made busy');
+        const busy = p.send('Runtime.evaluate', { expression: 'for(;;){}' }).then(() => 'answered', error => error.message);
+        const asked = Date.now();
+        await assert.rejects(p.evaluate('1'), { message: `CDP timed out: Runtime.evaluate on page stops-answering, no answer in ${CALL_BOUND_MS / 1000} s` });
+        const waited = Date.now() - asked;
+        observations.push({ name: 'a page that stops answering', waited, busy: await busy });
+        assert.ok(waited >= CALL_BOUND_MS - 100 && waited < CALL_BOUND_MS + 5000, `failed at its bound, not before and not long after: ${waited} ms`);
       });
       await navigationChecks({ check, page, until, root, evidencePath, facts, view, control, replace, field, shot, observations });
       await departureChecks({ check, page, until, facts, view, control, shot, observations });
@@ -1609,10 +1646,20 @@ try {
     });
   }
 } finally {
-  if (cdp && socket?.readyState === WebSocket.OPEN) { await cdp('Browser.close'); await chromeExit; socket.close(); }
-  if (liveUpdatesFixture && fixture.exitCode === null) finalHealth = await control({ method: 'admission_events' });
+  // Each step of the teardown has its bound, and one that fails is recorded
+  // and the rest still run, so native.json is always written.
+  const teardown = [];
+  const tidy = async (what, act) => { try { await act(); } catch (error) { teardown.push(`${what}: ${error.message}`); } };
+  if (cdp && socket?.readyState === WebSocket.OPEN) {
+    await tidy('Browser.close', () => cdp('Browser.close'));
+    await tidy('Chrome exiting', () => bounded(chromeExit, 'Chrome exiting after Browser.close'));
+    socket.close();
+  }
+  if (liveUpdatesFixture && fixture.exitCode === null) await tidy('final fixture health', async () => { finalHealth = await control({ method: 'admission_events' }); });
   fixture.stdin.end();
-  fixtureExitCode = await fixtureExit;
+  await tidy('the fixture exiting', async () => { fixtureExitCode = await bounded(fixtureExit, 'the fixture exiting once its input ended'); });
+  // A fixture that does not exit is this harness's own child: it is stopped by its handle, and its exit stays unknown.
+  if (fixture.exitCode === null && fixture.signalCode === null) fixture.kill('SIGTERM');
   // Every origin/key here belongs to this unique disposable profile; no keys
   // or prefixes are ever removed from a person's browser.
   if (!chrome || chrome.exitCode !== null) {
@@ -1620,9 +1667,10 @@ try {
     await rm(downloadPath, { recursive: true, force: true });
   }
   phases.reportingStarted = Date.now();
-  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, baseline, legacyAdmission, hashes, results, observations, finalHealth, fixtureExitCode, fixtureErrors, browserClosed: chrome?.exitCode !== null }, null, 2));
+  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, baseline, legacyAdmission, hashes, results, observations, finalHealth, fixtureExitCode, fixtureErrors, browserClosed: chrome?.exitCode !== null, teardown }, null, 2));
   phases.reportingEnded = Date.now();
   await writeFile(path.join(evidencePath, 'phases.json'), JSON.stringify(phases, null, 2));
+  assert.deepEqual(teardown, [], 'the browser and the fixture closed within their bounds');
   assert.equal(fixtureExitCode, 0, fixtureErrors);
   if (liveUpdatesFixture) { assert.deepEqual(finalHealth?.fatal, []); assert.equal(fixtureErrors, '', 'owned fixture stderr is clean'); }
 }
