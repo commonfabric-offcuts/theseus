@@ -153,15 +153,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   };
   // Lights a card as the person does: the pointer rests on it, or a finger taps it; on its words,
   // or, for a stack's head shown as one row, on that row, which lights with no bar (docs/reply-stacks.md).
-  // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row,
-  // with its bar, under the pointer; on a phone a tap on that row unfolds it, so it is unfolded first (unfoldRow).
+  // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row
+  // under the pointer, with its bar, but in a dossier with none (item 471); on a phone a tap on that row unfolds it, so it
+  // is unfolded first (unfoldRow).
   const light = async (p, device, id) => {
     await centre(p, card(id));
     if (await foldedRow(p, id)) {
       if (device === 'phone') await unfoldRow(p, device, id);
       else {
+        const dossier = await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack')?.dataset.single === 'false'`);
         await p.point(card(id) + ' > .message-folded > .folded-author', 'move');
-        await until(async () => (await lit(p)).includes(id) && await bar(p) !== null, `${device}: ${id} lights on its folded row, with its bar`);
+        await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === dossier, `${device}: ${id} lights on its folded row, ${dossier ? 'with no bar in a dossier' : 'with its bar'}`);
         return;
       }
     }
@@ -175,8 +177,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // Whether a message shows as its folded row, and a press on that row, which shows it whole again (docs/reply-stacks.md).
   const foldedRow = (p, id) => p.evaluate(`(c=>c?.dataset.folded==='true'&&Boolean(c.querySelector(':scope > .message-folded')?.getClientRects().length))(document.querySelector(${JSON.stringify(card(id))}))`);
   const unfoldRow = async (p, device, id) => {
-    // On its "Folded", which keeps its width however long the author's name runs.
-    const row = card(id) + ' > .message-folded > .folded-cue';
+    // On its author, at the row's start ("Folded" is said to a screen reader only in a dossier, item 471).
+    const row = card(id) + ' > .message-folded > .folded-author';
     await centre(p, row); await press(p, device, row);
     await until(async () => !await foldedRow(p, id) && await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`), `${device}: a press on ${id}'s row shows it whole`);
   };
@@ -302,14 +304,19 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       // The page shows each reply Core holds; a card moved under a resting pointer takes the light,
       // so the pointer comes to rest on the ask again (a finger's tap lights only when the ask is not lit: a second tap is a press).
       // An answer is a reply, so it folds the ask for the person (docs/reply-stacks.md, item 377): heading its stack, the ask is
-      // its head row, and a press on that row shows it whole again.
+      // its dossier's first message, which shows as its folded row once the dossier is fully open (a press on the dossier's
+      // head row), and a press on that row shows it whole again (item 471).
       const relight = async () => {
         const said = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.reply_to === ids.ask && item.author_id === facts.actor).map(item => item.id);
         await until(() => p.evaluate(`${JSON.stringify(said)}.every(id => document.querySelector('#messages [data-id="' + id + '"]'))`), device + ': the page shows each reply');
         await until(async () => (await view('message_acts', { topic_id: topic })).items.some(item => item.message_id === ids.ask && item.acts.folded), device + ': the answer folds the ask, in Core');
-        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.ask) + ' > .stack-head > .stack-folded')})?.getClientRects().length)`), device + ': the ask shows as its folded head row');
-        await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
-        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on its folded head row shows the ask whole');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.ask))})?.dataset.folded === 'true'`), device + ': the page shows the ask folded');
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.ask))}).closest('.reply-stack')?.dataset.headOpen === 'false'`)) {
+          await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
+          await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.ask) + ' > .message-folded')})?.getClientRects().length)`), device + ': a press on the dossier\'s head row shows the ask as its folded row');
+        }
+        await press(p, device, card(ids.ask) + ' > .message-folded > .folded-author');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on its folded row shows the ask whole');
         if (device !== 'phone' || !(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
       };
       await until(async () => await mine() === 'yes', device + ': the card shows ✅ as the answer');

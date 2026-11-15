@@ -137,7 +137,7 @@ export class StackFeed {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
-      split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
+      split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
       arranged: () => this.arranged(),
     } }));
@@ -152,7 +152,9 @@ export class StackFeed {
   // thumbs-up as the bar's 👍, pressed once given, with the count once anyone
   // has. A press gives or takes it back and unfolds nothing. It is a part of
   // the card (a button), answering its own press and keys, as the reply arrow is.
-  // None on the reader's own message, which takes no thumbs-up from them.
+  // None on the reader's own message, which takes no thumbs-up from them. In a
+  // dossier it shows only once someone has given one (item 471; data-count,
+  // stack-look.css).
   paintFoldedThumb(card, item) {
     const row = card.querySelector(':scope > .message-folded');
     let button = row?.querySelector(':scope > .folded-thumb') ?? null;
@@ -168,6 +170,7 @@ export class StackFeed {
     const shown = count ? `👍 ${count}` : '👍';
     if (button.textContent !== shown) button.textContent = shown;
     button.setAttribute('aria-pressed', String(on)); button.setAttribute('aria-label', count ? `${words} (${count})` : words); button.title = words;
+    button.dataset.count = String(count);
   }
   // The message a control in a card acts on: its card's. Only the card names
   // its message (data-id), so what finds a message's card finds that alone.
@@ -430,10 +433,32 @@ export class StackFeed {
     this.say(on ? 'Folded to one line, for you only' : 'Unfolded');
     return true;
   }
-  // A press on a folded message's row, or its stack's head row (reply-stacks.mjs).
+  // A press on a folded message's row (reply-stacks.mjs).
   unfoldId(id) {
     const item = this.messages().get(id);
     if (item) this.setFold(item, false);
+  }
+  // A click on the header of a message a dossier shows whole (reply-stacks.mjs,
+  // headerClick, item 471): it folds, as x does; a starred one stays open.
+  foldId(id) {
+    const item = this.messages().get(id);
+    if (!item) return;
+    if (this.actsOf(item.id, item).starred) { this.say('Starred messages stay open'); return; }
+    this.setFold(item, true);
+  }
+  // Option held with a swipe right (item 472): the message and every message
+  // before it in its dossier fold, each for the reader alone as a plain fold
+  // does (a starred one stays open), and ⌘Z puts them all back at once.
+  foldThrough(stack, item) {
+    const run = [stack.head, ...stack.replies], upTo = run.findIndex(each => each.id === item.id);
+    const folding = run.slice(0, upTo + 1).map(each => this.messages().get(each.id) ?? each)
+      .filter(each => { const acts = this.actsOf(each.id, each); return !acts.folded && !acts.starred; });
+    if (!folding.length) return false;
+    for (const each of folding) { this.state.peeked.delete(each.id); this.act('message.fold', each, { folded: true }); }
+    this.remember(() => { for (const each of folding) this.setFold(each, false, { focus: false, undoable: false }); });
+    this.arrange();
+    this.say(folding.length === 1 ? 'Folded to one line, for you only' : `${folding.length} messages folded to one line, for you only`);
+    return true;
   }
   // A dossier's first message, as Core last said where it is, and the
   // dossier's position: the loaded message, else one standing in for it that
@@ -471,29 +496,31 @@ export class StackFeed {
     this.say(below ? 'Moved below More, for you only' : 'Brought back');
     return true;
   }
+  // What a swipe over target acts on: the dossier as a whole on its title bar
+  // (its head row or chevron, item 472), else the message under it.
   gestureTarget(target) {
     const entry = entryOf(this.list, target);
     const section = target?.closest?.('.reply-stack');
     const found = stackOf(this.list, entry ?? (section && this.entryFor(section.dataset.stack)));
     if (!found) return null;
-    const displayed = [this.entryFor(found.stack.id), ...found.stack.replies.map(item => this.entryFor(item.id))]
-      .filter(node => node && !node.hidden && node.getClientRects().length);
     const chrome = !entry || target.closest('.stack-head') || target.closest('.stack-toggle');
-    return { found, item: entry && this.messages().get(entry.dataset.id), whole: Boolean(found.section && (chrome || displayed.at(-1) === entry)) };
+    return { found, item: entry && this.messages().get(entry.dataset.id), whole: Boolean(found.section && chrome) };
   }
-  swipeAct(target, folds) {
+  // through: Option was held, so a swipe right folds the message and every one before it (foldThrough).
+  swipeAct(target, folds, through = false) {
     const gesture = this.gestureTarget(target);
     if (!gesture) return false;
     if (gesture.whole && folds) return this.setAside(gesture.found.stack, true);
     if (gesture.whole && !folds && positionOf(gesture.found.stack)?.below) return this.setAside(gesture.found.stack, false);
-    return gesture.item && this.setFold(gesture.item, folds, { focus: false });
+    if (!gesture.item) return false;
+    return through && folds ? this.foldThrough(gesture.found.stack, gesture.item) : this.setFold(gesture.item, folds, { focus: false });
   }
   swiped(event) {
     const start = this.swipe, touch = event.changedTouches?.[0];
     this.swipe = null;
     const across = touch && start ? touch.clientX - start.x : 0;
     if (!start || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;
-    this.swipeAct(start.target, across > 0);
+    this.swipeAct(start.target, across > 0, event.altKey);
   }
   // A wheel event on the list: part of a trackpad swipe, or a scroll the
   // browser keeps. The message is the one under the swipe's first event, and
@@ -520,7 +547,7 @@ export class StackFeed {
     event.preventDefault();
     if (swipe.done || Math.abs(swipe.x) < SWIPE_ACROSS) return;
     swipe.done = true;
-    this.swipeAct(swipe.target, swipeFolds(swipe.x));
+    this.swipeAct(swipe.target, swipeFolds(swipe.x), event.altKey);
   }
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
@@ -547,20 +574,17 @@ export class StackFeed {
   // x on a message (item 388): folds it to its row, as Fold in ⋯ does
   // (setFold), and x again unfolds it; the keys stay on its row, and ⌘Z puts
   // it back. A starred message stays open, which is said. On a dossier as a
-  // whole (its chevron, or its compact header) x does nothing yet. A folded
-  // first message is its head row at every state of its dossier, and x there
-  // unfolds it, as a press on the row does: at latest and unread that opens
-  // the dossier too, so the message shows and x again folds it.
+  // whole (its chevron, or its compact header) x does nothing yet; its first
+  // message, shown whole or as its row once the dossier is fully open, folds
+  // and unfolds as any message does (item 471).
   foldKey(event, entry, toggle) {
     if (toggle) return;
     const item = this.messages().get(entry.dataset.id);
     if (!item) return;
     const acts = this.actsOf(item.id, item), found = stackOf(this.list, entry);
-    const tab = Boolean(found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false');
-    if (tab && !acts.folded) return;
+    if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;
     event.preventDefault();
     if (acts.starred && !acts.folded) { this.say('Starred messages stay open'); return; }
-    if (tab && levelOf(this.state, found.stack.id) !== 'open') setLevel(this.state, found.stack, 'open');
     this.setFold(item, !acts.folded);
   }
   // Return on a dossier as a whole, its chevron or its compact header (the

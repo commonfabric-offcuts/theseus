@@ -305,10 +305,11 @@ try {
           // A stack's first message opens from its words: a press on its head's row shows or hides them.
           const heads = await evaluate(`Boolean(document.querySelector('#messages .stack-head-card[data-id="${facts.sources[index].id}"]'))`);
           // A person's reply or thumbs-up folds what it answers for them (docs/reply-stacks.md, item 377): a press on
-          // its row shows it whole again, then a press on it opens it.
+          // its row (a dossier's first message's too, under the head row, item 471) shows it whole again, then a press
+          // on it opens it.
           const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
           if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
-            await point(heads ? `${card} > .stack-head` : `${card} > .message-folded > .folded-author`);
+            await point(`${card} > .message-folded > .folded-author`);
             await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message shows whole');
           }
           await point(heads ? `#messages .message-card[data-id="${facts.sources[index].id}"] > .message-preview` : `#messages [data-id="${facts.sources[index].id}"]`);

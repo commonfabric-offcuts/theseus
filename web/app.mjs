@@ -61,7 +61,7 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, headerClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
@@ -783,6 +783,8 @@ function paintViews(kind) {
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         // A message the reader folded is one row: a press on it unfolds it (stack-feed.mjs).
         if (foldedClick($('messages'), messageEntries.get(item.id))) return;
+        // In a dossier a press on a message's header folds it; its words open it (item 471).
+        if (headerClick($('messages'), messageEntries.get(item.id), event)) return;
         const name = event?.target?.closest?.('.author-name');
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
         return open(event);

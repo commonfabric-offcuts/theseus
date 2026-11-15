@@ -161,10 +161,11 @@ export class MessageMenu {
     this.sizes = new doc.defaultView.ResizeObserver(() => this.place());
     this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.bar);
     // A reply stack's head that comes to show only its row loses its bar, and
-    // gets it back once its full message shows again (tabOnly). A lit message
+    // gets it back once its full message shows again, as a message a dossier
+    // folds and unfolds does (barless). A lit message
     // its stack folds away loses its light, and its bar with it (place).
     new doc.defaultView.MutationObserver(() => { if (this.lit) this.paintBar(); })
-      .observe(host, { subtree: true, attributes: true, attributeFilter: ['data-head-open', 'hidden'] });
+      .observe(host, { subtree: true, attributes: true, attributeFilter: ['data-head-open', 'hidden', 'data-folded'] });
   }
   buildBar() {
     const doc = this.doc, bar = doc.createElement('div');
@@ -248,7 +249,7 @@ export class MessageMenu {
   }
   paintBar() {
     const item = this.lit && this.item(this.lit.dataset.id);
-    if (!item || this.tabOnly()) { this.bar.hidden = true; return; }
+    if (!item || this.barless()) { this.bar.hidden = true; return; }
     // Also runs when a selected stack opens: its header alone has no message
     // viewport to measure until the original card becomes visible.
     const card = cardIn(this.lit);
@@ -262,12 +263,15 @@ export class MessageMenu {
     this.bar.hidden = false;
     this.place();
   }
-  // Whether the lit message is a reply stack's head showing only its row, the
-  // stack's tab (reply-stacks.mjs): it has no bar until its full message shows.
-  // Under Only new a stack draws nothing, and its head reads whole.
-  tabOnly() {
-    const card = this.lit && cardIn(this.lit);
-    return Boolean(card?.classList.contains('stack-head-card') && card.closest('.reply-stack')?.dataset.headOpen === 'false' && !card.closest('.only-new'));
+  // Whether the lit message shows no bar: a reply stack's head showing only its
+  // row, the stack's tab (reply-stacks.mjs), until its full message shows; and a
+  // message a dossier shows as its folded row (item 471), which a press unfolds.
+  // Under Only new a stack draws nothing, and its messages read whole.
+  barless() {
+    const card = this.lit && cardIn(this.lit), section = card?.closest('.reply-stack');
+    if (!section || card.closest('.only-new')) return false;
+    return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false'
+      || card.dataset.folded === 'true' && section.dataset.single === 'false';
   }
   // Over the lit card's top end corner, inside the window while any of the
   // card is, and scrolled away with it. Where that would cover the reply arrow

@@ -24,8 +24,7 @@
      > .stack-placed-line    the reader placed it (.stack-placed-words, .stack-unplace)
    [data-starred=true]       on any message card the reader starred
    [data-folded=true]        on any message card the reader folded, holding
-     .message-folded         its one row: .folded-author, .folded-words, .folded-thumb, .folded-cue
-   .stack-folded             in a head row: its first message is folded
+     .message-folded         its one row: .folded-author, .folded-words, .folded-thumb (data-count), .folded-cue
 
    The stack is the folder's body; the head row stands above it as the tab, in
    the room the stack's top margin keeps, so the tab is always two lines high:
@@ -62,6 +61,7 @@
   --stack-pad:.5rem;                      /* folder edge to sheet */
   --stack-sheet-gap:.45rem;
   --stack-overlap:12px;
+  --stack-sheet-border:1px;               /* a card's border, inside its ring */
   --stack-contact:0 -1px 2px rgb(54 46 38 / .10);
   --stack-folded-height:44px;
   --stack-folded-ink:var(--stack-read-ink);
@@ -94,6 +94,17 @@
 .reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}
 .reply-stack:not(.only-new *) .message-fold>.fold-line{outline:none;box-shadow:none}
 .reply-stack:not(.only-new *) .message-fold.lit>.fold-line{box-shadow:0 0 0 2px var(--stack-ring)}
+/* The next card covers the lit one's bottom edge, and its ring with it: the
+   ring is drawn again above the next card, the ring alone and never the card,
+   so the next card's words stay uncovered (item 430). A reply's card is
+   positioned, so its ring is its own layer; the first message's card stays
+   static for the tab, so the replies draw the part of its ring they cover. */
+.reply-stack:not(.only-new *) .stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line)::after{content:'';position:absolute;z-index:1;inset:calc(-1 * var(--stack-sheet-border));
+  border-radius:inherit;box-shadow:0 0 0 2px var(--stack-ring);pointer-events:none}
+.reply-stack:not(.only-new *) .message-fold.lit>.fold-line{position:relative;--stack-sheet-border:0px}
+.reply-stack:not(.only-new *)>.lit[data-stack-covered=true]~.stack-replies::before{content:'';position:absolute;z-index:1;left:-2px;right:-2px;top:calc(-1 * var(--stack-overlap));
+  height:calc(var(--stack-overlap) + 2px);box-sizing:border-box;border:2px solid var(--stack-ring);border-top:0;
+  border-radius:0 0 calc(var(--stack-r-sheet) + 2px) calc(var(--stack-r-sheet) + 2px);pointer-events:none}
 /* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */
 .only-new :is(.stack-head,.stack-toggle){display:none}
 
@@ -119,7 +130,7 @@
    view (the keys, a link) brings the tab with it, and the focus ring round it. */
 .reply-stack[data-single=false]:not(.only-new *)>[data-id],
 .reply-stack[data-single=false]:not(.only-new *) .stack-head-card{scroll-margin-top:calc(var(--stack-pad) + var(--stack-tab-h) + 4px)}
-.reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card{
+.reply-stack[data-head-open=false]:not(.only-new *) .message-card.stack-head-card{
   min-height:0;height:0;padding:0;border:0;background:none;box-shadow:none;outline:none;overflow:visible}
 .reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card>:not(.stack-head){display:none}
 .reply-stack[data-head-open=true]:not(.only-new *) .stack-head-card{margin-bottom:0}
@@ -197,14 +208,22 @@
 .reply-stack:not(.only-new *) :is(.message-card[data-stack-covered=true],.message-fold[data-stack-covered=true]>.message-card){padding-bottom:calc(1rem + var(--stack-overlap))}
 .reply-stack:not(.only-new *) .message-fold>.message-card{margin-bottom:0}
 .reply-stack:not(.only-new *) .message-fold>.fold-line{background:var(--stack-read-sheet);border-radius:var(--stack-r-sheet);color:var(--stack-folded-ink)}
+/* A fold line keeps its feedback in a dossier as anywhere (item 430): the pointer over it, and opened. */
+.reply-stack:not(.only-new *) .message-fold>.fold-line:hover{background:var(--soft);color:var(--ink)}
+.reply-stack:not(.only-new *) .message-fold>.fold-line[aria-expanded=true]{color:var(--ink)}
 .reply-stack:not(.only-new *) .message-fold[data-stack-covered=true]>.fold-line[aria-expanded=false]{min-height:var(--stack-folded-height);padding-bottom:calc(.3rem + var(--stack-overlap))}
-/* Agent badges protrude; the letters align with the message's words. Only
-   the first fragment moves when an Unread pill holds the final grapheme. */
-.reply-stack:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}
-.reply-stack:not(.only-new *) .agent-card .author-name-start{padding-right:0}
-.reply-stack:not(.only-new *) .agent-card .author-name-end{padding-left:0}
-.reply-stack:not(.only-new *) .agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}
-.reply-stack:not(.only-new *) .agent-card .folded-author{margin-left:calc(-1 * var(--stack-name-inset));padding-inline:var(--stack-name-inset);border-radius:.3rem;background:var(--agent-tag)}
+/* In a placed message's folder agent badges protrude; the letters align with
+   the message's words. Only the first fragment moves when an Unread pill holds
+   the final grapheme. */
+.reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}
+.reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name-start{padding-right:0}
+.reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name-end{padding-left:0}
+.reply-stack[data-single=true]:not(.only-new *) .agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}
+.reply-stack[data-single=true]:not(.only-new *) .agent-card .folded-author{margin-left:calc(-1 * var(--stack-name-inset));padding-inline:var(--stack-name-inset);border-radius:.3rem;background:var(--agent-tag)}
+/* In a dossier an author's name is plain text, with no tag (item 471): the
+   card's own colour already says who wrote it, and the letters align with its words. */
+.reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{padding:0;border-radius:0;background:none}
+.reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name:hover{text-decoration:none}
 /* A joined stack's first message, and a stack the reader placed: one quiet line says so. */
 .stack-join-line,.stack-placed-line{display:flex;flex-wrap:wrap;align-items:center;gap:0 .4rem;margin:0;padding:.15rem .5rem 0;color:var(--stack-meta-ink);font-size:.76rem}
 /* The line's gap from the cards is margin, outside its box: what a join's
@@ -231,7 +250,7 @@
 /* A message the reader folded, wherever it shows: one quiet row, who wrote it, its first words and "Folded". A press
    on it, or a swipe to the left, unfolds it. The rest of the card waits, hidden, until then. */
 .message-card[data-folded=true]{display:flex;align-items:baseline;gap:.5rem;min-height:2.75rem;padding:.3rem 1.15rem;cursor:pointer}
-.message-card[data-folded=true]>:not(.message-folded){display:none}
+.message-card[data-folded=true]>:not(.message-folded,.stack-head){display:none}
 .message-folded{display:flex;align-items:baseline;gap:.5rem;min-width:0;width:100%;color:var(--muted);font-size:.85rem;font-weight:400;white-space:nowrap}
 .folded-author{flex:none;color:var(--ink);font-weight:650}
 .folded-words{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -242,9 +261,10 @@
 @media(pointer:coarse){.folded-thumb{display:inline-flex;align-items:center;justify-content:center;min-width:2.75rem;min-height:2.75rem;margin:-.6rem 0}}
 .folded-cue{flex:none;padding:0 .45rem;border:1px solid var(--line);border-radius:1rem;font-size:.72rem;line-height:1.3rem}
 .folded-cue::before{content:'▸ ';content:'▸ ' / ''}
-.stack-folded{flex:none;color:var(--stack-meta-ink);font-style:italic}
-.stack-head>.stack-folded{margin-left:calc(.3em - .5rem)}
-.stack-head>.stack-folded::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-style:normal}
+/* In a dossier a folded row is who wrote it and its line (item 471): "Folded" is said to a screen reader only, and
+   its 👍 shows once someone has given one. */
+.reply-stack[data-single=false]:not(.only-new *) .folded-cue{position:absolute;width:1px;height:1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.reply-stack[data-single=false]:not(.only-new *) .folded-thumb[data-count="0"]{display:none}
 
 /* Quiet edges keep full-strength ink, including agent-only talk: opacity on
    the card or its row would compound and make the words unreadable. */

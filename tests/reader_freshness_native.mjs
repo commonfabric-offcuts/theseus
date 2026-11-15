@@ -328,7 +328,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     // press on its stack's head row unfolds it, for them on every device: b draws it whole once that act
     // reaches it, moving Source 1 down the page. b opens Source 1 once it shows Source 0 as a does, so no
     // redraw lands between its hit-test and its press.
-    const folded = `(card => card.dataset.folded === 'true' || Boolean(card.querySelector(':scope > .stack-head > .stack-folded')))(document.querySelector('#messages .message-card[data-id="${facts.sources[0].id}"]'))`;
+    const folded = `document.querySelector('#messages .message-card[data-id="${facts.sources[0].id}"]').dataset.folded === 'true'`;
     const shown = await a.evaluate(folded);
     await until(async () => await b.evaluate(folded) === shown, 'peer shows Source 0 as the sender left it');
     await b.open(1);

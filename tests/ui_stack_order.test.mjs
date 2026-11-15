@@ -438,12 +438,15 @@ test('a message the reader folded reads as its one-line row wherever its stack s
   assert.deepEqual(words(rowsOf(back, { level: 'open', kept })).slice(1), ['m2', 'm3', 'm4', 'm5 (folded)']);
 });
 
-test('a folded first message reads as its stack\'s head row alone, and a message on its own as its row', () => {
+test('a folded first message reads as its row, as any message does, under a head row that says nothing of it; a message on its own as its row', () => {
   const items = [message(1, { acts: { folded: true, fold_revision: 1 } }), message(2, { reply_to: 'm1' }), message(3, { acts: { folded: true, fold_revision: 1 } }), message(4)];
   const withReplies = stacksOf(items).find(stack => stack.id === 'm1');
-  assert.equal(headOf(withReplies).folded, true, 'the head row says its first message is folded');
-  assert.equal(headOf(stacksOf([message(1), message(2, { reply_to: 'm1' })])[0]).folded, false);
-  assert.equal(headOf(withReplies, { peeked: item => item.id === 'm1' }).folded, false, 'opened for this view, it shows whole');
+  // Item 471: the head row is the dossier's title, folded first message or not.
+  assert.deepEqual(headOf(withReplies), headOf(stacksOf([message(1), ...items.slice(1)]).find(stack => stack.id === 'm1')),
+    'the head row is the same whether its first message is folded or not');
+  assert.equal('folded' in headOf(withReplies), false, 'and says nothing of a fold');
+  assert.equal(rowFolded(withReplies.head), true, 'the first message itself reads as its row');
+  assert.equal(rowFolded(withReplies.head, { peeked: item => item.id === 'm1' }), false, 'opened for this view, it shows whole');
   assert.deepEqual(items.map(item => rowFolded(item)), [true, false, true, false]);
   assert.equal(rowFolded(message(5, { acts: { folded: true, starred: true } })), false, 'a starred message is never a row');
   assert.equal(rowFolded(message(6, { acts: { folded: true } }), { peeked: () => true }), false);
