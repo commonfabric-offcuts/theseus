@@ -1097,13 +1097,22 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const railOpen = p => p.evaluate(`document.querySelector('#rail').classList.contains('open')`);
   const moveTo = async (p, device, id) => {
     // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
-    if (device === 'phone' && !await railOpen(p)) { await centre(p, '#rail-open'); await press(p, device, '#rail-open'); await until(() => railOpen(p), 'phone: the drawer opens'); }
+    if (device === 'phone' && !await railOpen(p)) {
+      await centre(p, '#rail-open'); await press(p, device, '#rail-open');
+      // What the page was doing, if the drawer does not open: kept in the failure.
+      await until(() => railOpen(p), 'phone: the drawer opens').catch(async error => {
+        const state = await p.evaluate(`({ at: location.search, ready: document.body?.dataset.ready, expanded: document.querySelector('#rail-open')?.getAttribute('aria-expanded'),
+          inert: document.querySelector('#main')?.inert, sheet: document.querySelector('#new-message-sheet')?.open, focus: document.activeElement?.id || document.activeElement?.tagName,
+          notice: document.querySelector('#topic-navigation-status')?.textContent, origin: performance.timeOrigin })`).catch(e => ({ unread: e.message }));
+        throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
+      });
+    }
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(outlineRow(id))}))`), `the outline names ${id}`);
     await centre(p, outlineRow(id));
     await press(p, device, outlineRow(id));
   };
   // The page shows the topic, started: by a move in place or by a load.
-  const arrived = (p, id, first) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + id)} && document.body.dataset.ready === 'true'
+  const arrived = (p, id, first) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + id)} && document.body?.dataset.ready === 'true'
     && Boolean(document.querySelector(${JSON.stringify(card(first))}))`), `the page shows ${id}`, 15000);
   // The build the page's modules came from (aim_next/web_build.py), and the one the server serves: null for none.
   const pageBuild = p => p.evaluate(`(s => { const [, b, build] = s ? new URL(s.src).pathname.split('/') : []; return b === 'b' && build ? build : null; })(document.querySelector('script[type=module][src]'))`);
@@ -1294,7 +1303,9 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await scheme(p, '');
         // The words kept on the device, Reload loads the place on the new build, and the words come with it.
         await letJournal(p);
-        await until(() => p.evaluate(`!document.querySelector('#inline-save-state').textContent.startsWith('Saving on this device')`), `${width}: the device keeps the words`);
+        // The words safe (no guard of the page's holds), as the page says it: then Reload loads with no ask.
+        await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), `${width}: the device keeps the words`);
+        await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved')`), `${width}: the page says the words are saved`);
         const where = await p.evaluate(`['topic-navigation-status', 'inline-notice'].find(id => document.querySelector('#' + id + ' .updated-reload')?.getClientRects().length)`);
         await press(p, device, `#${where} .updated-reload`);
         await arrived(p, away, there.note);
@@ -1312,20 +1323,16 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
-  // Edit on the person's own message as they reach it: from its bar, or, once a reply heads it into a stack shown as one row
-  // (docs/reply-stacks.md), which has no bar, from the Reader's ⋯ on it.
+  // Edit on the person's own message as they reach it: from its bar; once a reply heads it into a stack shown as its
+  // header alone (docs/reply-stacks.md), which has no bar, the stack's chevron opens it first.
   const editReached = async (p, device, id) => {
-    const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
-    if (!row) { await menuOf(p, device, id); await choose(p, device, 'Edit'); return; }
-    await p.evaluate('document.activeElement?.blur()');
-    const head = card(id) + ' > .stack-head > .stack-who';
-    if (!(await lit(p)).includes(id)) await light(p, device, id);
-    // A press on the head's author opens the head's own message in the Reader; on a phone, the tap after the one that lit it.
-    if (device === 'laptop') await p.point(head); else await tap(p, head);
-    await until(async () => await readerOn(p) !== null, `${device}: the Reader opens on the head`);
-    await press(p, device, '#reader-menu');
-    await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: the Reader's ⋯ opens`);
-    await choose(p, device, 'Edit');
+    const shown = () => p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
+    if (!await shown()) {
+      const toggle = `#messages .reply-stack[data-stack="${id}"] > .stack-toggle`;
+      await centre(p, toggle); await press(p, device, toggle);
+      await until(shown, `${device}: the stack's chevron shows the message whole`);
+    }
+    await menuOf(p, device, id); await choose(p, device, 'Edit');
   };
   await check('reading edit build going back into Edit after posting a reply while Edit was held, twice, opens on the latest words with no notice; an agent\'s message offers no Edit, and another device holding the edit is said', async () => {
     for (const device of ['laptop', 'phone']) {
