@@ -3782,6 +3782,99 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => (await readerOn(q))?.startsWith('Reply 2'), 'and the Reader opens on it, as a link to a message here does');
     await closeReader(q, 'laptop');
     assert.deepEqual(q.errors, []); await q.close();
+    // The rail's Starred lands on the dossier's first message, which in a dossier of more than seven is an earlier
+    // one: the dossier opens, its row too, and the first message shows whole in its place, the keys on it, no Reader.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.root, operation_id: topic + '-star', args: { starred: true } });
+    const s = await open(topic + '-star', 'laptop', topic, ids.root);
+    await becomes(async () => (await earlierLook(s, ids)).fold, 'folded', 'the dossier begins at latest and unread');
+    const starRow = `#things .things-sec[data-key=starred] .things-body > div > ul:first-child a.row`;
+    await becomes(() => s.evaluate(`[...document.querySelectorAll(${JSON.stringify(starRow)})].map(e=>e.firstChild.textContent.startsWith('Cabin week: the plan.'))`), [true], 'the rail\'s Starred lists the first message');
+    if (!await s.evaluate(`document.querySelector('#things .things-sec[data-key=starred]').open`)) await s.point('#things .things-sec[data-key=starred] > summary');
+    await s.point(starRow);
+    await becomes(async () => { const v = await earlierLook(s, ids); return [v.fold, v.button, v.messages[0]]; }, ['open', null, 'root:card'], 'Starred opens the dossier and its row, the first message whole');
+    await until(async () => await focusedOn(s) === ids.root, 'the keys land on the first message');
+    assert.equal(await readerOn(s), null, 'landing opens no Reader');
+    assert.deepEqual(s.errors, []); await s.close();
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.root, operation_id: topic + '-unstar', args: { starred: false } });
+  });
+
+  // Item 476 and "Your place holds" (docs/experience-guidelines.md): the newest seven are counted when the dossier is
+  // drawn open. A message arriving after that joins the cards below and hides nothing: the card being read, or an
+  // earlier message's row once the row is opened, stays shown where it was. Changing the dossier's state counts them
+  // again. At a laptop's width and 390, 375 and 320 on a phone.
+  await check('reading stacks a message arriving in an open dossier hides nothing being read: the seven are counted when it opened, the row and the cards stay where they were, and changing its state counts again', async () => {
+    const arrivalSeed = (topic, n) => seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Arrival root.\nIts second line.' }],
+      ...Array.from({ length: n - 1 }, (_, k) => [`r${k + 1}`, { sender: k % 2 ? 'aim-ux' : other, join: k === 1, reply_to: 'root', addressees: [facts.actor], body: `Arrival reply ${k + 1}.`, read: true }])]);
+    const arrive = async (topic, root, name) => (await control({ method: 'agent_message', operation_id: `${topic}-${name}`, topic_id: topic, source: 'topic', sender: other,
+      addressees: [facts.actor], reply_to: root, body: `Arrives while a card is read (${name}).` })).result.message_id;
+    // Where a message shows: as a card, its words' top; as a row, the row's top.
+    const place = (p, id) => p.evaluate(`(c=>{const w=c.querySelector(':scope > .message-preview'),e=w&&w.getClientRects().length?w:c;return {face:e===w?'card':'row',top:Math.round(e.getBoundingClientRect().top)}})(document.querySelector(${JSON.stringify(card(id))}))`);
+    const cards = (from, to) => Array.from({ length: to - from + 1 }, (_, n) => `r${from + n}:card`);
+    for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [390, 375, 320] : [1280]) {
+      const at = `${device} ${width}px`, sized = async p => { if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true }); };
+      // Seven, the reader on the first message, whole and centred.
+      const seven = `stack-arrive-7-${device}-${width}`, a = await arrivalSeed(seven, 7);
+      const p = await open(seven, device, seven, a.root); await sized(p);
+      const toggle = await dossierOpen(p, device, a.root);
+      await becomes(() => earlierLook(p, a), { fold: 'open', button: null, messages: ['root:card', ...cards(1, 6)] }, `${at}: a dossier of seven, open, every message a card`);
+      await centre(p, card(a.root));
+      const first = await place(p, a.root);
+      a.n1 = await arrive(seven, a.root, 'n1');
+      await becomes(() => earlierLook(p, a), { fold: 'open', button: null, messages: ['root:card', ...cards(1, 6), 'n1:card'] }, `${at}: a reply arriving joins the cards below; no row comes and the first message stays whole`);
+      assert.deepEqual(await place(p, a.root), first, `${at}: the first message stays where it was being read`);
+      // Changing the dossier's state counts them again: folded and opened, the eight show seven and the row.
+      await centre(p, toggle); await press(p, device, toggle);
+      await becomes(async () => (await earlierLook(p, a)).fold, 'folded', `${at}: the chevron folds the dossier`);
+      await dossierOpen(p, device, a.root);
+      await becomes(() => earlierLook(p, a), { fold: 'open', button: '1 earlier message', messages: ['root:tab', ...cards(1, 6), 'n1:card'] }, `${at}: opened again, the newest seven are counted afresh`);
+      assert.deepEqual(p.errors, []); await p.close();
+      // Ten, the reader on the oldest card shown; then, the row opened, on an earlier message's row.
+      const ten = `stack-arrive-10-${device}-${width}`, b = await arrivalSeed(ten, 10);
+      const q = await open(ten, device, ten, b.root); await sized(q);
+      await dossierOpen(q, device, b.root);
+      await becomes(() => earlierLook(q, b), { fold: 'open', button: '3 earlier messages', messages: ['root:tab', ...cards(3, 9)] }, `${at}: a dossier of ten, open, the newest seven and the row`);
+      await centre(q, card(b.r3));
+      const oldest = await place(q, b.r3);
+      b.n1 = await arrive(ten, b.root, 'n1');
+      await becomes(() => earlierLook(q, b), { fold: 'open', button: '3 earlier messages', messages: ['root:tab', ...cards(3, 9), 'n1:card'] }, `${at}: a reply arriving hides no card, and the row still stands for three`);
+      assert.deepEqual(await place(q, b.r3), oldest, `${at}: the card being read stays shown where it was`);
+      await centre(q, earlierButton(b.root)); await press(q, device, earlierButton(b.root));
+      const rows = ['root:row', 'r1:row', 'r2:row', ...cards(3, 9), 'n1:card'];
+      await becomes(async () => (await earlierLook(q, b)).messages, rows, `${at}: opened, the earlier ones are rows`);
+      await centre(q, card(b.r1));
+      const row = await place(q, b.r1);
+      b.n2 = await arrive(ten, b.root, 'n2');
+      await becomes(() => earlierLook(q, b), { fold: 'open', button: null, messages: [...rows, 'n2:card'] }, `${at}: another reply arriving leaves the rows as they were`);
+      assert.deepEqual(await place(q, b.r1), row, `${at}: the earlier message's row being read stays where it was`);
+      assert.deepEqual(q.errors, []); await q.close();
+    }
+  });
+
+  // Item 476 on a phone: the first tap on an open dossier's tab lights it and the next acts, whatever its first message
+  // shows: whole (seven messages), its tab alone behind a closed earlier-messages row, or that row once opened. A tap
+  // on the row itself opens it and lights nothing, so the tab's first tap after it is a first tap too.
+  await check('reading stacks on a phone the first tap on an open dossier\'s tab lights it, whether its first message shows whole, as the tab alone behind the earlier-messages row, or as that row opened; the next tap folds it', async () => {
+    const tabSeed = (topic, n) => seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Tab root.' }],
+      ...Array.from({ length: n - 1 }, (_, k) => [`r${k + 1}`, { sender: other, reply_to: 'root', addressees: [facts.actor], body: `Tab reply ${k + 1}.`, read: true }])]);
+    const topics = { 'stack-tab-7': await tabSeed('stack-tab-7', 7), 'stack-tab-15': await tabSeed('stack-tab-15', 15) };
+    const levelOf = (p, id) => p.evaluate(`import('/reply-stacks.mjs').then(m=>m.stackState(document.getElementById('messages')).levels.get(${JSON.stringify(id)})??null)`);
+    for (const width of [390, 375, 320]) for (const [state, topic, face] of [['seven', 'stack-tab-7', 'root:card'], ['closed', 'stack-tab-15', 'root:tab'], ['opened', 'stack-tab-15', 'root:row']]) {
+      const ids = topics[topic], at = `${width}px, ${state}`;
+      const p = await open(`stack-tab-${state}-${width}`, 'phone', topic, ids.root);
+      await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+      await dossierOpen(p, 'phone', ids.root);
+      if (state === 'opened') { await centre(p, earlierButton(ids.root)); await tap(p, earlierButton(ids.root)); }
+      await becomes(async () => { const v = await earlierLook(p, ids); return [v.fold, v.messages[0]]; }, ['open', face], `${at}: the dossier is open, its first message ${face}`);
+      assert.deepEqual(await lit(p), [], `${at}: nothing is lit before the tap on the tab`);
+      const who = `${card(ids.root)} > .stack-head > .stack-who`;
+      await centre(p, who); await tap(p, who);
+      await until(async () => (await lit(p)).includes(ids.root), `${at}: the first tap on the tab lights the dossier`);
+      assert.equal(await levelOf(p, ids.root), 'open', `${at}: the first tap folds nothing`);
+      assert.deepEqual((await earlierLook(p, ids)).messages[0], face, `${at}: and changes nothing it shows`);
+      await tap(p, who);
+      await becomes(async () => (await earlierLook(p, ids)).fold, 'folded', `${at}: the next tap folds it to latest and unread`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
   });
 
   // Item 474: a message's images show as thumbnails in its card, on the topic page and in a dossier, the right

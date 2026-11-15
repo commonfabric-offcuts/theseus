@@ -997,6 +997,15 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await toggleOnlyNew(p, true);
     await widths({ row: null, messages: cards }, 'under Only new the rows show as cards');
     await shot(p, 'conversation-earlier-only-new');
+    // Under Only new an earlier message is a card like any other: a press on it, or on the first message's words,
+    // opens the Reader on it as a card's press does, and the row it is drawn as off Only new is untouched.
+    await openCard(p, ids[1], 'Earlier check: reply 1.');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    const rootWords = `#messages .message-card[data-id="${ids[0]}"] > .message-preview`;
+    await p.evaluate(`document.querySelector(${JSON.stringify(rootWords)}).scrollIntoView({block:'center'})`);
+    await p.point(rootWords);
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Earlier check: the plan.')`), 'a press on the first message\'s words opens the Reader on it');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
     await toggleOnlyNew(p, false);
     await widths({ row: null, messages: ['row', 'row', ...cards.slice(2)] }, 'Only new off, the earlier ones are rows again');
     assert.deepEqual(p.errors, []); await p.close();

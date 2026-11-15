@@ -494,3 +494,25 @@ test('a dossier of seven messages or fewer shows no earlier row; one of eight sh
   assert.deepEqual(ids(earlierOf(dossier(8), 'open')), ['m1']);
   assert.deepEqual(words(rowsOf(dossier(8), { level: 'open' })), ['1 earlier message', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
 });
+
+// Your place holds (docs/experience-guidelines.md): the newest seven are counted once, when the dossier is drawn open,
+// and the page holds the first message it showed then (held). A message arriving after that joins the shown ones
+// below and hides nothing; one loaded from before goes behind the row. Held gone from the dossier, they are counted
+// afresh; at latest plus unread none is earlier, held or not.
+test('the newest seven are counted when the dossier is drawn open: a message arriving after that hides nothing', () => {
+  const dossier = n => stacksOf([message(1), ...Array.from({ length: n - 1 }, (_, i) => message(i + 2, { reply_to: 'm1' }))])[0];
+  // Seven drawn open, the first message shown: an eighth arrives and the first message stays shown, no row.
+  assert.deepEqual(earlierOf(dossier(8), 'open', { held: 'm1' }), [], 'seven held from m1, an eighth arrives');
+  assert.deepEqual(words(rowsOf(dossier(8), { level: 'open', held: 'm1' })), ['m2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'], 'every reply a card, no earlier row');
+  // Ten drawn open showed m4 on: an eleventh arrives, and m4 is still shown, the row still three.
+  const eleven = dossier(11);
+  assert.deepEqual(ids(earlierOf(eleven, 'open', { held: 'm4' })), ['m1', 'm2', 'm3']);
+  assert.deepEqual(words(rowsOf(eleven, { level: 'open', held: 'm4' })), ['3 earlier messages', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm10', 'm11']);
+  assert.equal(shown(eleven, eleven.replies[2], { level: 'open', held: 'm4' }), true, 'the card being read stays shown');
+  assert.equal(shown(eleven, eleven.replies[1], { level: 'open', held: 'm4' }), false, 'the earlier ones stay behind the row');
+  // Held is no longer in the dossier: counted afresh. Latest plus unread: none is earlier.
+  assert.deepEqual(ids(earlierOf(dossier(9), 'open', { held: 'gone' })), ['m1', 'm2']);
+  assert.deepEqual(earlierOf(eleven, 'folded', { held: 'm4' }), []);
+  // Not held (drawn open for the first time): the last seven, as before.
+  assert.deepEqual(ids(earlierOf(eleven, 'open')), ['m1', 'm2', 'm3', 'm4']);
+});
