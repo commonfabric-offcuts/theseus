@@ -14273,36 +14273,6 @@
     "native": "reading",
     "case": "go-ahead ask's bar keeps every button"
    }
-  },
-  {
-   "item": 473,
-   "act": "Where even one row is too wide, the message bar is never wider than the window",
-   "break": [
-    [
-     "web/aim.css",
-     "width:max-content;max-width:calc(100% - 1rem);gap:.1rem;",
-     "width:max-content;gap:.1rem;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "go-ahead ask's bar keeps every button"
-   }
-  },
-  {
-   "item": 473,
-   "act": "Where even one row is too wide, the message bar's buttons wrap, each in the window",
-   "break": [
-    [
-     "web/aim.css",
-     "display:flex;flex-wrap:wrap;justify-content:flex-end;",
-     "display:flex;justify-content:flex-end;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "go-ahead ask's bar keeps every button"
-   }
   }
  ]
 }

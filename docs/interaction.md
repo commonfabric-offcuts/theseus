@@ -19,8 +19,7 @@ the pointer's way, the keys' and the phone's.
   wide on a phone, do not fit in one row (a go-ahead ask its card cuts off has
   seven, too many for a 320px window, and "Link copied" widens its ⋯), it puts
   Fold, then Show full message, behind its ⋯, whose menu offers both, and they
-  come back once there is room again; in a window narrower still its buttons
-  wrap to a second row, ⋯ last, so none leaves the window. It never covers
+  come back once there is room again. It never covers
   the reply arrow beside the card's time (docs/topic-reading.md): where it
   would, it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through

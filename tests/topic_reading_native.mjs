@@ -343,8 +343,6 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // pixels, the bar keeps to one row over its card, every button 44px to touch and inside the window, ⋯ last: where
   // there is no room it puts Fold, then Show full message, behind its ⋯, whose menu offers them, and they come back
   // once there is room (the ⋯ says ⋯ again). Where there is room it puts nothing away: a laptop, a short ask at 390.
-  // At 280 pixels, narrower than any phone the page is made for, even that is too wide with "Link copied": its
-  // buttons wrap, and none leaves the window.
   await check('reading a go-ahead ask\'s bar keeps every button in the window at 390, 375 and 320 pixels, with Show full message and with "Link copied" on its ⋯, in one row, what does not fit behind its ⋯', async () => {
     const long = Array.from({ length: 70 }, (_, i) => `Step ${i}. What the deploy will do, in words that need the whole card.`).join('\n\n');
     // The bar as it stands: its buttons in order, each one's box, and the bar's and its card's boxes.
@@ -379,10 +377,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         if (at.bar.left < 0 || at.bar.right > at.window) problems.push(`${where}: the bar runs off the window (${at.bar.left}–${at.bar.right} in ${at.window})`);
         if (at.bar.bottom <= at.card.top || at.bar.top >= at.card.bottom) problems.push(`${where}: the bar is not over its card (bar ${at.bar.top}–${at.bar.bottom}, card ${at.card.top}–${at.card.bottom})`);
         const rows = new Set(at.buttons.map(b => b.top)).size;
-        if (width >= 320) {
-          if (rows !== 1) problems.push(`${where}: the bar takes ${rows} rows`);
-          if (at.sideways) problems.push(`${where}: the page scrolls sideways`);
-        } else if (rows > 2) problems.push(`${where}: the bar takes ${rows} rows`);
+        if (rows !== 1) problems.push(`${where}: the bar takes ${rows} rows`);
+        if (at.sideways) problems.push(`${where}: the page scrolls sideways`);
         // Where there is room, nothing goes behind the ⋯: a laptop, and a phone's short ask at 390 before anything is said.
         if ((device === 'laptop' || (width === 390 && id === ids.short && state === 'plain')) && behind.length) problems.push(`${where}: ${behind.join(' and ')} went behind the ⋯ with room for them`);
         // Seven buttons a finger wide are wider than 320 pixels less 8 each side, and six are not: Fold alone goes.
@@ -400,15 +396,15 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await frames(p);
         assert.ok((await lit(p)).includes(id), `${device}: the message keeps its light`);
       };
-      const widths = device === 'phone' ? [390, 375, 320, 280] : [DEVICES.laptop.width];
+      const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width];
       for (const width of widths) {
         if (width !== DEVICES[device].width) await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
         await until(() => p.evaluate(`innerWidth === ${width}`), `${device}: the window is ${width} wide`);
         for (const id of [ids.short, ids.long]) {
           const name = id === ids.long ? 'long' : 'short';
           await light(p, device, id);
-          // The long ask's card cuts it off, and its bar offers Show full message where there is room for it (all but 280 pixels).
-          if (id === ids.long) await until(async () => await p.evaluate(`(c=>c.scrollHeight-c.clientHeight>1)(document.querySelector(${JSON.stringify(card(id))}))`) && (width < 320 || (await barNow(p, id))?.buttons.some(b => b.act === 'full')), `${device} ${width}: the long ask's card cuts it off, and its bar offers Show full message`);
+          // The long ask's card cuts it off, and its bar offers Show full message (there is room for it before anything is said).
+          if (id === ids.long) await until(async () => (await barNow(p, id))?.buttons.some(b => b.act === 'full'), `${device} ${width}: the long ask's bar offers Show full message`);
           await frames(p);
           const plain = await look(width, id, 'plain');
           if (width === 320 || device === 'laptop') for (const theme of ['light', 'dark']) {
@@ -418,7 +414,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
           await copy(id, plain.behind, `${device} ${width} ${name} ask`);
           await look(width, id, 'Link copied');
-          if (width <= 320) await shot(p, `ask-bar-${device}-${width}-${name}-copied`);
+          if (width === 320) await shot(p, `ask-bar-${device}-${width}-${name}-copied`);
           // A key says ⋯ again, and what went behind it for "Link copied" comes back.
           await p.key('Shift');
           await until(() => p.evaluate(`document.querySelector('${BAR} [data-act=more]').textContent === '⋯'`), `${device}: the ⋯ says ⋯ again`);

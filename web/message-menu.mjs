@@ -327,8 +327,8 @@ export class MessageMenu {
   }
   // A bar wider than the window less 8px each side (a go-ahead ask its card cuts off has seven buttons a finger
   // wide, and "Link copied" widens its ⋯) puts Fold, then Show full message, behind its ⋯, whose menu offers both,
-  // so it keeps to one row, clear of the card's words and star (item 473). Each comes back once there is room again.
-  // Where even that is too wide, the bar's buttons wrap (aim.css), so none leaves the window.
+  // so it keeps to one row in the window, clear of the card's words and star (item 473). Each comes back once there
+  // is room again.
   fit(room) {
     for (const button of this.behind) button.hidden = false;
     this.behind.clear();
