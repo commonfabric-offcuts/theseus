@@ -330,4 +330,95 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('health a release from a merged train says no release check ran here and its hosted judgment, at every phone width and a laptop, light and dark', async () => {
+    // Each state of the release line a deploy's record gives (aim_next/health.py, web/health.mjs): an ordinary train
+    // whose hosted judgment is pending, then attached; a train judged before its merge; and, the negative, a release
+    // check's record, which still says its counts passed. Each is read on a page open at 320, 375 and 390 px phone
+    // widths and a laptop, in light, and at 320 px and the laptop in dark, as each page reads again.
+    const sizes = [['320', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, 'light'], ['375', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true }, 'light'],
+      ['390', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }, 'light'], ['laptop', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }, 'light'],
+      ['320', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, 'dark'], ['laptop', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }, 'dark']];
+    const pages = [];
+    for (const [width, metrics, theme] of sizes) {
+      const p = await healthPage(`health-train-${width}-${theme}`, { beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      pages.push({ p, where: `${width} ${theme}`, width, theme, mobile: metrics.mobile });
+    }
+    const readRelease = p => p.evaluate(`(()=>{const d=document.querySelector('details[data-key="release"]');if(!d)return null;const m=d.querySelector('summary'),r=m.getBoundingClientRect(),s=getComputedStyle(d);
+      return {open:d.open,summary:m.textContent,details:[...d.querySelectorAll('p')].map(n=>n.textContent),height:r.height,right:d.getBoundingClientRect().right,
+        left:s.borderLeftWidth,top:s.borderTopWidth,scroll:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}})()`);
+    const latest = (await view('health', {})).release;
+    let number = (latest?.release ?? 29) + 1, previous = latest?.commit ?? 'e'.repeat(40);
+    const sha = n => n.toString(16).padStart(40, '0');
+    const record = async measurements => {
+      const commit = sha(number);
+      await control({ method: 'targets', operation_id: `health-train-release-${number}`, kind: 'release',
+        record: { release: number, commit, previous, deployed_at: '2026-11-14T05:00:00-08:00', items: [number + 451], measurements, source: 'deploy', evidence: null } });
+      previous = commit;
+      // An item ships in one release, so each record ships its own.
+      return { release: number, commit, shipped: `It shipped pipeline item ${451 + number++}.` };
+    };
+    const train = (kind, judgment, commit) => ({ train: { file: '/abs/train.json', pr: 31, kind, merge_commit: commit, merged_tree: 'f'.repeat(40), release_branch: 'release/live73',
+      items: [{ item: 481, approved_head: 'd'.repeat(40), review: 'm-review' }], hosted_run: null, judgment } });
+    const judged = (head, conclusions) => ({ head, audit: 'm-audit',
+      producer_runs: [{ id: 101, kind: 'run', name: 'Checks', head_sha: head, status: 'completed', conclusion: conclusions[0] }],
+      verdict_checks: conclusions.slice(1).map((conclusion, i) => ({ id: 201 + i, kind: 'check', name: 'Verdict', head_sha: head, status: 'completed', conclusion })) });
+    // A page in a tab behind reads again when it is shown (followCommits, web/app.mjs); the one in front follows the
+    // live feed. Each page is brought to the front before it is read.
+    const front = async page => {
+      await page.p.send('Page.bringToFront');
+      await until(() => page.p.evaluate("document.visibilityState==='visible'"), `${page.where}: the page is in front`);
+    };
+    // Every page shows release `release` with exactly `details`, the line opened in place and fitting the page.
+    const shows = async (release, details, label) => {
+      for (const page of pages) {
+        await front(page);
+        // A page brought forward still shows what it read before until its read again lands: wait for these words.
+        let seen = null;
+        const line = await until(async () => { const l = seen = await readRelease(page.p);
+          return l && l.summary.startsWith(`Latest release: Release ${release} went live at `) && JSON.stringify(l.details) === JSON.stringify(details) && l; },
+          `${page.where}: ${label}: the release line repaints to release ${release} with ${JSON.stringify(details)}`).catch(error => {
+          throw Error(`${error.message}; it shows ${JSON.stringify(seen)}`); });
+        if (!line.open) {
+          const selector = 'details[data-key="release"] summary';
+          await page.p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+          if (page.mobile) {
+            const b = await page.p.box(selector), x = b.x + 12, y = b.y + b.height / 2;
+            await page.p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            await page.p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          } else await page.p.point(selector);
+          await until(async () => (await readRelease(page.p)).open, `${page.where}: ${label}: the release line opens in place`);
+        }
+        const shown = await readRelease(page.p);
+        assert.deepEqual(shown.details, details, `${page.where}: ${label}`);
+        assert.ok(shown.scroll <= shown.viewport, `${page.where}: ${label}: nothing sideways (${shown.scroll} > ${shown.viewport})`);
+        assert.ok(shown.right <= shown.viewport, `${page.where}: ${label}: the line fits the page`);
+        assert.equal(shown.left, shown.top, `${page.where}: ${label}: no coloured left edge`);
+        if (page.mobile) assert.ok(shown.height >= 44, `${page.where}: ${label}: the line is a touch target (${shown.height}px)`);
+        if (page.width === '320' || page.width === 'laptop') {
+          await page.p.evaluate(`document.querySelector('details[data-key="release"]').scrollIntoView({block:'center'})`);
+          await shot(page.p, `health-train-${label}-${page.width}-${page.theme}`);
+        }
+      }
+    };
+    const pending = await record(train('ordinary', 'pending', sha(number)));
+    await shows(pending.release, ['It came from a merged train, so no release check ran here.', 'Its hosted judgment is still pending.', pending.shipped], 'pending');
+    await control({ method: 'targets', operation_id: `health-train-judgment-${pending.release}`, kind: 'attach_judgment', release: pending.release,
+      judgment: judged(pending.commit, ['success', 'failure']) });
+    // Attaching the judgment is a commit: the page in front, the last one read, repaints with it from the live feed;
+    // each other page reads it when shown.
+    const inFront = pages[pages.length - 1];
+    await until(async () => (await readRelease(inFront.p)).details.includes('Its hosted judgment: 1 of 2 runs and checks succeeded.'),
+      `${inFront.where}: the attached judgment repaints the release line from the live feed`);
+    await shows(pending.release, ['It came from a merged train, so no release check ran here.', 'Its hosted judgment: 1 of 2 runs and checks succeeded.', pending.shipped], 'attached');
+    const first = await record(train('judged-first', judged('c'.repeat(40), ['success', 'success']), sha(number)));
+    await shows(first.release, ['It came from a merged train judged before its merge, so no release check ran here.', 'That judgment: 2 of 2 runs and checks succeeded.', first.shipped], 'judged-first');
+    const checked = await record({ release_check: { commit: null, started_at: null, finished_at: null }, python_units: { tests: 1106 }, node_units: { tests: 740, pass: 740 }, native: { pass: 208, total: 208, steps: {} } });
+    await shows(checked.release, ['Its release check: 1,106 Python, 740 Node and 208 of 208 browser checks passed.', checked.shipped], 'release-check');
+    for (const page of pages) { assert.deepEqual(page.p.errors, [], page.where); await page.p.close(); }
+  });
 }
