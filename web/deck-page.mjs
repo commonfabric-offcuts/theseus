@@ -534,7 +534,7 @@ export class DeckPage {
     // The box keeps the height of the card's words; its images stand under it at the heights they showed at.
     const pictures = row ? [...row.querySelectorAll(':scope > .deck-images > .deck-image')] : [];
     const height = Math.max(0, (row?.getBoundingClientRect().height ?? 0) - (row?.querySelector(':scope > .deck-images')?.getBoundingClientRect().height ?? 0));
-    const shownAt = new Map(pictures.map(figure => [figure.dataset.line, figure.getBoundingClientRect().height]));
+    const shownAt = new Map(pictures.map(figure => [figure.dataset.cardImage, figure.getBoundingClientRect().height]));
     this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height });
   }
   written(card) {
@@ -812,7 +812,7 @@ export class DeckPage {
     const holder = this.node('div', 'deck-images');
     for (const image of images) {
       const figure = this.node('figure', 'deck-image');
-      figure.dataset.line = image.line; figure.dataset.id = image.id;
+      figure.dataset.cardImage = image.line;
       const at = editing?.shownAt?.get(image.line);
       if (at) figure.style.minHeight = `${at}px`;
       this.picture(figure, image);

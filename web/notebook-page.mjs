@@ -264,7 +264,7 @@ export class NotebookPage extends DeckPage {
     if(!changed)this.conflictRevision=null;
     this.paintImages();
     // A card's image as it now stands: shown from this device while it uploads, then from Core.
-    for(const figure of this.list.querySelectorAll('.deck-image'))this.picture(figure,cardImages(figure.dataset.line).images[0]);
+    for(const figure of this.list.querySelectorAll('.deck-image'))this.picture(figure,cardImages(figure.dataset.cardImage).images[0]);
     if(this.unavailable)this.say(this.unavailable,'attention');
     else if(w.journalError)this.say('Device copy unavailable: '+w.journalError+'. Keep this page open.','attention',()=>w.flush());
     else if(this.imageError)this.say(this.imageError,'attention');
