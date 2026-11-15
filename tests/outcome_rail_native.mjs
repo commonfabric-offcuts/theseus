@@ -1674,6 +1674,127 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
+  // A row drawn again takes the focus back wearing the ring the row that went
+  // wore, and no other (key-tree.mjs): the outline's pressed row is ringed
+  // (above), and a mouse press in the right rail rings nothing, before or after.
+  await check('rail a mouse press in the right rail rings nothing, nor once its section draws again: Unstar on one of two starred messages leaves no ring on the Unstar drawn after it', async () => {
+    await control({ method: 'navigation_topics', topics: [{ id: 'rail-unstar-t', title: 'Unstar topic' }] });
+    for (const n of [1, 2]) {
+      const id = (await control({ method: 'agent_message', operation_id: 'rail-unstar-' + n, topic_id: 'rail-unstar-t', whole_topic: true, sender: 'person', body: `Unstar message ${n}.` })).result.message_id;
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: id, operation_id: 'rail-unstar-star-' + n, args: { starred: true } });
+    }
+    const p = await open('rail-unstar', '/?topic=rail-unstar-t');
+    await settled(p, 'the topic is up');
+    const unstar = '#things .things-sec[data-key=starred] .things-unstar';
+    const count = () => p.evaluate(`[...document.querySelectorAll('${unstar}')].filter(e=>e.checkVisibility()).length`);
+    await until(async () => await count() === 2, 'the right rail lists both stars, each with its Unstar');
+    // Where the focus is, whether it wears a ring, and how many things in the rails do.
+    const seen = () => p.evaluate(`(()=>{const e=document.activeElement;
+      return {unstar:Boolean(e?.matches?.('${unstar}')),visible:Boolean(e&&e!==document.body&&e.matches(':focus-visible')),rails:document.querySelectorAll('#rail :focus-visible, #things :focus-visible').length}})()`);
+    await p.evaluate(`document.querySelector('${unstar}').scrollIntoView({block:'center'})`);
+    await p.point(unstar);
+    // The section draws again with the one star left; the tree puts back, in the same task, any focus that went with the first Unstar.
+    await until(async () => await count() === 1, 'Unstar takes the first star off, and the section draws again');
+    const after = await seen();
+    // Chrome focuses the button pressed, and the tree hands that focus to the Unstar left; WebKit gives a pressed button no focus.
+    assert.deepEqual({ visible: after.visible, rails: after.rails }, { visible: false, rails: 0 }, `after a mouse Unstar nothing in the rails wears a ring: ${JSON.stringify(after)}`);
+    // The keys still ring: Tab and Shift-Tab come back to an Unstar wearing its ring, so the check above is no rail that rings nothing at all.
+    if (after.unstar) {
+      await p.key('Tab'); await p.key('Tab', 8);
+      assert.deepEqual(await seen(), { unstar: true, visible: true, rails: 1 }, 'the keys bring the ring back to the Unstar');
+    }
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // The phone's drawer opens on the row a tap chose only while that tap is the
+  // person's last choice: a move begun elsewhere (back, forward, a link in the
+  // page) opens it on the place being read, with no ring, as a fresh page has it.
+  await check('rail at 390 the drawer opens on the place being read, with no ring, after a move the outline did not begin: back, forward and a link in the page; a tap on a row there chooses it again, ringed', async () => {
+    await control({ method: 'navigation_topics', topics: [{ id: 'rail-back-a', title: 'Back topic A' }] });
+    await control({ method: 'agent_message', operation_id: 'rail-back-link', topic_id: 'rail-back-a', whole_topic: true, sender: 'person', body: `Back to ${facts.origin}/?topic=t1 from here.` });
+    const p = await open('rail-back-phone', '/?topic=t1', 'phone');
+    // Up at 390, the outline no longer inert: the right rail reads nothing there until it is opened.
+    const up = what => until(() => p.evaluate("document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline #topic-navigation')) && !document.querySelector('#outline')?.closest('[inert]')").catch(() => false), what);
+    await up('the topic is up at 390');
+    const row = '#outline a[data-topic-id="rail-back-a"]';
+    await until(() => p.evaluate(`Boolean(document.querySelector('${row}'))`), 'the outline lists topic A');
+    const openDrawer = async what => { await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, what + ': "☰ Outcomes" opens the drawer'); };
+    const closeDrawer = async what => { await p.key('Escape'); await until(async () => !(await drawer(p)).open, what + ': Escape closes the drawer'); };
+    const tapRow = async (selector, search, title, what) => {
+      await p.evaluate(`document.querySelector('${selector}').scrollIntoView({block:'center'})`);
+      await tap(p, selector);
+      await arrived(p, search, title, what);
+      await until(async () => !(await drawer(p)).open, what + ': the drawer closes');
+      await up(what + ': the page reached is up');
+    };
+    // The drawer opened on the row of the topic being read, which wears no ring, and nothing else in the rails does.
+    const onReading = async (topic, what) => {
+      const at = await keyedAt(p), ring = await pressRing(p), current = await p.evaluate("document.activeElement?.getAttribute('aria-current')");
+      assert.deepEqual({ at, current, visible: ring.visible, rails: ring.rails }, { at: 'topic:' + topic, current: 'page', visible: false, rails: 0 }, `${what}: the drawer opens on the topic being read, with no ring`);
+    };
+    // A tap chooses topic A; back, and the drawer opens on t1, the page being read.
+    await openDrawer('first');
+    await tapRow(row, '?topic=rail-back-a', 'Back topic A', 'a tap on topic A');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=t1', null, 'back to t1');
+    await up('t1 is up again');
+    await openDrawer('after back');
+    await onReading('t1', 'after back');
+    await closeDrawer('after back');
+    // Forward, to topic A again: the drawer opens on its row, the page being read, with no ring, since no tap chose it this time.
+    await p.evaluate('history.forward()');
+    await arrived(p, '?topic=rail-back-a', 'Back topic A', 'forward to topic A');
+    await up('topic A is up again');
+    await openDrawer('after forward');
+    await onReading('rail-back-a', 'after forward');
+    await closeDrawer('after forward');
+    // A link in the page, back to t1.
+    const link = '#messages a.words-link[href$="topic=t1"]';
+    await until(() => p.evaluate(`Boolean(document.querySelector('${link}')?.checkVisibility())`), 'topic A\'s message links to t1');
+    await tapRow(link, '?topic=t1', null, 'a tap on the link to t1');
+    await openDrawer('after a link in the page');
+    await onReading('t1', 'after a link in the page');
+    // A tap on a row in the drawer is the person's choice again: opened again, the drawer is on it, ringed.
+    await tapRow(row, '?topic=rail-back-a', 'Back topic A', 'a tap on topic A again');
+    await openDrawer('after a tap again');
+    await pressedRow(p, 'topic:rail-back-a', 'after a tap again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // The Reader gives the focus back wearing the ring its opener wore as that
+  // opening found it: one the keys opened, and then the mouse, from the same message.
+  await check('rail the Reader gives its opener back ringed only as this opening found it: opened by the keys, Escape rings the message; opened then by the mouse from the same message and closed with the mouse, nothing is ringed', async () => {
+    const p = await open('rail-reader-ring', '/?topic=t1');
+    await settled(p, 'the topic is up');
+    await until(() => p.evaluate("document.querySelectorAll('#messages [data-id]').length > 1"), 'the messages are drawn');
+    await tabToOutline(p);
+    await p.key('ArrowRight');
+    // On a dossier shown as its row, Return edits its title (item 385): the keys go on to a message of their own.
+    for (let n = 0; n < 4 && await p.evaluate("Boolean(document.activeElement?.matches?.('.stack-head-card') && document.activeElement.closest('.reply-stack')?.dataset.headOpen === 'false')"); ++n) await p.key('ArrowDown');
+    const message = await keyedAt(p);
+    assert.match(message, /^message:/, '→ from the outline goes to a message');
+    const focusVisible = () => p.evaluate("Boolean(document.activeElement&&document.activeElement!==document.body&&document.activeElement.matches(':focus-visible'))");
+    const readerOpen = () => p.evaluate("document.getElementById('reader').open");
+    // The keys: Return opens the Reader, Escape closes it, and the message has the focus back with its ring.
+    await p.key('Enter');
+    await until(readerOpen, 'Return opens the Reader');
+    await p.key('Escape');
+    await until(async () => !await readerOpen(), 'Escape closes the Reader');
+    await until(async () => await keyedAt(p) === message, 'the keys are back on the message');
+    assert.equal(await focusVisible(), true, 'opened and closed by the keys, the message wears their ring');
+    // The mouse: a press on the same message opens the Reader, and ✕ pressed closes it.
+    const opener = await p.evaluate(`(()=>{const e=document.activeElement;e.dataset.ringProbe='opener';return e.tagName})()`);
+    assert.ok(opener, 'the message the keys are on is marked to press');
+    await p.point('[data-ring-probe=opener]');
+    await until(readerOpen, 'a press on the message opens the Reader');
+    await p.point('#reader-close');
+    await until(async () => !await readerOpen(), '✕ closes the Reader');
+    await until(async () => await keyedAt(p) === message, 'the focus is back on the message');
+    assert.equal(await focusVisible(), false, 'opened and closed by the mouse, the message wears no ring, whatever the keys\' opening wore');
+    assert.deepEqual(await p.evaluate("document.querySelectorAll(':focus-visible').length"), 0, 'and nothing else does');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // ---- Keyboard polish (items 288-292) ----
   // What the person would see ringed in the rails, by keyedAt's names for the
   // rails' rows, and whether the focused element wears a ring itself.
