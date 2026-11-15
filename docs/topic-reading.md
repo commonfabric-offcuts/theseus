@@ -84,6 +84,10 @@ the card. They are drawn in the line's quiet color (`--muted`), which every
 card face sets for light and dark, and held to the time (`.together`), so a
 line that wraps keeps them beside it; a message from before times were kept
 shows them after its name (`carriesOf` and `paintAuthor`, `web/marks.mjs`).
+The card's star (item 376) shows only on a lit card but always has its place
+after them; on a marked line it keeps to the time and marks (`aim.css`), so a
+line the marks fill wraps with them rather than leaving the star alone on a
+line that shows nothing, and the line still wraps within its own parts.
 A message that heads a reply stack shows them on the stack's head row too,
 beside who started it, since that row stands for the message while its card
 is folded into it (docs/reply-stacks.md, "The head").
@@ -94,7 +98,8 @@ Reader, or a reply saved there or on another device, marks the card once its
 reply emptied or a reply sent takes its mark away. Another reader's note or
 draft never marks a card. `tests/card_marks_native.mjs` (`native-card-marks`)
 checks them in Chrome and Safari's engine at 320, 375 and 390 points with
-touch and on a laptop, light and dark.
+touch and on a laptop, light and dark, and at every width that a marked line
+holds no line showing nothing and the star's place stays inside the card.
 
 ## Reply stacks (103, 283)
 
