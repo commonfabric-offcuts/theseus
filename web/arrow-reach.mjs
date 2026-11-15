@@ -16,10 +16,11 @@
 // here (reach), within its own column.
 //
 // Never in writing: in a field the arrows are the writing's, but for ↑ and ↓
-// in a one-line field or an empty box, which have no other line to go to. A focused box that
-// can still scroll that way (a message's text in the Reader) scrolls, and once
-// at its end the arrows go on. While a pop-up is open the arrows move only
-// through it. With nothing focused, ↓ goes to the first control in view from
+// in a one-line field or an empty box, which have no other line to go to. A
+// focused box that can still scroll that way (a message's text in the Reader)
+// scrolls, and once at its end the arrows go on. A control that way but out of
+// sight is scrolled toward a step at a time, so the words between are read.
+// While a pop-up is open the arrows move only through it. With nothing focused, ↓ goes to the first control in view from
 // the top, ↑ to the last, → to the first from the left and ← from the right.
 import { revealSelection } from './reveal.mjs';
 
@@ -90,14 +91,6 @@ function room(el, way) {
   if (way === 'up' || way === 'down') return way === 'down' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0;
   return way === 'right' ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0;
 }
-// Whether anything around el (its scrolling boxes, then the page) can still scroll the way named.
-function canScroll(el, way, doc) {
-  const view = doc.defaultView, vertical = way === 'up' || way === 'down';
-  for (let at = el?.parentElement; at && at !== doc.body && at !== doc.documentElement; at = at.parentElement) {
-    if (scrolling(view.getComputedStyle(at), vertical) && room(at, way)) return true;
-  }
-  return Boolean(doc.scrollingElement && room(doc.scrollingElement, way));
-}
 // Whether some of el shows: inside the window and every scrolling box around it.
 function inSight(el, doc) {
   const view = doc.defaultView, box = el.getBoundingClientRect();
@@ -111,19 +104,44 @@ function inSight(el, doc) {
   return box.bottom > area.top && box.top < area.bottom && box.right > area.left && box.left < area.right;
 }
 
+// One step toward a control out of sight: the innermost box around it that
+// hides it and can still scroll that way (else the page) scrolls a third of
+// what it shows, and no further than brings the control's edge in. Answers
+// whether anything scrolled.
+function stepToward(el, way, doc) {
+  const view = doc.defaultView, vertical = way === 'up' || way === 'down', sign = way === 'down' || way === 'right' ? 1 : -1;
+  const boxes = [];
+  for (let at = el.parentElement; at && at !== doc.body && at !== doc.documentElement; at = at.parentElement) {
+    if (scrolling(view.getComputedStyle(at), vertical)) boxes.push(at);
+  }
+  if (doc.scrollingElement) boxes.push(doc.scrollingElement);
+  const box = el.getBoundingClientRect();
+  for (const at of boxes) {
+    if (!room(at, way)) continue;
+    const page = at === doc.scrollingElement;
+    const clip = page ? { top: 0, left: 0, bottom: view.innerHeight, right: view.innerWidth } : at.getBoundingClientRect();
+    const beyond = vertical ? (sign > 0 ? box.top - clip.bottom : clip.top - box.bottom) : (sign > 0 ? box.left - clip.right : clip.left - box.right);
+    if (beyond < 0) continue;
+    const shows = vertical ? (page ? view.innerHeight : at.clientHeight) : (page ? view.innerWidth : at.clientWidth);
+    const by = sign * Math.min(shows / 3, beyond + 1), was = vertical ? at.scrollTop : at.scrollLeft;
+    at.scrollBy(vertical ? { top: by, behavior: 'instant' } : { left: by, behavior: 'instant' });
+    if ((vertical ? at.scrollTop : at.scrollLeft) !== was) return true;
+  }
+  return false;
+}
+
 // Moves the focus from `from` (null for the page itself) to the nearest
 // control the way named, within `within` (an element, else the layer the focus
 // is in), and brings it into view by the one rule (reveal.mjs). While that
-// control is out of sight and the page (or the box the focus is in) can still
-// scroll that way, the arrow scrolls instead, as it always has, so words
-// between two controls are read on the way. Answers whether the focus moved.
+// control is out of sight, the press scrolls toward it a step at a time
+// instead, so words between two controls are read on the way. Answers whether
+// the press did either.
 export function reach(from, way, { within = null, doc = from?.ownerDocument ?? globalThis.document } = {}) {
   const nothing = onNothing(from, doc), scope = within ?? layerOf(doc, nothing ? null : from);
   const list = controls(scope).filter(el => nothing || (el !== from && !el.contains(from) && !from.contains(el)));
   const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list.map(el => ({ el, box: el.getBoundingClientRect() })), way);
-  // Out of sight while the page can still scroll toward it, the press scrolls
-  // instead; from a field, whose arrows scroll nothing, it goes there.
-  if (!next || (!inSight(next, doc) && !from?.matches?.(FIELD) && canScroll(nothing ? null : from, way, doc))) return false;
+  if (!next) return false;
+  if (!inSight(next, doc) && stepToward(next, way, doc)) return true;
   next.focus({ preventScroll: true });
   revealSelection(next);
   return true;

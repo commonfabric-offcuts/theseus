@@ -13952,6 +13952,21 @@
    "check": {
     "node": "tests/ui_arrow_reach.test.mjs"
    }
+  },
+  {
+   "item": 301,
+   "act": "While the next control that way is out of sight, the arrow scrolls toward it a third of a window at a time, and once it shows the next press lands on it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "if (!inSight(next, doc) && stepToward(next, way, doc)) return true;",
+     "if (false) return true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows a control out of sight"
+   }
   }
  ]
 }

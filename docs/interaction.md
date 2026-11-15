@@ -294,10 +294,9 @@ rule above. (`web/arrow-reach.mjs`)
   picker keep their own arrows.
 - **Reading is kept.** A focused box that can still scroll that way (a long
   message in the Reader) scrolls first. While the next control that way is out
-  of sight and the page can still scroll, the arrow scrolls the page, as it
-  always has, so the words between are read on the way; once it shows, the
-  next press lands on it. From a field, whose arrows scroll nothing, the press
-  goes straight to it.
+  of sight, the arrow scrolls toward it, a third of a window at a time, so the
+  words between are read on the way; once it shows, the next press lands on
+  it.
 - **Never in writing.** In a field the arrows are the writing's, as everywhere
   above, but for ↑ and ↓ in a one-line field (a title, a name, a pipeline's
   "Add an item…"), which has no line above or below its own, and in a box with

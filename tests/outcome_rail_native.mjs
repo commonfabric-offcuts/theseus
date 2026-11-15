@@ -2276,31 +2276,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // Where the page and the focus's scrolling boxes stand: an arrow that moves
   // no focus while the next control is out of sight scrolls toward it instead.
   const scrolled = p => p.evaluate(`(()=>{const at=[];for(let e=document.activeElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight||e.scrollWidth>e.clientWidth)at.push(Math.round(e.scrollTop)+','+Math.round(e.scrollLeft));return at.join(' ')+'|'+Math.round(scrollY)+','+Math.round(scrollX)})()`);
-  // Whether the focus's scrolling boxes, or the page, can still scroll the
-  // way the arrow points: a press that moves no focus then scrolls, as the
-  // browser's own arrow does, and its scroll may still be under way.
-  const roomThatWay = (p, key) => p.evaluate(`((key)=>{const down=key==='ArrowDown'||key==='ArrowRight',v=key==='ArrowDown'||key==='ArrowUp';
-    const room=e=>v?(down?e.scrollTop+e.clientHeight<e.scrollHeight-1:e.scrollTop>0):(down?e.scrollLeft+e.clientWidth<e.scrollWidth-1:e.scrollLeft>0);
-    for(let e=document.activeElement?.parentElement;e&&e!==document.body&&e!==document.documentElement;e=e.parentElement){const o=getComputedStyle(e)[v?'overflowY':'overflowX'];if((o==='auto'||o==='scroll')&&room(e))return true}
-    return room(document.scrollingElement)})(${JSON.stringify(key)})`);
-  // One press: where the focus lands. A press that moves no focus while
-  // there is still room that way must scroll toward what lies on, and the
-  // step waits for that scroll; with no room left it is the end.
-  const arrowPress = async (p, key, was) => {
-    const room = await roomThatWay(p, key), before = await scrolled(p);
+  // One press: where the focus lands, and whether the press scrolled toward a
+  // control out of sight instead (arrow-reach.mjs scrolls at once, in the press).
+  const arrowPress = async (p, key) => {
+    const before = await scrolled(p);
     await p.key(key);
-    const at = await focusAt(p);
-    if (at !== was || !room) return { at, scrolled: false };
-    await until(async () => await scrolled(p) !== before, `${key} on ${was}, with the next control out of sight, scrolls toward it`);
-    return { at, scrolled: true };
+    return { at: await focusAt(p), scrolled: await scrolled(p) !== before };
   };
   // Presses the arrow up to n times, until the focus stays at the end of what
   // can scroll, or stop; the places the focus was.
   const walk = async (p, key, n = 30, stop = () => false) => {
     const seen = [await focusAt(p)];
     for (let step = 0; step < n; step++) {
-      const { at, scrolled: on } = await arrowPress(p, key, seen.at(-1));
-      if (on) continue;
+      const { at, scrolled: on } = await arrowPress(p, key);
+      if (on && at === seen.at(-1)) continue;
       if (at === seen.at(-1) || stop(at)) { if (at !== seen.at(-1)) seen.push(at); break; }
       seen.push(at);
     }
@@ -2340,7 +2329,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
         let to = node.id;
         for (let n = 0; n < 12 && to === node.id; n++) {
-          const step = await arrowPress(p, key, await focusAt(p));
+          const step = await arrowPress(p, key);
           to = await landed();
           if (!step.scrolled) break;
         }
@@ -2490,6 +2479,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key(toward);
     assert.match(await focusAt(p), /^things:(Just this topic|All of this outcome)$/, `${toward} moves to the other chip`);
     assert.notEqual(await focusAt(p), chip, `${toward} moves to the other chip`);
+    // From the first chip, ↓ goes on down to the sections (from the second, beside a heading's pencil, ↓ may land on the pencil first).
+    await p.evaluate("document.querySelector('#things .things-scope .chip').focus()");
     const down = await walk(p, 'ArrowDown', 6, at => at.startsWith('things:row:'));
     assert.ok(!down.includes('page'), 'never lost: ' + down.join(' → '));
     assert.ok((await focusAt(p)).startsWith('things:row:'), '↓ comes back to the sections: ' + down.join(' → '));
@@ -2542,6 +2533,33 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       }
     } finally {
       await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-arrows-pipeline-off', target: { workspace_id: 'w1' }, args: { enabled: false } });
+    }
+  });
+
+  await check('rail arrows a control out of sight is scrolled toward a third of a window at a time, the words between read on the way, and once it shows the next press lands on it', async () => {
+    const SCROLLED = "(()=>{let t=scrollY;for(let e=document.getElementById('far-button').parentElement;e&&e!==document.body;e=e.parentElement)t+=e.scrollTop;return t})()";
+    for (const size of ['laptop', '390', '375', '320']) {
+      const p = await arrowsAt('rail-arrows-far-' + size, '/', size);
+      await until(() => p.evaluate('document.body?.dataset.ready==="true"').catch(() => false), size + ': the home page is up');
+      // Words a long way below the last control, then one more control.
+      await p.evaluate(`(()=>{const main=document.getElementById('main'),words=document.createElement('div'),far=document.createElement('button');
+        words.id='far-words';words.style.height=(innerHeight*3)+'px';words.textContent='Words to read on the way.';far.id='far-button';far.type='button';far.textContent='Far below';
+        main.append(words,far);return true})()`);
+      await p.evaluate("(c=>{c.at(-1).focus();c.at(-1).scrollIntoView({block:'end'})})([...document.querySelectorAll('#main button, #main a[href]')].filter(e=>e.id!=='far-button'&&e.checkVisibility()))");
+      const from = await focusAt(p), h = await p.evaluate('innerHeight');
+      const steps = [];
+      for (let n = 0; n < 20 && await focusAt(p) !== 'main:far-button'; n++) {
+        const y = await p.evaluate(SCROLLED);
+        const { at } = await arrowPress(p, 'ArrowDown');
+        steps.push({ at, by: await p.evaluate(SCROLLED) - y });
+      }
+      const said = `${size}: ${from} → ${JSON.stringify(steps)}`;
+      assert.equal(steps.at(-1)?.at, 'main:far-button', said + ': ↓ reaches the control far below');
+      const scrolls = steps.slice(0, -1);
+      assert.ok(scrolls.length >= 3, said + ': it is not reached in one press, the words between scrolled past first');
+      assert.ok(scrolls.every(step => step.at === from && step.by > 0 && step.by <= h / 3 + 1), said + ': each press before it scrolls down a third of a window at most, the focus staying');
+      assert.equal(await inView(p), true, said + ': and it shows');
+      assert.deepEqual(p.errors, []); await p.close();
     }
   });
 
