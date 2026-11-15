@@ -1707,6 +1707,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         if (id !== 'heading') assert.deepEqual([pen.besideName, pen.label, pen.tip], [true, `New topic in ${titles[id]}`, 'New topic'], `${theme}: ${id}'s pencil sits beside its name, named and with its tooltip: ${JSON.stringify(pen)}`);
       }
       assert.deepEqual([drawn.heading.label, drawn.heading.tip], ['New outcome', 'New outcome'], theme + ': the heading\'s pencil is New outcome');
+      assert.equal((await keyTree(p)).stops, 1, theme + ': the pencils, a folded outcome\'s too, leave the outline one Tab stop');
       // The pointer on a folded outcome's row shows its pencil, and only its; on the heading, the heading's.
       await hover('.ol-outcome[data-workspace-id="rail-pencil"] .ol-name');
       assert.deepEqual(showing(await pencils(p)), ['rail-pencil'], theme + ': the pointer on a folded outcome shows its pencil, and only its');
