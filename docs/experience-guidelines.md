@@ -58,7 +58,10 @@ and the writing. Focus stays visible and follows what the person did.
   one stop, on the topic being read: no fold triangle, the next Tab leaves it
   and Shift-Tab comes back", "rail the arrows move through the outline as a
   tree" and "rail → and ← move between the outline, the messages and the right
-  rail". `tests/reader_colors_native.mjs`
+  rail"; from anywhere outside writing an arrow lands on the nearest control
+  that way and the arrows reach every control a click reaches, the "rail
+  arrows …" cases (docs/interaction.md, "The arrows everywhere").
+  `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
 - `tests/fence_copy_native.mjs` (`native-fence-copy`) checks keyboard activation on the copy glyph and its feed card in Chromium and WebKit.

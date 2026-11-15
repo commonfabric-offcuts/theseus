@@ -423,3 +423,18 @@ both widths) and "conversation the keys go on from Only new: …"
 (`native-conversation`); ⌘Return:
 "rail ⌘Return starts a new message in the place the keys are on: …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.
+
+The arrows everywhere are pressed by `tests/outcome_rail_native.mjs`
+(`native-rail`, `native-webkit-rail`), each case marking every control on show
+and pressing every arrow from each, natively, to show the arrows reach them
+all and none loses the focus to the page: past the outline's edges, "rail
+arrows ↑ above the outline's first row goes on up the side rail …"; the right
+rail's chips, "rail arrows ↑ above the right rail's first section reaches …";
+below the messages, "rail arrows ↓ past the last message goes on down the page
+…" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
+→ move along its buttons, …"; the pages with no panes and a one-line field,
+"rail arrows on the Outcomes home, an outcome's page and its pipeline, …" (at
+1280, 390, 375 and 320); the pop-ups, "rail arrows in Topic settings and the
+Reader move between their controls …"; and writing, "rail arrows in writing
+are the writing's: …". Where an arrow lands by the geometry:
+`tests/ui_arrow_reach.test.mjs`.
