@@ -108,7 +108,9 @@ brings nothing shows the image's name instead.
 Each thumbnail reads its bytes through the message that carries it
 (`/api/media/read` with that message as its source), so Theseus gives them
 only to someone who may read the message, and the reads
-take turns with every other image read on the page (docs/images.md). The card
+take turns with every other image read on the page (docs/images.md). When
+the topic becomes one the reader can no longer read, the thumbnails go at once
+with the right rail's pictures, and the page holds none of their bytes. The card
 stays one button: a press opens the Reader, where each attachment keeps its
 Open. A message with no image, a file that is not an image and a message shown
 as one row (folded, between others, or an earlier message's row) draw no
@@ -118,6 +120,9 @@ thumbnails.
   "reading thumbnails a message's images show in its card …", at a laptop's
   width and 390, 375 and 320 on a phone, light and dark, with a refused image
   showing its name.
+- A topic no longer readable keeps none of the bytes: `tests/outcome_rail_native.mjs`
+  (`native-rail`), "rail a topic the page can no longer read leaves the right rail at once …",
+  which counts every picture's bytes the page holds.
 - Who may read an attachment: `tests/test_media.py`,
   `test_exact_attached_source_grants_read_but_id_or_unattached_source_does_not`.
 

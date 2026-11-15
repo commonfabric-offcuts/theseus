@@ -46,3 +46,10 @@ export function paintCardImages(card, item, read) {
     host.lastElementChild.textContent = name;
   });
 }
+
+// A topic the reader can no longer read keeps none of its pictures (docs/topic-reading.md): its cards' thumbnails
+// go at once, and with their images their bytes (image-pick.mjs lets a picture go when none of its images is in the
+// page). A card painted again paints them again.
+export function dropCardImages(list) {
+  for (const strip of list.querySelectorAll('.card-images')) strip.remove();
+}

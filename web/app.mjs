@@ -62,7 +62,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
-import { paintCardImages } from './card-images.mjs';
+import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
@@ -1539,6 +1539,8 @@ async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
     for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
+    // Nor the pictures of its messages (card-images.mjs).
+    dropCardImages($('messages'));
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; settings?.close();

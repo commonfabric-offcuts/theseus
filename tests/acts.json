@@ -14041,6 +14041,21 @@
     "native": "reading",
     "case": "reading thumbnails"
    }
+  },
+  {
+   "item": 474,
+   "act": "A topic the reader can no longer read keeps none of its cards' thumbnails nor their bytes, as the right rail keeps none of its pictures",
+   "break": [
+    [
+     "web/app.mjs",
+     "    dropCardImages($('messages'));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a topic the page can no longer read leaves the right rail at once"
+   }
   }
  ]
 }
