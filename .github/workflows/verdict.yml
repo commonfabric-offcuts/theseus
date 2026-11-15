@@ -824,7 +824,7 @@ jobs:
                   ", ".join(str(i) for i in vtrain.get("items") or []) or "none", vtrain.get("merge_commit"), vtrain.get("items_source")))
           elif push and isinstance(gtrain, dict):
               parts = ["pull request #%s" % gtrain["pull_request"] if gtrain.get("pull_request") is not None else "no pull request named",
-                       "merge commit %s" % gtrain.get("head")]
+                       "pushed commit %s" % gtrain.get("head")]
               parts.extend("%s %s" % (str(commit.get("sha"))[:8], commit.get("subject"))
                            for commit in gtrain.get("commits") or [])
               lines.append("")

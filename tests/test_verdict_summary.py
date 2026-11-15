@@ -42,7 +42,7 @@ class VerdictSummaryCase(unittest.TestCase):
         summary = result['output']['summary']
         self.assertEqual(result['conclusion'], 'failure')
         self.assertIn('missing required step', summary)
-        self.assertIn('Train (git-only; validator returned no train): pull request #36, merge commit a18e8b1e, d62cd6f1 Train 5: revert 398/399', summary)
+        self.assertIn('Train (git-only; validator returned no train): pull request #36, pushed commit a18e8b1e, d62cd6f1 Train 5: revert 398/399', summary)
         self.assertIn('Items named by Pipeline trailers (git-only, not a shipping verdict): none', summary)
         self.assertNotIn('Items shipped:', summary)
 
@@ -68,6 +68,17 @@ class VerdictSummaryCase(unittest.TestCase):
     def test_pr_does_not_use_push_fallback(self):
         result = self.render({'passed': False}, {'head': 'head', 'items': [464]}, event='pull_request')
         self.assertNotIn('Train (git-only', result['output']['summary'])
+
+    def test_single_parent_refusal_names_pushed_commit(self):
+        train = {'head': 'd62cd6f1', 'pull_request': None, 'items': [],
+                 'commits': [{'sha': 'd62cd6f1', 'subject': 'Train 5: revert 398/399', 'items': [], 'pipeline': []}],
+                 'unread': ['the pushed head has one parent, so no merge names a pull request']}
+        result = self.render({'passed': False, 'refused': 'missing required step'}, train)
+        summary = result['output']['summary']
+        self.assertEqual(result['conclusion'], 'failure')
+        self.assertIn('pushed commit d62cd6f1', summary)
+        self.assertIn('the pushed head has one parent', summary)
+        self.assertNotIn('merge commit d62cd6f1', summary)
 
 
 if __name__ == '__main__':
