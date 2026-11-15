@@ -572,6 +572,42 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // The rail keeps its scroll through the move itself, wherever it is scrolled: here a few lines from its end, so a
+  // part above the outline that grew shorter for a moment (the logo block drawn again without the guide's ? until
+  // the next run puts it back) would pull the scroll up to the rail's new end, and the browser's scroll anchoring
+  // would then carry it on past where it was. The order is held: the page's own list is under its outcome, the rails
+  // are quiet, and the rail stands 12px from its end before the press.
+  await check('rail the outline keeps its scroll when it moves in place to a topic, scrolled near the rail\'s end, and the guide\'s ? still opens the guide', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-keep-o', title: 'Keeping outcome', topic: { id: 'rail-keep-t', title: 'Keeping topic' } });
+    const p = await page('rail-keep', null, true, { url: facts.origin + '/?conversation=rail-keep-o', beforeNavigate: async q => {
+      await q.send('Emulation.setDeviceMetricsOverride', { ...SIZES.laptop, height: 420 });
+    } });
+    const link = '#outline .ol-outcome[data-workspace-id="rail-keep-o"] .ol-adopted a[data-topic-id="rail-keep-t"]';
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)})?.getClientRects().length) && !document.documentElement.hasAttribute('data-rails-reading')`), 'the page\'s own list is under its outcome, and the rails are quiet');
+    // Outcomes listed below this one (earlier checks add them) push its topic further from the rail's end: the
+    // window is made tall enough to show the topic with the rail 12px from its end.
+    const tall = await p.evaluate(`(()=>{const r=document.getElementById('rail'),t=document.querySelector(${JSON.stringify(link)});
+      return Math.ceil(r.scrollHeight-12-(t.getBoundingClientRect().top-r.getBoundingClientRect().top+r.scrollTop)+8)})()`);
+    if (tall > 420) {
+      await p.send('Emulation.setDeviceMetricsOverride', { ...SIZES.laptop, height: tall });
+      await until(() => p.evaluate(`innerHeight===${tall}`), 'the window is tall enough');
+    }
+    const room = await p.evaluate(`(()=>{const r=document.getElementById('rail'),t=document.querySelector(${JSON.stringify(link)});
+      r.scrollTop=r.scrollHeight-r.clientHeight-12;
+      const a=t.getBoundingClientRect(),b=r.getBoundingClientRect();return a.top>=b.top&&a.bottom<=b.bottom?r.scrollTop:-1})()`);
+    assert.ok(room > 0, 'the rail scrolls at this height, with the topic in view');
+    assert.equal(await p.evaluate("(r=>r.scrollHeight-r.clientHeight-r.scrollTop)(document.getElementById('rail'))"), 12, 'and stands 12px from its end');
+    await p.point(link);
+    await until(async () => await p.evaluate(`location.search==='?topic=rail-keep-t' && document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(link)})) && !document.querySelector(${JSON.stringify(link)}).closest('[inert]')`), 'the topic opens in place, its own list under its outcome');
+    assert.equal(await p.evaluate("document.getElementById('rail').scrollTop"), room, 'the outline\'s scroll is where it was');
+    // The guide's ? that stood in the logo block through the move is the new page's own: one, and a press opens the guide.
+    assert.equal(await p.evaluate("document.querySelectorAll('#rail .brand .guide-open').length"), 1, 'one guide\'s ?');
+    await p.evaluate("document.getElementById('rail').scrollTop=0");
+    await p.point('#rail .brand .guide-open');
+    await until(() => p.evaluate("Boolean(document.querySelector('dialog.interaction-guide')?.open)"), 'a press on it opens the guide');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('rail a new message raises a folded outcome\'s count and the new total live; open, the row counts only its Conversation; reading the topic lowers them', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-count-o', title: 'Counting outcome', topic: { id: 'rail-count-t', title: 'Counting topic' } });
     const p = await open('rail-count', '/?topic=t1');

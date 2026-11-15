@@ -167,8 +167,12 @@ between two feed pages (topics and Conversations) goes like this:
 4. The body's parts go back to how `index.html` drew them. The outline, the
    right rail and the drawer's backdrop stay as the same elements. The rail
    that holds the outline is never taken out of the page, so it keeps its
-   scroll and its focus. The retired run keeps finding its own elements by
-   id, so work it still had under way lands there and never on the new page.
+   scroll and its focus. The logo block above the outline is put back as it
+   reads, the guide's ? included until the new run puts its own in its place,
+   so the rail never grows shorter during the move: scrolled near its end, it
+   would otherwise be pulled up to that end and carried past where it was.
+   The retired run keeps finding its own elements by id, so work it still had
+   under way lands there and never on the new page.
 5. A fresh run of `app.mjs` (`app.mjs?place=N`) reads and draws the new place
    as a full load would: its live feed, its read tracking and its New line are
    a new page's.

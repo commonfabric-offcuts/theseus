@@ -49,13 +49,16 @@ export class InteractionGuide {
     if (!this.dialog.open) this.dialog.showModal();
   }
   // The quiet way in: a small ? under the instance label, a full tap high on a phone.
+  // One the page before drew, put back with the logo block by a move in place
+  // (in-place-navigation.mjs), gives its place to this one.
   offer(label) {
-    if (!label || label.parentElement.querySelector('.guide-open')) return;
-    const button = this.doc.createElement('button');
+    const there = label?.parentElement.querySelector('.guide-open');
+    if (!label || (there && there === this.button)) return;
+    const button = this.button = this.doc.createElement('button');
     button.type = 'button'; button.className = 'guide-open quiet'; button.textContent = '? ' + TITLE;
     button.title = TITLE; button.setAttribute('aria-label', 'How Theseus answers the pointer, keys and taps');
     button.onclick = () => this.open();
-    label.after(button);
+    if (there) there.replaceWith(button); else label.after(button);
   }
 }
 

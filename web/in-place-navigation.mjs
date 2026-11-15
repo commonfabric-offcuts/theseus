@@ -80,8 +80,10 @@ export class Scope {
 // What the shell keeps across moves, by selector: the outline, the right
 // rail and the drawer's backdrop. The two holders (the layout and the rail)
 // stay the same elements and are refilled inside. The logo block is put back
-// as it now reads (its name and Health line do not blink), without anything a
-// run put in it.
+// as it now reads (its name and Health line do not blink), the guide's way in
+// included until the next run puts its own in that place (interaction-guide.mjs):
+// the block keeps its height, so the rail under it never grows shorter in the
+// move and the outline keeps its scroll, even scrolled near the rail's end.
 const HOLDERS = ['.workspace-layout', '#rail'];
 export const KEPT = ['#outline', '#things', '#things-backdrop', '#rail-backdrop'];
 const BRAND = '.brand';
@@ -103,11 +105,7 @@ function restore(host, pristine) {
   for (const child of pristine.childNodes) {
     const selector = selectorOf(child), live = selector ? doc.querySelector(selector) : null;
     if (!live) { children.push(child.cloneNode(true)); continue; }
-    if (selector === BRAND) {
-      const brand = live.cloneNode(true);
-      for (const added of brand.querySelectorAll('.guide-open')) added.remove();
-      children.push(brand); continue;
-    }
+    if (selector === BRAND) { children.push(live.cloneNode(true)); continue; }
     if (HOLDERS.includes(selector)) restore(live, child);
     children.push(live);
   }

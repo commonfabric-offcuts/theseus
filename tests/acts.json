@@ -12643,6 +12643,36 @@
     "native": "rail",
     "case": "rail each pencil's title line"
    }
+  },
+  {
+   "item": 305,
+   "act": "The outline keeps its scroll when it moves in place to a topic, scrolled near the rail's end: the logo block keeps the guide's ? through the move, so the rail never grows shorter",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (selector === BRAND) { children.push(live.cloneNode(true)); continue; }",
+     "    if (selector === BRAND) { const brand = live.cloneNode(true); for (const added of brand.querySelectorAll('.guide-open')) added.remove(); children.push(brand); continue; }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the outline keeps its scroll when it moves in place to a topic"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The guide's ? a move in place kept in the logo block gives its place to the new page's own, which opens the guide",
+   "break": [
+    [
+     "web/interaction-guide.mjs",
+     "    if (!label || (there && there === this.button)) return;",
+     "    if (!label || there) return;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the outline keeps its scroll when it moves in place to a topic"
+   }
   }
  ]
 }
