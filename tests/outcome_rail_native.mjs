@@ -2715,6 +2715,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.equal(await focusAt(q), 'dialog:arrow-link', size + ': → from the message\'s words reaches the link in them');
       await q.key('ArrowLeft');
       assert.equal(await focusAt(q), 'dialog:source-body', size + ': ← from the link comes back to the words');
+      // ↓ from the top of a long message reads it a step at a time to its end, then goes on to the reply below.
+      await q.evaluate("(b=>{b.scrollTop=0,b.focus()})(document.getElementById('source-body'))");
+      const through = await walk(q, 'ArrowDown', 80);
+      assert.ok(through.includes('dialog:who-chip'), `${size}: ↓ through the long message reaches the reply below it: ${through.join(' → ')}`);
       const readerFirst = async () => { await q.evaluate("document.getElementById('reader-parent').focus()"); return q.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
       const { missing, lost } = await arrowClosure(q, '#reader', readerFirst);
       assert.deepEqual(missing, [], size + ': the arrows reach every control in the Reader');
