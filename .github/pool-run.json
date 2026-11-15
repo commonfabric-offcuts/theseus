@@ -1,0 +1,8 @@
+{
+ "step": "notebook",
+ "cases": [
+  "notebook in the composer: opening another page replaces the first"
+ ],
+ "label": "t16m-nbreplace-head-1",
+ "snapshot": "a9d423cac6b7967d9d94fe4c6d6200c3b64f838f"
+}
