@@ -181,8 +181,6 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
     // so in its events, and the module every fixture shares goes on answering.
     depart: () => events.push(['depart']), stay: () => events.push(['stay']),
-    // The scroll bars' observer measures a real page's bars (tests/ui_scrollbars.test.mjs, tests/scrollbars_native.mjs).
-    quietScrollbars: () => () => {},
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },

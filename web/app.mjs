@@ -1,6 +1,5 @@
 import { mountFeedFences } from './feed-fence-copy.mjs';
 import { Api, notAnswering, unreached, answeredSince, heard, follow } from './api.mjs';
-import { quietScrollbars } from './scrollbars.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -76,7 +75,6 @@ import { showLine, lineText } from './lines.mjs';
 // Each page is one run of this module (in-place-navigation.mjs). A run that a
 // move in place has ended finds its own elements still, so work it had under
 // way lands there and never on the page that followed it.
-quietScrollbars();
 let retired = null, notebookSheet = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); } });
