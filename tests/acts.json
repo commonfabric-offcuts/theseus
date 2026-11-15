@@ -13930,6 +13930,51 @@
    "check": {
     "node": "tests/ui_card_carries.test.mjs"
    }
+  },
+  {
+   "item": 127,
+   "act": "Each mark shows as a glyph the size of a letter beside the card's time, at a phone's width",
+   "break": [
+    [
+     "web/aim.css",
+     ".carry{display:inline-block;",
+     ".carry{display:none;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "marks at 375px dark"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A note or reply saved or emptied on another device repaints the card's marks without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (kind === 'yours') { keepListAnchor(() => repaintYours(views.takeYours())); return; }",
+     "if (kind === 'yours') return;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "writing saved or emptied on another device"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A message that heads a stack shows its marks in the stack's head row while its card is folded in",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "...(carried ? [carried] : []),",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "a note and a reply saved in the Reader"
+   }
   }
  ]
 }
