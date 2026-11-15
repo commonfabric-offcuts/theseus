@@ -2247,8 +2247,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'down') return panes.feed(doc, { first: true });",
-     "  if (action === 'down') return panes.feed(doc);"
+     "&& panes.feed(doc, { first: true })) ||",
+     "&& panes.feed(doc)) ||"
     ]
    ],
    "check": {
@@ -13871,8 +13871,8 @@
    "break": [
     [
      "web/arrow-reach.mjs",
-     "const moved = within ? reach(at, way, { within, doc }) || beyond(at, way) : reach(nothing ? null : at, way, { doc });",
-     "const moved = within ? reach(at, way, { within, doc }) || beyond(at, way) : false;"
+     ": reach(nothing ? null : at, way, { doc });",
+     ": false;"
     ]
    ],
    "check": {
@@ -14000,27 +14000,27 @@
   },
   {
    "item": 301,
-   "act": "← on a card where the deck changes nothing goes on to what lies that way",
-   "break": [
-    [
-     "web/deck-page.mjs",
-     "    if (plainArrow && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !this.treeMoves(event.key === 'ArrowLeft') && this.handOn(event.key === 'ArrowLeft' ? 'left' : 'right')) { event.preventDefault(); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "rail arrows on a Notebook page's cards"
-   }
-  },
-  {
-   "item": 301,
    "act": "On a Conversation with no messages yet, ↓ with nothing focused lands on a control and the arrows reach every control",
    "break": [
     [
      "web/rails.mjs",
      "(onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]')))",
      "onNothing(at, doc)"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "With no message to go to, ↓ from the buttons at the top of the feed goes on down the column to the reply",
+   "break": [
+    [
+     "web/panes.mjs",
+     " || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });",
+     ";"
     ]
    ],
    "check": {

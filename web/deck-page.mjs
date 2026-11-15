@@ -384,13 +384,11 @@ export class DeckPage {
     if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
     if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
-    // Past the first card or the last, and on ← or → where the deck changes
-    // nothing, the arrow goes on to what lies that way on the page: the bar
-    // above the cards, the header, the rail (arrow-reach.mjs). With nothing
-    // focused the arrows stay the deck's, picking a card.
+    // Past the first card or the last, the arrow goes on to what lies that way
+    // on the page: the bar above the cards, the header (arrow-reach.mjs). With
+    // nothing focused the arrows stay the deck's, picking a card.
     const plainArrow = !command && !event.shiftKey && !event.altKey && this.list.contains(event.target);
     if (plainArrow && (up || down) && this.beside(this.picked, up ? -1 : 1) === this.picked && this.handOn(up ? 'up' : 'down')) { event.preventDefault(); return; }
-    if (plainArrow && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !this.treeMoves(event.key === 'ArrowLeft') && this.handOn(event.key === 'ArrowLeft' ? 'left' : 'right')) { event.preventDefault(); return; }
     if ((up || down) && command && !event.altKey && event.shiftKey) this.act({ kind: 'merge', text, step: up ? -1 : 1, near });
     else if ((up || down) && command && !event.altKey) this.actOn('move', up ? -1 : 1);
     else if ((up || down) && event.shiftKey && !event.altKey) this.extend(this.beside(this.picked, up ? -1 : 1));
@@ -461,15 +459,6 @@ export class DeckPage {
     else if (children && folded) this.fold(i);
     else if (!command) this.toBubble();
     else if (children) this.pick(i + 1);
-  }
-  // Whether a plain ← or → changes anything on the picked card: a fold, its
-  // parent, or its speech bubble.
-  treeMoves(left) {
-    const cards = this.deck.cards, i = this.picked, card = cards[i];
-    if (!card) return false;
-    const children = groupEnd(cards, i) > i + 1;
-    if (left) return children ? !this.folded.has(card.title) || this.layout().parents[i] >= 0 : this.layout().parents[i] >= 0;
-    return (children && this.folded.has(card.title)) || Boolean(this.list.querySelector(`.deck-card[data-index="${i}"] .deck-bubble`));
   }
   // The arrow on from the picked card to what lies that way.
   handOn(way) {

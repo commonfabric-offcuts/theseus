@@ -2382,6 +2382,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (const size of ['390', '375', '320']) {
       const p = await arrowsAt('rail-arrows-drawer-' + size, '/?topic=t1', size, size === '390' ? 'dark' : 'light');
       await topicUp(p, size + ': the topic is up');
+      await until(() => p.evaluate("!document.documentElement.hasAttribute('data-rails-reading') && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'"), size + ': the page has finished drawing');
       await p.evaluate("document.getElementById('rail-open').focus()");
       await p.key('Enter');
       await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it');
@@ -2572,7 +2573,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
-  await check('rail arrows on a Notebook page\'s cards ↑ above the first card goes on to the page\'s controls, ↓ comes back to the cards, ← and → where the deck changes nothing go on too, and the arrows reach every control on the page, at 1280, 390, 375 and 320 and in the composer\'s sheet', async () => {
+  await check('rail arrows on a Notebook page\'s cards ↑ above the first card goes on to the page\'s controls, ↓ comes back to the cards, and the arrows reach every control on the page, at 1280, 390, 375 and 320 and in the composer\'s sheet', async () => {
     await control({ method: 'outcome_reference', operation_id: 'rail-arrows-deck', item_id: 'rail-arrows-deck', title: 'Arrow deck', body: '## A card\n\nWords.\n\n## Another card\n\nMore words.\n' });
     const inDeck = p => p.evaluate("Boolean(document.activeElement?.closest?.('.deck-card'))");
     // ↑ from the cards until the focus leaves them: where it went at each press.
@@ -2593,14 +2594,6 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.key('ArrowDown');
       assert.equal(await inDeck(p), true, `${where}: ↓ from ${above} comes back to the cards`);
       if (size === 'laptop' || size === '390') await shot(p, `rail-arrows-deck-${size}${url.includes('page=') ? '-sheet' : ''}`);
-      // At a laptop, a top-level card with no children and nothing to show beside it: ← changes nothing on it, and
-      // goes on to the rail beside. (On a phone the card fills the width: nothing lies beside it.)
-      if (size === 'laptop' && !url.includes('page=')) {
-        const cardAt = await focusAt(p);
-        await p.key('ArrowLeft');
-        const left = await focusAt(p);
-        assert.ok(left !== 'page' && left !== cardAt && !(await inDeck(p)), `${where}: ← on a top-level card goes on out of the cards, not ${left}`);
-      }
       // Every control on the page (in the sheet, the sheet's) is reached from the one above the cards.
       const scope = url.includes('page=') ? '#new-message-sheet' : 'body';
       const first = async () => { await p.evaluate("document.querySelector('.deck-card[tabindex=\"0\"]').focus()"); await outOfDeck(p); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };

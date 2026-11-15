@@ -187,8 +187,9 @@ export function arrowReach(doc, { managed = () => false, region = () => null, be
     if (!way || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const at = doc.activeElement;
     if ((at?.closest?.(FIELD) && !leavesLine(at, way)) || owned(at) || managed(at, way) || scrollsOn(at, way, view)) return;
-    const nothing = onNothing(at, doc), within = nothing ? null : region(at);
-    const moved = within ? reach(at, way, { within, doc }) || beyond(at, way) : reach(nothing ? null : at, way, { doc });
+    // The page itself (or a pane itself: the feed, with no message to light) is nothing focused, within its region.
+    const nothing = onNothing(at, doc), within = at && at !== doc.body ? region(at) : null;
+    const moved = within ? reach(at, way, { within, doc }) || (!nothing && beyond(at, way)) : reach(nothing ? null : at, way, { doc });
     if (moved) event.preventDefault();
   });
 }

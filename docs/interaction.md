@@ -279,8 +279,7 @@ rule above. (`web/arrow-reach.mjs`)
   tree from beside it (a pencil in a section's heading, the chips above it)
   the arrows land on the row nearest that way, which becomes its stop.
   On a Notebook page's cards, ↑ above the first card and ↓ below the last go
-  on to the page's controls, and so do ← and → where the deck changes nothing
-  (docs/decks.md).
+  on to the page's controls (docs/decks.md).
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
   message above or below, as from the message.
 - **In a pane, off its keys.** On the logo block, the chips, Keys, the right

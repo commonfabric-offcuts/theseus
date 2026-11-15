@@ -12,6 +12,7 @@ import { cardIn } from './fold.mjs';
 import { navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
 import { keyAction, writing, pageItself } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
+import { reach as reachOn } from './arrow-reach.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 // On screen: shown, inside the window, and not behind an open drawer.
@@ -105,13 +106,15 @@ const landing = row => { const last = panes.button.get(row.host); return row.but
 // The keys on the buttons at the top of the feed, in row r: ← and → along its
 // buttons, and past either end on to the outline or the right rail as from the
 // messages; ↑ to the row above, nothing on the top one; ↓ to the row below, and
-// from the last on to the first message. Return and Space are the button's own.
+// from the last on to the first message, or with none, on down the column.
+// Return and Space are the button's own.
 // Answers whether the keys moved.
 function headerKey(action, rows, r, doc) {
   const buttons = rows[r].buttons, at = buttons.indexOf(doc.activeElement);
   if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));
   if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));
-  if (action === 'down') return panes.feed(doc, { first: true });
+  // With no message to go to (a Conversation not yet written in), on down the column: the reply.
+  if (action === 'down') return (Boolean(feedStop(doc, { first: true })) && panes.feed(doc, { first: true })) || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });
   if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);
   if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);
   return false;
