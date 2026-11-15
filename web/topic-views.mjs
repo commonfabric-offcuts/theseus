@@ -411,6 +411,19 @@ export class TopicViews {
     this.unloadedChanged = live ? answer.next_cursor !== null : this.unloadedChanged && answer.next_cursor !== null;
     this.paint('memory'); this.paint('offer'); return true;
   }
+  // One message of this topic read again, alone, in the shape of a page's item: the answer, or what refresh
+  // returns without one. Refused (the reader can no longer read it, or the topic), as an answer or as the read's
+  // error: true, so the card is left as it is and the page goes on; false when the read was superseded. Busy and
+  // the like throw, to be read again.
+  async named(id, read, current) {
+    const refused = value => ['FORBIDDEN', 'INVALID_ARGUMENT'].includes((value?.details ?? value)?.error?.code);
+    let named;
+    try { named = await read('topic_messages', { topic_id: this.topicId, message_ids: [id] }); }
+    catch (error) { if (refused(error)) return current() ? true : false; throw error; }
+    if (!current()) return false;
+    if (refused(named)) return true;
+    return checkedView(named, this.instanceId);
+  }
   async refresh(key, version, read, current = () => true) {
     if (key === 'topic') {
       const answer = checkedView(await read('topic', { topic_id: this.topicId }), this.instanceId);
@@ -460,15 +473,8 @@ export class TopicViews {
       // again, alone, in the shape of a page's item.
       const id = key.slice(5), known = this.messages.get(id);
       if (!known && !this.quotes(id) && !this.holds(id)) return true;
-      // Refused (the reader can no longer read it, or the topic), as an answer or as the read's error: the card
-      // is left as it is, and the page goes on. Busy and the like are read again.
-      const refused = value => ['FORBIDDEN', 'INVALID_ARGUMENT'].includes((value?.details ?? value)?.error?.code);
-      let named;
-      try { named = await read('topic_messages', { topic_id: this.topicId, message_ids: [id] }); }
-      catch (error) { if (refused(error)) return current() ? true : false; throw error; }
-      if (!current()) return false;
-      if (refused(named)) return true;
-      const answer = checkedView(named, this.instanceId);
+      const answer = await this.named(id, read, current);
+      if (typeof answer === 'boolean') return answer;
       if (!Array.isArray(answer.items) || answer.items.length > 1 || answer.items.some(item => item?.id !== id || item.topic_id !== this.topicId ||
           typeof item.body !== 'string' || known && (item.seq !== known.seq || item.author_id !== known.author_id))) throw invalid('The edited message answer is for another message.');
       // No longer readable here: what is shown stays until the topic is read again.
@@ -482,13 +488,8 @@ export class TopicViews {
       // page shows reads it again, alone, in the shape of a page's item; one it does not show reads it as it loads.
       const id = key.slice(6), known = this.messages.get(id);
       if (!known) return true;
-      const refused = value => ['FORBIDDEN', 'INVALID_ARGUMENT'].includes((value?.details ?? value)?.error?.code);
-      let named;
-      try { named = await read('topic_messages', { topic_id: this.topicId, message_ids: [id] }); }
-      catch (error) { if (refused(error)) return current() ? true : false; throw error; }
-      if (!current()) return false;
-      if (refused(named)) return true;
-      const answer = checkedView(named, this.instanceId);
+      const answer = await this.named(id, read, current);
+      if (typeof answer === 'boolean') return answer;
       if (!Array.isArray(answer.items) || answer.items.length > 1 || answer.items.some(item => item?.id !== id || item.seq !== known.seq ||
           !integer(item.yours?.version))) throw invalid('The message answer is for another message.');
       if (!answer.items.length) return true;

@@ -113,6 +113,11 @@ test('a yours:<id> refresh reads that message alone and repaints its card only w
   // A message this page has not loaded is not read: it brings its marks with it as it loads.
   assert.equal(await v.refresh('yours:m9', 1, read), true);
   assert.equal(asked.length, 3);
+  // Refused (no longer readable here), as an answer or as the read's error: the card keeps its marks and the page goes on.
+  const refusal = { error: { code: 'FORBIDDEN', message: 'No readable source' } };
+  assert.equal(await v.refresh('yours:m1', 6, async () => refusal), true);
+  assert.equal(await v.refresh('yours:m1', 6, async () => { throw { details: refusal }; }), true);
+  assert.deepEqual(v.messages.get('m1').yours, yours(true, false, 2));
 });
 
 test('a page read before the person saved or sent answers late and puts back no mark', () => {

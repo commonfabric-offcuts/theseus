@@ -218,7 +218,7 @@ export function carriesNode(doc, carries, marks = carryMarks(carries)) {
 // words were changed after it was sent (docs/message-edit.md), said last.
 export function paintAuthor(author, name, sent, marked, edited = false, carries = null) {
   const marks = carryMarks(carries);
-  const shows = JSON.stringify([name, sent, sent === null ? null : shownTime(sent), marked, edited, marks]);
+  const shows = JSON.stringify([marks, name, sent, sent === null ? null : shownTime(sent), marked, edited]);
   if (author.dataset.shows === shows) return;
   author.dataset.shows = shows;
   author.replaceChildren();

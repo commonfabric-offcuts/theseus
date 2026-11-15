@@ -179,6 +179,9 @@ async function run() {
     assert.deepEqual(await marksOf(m.plain), []);
     await p.locator(card(m.plain)).click();
     await until(p, () => document.querySelector('#reader').open, 'the Reader open');
+    // The note is offered in the + panel, beside the writing.
+    await p.locator('#plus-button').click();
+    await until(p, () => !document.querySelector('#plus-panel').hidden, 'the + panel open');
     await p.locator('#toggle-note').click();
     await until(p, () => document.activeElement?.id === 'writing-body', 'the note taking the writing');
     await p.keyboard.type('A thought of mine.');
