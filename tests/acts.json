@@ -14008,7 +14008,7 @@
   },
   {
    "item": 127,
-   "act": "On a stack's head row the first message's marks give way, so on a phone the second line never wraps to a third",
+   "act": "On a phone a stack head row's marks give way instead of holding their whole width beside a name cut short",
    "break": [
     [
      "web/stack-look.css",
@@ -14049,21 +14049,6 @@
    "check": {
     "native": "card-marks",
     "case": "head rows at 320px light"
-   }
-  },
-  {
-   "item": 127,
-   "act": "A head row's marks that give way are clipped whole, none showing a sliver below the line",
-   "break": [
-    [
-     "web/stack-look.css",
-     ".stack-head .carry{flex:none;margin-block:calc((var(--stack-meta-lh) - .95rem) / 2);",
-     ".stack-head .carry{flex:none;"
-    ]
-   ],
-   "check": {
-    "native": "card-marks",
-    "case": "head rows at 375px light"
    }
   },
   {

@@ -46,7 +46,7 @@ const WORDS = { image: 'Has an image', note: 'Your private note, which only you 
 const card = id => `.message-card[data-id="${id}"]`;
 // Each engine reads a topic of its own, so what one engine's cases change the other's never see.
 const ENGINES = ['chromium', 'webkit'];
-const ids = {};
+const ids = {}, headIds = {};
 async function seed() {
   const facts = await control({ method: 'ready' });
   await control({ method: 'navigation_topics', topics: ENGINES.flatMap(engine => [{ id: `marks-${engine}`, title: 'Card marks' }, ...VIEWS.map((view, index) => ({ id: `heads-${engine}-${index}`, title: 'Head rows' }))]) });
@@ -75,9 +75,9 @@ async function seed() {
     // each headed by a new message from the fixture's agent, whose name is 22 characters, and answered by another
     // person, so none is a quiet agents' dossier. One head carries an image, the person's note and their saved reply
     // and is starred; one carries the same and is folded; one carries an image alone; one carries nothing.
-    ids[engine].heads = [];
+    headIds[engine] = [];
     for (const index of VIEWS.keys()) {
-      const heads = `heads-${engine}-${index}`, h = ids[engine].heads[index] = {};
+      const heads = `heads-${engine}-${index}`, h = headIds[engine][index] = {};
       const head = async (name, body, more = {}) => (await control({ method: 'agent_message', operation_id: `${heads}-${name}`, topic_id: heads, source: 'topic', body, ...more })).result.message_id;
       h.starred = await head('starred', 'A starred head, with a picture and my writing.', { join: true, attachments: [{ name: 'screen.png', image: 'screen.png' }] });
       h.folded = await head('folded', 'A folded head, with a picture and my writing.', { attachments: [{ name: 'one.png', image: 'one.png' }] });
@@ -245,7 +245,7 @@ async function run() {
   for (const [index, [width, dark]] of VIEWS.entries()) {
     const label = `${width}px ${dark ? 'dark' : 'light'}`;
     await check(`head rows at ${label}: a starred or folded new head with every mark, one with an image alone and one with none stay two lines inside the tab`, async () => {
-      const p = await open(`/?topic=heads-${engine}-${index}`, { width, dark }), h = m.heads[index];
+      const p = await open(`/?topic=heads-${engine}-${index}`, { width, dark }), h = headIds[engine][index];
       await until(p, ([starred, ...rest]) => [starred, ...rest].every(id => document.querySelector(`.message-card[data-id="${id}"] > .stack-head > .stack-who`))
         && document.querySelectorAll(`.message-card[data-id="${starred}"] > .stack-head .carry`).length === 3, 'every head row drawn, the starred one with its marks', [h.starred, h.folded, h.one, h.bare]);
       const inTab = async (name, state) => {
@@ -254,8 +254,8 @@ async function run() {
         assert.ok(linesOf(seen.parts) <= 2, `${where}: two lines, never a third`);
         for (const part of seen.parts) assert.ok(part.box.top >= seen.row.top - 0.5 && part.box.bottom <= seen.row.bottom + 0.5 && part.box.right <= seen.row.right + 0.5, `${where}: ${part.part} inside the tab`);
         // A mark shows whole, or not at all.
-        const shown = seen.marks.filter(mark => mark.box.right <= seen.held.right + 0.5 && mark.box.bottom <= seen.held.bottom + 0.5 && mark.box.top >= seen.held.top - 0.5);
-        for (const mark of seen.marks) if (!shown.includes(mark)) assert.ok(mark.box.top >= seen.held.bottom - 0.5 || mark.box.left >= seen.held.right - 0.5, `${where}: the ${mark.kind} mark shows whole or not at all`);
+        const shown = seen.marks.filter(mark => mark.box.left >= seen.held.left - 0.5 && mark.box.right <= seen.held.right + 0.5 && mark.box.bottom <= seen.held.bottom + 0.5 && mark.box.top >= seen.held.top - 0.5);
+        for (const mark of seen.marks) if (!shown.includes(mark)) assert.ok(mark.box.top >= seen.held.bottom - 0.5 || mark.box.left >= seen.held.right - 0.5 || mark.box.right <= seen.held.left + 0.5, `${where}: the ${mark.kind} mark shows whole or not at all`);
         for (const mark of shown) assert.ok(mark.box.width >= 12 && mark.box.height >= 12, `${where}: the ${mark.kind} mark a visible glyph`);
         // Who began it gives way last, and its whole name stays in its tooltip.
         if (seen.who.cut) assert.equal(shown.length, 0, `${where}: the marks give way before who began it`);

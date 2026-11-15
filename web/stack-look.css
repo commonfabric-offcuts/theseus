@@ -172,14 +172,14 @@
    New, the star, then the count, who replied and what is new. It never wraps to a third: the parts that can give way
    start from no width, so the line holds them all, and take the room left in turn, by their weights: who began it
    first, then the marks, then the count. On a narrow tab the count gives way first, then the marks, whole glyphs
-   dropped from the end (the marks wrap, each line exactly the run's height, and all but the first line are clipped;
-   the empty first item lets the first mark go too), then who began it, cut short, its whole name its tooltip
-   (reply-stacks.mjs). What room the marks do not fill sits before them, a space before the glyphs. */
+   dropped from the end (a mark that does not fit wraps below the first line and is clipped; the empty first item holds
+   that line at the run's height and lets even the first mark go), then who began it, cut short, its whole name its
+   tooltip (reply-stacks.mjs). What room the marks do not fill sits before them, a space before the glyphs. */
 .stack-who{flex:10000 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
 .stack-head>.card-carries{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;align-self:center;flex:100 1 0;min-width:0;max-width:max-content;
   height:var(--stack-meta-lh);overflow:hidden}
 .stack-head>.card-carries::before{content:"";width:0;height:var(--stack-meta-lh)}
-.stack-head .carry{flex:none;margin-block:calc((var(--stack-meta-lh) - .95rem) / 2);background-color:var(--stack-meta-ink)}
+.stack-head .carry{flex:none;background-color:var(--stack-meta-ink)}
 .stack-head>:is(.stack-new,.stack-star,.stack-meta){margin-left:calc(.3em - .5rem)}
 .stack-head>:is(.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400}
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
