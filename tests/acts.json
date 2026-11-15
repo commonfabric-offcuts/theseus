@@ -1651,7 +1651,7 @@
    "break": [
     [
      "web/app.mjs",
-     "if (!shell.go(target)) shell.leave(routeHref(target));",
+     "if (!shell.go(target, still)) shell.leave(routeHref(target));",
      "location.assign(routeHref(target));"
     ]
    ],
@@ -13882,7 +13882,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (near) showLine($(near), what()); else notice.scrollIntoView({ block: 'nearest' });\n",
+     "  if (near) showLine($(near), said()); else notice.scrollIntoView({ block: 'nearest' });\n",
      ""
     ]
    ],
@@ -14025,7 +14025,7 @@
    "break": [
     [
      "web/app.mjs",
-     "refused: why => { shell.stayed(); stayedLine(() => why); }",
+     "refused: why => { shell.stayed(); stayedWhy(why); }",
      "refused: () => {}"
     ]
    ],
