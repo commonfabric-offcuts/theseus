@@ -158,9 +158,9 @@ the card's words names it, `![NAME](attachment:ID)`, as a reply stack's line
 names its stack. The line moves with the card through moves, merges and edits,
 a card's removal takes it and Undo brings it back. The box leaves such lines
 out, as it leaves out the stacks', and shows the card's images under what is
-written, each at the height it showed at on the card, with × to take it out of
-the card (named "Remove the image NAME from this card", 44 points to touch on
-a phone); the lines go back under what is written, before any stack's, when
+written, each at the height it showed at on the card, with × beside it to take
+it out of the card (named "Remove the image NAME from this card", 44 points to
+touch on a phone; it never covers the image); the lines go back under what is written, before any stack's, when
 the card is saved. A line inside a fenced block is words, and so is one that
 holds anything else. A new card holding only images is named for the first of
 them; a card cleared of all its text is removed, its images with it.
@@ -181,8 +181,10 @@ same `media.begin`/`media.publish` as every image, its bytes kept on the device
 until Core has them). Until then the card shows it from those bytes, its name
 saying "Uploading…" or why its upload failed, with Retry in the page's list of
 images; once Core has it, it is attached to the page. Its name stays with it
-for screen readers, and shows while the picture does not: before it loads, or
-when the page holds no such image ("· not on this page"). The page's list of
+for screen readers; it shows beside the picture while the image uploads or after
+its upload failed, and in the picture's place while the picture does not show:
+before it loads, or when the page holds no such image ("· not on this page").
+An image smaller than a thumbnail shows at a thumbnail's size. The page's list of
 images under the head leaves an image a card shows to the card, unless it needs
 Retry. × takes the image off the page too, unless another card still shows it.
 
