@@ -314,6 +314,24 @@ class AttachJudgmentTool(ReleaseCase):
                                         "repos/%s/check-runs/401" % self.trains.REPOSITORY,
                                         "repos/%s/check-runs/402" % self.trains.REPOSITORY])
 
+    def test_the_tool_finds_a_release_on_an_older_page_of_the_records(self):
+        # B10: fifty later releases put release 20 on the second page the live CLI prints; the tool reads every page.
+        previous = A
+        for number in range(21, 71):
+            commit = "%040x" % number
+            self.recorded(record(release=number, commit=commit, previous=previous, items=[], measurements=None))
+            previous = commit
+        first = self.releases()
+        self.assertNotIn(20, [item["release"] for item in first["items"]])
+        self.assertIsNotNone(first["next_cursor"], "release 20 is on a later page")
+        listed = self.trains.listed
+        code, out, err = self.tool(self.trains.FakeGitHub(runs=[listed(301, A)], checks=[listed(401, A), listed(402, A)]))
+        self.assertEqual(code, 0, err)
+        self.assertTrue(json.loads(out)["attached"])
+        judged = {item["release"]: item["hosted_judgment"] for item in self.store.view("owner", "releases", {"limit": 100})["items"]}
+        self.assertEqual(judged[20]["head"], A)
+        self.assertEqual([number for number, value in judged.items() if value is not None], [20], "no other release is judged")
+
     def test_the_tool_refuses_a_run_naming_another_commit_and_attaches_nothing(self):
         listed = self.trains.listed
         for runs, words in (([listed(301, C)], "the run 301 (Checks) names %s as its head, not %s, release 20's commit" % (C, A)),

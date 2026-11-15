@@ -1998,6 +1998,17 @@ class DeployRefusesKnownRedsOwnerAcceptance(KnownRedsFiles, DeployCase):
         self.accepted(owner_acceptance=False)
         self.assertIn("is not a release-check summary", self.refused(FakeHost(self.config), known_reds=self.known))
 
+    def test_an_owner_acceptance_that_is_truthy_but_not_true_is_refused(self):
+        # B10: only the JSON value true makes a file an owner's acceptance; "true", 1 and other truthy values are read as
+        # a release-check summary, which the file is not.
+        for value in ("true", 1, 1.0, ["true"], {"accepted": True}):
+            with self.subTest(value=value):
+                self.again()
+                self.accepted(owner_acceptance=value)
+                self.assertIn("the live summary %s is not a release-check summary" % self.acceptance,
+                              self.refused(FakeHost(self.config), known_reds=self.known))
+                self.assertEqual(self.records(), ["00-release-check"])
+
 
 class KnownRedsRecorded(KnownRedsFiles, Restarting):
     def setUp(self):
