@@ -3954,21 +3954,24 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await trackpad(p, card(ids.r10), SWIPE_RIGHT, 1);
     await becomes(() => foldsOf(), before, 'Option and a swipe right fold them again');
     await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
-    // A new document: Earlier messages reads the older pages, which show the stored folds.
+    // A new document, on a laptop and on a phone: Earlier messages reads the older pages, which show the stored folds.
     await p.close();
-    p = await open(topic + '-reload', 'laptop', topic, ids.r34);
-    const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
-    for (let page = 0; !await loaded(ids.root); page++) {
-      assert.ok(page < 3, 'Earlier messages reaches the first message');
-      const count = await cards();
-      await centre(p, '#more-messages'); await p.point('#more-messages');
-      await until(async () => (await cards()) > count, 'Earlier messages reads an older page');
+    for (const device of Object.keys(DEVICES)) {
+      p = await open(`${topic}-${device}-reload`, device, topic, ids.r34);
+      const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+      for (let page = 0; !await loaded(ids.root); page++) {
+        assert.ok(page < 3, `${device}: Earlier messages reaches the first message`);
+        const count = await cards();
+        await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+        await until(async () => (await cards()) > count, `${device}: Earlier messages reads an older page`);
+      }
+      await fullyOpen(p, device, ids);
+      const rows = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)};return ${JSON.stringify(keys)}.filter(k=>document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]')?.dataset.folded==='true')})()`);
+      await becomes(rows, before, `${device}: after a reload, with the earlier messages loaded, each message before reply 10 but the starred one is its row, and none after it`);
+      await centre(p, card(ids.r2));
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-fold-through-long-${device}-${theme}`); }
+      assert.deepEqual(p.errors, []); await p.close();
     }
-    await fullyOpen(p, 'laptop', ids);
-    const rows = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)};return ${JSON.stringify(keys)}.filter(k=>document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]')?.dataset.folded==='true')})()`);
-    await becomes(rows, before, 'after a reload, with the earlier messages loaded, each message before reply 10 but the starred one is its row, and none after it');
-    await shot(p, 'stack-fold-through-long');
-    assert.deepEqual(p.errors, []); await p.close();
   });
 
   // Item 472: a message the reader placed on its own is a section with no title bar, so a swipe over it is a swipe over a
@@ -4001,7 +4004,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual(await core(), { folded: true, aside: null, placed: 'number' }, `${device}: a swipe right folds the placed message in Core, and leaves it placed, above More`);
       await becomes(() => state(p), { single: 'true', shown: true, row: true, more: false }, `${device}: it is its row, where it was placed, and nothing went below More`);
       assert.equal((await actsOf(topic, ids.placed, other))?.folded ?? false, false, `${device}: another reader's view of it is unchanged`);
-      await shot(p, `stack-placed-swipe-${device}`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-placed-swipe-${device}-${theme}`); }
       await swipe(p, -1);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: every act sent is answered`);
       assert.deepEqual(await core(), { folded: false, aside: null, placed: 'number' }, `${device}: a swipe left on the same page unfolds it in Core, still placed`);
