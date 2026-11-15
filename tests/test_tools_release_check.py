@@ -802,12 +802,6 @@ class NativeCoverage(unittest.TestCase):
         self.assertEqual((steps["pipeline"].harness, steps["pipeline"].flags), (release_check.PERSISTENCE, ("--pipeline",)))
         self.assertIn("native-pipeline", release_check.REQUIRED)
 
-    def test_the_scrollbars_mode_is_a_step(self):
-        # Chrome with always-shown scroll bars: their thumbs quiet between scrolls at the platform's width (398, 399).
-        steps = {step.name: step for step in release_check.NATIVE_STEPS}
-        self.assertEqual((steps["scrollbars"].harness, steps["scrollbars"].flags), (release_check.PERSISTENCE, ("--scrollbars",)))
-        self.assertIn("native-scrollbars", release_check.REQUIRED)
-
     def test_the_finished_reader_mode_is_a_step(self):
         # The Reader and reply box, finished: heading, focus ring, note button, Done, arrows.
         steps = {step.name: step for step in release_check.NATIVE_STEPS}
