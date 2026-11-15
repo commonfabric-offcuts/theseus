@@ -2276,12 +2276,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // Where the page and the focus's scrolling boxes stand: an arrow that moves
   // no focus while the next control is out of sight scrolls toward it instead.
   const scrolled = p => p.evaluate(`(()=>{const at=[];for(let e=document.activeElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight||e.scrollWidth>e.clientWidth)at.push(Math.round(e.scrollTop)+','+Math.round(e.scrollLeft));return at.join(' ')+'|'+Math.round(scrollY)+','+Math.round(scrollX)})()`);
+  // Where they stand once still: a box the browser scrolls for the key (a long message in the Reader) moves
+  // smoothly over the next frames, so the place is read when three frames in a row leave it as it was.
+  const SIGNATURE = "(()=>{const at=[];for(let e=document.activeElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight||e.scrollWidth>e.clientWidth)at.push(Math.round(e.scrollTop)+','+Math.round(e.scrollLeft));return at.join(' ')+'|'+Math.round(scrollY)+','+Math.round(scrollX)})()";
+  const still = p => p.evaluate(`new Promise(done=>{const sign=()=>${SIGNATURE};let last=sign(),same=0;const frame=()=>{const now=sign();if(now===last){if(++same>=3)return done(now)}else{same=0;last=now}requestAnimationFrame(frame)};requestAnimationFrame(frame)})`);
   // One press: where the focus lands, and whether the press scrolled toward a
-  // control out of sight instead (arrow-reach.mjs scrolls at once, in the press).
+  // control out of sight instead (arrow-reach.mjs scrolls at once, in the press),
+  // or scrolled the focused box on (the browser's own, over the next frames).
   const arrowPress = async (p, key) => {
     const before = await scrolled(p);
     await p.key(key);
-    return { at: await focusAt(p), scrolled: await scrolled(p) !== before };
+    return { at: await focusAt(p), scrolled: await still(p) !== before };
   };
   // Presses the arrow up to n times, until the focus stays at the end of what
   // can scroll, or stop; the places the focus was.
