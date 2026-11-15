@@ -44,3 +44,13 @@ test('what holds the box, or lies inside it reaching no further that way, is nev
   // One overlapping its lower edge and reaching past it is below.
   assert.equal(nearest(from, [at('overlapping', 120, 190, 40, 30)], 'down'), 'overlapping');
 });
+
+test('from a field, a button set into its edge counts as beside it, and only that way', () => {
+  const field = box(100, 100, 300, 40);
+  const set = [at('taller', 360, 108, 30, 24)];
+  assert.equal(nearest(field, set, 'right'), null, 'without inside, never');
+  assert.equal(nearest(field, set, 'right', { inside: true }), 'taller');
+  assert.equal(nearest(field, set, 'left', { inside: true }), null, 'not the other way');
+  // Something beyond the field still wins when nearer than nothing: the set-in button has no gap, so it is first.
+  assert.equal(nearest(field, [...set, at('beyond', 450, 100)], 'right', { inside: true }), 'taller');
+});

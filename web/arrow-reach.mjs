@@ -39,11 +39,14 @@ const OWNS = '[role=slider], [role=spinbutton], [role=radio], [role=tab], [role=
 // Nearest is the gap that way plus twice the gap across, so what is straight
 // below wins over what is a little nearer but off to the side; ← and → keep to
 // the row (a candidate beside it, overlapping it up and down) where there is one.
-export function nearest(from, candidates, way) {
+// With inside, a candidate drawn within the from's box (a button set into a
+// field's edge) counts too, by its middle alone.
+export function nearest(from, candidates, way, { inside = false } = {}) {
   const vertical = way === 'up' || way === 'down', sign = way === 'down' || way === 'right' ? 1 : -1;
   const [lo, hi, crossLo, crossHi] = vertical ? ['top', 'bottom', 'left', 'right'] : ['left', 'right', 'top', 'bottom'];
   const mid = b => (b[lo] + b[hi]) / 2, crossMid = b => (b[crossLo] + b[crossHi]) / 2;
-  const beyond = candidates.filter(({ box }) => sign * (mid(box) - mid(from)) > 0.5 && (sign > 0 ? box[lo] > from[lo] && box[hi] > from[hi] : box[hi] < from[hi] && box[lo] < from[lo]));
+  const within = b => b.top >= from.top && b.bottom <= from.bottom && b.left >= from.left && b.right <= from.right;
+  const beyond = candidates.filter(({ box }) => sign * (mid(box) - mid(from)) > 0.5 && ((sign > 0 ? box[lo] > from[lo] && box[hi] > from[hi] : box[hi] < from[hi] && box[lo] < from[lo]) || (inside && within(box))));
   const across = box => Math.max(0, box[crossLo] - from[crossHi], from[crossLo] - box[crossHi]);
   const inRow = vertical ? [] : beyond.filter(({ box }) => across(box) === 0);
   let best = null, score = Infinity;
@@ -141,7 +144,8 @@ export function reach(from, way, { within = null, doc = from?.ownerDocument ?? g
   // Within the region named, unless a pop-up open over it is the layer the focus is in.
   const nothing = onNothing(from, doc), layer = layerOf(doc, nothing ? null : from), scope = within && layer.contains(within) ? within : layer;
   const list = controls(scope).filter(el => nothing || (el !== from && !el.contains(from) && !from.contains(el)));
-  const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list.map(el => ({ el, box: el.getBoundingClientRect() })), way);
+  // From a field, a button set into its edge (Taller writing) is beside it.
+  const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list.map(el => ({ el, box: el.getBoundingClientRect() })), way, { inside: Boolean(from?.matches?.(FIELD)) });
   if (!next) return false;
   if (!inSight(next, doc) && stepToward(next, way, doc)) return true;
   next.focus({ preventScroll: true });

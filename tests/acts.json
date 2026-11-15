@@ -14057,6 +14057,20 @@
     "native": "rail",
     "case": "rail arrows on a Notebook page's cards"
    }
+  },
+  {
+   "item": 301,
+   "act": "From a field, a button set into its edge (Taller writing) is beside it, and the arrows reach it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     " || (inside && within(box))",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_arrow_reach.test.mjs"
+   }
   }
  ]
 }
