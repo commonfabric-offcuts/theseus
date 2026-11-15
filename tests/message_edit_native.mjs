@@ -970,10 +970,12 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     await until(() => p.evaluate(`typeof window.letOf['message.edit_open'] === 'function'`), 'edit_open is out');
     await closeReader(p, 'laptop');
     await p.evaluate(`window.letOf['message.edit_open']()`);
-    await until(async () => (await kindsOf(p)).join() === 'edit_open,edit_close', 'once Core answers, its session is closed again');
+    // window.session lists the close as it leaves; the device row (holding the holder since edit_open left) goes
+    // only once Core answered the close, so that is what the agent's read waits on.
+    await until(async () => (await kindsOf(p)).join() === 'edit_open,edit_close' && await deviceRow(p, ids.mine) === null,
+      'once Core answers, its session is closed again, and with nothing unconfirmed the device row goes');
     assert.equal(await p.evaluate(`document.querySelector('#reader').open || Boolean(document.querySelector('#reader').dataset.editing)`), false, 'nothing opens');
     assert.deepEqual(await agentItem(topic, ids.mine), { withheld: false, body: 'My own words, as I sent them.' }, 'the agent reads the words');
-    assert.equal(await deviceRow(p, ids.mine), null, 'nothing unconfirmed: the device row goes');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
