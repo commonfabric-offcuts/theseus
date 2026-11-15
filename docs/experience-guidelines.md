@@ -196,10 +196,6 @@ nothing scrolls sideways, and nothing depends on hover.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).
-- `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
-  the logo block and Health at 320, 375 and 390 by touch and on a laptop …":
-  the logo's ? and the Health link are full taps, the ? always shows on a phone
-  and shows on a laptop only while the logo block is pointed at.
 - `tests/device_native.mjs` (`native-webkit-device`): "device at a phone's width
   every phone check control is in reach by touch and nothing scrolls sideways".
 - A real phone: the phone check records what Tony's phone did with the names

@@ -168,8 +168,7 @@ export class OutlineRail {
     const keys = element(doc, 'details', { className: 'ol-keys muted', id: 'outline-keys' }, element(doc, 'summary', { textContent: 'Keys' }),
       ...[KEY_WORDS, MESSAGE_KEY_WORDS].flatMap((rows, at) => [...(at ? [element(doc, 'p', { className: 'ol-keys-part', textContent: 'In the messages' })] : []),
         element(doc, 'dl', {}, ...rows.flatMap(([keys, words]) => [element(doc, 'dt', { textContent: keys }), element(doc, 'dd', { textContent: words })]))]));
-    // What index.html put in the outline (the Health link) stays at its foot.
-    this.host.replaceChildren(sums, heading, this.list, this.empty, this.message, this.retry, this.more, key, keys, ...this.host.children);
+    this.host.replaceChildren(sums, heading, this.list, this.empty, this.message, this.retry, this.more, key, keys);
     this.host.hidden = true;
   }
   // A run of the page starts (in-place-navigation.mjs): the outline shows on
@@ -178,12 +177,6 @@ export class OutlineRail {
   // the one being read, and nothing the run before read is drawn.
   begin(feed) {
     this.host.hidden = !feed;
-    // The Health link ends the rail (item 463): at the outline's foot on a topic
-    // and a Conversation, where it stays the same element across moves, so its
-    // words never blink; after the outline, which is hidden, on any other page
-    // (one with no rail puts it at the end of main, outcome-scope.mjs).
-    const health = this.doc.getElementById('health-link'), foot = feed ? this.host : this.host.parentNode;
-    if (health && foot && (health.parentNode !== foot || health.nextElementSibling)) foot.append(health);
     this.run += 1; this.handles = null;
     this.unlisten?.(); this.unlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;

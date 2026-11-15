@@ -10,13 +10,8 @@ each, and nobody noticed.
 
 ## Where it is
 
-`?health`, from one quiet "Health" link at the very bottom of the side rail on
-every page, and at the end of the page where it has no rail (item 463). On a
-topic and a Conversation it is the last part of the outline, which stays the
-same element across moves in place (docs/rails.md), so the link is never
-redrawn and its words never blink as the person moves; the light of the page
-that went stops painting it (`HealthLight.stop`), and the next page's paints
-it from then on. On a phone it is a full 44px tap. While
+`?health`, from one quiet "Health" link under the instance label, which heads
+the rail on every page (the logo block on pages without a rail). While
 anything is red the link says so: "Health · needs attention", in the alert
 colour, with no edge or box of its own. Agents read the same thing with
 `aim-next health` (docs/agent-cli.md).

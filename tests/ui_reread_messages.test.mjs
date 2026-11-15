@@ -28,16 +28,13 @@ test('no words in any page module ask the person to Refresh; the one status abou
   }
 });
 
-test('the page has no header bar and no Refresh button; the logo block tops the rail and Health ends it', () => {
+test('the page has no header bar and no Refresh button; the logo block tops the rail', () => {
   const html = source('index.html');
   assert.doesNotMatch(html, /<header class="app-header"/);
   assert.doesNotMatch(html, /id="refresh"/);
   const rail = html.match(/<nav\b[^>]*\bclass="rail"[^>]*>\s*([\s\S]*?)<\/nav>/)[1];
-  assert.match(rail, /^<div class="brand">\s*<a class="wordmark" href="\/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"><\/span><\/a>\s*<button id="guide-open" class="guide-open" type="button" aria-label="Pointer, keys and taps" title="Pointer, keys and taps \(\?\)"><span aria-hidden="true">\?<\/span><\/button>\s*<span id="instance-label">[^<]*<\/span>\s*<button id="notify"[^>]*>Turn on notifications<\/button>\s*<\/div>/,
-    'the wordmark with its presence dot, the guide\'s ? beside it, the workspace name and Turn on notifications, first in the rail');
-  assert.match(rail, /<section id="outline" class="outline" aria-label="Outcomes and their topics" hidden>\s*<a id="health-link" class="health-link" href="\?health">Health · checking<\/a>\s*<\/section>\s*$/,
-    'Health last in the rail, at the foot of the outline the page keeps across moves in place');
-  assert.equal(html.match(/id="health-link"/g).length, 1, 'one Health link');
+  assert.match(rail, /^<div class="brand">\s*<a class="wordmark" href="\/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"><\/span><\/a>\s*<span id="instance-label">[^<]*<\/span>\s*<a id="health-link" class="health-link" href="\?health">Health · checking<\/a>\s*<button id="notify"[^>]*>Turn on notifications<\/button>\s*<\/div>/,
+    'the wordmark with its presence dot, the workspace name, the Health link and Turn on notifications, first in the rail');
   const after = rail.slice(rail.indexOf('</div>') + 6);
   assert.match(after, /^\s*<div id="app-status"[^>]*><\/div>\s*<div id="wakes-status"[^>]*><\/div>\s*<div id="updates-status"/, 'the notices directly under it');
   assert.equal(html.match(/class="brand"/g).length, 1, 'one logo block');
