@@ -4929,14 +4929,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await press(p, device, '.message-bar [data-act=fold]');
       await until(async () => (await actsOf(topic, ids.short))?.folded === true, `${device}: Fold folds the message in Core`);
       await until(() => foldedRow(p, ids.short), `${device}: the message shows as its folded row`);
-      if (device === 'phone') await light(p, device, ids.short); else await until(async () => (await barFacts(p))?.some(b => b.act === 'fold' && b.label === 'Unfold'), 'laptop: the bar now offers Unfold');
+      // The folded message stays lit, and its bar now offers Unfold (a second tap on a lit message would open it).
+      await until(async () => (await barFacts(p))?.some(b => b.act === 'fold' && b.label === 'Unfold'), `${device}: the bar now offers Unfold`);
       f = await barFacts(p);
-      if (device === 'laptop') {
-        assert.deepEqual([named('fold').label, named('fold').title], ['Unfold', 'Unfold'], 'laptop: on a folded message the glyph is Unfold');
-        await press(p, device, '.message-bar [data-act=fold]');
-        await until(async () => (await actsOf(topic, ids.short))?.folded === false, 'laptop: Unfold unfolds it in Core');
-        await until(async () => !await foldedRow(p, ids.short), 'laptop: the message reads whole again');
-      } else assert.equal(await foldedRow(p, ids.short), false, 'phone: a tap on the folded row unfolded it, as before');
+      assert.deepEqual([named('fold').label, named('fold').title], ['Unfold', 'Unfold'], `${device}: on a folded message the glyph is Unfold`);
+      await press(p, device, '.message-bar [data-act=fold]');
+      await until(async () => (await actsOf(topic, ids.short))?.folded === false, `${device}: Unfold unfolds it in Core`);
+      await until(async () => !await foldedRow(p, ids.short), `${device}: the message reads whole again`);
+      assert.equal(await readerOn(p), null, `${device}: no Reader opened`);
       assert.equal((await actsOf(topic, ids.short, other))?.folded ?? false, false, `${device}: nobody else's view changed`);
       // A starred message offers no Fold. A phone taps the middle of its words, clear of the bar over the message above.
       const lightMiddle = async id => {
