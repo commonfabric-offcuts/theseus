@@ -3917,6 +3917,60 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Item 472 in a dossier longer than the page loads: its first message and the replies after it are outside the loaded
+  // page, and Option with a swipe right on a loaded reply folds them too, in Core, by one request: what a plain fold
+  // stores, for the reader alone. A starred one and the replies after the swiped one stay whole, another reader's own
+  // folds stand, ⌘Z unfolds every one, and loading the earlier messages, on a new document, shows the stored folds.
+  if (engine === 'chrome') await check('reading stacks Option held with two fingers right on the trackpad folds every message before it in a dossier longer than the loaded page, loaded or not, by one request, for the reader alone; ⌘Z unfolds them all and Earlier messages shows them folded (item 472)', async () => {
+    const topic = 'stack-fold-through-long';
+    const messages = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The first message, outside the loaded page.', read: true }],
+      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: `Reply ${i}.`, read: true }])];
+    const ids = await seed(topic, messages);
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.r2, operation_id: topic + '-star', args: { starred: true } });
+    // Another reader's own fold, on a message before the swiped one, and on one after it.
+    for (const key of ['r1', 'r20']) await control({ method: 'stack_act', sender: other, kind: 'message.fold', message_id: ids[key], operation_id: `${topic}-other-${key}`, args: { folded: true } });
+    let p = await open(topic, 'laptop', topic, ids.r34, HEARD_WHEELS);
+    const loaded = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(id))}))`);
+    assert.deepEqual([await loaded(ids.root), await loaded(ids.r4), await loaded(ids.r5)], [false, false, true], 'the first message and replies 0 to 4 are outside the loaded page');
+    const shownHead = await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
+    await fullyOpen(p, 'laptop', { root: shownHead });
+    const keys = ['root', ...Array.from({ length: 35 }, (_, i) => 'r' + i)];
+    const before = ['root', 'r0', 'r1', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10'];
+    const foldsOf = async (reader = facts.actor) => {
+      const found = reader === facts.actor ? await view('message_acts', { topic_id: topic, limit: 100 }) : (await control({ method: 'acts_as', reader, topic_id: topic })).acts;
+      const folded = new Set(found.items.filter(item => item.acts.folded).map(item => item.message_id));
+      return keys.filter(key => folded.has(ids[key]));
+    };
+    const sent = () => p.evaluate(`window.sent.filter(kind=>kind.startsWith('message.fold')).length`);
+    await trackpad(p, card(ids.r10), SWIPE_RIGHT, 1);
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    assert.deepEqual(await foldsOf(), before, 'Option and a swipe right on reply 10 fold it and every message before it in Core, loaded or not: the starred one and the ones after it stay whole');
+    assert.equal(await sent(), 1, 'by one request');
+    assert.deepEqual(await foldsOf(other), ['r1', 'r20'], 'another reader\'s own folds stand, and nothing else folds for them');
+    assert.equal(await said(p), `${before.length} messages folded to one line, for you only`);
+    await p.key('z', 4);
+    await becomes(() => foldsOf(), [], '⌘Z unfolds every one of them in Core, the ones not loaded included');
+    assert.deepEqual(await foldsOf(other), ['r1', 'r20'], 'and another reader\'s folds still stand');
+    await trackpad(p, card(ids.r10), SWIPE_RIGHT, 1);
+    await becomes(() => foldsOf(), before, 'Option and a swipe right fold them again');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    // A new document: Earlier messages reads the older pages, which show the stored folds.
+    await p.close();
+    p = await open(topic + '-reload', 'laptop', topic, ids.r34);
+    const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+    for (let page = 0; !await loaded(ids.root); page++) {
+      assert.ok(page < 3, 'Earlier messages reaches the first message');
+      const count = await cards();
+      await centre(p, '#more-messages'); await p.point('#more-messages');
+      await until(async () => (await cards()) > count, 'Earlier messages reads an older page');
+    }
+    await fullyOpen(p, 'laptop', ids);
+    const rows = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)};return ${JSON.stringify(keys)}.filter(k=>document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]')?.dataset.folded==='true')})()`);
+    await becomes(rows, before, 'after a reload, with the earlier messages loaded, each message before reply 10 but the starred one is its row, and none after it');
+    await shot(p, 'stack-fold-through-long');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Item 472: a message the reader placed on its own is a section with no title bar, so a swipe over it is a swipe over a
   // message, as anywhere: right folds it in place, for the reader alone, and it stays where it was placed, above More;
   // left unfolds it, on the same page. Two fingers on a laptop's trackpad in both engines, each gesture stamped as a real

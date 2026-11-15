@@ -12,7 +12,9 @@ change:
   (by replying in it or a thumbs-up), so it folds to its newest reply the next
   time they come to it. Theirs alone.
 - `fold` (message.fold): the reader folded this message to one line, on every
-  device and after reloads, until they unfold it. Theirs alone.
+  device and after reloads, until they unfold it. Theirs alone. message.fold_through
+  writes the same rows for a message and every message before it in its dossier at
+  once, loaded on the reader's page or not (item 472).
 - `place` (stack.place): where the reader keeps the stack this message heads in
   their own order of the topic's stacks, as a number to sort by, or none to let
   new replies move it again. Theirs alone.
@@ -221,27 +223,41 @@ class StackRoots:
         return at
 
 
+# Every message of a dossier the reader can see, from its first message (:root) down. Both recursive arms seek
+# indexed children of the current member. The join arm accepts only the latest act; a nonempty join overrides reply
+# ancestry.
+MEMBERS = """
+    WITH RECURSIVE members(id) AS (
+      SELECT :root
+      UNION
+      SELECT m.id FROM members p JOIN messages m ON m.reply_to=p.id
+      JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
+      WHERE """ + VISIBLE + """
+        AND coalesce((SELECT json_extract(a.value,'$.into') FROM message_acts a
+          WHERE a.message_id=m.id AND a.kind='join' AND a.owner='' ORDER BY revision DESC LIMIT 1),'')=''
+      UNION
+      SELECT m.id FROM members p JOIN message_acts a ON json_extract(a.value,'$.into')=p.id AND a.kind='join'
+      JOIN messages m ON m.id=a.message_id JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
+      WHERE a.owner='' AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='join' AND b.owner='')
+        AND """ + VISIBLE + """
+    )"""
+
+
 def _dossier(db, actor, root):
-    """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None.
-    Both recursive arms seek indexed children of the current member. The join
-    arm accepts only the latest act; a nonempty join overrides reply ancestry."""
-    row = db.execute("""
-        WITH RECURSIVE members(id) AS (
-          SELECT :root
-          UNION
-          SELECT m.id FROM members p JOIN messages m ON m.reply_to=p.id
-          JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
-          WHERE """ + VISIBLE + """
-            AND coalesce((SELECT json_extract(a.value,'$.into') FROM message_acts a
-              WHERE a.message_id=m.id AND a.kind='join' AND a.owner='' ORDER BY revision DESC LIMIT 1),'')=''
-          UNION
-          SELECT m.id FROM members p JOIN message_acts a ON json_extract(a.value,'$.into')=p.id AND a.kind='join'
-          JOIN messages m ON m.id=a.message_id JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
-          WHERE a.owner='' AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='join' AND b.owner='')
-            AND """ + VISIBLE + """
-        ) SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id
-        """, {"root": root, "actor": actor}).fetchone()
+    """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None."""
+    row = db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id",
+                     {"root": root, "actor": actor}).fetchone()
     return row[0], row[1]
+
+
+def _dossier_through(db, actor, root, message):
+    """The messages of root's dossier the reader can see, oldest first, as far as message: its first message, each
+    message before message, and message itself. Before means as the page reads a dossier: its first message on top,
+    then the rest oldest first; so of a dossier's first message, only itself."""
+    if message["id"] == root:
+        return [message]
+    return db.execute(MEMBERS + " SELECT m.id,m.topic_id,m.seq FROM members p JOIN messages m ON m.id=p.id"
+                      " WHERE m.id=:root OR m.seq<=:seq ORDER BY m.id<>:root, m.seq", {"root": root, "actor": actor, "seq": message["seq"]}).fetchall()
 
 
 def _seen_seq(db, actor, topic):
@@ -356,15 +372,49 @@ class Stacks:
         return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
 
-    def _record_act(self, db, kind, message, owner, actor, value, revision):
+    def _record_act(self, db, kind, message, owner, actor, value, revision, tell=True):
         """Records an act as its next row and tells who hears of it: a personal act its reader, a shared one
-        everyone who reads the message. Returns the row's id, the version the change is announced at."""
+        everyone who reads the message. Returns the row's id, the version the change is announced at. tell: False
+        leaves the telling to the caller, which records several rows and tells once, at the last."""
         version = db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,?)",
                              (kind, message["id"], message["topic_id"], message["seq"], owner, actor,
                               json.dumps(value, separators=(",", ":"), ensure_ascii=False), _now_ms(), revision)).lastrowid
+        if not tell:
+            return version
         for reader in [actor] if owner else self._message_readers(db, message, actor):
             self._change(db, "actor", reader, "acts", message["topic_id"], version)
         return version
+
+    def _command_message_fold_through(self, db, actor, envelope):
+        """Option with a swipe right (item 472): the named message and every message before it in its dossier
+        fold for the reader, whether or not their page has loaded them, each as their own message.fold would (a
+        new row at its next revision), in one transaction, and the reader alone is told, once. A starred message
+        and one already folded stay as they are; the messages after it, and everyone else's folds, are untouched.
+        Fenced on the named message's fold revision, as its own fold is. `folds` names each message it folded and
+        the fold revision that left it at, so ⌘Z can unfold each."""
+        message, _ = self._acted_message(db, actor, envelope["target"])
+        if envelope["args"]:
+            raise Refusal("INVALID_ARGUMENT", "Name one message: it folds with every message before it in its dossier")
+        current = self._act_revision(db, message["id"], "fold", actor)
+        if envelope["expected"]["fold_revision"] != current:
+            raise Refusal("REVISION_CONFLICT", "This changed since it was read; nothing was changed", {"fold_revision": current})
+        run = _dossier_through(db, actor, StackRoots(db, actor).root(message["id"]), message)
+        acts = current_acts(db, actor, [each["id"] for each in run])
+        folds, version = [], None
+        for each in run:
+            now = acts.get(each["id"], EMPTY)
+            if now["starred"] or now["folded"]:
+                continue
+            version = self._record_act(db, "fold", each, actor, actor, {"folded": True}, now["fold_revision"] + 1, tell=False)
+            folds.append({"message_id": each["id"], "fold_revision": now["fold_revision"] + 1})
+        mine = next((each for each in folds if each["message_id"] == message["id"]), None)
+        result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"], "folds": folds,
+                  "folded": bool(mine) or acts.get(message["id"], EMPTY)["folded"], "fold_revision": mine["fold_revision"] if mine else current,
+                  "changed": bool(folds)}
+        if version is None:
+            return result, []
+        self._change(db, "actor", actor, "acts", message["topic_id"], version)
+        return dict(result, acts_version=version), [{"kind": "acts", "id": message["topic_id"], "version": version}]
 
     _command_message_star = _command_message_deal = _command_message_fold = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_aside = _command_stack_act
 

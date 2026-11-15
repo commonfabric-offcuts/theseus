@@ -62,6 +62,20 @@ current revision. Sending a value the act already stands at records nothing
 and answers `changed: false`. An answer carries the value, the new revision,
 `changed` and, when it recorded a row, `acts_version`.
 
+`message.fold_through` (item 472) folds a message and every message before it
+in its dossier, for the reader, as Option with a swipe right does. It names one
+message, takes no args, and is fenced on that message's `fold_revision`, as its
+fold is. Core finds the dossier's first message, as it does to place and name
+the dossier, and folds the first message, every message the reader can see
+that is older than the named one, and the named one, whether or not the
+reader's page has loaded them. Each fold is the row `message.fold` writes, at
+that message's next revision, all in one transaction. A starred message, and
+one already folded, gets no row. The messages after it, a whisper the reader
+is outside, and everyone else's folds are untouched. The reader alone is told,
+once, at the last row. The answer gives the named message's `folded` and
+`fold_revision`, `changed`, and `folds`: each message it folded, oldest first,
+with the `fold_revision` that left it folded, so ⌘Z can unfold each one.
+
 These rules refuse an act:
 
 - `FORBIDDEN` for a message the sender cannot read: a whisper they are not
@@ -401,7 +415,11 @@ With Option held, two fingers swiped right over a message in a dossier fold
 it and every message before it in the dossier, its first message included
 (item 472): each for the reader alone, as a plain fold is, a starred message
 staying whole and the messages after it untouched, and ⌘Z right after
-unfolds them all. Without Option only the message under the fingers folds.
+unfolds them all. In a dossier longer than the page has loaded, the earlier
+messages it has not loaded fold too, so loading them shows them folded. The
+page sends one `message.fold_through` and shows the messages of the stack in
+front of the reader folded at once; Core's answer says every message it folded.
+Without Option only the message under the fingers folds.
 Safari's engine in the test harness turns the wheel with no keys held, so
 this is checked in Chrome.
 
@@ -563,7 +581,8 @@ twin without judging it, as the rule for that case is still open (item 430).
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
 | inside a dossier: plain names, folded rows with no pill and a 👍 only once given, a message on its own unchanged, at 320, 375 and 390 pixels and on a laptop, light and dark, and a reload finding order, names and folds as they were | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks inside a dossier a name is plain words …" |
 | inside a dossier: a header press folds, the words open the Reader, no bar on a folded row, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier a press on a shown message's header …" |
-| Option and a swipe right fold the message and every one before it, later and starred ones whole, ⌘Z, and a plain swipe folding one | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad …" |
+| Option and a swipe right fold the message and every one before it, later and starred ones whole, ⌘Z, and a plain swipe folding one | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds the message …" |
+| in a dossier longer than the loaded page, the messages not loaded fold too, by one request, another reader's folds stand, ⌘Z unfolds every one, and Earlier messages on a new document shows them folded | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds every message before it in a dossier longer than the loaded page …"; in Core, `tests/test_stacks.py` (`FoldThroughCase`) |
 | a swipe on a dossier's last visible message folds it in place; the title bar alone moves the dossier below More and back | in Chrome (a finger's drag), `tests/stack_native.mjs`, "reading stacks below More uses a real swipe …"; the trackpad, "reading stacks on a laptop two fingers swiped right on the trackpad …" |
 | a message placed on its own folds in place under a swipe right, unfolds under a swipe left on the same page, stays placed and goes nowhere below More | the trackpad in Chrome and Safari's engine, each gesture beginning 300 ms after the last as a real trackpad's does, a finger's drag in Chrome, `tests/stack_native.mjs`, "reading stacks a message placed on its own folds in place …" |
 | the lit card's ring above the next card, a reply's and the first message's, short and long (read in place, at its top and scrolled inside), and a fold line, with none below the last card and none across the next card's words, read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, light and dark, `tests/stack_native.mjs`, "reading stacks the lit card's ring keeps its bottom side above the next card …" |

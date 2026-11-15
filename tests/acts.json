@@ -13990,9 +13990,9 @@
    "act": "Option's fold leaves the messages after the swiped one whole",
    "break": [
     [
-     "web/stack-feed.mjs",
-     "run.slice(0, upTo + 1).map(",
-     "run.map("
+     "aim_next/stacks.py",
+     "\" WHERE m.id=:root OR m.seq<=:seq ORDER BY",
+     "\" WHERE m.id=:root OR m.seq<=:seq OR 1 ORDER BY"
     ]
    ],
    "check": {
@@ -14005,9 +14005,9 @@
    "act": "Option's fold leaves a starred message whole",
    "break": [
     [
-     "web/stack-feed.mjs",
-     "return !acts.folded && !acts.starred; });",
-     "return !acts.folded; });"
+     "aim_next/stacks.py",
+     "            if now[\"starred\"] or now[\"folded\"]:",
+     "            if now[\"folded\"]:"
     ]
    ],
    "check": {
@@ -14021,7 +14021,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.remember(() => { for (const each of folding) this.setFold(each, false, { focus: false, undoable: false }); });\n",
+     "    this.remember(() => folded.then(each => { for (const one of each) this.setFold(one, false, { focus: false, undoable: false }); }, () => {}));\n",
      ""
     ]
    ],
@@ -14032,17 +14032,46 @@
   },
   {
    "item": 472,
-   "act": "A swipe right on a message placed on its own folds it in place and moves nothing below More",
+   "act": "Option's fold folds the earlier messages of a dossier that the page has not loaded, in Core, by one request, so loading them shows them folded",
    "break": [
     [
-     "web/stack-feed.mjs",
-     "whole: Boolean(found.section && chrome) };",
-     "whole: Boolean(found.section && (chrome || found.section.dataset.single === 'true')) };"
+     "aim_next/stacks.py",
+     "        run = _dossier_through(db, actor, StackRoots(db, actor).root(message[\"id\"]), message)",
+     "        run = [message]"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks a message placed on its own folds in place"
+    "case": "folds every message before it in a dossier longer than the loaded page"
+   }
+  },
+  {
+   "item": 472,
+   "act": "⌘Z right after Option's fold unfolds the messages it folded that the page has not loaded too",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     ".then(result => result.folds.map(({ message_id }) => this.messages().get(message_id) ?? this.standIns.get(message_id)));",
+     ".then(result => result.folds.map(({ message_id }) => this.messages().get(message_id)).filter(Boolean));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "folds every message before it in a dossier longer than the loaded page"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Core's fold through tells the reader alone, once, and leaves everyone else's folds as they were",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "{\"folded\": True}, now[\"fold_revision\"] + 1, tell=False)",
+     "{\"folded\": True}, now[\"fold_revision\"] + 1)"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
    }
   },
   {
@@ -14057,6 +14086,21 @@
    ],
    "check": {
     "native": "webkit-reading",
+    "case": "reading stacks a message placed on its own folds in place"
+   }
+  },
+  {
+   "item": 472,
+   "act": "A swipe right on a message placed on its own folds it in place and moves nothing below More",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "whole: Boolean(found.section && chrome) };",
+     "whole: Boolean(found.section && (chrome || found.section.dataset.single === 'true')) };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
     "case": "reading stacks a message placed on its own folds in place"
    }
   },

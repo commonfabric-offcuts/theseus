@@ -189,6 +189,106 @@ class FoldCase(StackCase):
         self.assertEqual(self.acts(plain)["folded"], False)
 
 
+class FoldThroughCase(StackCase):
+    """Option with a swipe right (item 472): a message and every message before it in its dossier fold for the reader,
+    by one command, whether or not their page has loaded them, each as a plain fold is stored."""
+
+    def through(self, message, revision=0, actor="owner", op=None, args=None):
+        return self.command("message.fold_through", {} if args is None else args, target={"message_id": message},
+                            expected={"fold_revision": revision}, actor=actor, op=op)
+
+    def folded(self, actor="owner"):
+        """The messages folded for the reader, as their page of the topic reads them."""
+        page = self.store.view(actor, "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 100})
+        return {item["id"] for item in page["items"] if item["acts"]["folded"]}
+
+    def dossier(self):
+        names = {}
+        names["root"] = self.post("The first message")
+        names["r1"] = self.post("Reply one", reply_to=names["root"])
+        names["r2"] = self.post("Reply two, to reply one", reply_to=names["r1"])
+        names["starred"] = self.post("Starred", reply_to=names["root"])
+        names["folded"] = self.post("Folded already", reply_to=names["root"])
+        names["elsewhere"] = self.post("A message in another dossier")
+        names["joined"] = self.post("A stack joined to the dossier")
+        names["named"] = self.post("The swiped message", reply_to=names["r2"])
+        names["after"] = self.post("After it", reply_to=names["root"])
+        self.committed(self.join(names["joined"], names["root"]))
+        self.committed(self.star(names["starred"]))
+        self.committed(self.fold(names["folded"]))
+        # Another reader's own folds: one before the swiped message, one after it.
+        for name in ("r1", "after"):
+            self.committed(self.fold(names[name], actor="agent-a"))
+        return names
+
+    def test_it_folds_the_message_and_every_one_before_it_in_its_dossier_for_the_reader_alone_and_tells_them_once(self):
+        names = self.dossier()
+        changes = self.sql("SELECT count(*) FROM changes WHERE resource_kind='acts'")[0][0]
+        result = self.committed(self.through(names["named"]))
+        order = ["root", "r1", "r2", "joined", "named"]
+        self.assertEqual([each["message_id"] for each in result["folds"]], [names[name] for name in order],
+                         "its first message, each message before it oldest first, a joined stack's included, and itself")
+        self.assertEqual([each["fold_revision"] for each in result["folds"]], [1, 1, 1, 1, 1])
+        self.assertEqual((result["folded"], result["fold_revision"], result["changed"]), (True, 1, True))
+        self.assertEqual(self.folded(), {names[name] for name in order + ["folded"]},
+                         "the reader's page reads them folded; the starred one, the one after it and another dossier's stay whole")
+        self.assertEqual(self.acts(names["folded"])["fold_revision"], 1, "one already folded gets no new row")
+        self.assertEqual(self.folded("agent-a"), {names["r1"], names["after"]}, "another reader's own folds stand, and nothing folds for them")
+        rows = [row for row in self.rows("fold") if row[1] == "owner"]
+        self.assertEqual([(row[0], json.loads(row[3]), row[4]) for row in rows][-5:], [(names[name], {"folded": True}, 1) for name in order],
+                         "each is the row a plain fold writes")
+        told = self.sql("SELECT scope_kind,scope_id,resource_id,version FROM changes WHERE resource_kind='acts' ORDER BY seq")[changes:]
+        self.assertEqual(told, [("actor", "owner", "t1", result["acts_version"])], "the reader alone is told, once, at the last row")
+        self.assertEqual(result["acts_version"], self.sql("SELECT max(id) FROM message_acts")[0][0])
+
+    def test_it_is_fenced_on_the_named_messages_fold_and_a_retry_answers_what_was_recorded(self):
+        names = self.dossier()
+        self.committed(self.fold(names["named"]))
+        conflict = self.through(names["named"], revision=0)
+        self.rejected(conflict, "REVISION_CONFLICT")
+        self.assertEqual(conflict["error"]["current_versions"], {"fold_revision": 1})
+        self.assertEqual(self.folded(), {names["folded"], names["named"]}, "a late request folds nothing")
+        first = self.through(names["named"], revision=1, op="through-once")
+        self.assertEqual(self.through(names["named"], revision=1, op="through-once"), first, "the same operation is answered with what it recorded")
+        result = self.committed(first)
+        self.assertEqual([each["message_id"] for each in result["folds"]], [names[name] for name in ("root", "r1", "r2", "joined")],
+                         "a folded message named still folds every one before it")
+        self.assertEqual((result["folded"], result["fold_revision"]), (True, 1))
+        again = self.committed(self.through(names["named"], revision=1))
+        self.assertEqual((again["folds"], again["changed"]), ([], False), "with nothing left to fold it changes nothing")
+        self.assertNotIn("acts_version", again)
+
+    def test_it_names_one_message_and_nothing_else(self):
+        names = self.dossier()
+        before = self.rows("fold")
+        for args in ({"folded": True}, {"through": True}):
+            self.rejected(self.through(names["named"], args=args), "INVALID_ARGUMENT")
+        self.rejected(self.command("message.fold_through", {}, target={"message_id": names["named"]}), "INVALID_ARGUMENT")
+        self.rejected(self.command("message.fold_through", {}, target={"message_id": names["named"]}, expected={"star_revision": 0}), "INVALID_ARGUMENT")
+        self.rejected(self.through(names["named"], actor="other-reader"), "FORBIDDEN")
+        self.rejected(self.through("m-unknown"), "FORBIDDEN")
+        self.assertEqual(self.rows("fold"), before)
+
+    def test_of_a_first_message_it_folds_that_alone_and_a_starred_named_message_stays_whole(self):
+        names = self.dossier()
+        alone = self.committed(self.through(names["root"]))
+        self.assertEqual([each["message_id"] for each in alone["folds"]], [names["root"]], "a dossier's first message has none before it")
+        self.committed(self.star(names["named"]))
+        starred = self.committed(self.through(names["named"]))
+        self.assertEqual([each["message_id"] for each in starred["folds"]], [names[name] for name in ("r1", "r2", "joined")])
+        self.assertEqual((starred["folded"], starred["fold_revision"]), (False, 0), "the starred message named stays whole")
+
+    def test_it_folds_nothing_the_reader_cannot_see(self):
+        names = self.dossier()
+        hidden = self.post("Between us", actor="owner", addressees=["agent-a"], whisper=True, reply_to=names["r2"])
+        last = self.post("After the whisper", reply_to=names["r2"])
+        result = self.committed(self.through(last, actor="agent-b"))
+        self.assertEqual([each["message_id"] for each in result["folds"]],
+                         [names[name] for name in ("root", "r1", "r2", "starred", "folded", "joined", "named", "after")] + [last],
+                         "a whisper between others is not folded for the reader, nor is anyone else's star or fold theirs")
+        self.assertEqual([row for row in self.rows("fold") if row[0] == hidden], [], "and it has no row")
+
+
 class AnsweredFoldCase(StackCase):
     """A person's reply to a message, or their thumbs-up on it, folds it for them in Core, as their Fold would (item 377)."""
 
