@@ -192,7 +192,8 @@
    new give way, each a part of the line. */
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta{display:contents}
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta::before{content:none}
-.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>*{margin-left:calc(.3em - .5rem)}
+/* Each stands on the second line, as the row's own parts do (order 2, above). */
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>*{order:2;margin-left:calc(.3em - .5rem)}
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta>.stack-count{flex:none}
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta>.stack-count::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400}
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta>:is(.stack-repliers,.stack-fresh){flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis}
