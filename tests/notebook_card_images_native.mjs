@@ -185,6 +185,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     const both = await holds(id, page => page.attachments.length === 2, 'its upload ends and it goes to the page');
     assert.deepEqual(lines(both.body).map(line => line.id), both.attachments.map(a => a.id), 'the page carries each image a card names, in order');
     await until(async () => { const shown = await figures(p, card); return shown.length === 2 && shown.every(f => f.shown && !f.name.includes('·')); }, 'the card shows both, uploaded');
+    await shot(p, 'notebook-card-images-undo-laptop');
     assert.deepEqual(p.errors, []); await p.close();
     // Someone else's: an agent's image on a page the person writes.
     const theirs = 'nb-card-undo-theirs', media = `${theirs}-media-0`, SHEET = '#new-message-sheet .notebook-sheet-page:not([hidden])', SBOX = `${SHEET} .deck-writing textarea`;
@@ -268,6 +269,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     assert.equal(made.body, `## Plan\n\nShip it.\n\n## diagram\n\n![diagram.png](attachment:${made.attachments[0].id})\n`);
     await until(async () => (await figures(p, `${ROOT} .deck-card[data-index="1"]`)).some(f => f.shown), 'the new card shows its image');
     assert.equal(await p.evaluate(`document.querySelector('${ROOT} .deck-card[data-index="1"] .deck-title').textContent`), 'diagram');
+    await shot(p, 'notebook-card-image-new-card-laptop');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
