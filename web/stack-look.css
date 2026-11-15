@@ -17,7 +17,7 @@
        .stack-head           the head row: .stack-name (.stack-act), .stack-pen,
                              .stack-who, .card-carries (the first message's
                              marks, aim.css), .stack-new, .stack-star, .stack-meta
-                             (.stack-repliers, .stack-fresh), .stack-hide
+                             (.stack-count, .stack-repliers, .stack-fresh), .stack-hide
      > .stack-rename         the rename field: .stack-rename-input, .stack-rename-hint
      > .stack-replies        the replies, oldest first, each an entry; between them
        .stack-join-line      above a joined stack's first message (.stack-join-words, .stack-split)
@@ -150,8 +150,8 @@
   background:var(--stack-tab-fillet,radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab)))}
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{content:"";position:absolute;inset:0 0 -6px;border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;pointer-events:none;
   clip-path:polygon(-8px -8px,calc(100% + 8px) -8px,calc(100% + 8px) calc(100% - 6px),0 calc(100% - 6px),0 100%,-8px 100%);box-shadow:var(--stack-tab-shadow,none)}
-/* The head row's two lines: the name and its pen, a break, then the rest, which never wraps to a third: the count and
-   who replied give way first, then the first message's marks, then who began it (below). */
+/* The head row's two lines: the name and its pen, a break, then the rest, which never wraps to a third: who replied
+   and what is new give way first, then the first message's marks, then who began it; the count never does (below). */
 .reply-stack:not(.only-new *) .stack-head::after{content:"";order:1;flex-basis:100%;height:0}
 .reply-stack:not(.only-new *) .stack-head>:not(.stack-name,.stack-pen){order:2}
 .reply-stack[data-renaming=true]:not(.only-new *) .stack-head{display:none}
@@ -169,12 +169,15 @@
 /* A touch screen has no pointer to show the pen: the name itself is the handle. */
 @media(hover:none){.stack-pen{display:none}}
 /* The second line, one quiet run joined by "·": who started it, the marks of what the first message carries (item 127),
-   New, the star, then the count, who replied and what is new. It never wraps to a third: the parts that can give way
-   start from no width, so the line holds them all, and take the room left in turn, by their weights: who began it
-   first, then the marks, then the count. On a narrow tab the count gives way first, then the marks, whole glyphs
-   dropped from the end (a mark that does not fit wraps below the first line and is clipped; the empty first item holds
-   that line at the run's height and lets even the first mark go), then who began it, cut short, its whole name its
-   tooltip (reply-stacks.mjs). What room the marks do not fill sits before them, a space before the glyphs. */
+   New, the star, then the count, who replied and what is new. It never wraps to a third: New, the star, Folded and the
+   count keep their width, and the parts that can give way start from no width, so the line holds them all, and take
+   the room left in turn, by their weights: who began it first, then the marks, then who replied and what is new. On a
+   narrow tab who replied and what is new give way first, then the marks, whole glyphs dropped from the end (a mark
+   that does not fit wraps below the first line and is clipped; the empty first item holds that line at the run's
+   height and lets even the first mark go), then who began it, cut short, its whole name its tooltip (reply-stacks.mjs);
+   the count always shows, as it did before the marks. What room the marks do not fill sits before them, a space before
+   the glyphs. The count, who replied and what is new are parts of the line themselves: .stack-meta, which holds them
+   as one run of words, lays out as its children (below). */
 .stack-who{flex:10000 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
 .stack-head>.card-carries{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;align-self:center;flex:100 1 0;min-width:0;max-width:max-content;
   height:var(--stack-meta-lh);overflow:hidden}
@@ -185,6 +188,14 @@
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
 .stack-star{flex:none;color:var(--stack-star)}
 .stack-meta{flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
+/* On the tab (a compact row keeps .stack-meta whole, above), the count keeps its width and who replied and what is
+   new give way, each a part of the line. */
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta{display:contents}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta::before{content:none}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>*{margin-left:calc(.3em - .5rem)}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>.stack-count{flex:none}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>.stack-count::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>:is(.stack-repliers,.stack-fresh){flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis}
 .stack-fresh{color:var(--stack-new);font-weight:700}
 /* A click anywhere on the tab hides the full message again; its words are kept for a screen reader only. */
 .reply-stack:not(.only-new *) .stack-hide{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}

@@ -20,17 +20,25 @@ only (`aim_next/topic_reading.py`), through indexes keyed by message:
 - `yours`: what the reader has written privately on the message,
   `{note, reply, version}`, from their own notes and drafts only, so another
   reader's never shows. `note` is true while their private note on it holds
-  words; `reply` while a reply they saved from it holds words or an image and
-  is not on its way (preparing a reply to send leaves its draft empty, so a
-  sent reply takes it away). `version` is the note's revision and every such
-  draft's added up: each save raises one of them and none is ever removed, so
-  it grows with every save, and a page keeps the newer of two reads.
+  words; `reply` while they have a reply from it that is not sent: a reply
+  saved there holding words or an image, or the newest reply they prepared
+  from it while its send has not been accepted. Preparing a reply empties its
+  draft, so without the second a send refused after it (the authority
+  changed, or the person left the topic) would leave the reply unsent and
+  unmarked. A send is accepted when it made its message, which carries the
+  send's operation id; a reply prepared again from a refused one, once
+  accepted, answers for it. `version` is the note's revision, every such
+  draft's and the count of replies from the message that were sent, added up:
+  each save, preparation and accepted send raises one of them and none is
+  ever lowered, so it grows with each, and a page keeps the newer of two
+  reads.
 
-A save of a private note or a draft about a message, and a reply's
-preparation, record a `yours` change in the writer's own scope, keyed by the
-message and carrying that version, so a page showing the card reads the
+A save of a private note or a draft about a message, a reply's preparation and
+its accepted send record a `yours` change in the writer's own scope, keyed by
+the message and carrying that version, so a page showing the card reads the
 message again (`topic_messages {topic_id, message_ids: [id]}`), on this
-device or another. No table, command or schema step.
+device or another. A refused send changes nothing, so the mark stays. No
+table, command or schema step.
 
 ## Read cards (31)
 
@@ -80,7 +88,8 @@ no Tab stop and no press of their own, so a press on one opens the message
 as a press anywhere on the card does. Each says its words as its accessible
 name and its tooltip ("Has an image", "Your private note, which only you can
 see", "Your reply, saved and not sent"), so a screen reader hears them with
-the card. They are drawn in the line's quiet color (`--muted`), which every
+the card; a whisper's card, whose name is set to say who it is to, says them
+in that name after its time (`paintWhisperAuthor`, `web/whisper-choice.mjs`). They are drawn in the line's quiet color (`--muted`), which every
 card face sets for light and dark, and held to the time (`.together`), so a
 line that wraps keeps them beside it; a message from before times were kept
 shows them after its name (`carriesOf` and `paintAuthor`, `web/marks.mjs`).
@@ -92,18 +101,22 @@ its star rather than leaving the star alone on a line that shows nothing.
 A message that heads a reply stack shows them on the stack's head row too,
 beside who started it, since that row stands for the message while its card
 is folded into it (docs/reply-stacks.md, "The head"). The row's second line
-never wraps: on a narrow tab its marks give way, whole glyphs dropped from the
-end, after the count and before who started it, so a phone with a long name
-there may show fewer marks than the card does.
+never wraps: on a narrow tab who replied and what is new give way first, then
+its marks, whole glyphs dropped from the end, then who started it, cut short;
+the reply count always shows, as it did before the marks, so a phone may show
+fewer marks there than the card does.
 
 They follow the person's writing as Core keeps it: a note saved in the
 Reader, or a reply saved there or on another device, marks the card once its
 `yours` change is read (`TopicViews`, key `yours:<id>`); a note emptied, a
-reply emptied or a reply sent takes its mark away. Another reader's note or
-draft never marks a card. `tests/card_marks_native.mjs` (`native-card-marks`)
+reply emptied or a reply whose send is accepted takes its mark away. A reply
+whose send is refused keeps its mark until a reply from that message is sent.
+Another reader's note or draft never marks a card. `tests/card_marks_native.mjs` (`native-card-marks`)
 checks them in Chrome and Safari's engine at 320, 375 and 390 points with
 touch and on a laptop, light and dark, and at every width that a marked line
-holds no line showing nothing and the star's place stays inside the card.
+holds no line showing nothing and the star's place stays inside the card,
+that every head row shows its reply count whole and only whole marks, and
+that a whisper's card says its marks in the name the browser gives it.
 
 ## Reply stacks (103, 283)
 

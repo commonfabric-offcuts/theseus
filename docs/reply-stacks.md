@@ -215,10 +215,10 @@ their acts.
   the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. The tab is two
   lines high: the short name, then the rest on one line that never wraps to
-  a third (`stack-look.css`). When that line is short of room, the count, who
-  replied and what is new give way first, then the marks, whole glyphs
-  dropped from the end, then who began it, cut short with its whole name in
-  its tooltip; "New", ★ and "Folded" always show. The short name is the
+  a third (`stack-look.css`). When that line is short of room, who replied
+  and what is new give way first, then the marks, whole glyphs dropped from
+  the end, then who began it, cut short with its whole name in its tooltip;
+  "New", ★, "Folded" and the count always show. The short name is the
   one someone typed for the dossier, or else the first message's line (One line
   of a message, below). A page that holds only some of a dossier's replies
   shows the name too, and a rename typed there names the whole dossier.
@@ -427,8 +427,9 @@ the semantic colour tokens of `web/aim.css` and only the names that
 - Inside the stack:
   - the head's entry, with its card marked `.stack-head-card` and holding
     `.stack-head`. The row's parts are `.stack-name`, `.stack-pen`,
-    `.stack-who`, `.stack-new`, `.stack-star`, `.stack-meta` (with
-    `.stack-repliers` and `.stack-fresh`) and `.stack-hide`.
+    `.stack-who`, `.card-carries`, `.stack-new`, `.stack-star`, `.stack-meta`
+    (with `.stack-count`, `.stack-repliers` and `.stack-fresh`, each a part of
+    the tab's line of its own) and `.stack-hide`.
   - `.stack-rename`, holding `.stack-rename-input` and `.stack-rename-hint`.
   - `.stack-toggle`, the header's native expand/collapse button, a sibling of
     the message button, with `aria-expanded` and `aria-controls`.

@@ -65,7 +65,7 @@ class TopicReadingCase(fixtures.ReaderCase):
         self.note(message, "  \n ", revision=1)
         self.assertEqual(self.marks(message), (False, False), "a note emptied of words is no note")
 
-    def test_your_reply_is_the_readers_own_saved_writing_until_it_is_prepared(self):
+    def test_your_reply_is_the_readers_own_saved_writing_until_its_send_is_accepted(self):
         message = self.post("Answer me")
         self.draft(message, "Their reply", actor="agent-a", draft_id="theirs")
         self.assertEqual(self.marks(message), (False, False), "another reader's saved reply is theirs alone")
@@ -75,7 +75,45 @@ class TopicReadingCase(fixtures.ReaderCase):
         self.draft(message, "My answer", revision=1)
         self.assertEqual(self.marks(message), (False, True))
         self.committed(self.prepare("d", "t1", revision=2, submission="s-reply", send_op="send-reply"))
-        self.assertEqual(self.marks(message), (False, False), "a reply on its way is no longer saved writing")
+        self.assertEqual(self.marks(message), (False, True), "a reply prepared to send has not been sent")
+        self.committed(self.command("message.send", {"submission_id": "s-reply"}, target={"topic_id": "t1"}, op="send-reply"))
+        self.assertEqual(self.marks(message), (False, False), "a reply whose send was accepted is no longer saved writing")
+        self.assertEqual(self.marks(message, "agent-a"), (False, True), "the person's send leaves another reader's reply theirs")
+
+    def test_a_reply_whose_send_is_refused_keeps_its_mark_and_only_an_accepted_send_takes_it(self):
+        message = self.post("Answer me")
+        yours = lambda actor="owner": self.sql("SELECT version FROM changes WHERE scope_kind='actor' AND scope_id=? AND resource_kind='yours' AND resource_id=? ORDER BY seq", (actor, message))
+        self.draft(message, "My answer")
+        self.committed(self.prepare("d", "t1", revision=1, submission="s-mine", send_op="send-mine"))
+        # The authority changed between the preparation and the send: the send is refused, and the reply did not send.
+        stale = {"v": 1, "instance_id": "test-instance", "operation_id": "send-mine", "kind": "message.send", "target": {"topic_id": "t1"},
+                 "expected": {"authority": dict(self.pin, authority_epoch="an-earlier-epoch")}, "args": {"submission_id": "s-mine"}}
+        self.rejected(self.store.command("owner", stale), "AUTHORITY_CHANGED")
+        self.assertEqual(self.marks(message), (False, True), "a reply whose send was refused keeps its mark")
+        refused = yours()
+        # Accepted, the same reply's mark goes, and the person's own changes say so with a newer version.
+        self.committed(self.command("message.send", {"submission_id": "s-mine"}, target={"topic_id": "t1"}, op="send-mine"))
+        self.assertEqual(self.marks(message), (False, False), "an accepted send takes the mark away")
+        self.assertEqual((len(yours()), yours()[-1] > refused[-1]), (len(refused) + 1, True), "the accepted send tells the writer's changes")
+        self.assertEqual(self.page()[message]["yours"]["version"], yours()[-1][0])
+
+        # Another person leaves the topic between preparing a reply and sending it: refused, its mark is there when
+        # they come back, and the reply prepared again from it and accepted takes it away.
+        self.participation("other-reader", True)
+        theirs = self.post("Answer me too")
+        self.draft(theirs, "Their answer", actor="other-reader", draft_id="o")
+        prepared = self.committed(self.command("submission.prepare", {"draft_id": "o", "submission_id": "s-left", "send_operation_id": "send-left"},
+                                               target={"topic_id": "t1"}, expected={"draft_revision": 1}, actor="other-reader"))
+        self.participation("other-reader", False)
+        self.rejected(self.command("message.send", {"submission_id": "s-left"}, target={"topic_id": "t1"}, actor="other-reader", op="send-left"), "FORBIDDEN")
+        self.participation("other-reader", True)
+        self.assertEqual(self.marks(theirs, "other-reader"), (False, True), "a reply refused when its writer left the topic keeps its mark")
+        self.draft(theirs, "Their answer", revision=2, actor="other-reader", draft_id="o", generation=prepared["next_draft"]["generation"])
+        self.committed(self.command("submission.prepare", {"draft_id": "o", "submission_id": "s-again", "send_operation_id": "send-again"},
+                                    target={"topic_id": "t1"}, expected={"draft_revision": 3}, actor="other-reader"))
+        self.assertEqual(self.marks(theirs, "other-reader"), (False, True))
+        self.committed(self.command("message.send", {"submission_id": "s-again"}, target={"topic_id": "t1"}, actor="other-reader", op="send-again"))
+        self.assertEqual(self.marks(theirs, "other-reader"), (False, False), "the reply sent again, accepted, answers for the refused one")
 
     def test_a_saved_reply_holding_only_an_image_is_saved_writing(self):
         message = self.post("Show me")

@@ -334,7 +334,9 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   // Use the same pencil and direction as the page's New message control.
   const pencil = doc.getElementById('new-message')?.querySelector('svg')?.cloneNode(true);
   if (pencil) pen.append(pencil);
-  const meta = element(doc, 'span', 'stack-meta', `${head.count} ${replies(head.count)}`);
+  // The count in a part of its own, which never gives way on a narrow tab (stack-look.css); who replied and what is new may.
+  const meta = element(doc, 'span', 'stack-meta');
+  meta.append(element(doc, 'span', 'stack-count', `${head.count} ${replies(head.count)}`));
   if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
   if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));
   // Who began it gives way last on a narrow tab (stack-look.css), cut short: its whole name is its tooltip.

@@ -129,7 +129,9 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
   time; another's never does", at 320, 375 and 390 points and a laptop, light
   and dark, in Chrome and Safari's engine: each mark is in the card's line on
   the time's line, never a control, and a card with all three keeps a one-line
-  author line ([topic-reading.md](topic-reading.md), "What a card carries").
+  author line; "head rows at …" checks a stack's head row keeps its reply count
+  whole beside them ([topic-reading.md](topic-reading.md), "What a card
+  carries").
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 

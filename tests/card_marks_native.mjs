@@ -10,7 +10,9 @@
 // device or emptied there moves the marks while another reader's never does.
 // A stack's head row, which stands for its first message, keeps its tab two
 // lines high whatever that message carries, starred, folded or open, at every
-// width: on a narrow tab the marks give way, whole, before who began it.
+// width: on a narrow tab the marks give way, whole, before who began it, and
+// the reply count always shows. A whisper of the person's carries its marks in
+// the name the browser gives its card, as every other card does.
 //
 // Usage: node tests/card_marks_native.mjs <Chrome for Testing> <evidence dir> [case filter]
 // A filter runs the cases whose names hold it, or any of its parts split by |;
@@ -46,10 +48,10 @@ const WORDS = { image: 'Has an image', note: 'Your private note, which only you 
 const card = id => `.message-card[data-id="${id}"]`;
 // Each engine reads a topic of its own, so what one engine's cases change the other's never see.
 const ENGINES = ['chromium', 'webkit'];
-const ids = {}, headIds = {};
+const ids = {}, headIds = {}, whisperIds = {};
 async function seed() {
   const facts = await control({ method: 'ready' });
-  await control({ method: 'navigation_topics', topics: ENGINES.flatMap(engine => [{ id: `marks-${engine}`, title: 'Card marks' }, ...VIEWS.map((view, index) => ({ id: `heads-${engine}-${index}`, title: 'Head rows' }))]) });
+  await control({ method: 'navigation_topics', topics: ENGINES.flatMap(engine => [{ id: `marks-${engine}`, title: 'Card marks' }, ...VIEWS.map((view, index) => ({ id: `heads-${engine}-${index}`, title: 'Head rows' })), { id: `whisper-${engine}`, title: 'A whisper' }]) });
   for (const engine of ENGINES) {
     const topic = `marks-${engine}`, m = ids[engine] = {};
     const say = async (name, body, more = {}) => (await control({ method: 'agent_message', operation_id: `${topic}-${name}`, topic_id: topic, source: 'topic', body, ...more })).result.message_id;
@@ -75,6 +77,14 @@ async function seed() {
     // each headed by a new message from the fixture's agent, whose name is 22 characters, and answered by another
     // person, so none is a quiet agents' dossier. One head carries an image, the person's note and their saved reply
     // and is starred; one carries the same and is folded; one carries an image alone; one carries nothing.
+    // A whisper of the person's to the agent, with an image and their note, beside the agent's own message with an
+    // image, in a topic of their own so the feed's counts of marks stay as they are.
+    const whispers = `whisper-${engine}`, w = whisperIds[engine] = {};
+    w.agent = (await control({ method: 'agent_message', operation_id: `${whispers}-agent`, topic_id: whispers, source: 'topic', join: true,
+      body: 'A picture from the agent.', attachments: [{ name: 'screen.png', image: 'screen.png' }] })).result.message_id;
+    w.whisper = (await control({ method: 'agent_message', operation_id: `${whispers}-whisper`, topic_id: whispers, source: 'topic', sender: 'person',
+      addressees: [facts.agent], whisper: true, body: 'A whisper of mine with a picture.', attachments: [{ name: 'one.png', image: 'one.png' }] })).result.message_id;
+    await control({ method: 'private_writing', operation_id: `${whispers}-note`, topic_id: whispers, kind: 'note', message_id: w.whisper, body: 'Mine.' });
     headIds[engine] = [];
     for (const index of VIEWS.keys()) {
       const heads = `heads-${engine}-${index}`, h = headIds[engine][index] = {};
@@ -173,12 +183,29 @@ const readHead = (p, id) => p.evaluate(selector => {
   const row = document.querySelector(selector + ' > .stack-head');
   if (!row) return null;
   const box = rect => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height });
-  const parts = [...row.children].filter(part => !part.matches('.stack-hide') && getComputedStyle(part).display !== 'none')
+  // A part laid out by its children alone (display: contents) is its children.
+  const parts = [...row.children].flatMap(part => (getComputedStyle(part).display === 'contents' ? [...part.children] : [part]))
+    .filter(part => !part.matches('.stack-hide') && getComputedStyle(part).display !== 'none')
     .map(part => ({ part: part.className, box: box(part.getBoundingClientRect()), text: part.textContent }));
+  // The reply count's words ("1 reply"), and whether they read whole: inside what clips them, with room left for the
+  // ellipsis when that box is cut short, and inside the tab.
+  const meta = row.querySelector(':scope > .stack-meta'), text = meta && document.createTreeWalker(meta, NodeFilter.SHOW_TEXT).nextNode();
+  let count = null;
+  if (text) {
+    const range = document.createRange(); range.selectNodeContents(text);
+    const words = range.getBoundingClientRect();
+    let clip = text.parentElement;
+    while (clip !== row && getComputedStyle(clip).overflowX === 'visible') clip = clip.parentElement;
+    const edge = clip.getBoundingClientRect(), cut = clip.scrollWidth > clip.clientWidth + 0.5, style = getComputedStyle(clip);
+    const pen = document.createElement('canvas').getContext('2d');
+    pen.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const room = Math.min(edge.right - (cut ? pen.measureText('\u2026').width : 0), row.getBoundingClientRect().right);
+    count = { text: text.textContent, words: box(words), whole: words.width > 0 && words.left >= edge.left - 0.5 && words.right <= room + 0.5 };
+  }
   const held = row.querySelector(':scope > .card-carries'), who = row.querySelector(':scope > .stack-who');
   return {
     row: box(row.getBoundingClientRect()), parts, held: held ? box(held.getBoundingClientRect()) : null,
-    marks: [...row.querySelectorAll('.carry')].map(mark => ({ kind: mark.className.replace('carry carry-', ''), label: mark.getAttribute('aria-label'), box: box(mark.getBoundingClientRect()) })),
+    marks: [...row.querySelectorAll('.carry')].map(mark => ({ kind: mark.className.replace('carry carry-', ''), label: mark.getAttribute('aria-label'), box: box(mark.getBoundingClientRect()) })), count,
     who: { text: who.textContent, title: who.title, cut: who.scrollWidth > who.clientWidth + 0.5, width: who.getBoundingClientRect().width },
     shape: parts.map(part => `${part.part}@${Math.round(part.box.left)},${Math.round(part.box.top)}-${Math.round(part.box.right)},${Math.round(part.box.bottom)}`).join(' '),
   };
@@ -239,12 +266,52 @@ async function run() {
     });
   }
 
+  // The name a screen reader hears for a card, as the browser computes it: Chromium's own accessibility tree, and in
+  // Safari's engine the name Playwright's accessibility snapshot gives the card's button.
+  const accessibleName = async (p, selector) => {
+    if (engine === 'chromium') {
+      const cdp = await p.context().newCDPSession(p);
+      try {
+        const { result } = await cdp.send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(selector)})` });
+        const { node } = await cdp.send('DOM.describeNode', { objectId: result.objectId });
+        await cdp.send('Accessibility.enable');
+        const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+        const found = nodes.find(entry => entry.backendDOMNodeId === node.backendNodeId);
+        assert.ok(found, `${selector} is in the accessibility tree`);
+        return String(found.name?.value ?? '');
+      } finally { await cdp.detach(); }
+    }
+    const snapshot = await p.locator(selector).ariaSnapshot();
+    const named = /^- button "((?:[^"\\]|\\.)*)"/.exec(snapshot);
+    assert.ok(named, `${selector} is a named button: ${snapshot}`);
+    return JSON.parse(`"${named[1]}"`);
+  };
+  await check('whisper: a whisper card with an image and a note says its marks in the name the browser gives it, as another card does', async () => {
+    const w = whisperIds[engine], p = await open(`/?topic=whisper-${engine}`, { width: 390 });
+    const marked = (id, count) => until(p, ([selector, want]) => document.querySelectorAll(selector + ' > .message-author .carry').length === want,
+      `${count} marks on the card`, [card(id), count]);
+    await marked(w.agent, 1);
+    await marked(w.whisper, 2);
+    const agent = await accessibleName(p, card(w.agent));
+    assert.ok(agent.includes(WORDS.image), `another card's name holds its mark: ${agent}`);
+    const whisper = await accessibleName(p, card(w.whisper));
+    assert.ok(whisper.includes('whisper to'), `the whisper card keeps its own words: ${whisper}`);
+    assert.ok(whisper.includes(WORDS.image) && whisper.includes(WORDS.note), `the whisper card's name holds its marks: ${whisper}`);
+    // The note emptied on another device: its mark leaves the card and the card's name.
+    await control({ method: 'private_writing', operation_id: `whisper-${engine}-note-emptied`, topic_id: `whisper-${engine}`, kind: 'note', message_id: w.whisper, body: '' });
+    await marked(w.whisper, 1);
+    const emptied = await accessibleName(p, card(w.whisper));
+    assert.ok(emptied.includes(WORDS.image) && !emptied.includes(WORDS.note), `the whisper card's name follows its marks: ${emptied}`);
+    assert.deepEqual(p.errors, []);
+    await picture(p, 'whisper-390');
+  });
+
   // The head row is a tab two lines high: the short name, then one run that never wraps to a third, whatever the head
   // carries and whatever state it is in. What gives way, in order: the count and who replied, then the marks (whole
   // glyphs, dropped from the end), then who began it (cut short, its whole name in its tooltip).
   for (const [index, [width, dark]] of VIEWS.entries()) {
     const label = `${width}px ${dark ? 'dark' : 'light'}`;
-    await check(`head rows at ${label}: a starred or folded new head with every mark, one with an image alone and one with none stay two lines inside the tab`, async () => {
+    await check(`head rows at ${label}: a starred or folded new head with every mark, one with an image alone and one with none stay two lines inside the tab, each showing its reply count`, async () => {
       const p = await open(`/?topic=heads-${engine}-${index}`, { width, dark }), h = headIds[engine][index];
       await until(p, ([starred, ...rest]) => [starred, ...rest].every(id => document.querySelector(`.message-card[data-id="${id}"] > .stack-head > .stack-who`))
         && document.querySelectorAll(`.message-card[data-id="${starred}"] > .stack-head .carry`).length === 3, 'every head row drawn, the starred one with its marks', [h.starred, h.folded, h.one, h.bare]);
@@ -260,6 +327,8 @@ async function run() {
         // Who began it gives way last, and its whole name stays in its tooltip.
         if (seen.who.cut) assert.equal(shown.length, 0, `${where}: the marks give way before who began it`);
         assert.equal(seen.who.title, seen.who.text, `${where}: who began it is titled in full`);
+        // The reply count always shows, as it did before the marks: they give way before it.
+        assert.ok(seen.count?.whole, `${where}: the reply count (${seen.count?.text}) reads whole`);
         return { seen, shown };
       };
       const starred = await inTab('starred', 'new and starred');

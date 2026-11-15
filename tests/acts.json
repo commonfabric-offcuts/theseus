@@ -14065,6 +14065,78 @@
     "native": "card-marks",
     "case": "head rows at 1280px light"
    }
+  },
+  {
+   "item": 127,
+   "act": "A whisper card's name says the marks of what its message carries, as every other card's words do, and follows them as they change",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     "${time ? `, ${time}` : ''}${carried}. ${item.body}",
+     "${time ? `, ${time}` : ''}. ${item.body}"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "whisper: a whisper card with an image and a note"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A reply prepared to send keeps its mark while its send is refused or not yet made, until a reply from the message is sent",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "            if not sent:\n                found[keys[key]][\"reply\"] = True\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "An accepted send tells the writer's own changes, keyed by the message, so a page takes the reply's mark away",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        self._tell_writing(db, actor, source)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Each accepted send raises the version of the writer's writing on its message, so a page keeps the read after it",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "\"(SELECT COUNT(*) FROM submissions s WHERE s.actor_id=? AND s.source_key=? AND \" + SENT + \")\"",
+     "\"(SELECT COUNT(*) FROM submissions s WHERE s.actor_id=? AND s.source_key=? AND 0)\""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "On a phone a stack head row's reply count keeps its width: the marks give way before it",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not([data-compact=true]) .stack-head>.stack-meta{display:contents}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 320px light"
+   }
   }
  ]
 }

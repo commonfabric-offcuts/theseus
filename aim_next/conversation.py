@@ -226,6 +226,8 @@ class Conversation:
                     snapshot["about_id"] = source["id"]
         result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
+        # The reply is sent: its message's card no longer marks it as the writer's unsent reply (topic_reading.py).
+        self._tell_writing(db, actor, source)
         return dict(result, submission_id=snapshot["id"]), affected
 
     def _command_message_post(self, db, actor, envelope):
