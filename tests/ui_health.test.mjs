@@ -326,3 +326,20 @@ test('the Health page says it is reading again, never "everything is working", f
   await second;
   assert.match(texts(host).join(' '), /Everything is working/);
 });
+
+test('a light whose page has gone paints nothing more: the link it painted stays with the next page (item 463), so an answer still on its way to the old page never lands there', async () => {
+  let answer = null;
+  const node = link();
+  const light = new HealthLight({ link: node, feed: () => 'live', read: () => new Promise(resolve => { answer = resolve; }) });
+  const loading = light.load();
+  light.stop();
+  answer({ red: ['failing:codex-a'], commit_seq: 5 });
+  assert.equal(await loading, true, 'the read it had out still finishes');
+  assert.deepEqual(shown(node), ['Health', false], 'and its answer does not reach the link');
+  light.heard({ kind: 'commit', seq: 6, health: { red: ['runner'], seq: 6 } });
+  assert.deepEqual(shown(node), ['Health', false], 'nor does anything the feed says after');
+  // A light still running paints as before (the negative).
+  const live = new HealthLight({ link: link(), feed: () => 'live', read: async () => ({ red: [] }) });
+  live.heard({ kind: 'commit', seq: 6, health: { red: ['runner'], seq: 6 } });
+  assert.deepEqual(shown(live.link), [LIT_WORDS, true]);
+});

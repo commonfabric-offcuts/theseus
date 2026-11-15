@@ -604,22 +604,22 @@
    ],
    "check": {
     "native": "reading",
-    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+    "case": "the \\? beside the logo open the guide"
    }
   },
   {
-   "item": 106,
-   "act": "The rail's \"? Pointer, keys and taps\" opens the guide",
+   "item": 463,
+   "act": "A press on the ? beside the logo opens the guide, as Return on it and a tap on a phone do",
    "break": [
     [
      "web/app.mjs",
-     "  guide.offer($('instance-label'));\n",
+     "$('guide-open').onclick = () => guide.open();\n",
      "\n"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+    "case": "the \\? beside the logo open the guide"
    }
   },
   {
@@ -634,7 +634,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+    "case": "the \\? beside the logo open the guide"
    }
   },
   {
@@ -3839,7 +3839,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "rail's \"\\? Pointer, keys and taps\" open the guide"
+    "case": "the \\? beside the logo open the guide"
    }
   },
   {
@@ -11570,6 +11570,130 @@
    ],
    "check": {
     "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 463,
+   "act": "On a laptop the ? beside the logo shows, and takes a press, only while the logo block is pointed at or holds the keys",
+   "break": [
+    [
+     "web/aim.css",
+     ".brand:not(:hover,:focus-within) .guide-open{opacity:0;pointer-events:none}",
+     ".brand .guide-open{}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the \\? beside the logo open the guide"
+   }
+  },
+  {
+   "item": 463,
+   "act": "The keys on the logo block show its ?, so Tab reaches it",
+   "break": [
+    [
+     "web/aim.css",
+     ".brand:not(:hover,:focus-within) .guide-open",
+     ".brand:not(:hover) .guide-open"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the \\? beside the logo open the guide"
+   }
+  },
+  {
+   "item": 463,
+   "act": "On a phone the ? beside the logo always shows, a full 44px tap",
+   "break": [
+    [
+     "web/aim.css",
+     ".guide-open{width:2.75rem;height:2.75rem}}",
+     "}"
+    ],
+    [
+     "web/aim.css",
+     ".guide-open{width:2.75rem;height:2.75rem}.message-card",
+     ".message-card"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the logo block and Health at 320"
+   }
+  },
+  {
+   "item": 463,
+   "act": "Health is last in the rail of a topic and a Conversation, at the foot of the outline",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "foot = feed ? this.host : this.host.parentNode;",
+     "foot = this.host.parentNode;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Health is last in the rail, at the foot of the outline"
+   }
+  },
+  {
+   "item": 463,
+   "act": "Health stays the same element across moves in place, never taken out of the page",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "(health.parentNode !== foot || health.nextElementSibling)",
+     "true"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Health is last in the rail, at the foot of the outline"
+   }
+  },
+  {
+   "item": 463,
+   "act": "On a page with no rail Health is last in main",
+   "break": [
+    [
+     "web/outcome-scope.mjs",
+     "  if (health && host.id === 'main') host.append(health);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "logo block tops the rail inside an outcome"
+   }
+  },
+  {
+   "item": 463,
+   "act": "The Health light of a page that has gone paints nothing more on the link the next page keeps",
+   "break": [
+    [
+     "web/health-light.mjs",
+     "    if (this.stopped) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_health.test.mjs"
+   }
+  },
+  {
+   "item": 463,
+   "act": "The Health light of the page that went stops before its live feed does, so the feed going down as the page moves never paints \"couldn't check\" on the kept link",
+   "break": [
+    [
+     "web/app.mjs",
+     "healthLight?.stop(); live?.stop();",
+     "live?.stop(); healthLight?.stop();"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Health is last in the rail, at the foot of the outline"
    }
   },
   {

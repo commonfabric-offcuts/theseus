@@ -79,9 +79,11 @@ export class Scope {
 
 // What the shell keeps across moves, by selector: the outline, the right
 // rail and the drawer's backdrop. The two holders (the layout and the rail)
-// stay the same elements and are refilled inside. The logo block is put back
-// as it now reads (its name and Health line do not blink), without anything a
-// run put in it.
+// stay the same elements and are refilled inside. The outline is index.html's,
+// last in the rail, so the page finds its own parts first by id (app.mjs $),
+// and it keeps the Health link at its foot, the same element across moves, so
+// its words never blink (item 463). The logo block is put back as it now reads
+// (its name does not blink).
 const HOLDERS = ['.workspace-layout', '#rail'];
 export const KEPT = ['#outline', '#things', '#things-backdrop', '#rail-backdrop'];
 const BRAND = '.brand';
@@ -103,11 +105,7 @@ function restore(host, pristine) {
   for (const child of pristine.childNodes) {
     const selector = selectorOf(child), live = selector ? doc.querySelector(selector) : null;
     if (!live) { children.push(child.cloneNode(true)); continue; }
-    if (selector === BRAND) {
-      const brand = live.cloneNode(true);
-      for (const added of brand.querySelectorAll('.guide-open')) added.remove();
-      children.push(brand); continue;
-    }
+    if (selector === BRAND) { children.push(live.cloneNode(true)); continue; }
     if (HOLDERS.includes(selector)) restore(live, child);
     children.push(live);
   }
@@ -172,19 +170,13 @@ export class Shell {
   }
   // make(doc, win): builds what the shell keeps (rails.mjs), once, when it installs.
   extend(make) { this.makers.push(make); }
-  // Once, before the first run starts: the outline's place in the rail, the
-  // right rail's beside the page, the record of listeners, history, and the
-  // drawer, which the shell keeps across moves.
+  // Once, before the first run starts: the right rail's place beside the
+  // page, the record of listeners, history, and the drawer, which the shell
+  // keeps across moves, with the outline index.html draws.
   install() {
     if (this.installed || !this.doc?.body || !nativeAdd) return;
     this.installed = true;
-    const doc = this.doc, rail = doc.getElementById('rail'), main = doc.getElementById('main');
-    if (rail && !doc.getElementById('outline')) {
-      const outline = doc.createElement('section');
-      outline.id = 'outline'; outline.className = 'outline'; outline.setAttribute('aria-label', 'Outcomes and their topics');
-      // Last in the rail, so the page finds its own parts first by id (app.mjs $).
-      rail.append(outline);
-    }
+    const doc = this.doc, main = doc.getElementById('main');
     if (main && !doc.getElementById('things')) {
       const things = doc.createElement('aside');
       things.id = 'things'; things.className = 'things'; things.setAttribute('aria-labelledby', 'things-heading');

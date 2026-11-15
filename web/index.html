@@ -16,8 +16,8 @@
     <nav id="rail" class="rail" aria-label="Outcomes and topics">
       <div class="brand">
         <a class="wordmark" href="/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"></span></a>
+        <button id="guide-open" class="guide-open" type="button" aria-label="Pointer, keys and taps" title="Pointer, keys and taps (?)"><span aria-hidden="true">?</span></button>
         <span id="instance-label">Opening your workspace…</span>
-        <a id="health-link" class="health-link" href="?health">Health · checking</a>
         <button id="notify" type="button" hidden>Turn on notifications</button>
       </div>
       <div id="app-status" class="notice" role="status" hidden></div>
@@ -51,6 +51,9 @@
       <details id="done-topics" class="topic-group" hidden><summary id="done-topics-label">Done</summary><div id="done-topic-list" class="topic-list" aria-label="Done topics"></div><button id="more-done-topics" type="button" hidden>More done topics</button></details>
       <details id="archived-topics" class="topic-group" hidden><summary id="archived-topics-label">Archived</summary><div id="archived-topic-list" class="topic-list" aria-label="Archived topics"></div><button id="more-archived-topics" type="button" hidden>More archived topics</button></details>
       <p id="outcome-empty" class="empty" hidden>No topics yet. Start the first topic in this outcome.</p>
+      </section>
+      <section id="outline" class="outline" aria-label="Outcomes and their topics" hidden>
+      <a id="health-link" class="health-link" href="?health">Health · checking</a>
       </section>
     </nav>
     <div id="rail-backdrop" class="rail-backdrop" aria-hidden="true" hidden></div>
