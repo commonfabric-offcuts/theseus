@@ -233,6 +233,11 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     await p.point(`${SHEET} .deck-writing .deck-image-remove`);
     await p.key('Escape');
     await holds(id, page => lines(page.body).length === 0 && page.attachments.length === 0, '× in the last card that shows it takes it off the page');
+    // And it stays off: the next act, once the page has drawn what Core confirmed, brings nothing back.
+    await open(0);
+    await p.key('e', 2); await p.send('Input.insertText', { text: ' Again.' }); await p.key('Escape');
+    const after = await holds(id, page => page.body.includes('One. Again.'), 'the next card\'s words are saved');
+    assert.deepEqual([lines(after.body).length, after.attachments], [0, []], 'the image stays off the page');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

@@ -14252,6 +14252,21 @@
     "native": "notebook",
     "case": "notebook card images × keeps an image on the page while another card shows it"
    }
+  },
+  {
+   "item": 321,
+   "act": "An image × took off the page stays off when the page draws what Core confirmed: only words the person changed bring an image back",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(edited)this.keepNamed(body);\n  }\n  save() {",
+     "    this.keepNamed(body);\n  }\n  save() {"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images × keeps an image on the page while another card shows it"
+   }
   }
  ]
 }

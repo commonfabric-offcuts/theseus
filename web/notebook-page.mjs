@@ -158,20 +158,21 @@ export class NotebookPage extends DeckPage {
   textEdited() {
     if(!this.writing || !this.textSeen)return;
     const body=this.text.value,seen=this.textSeen;
-    this.writing.edit({body},seen,'text');
+    const edited=this.writing.edit({body},seen,'text');
     this.textSeen={revision:seen.revision,content:{...seen.content,body}};
-    this.keepNamed(body);
+    if(edited)this.keepNamed(body);
   }
   save() {
     if(!this.writing || !this.cardsSeen)return;
     const acts=this.acts;this.acts=[];
     const body=this.previewBody(),seen=this.cardsSeen;
-    this.writing.edit({body},seen,'cards',acts);
+    const edited=this.writing.edit({body},seen,'cards',acts);
     this.cardsSeen={revision:seen.revision,content:{...seen.content,body}};
-    this.keepNamed(body);
+    if(edited)this.keepNamed(body);
   }
   // A card line naming an image × took off the page this visit, back in the page's words (Undo, or the line written
-  // again), puts the image back on the page (NotebookImages.restore), so no card names an image the page lost.
+  // again), puts the image back on the page (NotebookImages.restore), so no card names an image the page lost. Only
+  // words the person changed count: a view's words not yet redrawn are no edit and bring nothing back.
   keepNamed(body) {
     if(!this.images?.released.size)return;
     for(const id of this.namedImages(body))if(this.images.released.has(id))

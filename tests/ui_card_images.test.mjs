@@ -164,7 +164,7 @@ test('an image × took off the page goes back on it when Undo brings back its li
   await images.remove(photo.media, { keep: true });
   assert.equal(held.removed, true); assert.equal(held.bytes, null);
   const back = images.restore(photo.media);
-  assert.equal(images.held(photo.media).bytes.byteLength, 3, 'held again from its bytes while it uploads');
+  assert.equal(images.held(photo.media)?.bytes?.byteLength, 3, 'held again from its bytes while it uploads');
   release(); const again = await back; await images.running.get(again.id);
   assert.notEqual(again.id, held.id); assert.deepEqual(w.images, [again]);
   assert.deepEqual(w.value.attachments, [{ id: photo.media }]); assert.equal(again.ready.media_id, photo.media);
