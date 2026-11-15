@@ -234,9 +234,11 @@ def live_cases(red, live_commit):
 class Admissions:
     """The reds a policy file admits, read and matched exactly as GitHub's classifier reads and matches them
     (tools/ci_known_reds.py): the policy is one its load_policy() takes, read against root's git; a failed case is
-    admitted only when its identity (key(): name, phase, engine, expectedFailure) is an admission's and the fingerprint
-    of its failure (its assertion, values and test-source chain, read at commit) is that admission's. The one thing not
-    compared is the runner profile: a local release check does not run on GitHub's runners."""
+    admitted only when commit's test definitions are a plan the policy reviewed (select_plan(), as the classifier asks
+    before it matches anything), its identity (key(): name, phase, engine, expectedFailure) is an admission of that plan,
+    and the fingerprint of its failure (its assertion, values and test-source chain, read at commit) is that
+    admission's. The one thing not compared is the runner profile: a local release check does not run on GitHub's
+    runners."""
 
     def __init__(self, policy, root, commit):
         from tools import ci_known_reds
@@ -246,7 +248,12 @@ class Admissions:
         except (ci_known_reds.Refused, KeyError, TypeError, AttributeError, ValueError) as error:
             # A malformed field the classifier would crash on is no more a policy it takes than one it refuses.
             raise Refused("%s at %s is not a policy GitHub's classifier takes (%s)" % (POLICY, commit[:12], error))
-        self.reds = {(red["step"], ci_known_reds.key(red["case"])): red for red in policy["reds"]}
+        try:
+            plan, _ = ci_known_reds.select_plan(policy, root, commit)
+        except ci_known_reds.Refused as error:
+            raise Refused("the tests at %s are not ones %s reviewed, so it admits nothing there (%s)"
+                          % (commit[:12], POLICY, error))
+        self.reds = {(red["step"], ci_known_reds.key(red["case"])): red for red in plan["reds"]}
 
     def match(self, step, row, checkout):
         """(the admission's review, None) when the policy admits this failure of step; (None, why not) otherwise."""

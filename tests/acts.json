@@ -12340,6 +12340,25 @@
   },
   {
    "item": 481,
+   "act": "A policy admits nothing at a commit whose reviewed test sources match none of its plans, as GitHub's classifier selects a plan before it matches",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        self.reds = {(red[\"step\"], ci_known_reds.key(red[\"case\"])): red for red in plan[\"reds\"]}",
+     "        self.reds = {(red[\"step\"], ci_known_reds.key(red[\"case\"])): red for red in policy[\"reds\"]}"
+    ],
+    [
+     "tools/known_reds.py",
+     "            plan, _ = ci_known_reds.select_plan(policy, root, commit)\n",
+     "            pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
    "act": "A train's merge commit is a merge of two parents, not a commit that only carries the merge's message",
    "break": [
     [

@@ -1757,11 +1757,28 @@ class DeployRefusesKnownRedsPolicy(PolicyRepository, KnownRedsFiles, DeployCase)
                                    "failure (different assertion, values or source chain)" % (RED_STEP, RED_CASE, POLICY))
 
     def test_an_admitted_case_whose_test_source_changed_at_the_deployed_commit_is_refused(self):
-        # The same message and line numbers, but the assertion the stack names was rewritten at the deployed commit.
-        (self.repo / "tests/reader_inline_native.mjs").write_bytes(STANDIN.replace(b"assert.equal", b"assert.notEqual"))
-        self.sha = self.committed("the assertion changed")
+        # The same message and line numbers, but the assertion the stack names was rewritten at the deployed commit; or
+        # a reviewed test source the stack does not name changed. GitHub's classifier matches no plan to either, so the
+        # policy admits nothing there.
+        for path, text in (("tests/reader_inline_native.mjs", STANDIN.replace(b"assert.equal", b"assert.notEqual")),
+                           ("tests/fence_copy_native.mjs", STANDIN + b"await another();\n")):
+            with self.subTest(path):
+                self.again()
+                (self.repo / path).write_bytes(text)
+                self.sha = self.committed("a reviewed test changed")
+                self.fails()
+                self.refused_known_at(self.host(self.admission()), "the tests at %s are not ones %s reviewed, so it admits nothing "
+                                      "there (reviewed test definition changed: no complete matching plan)" % (self.sha[:12], POLICY))
+
+    def test_a_deployed_commit_that_changes_no_reviewed_test_is_matched_against_the_policy(self):
+        # The negative beside it: a change outside the reviewed sources leaves the plan as it was.
+        (self.repo / "aim_next").mkdir()
+        (self.repo / "aim_next/work.py").write_text("# the release's own change\n")
+        self.sha = self.committed("a product change")
         self.fails()
-        self.refused_known_at(self.host(self.admission()), "but not this failure (different assertion, values or source chain)")
+        self.taken(self.host(self.admission()))
+        [taken] = self.evidence_of("00-release-check")["known_reds"]["accepted"]
+        self.assertEqual(taken["taken_by"], "policy")
 
     def test_a_policy_github_would_not_load_admits_nothing_and_refuses(self):
         # GitHub's classifier refuses each of these before it matches a case, so the deploy does too.
@@ -1785,10 +1802,10 @@ class DeployRefusesKnownRedsPolicy(PolicyRepository, KnownRedsFiles, DeployCase)
         self.refused_known_at(self.host(policy="unreadable"), "%s at %s could not be read" % (POLICY, self.sha[:12]))
 
     def test_a_case_neither_the_policy_admits_nor_the_live_summary_failed_is_refused(self):
-        self.candidate_fails((RED_STEP, {}))
+        self.candidate_fails((RED_STEP, {}), commit=self.sha, checkout=CHECKOUT)
         path = self.live_summary("live-check", (RED_STEP, dict(failed=("a whisper keeps its colour",))))
         self.listing((RED_STEP, RED_CASE, path))
-        self.refused_known(FakeHost(self.config, policy=self.policy(self.admission(case="a whisper keeps its colour"))),
+        self.refused_known_at(self.host(self.admission(case="a whisper keeps its colour")),
                            "%s %r is not admitted by %s at the deployed commit, nor among the cases that failed in %s on the "
                            "live commit" % (RED_STEP, RED_CASE, POLICY, path))
 

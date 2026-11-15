@@ -370,7 +370,7 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     // Every page shows release `release` with exactly `details`, the line opened in place and fitting the page.
     const shows = async (release, details, label) => {
       for (const page of pages) {
-        const line = await until(async () => { const l = await readRelease(page.p); return l && l.summary.startsWith(`Release ${release} went live`) && l; },
+        const line = await until(async () => { const l = await readRelease(page.p); return l && l.summary.startsWith(`Latest release: Release ${release} went live at `) && l; },
           `${page.where}: ${label}: the release line repaints to release ${release} from the live feed`);
         if (!line.open) {
           const selector = 'details[data-key="release"] summary';
