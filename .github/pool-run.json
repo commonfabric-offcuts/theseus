@@ -1,0 +1,8 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks the lit card's ring keeps its bottom side above the next card"
+ ],
+ "label": "mutant-fold-unanchored-34d847db-1",
+ "snapshot": "34d847db78da5ba18b7e9344ba3abce7df5aa6b1"
+}
