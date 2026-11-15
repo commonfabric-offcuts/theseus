@@ -5,7 +5,8 @@ puts the whole dossier below More messages for this reader. Swiping another
 message uses the existing personal fold. The menu offers Move below More and
 Bring back; Command-Z reverses the act. More works even with no older page.
 The Reader offers the same act as an archive button beside the message's star,
-labelled with the count of the stack's messages that move with it (item 378,
+labelled with the count of the messages that move with it, every stack the page
+draws of the dossier counted (item 378,
 docs/reader.md). The page's New message composer at rest sits between the last
 dossier above More and the More line (item 465).
 

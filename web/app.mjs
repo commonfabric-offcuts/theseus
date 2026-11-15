@@ -1159,7 +1159,7 @@ function starFromReader() {
 }
 // The archive button beside the star (item 378): Move below More for the
 // dossier the message is in, the same act as ⋯'s (StackFeed.setAside), with
-// the count of the stack's messages that go with it; Bring back once it is
+// the count of the messages that go with it (StackFeed.asideOffer); Bring back once it is
 // there, pressed. Only for a message the page's stacks hold, as ⋯ offers it.
 function readerAside() {
   const item = readerFeedItem();

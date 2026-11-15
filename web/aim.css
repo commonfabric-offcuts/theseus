@@ -854,7 +854,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .reader-title-row{display:flex;align-items:center;gap:.15rem;min-width:0}.reader-title-row h2{min-width:0}
 #reader-star{flex:none;min-width:2.5rem;min-height:2.5rem;margin:-.5rem 0;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.15rem;line-height:1;color:var(--muted)}
 #reader-star:hover{background:var(--soft);color:var(--ink)}#reader-star[aria-pressed=true]{color:var(--accent)}
-/* The archive button beside the star (item 378): its glyph and the count of the stack's messages that move below More with it. */
+/* The archive button beside the star (item 378): its glyph and the count of the messages that move below More with it. */
 #reader-aside{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:.2rem;min-width:2.5rem;min-height:2.5rem;margin:-.5rem 0;padding:0 .35rem;border-color:transparent;background:transparent;font-size:.8rem;font-weight:600;line-height:1;color:var(--muted)}
 #reader-aside svg{flex:none}#reader-aside:hover{background:var(--soft);color:var(--ink)}#reader-aside[aria-pressed=true]{color:var(--accent)}
 /* A phone's header has no room for ←, the title with its star and archive button, ↑ ↓, ⋯ and ✕ in one row of 44px targets (item 378): there the title, its star and the archive button take a row of their own under the others, and who wrote it and when stays in the first, beside ←. The second row's buttons keep their whole 44px, so no target reaches into the first row's. */

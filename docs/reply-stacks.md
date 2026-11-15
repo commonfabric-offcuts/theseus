@@ -543,7 +543,8 @@ A right swipe on its header or last visible message moves the dossier below
 More messages for you, on every device. Other messages keep their individual
 fold gesture. The menu offers Move below More and Bring back above More,
 and so does the Reader's archive button beside the star, labelled with how
-many of the stack's messages move with it (item 378, docs/reader.md);
+many messages move with it, those of every stack drawn from the dossier
+(item 378, docs/reader.md);
 Command-Z undoes a move. The page's New message composer at rest sits just
 above More, under the last dossier shown above it (item 465). Existing unread messages and your own replies leave
 it there; a newer visible reply from someone else brings it back. Links can

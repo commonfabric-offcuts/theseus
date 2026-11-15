@@ -25,15 +25,19 @@ device shows there as well.
 
 Beside the star, an archive glyph with a number is Move below More for the
 message's whole dossier (item 378): the same act as the card's ⋯ Move below
-More (`StackFeed.setAside`), and the number is how many messages of the stack
-move below More with it, the message itself included ("Move below More: 3
+More (`StackFeed.setAside`), and the number is how many messages move below
+More with it, the message itself included. The act moves the whole dossier, and
+a dossier whose first message the page has not loaded is drawn as one stack for
+each reply to it there, so every stack drawn from the dossier is counted ("Move below More: 3
 messages" by name and as its tooltip). Once the dossier is below More it shows
 pressed and brings it back ("Bring back above More: 3 messages"), as ⋯ does.
 The Reader stays open on the message and the focus stays on the button; the
 page behind it changes as after ⋯'s item, and ⌘Z on the page puts it back. It
 shows for a message the page's stacks hold whose dossier Core placed, and
-never for a Notebook page or a message opened alone, which ⋯ offers no move
-either; a 44 pixel target under a finger (`paintReaderAside` in
+never for a Notebook page, a message opened alone (of this topic, from a link to
+an older message, or of another topic, from an About link) or a message Core
+sent no place for, which ⋯ offers no move either: moving on to one of these
+from a message it showed for, the button goes; a 44 pixel target under a finger (`paintReaderAside` in
 `web/app.mjs`, `StackFeed.asideOffer`). Pressed, it shows the move at once,
 while Core has it; a refusal puts it back unpressed and the page says why. A
 phone's header has no room for ←, the title with its star and this button,
@@ -301,8 +305,10 @@ written, and focus returns to ✎. At rest the same composer is drawn in the
 feed, one line until written in, just above More: under the last dossier shown
 above More and over the More line (item 465). It is never moved while it is up,
 and takes that place again as it is put back (`home` in `web/reply-stacks.mjs`);
-where the feed is not drawn (an outcome's page), a Notebook page goes up from
-the page's own end instead.
+where the feed is not drawn (an outcome's page, Health, a topic the reader can
+no longer read), a dialog in it would show nothing, so it rests at the page's
+end instead, put back first if it was up, its writing kept, and goes up from
+there, a Notebook page too (`drawFeed` in `web/app.mjs`).
 
 A Notebook page opened as it stands comes up in the same sheet, with the
 page's title, Text and Cards, its saving sign, Full page and ✕ in place of the

@@ -908,6 +908,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
         await becomes(button, { shown: true, name: 'Move below More: 2 messages', title: 'Move below More: 2 messages', count: '2', pressed: 'false' },
           `${device} ${width}: the button names both answers, the two messages that move`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-split-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
       }
       await press(p, device, '#reader-aside');
       await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, `${device}: Core holds the dossier below More`);
@@ -926,7 +928,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
       if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
       await becomes(async () => { const b = await asideButton(p); return [b.hidden, b.shown]; }, [true, false], `${device} ${width}: no archive button for ${said}`);
-      await shot(p, `stack-archive-none-${said.replace(/\W+/g, '-')}-${device}-${width}`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-none-${said.replace(/\W+/g, '-')}-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
     }
     if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
   };
@@ -1148,7 +1151,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await until(async () => (await sheet()).modal, `${device} ${width}: ✎ puts the composer up`);
         const up = await sheet();
         assert.deepEqual([up.drawn, up.takes, up.sideways], [true, true, false], `${device} ${width}: up where it shows, and a press reaches it: ${JSON.stringify(up)}`);
-        await shot(p, `stack-composer-denied-${device}-${width}`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-composer-denied-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
         await press(p, device, '#new-message-close');
         await until(async () => !(await sheet()).open, `${device} ${width}: ✕ puts it back`);
         const back = await sheet();
