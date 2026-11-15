@@ -289,6 +289,9 @@ rule above. (`web/arrow-reach.mjs`)
   their controls. With nothing focused, ↓ goes to the first control in view
   from the top, ↑ to the last, → to the first from the left and ← to the first
   from the right.
+- **On a phone**, in the side rail's drawer, the arrows move as they do beside
+  the topic: the outline's rows, New outcome, the chips and the logo block,
+  never the page behind the drawer.
 - **In a pop-up** (the Reader, Topic settings, the guide, a sheet) the arrows
   move only through it, never to the page behind; a menu, a radio group and a
   picker keep their own arrows.

@@ -36,6 +36,9 @@ export class KeyTree {
     root.after(this.status);
     root.addEventListener('keydown', event => this.key(event));
     root.addEventListener('focusin', event => {
+      // Rows that came to show since the last draw (the phone's drawer opening
+      // shows a rail the tree could not see) get their tree words first.
+      if (!this.placing && !(this.current && shown(this.current))) this.refresh();
       const row = this.rowOf(event.target);
       this.wanted = true;
       // A row the person moved to; not one the tree put the focus on while the row it keeps is away.
