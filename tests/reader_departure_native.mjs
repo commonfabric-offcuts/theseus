@@ -302,6 +302,15 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await point(p,'#inline-pending button');await reviewButton('Prepare this reply again');
     await until(()=>p.evaluate('Boolean(document.querySelector("#review-content input[type=checkbox]"))'),'explicit correction review');
     await point(p,'#review-content input[type=checkbox]');
+    // The arrows leave the acknowledgement's checkbox, pressed and not typed in (item 301; docs/interaction.md,
+    // "The arrows everywhere"): ↓ to Prepare this reply again below it, ↑ to what lies above it, in the dialog.
+    const ACK='#review-content input[type=checkbox]',onAck=()=>p.evaluate(`document.activeElement===document.querySelector('${ACK}')`);
+    await p.evaluate(`document.querySelector('${ACK}').focus()`);await p.key('ArrowDown');
+    assert.equal(await p.evaluate('document.activeElement?.textContent'),'Prepare this reply again','↓ from the acknowledgement goes on to Prepare this reply again below it');
+    await p.evaluate(`document.querySelector('${ACK}').focus()`);await p.key('ArrowUp');
+    assert.equal(await onAck(),false,'↑ from the acknowledgement goes on');
+    assert.equal(await p.evaluate(`(e=>Boolean(e?.closest('#version-review'))&&e.getBoundingClientRect().bottom<=document.querySelector('${ACK}').getBoundingClientRect().top+1)(document.activeElement)`),true,'to a control above it in the dialog');
+    assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,'and the arrows left it ticked');
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await reviewButton('Prepare this reply again');
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held corrected preparation');

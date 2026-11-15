@@ -210,14 +210,17 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   feed moves the keys onto the row just above it, the filters' when they
   show, else the header's, with the keys' ring on the button they are on.
   ↑ from the filters goes on up to the header's buttons, and ↑ there, the
-  top row, moves nothing; ↓ goes back down a row, and from the filters (or
+  top row, goes on to what lies above it in the column, if anything (on a
+  phone the header wraps, and ↑ from Topic settings or New message reaches
+  "Pipeline & pages" above them); ↓ goes back down a row, and from the filters (or
   the header's buttons, with no filter shown) selects the first visible card
   or stack in the feed (with a filter on, the first it shows), or with no
   message yet goes on down the column to the reply. Coming to a
   row finds the button the keys were last on in it, else its first. ← and →
   move along a row; ← past its first goes to the outline and → past its
   last to the right rail, as from the messages, so → from New message goes
-  to the right rail, not on to a filter. Tab or a click puts the keys on a
+  to the right rail, not on to a filter; with no rail on screen that way
+  they go on to the nearest control that way, if any. Tab or a click puts the keys on a
   filter as on any button, Return or Space presses the button, and no arrow
   does. The pointer is unchanged. The button the keys
   reach, and the message → or ↓ bring them back to, comes into view by the
@@ -297,7 +300,10 @@ rule above. (`web/arrow-reach.mjs`)
   their controls. With nothing focused, ↓ goes to the first control in view
   from the top, ↑ to the last, → to the first from the left and ← to the first
   from the right. So it is on a topic or a Conversation with no messages yet,
-  where there is no message for ↓ to light.
+  where there is no message for ↓ to light. With messages, ↑ and ↓ light one,
+  and ← and → go to the pane that way where it shows, else, as here, to the
+  first control from the right or the left: on a phone both, and on an iPad
+  with a keyboard → (the right rail is behind "Pipeline & pages" below 1181px).
 - **On a phone**, in the side rail's drawer, the arrows move as they do beside
   the topic: the outline's rows, New outcome, the chips and the logo block,
   never the page behind the drawer. The drawer opens with the focus on the
@@ -316,6 +322,11 @@ rule above. (`web/arrow-reach.mjs`)
   of sight, the arrow scrolls toward it, a third of a window at a time, so the
   words between are read on the way; once it shows, the next press lands on
   it.
+- **A control pressed, not typed in.** A checkbox ("Mark it reached anyway"
+  in the reach box, the acknowledgement in a reply's review) holds no arrow,
+  as a button holds none: each goes on to the control that way. A select (the
+  agent a card's ask goes to) keeps ↑ and ↓, which choose among its options;
+  ← and → go on along its line. A radio group and a slider keep their own.
 - **Never in writing.** In a field the arrows are the writing's, as everywhere
   above, but for ↑ and ↓ in a one-line field (a title, a name, a pipeline's
   "Add an item…"), which has no line above or below its own, and every arrow
@@ -460,6 +471,13 @@ Conversation, …" (at
 page's cards ↑ above the first card …"; a control out of sight, "rail arrows
 a control out of sight is scrolled toward …"; the phone's drawer, "rail
 arrows on a phone, in the side rail's drawer, …"; the pop-ups, "rail arrows in Topic settings and the
-Reader move between their controls …"; and writing, "rail arrows in writing
-are the writing's: …". Where an arrow lands by the geometry:
-`tests/ui_arrow_reach.test.mjs`.
+Reader move between their controls …"; writing, "rail arrows in writing
+are the writing's: …"; a checkbox, "rail arrows from the reach box's
+checkbox …" (and the review's acknowledgement in "navigation correction
+retry chain …", `native-navigation`); a select, "rail arrows in a card's ask
+form …"; and a topic and a Conversation at every width, the header's top row
+and nothing focused among them, "rail arrows on a topic and a Conversation …"
+(at 320, 375, 390, 820, 1024 and 1280). Each case that marks every control
+also fails on a press that leaves the focus where it was while a control lies
+straight that way. Where an arrow lands by the geometry, and which arrows a
+form control keeps: `tests/ui_arrow_reach.test.mjs`.

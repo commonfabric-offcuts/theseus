@@ -6,7 +6,7 @@
 import { shell as host, listen } from './in-place-navigation.mjs';
 import { OutlineRail } from './outline-rail.mjs';
 import { ThingsRail } from './things-rail.mjs';
-import { panes, feedKey, headerRows } from './panes.mjs';
+import { panes, feedKey } from './panes.mjs';
 import { arrowReach, onNothing } from './arrow-reach.mjs';
 
 const storage = win => { try { return win.localStorage; } catch { return null; } };
@@ -34,16 +34,19 @@ shell.extend((doc, win) => {
   listen(doc, 'keydown', event => { if (doc.documentElement.hasAttribute('data-rails')) feedKey(event, doc); });
   // An arrow nothing else used lands on the nearest control that way, on
   // every page (arrow-reach.mjs). On a topic and a Conversation the panes'
-  // own keys decide in the messages (and from the page itself, while there are
-  // messages to light), on the buttons at the top of the feed and in the
-  // rails' trees; anywhere else in a pane (the logo block, the chips,
-  // People, the right rail's name) the arrows move within that pane, and ← and
-  // → past its edge go on to the pane beside, as from the messages.
+  // own keys answer first: in the rails' trees, on the buttons at the top of
+  // the feed, and in the messages (and from the page itself, while there are
+  // messages to light). Only ↑ and ↓ in the messages are theirs alone, as the
+  // message the keys are on moves; any other arrow the panes' keys leave
+  // unused (↑ from the header's top row, ← or → with no pane on screen that
+  // way) goes on here, as everywhere in a pane off its keys (the logo block,
+  // the chips, People, the right rail's name): within that pane, and ← and →
+  // past its edge on to the pane beside, as from the messages.
   const feed = () => doc.documentElement.hasAttribute('data-rails');
   const PANES = [['#rail', 'outline'], ['#main', 'feed'], ['#things', 'things']];
   arrowReach(doc, {
     listen,
-    managed: at => feed() && ((onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) || Boolean(doc.getElementById('messages')?.contains(at)) || headerRows(doc).some(row => row.buttons.includes(at))),
+    managed: (at, way) => feed() && (way === 'up' || way === 'down') && ((onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) || Boolean(doc.getElementById('messages')?.contains(at))),
     region: at => feed() ? at.closest('.message-bar') ?? at.closest(PANES.map(([pane]) => pane).join(',')) : null,
     beyond: (at, way) => {
       const pane = PANES.find(([selector]) => at.closest(selector))?.[1];

@@ -4,7 +4,7 @@
 // the real keys on every screen.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nearest, WAYS } from '../web/arrow-reach.mjs';
+import { nearest, WAYS, leavesLine } from '../web/arrow-reach.mjs';
 
 const box = (left, top, width = 40, height = 20) => ({ left, top, right: left + width, bottom: top + height });
 const at = (name, ...where) => ({ el: name, box: box(...where) });
@@ -53,4 +53,27 @@ test('from a field, a button set into its edge counts as beside it, and only tha
   assert.equal(nearest(field, set, 'left', { inside: true }), null, 'not the other way');
   // Something beyond the field still wins when nearer than nothing: the set-in button has no gap, so it is first.
   assert.equal(nearest(field, [...set, at('beyond', 450, 100)], 'right', { inside: true }), 'taller');
+});
+
+// A form control as the rule reads it: its tag, type and value, whether it offers suggestions, and whether it is editable.
+const control = (tagName, { type = '', value = '', suggests = false, editable = false } = {}) =>
+  ({ tagName, type, value, list: null, isContentEditable: editable, matches: () => suggests });
+const ALL = ['up', 'down', 'left', 'right'];
+const goes = at => ALL.filter(way => leavesLine(at, way));
+
+test('every arrow goes on from a control pressed, not typed in, and ← and → from a select, whose ↑ and ↓ choose among its options', () => {
+  assert.deepEqual(goes(control('INPUT', { type: 'checkbox' })), ALL, 'a checkbox holds no arrow');
+  for (const type of ['button', 'submit', 'reset', 'image', 'file', 'color']) assert.deepEqual(goes(control('INPUT', { type })), ALL, type);
+  assert.deepEqual(goes(control('SELECT')), ['left', 'right'], 'a select keeps ↑ and ↓');
+});
+
+test('in writing the arrows stay the writing\'s, but ↑ and ↓ in a one-line field and every arrow in an empty one', () => {
+  assert.deepEqual(goes(control('INPUT', { type: 'text', value: 'Half a title' })), ['up', 'down']);
+  assert.deepEqual(goes(control('INPUT', { type: 'text' })), ALL);
+  assert.deepEqual(goes(control('TEXTAREA', { value: 'One line\nTwo line' })), [], 'a box with words keeps them all');
+  assert.deepEqual(goes(control('TEXTAREA')), ALL);
+  assert.deepEqual(goes(control('INPUT', { type: 'number', value: '3' })), [], 'a number keeps them, ↑ and ↓ stepping it');
+  assert.deepEqual(goes(control('INPUT', { type: 'date' })), [], 'a date keeps them, moving between its parts');
+  assert.deepEqual(goes(control('INPUT', { type: 'text', value: 'Ann', suggests: true })), [], 'a field offering suggestions keeps them for those');
+  assert.deepEqual(goes(control('DIV', { editable: true })), [], 'an editable box keeps them');
 });

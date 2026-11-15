@@ -17,6 +17,8 @@
 //
 // Never in writing: in a field the arrows are the writing's, but for ↑ and ↓
 // in a one-line field, and any arrow in an empty field, with nowhere to go. A
+// control pressed, not typed in (a checkbox), keeps none, and a select only ↑
+// and ↓, which choose among its options. A
 // focused box that can still scroll that way (a message's text in the Reader)
 // scrolls a third of what it shows, and once at its end the arrows go on. A
 // control that way but out of sight is scrolled toward a step at a time, so
@@ -25,13 +27,14 @@
 // focused, ↓ goes to the first control in view from the top, ↑ to the last,
 // → to the first from the left and ← from the right.
 import { revealSelection } from './reveal.mjs';
+import { typingField } from './writing-input.mjs';
 
 export const WAYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 const FIELD = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 // What takes the focus: the controls a click or Tab reaches, and a roving tree's one stop.
 const CONTROL = 'a[href], button, summary, input:not([type=hidden]), select, textarea, [tabindex], [contenteditable=""], [contenteditable="true"]';
 // Widgets whose arrows are their own (a radio group, a slider, a menu's items, a list's options).
-const OWNS = '[role=slider], [role=spinbutton], [role=radio], [role=tab], [role=option], [role=menuitem], [role=menuitemradio], [role=menuitemcheckbox], [role=gridcell], [role=treeitem], input[type=range]';
+const OWNS = '[role=slider], [role=spinbutton], [role=radio], [role=tab], [role=option], [role=menuitem], [role=menuitemradio], [role=menuitemcheckbox], [role=gridcell], [role=treeitem], input[type=range], input[type=radio]';
 
 // The nearest of candidates ({ el, box }) the way named from the box `from`
 // (each box { top, bottom, left, right }), or null. A candidate lies that way
@@ -197,14 +200,21 @@ function owned(at) {
   return Boolean(widget) && (widget === at || widget.getAttribute('role') !== 'treeitem');
 }
 
-// A one-line field has no line above or below its own, and a field with
-// nothing written in it has no line or letter at all: ↑ and ↓ in the one, and
-// every arrow in the other, go on to the control that way, so a field the
-// arrows land in never holds them. ← and → in words stay the writing's, and so
-// do ↑ and ↓ in a box with words in it, and in a field that offers a list of
-// suggestions (a datalist, a combobox), where they choose among them.
+// Whether an arrow goes on from the form control at (a field, a select, a
+// checkbox) to the control that way. Only typing uses the arrows: a control
+// pressed, not typed in (a checkbox, a button drawn as an input), uses none,
+// and a select only ↑ and ↓, which choose among its options, so every arrow
+// leaves the one and ← and → the other. A one-line field has no line above or
+// below its own, and a field with nothing written in it has no line or letter
+// at all: ↑ and ↓ in the one, and every arrow in the other, go on to the
+// control that way, so a field the arrows land in never holds them. ← and → in
+// words stay the writing's, and so do ↑ and ↓ in a box with words in it, and
+// in a field that offers a list of suggestions (a datalist, a combobox), where
+// they choose among them.
 const ONE_LINE = new Set(['text', 'search', 'email', 'url', 'tel', 'password']);
-function leavesLine(at, way) {
+export function leavesLine(at, way) {
+  if (at.tagName === 'SELECT') return way === 'left' || way === 'right';
+  if (!typingField(at)) return true;
   if (at.matches('[role=combobox], [aria-autocomplete]') || at.list) return false;
   const line = at.tagName === 'INPUT' && ONE_LINE.has(at.type), empty = (line || at.tagName === 'TEXTAREA') && at.value === '';
   return way === 'up' || way === 'down' ? line || empty : empty;

@@ -105,10 +105,12 @@ const landing = row => { const last = panes.button.get(row.host); return row.but
 
 // The keys on the buttons at the top of the feed, in row r: ← and → along its
 // buttons, and past either end on to the outline or the right rail as from the
-// messages; ↑ to the row above, nothing on the top one; ↓ to the row below, and
-// from the last on to the first message, or with none, on down the column.
-// Return and Space are the button's own.
-// Answers whether the keys moved.
+// messages; ↑ to the row above; ↓ to the row below, and from the last on to the
+// first message, or with none, on down the column. Return and Space are the
+// button's own. Answers whether the keys moved: what they leave unmoved (↑
+// from the top row, ← or → past an end with no rail on screen that way) goes
+// on to the nearest control that way in the column (arrow-reach.mjs, by
+// rails.mjs), so on a phone ↑ from Topic settings reaches the right rail's button above it.
 function headerKey(action, rows, r, doc) {
   const buttons = rows[r].buttons, at = buttons.indexOf(doc.activeElement);
   if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));
