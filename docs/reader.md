@@ -340,8 +340,10 @@ comes into sight at its top, and words taller than the screen quoted from
 above it come into sight with their end at its bottom.
 "quoting: one who has not scrolled keeps the quoted words in sight as the
 reply grows, and a scroll the person makes …" (1280×800 stacked, both
-engines) quotes words just above where the reply opens and types a line:
-they stay above the reply; then the message is scrolled back by a drag of its
+engines) quotes words wholly inside the message's room, just above where the
+reply opens, and types a line: they stay above the reply (a line the room's
+edge cuts off as it is quoted stays cut off as it was: what showed is what is
+kept); then the message is scrolled back by a drag of its
 scrollbar (in Chrome; Safari's engine draws an overlay scrollbar a headless
 pointer cannot hold, so there it is scrolled from outside the page's code, as
 the drag scrolls it) and a line is deleted: the message stays where it was
