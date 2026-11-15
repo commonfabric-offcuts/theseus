@@ -2293,7 +2293,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       done:listed.filter(a=>a.closest('details.topic-group')===done&&shown(a)).map(a=>a.dataset.topicId),doneLabel:done&&!done.hidden?done.querySelector('summary').textContent:null,
       groups:[...document.querySelectorAll('#things .things-sec[data-key=pipeline] .pipe-label')].filter(shown).map(e=>e.textContent),
       busy:document.querySelector('#things .things-sections')?.getAttribute('aria-busy')==='true',
-      things:(t=>t?[t.scrollWidth,t.clientWidth,Math.round(t.getBoundingClientRect().right)]:null)(document.getElementById('things')),scroll:[document.documentElement.scrollWidth,innerWidth]}})()`);
+      things:(t=>t?[t.scrollWidth,t.clientWidth,Math.round(t.getBoundingClientRect().right)]:null)(document.getElementById('things')),scroll:[document.documentElement.scrollWidth,innerWidth],
+      wide:[...document.body.querySelectorAll('*')].filter(e=>e.checkVisibility()&&e.getBoundingClientRect().right>innerWidth).slice(-4).map(e=>e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+'.'+[...e.classList].join('.')+':'+e.getBoundingClientRect().right)}})()`);
   const BUILD_ROWS = [
     { id: 'rb-now', group: 'Now', unread: 2, byName: true, state: null, mine: false },
     { id: 'rb-review', group: 'Ready for review', unread: 0, byName: false, state: 'Ready for review', mine: false },
@@ -2322,7 +2323,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.deepEqual(seen.outline.map(row => row.id), ['rb-plain'], at + ': the outline lists the outcome\'s other topic, and no Build topic');
       assert.deepEqual(seen.groups, ['Live', 'Now', 'Ready for review', 'Other Build topics'], at + ': the pipeline\'s groups');
       if (phone) for (const row of seen.rows) assert.ok(row.height >= 44, `${at}: ${row.id} is at least 44px to touch (${row.height})`);
-      assert.ok(seen.scroll[0] <= seen.scroll[1], `${at}: no sideways scroll on the page (${seen.scroll})`);
+      assert.ok(seen.scroll[0] <= seen.scroll[1], `${at}: no sideways scroll on the page (${seen.scroll}; past the edge: ${seen.wide.join(' ')})`);
       assert.ok(seen.things[0] <= seen.things[1] && seen.rows.every(row => row.right <= seen.things[2]), `${at}: nothing in the right rail is cut or scrolls sideways (${seen.things})`);
       await shot(p, `rail-build-${size}-${theme}`);
       assert.deepEqual(p.errors, []); await p.close();
