@@ -4796,6 +4796,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await away(p);
       assert.equal(await toolsShown(p, ids.root), false, `${device}: at rest the title bar shows no glyphs`);
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.solo))}).closest('.reply-stack')?.querySelector('.stack-tools')??null`), null, `${device}: a message on its own has no title bar glyphs`);
+      if (device === 'laptop') {
+        // The pointer anywhere over the dossier shows them, over a reply as over the title bar; leaving it hides them.
+        await centre(p, words(ids.r2)); await p.point(words(ids.r2), 'move');
+        await until(() => toolsShown(p, ids.root), 'laptop: the pointer over a reply in the dossier shows its title bar\'s glyphs');
+        assert.equal((await lit(p)).includes(ids.root), false, 'laptop: though its first message is not lit');
+        await away(p);
+        await until(async () => !await toolsShown(p, ids.root), 'laptop: the pointer gone, they hide again');
+      }
       const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width];
       for (const width of widths) {
         if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
