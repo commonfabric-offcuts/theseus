@@ -89,7 +89,9 @@ jobs:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    timeout-minutes: 45
+    # A browser shard takes 24 to 33 minutes on a normal runner; 75 leaves room for a slow pool, which used all of
+    # 45 on a18e8b1e. Units, deploy refusals and wake replay keep 45.
+    timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 75 || 45 }}
     strategy:
       fail-fast: false
       matrix:
