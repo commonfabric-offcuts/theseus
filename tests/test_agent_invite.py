@@ -17,7 +17,23 @@ from aim_next.server import create_server
 import test_store as fixtures
 
 
-class InviteCase(unittest.TestCase):
+class Receipts:
+    """A receipt of the wrong shape fails on an assertion, never on a missing key."""
+
+    def error(self, receipt):
+        self.assertEqual(receipt.get("status"), "rejected", receipt)
+        return receipt["error"]
+
+    def sign_in(self, receipt):
+        self.assertEqual(receipt.get("status"), "committed", receipt)
+        self.assertIn("sign_in", receipt)
+        return receipt["sign_in"]
+
+    def refused(self, receipt, code, recorded=True):
+        self.assertEqual((receipt.get("status"), (receipt.get("error") or {}).get("code"), receipt.get("recorded")), ("rejected", code, recorded), receipt)
+
+
+class InviteCase(Receipts, unittest.TestCase):
     """Outcome w1: owner "owner", coordinator agent-a, member agent-b; "outsider" is on no team. Sign-in files go in a
     private folder of the test's own."""
 
@@ -45,9 +61,6 @@ class InviteCase(unittest.TestCase):
 
     def invite(self, actor="owner", folder=None, **args):
         return invite(self.store, actor, self.envelope(**args), self.folder if folder is None else folder)
-
-    def refused(self, receipt, code, recorded=True):
-        self.assertEqual((receipt["status"], receipt["error"]["code"], receipt["recorded"]), ("rejected", code, recorded), receipt)
 
     def nothing_changed(self, before):
         self.assertEqual(self.state(), before)
@@ -85,7 +98,7 @@ class Core(InviteCase):
             before = self.state()
             receipt = self.store.command(actor, self.envelope("Not allowed %s" % actor))
             self.refused(receipt, "FORBIDDEN")
-            self.assertEqual(receipt["error"]["message"], "Only the outcome's owner or its coordinator can invite an agent to it.")
+            self.assertEqual(self.error(receipt)["message"], "Only the outcome's owner or its coordinator can invite an agent to it.")
             self.assertEqual(self.state(), before, "%s registered no one and added no one" % actor)
         self.refused(self.store.command("owner", self.envelope("Nowhere", workspace="w-missing", revision=0)), "FORBIDDEN")
 
@@ -96,7 +109,7 @@ class Core(InviteCase):
             receipt = self.store.command("owner", self.envelope(name))
             self.refused(receipt, "NAME_TAKEN")
             self.assertEqual(self.state(), before)
-        message = self.store.command("owner", self.envelope("Release scribe"))["error"]["message"]
+        message = self.error(self.store.command("owner", self.envelope("Release scribe")))["message"]
         self.assertEqual(message, "There is already someone called Release scribe here. Choose another name, such as Release scribe 2.")
         self.assertEqual(self.store.command("owner", self.envelope("Release scribe 2"))["status"], "committed", "the suggestion is free")
 
@@ -111,7 +124,7 @@ class Core(InviteCase):
     def test_a_stale_revision_is_a_conflict_that_names_the_current_one(self):
         receipt = self.store.command("owner", self.envelope(revision=self.version() - 1))
         self.refused(receipt, "REVISION_CONFLICT")
-        self.assertEqual(receipt["error"]["current_versions"], {"workspace_revision": self.version()})
+        self.assertEqual(self.error(receipt)["current_versions"], {"workspace_revision": self.version()})
 
 
 class SignIn(InviteCase):
@@ -121,15 +134,15 @@ class SignIn(InviteCase):
         receipt = self.invite(harness="claude-code")
         self.assertEqual(receipt["status"], "committed", receipt)
         path = self.folder / "release-scribe.profile.json"
-        self.assertEqual(receipt["sign_in"]["path"], str(path))
-        self.assertTrue(receipt["sign_in"]["written"])
+        self.assertEqual(self.sign_in(receipt)["path"], str(path))
+        self.assertTrue(self.sign_in(receipt)["written"])
         info = os.stat(path, follow_symlinks=False)
         self.assertTrue(stat.S_ISREG(info.st_mode))
         self.assertEqual((stat.S_IMODE(info.st_mode), info.st_uid), (0o600, os.getuid()), "private to this user")
         profile = load_profile(path)
         self.assertEqual((profile.actor_id, profile.instance_id, profile.db_path), ("release-scribe", "test-instance", self.path.resolve()))
         self.assertEqual(profile.store().view("release-scribe", "capabilities", {})["actor_kind"], "agent")
-        words = receipt["sign_in"]["prompt"]
+        words = self.sign_in(receipt)["prompt"]
         root = Path(__file__).resolve().parents[1]
         for said in ("You are Release scribe", "You run in Claude Code.", "Your Theseus ID is release-scribe; people address you as @release-scribe.",
                      "the outcome “Isolated test”", "Your sign-in file is %s." % path,
@@ -141,7 +154,7 @@ class SignIn(InviteCase):
             self.assertNotIn(secret, json.dumps(receipt))
 
     def test_a_codex_agent_is_told_where_its_sandbox_must_let_it_write(self):
-        words = self.invite(name="Codex reviewer", harness="codex")["sign_in"]["prompt"]
+        words = self.sign_in(self.invite(name="Codex reviewer", harness="codex"))["prompt"]
         self.assertIn("You run in Codex.", words)
         self.assertIn("Your sandbox must let that command write in %s and %s" % (self.path.resolve().parent, self.folder / "codex-reviewer.outbox"), words)
         self.assertNotIn("Allow Bash", words)
@@ -175,23 +188,23 @@ class SignIn(InviteCase):
         envelope = self.envelope()
         first = invite(self.store, "owner", envelope, missing)
         self.assertEqual(first["status"], "committed")
-        self.assertEqual(first["sign_in"], {"written": False, "path": str(missing / "release-scribe.profile.json"), "message":
+        self.assertEqual(self.sign_in(first), {"written": False, "path": str(missing / "release-scribe.profile.json"), "message":
                          "Release scribe is on the team, but its sign-in file could not be written in %s. Try again: the same "
                          "invitation writes it, and nothing else is repeated." % missing})
-        self.assertNotIn("prompt", first["sign_in"])
+        self.assertNotIn("prompt", self.sign_in(first))
         missing.mkdir(mode=0o700)
         again = invite(self.store, "owner", envelope, missing)
-        self.assertTrue(again["sign_in"]["written"])
+        self.assertTrue(self.sign_in(again)["written"])
         self.assertEqual(load_profile(missing / "release-scribe.profile.json").actor_id, "release-scribe")
         self.assertEqual({key: again[key] for key in ("operation_id", "result", "status")}, {key: first[key] for key in ("operation_id", "result", "status")})
         self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(1,)], "Core recorded it once")
         # Sent once more, the file it wrote is kept as it is.
         before = (missing / "release-scribe.profile.json").read_bytes()
-        self.assertTrue(invite(self.store, "owner", envelope, missing)["sign_in"]["written"])
+        self.assertTrue(self.sign_in(invite(self.store, "owner", envelope, missing))["written"])
         self.assertEqual((missing / "release-scribe.profile.json").read_bytes(), before)
 
 
-class OverHTTP(unittest.TestCase):
+class OverHTTP(Receipts, unittest.TestCase):
     """The page's path: POST /api/command with the invitation, as the server's own actor."""
 
     def setUp(self):
@@ -237,11 +250,11 @@ class OverHTTP(unittest.TestCase):
 
     def test_the_page_invites_into_its_own_outcome_and_is_refused_in_one_it_only_belongs_to(self):
         receipt = self.post("w-mine", "Night watch", "http-invite-1")
-        self.assertEqual((receipt["status"], receipt["sign_in"]["written"]), ("committed", True), receipt)
+        self.assertEqual((receipt["status"], self.sign_in(receipt)["written"]), ("committed", True), receipt)
         self.assertEqual(load_profile(self.folder / "night-watch.profile.json").actor_id, "night-watch")
-        self.assertIn("You are Night watch", receipt["sign_in"]["prompt"])
+        self.assertIn("You are Night watch", self.sign_in(receipt)["prompt"])
         refused = self.post("w-theirs", "Sneaky helper", "http-invite-2")
-        self.assertEqual((refused["status"], refused["recorded"], refused["error"]["code"]), ("rejected", True, "FORBIDDEN"))
+        self.assertEqual((refused["status"], refused["recorded"], self.error(refused)["code"]), ("rejected", True, "FORBIDDEN"))
         self.assertNotIn("sign_in", refused)
         self.assertEqual(sorted(os.listdir(self.folder)), ["night-watch.profile.json"])
         self.assertEqual(self.store.view("test-human", "actors", {"kind": "agent"})["items"],
@@ -250,7 +263,7 @@ class OverHTTP(unittest.TestCase):
     def test_a_duplicate_over_http_says_what_to_do(self):
         self.post("w-mine", "Night watch", "http-invite-1")
         refused = self.post("w-mine", "night watch", "http-invite-2")
-        self.assertEqual(refused["error"], {"code": "NAME_TAKEN", "retryable": False,
+        self.assertEqual(self.error(refused), {"code": "NAME_TAKEN", "retryable": False,
                                             "message": "There is already someone called night watch here. Choose another name, such as night watch 2."})
 
 

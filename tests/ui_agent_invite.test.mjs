@@ -46,9 +46,9 @@ test('an answer that never came keeps the exact request for the next Return, and
   await assert.rejects(invitation.send(workspace, 'Release scribe', 'codex'), error => error.again && /^Not confirmed: offline\. Press Return to try once more\.$/.test(error.message));
   await assert.rejects(invitation.send({ ...workspace, version: 9 }, 'Release scribe', 'codex'), /Not confirmed/);
   assert.deepEqual(api.sent[1], api.sent[0], 'the same request, its operation and its revision, even after the page read a newer outcome');
-  await invitation.send(workspace, 'Release scribe', 'codex');
+  await assert.doesNotReject(invitation.send(workspace, 'Release scribe', 'codex'));
   assert.deepEqual(api.sent[2], api.sent[0]);
-  await invitation.send(workspace, 'Night watch', 'codex');
+  await assert.doesNotReject(invitation.send(workspace, 'Night watch', 'codex'));
   assert.notEqual(api.sent[3].operation_id, api.sent[0].operation_id, 'after it settled, the next invitation is its own');
   const switched = core(envelope => { throw Error('offline'); });
   const other = new Invitation({ api: switched, bootstrap });
@@ -87,7 +87,7 @@ test('a refusal says Core\'s words, and the next Return is a new request; an ada
 test('someone else changing the team at the same moment sends it once more, as a new request at the revision Core names', async () => {
   const api = core((envelope, n) => n === 1 ? receipt(envelope, { recorded: true, status: 'rejected',
     error: { code: 'REVISION_CONFLICT', message: 'Writing changed', retryable: false, current_versions: { workspace_revision: 6 } } }) : invited(envelope));
-  await new Invitation({ api, bootstrap }).send(workspace, 'Release scribe', 'codex');
+  await assert.doesNotReject(new Invitation({ api, bootstrap }).send(workspace, 'Release scribe', 'codex'));
   assert.deepEqual(api.sent.map(request => request.expected.workspace_revision), [4, 6]);
   assert.notEqual(api.sent[1].operation_id, api.sent[0].operation_id);
 });
@@ -96,7 +96,7 @@ test('a busy or unconfirmed answer keeps the request', async () => {
   const api = core((envelope, n) => n === 1 ? receipt(envelope, { recorded: false, status: 'retryable', error: { code: 'DATABASE_BUSY', message: 'This attempt is busy', retryable: true } }) : invited(envelope));
   const invitation = new Invitation({ api, bootstrap });
   await assert.rejects(invitation.send(workspace, 'Release scribe', 'codex'), error => error.again && error.message === 'This attempt is busy. Press Return to try once more.');
-  await invitation.send(workspace, 'Release scribe', 'codex');
+  await assert.doesNotReject(invitation.send(workspace, 'Release scribe', 'codex'));
   assert.deepEqual(api.sent[1], api.sent[0]);
 });
 
