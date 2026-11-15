@@ -815,7 +815,7 @@ jobs:
               for d in known.get("dropped") or []:
                   lines.append("Dropped from the known runs: run %s, %s (%s)" % (d.get("id"), d.get("why"), ", ".join(d.get("artifacts") or [])))
           # The train as the validator read it: its pull request, what it reverts (the named revert items, then each
-          # reverting commit and the commit it reverts) and any other named items, then the items it shipped, which for
+          # reverting commit and the commit it reverts) and any other named items, then the items it carries, which for
           # a train of reverts alone is none. git's reading, held to it in an earlier step on the pull request, the
           # items and the merge commit, supplies a git-only reading if validation returned no train. That reading
           # identifies the commits; it neither supplies a validator result nor claims that their items shipped.
@@ -836,7 +836,7 @@ jobs:
                   parts.append("items " + ", ".join(str(i) for i in vtrain["items"]))
               lines.append("")
               lines.append("Train: " + ", ".join(parts))
-              lines.append("Items shipped: %s; merge commit %s; read from %s" % (
+              lines.append("Items: %s; merge commit %s; read from %s" % (
                   ", ".join(str(i) for i in vtrain.get("items") or []) or "none", vtrain.get("merge_commit"), vtrain.get("items_source")))
           elif push and isinstance(gtrain, dict):
               parts = ["pull request #%s" % gtrain["pull_request"] if gtrain.get("pull_request") is not None else "no pull request named",
