@@ -149,6 +149,57 @@ Tab or an undo, unfolds it to show the card where it went; a remove beside a
 folded card leaves it folded. On a phone, where one card shows at a time, a
 child card shows its parent's title above its own.
 
+## Images in a card
+
+An image goes into a card while it is written (item 321): pasted into its box,
+dropped on it, or picked with `#img`. The card shows it under its words, and
+the page keeps it: the image is one of the page's attachments, and a line of
+the card's words names it, `![NAME](attachment:ID)`, as a reply stack's line
+names its stack. The line moves with the card through moves, merges and edits,
+a card's removal takes it and Undo brings it back. The box leaves such lines
+out, as it leaves out the stacks', and shows the card's images under what is
+written, each at the height it showed at on the card, with × to take it out of
+the card (named "Remove the image NAME from this card", 44 points to touch on
+a phone); the lines go back under what is written, before any stack's, when
+the card is saved. A line inside a fenced block is words, and so is one that
+holds anything else. A new card holding only images is named for the first of
+them; a card cleared of all its text is removed, its images with it.
+
+Each file is taken or refused at once, before its bytes are read, by the
+page's own limits, which are Core's (`bootstrap.limits`): a PNG, JPEG, GIF or
+WebP image, at most 16 MB, and at most 8 attachments and 64 MB to a page,
+counting those still uploading. A refusal is one line in the saving sign
+saying what was not added and why ("notes.pdf was not added: it is not a PNG,
+JPEG, GIF or WebP image.", "huge.png was not added: an image may be at most
+16 MB."), and nothing goes to Core; of several files, those before the first
+refused are taken. The line goes when an image is taken or another card
+opens.
+
+A taken image is named in the card at once, by the media id it will upload
+under, and uploads through the page's images (`web/notebook-images.mjs`, the
+same `media.begin`/`media.publish` as every image, its bytes kept on the device
+until Core has them). Until then the card shows it from those bytes, its name
+saying "Uploading…" or why its upload failed, with Retry in the page's list of
+images; once Core has it, it is attached to the page. Its name stays with it
+for screen readers, and shows while the picture does not: before it loads, or
+when the page holds no such image ("· not on this page"). The page's list of
+images under the head leaves an image a card shows to the card, unless it needs
+Retry. × takes the image off the page too, unless another card still shows it.
+
+An image already on the page is read through the page as it stands
+(`/api/media/read` with the page's `source_ref`), so only someone who may read
+the page sees it; someone Core does not let write the page sees the images and
+no ×. In the Text view the line is words like any other, and an image pasted
+there is attached to the page without a line, as before.
+
+The rules for the line are `cardImages` and `imageLine` in `web/deck.mjs`,
+checked by `tests/ui_card_images.test.mjs`, with the page's limits; reading
+through the page, `tests/test_memory_card_images.py`; in the browser,
+`tests/notebook_card_images_native.mjs` in the `notebook` and
+`webkit-notebook` modes: a paste and a drop while the card is written, a
+reload, ×, the refusals and a large image within the limit, and each state of a
+card's image at 320, 375, 390 and a laptop, light and dark.
+
 ## Saving
 
 Text and Cards now share `NotebookWriting` (302, notebook-writing.md), using
