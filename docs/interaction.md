@@ -14,8 +14,9 @@ the pointer's way, the keys' and the phone's.
   unread; docs/links.md; in the Reader also Start a topic from this and Add to
   pipeline, as a sheet from the bottom on a phone), which a right-click on the
   message also opens. The bar is only as wide as its buttons, and never covers
-  the reply arrow beside the card's time (docs/topic-reading.md): where it
-  would, it sits above that line, or below it at the window's top. ↑ and ↓
+  the reply arrow beside the card's time (docs/topic-reading.md), nor the star
+  in the card's header with the room a finger takes round it: where it would,
+  it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through
   the star in its header (docs/reply-stacks.md) and its bar's buttons, ⋯ last, then on from the message (Shift-Tab from the
   bar's first button comes back to it). Moving the pointer off the messages

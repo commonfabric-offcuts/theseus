@@ -289,8 +289,10 @@ export class MessageMenu {
   }
   // Over the lit card's top end corner, inside the window while any of the
   // card is, and scrolled away with it. Where that would cover the reply arrow
-  // beside the card's time, or the 👍 on a folded message's row (item 390),
-  // it sits above that line, or else below it.
+  // beside the card's time, the 👍 on a folded message's row (item 390), or
+  // the star in the card's header with the room a finger takes round it (as
+  // wide a bar, Fold on it since item 473, reaches it on a phone), it sits
+  // above that line, or else below it.
   // In a reply stack it stays below the tab's bottom edge while the tab is in
   // the window, so it never crosses where the tab meets the stack; once the tab
   // has gone above the window it scrolls away with the card as any bar does.
@@ -309,8 +311,9 @@ export class MessageMenu {
     let top = Math.min(Math.max(4, box.top - height / 2), box.bottom - height);
     if (floor > 4) top = Math.max(floor, top);
     const card = cardIn(this.lit);
-    for (const kept of [card.querySelector(':scope > .message-author .replied-mark'), card.querySelector(':scope > .message-folded > .folded-thumb')]) {
-      const mark = kept?.getBoundingClientRect();
+    const star = card.querySelector(':scope > .message-author > .card-star');
+    for (const kept of [card.querySelector(':scope > .message-author .replied-mark'), card.querySelector(':scope > .message-folded > .folded-thumb'), star]) {
+      const mark = kept && (kept === star ? reach(kept, this.doc) : kept.getBoundingClientRect());
       if (mark?.width && mark.right > left && mark.left < left + width && mark.bottom > top && mark.top < top + height) {
         top = mark.top - height - 2 >= floor ? mark.top - height - 2 : floor > 4 ? box.bottom + 2 : mark.bottom + 2;
       }
@@ -540,4 +543,16 @@ export const COPY_REFUSED = 'Could not copy. Select the text and use Copy.';
 // Puts text on the clipboard. Settles true when it is there.
 export async function copyText(text, nav = globalThis.navigator) {
   try { await nav.clipboard.writeText(text); return true; } catch { return false; }
+}
+
+// The box a control answers in: its own, grown to the touch target its ::after
+// gives it by touch (stack-look.css, .card-star), or nothing while it is not
+// shown.
+function reach(control, doc) {
+  const view = doc.defaultView, style = view.getComputedStyle(control);
+  if (style.visibility !== 'visible' || !control.getClientRects().length) return null;
+  const box = control.getBoundingClientRect(), after = view.getComputedStyle(control, '::after');
+  const width = Math.max(box.width, parseFloat(after.width) || 0), height = Math.max(box.height, parseFloat(after.height) || 0);
+  const x = box.left + box.width / 2, y = box.top + box.height / 2;
+  return { left: x - width / 2, right: x + width / 2, top: y - height / 2, bottom: y + height / 2, width };
 }

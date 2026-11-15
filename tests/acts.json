@@ -8359,8 +8359,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "card.querySelector(':scope > .message-folded > .folded-thumb')]) {",
-     "null]) {"
+     "card.querySelector(':scope > .message-folded > .folded-thumb'), star]) {",
+     "null, star]) {"
     ]
    ],
    "check": {
@@ -14197,6 +14197,21 @@
    "check": {
     "native": "reading",
     "case": "joined by someone else into one above it"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The message bar, Fold on it, keeps clear of the lit card's star and the room a finger takes round it",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "card.querySelector(':scope > .message-folded > .folded-thumb'), star]) {",
+     "card.querySelector(':scope > .message-folded > .folded-thumb')]) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a star in a message's header"
    }
   }
  ]

@@ -993,7 +993,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       };
       await assertState('folded', ['two','five','six'], false);
       assert.match((await look(p,ids,'root')).meta,/^6 replies .*2 new$/,'counts remain in the header');
-      assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#messages .stack-fresh')).color`),await alertColour(p),'new count remains red');
+      // The count is the alert red; on a folder an agent began it is a deeper red of the folder's own, kept at 4.5:1 on
+      // that colour (item 477, tests/ui_folder_colour.test.mjs).
+      const fresh = await p.evaluate(`(()=>{const f=document.querySelector('#messages .stack-fresh'),s=f.closest('.reply-stack'),probe=document.createElement('span');probe.style.color='var(--stack-new)';s.append(probe);const own=getComputedStyle(probe).color;probe.remove();return {color:getComputedStyle(f).color,own,coloured:s.dataset.color==='agent'}})()`);
+      const [fr, fg, fb] = fresh.color.match(/\d+/g).map(Number);
+      assert.ok(fr > fg + 60 && fr > fb + 60, `new count remains red: ${fresh.color}`);
+      assert.equal(fresh.color, fresh.coloured ? fresh.own : await alertColour(p), 'new count remains red: the alert red, or on a coloured folder its own deeper red');
       assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-fold-line').length`),0,'no repeated fold bars');
       assert.equal(await p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(toggle)}).getBoundingClientRect(),n=document.querySelector(${JSON.stringify(card(ids.root)+' .stack-name')}).getBoundingClientRect();return t.right<=n.left+1&&t.top<n.bottom&&t.bottom>n.top})()`),true,'chevron beside the title');
       await shot(p,'stack-chat-'+device);
@@ -5008,11 +5013,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const probe=document.createElement('span');${palette ? `probe.className='agent-${palette}';probe.style.background=${JSON.stringify(folderOf(palette, theme))};` : `probe.style.background='var(--stack-folder)';`}document.body.append(probe);const want=getComputedStyle(probe).backgroundColor;probe.remove();
         const neutral=document.createElement('span');neutral.style.background='var(--stack-folder)';document.body.append(neutral);const plain=getComputedStyle(neutral).backgroundColor;neutral.remove();
         return {folder:cs.backgroundColor,tab:ts.backgroundColor,want,plain,color:s.dataset.color,edges:[cs.borderLeftWidth,ts.borderLeftWidth,cs.boxShadow.includes('inset')]}})()`);
+      // aim-core's colour is the one its own cards wear (its own, or one the reader chose for it in an earlier case).
+      const paletteOf = () => p.evaluate(`(document.querySelector(${JSON.stringify(card(ids.solo))}).className.match(/\\bagent-(?!card\\b)([a-z]+)\\b/)||[])[1]??null`);
+      const own = await paletteOf();
+      assert.ok(own, `${device}: aim-core's card wears a palette colour`);
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
-        const agent = await paint(ids.agent, 'peach', theme), person = await paint(ids.person);
+        const agent = await paint(ids.agent, own, theme), person = await paint(ids.person);
         assert.equal(agent.color, 'agent', `${device} ${theme}: the agent's dossier is marked with its colour`);
-        assert.deepEqual([agent.folder, agent.tab], [agent.want, agent.want], `${device} ${theme}: aim-core's folder and title bar are peach across their whole face: ${JSON.stringify(agent)}`);
+        assert.deepEqual([agent.folder, agent.tab], [agent.want, agent.want], `${device} ${theme}: aim-core's folder and title bar are its ${own} across their whole face: ${JSON.stringify(agent)}`);
         assert.notEqual(agent.folder, agent.plain, `${device} ${theme}: and not the neutral folder`);
         assert.deepEqual([person.color, person.folder, person.tab], ['', person.plain, person.plain], `${device} ${theme}: a person's dossier keeps the neutral folder: ${JSON.stringify(person)}`);
         for (const each of [agent, person]) assert.deepEqual(each.edges, ['0px', '0px', false], `${device} ${theme}: no coloured edge or bar`);
@@ -5021,7 +5030,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         if (device === 'phone') for (const width of [375, 320]) {
           // Narrower phones: the same faces, nothing scrolling sideways.
           await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-          const narrow = await paint(ids.agent, 'peach', theme);
+          const narrow = await paint(ids.agent, own, theme);
           assert.deepEqual([narrow.folder, narrow.tab], [narrow.want, narrow.want], `${width} ${theme}: the agent's folder and title bar are still its colour`);
           assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${width}: nothing scrolls sideways`);
           await shot(p, `folder-colour-phone-${width}-${theme}`);
@@ -5034,13 +5043,17 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await centre(p, `${card(ids.solo)} .author-name`);
         await p.point(`${card(ids.solo)} .author-name`);
         await until(() => p.evaluate(`Boolean(document.querySelector('.color-picker .swatch[aria-label="blue"]'))`), 'the colour picker opens for aim-core');
-        await p.point('.color-picker .swatch[aria-label="blue"]');
-        await until(async () => { const f = await paint(ids.agent, 'blue'); return f.folder === f.want; }, 'aim-core\'s folder is blue once the reader chose blue for it');
+        const chosen = own === 'blue' ? 'green' : 'blue';
+        await p.point(`.color-picker .swatch[aria-label="${chosen}"]`);
+        await until(async () => { const f = await paint(ids.agent, chosen); return f.folder === f.want; }, `aim-core's folder is ${chosen} once the reader chose ${chosen} for it`);
         await centre(p, `${card(ids.solo)} .author-name`);
         await p.point(`${card(ids.solo)} .author-name`);
         await until(() => p.evaluate(`Boolean(document.querySelector('.color-picker .swatch-default'))`), 'the picker opens again');
         await p.point('.color-picker .swatch-default');
-        await until(async () => { const f = await paint(ids.agent, 'peach'); return f.folder === f.want; }, 'Default gives the folder aim-core\'s own peach back');
+        // Default gives aim-core its own colour back, the one its cards wear again, and the folder follows.
+        await until(async () => { const back = await paletteOf(); return back && back !== chosen; }, 'Default gives aim-core\'s cards their own colour back');
+        const back = await paletteOf();
+        await until(async () => { const f = await paint(ids.agent, back); return f.folder === f.want; }, `and the folder aim-core's own ${back}`);
       }
       assert.deepEqual(p.errors, []); await p.close();
     }
