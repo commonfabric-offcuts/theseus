@@ -90,7 +90,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
-  'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py', 'aim_next/profile.py',
+  'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
   'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
