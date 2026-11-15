@@ -202,6 +202,7 @@ class HarnessCase(NamesCase):
         self.assertNotIn("name_it", self.deliveries("agent-a")[root], "no reply yet: nothing to name")
         reply = self.post("Friday works.", actor="agent-b", reply_to=root)
         self.assertEqual(self.deliveries("agent-a")[reply]["name_it"], {"root_id": root, "name_revision": 0})
+        self.assertNotIn("name_it", self.deliveries("agent-a")[root], "the first message's own delivery leaves it to its replies'")
         self.assertNotIn("name_it", self.deliveries("owner")[reply], "a person is never told to mint")
         coordinator = FakeCoordinator(self)
         text = coordinator.notice()["input"][0]["text"]

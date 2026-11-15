@@ -131,8 +131,10 @@ the dossier's first message only (`STACK_CHANGED` otherwise), as any name does.
 Names stored before minting existed carry no `minted` and read exactly as they
 did. The schema is unchanged.
 
-The agent harness produces the mint. A delivery to an agent that names its
-message's dossier carries `name_it: {root_id, name_revision}`, so the hosted
+The agent harness produces the mint. A delivery of a reply to an agent that
+names its dossier carries `name_it: {root_id, name_revision}` (the dossier's
+first message's own delivery leaves it to its replies', and with an agent
+coordinating, finding the namer reads two rows, not the dossier), so the hosted
 notice adds to that delivery's line `its dossier has no name and you name it:
 mint ROOT --expected N "two to five words"`, and `inbox` and `watch` add
 `[you name its dossier: mint …]`, `inbox` and the notice once per dossier

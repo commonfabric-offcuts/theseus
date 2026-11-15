@@ -261,23 +261,30 @@ def _dossier(db, actor, root):
     return row[0], row[1]
 
 
-def dossier_namer(db, root):
+def dossier_namer(db, root, replied=False):
     """(who mints a name for the dossier root heads, why) (item 479). The namer is None once anyone ever named it
     (`named`: a typed name wins and is never replaced, and a dossier is minted once), and before a reply on the record
     has landed in it (`unreplied`). Then it is the outcome's coordinator when an agent coordinates it
     (`coordinator`), or else the first agent to reply on the record (`first_agent`), and None while no agent has
-    (`no_agent`: the first line stays). A whisper counts for nothing, since a name is everyone's."""
-    if db.execute("SELECT 1 FROM message_acts WHERE message_id=? AND kind='name' AND owner='' LIMIT 1", (root,)).fetchone():
+    (`no_agent`: the first line stays). A whisper counts for nothing, since a name is everyone's. replied says the
+    caller already holds a reply on the record in the dossier (a delivered reply), which spares the walk through its
+    members when an agent coordinates."""
+    named, coordinator = db.execute(
+        "SELECT EXISTS(SELECT 1 FROM message_acts WHERE message_id=:root AND kind='name' AND owner=''),"
+        "(SELECT w.coordinator_id FROM messages m JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+        "JOIN actors a ON a.id=w.coordinator_id WHERE m.id=:root AND a.kind='agent')", {"root": root}).fetchone()
+    if named:
         return None, "named"
-    # The first agent's reply if any agent has replied, else the first reply.
-    first = db.execute(MEMBERS + " SELECT m.author_id,a.kind FROM members p JOIN messages m ON m.id=p.id JOIN actors a ON a.id=m.author_id "
+    if replied and coordinator is not None:
+        return coordinator, "coordinator"
+    # The first agent's reply if any agent has replied, else the first reply. CROSS JOIN keeps the walk from the
+    # dossier's members: left to itself the planner scans every message for the ORDER BY (a delivery read asks this).
+    first = db.execute(MEMBERS + " SELECT m.author_id,a.kind FROM members p CROSS JOIN messages m ON m.id=p.id JOIN actors a ON a.id=m.author_id "
                        "WHERE m.id<>:root AND m.private_to IS NULL ORDER BY a.kind<>'agent',m.seq LIMIT 1", {"root": root, "actor": ""}).fetchone()
     if first is None:
         return None, "unreplied"
-    coordinator = db.execute("SELECT w.coordinator_id FROM messages m JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
-                             "JOIN actors a ON a.id=w.coordinator_id WHERE m.id=? AND a.kind='agent'", (root,)).fetchone()
     if coordinator is not None:
-        return coordinator[0], "coordinator"
+        return coordinator, "coordinator"
     return (first["author_id"], "first_agent") if first["kind"] == "agent" else (None, "no_agent")
 
 
@@ -444,12 +451,14 @@ class Stacks:
                 "name": acts["name"], "name_revision": acts["name_revision"], "namer": namer, "why": why}
 
     def _name_it(self, db, recipient, message_id):
-        """{root_id, name_revision} when recipient, an agent, names the dossier message_id is in and nobody has (item
-        479): a delivery carries it, so the notice and the inbox tell the namer to mint the name. None otherwise."""
+        """{root_id, name_revision} when message_id, a reply on the record, lands in a dossier nobody has named and
+        recipient, an agent, names it (item 479): its delivery carries it, so the notice and the inbox tell the namer
+        to mint the name. None otherwise, and for the dossier's first message itself, whose replies say it."""
         root = StackRoots(db, recipient).root(message_id)
-        if dossier_namer(db, root)[0] != recipient:
+        if root == message_id or dossier_namer(db, root, replied=True)[0] != recipient:
             return None
-        return {"root_id": root, "name_revision": self._act_revision(db, root, "name", "")}
+        # Unnamed, the name has no act, so its revision is 0.
+        return {"root_id": root, "name_revision": 0}
 
     def _fold_answered(self, db, actor, message_id):
         """A person who replies to a message (its reply_to names it) or gives it a thumbs-up has dealt with it: it

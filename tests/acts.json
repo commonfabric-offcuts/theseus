@@ -13867,8 +13867,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        return coordinator[0], \"coordinator\"",
-     "        pass"
+     "    if first is None:\n        return None, \"unreplied\"\n    if coordinator is not None:\n        return coordinator, \"coordinator\"",
+     "    if first is None:\n        return None, \"unreplied\""
     ]
    ],
    "check": {
@@ -13909,8 +13909,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        if dossier_namer(db, root)[0] != recipient:",
-     "        if dossier_namer(db, root)[0] is None:"
+     "        if root == message_id or dossier_namer(db, root, replied=True)[0] != recipient:",
+     "        if root == message_id or dossier_namer(db, root, replied=True)[0] is None:"
     ]
    ],
    "check": {
@@ -14015,6 +14015,48 @@
    "check": {
     "native": "reading",
     "case": "minted name"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A delivered reply in a dossier an agent coordinates tells only the coordinator to mint, without walking the dossier",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "    if replied and coordinator is not None:\n        return coordinator, \"coordinator\"",
+     "    if replied and coordinator is not None:\n        return None, \"coordinator\""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "Finding a dossier's namer walks only its members, so a delivery read does not grow with the messages around it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "members p CROSS JOIN messages m ON m.id=p.id JOIN actors a",
+     "members p JOIN messages m ON m.id=p.id JOIN actors a"
+    ]
+   ],
+   "check": {
+    "python": "test_delivery_bounds.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "Only a delivered reply carries name_it, not the dossier's first message, so the mint is said once",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if root == message_id or dossier_namer(db, root, replied=True)[0] != recipient:",
+     "        if dossier_namer(db, root, replied=True)[0] != recipient:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
    }
   }
  ]
