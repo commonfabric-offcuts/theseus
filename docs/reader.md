@@ -133,7 +133,9 @@ message sheet, where it stands alone, are as tall as what shows of the window
 and grow with its width up to a maximum (item 400). On a laptop each keeps
 1.5rem of the dimmed page on every side and is at most 72rem wide, 100rem in
 Wide; the window decides the size, so it changes when the window does and
-never with what is written. On a phone, as in any window 760px wide or
+never with what is written. A wider Reader changes what wraps and what
+overflows at 1440, so the native checks' message has one passage longer than
+any line, and the check that scrolls it reads it in a shorter window. On a phone, as in any window 760px wide or
 narrower, each is the window's width and as tall as what shows, above the
 keyboard when it is up (the sheet leaves .75rem of the dimmed page above it),
 so nothing goes past the screen, sideways or down, and Send stays in reach
