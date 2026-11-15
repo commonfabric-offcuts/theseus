@@ -101,7 +101,7 @@
    and a fold line clips its words, so either would clip a ring of its own. The
    first message's card stays static for the tab, so the replies draw the part
    of its ring they cover. */
-.reply-stack:not(.only-new *) .stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line){anchor-name:--stack-lit}
+.reply-stack:not(.only-new *) .stack-replies .message-card.lit{anchor-name:--stack-lit}
 @supports (anchor-name:--stack-lit){
 .reply-stack:not(.only-new *) .stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';position:absolute;z-index:1;
   position-anchor:--stack-lit;position-visibility:anchors-valid;top:anchor(top);right:anchor(right);bottom:anchor(bottom);left:anchor(left);
