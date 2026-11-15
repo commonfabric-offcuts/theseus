@@ -1096,7 +1096,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const outlineRow = id => `#outline a[data-topic-id="${id}"]`;
   const railOpen = p => p.evaluate(`document.querySelector('#rail').classList.contains('open')`);
   const moveTo = async (p, device, id) => {
-    if (device === 'phone' && !await railOpen(p)) { await press(p, device, '#rail-open'); await until(() => railOpen(p), 'phone: the drawer opens'); }
+    // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
+    if (device === 'phone' && !await railOpen(p)) { await centre(p, '#rail-open'); await press(p, device, '#rail-open'); await until(() => railOpen(p), 'phone: the drawer opens'); }
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(outlineRow(id))}))`), `the outline names ${id}`);
     await centre(p, outlineRow(id));
     await press(p, device, outlineRow(id));
@@ -1254,7 +1255,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     for (const name of ['save', 'saveLatest']) { const write = RecoveryJournal.prototype[name];
       RecoveryJournal.prototype[name] = function (...args) { if (!window.holdJournal) return write.apply(this, args);
         return new Promise(go => window.journalHeld.push(go)).then(() => write.apply(this, args)); }; } return true; })`);
-  const letJournal = p => p.evaluate('window.holdJournal = false; for (const go of window.journalHeld.splice(0)) go(); true');
+  const letJournal = p => p.evaluate('(() => { window.holdJournal = false; for (const go of window.journalHeld.splice(0)) go(); return true; })()');
   const scheme = (p, value) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
 
   await check('reading edit build a move that finds another build while writing here is not yet safe stays, says Theseus updated with Reload, keeps the words, and Reload loads the new build with them: at 320, 375 and 390 by touch and on a laptop, light and dark', async () => {
@@ -1319,7 +1320,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     await p.evaluate('document.activeElement?.blur()');
     const head = card(id) + ' > .stack-head > .stack-who';
     if (!(await lit(p)).includes(id)) await light(p, device, id);
-    if (device === 'laptop') await p.key('Enter'); else await tap(p, head);
+    // A press on the head's author opens the head's own message in the Reader; on a phone, the tap after the one that lit it.
+    if (device === 'laptop') await p.point(head); else await tap(p, head);
     await until(async () => await readerOn(p) !== null, `${device}: the Reader opens on the head`);
     await press(p, device, '#reader-menu');
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: the Reader's ⋯ opens`);
