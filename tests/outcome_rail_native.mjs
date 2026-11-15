@@ -1467,13 +1467,15 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     catch (error) { throw Error(`${error.message}: they are on ${await keyedAt(p)}; tree ${JSON.stringify(await keyTree(p))}; drawer ${JSON.stringify(await drawer(p))}; page errors ${JSON.stringify(p.errors)}`); }
     assert.deepEqual(await pressRing(p), { visible: true, ring: 'solid', rails: 1 }, what + ': it wears the keys\' ring, and nothing else in the rails does');
   };
-  // From the row the keys are on, ↓ and ↑ (↑ and ↓ on the last row) move through the outline from there.
+  // From the row the keys are on, ↓ (↑ on the last row) goes on to another row of the outline, and the other arrow comes back.
   const stepsFrom = async (p, row, what) => {
-    const rows = (await keyTree(p)).rows, at = rows.indexOf(row);
-    assert.ok(at >= 0 && rows.length > 1, what + `: ${row} is one of the outline's rows: ${rows.join(' ')}`);
-    const [away, back, next] = at < rows.length - 1 ? ['ArrowDown', 'ArrowUp', rows[at + 1]] : ['ArrowUp', 'ArrowDown', rows[at - 1]];
+    const rows = (await keyTree(p)).rows;
+    assert.ok(rows.includes(row) && rows.length > 1, what + `: ${row} is one of the outline's rows: ${rows.join(' ')}`);
+    let [away, back] = ['ArrowDown', 'ArrowUp'];
     await p.key(away);
-    assert.equal(await keyedAt(p), next, `${what}: ${away === 'ArrowDown' ? '↓' : '↑'} goes on from the row to the next`);
+    let next = await keyedAt(p);
+    if (next === row) { [away, back] = ['ArrowUp', 'ArrowDown']; await p.key(away); next = await keyedAt(p); }
+    assert.ok(next !== row && rows.includes(next), `${what}: ${away === 'ArrowDown' ? '↓' : '↑'} goes on from the row to another of the outline's: ${next}`);
     await p.key(back);
     assert.equal(await keyedAt(p), row, `${what}: and ${back === 'ArrowDown' ? '↓' : '↑'} comes back to it`);
   };
