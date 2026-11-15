@@ -13819,6 +13819,51 @@
     "native": "rail",
     "case": "rail the header at 320"
    }
+  },
+  {
+   "item": 516,
+   "act": "At 320, with a two-digit count and nothing waiting, the outcome's name costs no second gap, so \"Pipeline & pages\" shares the line of \"☰ Outcomes\" because the two pills fit with one gap",
+   "break": [
+    [
+     "web/rails.css",
+     "#rail-open+.eyebrow{margin-left:-.6rem;text-indent:.6rem}",
+     "#rail-open+.eyebrow{text-indent:.6rem}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "The outcome's name gives up its room before \"Pipeline & pages\" goes under: at 320 it never holds a width that pushes the pill under while the two pills fit with one gap",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(min-width:761px) and (max-width:1180px){",
+     "@media(max-width:340px){[data-rails] #main .eyebrow-row .eyebrow{min-width:7rem}}\n@media(min-width:761px) and (max-width:1180px){"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "The outcome's name, reaching back over the gap after \"☰ Outcomes\", still starts its words a gap after the pill",
+   "break": [
+    [
+     "web/rails.css",
+     "#rail-open+.eyebrow{margin-left:-.6rem;text-indent:.6rem}",
+     "#rail-open+.eyebrow{margin-left:-.6rem}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
   }
  ]
 }
