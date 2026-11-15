@@ -13990,6 +13990,96 @@
     "native": "card-marks",
     "case": "a note and a reply saved in the Reader"
    }
+  },
+  {
+   "item": 127,
+   "act": "On a stack's head row who began it gives way, so at 320 the second line never wraps to a third",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-who{flex:10000 1 0;",
+     ".stack-who{flex:none;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 320px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "On a stack's head row the first message's marks give way, so on a phone the second line never wraps to a third",
+   "break": [
+    [
+     "web/stack-look.css",
+     "align-self:center;flex:100 1 0;",
+     "align-self:center;flex:none;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 375px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A head row's marks give way before who began it is cut short",
+   "break": [
+    [
+     "web/stack-look.css",
+     "align-self:center;flex:100 1 0;",
+     "align-self:center;flex:1000000 1 0;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 375px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A head row's mark shows whole or not at all, the first one included",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-head>.card-carries::before{content:\"\";width:0;height:var(--stack-meta-lh)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 320px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A head row's marks that give way are clipped whole, none showing a sliver below the line",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-head .carry{flex:none;margin-block:calc((var(--stack-meta-lh) - .95rem) / 2);",
+     ".stack-head .carry{flex:none;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 375px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Who began a stack is titled in full on its head row, so a name cut short on a phone can still be read",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     " who.title = who.textContent;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 1280px light"
+   }
   }
  ]
 }

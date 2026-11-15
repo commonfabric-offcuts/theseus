@@ -91,7 +91,10 @@ taking no width of its own (`aim.css`), so a line the marks fill wraps with
 its star rather than leaving the star alone on a line that shows nothing.
 A message that heads a reply stack shows them on the stack's head row too,
 beside who started it, since that row stands for the message while its card
-is folded into it (docs/reply-stacks.md, "The head").
+is folded into it (docs/reply-stacks.md, "The head"). The row's second line
+never wraps: on a narrow tab its marks give way, whole glyphs dropped from the
+end, after the count and before who started it, so a phone with a long name
+there may show fewer marks than the card does.
 
 They follow the person's writing as Core keeps it: a note saved in the
 Reader, or a reply saved there or on another device, marks the card once its

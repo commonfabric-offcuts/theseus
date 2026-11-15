@@ -213,8 +213,12 @@ their acts.
   who began the stack and the marks of what that message carries (an image,
   the reader's own note and saved reply, docs/topic-reading.md), "New" when
   the message itself is new, ★ if starred,
-  how many replied and who, and how many replies are new. On a phone the
-  count, who replied and what is new sit on a second short line. The short name is the
+  how many replied and who, and how many replies are new. The tab is two
+  lines high: the short name, then the rest on one line that never wraps to
+  a third (`stack-look.css`). When that line is short of room, the count, who
+  replied and what is new give way first, then the marks, whole glyphs
+  dropped from the end, then who began it, cut short with its whole name in
+  its tooltip; "New", ★ and "Folded" always show. The short name is the
   one someone typed for the dossier, or else the first message's line (One line
   of a message, below). A page that holds only some of a dossier's replies
   shows the name too, and a rename typed there names the whole dossier.

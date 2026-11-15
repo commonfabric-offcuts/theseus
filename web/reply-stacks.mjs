@@ -337,8 +337,10 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   const meta = element(doc, 'span', 'stack-meta', `${head.count} ${replies(head.count)}`);
   if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
   if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));
+  // Who began it gives way last on a narrow tab (stack-look.css), cut short: its whole name is its tooltip.
+  const who = element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)); who.title = who.textContent;
   const carried = carriesNode(doc, carriesOf(stack.head));
-  row.replaceChildren(name, pen, element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)), ...(carried ? [carried] : []),
+  row.replaceChildren(name, pen, who, ...(carried ? [carried] : []),
     ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
     ...(head.folded ? [element(doc, 'span', 'stack-folded', 'Folded')] : []),

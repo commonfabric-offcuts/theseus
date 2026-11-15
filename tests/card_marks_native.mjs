@@ -8,6 +8,9 @@
 // the person's writing: a note saved and a reply saved in the Reader mark the
 // card, sending the reply takes its mark away, and writing saved on another
 // device or emptied there moves the marks while another reader's never does.
+// A stack's head row, which stands for its first message, keeps its tab two
+// lines high whatever that message carries, starred, folded or open, at every
+// width: on a narrow tab the marks give way, whole, before who began it.
 //
 // Usage: node tests/card_marks_native.mjs <Chrome for Testing> <evidence dir> [case filter]
 // A filter runs the cases whose names hold it, or any of its parts split by |;
@@ -46,7 +49,7 @@ const ENGINES = ['chromium', 'webkit'];
 const ids = {};
 async function seed() {
   const facts = await control({ method: 'ready' });
-  await control({ method: 'navigation_topics', topics: ENGINES.map(engine => ({ id: `marks-${engine}`, title: 'Card marks' })) });
+  await control({ method: 'navigation_topics', topics: ENGINES.flatMap(engine => [{ id: `marks-${engine}`, title: 'Card marks' }, ...VIEWS.map((view, index) => ({ id: `heads-${engine}-${index}`, title: 'Head rows' }))]) });
   for (const engine of ENGINES) {
     const topic = `marks-${engine}`, m = ids[engine] = {};
     const say = async (name, body, more = {}) => (await control({ method: 'agent_message', operation_id: `${topic}-${name}`, topic_id: topic, source: 'topic', body, ...more })).result.message_id;
@@ -68,6 +71,27 @@ async function seed() {
     await write('other-draft', 'draft', m.theirs, 'Their unsent reply.', { sender: 'fixture-other-person' });
     await write('agent-note', 'note', m.theirs, 'The agent\'s own.', { sender: facts.agent });
     await write('agent-draft', 'draft', m.theirs, 'The agent\'s draft.', { sender: facts.agent });
+    // Stacks of their own, in a topic for each view, since reading a topic on screen makes its heads no longer new:
+    // each headed by a new message from the fixture's agent, whose name is 22 characters, and answered by another
+    // person, so none is a quiet agents' dossier. One head carries an image, the person's note and their saved reply
+    // and is starred; one carries the same and is folded; one carries an image alone; one carries nothing.
+    ids[engine].heads = [];
+    for (const index of VIEWS.keys()) {
+      const heads = `heads-${engine}-${index}`, h = ids[engine].heads[index] = {};
+      const head = async (name, body, more = {}) => (await control({ method: 'agent_message', operation_id: `${heads}-${name}`, topic_id: heads, source: 'topic', body, ...more })).result.message_id;
+      h.starred = await head('starred', 'A starred head, with a picture and my writing.', { join: true, attachments: [{ name: 'screen.png', image: 'screen.png' }] });
+      h.folded = await head('folded', 'A folded head, with a picture and my writing.', { attachments: [{ name: 'one.png', image: 'one.png' }] });
+      h.one = await head('one', 'A head with a picture alone.', { attachments: [{ name: 'one.jpg', image: 'one.jpg' }] });
+      h.bare = await head('bare', 'A head that carries nothing.');
+      for (const name of ['starred', 'folded']) {
+        await control({ method: 'private_writing', operation_id: `${heads}-note-${name}`, topic_id: heads, kind: 'note', message_id: h[name], body: 'Mine.' });
+        await control({ method: 'private_writing', operation_id: `${heads}-draft-${name}`, topic_id: heads, kind: 'draft', message_id: h[name], body: 'My reply.' });
+      }
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: h.starred, operation_id: `${heads}-star`, args: { starred: true } });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: h.folded, operation_id: `${heads}-fold`, args: { folded: true } });
+      for (const [order, name] of ['starred', 'folded', 'one', 'bare'].entries())
+        await control({ method: 'agent_message', operation_id: `${heads}-answer-${name}`, topic_id: heads, reply_to: h[name], body: 'An answer from someone else.', sender: 'fixture-other-person', join: order === 0 });
+    }
   }
   return facts;
 }
@@ -143,6 +167,25 @@ const readCard = (p, id) => p.evaluate(selector => {
   };
 }, card(id));
 
+// Everything a case reads of a stack's head row: the tab's box, each part that shows (a part a screen reader alone
+// hears, and the pen a touch screen hides, take no room), each of the marks and the box that holds them, and who began it.
+const readHead = (p, id) => p.evaluate(selector => {
+  const row = document.querySelector(selector + ' > .stack-head');
+  if (!row) return null;
+  const box = rect => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height });
+  const parts = [...row.children].filter(part => !part.matches('.stack-hide') && getComputedStyle(part).display !== 'none')
+    .map(part => ({ part: part.className, box: box(part.getBoundingClientRect()), text: part.textContent }));
+  const held = row.querySelector(':scope > .card-carries'), who = row.querySelector(':scope > .stack-who');
+  return {
+    row: box(row.getBoundingClientRect()), parts, held: held ? box(held.getBoundingClientRect()) : null,
+    marks: [...row.querySelectorAll('.carry')].map(mark => ({ kind: mark.className.replace('carry carry-', ''), label: mark.getAttribute('aria-label'), box: box(mark.getBoundingClientRect()) })),
+    who: { text: who.textContent, title: who.title, cut: who.scrollWidth > who.clientWidth + 0.5, width: who.getBoundingClientRect().width },
+    shape: parts.map(part => `${part.part}@${Math.round(part.box.left)},${Math.round(part.box.top)}-${Math.round(part.box.right)},${Math.round(part.box.bottom)}`).join(' '),
+  };
+}, card(id));
+// The lines a head row's parts stand on, by their tops.
+const linesOf = parts => parts.map(part => Math.round(part.box.top)).filter((top, index, all) => all.findIndex(other => Math.abs(other - top) < 3) === index).length;
+
 const VIEWS = [[320, false], [320, true], [375, false], [375, true], [390, false], [390, true], [1280, false], [1280, true]];
 
 async function run() {
@@ -193,6 +236,61 @@ async function run() {
       assert.deepEqual(p.errors, []);
       await p.evaluate(() => scrollTo(0, 0));
       await picture(p, `feed-${width}-${dark ? 'dark' : 'light'}`);
+    });
+  }
+
+  // The head row is a tab two lines high: the short name, then one run that never wraps to a third, whatever the head
+  // carries and whatever state it is in. What gives way, in order: the count and who replied, then the marks (whole
+  // glyphs, dropped from the end), then who began it (cut short, its whole name in its tooltip).
+  for (const [index, [width, dark]] of VIEWS.entries()) {
+    const label = `${width}px ${dark ? 'dark' : 'light'}`;
+    await check(`head rows at ${label}: a starred or folded new head with every mark, one with an image alone and one with none stay two lines inside the tab`, async () => {
+      const p = await open(`/?topic=heads-${engine}-${index}`, { width, dark }), h = m.heads[index];
+      await until(p, ([starred, ...rest]) => [starred, ...rest].every(id => document.querySelector(`.message-card[data-id="${id}"] > .stack-head > .stack-who`))
+        && document.querySelectorAll(`.message-card[data-id="${starred}"] > .stack-head .carry`).length === 3, 'every head row drawn, the starred one with its marks', [h.starred, h.folded, h.one, h.bare]);
+      const inTab = async (name, state) => {
+        const seen = await readHead(p, h[name]);
+        const where = `${name} (${state}): ${seen.shape}`;
+        assert.ok(linesOf(seen.parts) <= 2, `${where}: two lines, never a third`);
+        for (const part of seen.parts) assert.ok(part.box.top >= seen.row.top - 0.5 && part.box.bottom <= seen.row.bottom + 0.5 && part.box.right <= seen.row.right + 0.5, `${where}: ${part.part} inside the tab`);
+        // A mark shows whole, or not at all.
+        const shown = seen.marks.filter(mark => mark.box.right <= seen.held.right + 0.5 && mark.box.bottom <= seen.held.bottom + 0.5 && mark.box.top >= seen.held.top - 0.5);
+        for (const mark of seen.marks) if (!shown.includes(mark)) assert.ok(mark.box.top >= seen.held.bottom - 0.5 || mark.box.left >= seen.held.right - 0.5, `${where}: the ${mark.kind} mark shows whole or not at all`);
+        for (const mark of shown) assert.ok(mark.box.width >= 12 && mark.box.height >= 12, `${where}: the ${mark.kind} mark a visible glyph`);
+        // Who began it gives way last, and its whole name stays in its tooltip.
+        if (seen.who.cut) assert.equal(shown.length, 0, `${where}: the marks give way before who began it`);
+        assert.equal(seen.who.title, seen.who.text, `${where}: who began it is titled in full`);
+        return { seen, shown };
+      };
+      const starred = await inTab('starred', 'new and starred');
+      assert.ok(starred.seen.parts.some(part => part.part === 'stack-new') && starred.seen.parts.some(part => part.part === 'stack-star'), 'the starred head is new and starred');
+      const folded = await inTab('folded', 'new and folded');
+      assert.ok(folded.seen.parts.some(part => part.part === 'stack-folded'), 'the folded head says Folded');
+      // Where there is room, a phone's tab shows the marks too: at 375 and 390 an image alone beside the whole name and
+      // New. At 320 the 22 characters of the name leave less room than a glyph, and the mark gives way before the name.
+      const one = await inTab('one', 'an image alone');
+      assert.deepEqual(one.shown.map(mark => mark.kind), width >= 375 ? ['image'] : [], `the image alone shows whole where it fits (${one.seen.shape})`);
+      assert.equal(one.seen.who.cut, false, 'beside one mark, who began it reads whole');
+      const bare = await inTab('bare', 'no marks');
+      assert.equal(bare.seen.held, null, 'a head that carries nothing has no marks');
+      assert.equal(bare.seen.who.cut, false, 'with no marks, who began it reads whole beside New');
+      if (width >= 760) {
+        // On a laptop there is room: every mark shows, and the name reads whole.
+        for (const { seen, shown } of [starred, folded]) {
+          assert.deepEqual(shown.map(mark => mark.kind), ['image', 'note', 'reply'], `every mark shows on a laptop (${seen.shape})`);
+          assert.equal(seen.who.cut, false, 'who began it reads whole on a laptop');
+        }
+      }
+      // Opened to all its messages, the starred stack's row holds the same: its hide words are for a screen reader only.
+      await p.locator(`.reply-stack:has(.message-card[data-id="${h.starred}"]) > .stack-toggle`).click();
+      await until(p, id => document.querySelector(`.reply-stack:has(.message-card[data-id="${id}"]) > .stack-toggle`).dataset.state === 'open'
+        && document.querySelector(`.message-card[data-id="${id}"] > .stack-head > .stack-hide`), 'the starred stack open to all its messages', h.starred);
+      await inTab('starred', 'open');
+      assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'nothing scrolls sideways');
+      assert.deepEqual(p.errors, []);
+      await writeFile(path.join(evidence, `${engine}-heads-${width}-${dark ? 'dark' : 'light'}.json`), JSON.stringify({ starred, folded, one, bare }, null, 2));
+      await p.evaluate(() => scrollTo(0, 0));
+      await picture(p, `heads-${width}-${dark ? 'dark' : 'light'}`);
     });
   }
 
