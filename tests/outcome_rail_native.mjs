@@ -1393,16 +1393,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const left = await until(async () => { const now = await seen(); return !now.open && now; }, width + ': ← closes the right rail');
       assert.match(await keyedAt(p), /^message:/, width + ': ← goes to a message');
       assert.deepEqual([left.backdrop, left.visible], [false, true], width + ': the page is no longer dimmed, and nothing covers the message the keys are on');
-      // Open again, the keys on nothing (a press on its words): nothing under it moves.
+      // Open again, the keys on nothing (a press on its words): nothing under it moves. An arrow lands in the rail
+      // open over the page, the one part not covered, as from nothing anywhere (item 301); Return does nothing.
       await opened();
-      await p.evaluate('document.activeElement.blur()');
-      assert.equal(await keyedAt(p), 'body', width + ': the keys are on nothing');
-      const before = await seen();
       for (const key of ['ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter']) {
+        await p.evaluate('document.activeElement?.blur()');
+        assert.equal(await keyedAt(p), 'body', width + ': the keys are on nothing');
+        const before = await seen();
         await p.key(key);
         const now = await seen();
         assert.deepEqual([now.open, now.inRail, now.lit, now.reader], [true, false, before.lit, false], `${width}: ${key} leaves the page under the right rail as it was`);
-        assert.equal(await keyedAt(p), 'body', `${width}: ${key} takes the keys nowhere under it`);
+        const at = await p.evaluate("(e=>!e||e===document.body?'body':e.closest('#things')?'things':'under it: '+(e.id||e.tagName))(document.activeElement)");
+        assert.equal(at, key === 'Enter' ? 'body' : 'things', `${width}: ${key} ${key === 'Enter' ? 'takes the keys nowhere' : 'lands in the right rail open over the page, never under it'}`);
       }
       assert.deepEqual(p.errors, []); await p.close();
     }
@@ -2847,23 +2849,26 @@ export async function railChecks({ check, page, until, control, view, facts, sho
 
   // A select keeps ↑ and ↓, which choose among its options, and ← and → go on from it: the agent a card's ask goes
   // to (web/deck-page.mjs), which the ask form draws as a select in a topic with two agents taking part.
-  await check('rail arrows in a card\'s ask form, ← and → from the agent it goes to go on along its line, to Ask and back, at 1280 and 390', async () => {
+  await check('rail arrows in a card\'s ask form, ← and → from the agent it goes to go on along its line, → to Ask and ← back, at 1280 and 390', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-arrows-ask', title: 'Arrow ask', topic: { id: 'rail-arrows-ask-plan', title: 'Plan' } });
     await control({ method: 'topic_state', operation_id: 'rail-arrows-ask-team', topic_id: 'rail-arrows-ask-plan', participants: ['fixture-planning-agent'], args: { state: 'active', note: '' } });
     const item = (await control({ method: 'seed', topic_id: 'rail-arrows-ask-plan', memory_items: 1 })).item_ids[0];
+    const revised = await control({ method: 'memory_revise', operation_id: 'rail-arrows-ask-card', item_id: item, title: 'Ask deck', expected_revision: 1, body: '## A card to ask about\n\nWords.\n' });
+    assert.equal(revised.status, 'committed', JSON.stringify(revised));
     for (const size of ['laptop', '390']) {
       const p = await arrowsAt('rail-arrows-ask-' + size, '/?cards=' + item, size, size === '390' ? 'dark' : 'light');
-      await until(() => p.evaluate("document.body?.dataset.ready==='true' && [...document.querySelectorAll('#deck-page .deck-ask')].some(e=>e.checkVisibility()&&getComputedStyle(e).opacity==='1')").catch(() => false), size + ': the picked card shows its speech bubble');
-      await p.point('#deck-page .deck-ask');
+      await until(() => p.evaluate("document.body?.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-ask'))").catch(() => false), size + ': the card has its speech bubble, to ask an agent about it')
+        .catch(async error => { throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({ready:document.body?.dataset.ready,cards:[...document.querySelectorAll('#deck-page .deck-card')].map(c=>c.textContent.trim().slice(0,40)),bubbles:document.querySelectorAll('#deck-page .deck-bubble').length,status:document.querySelector('#deck-page [role=status]')?.textContent,deck:document.getElementById('deck-page')?.innerHTML.slice(0,600)})")); });
+      // The bubble is the card's own: Return on it asks, as a press does.
+      await p.evaluate("document.querySelector('#deck-page .deck-ask').focus()");
+      await p.key('Enter');
       await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-ask-to')?.checkVisibility())"), size + ': the ask opens with the agent it goes to, of two, as a select');
       const at = () => p.evaluate("(e=>e.matches('.deck-ask-to')?'select':e.textContent.trim()||e.tagName)(document.activeElement)");
       await p.evaluate("document.querySelector('#deck-page .deck-ask-to').focus()");
       await p.key('ArrowRight');
       assert.equal(await at(), 'Ask', size + ': → from the agent it goes to goes on to Ask beside it');
-      await p.key('ArrowRight');
-      assert.equal(await at(), 'Cancel', size + ': → from Ask to Cancel');
-      await p.key('ArrowLeft'); await p.key('ArrowLeft');
-      assert.equal(await at(), 'select', size + ': ← comes back along the line to the agent it goes to');
+      await p.key('ArrowLeft');
+      assert.equal(await at(), 'select', size + ': ← from Ask comes back to the agent it goes to');
       const lies = await p.evaluate(LIES('ArrowLeft'));
       await p.key('ArrowLeft');
       if (lies.length) assert.notEqual(await at(), 'select', `${size}: ← from it goes on to what lies that way (${lies.join(' | ')}), never held`);
@@ -2904,7 +2909,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.deepEqual(wrong, [], `${where}: every arrow lands on a control (nothing focused: ${JSON.stringify(nothing)})`);
       if (size === '390' || size === '1024') await shot(p, `rail-arrows-panes-${name}-${size}`);
       const first = async () => { await p.evaluate('(document.activeElement?.blur(), scrollTo(0, 0))'); await p.key('ArrowDown'); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-      const { missing, lost, dead, count } = await arrowClosure(p, 'body', first);
+      // Links and buttons in a message's words are the message's, reached by Tab from it (message-menu.mjs), as a
+      // deck's cards are the deck's: left out here.
+      const { missing, lost, dead, count } = await arrowClosure(p, 'body', first, '#messages .message-preview, #messages .message-reply-to');
       assert.ok(count > 5, `${where}: the page has its controls (${count})`);
       assert.deepEqual(missing, [], `${where}: the arrows reach every control on the page from the first`);
       assert.deepEqual(lost, [], `${where}: and no arrow loses the focus to the page`);

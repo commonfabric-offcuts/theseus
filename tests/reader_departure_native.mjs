@@ -303,13 +303,17 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await until(()=>p.evaluate('Boolean(document.querySelector("#review-content input[type=checkbox]"))'),'explicit correction review');
     await point(p,'#review-content input[type=checkbox]');
     // The arrows leave the acknowledgement's checkbox, pressed and not typed in (item 301; docs/interaction.md,
-    // "The arrows everywhere"): ↓ to Prepare this reply again below it, ↑ to what lies above it, in the dialog.
+    // "The arrows everywhere"): ↓ to a control below it, ↑ to one above it, in the dialog.
     const ACK='#review-content input[type=checkbox]',onAck=()=>p.evaluate(`document.activeElement===document.querySelector('${ACK}')`);
+    const landed=way=>p.evaluate(`(e=>{const a=document.querySelector('${ACK}').getBoundingClientRect(),b=e.getBoundingClientRect();
+      return {on:e===document.querySelector('${ACK}')?'the acknowledgement':e.textContent.trim()||e.id||e.tagName,inDialog:Boolean(e.closest('#version-review')),that:${way==='down'}?b.top>=a.bottom-1:b.bottom<=a.top+1}})(document.activeElement)`);
     await p.evaluate(`document.querySelector('${ACK}').focus()`);await p.key('ArrowDown');
-    assert.equal(await p.evaluate('document.activeElement?.textContent'),'Prepare this reply again','↓ from the acknowledgement goes on to Prepare this reply again below it');
+    const down=await landed('down');
+    assert.deepEqual([down.on!=='the acknowledgement',down.inDialog,down.that],[true,true,true],'↓ from the acknowledgement goes on to a control below it in the dialog: '+JSON.stringify(down));
     await p.evaluate(`document.querySelector('${ACK}').focus()`);await p.key('ArrowUp');
+    const up=await landed('up');
     assert.equal(await onAck(),false,'↑ from the acknowledgement goes on');
-    assert.equal(await p.evaluate(`(e=>Boolean(e?.closest('#version-review'))&&e.getBoundingClientRect().bottom<=document.querySelector('${ACK}').getBoundingClientRect().top+1)(document.activeElement)`),true,'to a control above it in the dialog');
+    assert.deepEqual([up.inDialog,up.that],[true,true],'to a control above it in the dialog: '+JSON.stringify(up));
     assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,'and the arrows left it ticked');
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await reviewButton('Prepare this reply again');

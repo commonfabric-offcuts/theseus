@@ -43,16 +43,18 @@ export function feedStop(doc, { first = false } = {}) {
 
 // The buttons at the top of the feed, in rows top down, each row's in their
 // order, those shown: the topic's or the Conversation's header, with Topic
-// settings, New message and the rest drawn there; then the row of view filters
-// just over the messages ("Read it", Only new, Show agent coordination). A row
-// with none shown is left out. The filters were once nobody's, so the keys on
-// one, reached by Tab or a click, moved nothing (item 403); as a row of these
-// the keys leave them like any other: ↑ and ↓ go from row to row.
+// settings, New message and the rest drawn there; on a phone the line under it
+// saying what is new in the other outcomes (outline-rail.mjs), a row of its
+// own; then the row of view filters just over the messages ("Read it", Only
+// new, Show agent coordination). A row with none shown is left out. The
+// filters were once nobody's, so the keys on one, reached by Tab or a click,
+// moved nothing (item 403); as a row of these the keys leave them like any
+// other: ↑ and ↓ go from row to row, and pass over none of them (item 301).
 export function headerRows(doc) {
   const usable = el => !el.disabled && shown(el) && !el.closest('[inert]');
-  return [['#main > .topic-header', 'button, a[href]'], ['#main > .feed-filters', 'button']].map(([row, each]) => {
+  return [['#main > .topic-header', 'button, a[href]'], ['#main > #outline-elsewhere', null], ['#main > .feed-filters', 'button']].map(([row, each]) => {
     const host = doc.querySelector(row);
-    return { host, buttons: host ? [...host.querySelectorAll(each)].filter(usable) : [] };
+    return { host, buttons: !host ? [] : (each ? [...host.querySelectorAll(each)] : [host]).filter(usable) };
   }).filter(row => row.buttons.length);
 }
 // Whether the keys are on the first message of the feed, the one at its top.

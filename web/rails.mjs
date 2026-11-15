@@ -36,7 +36,8 @@ shell.extend((doc, win) => {
   // every page (arrow-reach.mjs). On a topic and a Conversation the panes'
   // own keys answer first: in the rails' trees, on the buttons at the top of
   // the feed, and in the messages (and from the page itself, while there are
-  // messages to light). Only ↑ and ↓ in the messages are theirs alone, as the
+  // messages to light and no sheet over them, under which the page is inert
+  // and the arrows go to the sheet). Only ↑ and ↓ in the messages are theirs alone, as the
   // message the keys are on moves; any other arrow the panes' keys leave
   // unused (↑ from the header's top row, ← or → with no pane on screen that
   // way) goes on here, as everywhere in a pane off its keys (the logo block,
@@ -46,7 +47,7 @@ shell.extend((doc, win) => {
   const PANES = [['#rail', 'outline'], ['#main', 'feed'], ['#things', 'things']];
   arrowReach(doc, {
     listen,
-    managed: (at, way) => feed() && (way === 'up' || way === 'down') && ((onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) || Boolean(doc.getElementById('messages')?.contains(at))),
+    managed: (at, way) => feed() && (way === 'up' || way === 'down') && ((onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) && !doc.getElementById('main')?.inert || Boolean(doc.getElementById('messages')?.contains(at))),
     region: at => feed() ? at.closest('.message-bar') ?? at.closest(PANES.map(([pane]) => pane).join(',')) : null,
     beyond: (at, way) => {
       const pane = PANES.find(([selector]) => at.closest(selector))?.[1];

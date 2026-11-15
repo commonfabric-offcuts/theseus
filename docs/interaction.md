@@ -202,9 +202,10 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   place the outline keeps its place and the messages' is the new page's.
   Escape in the Reader gives the focus back to the message, so the arrows
   work again.
-- **The buttons at the top of the feed.** These are two rows: the
+- **The buttons at the top of the feed.** These are rows: the
   header's buttons (Topic settings, New message, and the others drawn there,
-  such as "Pipeline & pages" below 1181px), and under them the view filters
+  such as "Pipeline & pages" below 1181px), on a phone the line under the
+  header saying what is new in the other outcomes, and under them the view filters
   in the row just over the messages ("Read it", Only new, Show agent
   coordination), when any of those shows. ↑ on the message at the top of the
   feed moves the keys onto the row just above it, the filters' when they
@@ -259,7 +260,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   pages" below 1181px) is passed over: the keys never open a drawer or a
   sheet. While one is open over the dimmed page, the keys never act on what
   it covers: ← on a folded section of the right rail's panel or sheet closes
-  it and goes to the messages, and nothing under it takes the keys. Touch is unchanged; on an
+  it and goes to the messages, and nothing under it takes the keys; with the
+  keys on nothing, an arrow lands in the rail open over the page. Touch is unchanged; on an
   iPad with a keyboard the same keys work.
 
 ## The arrows everywhere

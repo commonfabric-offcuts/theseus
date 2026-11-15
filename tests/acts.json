@@ -14279,6 +14279,36 @@
     "native": "rail",
     "case": "rail arrows on a phone, in the side rail's drawer"
    }
+  },
+  {
+   "item": 301,
+   "act": "On a phone ↓ from the header reaches the line under it saying what is new in the other outcomes, and ↑ from the filters comes back to it: a row of the buttons at the top of the feed",
+   "break": [
+    [
+     "web/panes.mjs",
+     "['#main > #outline-elsewhere', null], ",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a topic and a Conversation"
+   }
+  },
+  {
+   "item": 301,
+   "act": "With the right rail open over the page and the keys on nothing, an arrow lands in the rail, never on the page under it",
+   "break": [
+    [
+     "web/rails.mjs",
+     " && !doc.getElementById('main')?.inert",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 900 and 390 the keys never act through"
+   }
   }
  ]
 }
