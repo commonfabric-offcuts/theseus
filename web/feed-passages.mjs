@@ -6,7 +6,8 @@
 // to the one under the pointer, growing from words dragged over when there are
 // some. What lights is what Return quotes and what ⌘C copies on the lit
 // message (message-menu.mjs), so a hover never promises a quote Return would
-// not make. The light is painted as a highlight over the card's own words
+// not make: it lights only while Return would quote it, and goes out as the
+// focus moves where Return does something else. The light is painted as a highlight over the card's own words
 // (CSS.highlights), so the card's nodes and what it stores stay as they are.
 import { drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
@@ -42,6 +43,10 @@ export class FeedPassages {
       this.shifted = false;
       event.preventDefault(); event.stopPropagation();
     }, true);
+    // The focus moving where Return does something else (a control of the
+    // message or its bar, writing, a pop-up, the Reader) puts the light out,
+    // as it goes out in the Reader: what lights is what Return would quote.
+    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });
   }
   get supported() { return typeof this.win.Highlight === 'function' && Boolean(this.win.CSS?.highlights); }
 

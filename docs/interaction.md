@@ -34,7 +34,11 @@ the pointer's way, the keys' and the phone's.
   over when there are some, and opens nothing. The light is painted over the
   card's own words (`web/feed-passages.mjs`), so nothing on the card, and
   nothing stored, changes for it; the keys lighting a message light no
-  passage of it, and a passage lights only where Return would quote it.
+  passage of it, and a passage lights only where Return would quote it: the
+  focus moving where Return does something else (the message's ☆, its bar's
+  👍, Reply and ⋯, writing, a pop-up, the Reader) puts the light out, as in
+  the Reader, and back on the card the pointer resting on the words lights a
+  passage again.
   A click or a tap in a message, or on its bar, moves the keys' place to that
   message, and one on a dossier's header to the dossier, so ↑ ↓, Return and the
   stack keys go on from there; the pointer moving onto a message or a header
@@ -349,8 +353,17 @@ page painted. Its checks, by rule:
   words before and after the passage: ⌘C copies exactly the lit words, read
   back through the browser's own clipboard, Return quotes the same words, ⌘C
   in the Reader copies its own lit passage, Shift grows the light, and the
-  keys light no passage. That the passages are the Reader's, over exactly
-  their characters on a card's blocks: `tests/ui_message_format.test.mjs`.
+  keys light no passage. "reading a card's lit passage goes out as the focus
+  moves to a control of the message or to writing …": Tab through the lit
+  message's ☆, 👍, Reply and ⋯, and ⌘Return into writing, each with no
+  passage lit; Shift-Tab back to the card, where the pointer lights a passage
+  again and Return quotes it. "reading Shift-click on a card grows the light
+  and opens nothing …": a Shift-click grows the light, opens nothing and
+  leaves no selection of the browser's; words selected in another passage are
+  what Shift grows the light from, giving way to it; and Return on words
+  selected quotes exactly them, not the passage lit. That the passages are the
+  Reader's, over exactly their characters on a card's blocks:
+  `tests/ui_message_format.test.mjs`.
 - ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",
   with a selection, the composer and no lit message left to the browser; a
   cut-off message's whole words are read as the person's act, so they copy

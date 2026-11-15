@@ -14030,6 +14030,66 @@
    }
   },
   {
+   "item": 478,
+   "act": "A card's lit passage goes out as the focus moves where Return does something else (a control of the message or its bar, writing, a pop-up), as in the Reader",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a card lights from the passage lit first to the one under the pointer, opens nothing, and leaves no selection of the browser's beside the light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      this.shifted = false;\n      if (!event.shiftKey",
+     "      this.shifted = false; return;\n      if (!event.shiftKey"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Words selected on a card are what Shift grows its light from, and the selection gives way to the light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const chosen = this.selected(entry);\n    if (!chosen) return;",
+     "    const chosen = null;\n    if (!chosen) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Return on words selected on a card quotes exactly those words, not the passage lit",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const selected = this.selected(entry);\n    if (selected) return selected;",
+     "    const selected = null;\n    if (selected) return selected;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
    "item": 434,
    "act": "A scroll of the message the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size moves nothing",
    "break": [
@@ -14102,6 +14162,21 @@
    "check": {
     "native": "compose",
     "case": "chromium wide: quoting: once the lines wrap anew"
+   }
+  },
+  {
+   "item": 434,
+   "act": "A scroll of the message down that the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size does not pull them back",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (now === before || now < before",
+     "if (now >= before || now < before"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
    }
   }
  ]

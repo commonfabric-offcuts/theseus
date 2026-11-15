@@ -343,11 +343,14 @@ reply grows, and a scroll the person makes …" (1280×800 stacked, both
 engines) quotes words wholly inside the message's room, just above where the
 reply opens, and types a line: they stay above the reply (a line the room's
 edge cuts off as it is quoted stays cut off as it was: what showed is what is
-kept); then the message is scrolled back by a drag of its
+kept); then the message is scrolled on down past the words by a drag of its
 scrollbar (in Chrome; Safari's engine draws an overlay scrollbar a headless
 pointer cannot hold, so there it is scrolled from outside the page's code, as
-the drag scrolls it) and a line is deleted: the message stays where it was
-put. "phone: quoting at the end of a message …" quotes the last words above
+the drag scrolls it) and a line is typed: the message stays where it was put,
+the words not pulled back. The words are quoted again, kept in sight, then
+scrolled back up past by the same drag and a line is deleted: the message
+stays where it was put. Both directions are checked, since a scroll down is
+the person reading on. "phone: quoting at the end of a message …" quotes the last words above
 the reply of a message scrolled to its end, the keyboard going down and up
 again: the words still show. "typing in the reply leaves a message scrolled
 to its end at its end" types words with the message at its end. "quoting:

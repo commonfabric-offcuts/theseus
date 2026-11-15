@@ -1842,6 +1842,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.ok(!['card', 'body', null].includes(stops.at(-1)), `Tab ${i} reaches a control of the message (${stops.join(', ')})`);
       assert.equal(await shining(p), null, `at ${stops.at(-1)} (Tab ${i}), where Return presses the control and quotes nothing, no passage is lit`);
     }
+    await shot(p, 'reading-passage-focus-control');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the dark scheme');
+    await shot(p, 'reading-passage-focus-control-dark');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+    await until(() => p.evaluate(`!matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the light scheme again');
     // Shift-Tab comes back to the card: the pointer resting on the words lights a passage there again, and Return quotes it.
     for (let i = 0; i < 4 && await focus() !== 'card'; i++) {
       const was = await focus();
@@ -1896,6 +1902,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.equal(await readerOn(p), null, 'Shift-click opens nothing');
     assert.equal(await collapsed(), true, 'and the browser grows no selection of its own beside the light');
     await shot(p, 'reading-passage-shift-click');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the dark scheme');
+    assert.equal(await shining(p), body, 'the light stays as the scheme changes');
+    await shot(p, 'reading-passage-shift-click-dark');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+    await until(() => p.evaluate(`!matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the light scheme again');
     await p.key('Enter');
     await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
     assert.equal(await replyOf(p), `> ${body}\n\n`, 'Return quotes the passages the Shift-click lit');

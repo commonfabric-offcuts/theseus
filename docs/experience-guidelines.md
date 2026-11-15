@@ -50,7 +50,10 @@ never promises a quote that Return would not make.
   "nonempty send-and-stay shortcuts each send once and keep the reader open".
 - `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
   "reading a passage the pointer rests on lights on a topic's card and a
-  dossier's; ⌘C copies exactly its words and Return quotes them …".
+  dossier's; ⌘C copies exactly its words and Return quotes them …", "reading
+  a card's lit passage goes out as the focus moves to a control of the message
+  or to writing …" (no hover promise where Return presses a control) and
+  "reading Shift-click on a card grows the light and opens nothing …".
 
 ## Every input works
 
