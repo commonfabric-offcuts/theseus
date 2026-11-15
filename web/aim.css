@@ -526,7 +526,8 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 #messages .message-card:not(.lit):focus-visible,#messages .message-fold:not(.lit)>.fold-line:focus-visible{outline:none}
 #messages .message-card:not(.lit):hover{border-color:var(--line)}
 .message-fold.lit>.fold-line{background:var(--soft);color:var(--ink)}
-.message-bar{position:fixed;z-index:20;display:flex;gap:.1rem;padding:.15rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 4px 14px color-mix(in srgb,var(--ink) 14%,transparent)}
+/* The bar is as wide as its buttons and never wider than the window less 8px each side: in a narrow window its buttons wrap to a second row, ⋯ kept at the end. */
+.message-bar{position:fixed;z-index:20;display:flex;flex-wrap:wrap;justify-content:flex-end;width:max-content;max-width:calc(100% - 1rem);gap:.1rem;padding:.15rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 4px 14px color-mix(in srgb,var(--ink) 14%,transparent)}
 .message-bar[hidden]{display:none}
 .message-bar button{min-height:2rem;padding:.1rem .55rem;border:0;border-radius:.45rem;background:transparent;font-size:.82rem}
 .message-bar button[hidden]{display:none}

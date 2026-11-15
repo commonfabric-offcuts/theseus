@@ -14,7 +14,11 @@ the pointer's way, the keys' and the phone's.
   unread; docs/links.md; in the Reader also Start a topic from this and Add to
   pipeline, as a sheet from the bottom on a phone), which a right-click on the
   message also opens. The bar is only as wide as its buttons (one taking more
-  than half its card, as on a phone, sits flush with the card's end), and never covers
+  than half its card, as on a phone, sits flush with the card's end), and never
+  wider than the window less 8px each side: where its buttons, each a finger
+  wide on a phone, do not fit in one row (a go-ahead ask its card cuts off has
+  seven, and "Link copied" widens its ⋯), they wrap to a second row, ⋯ still
+  last at the end, and every one stays in the window. It never covers
   the reply arrow beside the card's time (docs/topic-reading.md): where it
   would, it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through

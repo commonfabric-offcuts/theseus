@@ -14213,6 +14213,51 @@
     "native": "reading",
     "case": "a star in a message's header"
    }
+  },
+  {
+   "item": 473,
+   "act": "The message bar is never wider than the window: a go-ahead ask's seven buttons, or Link copied on its ⋯, stay in a 320px window",
+   "break": [
+    [
+     "web/aim.css",
+     "width:max-content;max-width:calc(100% - 1rem);gap:.1rem;",
+     "width:max-content;gap:.1rem;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Bounded by the window, the message bar's buttons wrap to a second row, each in the window and 44px by touch",
+   "break": [
+    [
+     "web/aim.css",
+     "display:flex;flex-wrap:wrap;justify-content:flex-end;",
+     "display:flex;justify-content:flex-end;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A message bar that fits in one row stays one row",
+   "break": [
+    [
+     "web/aim.css",
+     "flex-wrap:wrap;justify-content:flex-end;width:max-content;",
+     "flex-wrap:wrap;justify-content:flex-end;width:min-content;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
   }
  ]
 }
