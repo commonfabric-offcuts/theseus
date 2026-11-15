@@ -1099,6 +1099,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const moveTo = async (p, device, id) => {
     // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
     if (device === 'phone' && !await railOpen(p)) {
+      // The rails' reads settled first: what they bring (the line under ☰ of what is new elsewhere) moves the page.
+      await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), 'phone: the rails are quiet');
       await centre(p, '#rail-open');
       await p.evaluate(`(window.railPresses = [], ['pointerdown', 'click'].forEach(type => addEventListener(type, e => window.railPresses.push(type + ':' + (e.target.id || e.target.className || e.target.tagName) + ':' + e.defaultPrevented), true)), true)`);
       await press(p, device, '#rail-open');
@@ -1316,7 +1318,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await letJournal(p);
         // The words safe (no guard of the page's holds), as the page says it: then Reload loads with no ask.
         await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), `${width}: the device keeps the words`);
-        await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved')`), `${width}: the page says the words are saved`);
+        await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent === 'Saved to Theseus'`), `${width}: the page says the words are saved to Theseus`);
         const where = await p.evaluate(`['topic-navigation-status', 'inline-notice'].find(id => document.querySelector('#' + id + ' .updated-reload')?.getClientRects().length)`);
         await press(p, device, `#${where} .updated-reload`);
         await replaced(p, `${width}: Reload loads the page`);
@@ -1345,7 +1347,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const editReached = async (p, device, id) => {
     const shown = () => p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
     if (!await shown()) {
-      await light(p, device, id);
+      // Lit already (the Reader closing lights the message it showed), the next press on the row shows it whole.
+      if (!(await lit(p)).includes(id)) await light(p, device, id);
       await press(p, device, `${card(id)} .stack-who`);
       await until(shown, `${device}: a press on the head's row shows it whole`);
     }
