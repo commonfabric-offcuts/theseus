@@ -14093,6 +14093,96 @@
     "native": "forms",
     "case": "forms invite on a phone by touch"
    }
+  },
+  {
+   "item": 324,
+   "act": "A lost answer's words fit at 320, 375 and 390 by touch and on a laptop, in light and dark",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "this.show(failed.message);",
+     "this.show(failed.message); if (failed.again) this.state.style.whiteSpace = 'nowrap';"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite while the invitation is out"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refused copy's words fit at 320, 375 and 390 by touch and on a laptop, in light and dark",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copied{margin:0;",
+     ".invite-copied{margin:0;white-space:nowrap;"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a copy the browser refuses"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refused copy's words never lie over the prompt",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copied{margin:0;",
+     ".invite-copied{margin:-2.5rem 0 0;"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a copy the browser refuses"
+   }
+  },
+  {
+   "item": 324,
+   "act": "Copied never lies over the prompt",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copied.quiet{color:var(--muted)}",
+     ".invite-copied.quiet{color:var(--muted);margin-top:-2.5rem}"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refusal still said once the invite is gone fits on a phone and a laptop",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "this.opener.hidden = !manage;",
+     "this.opener.hidden = !manage; this.line.style.minWidth = manage ? '' : '30rem';"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite once the person no longer organises"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The opener alone fits on a phone",
+   "break": [
+    [
+     "web/aim.css",
+     ".team-invite>.add-chip{justify-self:start}",
+     ".team-invite>.add-chip{justify-self:start}.team-invite:has(>.invite-line[hidden]):has(>.invite-prompt[hidden])>.add-chip{min-width:22rem}"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite on a phone by touch"
+   }
   }
  ]
 }

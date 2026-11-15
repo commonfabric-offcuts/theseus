@@ -5,15 +5,20 @@ import assert from 'node:assert/strict';
 // server: one name line and two chips, Return invites, Core registers the
 // agent and adds it to the team, the server writes its sign-in file (private,
 // in the fixture's own sign-in folder) and the page shows the prompt to paste
-// into the agent. Each state of the control (the line, Inviting…, a refusal,
-// a sign-in file not written with Try again, the prompt, and none for a
-// member who does not organise) has its own case, and every state is measured
-// at 320, 375 and 390 by touch and on a laptop, in light and dark. Runs in the
-// forms step (tests/reader_persistence_native.mjs --forms).
+// into the agent. Each state of the control has its own case, and every state
+// it draws is measured at 320, 375 and 390 by touch and on a laptop, in light
+// and dark: the opener alone, the line, Inviting…, a lost answer (Return tries
+// once more), a refusal (a taken name; no longer organising, before and after
+// the page reads it), a sign-in file not written with Try again, the prompt,
+// the prompt copied, and a copy the browser refused. A member who does not
+// organise is shown none of it. Runs in the forms step
+// (tests/reader_persistence_native.mjs --forms).
 
 const PHONES = [[320, 568], [375, 667], [390, 844]];
-// Every visible control of the Team panel's invite, and the prompt, measured
-// where the page draws them.
+// Every visible control of the Team panel's invite, its words (what it says, the
+// prompt and what became of a copy) and its blocks, measured where the page
+// draws them: no control covers another, no words lie under a control or under
+// other words, and nothing reaches past the screen.
 const MEASURE = `(()=>{
   const shown=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
   const name=e=>e.id?'#'+e.id:(e.className&&typeof e.className==='string'?'.'+e.className.trim().split(/\\s+/).join('.'):e.tagName.toLowerCase())+(e.textContent.trim()?' “'+e.textContent.trim().slice(0,20)+'”':'');
@@ -25,8 +30,16 @@ const MEASURE = `(()=>{
     if(a.x<c.right-.5&&c.x<a.right-.5&&a.y<c.bottom-.5&&c.y<a.bottom-.5)overlaps.push(a.name+' over '+c.name)}
   const pre=document.querySelector('#invite-prompt-text');
   const blocks=[...document.querySelectorAll('#team-invite .invite-line,#team-invite .invite-prompt,#team-invite .invite-state')].filter(shown).map(box);
+  const words=[...document.querySelectorAll('#team-invite .invite-said,#team-invite .invite-prompt-text,#team-invite .invite-copied')].filter(shown).map(box);
+  // What the line says, without its Try again: the words themselves, where they are drawn.
+  const state=document.querySelector('#team-invite .invite-state'),said=state&&shown(state)&&[...state.childNodes].find(n=>n.nodeType===3&&n.textContent.trim());
+  if(said){const r=document.createRange();r.selectNode(said);const b=r.getBoundingClientRect();
+    words.push({name:'the words “'+said.textContent.trim().slice(0,20)+'”',x:b.x,y:b.y,w:b.width,h:b.height,right:b.right,bottom:b.bottom})}
+  const meet=(a,c)=>a.x<c.right-.5&&c.x<a.right-.5&&a.y<c.bottom-.5&&c.y<a.bottom-.5;
+  for(let i=0;i<words.length;i++){for(let j=i+1;j<words.length;j++)if(meet(words[i],words[j]))overlaps.push(words[i].name+' over '+words[j].name);
+    for(const c of rects)if(meet(words[i],c))overlaps.push(c.name+' over '+words[i].name)}
   return {sideways:document.documentElement.scrollWidth-innerWidth,width:innerWidth,rects,overlaps,
-    outside:[...rects,...blocks].filter(r=>r.x<-.5||r.right>innerWidth+.5).map(r=>r.name),
+    outside:[...rects,...blocks,...words].filter(r=>r.x<-.5||r.right>innerWidth+.5).map(r=>r.name),
     promptSideways:pre&&shown(pre)?pre.scrollWidth-pre.clientWidth:0}})()`;
 
 export async function teamInviteChecks({ check, page, until, control, view, facts, shot }) {
@@ -158,6 +171,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     await until(async () => (await text(p, '#team-invite .invite-copied')) === 'Copied', 'a quiet Copied');
     assert.deepEqual(await p.evaluate('window.copied'), [words]);
     await shot(p, 'invite-prompt-laptop');
+    await fits(p, 'copied');
     await press(p, '#team-invite .invite-close');
     await until(async () => !await visible(p, '#invite-prompt-text') && await focused(p) === 'invite-agent', 'the × closes the prompt, the focus on the opener');
     assert.deepEqual(p.errors, []);
@@ -172,6 +186,8 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     await press(p, '#team-invite .invite-copy');
     await until(async () => (await text(p, '#team-invite .invite-copied')) === 'Copying was refused here. The prompt is selected: copy it with your keyboard or menu.', 'the refusal in plain words');
     assert.equal(await p.evaluate('getSelection().toString()'), await text(p, '#invite-prompt-text'), 'the whole prompt is selected');
+    await fits(p, 'copy refused');
+    assert.equal(await text(p, '#team-invite .invite-copied'), 'Copying was refused here. The prompt is selected: copy it with your keyboard or menu.', 'still said at every width');
     assert.deepEqual(p.errors, []);
   });
 
@@ -226,6 +242,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     // Once the page reads the outcome, the invite goes, and the refusal stays said.
     await until(async () => !await visible(p, '#invite-agent'), 'the page learns the person no longer organises it');
     assert.equal(await said(p), refusal);
+    await fits(p, 'refused, the invite gone');
     assert.deepEqual(p.errors, []);
   });
 
@@ -261,6 +278,9 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     await until(async () => (await said(p))?.startsWith('Not confirmed: '), 'the lost answer is said');
     assert.ok((await said(p)).endsWith(' Press Return to try once more.'));
     assert.equal(await p.evaluate(`document.querySelector('#invite-agent-name').value`), 'Patient helper', 'the name is kept');
+    await fits(p, 'a lost answer');
+    assert.ok((await said(p)).endsWith(' Press Return to try once more.'), 'still said at every width');
+    assert.equal(await focused(p), 'invite-agent-name', 'the focus stays on the name, so Return tries once more');
     await p.key('Enter');
     await until(() => visible(p, '#invite-prompt-text'), 'the prompt shows');
     // Every request has its answer by now: the held one and the one Return sent again, so the second Return
@@ -304,6 +324,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
   await check('forms invite on a phone by touch the line and the prompt fit at 320, 375 and 390 and on a laptop, in light and dark', async () => {
     const workspace = await outcome('Invite on a phone, with a title long enough to wrap on the narrowest screen');
     const p = await open('invite-phone', workspace);
+    await fits(p, 'the opener');
     await phone(p, 320, 568);
     await openLine(p, tap);
     await tap(p, '#team-invite [data-harness=codex]');
