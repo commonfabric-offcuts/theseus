@@ -201,9 +201,10 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   place the outline keeps its place and the messages' is the new page's.
   Escape in the Reader gives the focus back to the message, so the arrows
   work again. However the Reader closes, what opened it gets the focus back
-  wearing the ring it wore as the Reader opened: Waiting on you, pressed or
-  chosen with the keys in the outline, is ringed again when the question it
-  opened is closed.
+  wearing the ring it wore as the Reader opened, read at each opening: Waiting
+  on you, pressed or chosen with the keys in the outline, is ringed again when
+  the question it opened is closed, and a message the keys opened once and the
+  mouse opens next wears no ring when the mouse closes it.
 - **The buttons at the top of the feed.** These are two rows: the
   header's buttons (Topic settings, New message, and the others drawn there,
   such as "Pipeline & pages" below 1181px), and under them the view filters
@@ -238,7 +239,12 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   its own way, and what a row opens itself (+ New topic's title line, the
   Reader on a waiting question) has the focus as after Return on the row. On
   a phone the drawer closes as the page moves, so the focus is on the page's
-  heading, and the drawer opens again on the row tapped, ringed. A press or a
+  heading, and the drawer opens again on the row tapped, ringed; after a move
+  begun elsewhere (back, forward, a link in the page) it opens on the place
+  being read, with no ring, as a fresh page has it. A row drawn again (a
+  section of the right rail after Unstar, say) takes the focus back wearing
+  the ring the row that went wore, so a press that rang nothing rings nothing
+  after it either. A press or a
   tap on a row in the right rail, a link in a message, and back and forward
   land as a load does: the focus is on the page reached, on its heading, which
   wears no ring, so the next key (one that scrolls, say) rings nothing in the
@@ -377,8 +383,11 @@ place with the keys kept on the row, wearing their ring: …", "rail a press on
 the row of the page being read moves nothing and keeps the keys on the row,
 …", "rail a press on a row whose move the page refuses keeps the keys on the
 row pressed, …", "rail a press in the outline on what opens there keeps its
-own way: …", "rail outcome clicks toggle topics and waiting opens the exact
-unloaded question" and "rail a press on a right-rail row that moves in place
+own way: …", "rail a mouse press in the right rail rings nothing, nor once its
+section draws again: …", "rail at 390 the drawer opens on the place being read,
+with no ring, after a move the outline did not begin: …", "rail the Reader gives
+its opener back ringed only as this opening found it: …", "rail outcome clicks
+toggle topics and waiting opens the exact unloaded question" and "rail a press on a right-rail row that moves in place
 puts the focus on the page reached, …"; the steps the arrows take: "rail → on an
 open outcome goes into the messages, …" and "rail in the right rail → and ←
 open and fold a section without ⌘: …"; the header's buttons: "rail ↑ from

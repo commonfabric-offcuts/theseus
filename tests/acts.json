@@ -11711,6 +11711,111 @@
     "native": "rail",
     "case": "rail outcome clicks toggle"
    }
+  },
+  {
+   "item": 462,
+   "act": "A row drawn again takes the focus back wearing the ring the row that went wore: a mouse press in the right rail rings nothing, nor once its section draws again",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "      try { place.el.focus(this.ringed ? { preventScroll: true, focusVisible: true } : { preventScroll: true }); } finally { this.placing = false; }",
+     "      try { place.el.focus({ preventScroll: true, focusVisible: true }); } finally { this.placing = false; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a mouse press in the right rail rings nothing"
+   }
+  },
+  {
+   "item": 462,
+   "act": "What a row drawn again wears is read from the focus that went, not assumed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "this.ringed = at.matches(':focus-visible');",
+     "this.ringed = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a mouse press in the right rail rings nothing"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The outline's row a press selected keeps the keys' ring when the page reached draws it again",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "      try { place.el.focus(this.ringed ? { preventScroll: true, focusVisible: true } : { preventScroll: true }); } finally { this.placing = false; }",
+     "      try { place.el.focus({ preventScroll: true }); } finally { this.placing = false; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "At 390, after a move the outline did not begin (back, forward, a link in the page), the drawer opens on the place being read with no ring",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "chosen = this.chosen && this.standing && rows.find(",
+     "chosen = this.chosen && rows.find("
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 the drawer opens on the place being read"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The shell tells the outline where each move in place began, so a back sets aside the row a tap chose",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    for (const listener of this.listeners) listener.leaving?.(began);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 the drawer opens on the place being read"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A tap on a row in the drawer is the person's choice again after a move begun elsewhere: the drawer opens on it, ringed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (row && !this.placing) { this.chosen = true; this.standing = true; this.visit(row); }",
+     "if (row && !this.placing) { this.chosen = true; this.visit(row); }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 the drawer opens on the place being read"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The Reader reads its opener's ring at each opening: a message the keys opened and then the mouse wears no ring when the mouse closes it",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (next !== this.opener || !this.dialog.open) this.openerRinged",
+     "if (next !== this.opener) this.openerRinged"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the Reader gives its opener back ringed only"
+   }
   }
  ]
 }

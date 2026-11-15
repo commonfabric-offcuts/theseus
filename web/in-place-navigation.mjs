@@ -327,7 +327,8 @@ export class Shell {
   // A message was edited (docs/message-edit.md): an edit moves no topic's version, so what a rail keeps of a
   // topic by its version is read again where it holds the message.
   messageEdited(id) { if (this.handles) for (const listener of this.listeners) listener.messageEdited?.(id); }
-  // listener: { begin(feed, route), ready(handles), topicChanged(), messageEdited(id) }; each hears every run.
+  // listener: { begin(feed, route), ready(handles), topicChanged(), messageEdited(id), leaving(from) }; each hears
+  // every run, and leaving(from) every move in place as it begins, from what began it (null for back and forward).
   follow(listener) {
     this.listeners.add(listener);
     if (this.handles) listener.ready?.(this.handles);
@@ -352,6 +353,9 @@ export class Shell {
     // lets the focus go now (its tree no longer holds it), so a key meanwhile
     // rings nothing there, and the phone's drawer, closing, hands it to no button.
     const at = this.doc?.activeElement ?? null;
+    // Where the move began, for what the shell keeps (the outline's drawer opens on the row chosen only while that stands).
+    const began = popped ? null : this.by === 'keys' ? at : this.pressed;
+    for (const listener of this.listeners) listener.leaving?.(began);
     this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';
     this.writing = !popped && this.writeTo === routeKey(target);
     if (this.landing === 'page' && inRails(at)) at.blur();

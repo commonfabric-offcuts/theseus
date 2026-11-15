@@ -77,7 +77,9 @@ place with what changed. It moves into the outline with the topic list.
 
 On a phone the outline is a drawer behind "☰ Outcomes", which carries the
 total count and the light. It opens on the row the keys or a tap chose last
-there, ringed, or else on the place being read. A line under the header says what is new in other
+there, ringed, while that is the person's last choice; after a move begun
+elsewhere (back, forward, a link in the page, the right rail), or before any
+choice, it opens on the place being read, with no ring. A line under the header says what is new in other
 outcomes and what waits there, and tapping it opens the drawer.
 
 ## The right rail
@@ -160,7 +162,12 @@ control's own way, and what a row opens itself, such as + New topic's title
 line or the Reader on a waiting question, has the focus as after Return on
 the row. On a phone the drawer closes as the page moves and shows none of its
 rows then, so a tap there lands as a load does; the drawer opens again on the
-row tapped, ringed. Any other move (a press or a tap on a row of the right
+row tapped, ringed, until a move begun elsewhere (back, forward, a link in the
+page) opens it on the place being read instead, with no ring (the shell tells
+what it keeps where each move began, `leaving`). A row the outline or the
+right rail draws again takes the focus back wearing the ring the row that
+went wore: a press in the right rail rings nothing, nor once its section draws
+again (an Unstar, say). Any other move (a press or a tap on a row of the right
 rail, a link in the page, back or forward) lands as a load does: as the move
 begins, the rail lets go of the focus, and once the run is up it is on the
 page's heading (`#main h1`, focused with no ring), unless the page has put it

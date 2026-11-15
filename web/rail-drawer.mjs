@@ -10,7 +10,8 @@
 // stays beside the topic and the control is not shown (aim.css), so the
 // drawer is never open there. Inside a topic or a Conversation the drawer
 // holds the outline, which says where it opens (place): on the row the keys
-// or a press chose there, ringed, else on the open topic.
+// or a press chose there, ringed, while no move begun elsewhere has come
+// since, else on the open topic.
 
 // Where a tap goes somewhere: a link or a row.
 const GOES = 'a[href], .nav-item';

@@ -314,9 +314,11 @@ export class Reader {
     this.$('source-changes').hidden = true;
     // Whether the opener wore the keys' ring as the Reader opened, to wear it
     // again when the focus goes back (a row of the outline a press or the keys
-    // chose, item 462), however the Reader is closed.
+    // chose, item 462), however the Reader is closed: read at each opening, so
+    // the same message opened by the keys and then by the mouse wears none the
+    // second time; kept while the Reader steps from message to message.
     const next = opener ?? this.opener ?? document.activeElement;
-    if (next !== this.opener) this.openerRinged = Boolean(next?.matches?.(':focus-visible'));
+    if (next !== this.opener || !this.dialog.open) this.openerRinged = Boolean(next?.matches?.(':focus-visible'));
     this.opener = next;
     this.disarm();
     this.topics = topics;

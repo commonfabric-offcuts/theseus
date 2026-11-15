@@ -489,8 +489,12 @@ export class OutlineRail {
   // The keys come to the outline, on the row they were last on; coming back
   // from the messages (reading), on the row of the place being read.
   focus({ reading = false } = {}) { return this.tree.focus(reading ? row => row.el.getAttribute('aria-current') === 'page' : null); }
-  // The phone's drawer opens (rail-drawer.mjs): on the outline's own place, ringed once the person chose it.
+  // The phone's drawer opens (rail-drawer.mjs): on the outline's own place, ringed while the person's choice stands.
   drawerOpened() { return this.tree.show(); }
+  // A move begins (in-place-navigation.mjs): one begun from elsewhere than the
+  // outline (from: what a press was on, the focus for a key, null for back and
+  // forward) leaves the row chosen there no longer the person's last choice.
+  leaving(from) { if (!this.host.contains(from)) this.tree.away(); }
   // The outline's own topic lists for an outcome (TopicRail, as the side rail
   // drew them), made the first time they are wanted.
   ownRail(outcome) {
