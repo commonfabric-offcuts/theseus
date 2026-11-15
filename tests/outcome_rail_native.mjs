@@ -2180,19 +2180,30 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (SIZE_HEAD[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
     } });
     // Earlier checks leave news and questions in other outcomes, and "☰ Outcomes" totals every outcome the outline has
-    // read; so the case starts by having the person read, and answer, every open topic that holds news or a question,
-    // and then the Conversation of any outcome that still does, and fails here, naming them, if any outcome still does.
+    // read; so the case starts by having the person read them. Each open topic with news, and then the Conversation of
+    // an outcome that still has some, gets a post from the person that reads it through (and answers its asks). Then
+    // each question an outcome's light still names, one at a time: an ask gets the person's reply (a Conversation's
+    // next ask then waits), and a wait someone said is said otherwise. Each question is handled once; one that comes
+    // back fails the case, naming it.
     const asks = item => item?.light?.light === 'waiting' && item.light.short?.kind === 'asks' ? item.light.short.count : 0;
     const busy = async () => { const listed = await view('workspaces', { limit: 100 });
       assert.equal(listed.next_cursor ?? null, null, 'every outcome is on one page of the list');
       return listed.items.filter(item => item.unread > 0 || asks(item) > 0); };
     const settle = async () => {
-      const answer = topic => control({ method: 'agent_message', operation_id: `rail-head-clear-${topic}`, sender: 'person', topic_id: topic, whole_topic: true, read: true, body: 'Read, thanks.' });
+      const read = topic => control({ method: 'agent_message', operation_id: `rail-head-read-${topic}`, sender: 'person', topic_id: topic, whole_topic: true, read: true, body: 'Read, thanks.' });
       for (const item of await busy()) for (const topic of (await view('workspace_topics', { workspace_id: item.id, limit: 100 })).items)
-        if (topic.unread > 0 || topic.asks?.length) await answer(topic.id);
-      for (const item of await busy()) { const topic = (await view('conversation', { workspace_id: item.id })).conversation?.topic_id; if (topic) await answer(topic); }
-      const left = await busy();
-      assert.deepEqual(left.map(item => ({ id: item.id, unread: item.unread, asks: asks(item) })), [], 'the case starts with nothing new and nothing waiting in any outcome');
+        if (topic.unread > 0) await read(topic.id);
+      for (const item of await busy()) if (item.unread > 0) await read((await view('conversation', { workspace_id: item.id })).conversation.topic_id);
+      const handled = new Set();
+      for (let [item] = await busy(); item; [item] = await busy()) {
+        const question = (await view('outcome_light', { workspace_id: item.id })).facts.find(fact => fact.kind === 'ask');
+        assert.ok(question, `${item.id} has nothing new and nothing waiting once read (${JSON.stringify(item)})`);
+        const key = question.message_id ?? `said ${question.topic_id}`;
+        assert.ok(!handled.has(key), `${item.id}: the question ${key} still waits once handled`);
+        handled.add(key);
+        if (question.message_id) await control({ method: 'agent_message', operation_id: `rail-head-answer-${question.message_id}`, sender: 'person', topic_id: question.topic_id, reply_to: question.message_id, read: true, body: 'Answered.' });
+        else await control({ method: 'topic_state', operation_id: `rail-head-active-${question.topic_id}`, topic_id: question.topic_id, args: { state: 'active' } });
+      }
     };
     // Each part of the header row as drawn, or null where it takes no room: its box (unrounded widths, so a fit is
     // judged as layout judges it), whether its content is wider than its box (clipped), and how many lines its words
