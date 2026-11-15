@@ -58,7 +58,9 @@ Each outcome ends with + New topic.
   its rows, Return opens one, → and ← take the tree's steps and then move to
   the messages (→ on an open outcome goes straight there, as on a topic), and
   ⌘Return starts a new message in the row's topic or the outcome's
-  Conversation. A "Keys" line under the outline lists them in plain words.
+  Conversation. A click or a tap on a row opens it as Return does and leaves
+  the keys on it, wearing their ring (item 462). A "Keys" line under the
+  outline lists them in plain words.
   The row the keys reach comes into view by the one rule for what the keys
   select (docs/interaction.md, "What the keys select comes into view"), in the
   rail's own scrolling, never the page's under it.
@@ -75,7 +77,10 @@ keys alike. The outcome's Notebook pages are in the right rail's Notebook
 section, which has its own pencil, and on the outcome's own page.
 
 On a phone the outline is a drawer behind "☰ Outcomes", which carries the
-total count and the light. A line under the header says what is new in other
+total count and the light. It opens on the row the keys or a tap chose last
+there, ringed, while that is the person's last choice; after a move begun
+elsewhere (back, forward, a link in the page, the right rail), or before any
+choice, it opens on the place being read, with no ring. A line under the header says what is new in other
 outcomes and what waits there, and tapping it opens the drawer.
 
 ## The right rail
@@ -151,16 +156,31 @@ between two feed pages (topics and Conversations) goes like this:
 
 Where the focus goes follows how the move began. Return on a row of the
 outline or the right rail keeps the keys in that rail, on the row drawn for
-the place reached. Any other move (a press or a tap on a row, a link in the
-page, back or forward) lands as a load does: as the move begins, the rail
-lets go of the focus, and once the run is up it is on the page's heading
-(`#main h1`, focused with no ring), unless the page has put it somewhere
-itself, such as the Reader on a message's link. Otherwise the row pressed
-would keep the focus, and the next key, even one that scrolls, would ring
-it. The shell tells the two apart by the last thing the person did, a press
-or a key, and by whether the focus was in a rail. A press on a row whose
-move goes nowhere, the place already being read or a move the guard refuses,
-lands on the heading too (`shell.stayed`). ⌘Return on another place's row
+the place reached. A click or a tap on a row of the outline does the same
+(item 462): before the row's own act runs, the outline's tree selects the row
+as the keys would (`web/key-tree.mjs`, `selectOnPress`), so the page opens
+with the keys on the row, which wears their ring, and ↑ and ↓ go on from it
+and → into the messages. A press on a control inside a row keeps that
+control's own way, and what a row opens itself, such as + New topic's title
+line or the Reader on a waiting question, has the focus as after Return on
+the row. On a phone the drawer closes as the page moves and shows none of its
+rows then, so a tap there lands as a load does; the drawer opens again on the
+row tapped, ringed, until a move begun elsewhere (back, forward, a link in the
+page) opens it on the place being read instead, with no ring (the shell tells
+what it keeps where each move began, `leaving`). A row the outline or the
+right rail draws again takes the focus back wearing the ring the row that
+went wore: a press in the right rail rings nothing, nor once its section draws
+again (an Unstar, say). Any other move (a press or a tap on a row of the right
+rail, a link in the page, back or forward) lands as a load does: as the move
+begins, the rail lets go of the focus, and once the run is up it is on the
+page's heading (`#main h1`, focused with no ring), unless the page has put it
+somewhere itself, such as the Reader on a message's link. Otherwise the row
+pressed would keep the focus, and the next key, even one that scrolls, would
+ring it. The shell tells these apart by the last thing the person did, a
+press or a key, by where a press was, and by whether the focus was in a
+rail. A press on a row whose move goes nowhere, the place already being read
+or a move the guard refuses, keeps the keys on the row in the outline, and
+lands on the heading from the right rail (`shell.stayed`). ⌘Return on another place's row
 moves to it as Return does, and once its run is up opens its New message box
 (`shell.write`).
 

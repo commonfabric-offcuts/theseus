@@ -1077,13 +1077,16 @@ def main():
                         # Someone acts on an outcome's target, checks or kind as their CLI does
                         # (docs/targets.md), as the person, w1's owner, fenced on the revision
                         # they read now. "record_checks" writes a release check's run as the
-                        # deploy does, and "release" a release record.
+                        # deploy does, "release" a release record, and "attach_judgment" the
+                        # hosted judgment of a merged train's release, as the operator's admin verb does.
                         kind, operation, workspace = request["kind"], request["operation_id"], request.get("workspace_id", "w1")
                         sender = actor
                         if kind == "record_checks":
                             answer = store().record_checks(dict(request["run"], outcome=workspace), sender)
                         elif kind == "release":
                             answer = store().record_release(request["record"])
+                        elif kind == "attach_judgment":
+                            answer = store().attach_judgment(request["release"], request["judgment"])
                         else:
                             assert kind.split(".")[0] in ("target", "check", "outcome", "problem"), kind
                             if kind.startswith("outcome."):
@@ -1174,6 +1177,10 @@ def main():
                         finally:
                             os.close(fd)
                         answer = store().view(actor, "capabilities", {})
+                    elif request["method"] == "unanswered":
+                        # A control left unanswered, as a lost one would be:
+                        # the harness's bound fails it (tests/native-calls.mjs).
+                        continue
                     else:
                         raise ValueError("Unknown private fixture control")
                     print(json.dumps({"id": request["id"], "answer": answer}), flush=True)

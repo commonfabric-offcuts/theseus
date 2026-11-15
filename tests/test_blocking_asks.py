@@ -325,6 +325,20 @@ class ClearingCase(BlockingCase):
         self.assertEqual(self.held(self.piece), [(held, ["owner"], "Please restart fseventsd.")])
         self.assertEqual(self.light()["light"]["short"]["blocking"], "piece")
 
+    def test_a_whisper_replying_to_it_clears_it_everywhere_and_one_replying_to_another_ask_does_not(self):
+        # Item 307: a person's whisper replying to an ask, to whoever asked, answers that ask alone, as a 👍 does.
+        whisper = lambda body, reply_to: self.committed(self.command("message.post", {"body": body, "addressees": ["agent-a"], "whisper": True,
+                                                                                      "reply_to": reply_to}, {"topic_id": "t1"}, actor="owner"))
+        plain = self.asked("Which colour for the header?")
+        held = self.asked("Please restart fseventsd.", blocks={"kind": "piece", "ref": self.piece})
+        whisper("Blue.", plain)
+        self.assertEqual([message for message, _ in self.blocking()], [held], "a whisper replying to the other ask answers that one alone")
+        self.assertEqual(self.held(self.piece), [(held, ["owner"], "Please restart fseventsd.")])
+        self.assertEqual(self.light()["light"]["short"]["blocking"], "piece")
+        whisper("Restarted.", held)
+        self.shows_nothing_held(self.piece)
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 0, "the topic's wait cleared in the same act")
+
     def test_a_thumbs_up_on_it_clears_it_while_a_later_ask_still_waits(self):
         held = self.asked("Please restart fseventsd.", blocks={"kind": "piece", "ref": self.piece})
         self.asked("Which colour for the header?")

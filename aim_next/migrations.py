@@ -27,7 +27,7 @@ from .memory import (MEMORY_DRAFT_DOWN, MEMORY_DRAFT_OCCUPIED, MEMORY_DRAFT_SCHE
 from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
 from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
-from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
+from .releases import JUDGMENT_DOWN, JUDGMENT_OCCUPIED, JUDGMENT_SCHEMA, RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
 from .standing_conversation import SETTLE_ASKED_BACK, STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
 from .pipeline import (PIPELINE_DECIDED_AGAIN_DOWN, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_DOWN, PIPELINE_FACTS_BACKFILL, PIPELINE_FACTS_COUNT,
@@ -174,6 +174,9 @@ STEPS = (
     # (docs/message-edit.md, slice 2). Stepping back is refused while any session is open, held or lapsed, since it
     # carries the person's draft, or any delivery is held.
     ("40", "41", EDIT_SESSION_UP, EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED),
+    # Version 42 keeps the hosted judgment attached to a release deployed from an ordinary merged train, once it
+    # lands (items 481, 482): beside its record, which never changes. Stepping back is refused once any is attached.
+    ("41", "42", JUDGMENT_SCHEMA, JUDGMENT_DOWN, JUDGMENT_OCCUPIED),
     # Version 42 keeps who invited each agent into which outcome from its page (docs/agents.md, "Inviting an agent"),
     # so the same person typing the same name there again gets that agent back. Agents registered before it were
     # invited by no one it knows of. Stepping back is refused once anyone has been invited, since 41 cannot say by whom.

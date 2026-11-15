@@ -117,6 +117,11 @@ SCHEMA_BEFORE_EDIT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BE
 # edit's, so the layout before it is version 40's, read from a fresh instance of release 72's code (ee7e51e6).
 BEFORE_SESSION, SESSION_VERSION = EDIT_VERSION, str(int(EDIT_VERSION) + 1)
 SCHEMA_BEFORE_SESSION = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_SESSION)).read_text().splitlines()
+# The step that keeps the hosted judgment attached to a release (items 481, 482) follows the session's, so the
+# layout before it is version 41's, read from a fresh instance of the live code at release/live73's 1795a758. Named
+# here once, so a renumbering of the step changes only these two and the fixture's file name.
+BEFORE_JUDGMENT, JUDGMENT_VERSION = SESSION_VERSION, str(int(SESSION_VERSION) + 1)
+SCHEMA_BEFORE_JUDGMENT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_JUDGMENT)).read_text().splitlines()
 # The step that keeps who invited each agent into which outcome (item 525) follows the sessions', so the layout before
 # it is version 41's, read from a fresh instance of 324's approved code (63bb2df1).
 BEFORE_INVITES, INVITES_VERSION = SESSION_VERSION, str(int(SESSION_VERSION) + 1)
@@ -148,9 +153,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
-        # The invitations' version keeps who invited each agent into which outcome: before it, no one is known to have.
+        # The judgment's version keeps the hosted judgment attached to a release beside its record, and the invitations'
+        # who invited each agent into which outcome.
+        db.execute("DROP TABLE release_judgments")
         db.execute("DROP TABLE agent_invitations")
-        if version == BEFORE_INVITES:
+        if version == BEFORE_JUDGMENT:
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
         # The session's version keeps each message's edit session, what each agent was handed of a person's message,
@@ -1958,7 +1965,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
                      (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37),
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
-                     (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_INVITES, SCHEMA_BEFORE_INVITES))
+                     (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3415,6 +3422,8 @@ class FoldStepCase(MigrationCase):
         self.assertEqual(upgraded.pop("message_revisions"), [])
         # The session step's tables start empty too.
         self.assertEqual((upgraded.pop("message_edit_sessions"), upgraded.pop("message_exposures")), ([], []))
+        # The judgment's table starts empty too.
+        self.assertEqual(upgraded.pop("release_judgments"), [])
         self.assertEqual(upgraded, stored, "every row is kept, sqlite_sequence's place for the acts included")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         folded = self.fold(message)
@@ -3482,8 +3491,9 @@ class DraftStepCase(MigrationCase):
         self.assertEqual(after["memory_revisions"], sorted((row + (0,) for row in stored["memory_revisions"]), key=repr))
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr))
-        # The edit's and the session step's tables start empty.
-        self.assertEqual([after.pop(table) for table in ("message_revisions", "message_edit_sessions", "message_exposures")], [[], [], []])
+        # The edit's, the session step's and the judgment step's tables start empty.
+        self.assertEqual([after.pop(table) for table in ("message_revisions", "message_edit_sessions", "message_exposures",
+                                                         "release_judgments")], [[], [], [], []])
         self.assertEqual({k: v for k, v in after.items() if k != "memory_revisions"},
                          {k: v for k, v in stored.items() if k != "memory_revisions"})
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
@@ -3559,6 +3569,7 @@ class EditStepCase(MigrationCase):
                          "every delivery keeps its seq and id, at revision 1")
         for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon", "agent_invitations"):
             after.pop(table)
+        self.assertEqual(after.pop("release_judgments"), [], "the judgment's step adds an empty table")
         self.assertEqual({k: v for k, v in after.items() if k != "metadata"}, {k: v for k, v in stored.items() if k != "metadata"},
                          "every reason and sqlite_sequence's place for the deliveries are kept")
         with sqlite3.connect(str(self.path)) as db, self.assertRaisesRegex(sqlite3.IntegrityError, "a delivery names its topic"):
@@ -3594,6 +3605,106 @@ class EditStepCase(MigrationCase):
         self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class JudgmentStepCase(MigrationCase):
+    """An instance at the session's version (41) holding a release record: the judgment's step (41->42) keeps every
+    row, matches a fresh instance, takes a judgment of a pending release, and steps back only while no judgment is
+    attached."""
+
+    VERSION, FIXTURE = BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_JUDGMENT)
+
+    def recorded(self):
+        """Release 20, deployed from an ordinary merged train at version 41, its hosted judgment pending."""
+        measured = {"train": {"pr": 31, "kind": "ordinary", "merge_commit": "a" * 40, "judgment": "pending"}}
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO releases(number,commit_sha,previous_sha,deployed_at,deployed_ms,items,measurements,source,"
+                       "evidence,recorded_ms) VALUES (20,?,NULL,'2026-11-14T20:00:00-08:00',1,'[481]',?,'deploy',NULL,1)",
+                       ("a" * 40, json.dumps(measured)))
+
+    def attach(self):
+        found = {"id": 1, "name": "Checks", "head_sha": "a" * 40, "status": "completed", "conclusion": "success", "kind": "run"}
+        return self.store.attach_judgment(20, {"head": "a" * 40, "producer_runs": [found], "verdict_checks": [dict(found, kind="check")],
+                                               "audit": "m-audit"})
+
+    def test_the_step_follows_the_sessions_and_the_head_is_its_version(self):
+        steps = [step[:2] for step in migrations.STEPS]
+        self.assertIn((BEFORE_JUDGMENT, JUDGMENT_VERSION), steps)
+        self.assertEqual(steps[steps.index((BEFORE_SESSION, SESSION_VERSION)) + 1], (BEFORE_JUDGMENT, JUDGMENT_VERSION),
+                         "40->41 is the step before 41->42")
+        self.assertEqual([step for step in steps if step[0] == BEFORE_JUDGMENT or step[1] == JUDGMENT_VERSION],
+                         [(BEFORE_JUDGMENT, JUDGMENT_VERSION)], "one step leaves 41 and one reaches 42")
+        self.assertEqual(SCHEMA_VERSION, JUDGMENT_VERSION)
+
+    def test_upgrade_keeps_an_open_edit_session_and_what_agents_were_handed_and_the_session_stays_live(self):
+        """A store at 41 with an edit session open, its delivery held, an exposure and the horizon: the step up keeps
+        each of them as it was, adds the judgment's table, and the session is still its holder's to close."""
+        message, author = self.sql("SELECT id,author_id FROM messages ORDER BY seq LIMIT 1")[0]
+        now = store_module._delivery._now_ms()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE message_edit_horizon SET seq=(SELECT max(seq) FROM messages)")
+            db.execute("INSERT INTO message_edit_sessions VALUES (?,?,'h-laptop',1,1,'The person''s Core draft','open',?,NULL)",
+                       (message, author, now))
+            db.execute("INSERT INTO message_exposures VALUES ('agent-a',?,1)", (message,))
+            held = db.execute("UPDATE deliveries SET state='held' WHERE message_id=? AND recipient_id='agent-a' AND state='pending'",
+                              (message,)).rowcount
+        self.assertEqual(held, 1, "agent-a's delivery of the message is held")
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_JUDGMENT,
+                                          "schema_version": JUDGMENT_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        after = everything(self.path)
+        self.assertEqual(after.pop("release_judgments"), [], "the judgment's table exists, empty")
+        for table in ("message_edit_sessions", "message_exposures", "message_edit_horizon", "deliveries"):
+            self.assertEqual(after[table], stored[table], "%s is kept as it was" % table)
+        self.assertEqual(after, stored, "every row of every table is kept")
+        # Stepping back to 40 is still refused for the open session, and changes nothing.
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            migrate(self.path, "test-instance", self.binding, BEFORE_SESSION)
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        # The session is its holder's: closing it ends the hold.
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        closed = self.command("message.edit_close", {"holder": "h-laptop"}, {"message_id": message})
+        self.assertEqual(closed["status"], "committed", closed)
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='held'"), [(0,)])
+
+    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_takes_a_judgment(self):
+        self.recorded()
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_JUDGMENT,
+                                          "schema_version": JUDGMENT_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        after = everything(self.path)
+        self.assertEqual(after.pop("release_judgments"), [])
+        self.assertEqual(after, stored, "every row is kept")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertTrue(self.attach()["attached"])
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_no_judgment_is_attached(self):
+        self.recorded()
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_JUDGMENT))
+        self.assertEqual(everything(self.path), stored)
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_a_judgment_is_attached_and_changes_nothing(self):
+        self.recorded()
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.attach()
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], JUDGMENT_VERSION)
+
+
 class SessionStepCase(MigrationCase):
     """An instance at the edit's version (40) holding a person's messages delivered to agents, an edited one and a
     correction: the session's step (40->41) keeps every row, sets the horizon to the last message at the upgrade,
@@ -3613,11 +3724,10 @@ class SessionStepCase(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
-    def test_the_step_follows_the_edits_and_comes_just_before_the_invitations(self):
+    def test_the_step_follows_the_edits_and_the_judgments_step_follows_it(self):
         steps = [step[:2] for step in migrations.STEPS]
         self.assertIn((BEFORE_SESSION, SESSION_VERSION), steps)
-        self.assertEqual(steps[steps.index((BEFORE_SESSION, SESSION_VERSION)) + 1], (SESSION_VERSION, INVITES_VERSION),
-                         "40->41 is the step before 41->42")
+        self.assertEqual(steps[steps.index((BEFORE_SESSION, SESSION_VERSION)) + 1], (BEFORE_JUDGMENT, JUDGMENT_VERSION))
 
     def test_upgrade_keeps_every_row_sets_the_horizon_and_matches_a_fresh_instance(self):
         stored = everything(self.path)
@@ -3631,6 +3741,7 @@ class SessionStepCase(MigrationCase):
         after = everything(self.path)
         self.assertEqual(after.pop("message_edit_horizon"), [(top,)], "the horizon is the last message at the upgrade")
         self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures"), after.pop("agent_invitations")), ([], [], []))
+        self.assertEqual(after.pop("release_judgments"), [], "the judgment's step, run next, adds an empty table")
         self.assertEqual(after, stored, "every row of every table is kept")
         # A fresh instance has horizon 0.
         fresh = Path(self.temp.name) / "fresh"
@@ -3817,6 +3928,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(SessionStepCase, _name, None)
     if _name.startswith("test_") and _name not in InviteStepCase.__dict__:
         setattr(InviteStepCase, _name, None)
+    if _name.startswith("test_") and _name not in JudgmentStepCase.__dict__:
+        setattr(JudgmentStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

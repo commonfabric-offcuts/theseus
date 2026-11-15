@@ -89,9 +89,9 @@ The thumb's row then holds `value: "yes"` rather than `"up"`, readers see
 `answered: true` on that thumb, and the result of `message.thumb` carries
 `answered`, also when it changes nothing (a 👍 sent again reports whether
 the one already there answered). Taking that 👍 back makes the ask wait on
-them again, unless the person answered the ask meanwhile (in a conversation
-a reply to that ask, in a topic any writing there; a whisper of theirs counts
-when it goes to whoever asked) or
+them again, unless the person answered the ask meanwhile (a reply to that
+ask, on the record or by whisper to whoever asked, and in a topic any writing
+there on the record; a whisper replying to anything else answers nothing) or
 the wait could no longer stand (they no longer read the topic, its outcome
 was reached, or a conversation replaced it). A wait put back is as it would
 be had the 👍 never been given: archived when its topic is, ordered on the
