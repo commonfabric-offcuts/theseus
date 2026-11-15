@@ -2168,7 +2168,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // outcome's page lists its pages after its topics in the page itself.
       await until(() => p.evaluate(kind === 'outcome' ? `document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outcome-page #outcome-references-list .reference'))`
         : kind === 'pipeline' ? `document.body?.dataset.ready==='true' && Boolean(document.querySelector('#rail #topics a[data-topic-id=rail-nb-t]'))`
-        : `document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outline #topic-navigation a[data-topic-id]')) && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'`).catch(() => false), at + ': the page is drawn');
+        : `document.body?.dataset.ready==='true' && Boolean(document.querySelector('#topic-navigation a[data-topic-id]')) && (!matchMedia('(min-width: 1181px)').matches || document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true')`).catch(() => false), at + ': the page is drawn');
       if (phone && kind !== 'outcome') {
         await tap(p, '#rail-open');
         await until(async () => (await drawer(p)).open, at + ': the side rail opens over the page');
