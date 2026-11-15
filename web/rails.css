@@ -53,6 +53,8 @@
    is open; always shown where nothing hovers or on a phone's width; 44px to press everywhere. */
 .ol-pencil{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:2.75rem;padding:0;border:0;border-radius:.5rem;background:transparent;color:var(--muted);opacity:0}
 .ol-pencil svg{width:1.1rem;height:1.1rem}
+/* A finger's press leaves no lit square behind: only a pointer's hover tints a pencil. */
+.ol-pencil:hover{background:transparent}.ol-pencil{-webkit-tap-highlight-color:transparent}
 .ol-pencil:focus-visible,.ol-pencil[aria-expanded=true],.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}
 @media(hover:hover){.ol-row:hover>.ol-pencil,.ol-heading:hover .ol-pencil{opacity:1}.ol-pencil:hover{color:var(--ink);background:var(--soft)}}
 @media(hover:none),(max-width:760px){.ol-pencil{opacity:1}}
