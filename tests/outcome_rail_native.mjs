@@ -2420,12 +2420,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const buildNews = async (operation, n) => {
     for (let at = 0; at < n; ++at) await control({ method: 'agent_message', operation_id: `rail-build-news-${operation}-${at}`, sender: BUILD_AGENT, topic_id: 'rb-now', whole_topic: true, body: `News ${operation} ${at}` });
   };
-  // Core's counts: what is new in each outcome's open Build topics, and in its Conversation.
+  // Core's counts: what is new in an outcome's open Build topics, summed from their own rows, and in its Conversation.
   const buildCounts = async id => {
-    const item = (await view('workspaces', {})).items.find(each => each.id === id);
+    const builds = (await view('workspace_topics', { workspace_id: id, build: true, limit: 100 })).items;
     const conversation = (await view('conversation', { workspace_id: id })).conversation;
-    return { build: item.build.unread, conversation: conversation?.unread ?? 0 };
+    return { build: builds.reduce((sum, item) => sum + (item.unread ?? 0), 0), conversation: conversation?.unread ?? 0 };
   };
+  // A phone's page up: its right rail reads only once it is opened, so its sections are not waited on.
+  const phoneUp = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outline #topic-navigation'))`).catch(() => false), what);
   // "Pipeline & pages" as drawn: its badge, its name for a screen reader, its size and its edge.
   const thingsButton = p => p.evaluate(`(()=>{const b=document.getElementById('things-open');if(!b)return null;const badge=b.querySelector('.unread-count'),box=b.getBoundingClientRect();
     return {shown:b.checkVisibility(),badge:badge&&badge.checkVisibility()?Number(badge.textContent):0,label:b.getAttribute('aria-label'),height:Math.round(box.height),right:Math.round(box.right),
@@ -2470,7 +2472,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (const size of [390, 375, 320]) for (const theme of ['light', 'dark']) {
       const at = `${size} ${theme}`;
       const p = await openAt(`rail-build-phone-${size}-${theme}`, '/?conversation=rail-build-o', size, theme);
-      await settled(p, at + ': the Conversation is up');
+      await phoneUp(p, at + ': the Conversation is up');
       const button = await until(async () => { const now = await thingsButton(p); return now?.badge === want.build && now; }, at + ': "Pipeline & pages" carries the Build topics\' count');
       assert.equal(button.label, `Pipeline & pages, ${want.build} new in Build topics`, at + ': and says so to a screen reader');
       assert.ok(button.height >= 44 && button.right <= button.width && button.scroll <= button.width, `${at}: it is 44px to touch, inside the page, with no sideways scroll (${JSON.stringify(button)})`);
@@ -2492,9 +2494,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
     // Where no Build topic holds anything new, "Pipeline & pages" carries no count.
     const quiet = await openAt('rail-build-phone-quiet', '/?conversation=w1', 390, 'light');
-    await settled(quiet, 'another outcome\'s Conversation is up');
+    await phoneUp(quiet, 'another outcome\'s Conversation is up');
     assert.equal((await buildCounts('w1')).build, 0);
-    await until(async () => (await outline(quiet)).outcomes.w1?.open, 'the outline has read the outcomes');
+    await until(async () => { const now = (await outline(quiet)).outcomes; return now.w1?.open && Boolean(now['rail-build-o']); }, 'the outline has read the outcomes, the Build topics\' outcome among them');
     const none = await thingsButton(quiet);
     assert.deepEqual([none.badge, none.label], [0, null], 'no count, and no words for one');
     assert.deepEqual(quiet.errors, []); await quiet.close();
@@ -2544,7 +2546,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
     // On a phone, by touch.
     const t = await openAt('rail-many-tap', '/?conversation=rail-many-o', 320, 'dark');
-    await settled(t, '320: the Conversation is up');
+    await phoneUp(t, '320: the Conversation is up');
     await tap(t, '#things-open');
     await until(() => t.evaluate("document.documentElement.hasAttribute('data-things-open')"), '320: the right rail opens');
     await settledMotion(t);
