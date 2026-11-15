@@ -224,8 +224,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   or stack in the feed (with a filter on, the first it shows). Coming to a
   row finds the button the keys were last on in it, else its first. ← and →
   move along a row; ← past its first goes to the outline and → past its
-  last to the right rail, as from the messages, so → from New message goes
-  to the right rail, not on to a filter. Tab or a click puts the keys on a
+  last to the right rail, as from the messages, so → from the header's last
+  button, the Team's "+ Add", goes to the right rail, not on to a filter. Tab or a click puts the keys on a
   filter as on any button, Return or Space presses the button, and no arrow
   does. The pointer is unchanged. The button the keys
   reach, and the message → or ↓ bring them back to, comes into view by the
