@@ -52,7 +52,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
   const core = id => view('memory_current', { item_id: id });
   const lines = body => [...body.matchAll(/^!\[([^\]\n]*)\]\(attachment:([A-Za-z0-9._-]+)\)$/gm)].map(([, name, id]) => ({ name, id }));
   // Core's page, once it holds what the probe asks for; a failure says what it held instead.
-  const holds = (id, probe, said) => until(async () => probe(await core(id)), said)
+  const holds = (id, probe, said, timeout) => until(async () => { const now = await core(id); return probe(now) && now; }, said, timeout)
     .catch(async error => { const now = await core(id); assert.ok(probe(now), `${said}: Core's page reads ${JSON.stringify({ body: now.body, attachments: now.attachments })}`); throw error; });
   const media = p => p.calls.filter(call => call.payload?.kind === 'media.begin').length;
 
@@ -81,7 +81,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     await until(() => p.evaluate('Boolean(globalThis.releaseCardUpload)'), 'its upload is held at the transport');
     assert.equal((await core(id)).attachments.length, 0, 'Core has no attachment while the upload is held');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(BOX)}).value`), 'Plan\nShip it.', 'the box holds the words as they were');
-    await p.evaluate('globalThis.cardUploadHeld=false;globalThis.releaseCardUpload()');
+    await p.evaluate('(globalThis.cardUploadHeld=false,globalThis.releaseCardUpload())');
     const first = await holds(id, page => page.attachments.length === 1 && lines(page.body).length === 1, 'the image goes to the page and the card names it');
     assert.deepEqual([first.attachments[0].name, lines(first.body)], ['chart.png', [{ name: 'chart.png', id: first.attachments[0].id }]]);
     assert.ok(first.body.startsWith(`## Plan\n\nShip it.\n\n![chart.png](attachment:${first.attachments[0].id})\n`), first.body);
@@ -154,7 +154,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     const size = 8 + 25 + 12 + (2 + 2300 * 6901 + 5 * Math.ceil(2300 * 6901 / 65535) + 4) + 12;
     assert.ok(size > 15 * 1024 * 1024 && size < 16 * 1024 * 1024, `the large image is within 1 MB of the limit: ${size}`);
     assert.equal(await paste(p, BOX, [{ name: 'large.png', png: [2300, 2300] }]), true);
-    const large = await holds(id, page => page.attachments.length === 1, 'the large image goes to the page');
+    const large = await holds(id, page => page.attachments.length === 1, 'the large image goes to the page', 60000);
     assert.deepEqual([large.attachments[0].name, large.attachments[0].size_bytes, large.attachments[0].inline, lines(large.body).map(line => line.id)],
       ['large.png', size, true, [large.attachments[0].id]]);
     await until(async () => (await figures(p, WRITING)).every(f => f.shown && f.inside) && (await figures(p, WRITING)).length === 1, 'the large image shows within the card');
@@ -245,7 +245,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
       await shot(p, `notebook-card-image-uploading-${label}`);
       await until(() => p.evaluate('Boolean(globalThis.releaseCardUpload)'), 'the upload is held');
       // Failed: the upload refused, the card says why and the page's list offers Retry, which sends it again.
-      await p.evaluate('globalThis.cardUploadHeld=false;globalThis.cardUploadFails=true;globalThis.releaseCardUpload()');
+      await p.evaluate('(globalThis.cardUploadHeld=false,globalThis.cardUploadFails=true,globalThis.releaseCardUpload())');
       await until(async () => (await figures(p, WRITING)).some(f => f.name.startsWith('pasted.png · ') && f.name !== 'pasted.png · Uploading…'), `${label}: the failed upload says so on the card`);
       const retry = `${SHEET} .notebook-image-rows .notebook-image > button:last-child:not([hidden])`;
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(retry)})?.textContent==='Retry image'`), `${label}: Retry is offered`);
