@@ -652,12 +652,16 @@ or closed, Only new turned on or off, an act or a reaction, a move on another
 device) everything placed by what the page shows is placed again: the Reader's
 ↑ and ↓ while it is open, the New line, and Earlier messages. Core's
 neighbours of the Reader beyond what the page loaded are read again whenever
-the acts are, since a Move below More or Bring back on another device moves
-their dossier with no change to the topic (item 426). The New line,
+an acts read reaches a later act than they were last read at, since a Move
+below More or Bring back on another device moves their dossier with no change
+to the topic; an acts read that reaches no later act leaves the neighbours
+already resolved as they stand (item 426). The New line,
 when the oldest new message is in a dossier below a closed More, takes the
 first place shown after it; when it is older than the page and waits at the
 bottom saying more new messages lie below, the bottom is the end of the run
-above More, never after the dossiers below it (item 426). A dossier below More
+above More, never after the dossiers below it, and whether it is older than the
+page is measured from that run's last card, not from a dossier below More
+(item 426). A dossier below More
 that someone joins into one above it reads there, above More, and Split back
 out puts it below again; one joined into a dossier below More goes below with
 it (`tests/stack_native.mjs`, "reading stacks below More: a dossier put below

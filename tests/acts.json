@@ -14098,8 +14098,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "      this.invalidate('neighbors', version, true);\n",
-     ""
+     "      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version, true); }\n",
+     "      if (moved) this.neighborsAt = reached;\n"
     ]
    ],
    "check": {
@@ -14109,12 +14109,26 @@
   },
   {
    "item": 426,
-   "act": "Every acts read asks for the Reader's neighbours afresh",
+   "act": "An acts read that reaches a later act asks for the Reader's neighbours afresh",
    "break": [
     [
      "web/topic-views.mjs",
-     "      this.invalidate('neighbors', version, true);\n",
-     "      this.invalidate('neighbors', version);\n"
+     "      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version, true); }\n",
+     "      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version); }\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 426,
+   "act": "An acts read that reaches no later act leaves the Reader's resolved neighbours standing",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "    const moved = reached > (this.neighborsAt ?? -Infinity);",
+     "    const moved = true;"
     ]
    ],
    "check": {

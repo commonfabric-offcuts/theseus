@@ -287,6 +287,14 @@ export class TopicViews {
       cursor = answer.items.length && answer.items.at(-1).seq < oldest ? null : answer.next_cursor;
     } while (cursor !== null);
     if (reached < version) throw behind();
+    // The Reader's neighbours beyond what the page loaded carry Core's place
+    // for their dossier, which an act on another device can move (Move below
+    // More, Bring back) with no change to the topic: an answer that reaches a
+    // later act than they were last asked for at asks for them again (item
+    // 426), as a topic change does. An acts read that reaches no later act
+    // (one for a topic change, or the page's own) moves no dossier, so the
+    // neighbours already resolved stand.
+    const moved = reached > (this.neighborsAt ?? -Infinity);
     // Each act takes the later of what the page holds and the answer, by its
     // revision: an answer read before a commit the page has since heard of
     // puts back nothing (stack-order.mjs, laterActs).
@@ -303,13 +311,10 @@ export class TopicViews {
     try { await this.readPositions(read, current); }
     finally {
       if (changed) this.paint('acts');
-      // The Reader's neighbours beyond what the page loaded carry Core's place
-      // for their dossier, which an act on another device can move (Move below
-      // More, Bring back) with no change to the topic: they are read again
-      // (item 426), as on a topic change. Acts count apart from the topic's
-      // versions, so the read is asked for afresh (force), even over one
-      // already under way that began before this act.
-      this.invalidate('neighbors', version, true);
+      // Acts count apart from the topic's versions, so the neighbours are
+      // asked for afresh (force), even over a read already under way that
+      // began before this act.
+      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version, true); }
     }
     return true;
   }
