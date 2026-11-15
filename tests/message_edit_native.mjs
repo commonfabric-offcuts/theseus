@@ -1386,6 +1386,26 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
+  await check('reading edit build on one build, a reload with the words kept on this device only, before Theseus has them, brings them back', async () => {
+    const { away, there } = await twoTopics('edit-build-device-same');
+    const p = await open('edit-build-device-same', 'laptop', away, there.note, EDIT_FAULTS);
+    const words = 'Written on one build, kept on this device only.';
+    await holdDrafts(p);
+    await into(p, 'laptop', '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+    await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved on this device')`), 'the page says the words are on this device');
+    await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), 'the device keeps the words');
+    await p.evaluate('(window.sameDocument = true, location.reload(), true)');
+    await replaced(p, 'the page reloads');
+    await arrived(p, away, there.note);
+    await until(async () => await valueOf(p, '#inline-writing-body') === words, 'with the words, from this device').catch(async error => {
+      const state = await p.evaluate(`({ value: document.querySelector('#inline-writing-body').value, saved: document.querySelector('#inline-save-state').textContent,
+        notice: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent) })`).catch(e => ({ unread: e.message }));
+      throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
+    });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // Edit on the person's own message as they reach it: from its bar. Once a reply heads it into a stack shown as its
   // row alone (docs/reply-stacks.md), which has no bar, the person lights the row and presses it, which shows the
   // message whole with its bar (tests/stack_native.mjs, "a head shown as one row has no bar").
