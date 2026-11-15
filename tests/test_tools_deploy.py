@@ -1756,19 +1756,57 @@ class DeployRefusesKnownRedsPolicy(PolicyRepository, KnownRedsFiles, DeployCase)
                 self.refused_known_at(self.host(self.admission()), "%s %r: %s at the deployed commit admits it, but not this "
                                    "failure (different assertion, values or source chain)" % (RED_STEP, RED_CASE, POLICY))
 
+    # A reviewed test source changed at the deployed commit: the assertion the stack names was rewritten, with the same
+    # message and line numbers; or a reviewed test source the stack does not name changed. GitHub's classifier matches
+    # no plan to either.
+    REVIEWED_CHANGES = (("tests/reader_inline_native.mjs", STANDIN.replace(b"assert.equal", b"assert.notEqual")),
+                        ("tests/fence_copy_native.mjs", STANDIN + b"await another();\n"))
+
+    def reviewed_test_changed(self, path, text):
+        (self.repo / path).write_bytes(text)
+        self.sha = self.committed("a reviewed test changed")
+        self.fails()
+
     def test_an_admitted_case_whose_test_source_changed_at_the_deployed_commit_is_refused(self):
-        # The same message and line numbers, but the assertion the stack names was rewritten at the deployed commit; or
-        # a reviewed test source the stack does not name changed. GitHub's classifier matches no plan to either, so the
-        # policy admits nothing there.
-        for path, text in (("tests/reader_inline_native.mjs", STANDIN.replace(b"assert.equal", b"assert.notEqual")),
-                           ("tests/fence_copy_native.mjs", STANDIN + b"await another();\n")):
+        # The policy admits nothing there, so with no live summary naming the case nothing takes it.
+        for path, text in self.REVIEWED_CHANGES:
             with self.subTest(path):
                 self.again()
-                (self.repo / path).write_bytes(text)
-                self.sha = self.committed("a reviewed test changed")
-                self.fails()
-                self.refused_known_at(self.host(self.admission()), "the tests at %s are not ones %s reviewed, so it admits nothing "
-                                      "there (reviewed test definition changed: no complete matching plan)" % (self.sha[:12], POLICY))
+                self.reviewed_test_changed(path, text)
+                self.refused_known_at(self.host(self.admission()), "%s %r is not admitted by %s at the deployed commit, and "
+                                      "no live summary names it (the tests at %s are not ones it reviewed: reviewed test "
+                                      "definition changed: no complete matching plan)" % (RED_STEP, RED_CASE, POLICY, self.sha[:12]))
+
+    def test_at_a_commit_whose_reviewed_tests_changed_a_live_summary_or_an_owners_acceptance_still_takes_the_red(self):
+        # Admitting nothing is not refusing: the red falls to the live commit's own failure, or an owner's word, as at a
+        # commit that keeps no policy.
+        for path, text in self.REVIEWED_CHANGES:
+            for route in ("live", "owner_acceptance"):
+                with self.subTest(path=path, route=route):
+                    self.again()
+                    self.reviewed_test_changed(path, text)
+                    if route == "live":
+                        named = self.live_summary("live-check", (RED_STEP, {}))
+                    else:
+                        named = Path(self.tmp.name) / "acceptance.json"
+                        named.write_text(json.dumps({"owner_acceptance": True, "cases": [{"step": RED_STEP, "case": RED_CASE}],
+                                                     "by": "warp", "message": "m-accepted", "why": "taken on the owner's word"}))
+                    self.listing((RED_STEP, RED_CASE, named))
+                    self.taken(self.host(self.admission()))
+                    [taken] = self.evidence_of("00-release-check")["known_reds"]["accepted"]
+                    self.assertEqual((taken["taken_by"], taken["live_summary"]), (route, str(named)))
+
+    def test_at_a_commit_whose_reviewed_tests_changed_a_live_summary_that_did_not_fail_the_case_is_refused(self):
+        # The negative beside it: the live route still asks that the live commit failed this very case.
+        for path, text in self.REVIEWED_CHANGES:
+            with self.subTest(path):
+                self.again()
+                self.reviewed_test_changed(path, text)
+                named = self.live_summary("live-check", (RED_STEP, dict(failed=("a whisper keeps its colour",))))
+                self.listing((RED_STEP, RED_CASE, named))
+                self.refused_known_at(self.host(self.admission()), "%s %r is not admitted by %s at the deployed commit, nor "
+                                      "among the cases that failed in %s on the live commit (the tests at %s are not ones it "
+                                      "reviewed" % (RED_STEP, RED_CASE, POLICY, named, self.sha[:12]))
 
     def test_a_deployed_commit_that_changes_no_reviewed_test_is_matched_against_the_policy(self):
         # The negative beside it: a change outside the reviewed sources leaves the plan as it was.

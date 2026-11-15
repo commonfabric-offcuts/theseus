@@ -12359,6 +12359,34 @@
   },
   {
    "item": 481,
+   "act": "At a commit whose reviewed test sources match none of the policy's plans, the policy refuses nothing, so a red still falls to its live summary or an owner's acceptance",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            self.unreviewed = \"the tests at %s are not ones it reviewed: %s\" % (commit[:12], error)\n            return\n",
+     "            raise Refused(\"the tests at %s are not ones %s reviewed\" % (commit[:12], POLICY))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A red refused at a commit whose reviewed test sources match none of the policy's plans says those tests are not ones it reviewed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    unreviewed = \"\" if admits is None or admits.unreviewed is None else \" (%s)\" % admits.unreviewed\n",
+     "    unreviewed = \"\"\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
    "act": "A train's merge commit is a merge of two parents, not a commit that only carries the merge's message",
    "break": [
     [

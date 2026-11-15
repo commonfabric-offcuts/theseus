@@ -235,10 +235,11 @@ class Admissions:
     """The reds a policy file admits, read and matched exactly as GitHub's classifier reads and matches them
     (tools/ci_known_reds.py): the policy is one its load_policy() takes, read against root's git; a failed case is
     admitted only when commit's test definitions are a plan the policy reviewed (select_plan(), as the classifier asks
-    before it matches anything), its identity (key(): name, phase, engine, expectedFailure) is an admission of that plan,
-    and the fingerprint of its failure (its assertion, values and test-source chain, read at commit) is that
-    admission's. The one thing not compared is the runner profile: a local release check does not run on GitHub's
-    runners."""
+    before it matches anything; at a commit where none is, the policy admits nothing and unreviewed says why, but it
+    refuses nothing, so each red falls to its live summary), its identity (key(): name, phase, engine, expectedFailure)
+    is an admission of that plan, and the fingerprint of its failure (its assertion, values and test-source chain, read
+    at commit) is that admission's. The one thing not compared is the runner profile: a local release check does not
+    run on GitHub's runners."""
 
     def __init__(self, policy, root, commit):
         from tools import ci_known_reds
@@ -248,11 +249,12 @@ class Admissions:
         except (ci_known_reds.Refused, KeyError, TypeError, AttributeError, ValueError) as error:
             # A malformed field the classifier would crash on is no more a policy it takes than one it refuses.
             raise Refused("%s at %s is not a policy GitHub's classifier takes (%s)" % (POLICY, commit[:12], error))
+        self.reds, self.unreviewed = {}, None
         try:
             plan, _ = ci_known_reds.select_plan(policy, root, commit)
         except ci_known_reds.Refused as error:
-            raise Refused("the tests at %s are not ones %s reviewed, so it admits nothing there (%s)"
-                          % (commit[:12], POLICY, error))
+            self.unreviewed = "the tests at %s are not ones it reviewed: %s" % (commit[:12], error)
+            return
         self.reds = {(red["step"], ci_known_reds.key(red["case"])): red for red in plan["reds"]}
 
     def match(self, step, row, checkout):
@@ -292,6 +294,7 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
             if (step, case) not in listed:
                 raise Refused("%s failed %r, which the known reds do not list" % (step, case))
     checkout = summary.get("checkout")
+    unreviewed = "" if admits is None or admits.unreviewed is None else " (%s)" % admits.unreviewed
     for step in sorted(failures):
         for case, row in failures[step].items():
             red = listed[(step, case)]
@@ -302,8 +305,8 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
                 raise Refused("%s %r: %s at the deployed commit admits it, but not this failure (%s)"
                               % (step, case, POLICY, differs))
             elif red["live_summary"] is None:
-                raise Refused("%s %r is not admitted by %s at the deployed commit, and no live summary names it"
-                              % (step, case, POLICY))
+                raise Refused("%s %r is not admitted by %s at the deployed commit, and no live summary names it%s"
+                              % (step, case, POLICY, unreviewed))
             else:
                 failed, acceptance = live_cases(red, known["live_commit"])
                 taken_by, review = ("live", None) if acceptance is None else ("owner_acceptance", acceptance["message"])
@@ -311,7 +314,7 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
                     taken["acceptances"][red["live_summary"]] = {"by": acceptance["by"], "message": acceptance["message"]}
                 if case not in failed:
                     raise Refused("%s %r is not admitted by %s at the deployed commit, nor among the cases that failed in %s "
-                                  "on the live commit" % (step, case, POLICY, red["live_summary"]))
+                                  "on the live commit%s" % (step, case, POLICY, red["live_summary"], unreviewed))
             taken["accepted"].append({"step": step, "case": case, "live_summary": red["live_summary"],
                                       "live_commit": known["live_commit"], "why": red["why"], "taken_by": taken_by,
                                       "review": review})
