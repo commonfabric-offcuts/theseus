@@ -4,7 +4,8 @@ from __future__ import annotations
 
 tools/deploy.py --train FILE takes the record of a train that merged into the release branch. Everything it says
 is read again from git, and from GitHub through `gh api` (read-only), before anything is stopped; the first fact
-that does not hold, or cannot be read, refuses. docs/tools.md ("A merged train") is the contract.
+that does not hold, or cannot be read, refuses. merge_commit must be pull request pr's own merge commit, as git's
+parents and GitHub's pulls/N say (pull_merge). docs/tools.md ("A merged train") is the contract.
 
 FILE: {"pr": N, "merge_commit": SHA, "merged_tree": TREE, "kind": "ordinary" | "judged-first",
        "items": [{"item": N, "approved_head": SHA, "review": "message or round"}],

@@ -84,11 +84,14 @@ train as the deploy read it:
 ```
 
 An ordinary train's `judgment` is `"pending"`: GitHub judges it after the
-merge. A judged-first train's is the judgment it came with: `head` (the parent
+merge (or, when the train came with a judgment of its merge commit, that
+judgment, in the form below, its `head` the merge commit). A judged-first train's is the judgment it came with: `head` (the parent
 of the merge commit its runs name), `producer_runs` and `verdict_checks` (each
 `{kind, id, name, head_sha, status, conclusion}`, as GitHub listed it) and
 `audit`. `hosted_run`, when given, is the run on the merge commit as GitHub
-listed it at the deploy.
+listed it at the deploy. The Health page's latest release says such a record
+ran no release check here and says its judgment, never that checks passed
+([health.md](health.md)).
 
 When an ordinary train's hosted judgment lands, it is attached to the record:
 a separate fact, written once, shown by the view as `hosted_judgment` in the

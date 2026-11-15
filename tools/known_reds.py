@@ -4,7 +4,8 @@ from __future__ import annotations
 
 tools/deploy.py --known-reds FILE takes a release-check summary that did not pass only when every failure in it is a
 browser case FILE lists, and each is known (item 481): the merged base's policy admits it (.github/check-baseline.json
-at the deployed commit, matched as tools/ci_known_reds.py matches a case), or a release-check summary of the live commit
+at the deployed commit, loaded and matched as tools/ci_known_reds.py loads and matches it: the case's identity and its
+failure's fingerprint, Admissions), or a release-check summary of the live commit
 shows that same case failing in a run of the same step that ended as it should. Nothing is run again: both runs are
 read from the evidence each summary keeps beside it. The cases stay failures: the deploy records them as known reds,
 never as passes. docs/tools.md ("Known reds") is the contract.

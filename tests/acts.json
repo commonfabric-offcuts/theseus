@@ -12157,8 +12157,8 @@
    "break": [
     [
      "tools/known_reds.py",
-     "            if pair in admits:",
-     "            if False:"
+     "            if review is not None:\n                taken_by = \"policy\"",
+     "            if False:\n                taken_by = \"policy\""
     ]
    ],
    "check": {
@@ -12171,8 +12171,8 @@
    "break": [
     [
      "tools/known_reds.py",
-     "            found[(red[\"step\"], ci_known_reds.key(red.get(\"case\")))] = red.get(\"review\")",
-     "            found[(red[\"step\"], ci_known_reds.key({\"name\": red[\"case\"][\"name\"]}))] = red.get(\"review\")"
+     "red = self.reds.get((step, self.ci.key(row)))",
+     "red = {(s, json.loads(k)[\"name\"]): r for (s, k), r in self.reds.items()}.get((step, row.get(\"name\")))"
     ]
    ],
    "check": {
@@ -12308,6 +12308,287 @@
    ],
    "check": {
     "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An admitted case that fails for another reason (another assertion, values or test-source chain) is refused, as GitHub's classifier calls it unexpected",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "return (red[\"review\"], None) if same else",
+     "return (red[\"review\"], None) if True else"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A policy GitHub's classifier would not load admits nothing and refuses",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            ci_known_reds.load_policy(policy, root)\n",
+     "            pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's merge commit is a merge of two parents, not a commit that only carries the merge's message",
+   "break": [
+    [
+     "tools/train.py",
+     "    if len(parents) != 2:\n",
+     "    if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's merge commit is the one GitHub names as its pull request's merge commit",
+   "break": [
+    [
+     "tools/train.py",
+     " or pull.get(\"merge_commit_sha\") != merge:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's pull request is merged, by GitHub's answer",
+   "break": [
+    [
+     "tools/train.py",
+     "if pull.get(\"merged\") is not True or ",
+     "if "
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's pull request was merged into the release branch",
+   "break": [
+    [
+     "tools/train.py",
+     "    if base != release_branch:\n",
+     "    if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's pull request head is its merge commit's second parent",
+   "break": [
+    [
+     "tools/train.py",
+     "    if head != parents[1]:\n",
+     "    if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "GitHub's answer for a train's pull request is that pull request",
+   "break": [
+    [
+     "tools/train.py",
+     " or pull.get(\"number\") != number:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train that changes a tools/ module the deploy loads, or a file GitHub's classifier pins to the event base, is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "\"tools/ci_known_reds.py\", \"tools/ci_input_reads.py\", \"tools/ci-input-reads.json\")",
+     "\"tools/ci_known_reds.py\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train's paths are read from the live commit, so an earlier undeployed train that changed the deploy is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "\"-z\", live, merge)",
+     "\"-z\", merge + \"^1\", merge)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train's judgment is recorded only when its runs and checks name the merge commit",
+   "break": [
+    [
+     "tools/train.py",
+     "train[\"judgment\"], merge, \"the merge commit\")",
+     "train[\"judgment\"], live, \"the merge commit\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train that comes with a judgment records it",
+   "break": [
+    [
+     "tools/train.py",
+     "judgment = \"pending\" if train[\"judgment\"] is None else on_commit(",
+     "judgment = \"pending\" if True else on_commit("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A live checkout that moves after the train was read stops the deploy before anything stops",
+   "break": [
+    [
+     "tools/deploy.py",
+     "require(trained is None or head == trained[\"live\"],",
+     "require(True,"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train with an outcome to measure is refused, since it has no release check's summary",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        if config.outcome:\n            raise train_check.Refused(",
+     "        if False:\n            raise train_check.Refused("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train with --known-reds is refused, since it has no local release check",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        if known_reds is not None:\n            raise train_check.Refused(",
+     "        if False:\n            raise train_check.Refused("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health view gives no release check for a release whose record keeps none of its counts, as a merged train's does",
+   "break": [
+    [
+     "aim_next/health.py",
+     "if not isinstance(measurements, dict) or not any(key in measurements for key in CHECK_KEYS):",
+     "if not isinstance(measurements, dict):"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health view says a train release's hosted judgment once it is attached",
+   "break": [
+    [
+     "aim_next/health.py",
+     "judgment = attached if train.get(\"judgment\") == \"pending\" and attached is not None else train.get(\"judgment\")",
+     "judgment = train.get(\"judgment\")"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health page says a merged train's release ran no release check here and says its hosted judgment",
+   "break": [
+    [
+     "web/health.mjs",
+     "    if (train) {\n",
+     "    if (false) {\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_health.test.mjs"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health page says a release check passed only when its counts were kept",
+   "break": [
+    [
+     "web/health.mjs",
+     "} else if (parts.length) {",
+     "} else if (check) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_health.test.mjs"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health page in the browser says a merged train's release ran no release check here, at every phone width and a laptop",
+   "break": [
+    [
+     "web/health.mjs",
+     "    if (train) {\n",
+     "    if (false) {\n"
+    ]
+   ],
+   "check": {
+    "native": "health",
+    "case": "release from a merged train"
    }
   }
  ]
