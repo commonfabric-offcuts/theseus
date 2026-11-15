@@ -114,6 +114,12 @@ Nothing else a thumb is on changes a wait:
 - a 👍 on an ask a record answers: a target wording's or an owner-gated
   stage's (`outcome_asks.record_ask`), which its decision settles.
 
+A wait here is what a topic waits on someone for. An agent's 👍 on a
+person's message is still a reply to it for the three dots that show on it
+until the first reply from anyone else (item 475,
+[topic-reading.md](topic-reading.md#waiting-for-a-reply-475)); a person's 👍
+is not.
+
 A 👍 given before this rule (value `up`) answered nothing then, and taking it
 back puts nothing back; a 👍 given again answers. No schema step: a thumb's
 `value` already allowed `yes`, and earlier code reads a thumb by its revision

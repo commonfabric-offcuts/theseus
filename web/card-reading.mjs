@@ -45,19 +45,30 @@ export function learnReply(messages, item, viewer) {
 
 // Waiting for a reply (item 475): Core says it for each of the reader's own
 // messages it sends (`awaiting_reply`, aim_next/stacks.py), true while an agent
-// received the message and nobody else has written after it in its dossier.
-// A message that arrives while the page is open ends it here first, by the
-// same rule: someone else wrote it, after the waiting message, in the same
-// dossier (its stack_position's root). Returns the messages it ended.
-export function learnAnswered(messages, viewer) {
-  const latest = new Map();
+// received the message and nobody else has replied to it. Core alone starts a
+// wait (and only from where the rule begins); the page only ends one, as soon
+// as a reply is in front of it, by Core's rule: a message by someone else,
+// after the waiting message, in its dossier (its stack_position's root), or
+// replying to it (reply_to) wherever it is stacked, or on the record naming the
+// reader; or an agent's thumbs-up on it. kindOf(name) is 'agent', 'human' or
+// undefined; an unknown name is never taken for an agent. Returns the messages
+// it ended.
+export function learnAnswered(messages, viewer, kindOf) {
+  if (typeof viewer !== 'string' || !viewer || typeof kindOf !== 'function') throw Error('Whether a message is answered depends on who reads it.');
+  const latest = new Map(), replied = new Set();
+  let named = 0;
   for (const item of messages.values()) {
+    if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;
     const root = item.stack_position?.root_id;
-    if (item.author_id !== viewer && typeof root === 'string' && Number.isSafeInteger(item.seq)) latest.set(root, Math.max(latest.get(root) ?? 0, item.seq));
+    if (typeof root === 'string') latest.set(root, Math.max(latest.get(root) ?? 0, item.seq));
+    if (typeof item.reply_to === 'string') replied.add(item.reply_to);
+    if (item.whisper !== true && (item.addressees ?? []).includes(viewer)) named = Math.max(named, item.seq);
   }
   const ended = [];
   for (const item of messages.values()) {
-    if (item.awaiting_reply !== true || (latest.get(item.stack_position?.root_id) ?? 0) <= item.seq) continue;
+    if (item.awaiting_reply !== true) continue;
+    const thumbed = (reactionsOf(item).thumbs ?? []).some(thumb => thumb.actor_id !== viewer && kindOf(thumb.actor_id) === 'agent');
+    if (!thumbed && !replied.has(item.id) && named <= item.seq && (latest.get(item.stack_position?.root_id) ?? 0) <= item.seq) continue;
     item.awaiting_reply = false;
     ended.push(item);
   }

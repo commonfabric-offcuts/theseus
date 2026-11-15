@@ -13811,8 +13811,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        if item[\"id\"] not in received:\n            continue\n",
-     ""
+     "if item[\"id\"] not in received or item[\"id\"] in answered",
+     "if item[\"id\"] in answered"
     ]
    ],
    "check": {
@@ -13835,7 +13835,7 @@
   },
   {
    "item": 475,
-   "act": "A reply by anyone else after it in its dossier ends the wait, and nothing else does",
+   "act": "A reply by anyone else after it in its dossier ends the wait",
    "break": [
     [
      "aim_next/stacks.py",
@@ -13853,8 +13853,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "item[\"author_id\"] == actor and not item.get(\"whisper\")]",
-     "item[\"author_id\"] == actor]"
+     "item[\"author_id\"] == actor and not item.get(\"whisper\")\n",
+     "item[\"author_id\"] == actor\n"
     ]
    ],
    "check": {
@@ -13891,12 +13891,12 @@
   },
   {
    "item": 475,
-   "act": "A message arriving ends the dots only when someone else wrote it, after the waiting message, in its dossier",
+   "act": "A message arriving ends the dots only when someone else wrote it",
    "break": [
     [
      "web/card-reading.mjs",
-     "if (item.author_id !== viewer && typeof root === 'string'",
-     "if (typeof root === 'string'"
+     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
+     "if (!Number.isSafeInteger(item.seq)) continue;"
     ]
    ],
    "check": {
@@ -13909,8 +13909,8 @@
    "break": [
     [
      "web/card-reading.mjs",
-     " && typeof root === 'string' &&",
-     " &&"
+     "if (typeof root === 'string') latest.set(root,",
+     "latest.set(root,"
     ]
    ],
    "check": {
@@ -13923,8 +13923,8 @@
    "break": [
     [
      "web/card-reading.mjs",
-     " && Number.isSafeInteger(item.seq)) latest",
-     ") latest"
+     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
+     "if (item.author_id === viewer) continue;"
     ]
    ],
    "check": {
@@ -13937,7 +13937,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  learnAnswered(views.messages, bootstrap.actor);\n",
+     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
      ""
     ]
    ],
@@ -13959,6 +13959,231 @@
    "check": {
     "native": "reading",
     "case": "reading dots after the person posts"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A reply to the reader's message ends its wait wherever it is stacked, a reply joined to another stack too",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "WHERE m.reply_to IN (%s) ",
+     "WHERE 0 AND m.reply_to IN (%s) "
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message on the record by someone else naming the reader ends the waits of their messages before it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " or named is not None and named > item[\"seq\"]:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message naming the reader before theirs is no reply to it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "named is not None and named > item[\"seq\"]",
+     "named is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A whisper naming the reader is no reply to their message on the record",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND m.author_id<>? AND m.private_to IS NULL\",",
+     " AND m.author_id<>?\","
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "An agent's thumbs-up on the reader's message ends its wait",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "r.kind='thumb' AND a.kind='agent'",
+     "r.kind='thumb' AND a.kind='nobody'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A person's thumbs-up on the reader's message is no reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "r.kind='thumb' AND a.kind='agent'",
+     "r.kind='thumb'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message from before where the rule begins never waits",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "and item[\"seq\"] >= int(start[0])]",
+     "]"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The first post records where the rule begins",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        record_wait_start(db, sequence)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "Where the rule begins is recorded once and no later post moves it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "INSERT OR IGNORE INTO metadata(key,value)",
+     "INSERT OR REPLACE INTO metadata(key,value)"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a reply to the waiting message arriving from another dossier ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (typeof item.reply_to === 'string') replied.add(item.reply_to);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a message naming the reader arriving after the waiting message ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "named = Math.max(named, item.seq);",
+     "named = named;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a whisper naming the reader is no reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.whisper !== true && (item.addressees ?? []).includes(viewer))",
+     "if ((item.addressees ?? []).includes(viewer))"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page an agent's thumbs-up on the waiting message ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "kindOf(thumb.actor_id) === 'agent'",
+     "kindOf(thumb.actor_id) === 'nobody'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a person's thumbs-up is no reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " && kindOf(thumb.actor_id) === 'agent'",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page ending a wait needs to know who reads it and who is an agent",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "!viewer || typeof kindOf !== 'function') throw Error('Whether a message is answered",
+     "!viewer) throw Error('Whether a message is answered"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page an agent's thumbs-up ends the dots at once, without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
+     "  learnAnswered(views.messages, bootstrap.actor, () => undefined);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots end on a reply joined"
    }
   }
  ]

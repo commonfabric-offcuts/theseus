@@ -892,7 +892,7 @@ const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?
 function paintCardReading() {
   if (!views) return;
   const { kindOf } = whisperPeople();
-  learnAnswered(views.messages, bootstrap.actor);
+  learnAnswered(views.messages, bootstrap.actor, kindOf);
   for (const entry of entries($('messages'))) {
     const card = cardIn(entry), item = views.messages.get(card.dataset.id);
     if (!item) continue;

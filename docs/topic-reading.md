@@ -23,9 +23,9 @@ The third, from `aim_next/stacks.py` (`awaiting_fields`), once each message
 is placed in its dossier:
 
 - `awaiting_reply`: true on a message of the reader's own, on the record (not
-  a whisper), in a topic that is not an outcome's conversation, that an agent
-  received, while no message by anyone else that the reader can see follows
-  it in its dossier. An agent received it when Core delivered its first
+  a whisper), posted from where the rule begins (below), in a topic that is
+  not an outcome's conversation, that an agent received, until the first
+  reply from anyone else ("Waiting for a reply", below). An agent received it when Core delivered its first
   revision to an agent: one it was addressed to, or one taking part and
   switched on when it was sent (the deliveries `message.send` and
   `message.post` write). The correction an edit queues to an agent that
@@ -36,7 +36,16 @@ is placed in its dossier:
   deliveries as they stand, never stored, so a reload, another device and
   the CLI all read the same.
 
-No table, command or schema step.
+Where the rule begins is the sequence of the first message posted by a
+release that holds it: that post writes it once into the store's metadata
+(`reply_wait_from_seq`, `record_wait_start` in `aim_next/stacks.py`, called
+from every post in the same transaction), and no later post moves it. A
+message before it was already in the store when the rule shipped and never
+waits, so nothing there starts pulsing on deploy; a store no such release has
+posted to has no value and reads as before, with no message waiting. It is a
+sequence, not a time, so neither Core nor the page compares clocks.
+
+No table, command or schema step: the metadata table holds the one value.
 
 ## Waiting for a reply (475)
 
@@ -47,10 +56,23 @@ still under reduced motion), at the foot of the card, until the first reply
 from anyone else, a person or an agent. Named "Waiting for a reply" for a
 screen reader and the pointer; they are a mark, not a control.
 
-- A reply is a message by someone else in the same dossier, after the
-  person's message: a reply to it, to a reply under it, or anywhere in a
-  stack joined to it. A message someone else starts as a new subject is no
-  reply, and nor is the person's own next message, which waits in its turn.
+- A reply is what Theseus already reads as answering a message, by someone
+  else:
+  - a message in the same dossier, after the person's message: a reply to it,
+    to a reply under it, or anywhere in a stack joined to it;
+  - a message whose `reply_to` names it, wherever it is stacked (a reply
+    someone joined to another stack still answers it, as the Conversation
+    reads an answer by its `reply_to`, docs/conversation.md);
+  - a message on the record after it that names the person, an Ask or a Tell
+    to them, in a subject of its own or anywhere (a message for them,
+    docs/attention.md); it answers each of their messages before it;
+  - an agent's thumbs-up on it, its "got it". One given counts after it is
+    taken back: the first reply was made.
+- Not a reply: the person's own next message, which waits in its turn; a
+  message someone else starts as a new subject that names nobody or only
+  others; a whisper to the person (an agent's whisper answers their whisper);
+  a person's thumbs-up, which says they read it and understand
+  (docs/thumbs.md).
 - Never on a whisper.
 - Not at all when no agent receives the message: with nobody named and no
   agent taking part, or only people named in a topic no agent takes part in.
@@ -58,22 +80,29 @@ screen reader and the pointer; they are a mark, not a control.
   dots until something settles it.
 
 Core says it (`awaiting_reply`, above), so a reload keeps it and nothing on
-the page decides it. A message arriving while the page is open ends the
-dots at once by the same rule (`learnAnswered`, `web/card-reading.mjs`):
-written by someone else, after the waiting message, in its dossier (its
-`stack_position.root_id`). A message with no dossier root or no sequence
-is in no dossier and after nothing, so it ends no wait. A message folded to
+the page starts none. A message or a thumbs-up arriving while the page is
+open ends the dots at once by the same rule (`learnAnswered`,
+`web/card-reading.mjs`): a message by someone else after the waiting one in
+its dossier (its `stack_position.root_id`), replying to it, or on the record
+naming the person; or a thumbs-up on it by someone the page knows is an
+agent. A message with no sequence is after nothing, and one with no dossier
+root is in no dossier, so neither ends a wait by those. A message folded to
 one line shows only that line, without its dots.
 
 Checks: `tests/test_topic_reading.py` (Core: addressee, taking part, whisper,
 conversation, a person's reply, the reader's own reply, a message outside the
-dossier, an edit's correction to an agent that read the topic, and nothing
-stored by reading it), `tests/ui_card_reading.test.mjs` (the page's rule, a
-message with no dossier root or sequence, and the dots), and `tests/topic_reading_native.mjs`
-(`native-reading`, `native-webkit-reading`): "reading dots after the person
-posts to an agent …", "reading dots never show where no agent receives the
-message …" and "reading dots on a waiting message sit inside its card …"
-(320, 375 and 390 wide and a laptop, light and dark).
+dossier, a reply joined to another stack, a Tell naming the reader, an
+agent's thumbs-up and its taking back, a person's thumbs-up, a message to
+nobody or to others and an agent's whisper, a message from before where the
+rule begins, an edit's correction to an agent that read the topic, and
+nothing stored by reading it), `tests/ui_card_reading.test.mjs` (the page's
+rule, outside the dossier too, a message with no dossier root or sequence,
+and the dots), and `tests/topic_reading_native.mjs` (`native-reading`,
+`native-webkit-reading`): "reading dots after the person posts to an agent
+…", "reading dots end on a reply joined to another stack, an agent's
+thumbs-up and a message naming the person …", "reading dots never show where
+no agent receives the message …" and "reading dots on a waiting message sit
+inside its card …" (320, 375 and 390 wide and a laptop, light and dark).
 
 ## Read cards (31)
 
