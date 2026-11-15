@@ -13886,8 +13886,8 @@
    "break": [
     [
      "web/arrow-reach.mjs",
-     "if (at.tagName === 'INPUT') return ONE_LINE.has(at.type) && !at.list;",
-     "if (at.tagName === 'INPUT') return false;"
+     "return way === 'up' || way === 'down' ? line || empty : empty;",
+     "return way === 'up' || way === 'down' ? empty : empty;"
     ]
    ],
    "check": {
@@ -14021,6 +14021,21 @@
      "web/panes.mjs",
      " || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });",
      ";"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "Every arrow in a field with nothing written in it goes on to the control that way: ← from an empty reply reaches the + beside it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "return way === 'up' || way === 'down' ? line || empty : empty;",
+     "return way === 'up' || way === 'down' ? line || empty : false;"
     ]
    ],
    "check": {

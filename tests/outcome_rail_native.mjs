@@ -2304,16 +2304,19 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // every press that lost the focus to the page. start: a mark ('tree'), or a
   // step whose landing is the start. skip: controls left out (a deck's cards,
   // which key their own arrows).
+  // A closure's start: the stop of the tree in scope (its row the keys are on, else its first shown).
+  const treeStart = (p, scope) => () => p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('${scope} [role=treeitem]')].filter(e=>e.checkVisibility()))`);
   const arrowClosure = async (p, scope, start, skip = null) => {
     const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)}),skip=${JSON.stringify(skip)};
       const shown=e=>e.checkVisibility({visibilityProperty:true})&&!e.disabled&&!e.closest('[inert],[aria-hidden=true]')&&e.getBoundingClientRect().width>0;
       const all=[...root.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(e=>(e.tabIndex>=0||e.getAttribute('role')==='treeitem')&&shown(e)&&!(skip&&e.closest(skip)));
-      const out=[];all.forEach((e,i)=>{const id=e.getAttribute('role')==='treeitem'?'tree':'n'+i;e.dataset.arrowNode=id;
-        if(!out.some(o=>o.id===id))out.push({id,label:id==='tree'?'the tree':(e.id||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40)||e.tagName)})});return out})()`);
+      const trees=[...document.querySelectorAll('[role=tree]')],tree=e=>e.getAttribute('role')==='treeitem'?'tree'+Math.max(0,trees.indexOf(e.closest('[role=tree]'))):null;
+      const out=[];all.forEach((e,i)=>{const id=tree(e)??'n'+i;e.dataset.arrowNode=id;
+        if(!out.some(o=>o.id===id))out.push({id,label:id.startsWith('tree')?'the tree '+(e.closest('[role=tree]')?.getAttribute('aria-label')??''):(e.id||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40)||e.tagName)})});return out})()`);
     const label = id => nodes.find(node => node.id === id)?.label ?? id;
     // Where a press lands; a control that was not marked (the feed itself, a row drawn since) is marked as it is
     // found, and the arrows are pressed from it too.
-    const landed = async () => { const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree';
+    const landed = async () => { const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree'+Math.max(0,[...document.querySelectorAll('[role=tree]')].indexOf(e.closest('[role=tree]')));
       if(!e.dataset.arrowNode){window.__arrowFound=(window.__arrowFound??0)+1;e.dataset.arrowNode='found'+window.__arrowFound}return e.dataset.arrowNode})(document.activeElement)`);
       if (at.startsWith('found') && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)") });
       return at; };
@@ -2323,11 +2326,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const edges = [];
     for (let i = 0; i < explore.length; i++) {
       const node = explore[i];
-      if (node.id === 'tree') {
+      if (node.id.startsWith('tree')) {
         for (const [home, key] of [['Home', 'ArrowUp'], ['End', 'ArrowDown']]) {
-          await p.evaluate(`document.querySelector('[data-arrow-node=tree][tabindex="0"]')?.focus()`);
+          await p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('[data-arrow-node=${node.id}]')].filter(e=>e.checkVisibility()))`);
           await p.key(home); await p.key(key);
-          edges.push({ from: 'tree', key, to: await landed() });
+          edges.push({ from: node.id, key, to: await landed() });
         }
         continue;
       }
@@ -2376,7 +2379,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.key('ArrowUp');
       assert.ok((await focusAt(p)).startsWith('rail:row:'), '↑ from Keys comes back to the outline');
       if (theme === 'light') {
-        const { missing, lost, count } = await arrowClosure(p, '#rail', 'tree');
+        const { missing, lost, count } = await arrowClosure(p, '#rail', treeStart(p, '#outline'));
         assert.ok(count > 5, 'the side rail has its controls: ' + count);
         assert.deepEqual(missing, [], 'the arrows reach every control in the side rail from the outline');
         assert.deepEqual(lost, [], 'and no arrow there loses the focus to the page');
@@ -2401,7 +2404,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.equal(up[1], 'rail:outline-new-outcome', `${size}: ↑ above the first row is New outcome: ${up.join(' → ')}`);
       assert.ok(up.every(at => at.startsWith('rail:')), `${size}: the arrows stay in the drawer: ${up.join(' → ')}`);
       if (size === '390') await shot(p, 'rail-arrows-drawer-390-dark');
-      const { missing, lost, count } = await arrowClosure(p, '#rail', 'tree');
+      const { missing, lost, count } = await arrowClosure(p, '#rail', treeStart(p, '#outline'));
       assert.ok(count > 5, `${size}: the drawer has its controls (${count})`);
       assert.deepEqual(missing, [], `${size}: the arrows reach every control in the drawer`);
       assert.deepEqual(lost, [], `${size}: and none loses the focus to the page`);
@@ -2500,7 +2503,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.evaluate("document.querySelector('#things .notebook-create').focus()");
     await p.key('ArrowUp');
     assert.notEqual(await focusAt(p), 'things:New Notebook page', '↑ from the pencil moves too');
-    const { missing, lost } = await arrowClosure(p, '#things', 'tree');
+    const { missing, lost } = await arrowClosure(p, '#things', treeStart(p, '#things'));
     assert.deepEqual(missing, [], 'the arrows reach every control in the right rail from its sections');
     assert.deepEqual(lost, [], 'and no arrow there loses the focus to the page');
     assert.deepEqual(p.errors, []); await p.close();

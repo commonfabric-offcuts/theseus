@@ -306,12 +306,13 @@ rule above. (`web/arrow-reach.mjs`)
   it.
 - **Never in writing.** In a field the arrows are the writing's, as everywhere
   above, but for ↑ and ↓ in a one-line field (a title, a name, a pipeline's
-  "Add an item…"), which has no line above or below its own, and in a box with
-  nothing written in it (an empty reply, an outcome's "Write the target"):
-  they go on to the control that way, so a field the arrows land in never
-  holds them. In a box with words in it ↑ and ↓ stay the writing's, and a
-  field that offers suggestions (a name to pick from a list) keeps them for
-  those.
+  "Add an item…"), which has no line above or below its own, and every arrow
+  in a field with nothing written in it (an empty reply, an outcome's "Write
+  the target"): they go on to the control that way, so a field the arrows land
+  in never holds them, and the + beside an empty reply is a ← away. In words ←
+  and → stay the writing's, and so do ↑ and ↓ in a box with words in it; a
+  field that offers suggestions (a name to pick from a list) keeps its arrows
+  for those.
 
 ## Everywhere
 

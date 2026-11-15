@@ -16,12 +16,13 @@
 // here (reach), within its own column.
 //
 // Never in writing: in a field the arrows are the writing's, but for ↑ and ↓
-// in a one-line field or an empty box, which have no other line to go to. A
+// in a one-line field, and any arrow in an empty field, with nowhere to go. A
 // focused box that can still scroll that way (a message's text in the Reader)
 // scrolls, and once at its end the arrows go on. A control that way but out of
 // sight is scrolled toward a step at a time, so the words between are read.
-// While a pop-up is open the arrows move only through it. With nothing focused, ↓ goes to the first control in view from
-// the top, ↑ to the last, → to the first from the left and ← from the right.
+// While a pop-up is open the arrows move only through it. With nothing
+// focused, ↓ goes to the first control in view from the top, ↑ to the last,
+// → to the first from the left and ← from the right.
 import { revealSelection } from './reveal.mjs';
 
 export const WAYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
@@ -161,16 +162,17 @@ function owned(at) {
   return Boolean(widget) && (widget === at || widget.getAttribute('role') !== 'treeitem');
 }
 
-// A one-line field has no line above or below its own, and an empty box has
-// no line at all: ↑ and ↓ there go on to the control that way, so a field the
-// arrows land in never holds them. ← and → stay the writing's, and so do ↑ and
-// ↓ in a box with words in it, and in a field that offers a list of
+// A one-line field has no line above or below its own, and a field with
+// nothing written in it has no line or letter at all: ↑ and ↓ in the one, and
+// every arrow in the other, go on to the control that way, so a field the
+// arrows land in never holds them. ← and → in words stay the writing's, and so
+// do ↑ and ↓ in a box with words in it, and in a field that offers a list of
 // suggestions (a datalist, a combobox), where they choose among them.
 const ONE_LINE = new Set(['text', 'search', 'email', 'url', 'tel', 'password']);
 function leavesLine(at, way) {
-  if ((way !== 'up' && way !== 'down') || at.matches('[role=combobox], [aria-autocomplete]')) return false;
-  if (at.tagName === 'INPUT') return ONE_LINE.has(at.type) && !at.list;
-  return at.tagName === 'TEXTAREA' && at.value === '';
+  if (at.matches('[role=combobox], [aria-autocomplete]') || at.list) return false;
+  const line = at.tagName === 'INPUT' && ONE_LINE.has(at.type), empty = (line || at.tagName === 'TEXTAREA') && at.value === '';
+  return way === 'up' || way === 'down' ? line || empty : empty;
 }
 
 // The arrows' last say, on the window. managed(at): whether a pane's own keys
