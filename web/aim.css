@@ -68,6 +68,26 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .outcome-team { margin: 1.5rem 0; }
 .outcome-team h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: .6rem; }
 #team-people { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+/* Inviting an agent (agent-invite.mjs): "+ Invite agent", then one name line and two chips; the prompt to paste, with its copy glyph and ×. */
+.team-invite{display:grid;gap:.5rem;margin-top:.5rem;min-width:0}
+.team-invite>.add-chip{justify-self:start}
+.invite-line{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;min-width:0}
+.invite-line input{flex:0 1 14rem;width:14rem;max-width:100%;min-width:0;min-height:2.5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);color:var(--ink);padding:.35rem .6rem;font-size:.9rem}
+.invite-harness{display:flex;flex-wrap:wrap;gap:.4rem}
+.invite-harness .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.85rem}
+.invite-harness[aria-disabled=true] .choice-chip{opacity:.6}
+.invite-state{flex-basis:100%}
+.invite-state .text-action{font-size:.85rem}
+.invite-prompt{display:grid;gap:.4rem;min-width:0;max-width:40rem;padding:.6rem .7rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel)}
+.invite-head{display:flex;align-items:center;gap:.25rem;min-width:0}
+.invite-said{flex:1;min-width:0;font-size:.9rem;overflow-wrap:anywhere}
+.invite-copy,.invite-close{display:grid;place-items:center;flex:none;width:2rem;height:2rem;padding:0;border:0;border-radius:.4rem;background:transparent;color:var(--ink);font-size:1.15rem;line-height:1}
+.invite-copy:hover,.invite-close:hover{background:var(--soft)}
+.invite-copy svg{width:1.1rem;height:1.1rem;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.invite-prompt-text{margin:0;max-height:16rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:.8rem/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);background:var(--paper);border-radius:.4rem;padding:.5rem .6rem;user-select:text;-webkit-user-select:text}
+.invite-copied{margin:0;font-size:.85rem;color:var(--alert);overflow-wrap:anywhere}
+.invite-copied.quiet{color:var(--muted)}
+@media(pointer:coarse){.team-invite .add-chip,.invite-harness .choice-chip{min-height:2.75rem}.invite-line input{min-height:2.75rem;font-size:1rem}.invite-copy,.invite-close{width:2.75rem;height:2.75rem}.invite-state .text-action{min-height:2.75rem}}
 .chip.unreachable { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-bg); }
 .chip .reach { color: var(--warn); }
 /* An agent whose wakes are not getting through says so after its name, in words. */
