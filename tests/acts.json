@@ -13804,6 +13804,132 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 127,
+   "act": "A card shows a quiet mark for each image its message carries, and a text attachment is no image",
+   "break": [
+    [
+     "web/marks.mjs",
+     "return { images: attachments.filter(attachment => /^image\\//.test(attachment?.content_type ?? '')).length,",
+     "return { images: attachments.length,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A card marks the person's own private note on its message",
+   "break": [
+    [
+     "web/marks.mjs",
+     "note: item?.yours?.note === true, reply:",
+     "note: false, reply:"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A card marks a reply the person saved from its message and has not sent",
+   "break": [
+    [
+     "web/marks.mjs",
+     "reply: item?.yours?.reply === true };",
+     "reply: false };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Each mark is a glyph named and titled in words, and never a control",
+   "break": [
+    [
+     "web/marks.mjs",
+     "mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', words); mark.title = words;",
+     "mark.setAttribute('role', 'button'); mark.tabIndex = 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Core says a note or saved reply is the reader's only when it is their own, never another reader's",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "FROM %s WHERE actor_id=? AND source_key IN (%s)",
+     "FROM %s WHERE ?<>'' AND source_key IN (%s)"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A note emptied of words, or a reply with no words or images, is no mark",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "if payload.get(\"body\", \"\").strip() or field",
+     "if payload.get(\"body\", \"\") is not None or field"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A save of the person's note or reply on a message tells their own changes, keyed by the message, with a growing version",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "            self._change(db, \"actor\", actor, \"yours\", ref[\"id\"], writing_version(db, actor, ref[\"id\"]))",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "The page reads a message again when the person's own writing on it changes",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "if (item.resource_kind === 'yours' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('yours:' + item.resource_id, item.version);",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A read that answers late never puts back a mark the person's newer writing took away",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "const later = yoursVersion(item.yours) >= yoursVersion(known?.yours) ? item.yours : known.yours;",
+     "const later = item.yours;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
   }
  ]
 }

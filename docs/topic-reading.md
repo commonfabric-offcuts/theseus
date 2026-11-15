@@ -2,12 +2,12 @@
 
 A topic reads like an inbox: newest on top, each message answered in the
 Reader. This page says how each card shows where the person stands with it
-(pipeline items 31, 102, 103 and 11). Nothing here changes a record; Core says
-two more facts per message, and the page shows them.
+(pipeline items 31, 102, 103, 11 and 127). Nothing here changes a record; Core
+says a few more facts per message, and the page shows them.
 
 ## What Core says
 
-`topic_messages` items carry two fields, read for the page's own messages
+`topic_messages` items carry three fields, read for the page's own messages
 only (`aim_next/topic_reading.py`), through indexes keyed by message:
 
 - `unread`: true while the message waits in one of the reader's unread groups,
@@ -17,8 +17,20 @@ only (`aim_next/topic_reading.py`), through indexes keyed by message:
 - `replied`: the reader's newest reply to the message, `{id, sent_ms}`, or
   null. A reply is in its parent's topic, and the reader always sees their own
   messages, whispers included, so it never names a message they cannot read.
+- `yours`: what the reader has written privately on the message,
+  `{note, reply, version}`, from their own notes and drafts only, so another
+  reader's never shows. `note` is true while their private note on it holds
+  words; `reply` while a reply they saved from it holds words or an image and
+  is not on its way (preparing a reply to send leaves its draft empty, so a
+  sent reply takes it away). `version` is the note's revision and every such
+  draft's added up: each save raises one of them and none is ever removed, so
+  it grows with every save, and a page keeps the newer of two reads.
 
-No table, command or schema step.
+A save of a private note or a draft about a message, and a reply's
+preparation, record a `yours` change in the writer's own scope, keyed by the
+message and carrying that version, so a page showing the card reads the
+message again (`topic_messages {topic_id, message_ids: [id]}`), on this
+device or another. No table, command or schema step.
 
 ## Read cards (31)
 
@@ -57,6 +69,29 @@ phone a first tap shows the same words, as the pointer would, and a second tap
 on the arrow or its words opens the reply; a tap anywhere else puts the words
 away. A reply written while the page is open moves the arrow at once
 (`learnReply`).
+
+## What a card carries (127)
+
+A card shows at a glance what its message carries: a small, quiet glyph in
+its author line, just after the time, for an image (a picture; "Has 2 images"
+for more than one), for the person's own private note (a page), and for a
+reply they saved and have not sent (a pencil). They are marks, not controls:
+no Tab stop and no press of their own, so a press on one opens the message
+as a press anywhere on the card does. Each says its words as its accessible
+name and its tooltip ("Has an image", "Your private note, which only you can
+see", "Your reply, saved and not sent"), so a screen reader hears them with
+the card. They are drawn in the line's quiet color (`--muted`), which every
+card face sets for light and dark, and held to the time (`.together`), so a
+line that wraps keeps them beside it; a message from before times were kept
+shows them after its name (`carriesOf` and `paintAuthor`, `web/marks.mjs`).
+
+They follow the person's writing as Core keeps it: a note saved in the
+Reader, or a reply saved there or on another device, marks the card once its
+`yours` change is read (`TopicViews`, key `yours:<id>`); a note emptied, a
+reply emptied or a reply sent takes its mark away. Another reader's note or
+draft never marks a card. `tests/card_marks_native.mjs` (`native-card-marks`)
+checks them in Chrome and Safari's engine at 320, 375 and 390 points with
+touch and on a laptop, light and dark.
 
 ## Reply stacks (103, 283)
 

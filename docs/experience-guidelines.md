@@ -124,6 +124,12 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
 
 - `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
   no page has a header bar or Refresh; …".
+- `tests/card_marks_native.mjs` (`native-card-marks`): "marks at …: an image,
+  your note and your saved reply each show a quiet named glyph beside the
+  time; another's never does", at 320, 375 and 390 points and a laptop, light
+  and dark, in Chrome and Safari's engine: each mark is in the card's line on
+  the time's line, never a control, and a card with all three keeps a one-line
+  author line ([topic-reading.md](topic-reading.md), "What a card carries").
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
