@@ -2178,7 +2178,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(width[0] <= width[1], `${at}: no sideways scroll (${width})`);
       if (['topic', 'conversation'].includes(kind)) {
         // The outcome's page is on the right rail instead: on the Conversation from the start, on a topic one tap away.
-        if (phone) { await tap(p, '#rail-backdrop'); await until(async () => !(await drawer(p)).open, at + ': the side rail closes'); }
+        if (phone) {
+          // A tap on the dimmed page beside the drawer closes it.
+          const [w, h] = await p.evaluate('[innerWidth, innerHeight]');
+          assert.equal(await p.evaluate(`document.elementFromPoint(${w - 12}, ${h / 2})?.id`), 'rail-backdrop', at + ': the dimmed page shows beside the drawer');
+          await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: w - 12, y: h / 2 }] });
+          await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await until(async () => !(await drawer(p)).open, at + ': the side rail closes');
+        }
         if (!await p.evaluate("matchMedia('(min-width: 1181px)').matches")) {
           await (phone ? tap(p, '#things-open') : p.point('#things-open'));
           await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open')"), at + ': the right rail opens');

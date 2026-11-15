@@ -170,8 +170,10 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
 (tree, treeitem, level, place in its set, open or folded).
 
 - **The outline.** ↑ and ↓ move between the rows shown: outcomes, their
-  topics, Done (N) and Archived (N) and the topics of one open, More, + New
-  topic and the Notebook's pages. Home and End go to the first and last.
+  topics, Done (N) and Archived (N) and the topics of one open, More and
+  + New topic; past an open outcome's last row comes the next outcome, since
+  the outline lists no Notebook (its pages are the right rail's). Home and End
+  go to the first and last.
   Return opens the row in place: a topic, or an outcome's Conversation with
   its topics, folding every other outcome. ⌘→ opens the focused outcome (or
   a focused topic's outcome) and ⌘← folds it, with the keys on its row; →
