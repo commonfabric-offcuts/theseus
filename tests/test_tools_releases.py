@@ -60,6 +60,31 @@ class PipelineTrailers(unittest.TestCase):
                 self.assertIn("Something", str(caught.exception))
                 self.git("reset", "-q", "--hard", "HEAD~1")
 
+    def test_a_revert_trailer_takes_back_an_earlier_claim_and_a_later_claim_ships_it_again(self):
+        self.commit("Dossiers\n\nPipeline: 412\nCo-Authored-By: x <x@example.com>\n")
+        self.commit("Composer\n\nPipeline: 464\n")
+        self.commit("Docs: a revert says\n\nTrain-Item: Revert 464\n\nin its last paragraph.\n")
+        self.commit("Train-Item says what a train carried\n\nTrain-Item: 464 the composer\n")
+        self.commit("Train 8: revert 412\n\nTrain-Item: Revert 412\nCo-Authored-By: x <x@example.com>\n")
+        items, commits = self.shipped()
+        self.assertEqual(items, [464])
+        self.assertEqual([commit["reverts"] for commit in commits], [[], [], [], [], [412]])
+        self.assertEqual(releases.reverted(commits, [398]), [{"item": 412, "commit": commits[4]["commit"], "by": "trailer"},
+                                                            {"item": 398, "commit": None, "by": "flag"}])
+        self.commit("Dossiers again\n\nPipeline: 412\n")
+        self.assertEqual(self.shipped()[0], [464, 412])
+        self.commit("Both back out\n\ntrain-item: revert 412, 464\n")
+        self.assertEqual(self.shipped()[0], [])
+
+    def test_a_revert_trailer_that_names_no_items_refuses(self):
+        for value in ("Revert next", "Revert 412 and 413", "Revert #412", "Revert", "revert  "):
+            with self.subTest(value):
+                self.commit("Take it back\n\nTrain-Item: %s\n" % value)
+                with self.assertRaises(releases.Malformed) as caught:
+                    self.shipped()
+                self.assertIn("Take it back", str(caught.exception))
+                self.git("reset", "-q", "--hard", "HEAD~1")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -369,7 +369,7 @@ def live_head(config):
     return head.stdout.strip()
 
 
-def release_plan(config, head, sha, summary, number, no_items, live_since=None, accepted=()):
+def release_plan(config, head, sha, summary, number, no_items, live_since=None, accepted=(), flagged=()):
     """The records this deploy writes once the release is verified: (this release's, those before it, its commits, latest).
 
     Everything is read now, before anything stops, and each record is checked
@@ -378,9 +378,14 @@ def release_plan(config, head, sha, summary, number, no_items, live_since=None, 
     repository keeps for it (kept_lacked), then one for each commit a server run
     record started after the latest record (went_live). A deploy of the live
     commit is a restart: it ships nothing, and has no record of its own (None).
-    accepted: the known reds the deploy took (item 178), kept in the record's measurements."""
+    accepted: the known reds the deploy took (item 178), kept in the record's measurements.
+    flagged: items --revert names, each reverted in the range by a commit made before a revert carried its
+    `Train-Item: Revert N` trailer; like a trailer's revert, the release does not ship them and the record says so."""
     restart = sha == head
     items, commits = shipped_between(config, head, sha) if not restart else ([], [])
+    require(not set(flagged) - set(items), "--revert names %s, which no commit from %s to %s ships (a Pipeline trailer it "
+            "has not reverted by trailer)" % (sorted(set(flagged) - set(items)), head[:12], sha[:12]))
+    items = [item for item in items if item not in flagged]
     require(items or no_items or restart, "no commit from %s to %s names a pipeline item in a 'Pipeline: N, M' "
             "trailer; name the items the changes deliver, or pass --no-items for a release that ships none"
             % (head[:12], sha[:12]))
@@ -410,7 +415,8 @@ def release_plan(config, head, sha, summary, number, no_items, live_since=None, 
         require(latest is None or number == latest["release"] + 1,
                 "release %d would not follow the latest, %s" % (number, latest and latest["release"]))
         record = {"release": number, "commit": sha, "previous": head, "items": items,
-                  "measurements": releases.measurements(json.loads(Path(summary).read_text()), accepted), "source": "deploy"}
+                  "measurements": releases.measurements(json.loads(Path(summary).read_text()), accepted,
+                                                        releases.reverted(commits, flagged)), "source": "deploy"}
     planned = line + ([record] if record else [])
     # A commit is one release, and an item ships in one (the store refuses either again); say so now, before anything stops.
     release_of = {}
@@ -546,7 +552,7 @@ def enter_deploy(config, evidence, view, planned):
     record(evidence, "03-stage", {"entered": "deploy", "piece": piece, "result": result})
 
 
-def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None, known_reds=None):
+def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None, known_reds=None, revert=()):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
     evidence.mkdir(parents=True, exist_ok=True)
     # 0. A summary of exactly this commit, or nothing is touched; one whose steps failed is still measured (7.2 step 1).
@@ -649,7 +655,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     if found:
         raise Refused("%s got worse: %s" % (names(found), "; ".join(item["why"] for item in found)))
     require(not unpassed or accepted, unchecked)
-    planned, before, commits, latest = release_plan(config, head, sha, summary, number, no_items, live_since, accepted)
+    planned, before, commits, latest = release_plan(config, head, sha, summary, number, no_items, live_since, accepted, revert)
     # A restart (planned is None) is of the latest release, when one places the live commit.
     restart_of = latest["release"] if planned is None and latest else None
     record(evidence, "02-release", {"record": planned, "before": before, "commits": commits,
@@ -768,11 +774,14 @@ def main(argv=None):
     parser.add_argument("--no-items", action="store_true", help="the release ships no pipeline item, and says so")
     parser.add_argument("--known-reds", type=Path, help="an absolute JSON file of the browser cases this release fails "
                         "that the live commit's release check failed too (docs/tools.md, Known reds)")
+    parser.add_argument("--revert", type=int, action="append", default=[], metavar="N",
+                        help="an item a commit in the range reverts without a 'Train-Item: Revert N' trailer (one made "
+                        "before the trailer rule); the release does not ship it, and its record says by flag")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
         deploy(load_config(args.config), args.sha, args.evidence, args.release_check, args.dry_run, args.release,
-               args.no_items, args.live_since, args.known_reds)
+               args.no_items, args.live_since, args.known_reds, revert=args.revert)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         return 1
