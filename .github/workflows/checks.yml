@@ -149,7 +149,7 @@ jobs:
           # The receipt a validator binds this shard to: written here, by the job that ran it, so a shard repackaged from
           # another run or attempt cannot pass as this one. The profile says what the cases ran on.
           /usr/bin/python3 -I - "$RUNNER_TEMP/check/run.json" <<'PY'
-          import hashlib, json, os, platform, subprocess, sys
+          import hashlib, json, os, platform, re, subprocess, sys
           env = os.environ
           def out(*argv):
               try:
@@ -188,6 +188,11 @@ jobs:
                           "cpus": out("sysctl", "-n", "hw.ncpu"),
                           "load_after": out("sysctl", "-n", "vm.loadavg")},
           }
+          # Preserve the event's base above. This is the base Git actually used to build the tested merge.
+          if env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", receipt["merge"]["first_parent"] or ""):
+              sys.exit("the PR checkout has no Git first-parent commit id")
+          receipt["base_at_run"] = ({"ref": env.get("BASE_REF"), "sha": receipt["merge"]["first_parent"]}
+                                    if env.get("GITHUB_EVENT_NAME") == "pull_request" else None)
           json.dump(receipt, open(sys.argv[1], "w"), indent=1)
           PY
       - name: Keep the evidence
@@ -221,7 +226,7 @@ jobs:
           set -euo pipefail
           mkdir -p release-check
           python3 - shards release-check/summary.json <<'PY'
-          import glob, hashlib, json, os, sys
+          import glob, hashlib, json, os, re, sys
           shards_dir, out = sys.argv[1], sys.argv[2]
           paths = sorted(glob.glob(os.path.join(shards_dir, "check-*", "summary.json")))
           docs = [json.load(open(p)) for p in paths]
@@ -250,6 +255,21 @@ jobs:
           merge = receipts[0].get("merge") or {}
           if merge.get("sha") != env.get("GITHUB_SHA"):
               sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
+          if env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
+              sys.exit("the PR merge has no Git first-parent commit id")
+          formats = {"base_at_run" in r for r in receipts}
+          if len(formats) != 1:
+              sys.exit("the shards mix legacy and base_at_run receipt formats")
+          observed = True in formats
+          if observed:
+              bases_at_run = {json.dumps(r["base_at_run"], sort_keys=True) for r in receipts}
+              if len(bases_at_run) != 1:
+                  sys.exit("the shards name different git-read bases")
+              base_at_run = receipts[0]["base_at_run"]
+              expected_base_at_run = ({"ref": env.get("BASE_REF"), "sha": merge["first_parent"]}
+                                      if env.get("GITHUB_EVENT_NAME") == "pull_request" else None)
+              if base_at_run != expected_base_at_run:
+                  sys.exit("the shard's git-read base differs from the tested merge's first parent")
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
           if not docs or not timed:
@@ -298,6 +318,8 @@ jobs:
                           "receipt": r}
                          for p, d, r in zip(paths, docs, receipts)],
           }
+          if observed:
+              provenance["base_at_run"] = base_at_run
           json.dump(provenance, open(os.path.join(os.path.dirname(out), "provenance.json"), "w"), indent=1)
           print(json.dumps({"commit": combined["commit"], "steps": len(steps), "missing": missing, "failed": combined["failed"], "passed": combined["passed"]}))
           sys.exit(0 if combined["passed"] else 1)
