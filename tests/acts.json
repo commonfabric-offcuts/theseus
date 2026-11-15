@@ -13849,12 +13849,22 @@
   },
   {
    "item": 479,
-   "act": "A whisper counts as no reply for a minted name",
+   "act": "A whisper counts as no reply for a minted name: Core walks the dossier as no one, not as the agent minting",
    "break": [
     [
      "aim_next/stacks.py",
-     "WHERE m.id<>:root AND m.private_to IS NULL ORDER BY",
-     "WHERE m.id<>:root ORDER BY"
+     "def dossier_namer(db, root, replied=False):",
+     "def dossier_namer(db, root, replied=False, actor=\"\"):"
+    ],
+    [
+     "aim_next/stacks.py",
+     "{\"root\": root, \"actor\": \"\"}).fetchone()",
+     "{\"root\": root, \"actor\": actor}).fetchone()"
+    ],
+    [
+     "aim_next/stacks.py",
+     "            namer, why = dossier_namer(db, message[\"id\"])",
+     "            namer, why = dossier_namer(db, message[\"id\"], actor=actor)"
     ]
    ],
    "check": {
@@ -14042,7 +14052,7 @@
     ]
    ],
    "check": {
-    "python": "test_delivery_bounds.py"
+    "python": "test_dossier_names.py"
    }
   },
   {

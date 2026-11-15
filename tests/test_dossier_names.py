@@ -12,9 +12,11 @@ coordinator that reads the notice and mints fixed words, with no model.
 
 import json
 import re
+import sqlite3
 
 from aim_next import hosted_notice
 from test_agent_verbs import AgentVerbCase
+from test_delivery_bounds import measured
 
 
 class NamesCase(AgentVerbCase):
@@ -201,7 +203,7 @@ class HarnessCase(NamesCase):
         root = self.post("Can we lock the cabin?")
         self.assertNotIn("name_it", self.deliveries("agent-a")[root], "no reply yet: nothing to name")
         reply = self.post("Friday works.", actor="agent-b", reply_to=root)
-        self.assertEqual(self.deliveries("agent-a")[reply]["name_it"], {"root_id": root, "name_revision": 0})
+        self.assertEqual(self.deliveries("agent-a")[reply].get("name_it"), {"root_id": root, "name_revision": 0})
         self.assertNotIn("name_it", self.deliveries("agent-a")[root], "the first message's own delivery leaves it to its replies'")
         self.assertNotIn("name_it", self.deliveries("owner")[reply], "a person is never told to mint")
         coordinator = FakeCoordinator(self)
@@ -218,6 +220,33 @@ class HarnessCase(NamesCase):
         self.post("Another reply", actor="agent-b", reply_to=root)
         self.assertEqual([item for item in self.deliveries("agent-a").values() if "name_it" in item], [])
         self.assertEqual(coordinator.wake(), [])
+
+    def test_two_replies_waiting_in_one_dossier_say_its_mint_once_in_the_notice_and_inbox(self):
+        root = self.post("Can we lock the cabin?")
+        first = self.post("Friday works.", actor="agent-b", reply_to=root)
+        second = self.post("Or Saturday.", reply_to=root)
+        told = self.deliveries("agent-a")
+        self.assertEqual((told[first].get("name_it"), told[second].get("name_it")), ({"root_id": root, "name_revision": 0},) * 2,
+                         "both replies carry it")
+        text = FakeCoordinator(self).notice()["input"][0]["text"]
+        self.assertEqual(text.count("mint %s" % root), 1, text)
+        code, out, err = self.run_cli("inbox")
+        self.assertEqual((code, out.count("mint %s" % root)), (0, 1), out)
+
+    def test_finding_the_namer_reads_the_dossier_not_the_topic_around_it(self):
+        self.no_coordinator()
+        root = self.post("Root")
+        reply = self.post("Reply", actor="agent-b", reply_to=root)
+        namer = lambda: self.store.view("agent-a", "stack_namer", {"message_id": reply})
+        found, small = measured(namer)
+        self.assertEqual((found["namer"], found["why"]), ("agent-b", "first_agent"))
+        with sqlite3.connect(str(self.path)) as db:
+            for index in range(3000):
+                db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
+                           "VALUES (?,'t1','owner','Bulk','[]','[]','[]',?)", ("bulk-%s" % index, "bulk-op-%s" % index))
+        found, large = measured(namer)
+        self.assertEqual((found["namer"], found["why"]), ("agent-b", "first_agent"))
+        self.assertLess(large["vm_steps"], small["vm_steps"] + 200, "three thousand more messages in the topic cost nothing")
 
     def test_an_agent_that_does_not_name_the_dossier_is_never_told_to(self):
         root = self.post("Root", addressees=["agent-b"], intent="tell")
@@ -240,7 +269,8 @@ class HarnessCase(NamesCase):
     def test_the_cli_mint_after_a_person_renamed_is_refused_and_their_name_stays(self):
         root = self.post("Root")
         reply = self.post("Reply", actor="agent-b", reply_to=root)
-        told = self.deliveries("agent-a")[reply]["name_it"]
+        told = self.deliveries("agent-a")[reply].get("name_it")
+        self.assertEqual(told, {"root_id": root, "name_revision": 0})
         self.committed(self.name(root, "The person's title"))
         code, out, err = self.run_cli("mint", reply, "--expected", str(told["name_revision"]), "Cabin week plan")
         self.assertEqual(code, 2)

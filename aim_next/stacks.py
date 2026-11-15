@@ -277,10 +277,11 @@ def dossier_namer(db, root, replied=False):
         return None, "named"
     if replied and coordinator is not None:
         return coordinator, "coordinator"
-    # The first agent's reply if any agent has replied, else the first reply. CROSS JOIN keeps the walk from the
+    # The first agent's reply if any agent has replied, else the first reply, walking as no one (actor '') so a
+    # whisper is never a member. CROSS JOIN keeps the walk from the
     # dossier's members: left to itself the planner scans every message for the ORDER BY (a delivery read asks this).
     first = db.execute(MEMBERS + " SELECT m.author_id,a.kind FROM members p CROSS JOIN messages m ON m.id=p.id JOIN actors a ON a.id=m.author_id "
-                       "WHERE m.id<>:root AND m.private_to IS NULL ORDER BY a.kind<>'agent',m.seq LIMIT 1", {"root": root, "actor": ""}).fetchone()
+                       "WHERE m.id<>:root ORDER BY a.kind<>'agent',m.seq LIMIT 1", {"root": root, "actor": ""}).fetchone()
     if first is None:
         return None, "unreplied"
     if coordinator is not None:
