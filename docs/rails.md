@@ -169,7 +169,9 @@ Below 1181px it opens from "Pipeline & pages" in the header, and Escape or a
 tap on the dimmed page closes it. Beside it the outcome's name gives way
 first; on a phone too narrow for both header buttons with their counts (320px,
 with new messages in Build topics), "Pipeline & pages" goes to a line of its
-own, inside the screen. While it is open the page and the outline
+own, inside the screen. At 320, 375 and 390px, with a count of one or two
+digits on either, nothing in the header runs past the page's edge, in Chrome's
+engine and Safari's. While it is open the page and the outline
 under it take no keys, focus or presses, as under the outline's drawer. Its
 arrows open and fold as the outline's do, without ⌘: → opens a folded
 section or goes to its first row, ← folds an open one or goes from a row to

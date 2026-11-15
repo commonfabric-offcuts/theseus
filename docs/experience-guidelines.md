@@ -66,6 +66,13 @@ and the writing. Focus stays visible and follows what the person did.
   the keys reach a Build topic from the right rail: ↓ to its row, Return opens
   it in place and the keys stay on its row, …" (item 297: an outcome's Build
   topics are the right rail's, never the outline's too, [rails.md](rails.md)).
+  "rail turned off while a Build topic is read, the topic moves live …", "rail
+  a piece started in the topic being read moves it live …" and "rail a Build
+  topic marked Done while its piece is still under way …": the open topic is
+  in one list, never both and never neither. "rail with more than 20 Build
+  topics, the piece in Now …" (every Now row carries its marks) and "rail the
+  right rail's Build topics follow the reader's own order …" (⌘↑/⌘↓ order, as
+  the outline keeps it).
 - Touch: see "A phone by touch" below.
 
 ## Dismiss without losing work
@@ -202,7 +209,10 @@ nothing scrolls sideways, and nothing depends on hover.
   messages and "Pipeline & pages" carries them to their rows; …" and "rail More
   topics in the right rail brings 20 more Build topics, …", at 320, 375 and
   390 in both themes: what is new where the outline has no row is counted on a
-  control a finger can reach ([rails.md](rails.md), "Counts").
+  control a finger can reach ([rails.md](rails.md), "Counts"). "rail on a
+  phone at 320 375 390, with two-digit counts on ☰ Outcomes and on "Pipeline
+  & pages" or one, nothing in the header runs past the page's edge", in both
+  engines, measures each header control's right edge.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).
