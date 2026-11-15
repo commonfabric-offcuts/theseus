@@ -95,9 +95,8 @@ function room(el, way) {
   if (way === 'up' || way === 'down') return way === 'down' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0;
   return way === 'right' ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0;
 }
-// What of el shows: its box cut to the window and to every box around it that
-// clips, or null when none of it shows.
-function showing(el, doc) {
+// Whether some of el shows: inside the window and every scrolling box around it.
+function inSight(el, doc) {
   const view = doc.defaultView, box = el.getBoundingClientRect();
   let area = { top: 0, left: 0, bottom: view.innerHeight, right: view.innerWidth };
   for (let at = el.parentElement; at && at !== doc.body && at !== doc.documentElement; at = at.parentElement) {
@@ -106,10 +105,8 @@ function showing(el, doc) {
     const clip = at.getBoundingClientRect();
     area = { top: Math.max(area.top, clip.top), left: Math.max(area.left, clip.left), bottom: Math.min(area.bottom, clip.bottom), right: Math.min(area.right, clip.right) };
   }
-  const cut = { top: Math.max(box.top, area.top), left: Math.max(box.left, area.left), bottom: Math.min(box.bottom, area.bottom), right: Math.min(box.right, area.right) };
-  return cut.bottom > cut.top && cut.right > cut.left ? cut : null;
+  return box.bottom > area.top && box.top < area.bottom && box.right > area.left && box.left < area.right;
 }
-const inSight = (el, doc) => Boolean(showing(el, doc));
 
 // One step toward a control out of sight: the innermost box around it that
 // hides it and can still scroll that way (else the page) scrolls a third of
@@ -147,11 +144,8 @@ export function reach(from, way, { within = null, doc = from?.ownerDocument ?? g
   // Within the region named, unless a pop-up open over it is the layer the focus is in.
   const nothing = onNothing(from, doc), layer = layerOf(doc, nothing ? null : from), scope = within && layer.contains(within) ? within : layer;
   const list = controls(scope).filter(el => nothing || (el !== from && !el.contains(from) && !from.contains(el)));
-  // From what of it shows: a long message in the Reader, its box running on below the
-  // pane, still has the reply below it. From a field, a button set into its edge (Taller
-  // writing) is beside it.
-  const at = nothing ? edge(doc, way) : showing(from, doc) ?? from.getBoundingClientRect();
-  const next = nearest(at, list.map(el => ({ el, box: el.getBoundingClientRect() })), way, { inside: Boolean(from?.matches?.(FIELD)) });
+  // From a field, a button set into its edge (Taller writing) is beside it.
+  const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list.map(el => ({ el, box: el.getBoundingClientRect() })), way, { inside: Boolean(from?.matches?.(FIELD)) });
   if (!next) return false;
   if (!inSight(next, doc) && stepToward(next, way, doc)) return true;
   next.focus({ preventScroll: true });

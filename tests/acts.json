@@ -14115,21 +14115,6 @@
    "check": {
     "node": "tests/ui_rail_drawer.test.mjs"
    }
-  },
-  {
-   "item": 301,
-   "act": "An arrow goes from what of the focused box shows: from a long message in the Reader at 390, its box running on below the pane, ↓ reaches the reply below",
-   "break": [
-    [
-     "web/arrow-reach.mjs",
-     "showing(from, doc) ?? from.getBoundingClientRect();",
-     "from.getBoundingClientRect();"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "rail arrows in Topic settings and the Reader"
-   }
   }
  ]
 }
