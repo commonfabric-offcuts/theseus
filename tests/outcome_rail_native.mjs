@@ -2384,7 +2384,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.evaluate("document.getElementById('rail-open').focus()");
       await p.key('Enter');
       await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it');
-      await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer');
+      await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer')
+        .catch(async error => { await shot(p, 'rail-arrows-drawer-missing-' + size); throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({rows:[...document.querySelectorAll('#outline [role=treeitem]')].map(e=>[e.textContent.trim().slice(0,30),e.checkVisibility()]),outline:document.getElementById('outline')?.innerHTML.length,open:document.getElementById('rail').className})")); });
       await p.evaluate("(rows=>(rows.find(e=>e.tabIndex===0)??rows[0]).focus())([...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()))");
       await p.key('Home');
       const up = await walk(p, 'ArrowUp');
