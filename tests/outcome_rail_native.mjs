@@ -1530,6 +1530,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     // The keys: ← into the outline on the topic, ↑ to its outcome; Return opens it in place, the keys kept on its row.
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'topic:rail-ring-t', '← goes to the outline, on the topic being read');
+    // Between an open outcome and its first topic is its pencil (item 305).
+    await p.key('ArrowUp');
+    assert.equal(await keyedAt(p), 'outline:ol-pencil-rail-ring-o', '↑ from the first topic is the outcome\'s pencil');
     await p.key('ArrowUp');
     assert.equal(await keyedAt(p), 'name:rail-ring-o');
     await p.key('Enter');
@@ -1537,6 +1540,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => await keyedAt(p) === 'name:rail-ring-o', 'the keys stay on the outcome\'s row');
     // Return on the topic: the keys kept on its row, drawn again for the page reached.
     await settled(p, 'the Conversation is up');
+    await p.key('ArrowDown');
+    assert.equal(await keyedAt(p), 'outline:ol-pencil-rail-ring-o', '↓ from the outcome is its pencil');
     await p.key('ArrowDown');
     assert.equal(await keyedAt(p), 'topic:rail-ring-t');
     await p.key('Enter');
