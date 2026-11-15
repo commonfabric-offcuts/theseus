@@ -3386,11 +3386,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.mine))})) && window.fetchesOut === 0`), 'the answer to the starred reply is drawn');
     assert.equal(await foldOf(topic, ids.kept), false, 'a starred message is not folded by a thumbs-up or a reply, in Core');
     assert.deepEqual(await folded(p, ids.kept), { row: false, words: null, whole: true }, 'and it reads whole');
-    // Taking the thumbs-up back unfolds nothing.
+    // Taking the thumbs-up back unfolds nothing. In a dossier the folded row lights with no bar and shows its own 👍
+    // once given (item 471): that 👍 takes it back.
     await centre(p, card(ids.two));
     await p.point(card(ids.two) + ' > .message-folded > .folded-author', 'move');
-    await until(async () => (await lit(p)).includes(ids.two) && await bar(p) !== null, 'the pointer lights reply two\'s row, with its bar');
-    await p.point('.message-bar [data-act=thumb]');
+    await until(async () => (await lit(p)).includes(ids.two) && await bar(p) === null, 'the pointer lights reply two\'s row, with no bar');
+    await p.point(card(ids.two) + ' > .message-folded > .folded-thumb');
     await until(async () => !await thumbedBy(ids.two), 'the thumbs-up on reply two is taken back, in Core');
     assert.equal(await foldOf(topic, ids.two), true, 'and reply two stays folded');
     // Nobody else's view changes; the person's other device shows both folded.
