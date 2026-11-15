@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 from types import SimpleNamespace
+import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from aim_next import Store, initialize
@@ -461,13 +462,24 @@ def main():
                     {"workspace_id": "w1"}, {"workspace_revision": version})
             return agent
 
+        def drawn_png(width, height):
+            # A gradient, row by row, each row with PNG's filter byte 0, so its size is the one asked for.
+            def chunk(kind, data):
+                return len(data).to_bytes(4, "big") + kind + data + (zlib.crc32(kind + data) & 0xFFFFFFFF).to_bytes(4, "big")
+            rows = b"".join(b"\0" + bytes(value for x in range(width) for value in (x * 255 // width, y * 255 // height, 160)) for y in range(height))
+            head = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes((8, 2, 0, 0, 0))
+            return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", head) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
         def published(operation, items, sender):
-            # Attachments, each published by sender as an agent's CLI publishes one: {"name", "text"}, or
-            # {"name", "image"}, an image from tests/fixtures/media by its file name. Each is OPERATION-media-N.
+            # Attachments, each published by sender as an agent's CLI publishes one: {"name", "text"},
+            # {"name", "image"}, an image from tests/fixtures/media by its file name, or {"name", "png": [width,
+            # height]}, a PNG of that size drawn here. Each is OPERATION-media-N.
             attached = []
             for number, item in enumerate(items):
                 media_id = "%s-media-%d" % (operation, number)
-                if "image" in item:
+                if "png" in item:
+                    data, kind = drawn_png(*item["png"]), "image/png"
+                elif "image" in item:
                     data = (Path(__file__).parent / "media" / item["image"]).read_bytes()
                     kind = {".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}[Path(item["image"]).suffix]
                 else:
@@ -1019,10 +1031,12 @@ def main():
                         # own Notebook, which every topic in it stands on. With
                         # "workspace_id", the person writes in that outcome of theirs,
                         # marking the page a draft with "draft": true.
+                        # "attachments" are the sender's own (published()), named in a card as attachment:OPERATION-media-N.
                         workspace = request.get("workspace_id", "w1")
                         sender = on_team(request["operation_id"]) if workspace == "w1" else actor
+                        attached = published(request["operation_id"], request.get("attachments", []), sender)
                         answer = command("memory.create", request["operation_id"], dict({
-                            "title": request["title"], "body": request["body"], "attachments": [], "references": []},
+                            "title": request["title"], "body": request["body"], "attachments": attached, "references": []},
                             **({"draft": True} if request.get("draft") else {})),
                             {"item_id": request["item_id"], "owner_scope": {"kind": "workspace", "id": workspace}},
                             {"item_revision": 0}, sender=sender)

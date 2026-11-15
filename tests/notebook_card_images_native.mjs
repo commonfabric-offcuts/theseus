@@ -304,6 +304,115 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Outside the card that writes it, wherever a card's words are drawn, its image line is never its markup: the
+  // Reader and a page opened in place on its outcome's page show the image at the size it reads at, read through the
+  // page, an image the page does not carry by its name alone with nothing read for it; the topic's Notebook card,
+  // which shows an excerpt of words, and an ask quoting the card name it after an image glyph. A line that holds the
+  // same characters as words (in a code span, or an image from the web) stays words.
+  const ELSEWHERE = (id, extra = '') => `## Shown\n\nAn image from the page.\n![wide.png](attachment:${id}-media-0)\n\n## Gone\n\n![gone.png](attachment:gone-${id})\n\n` +
+    `## Words\n\n\`![code.png](attachment:${id}-media-0)\`\n![web.png](https://example.invalid/web.png)\n${extra}`;
+  const WIDE = [{ name: 'wide.png', png: [480, 300] }];
+  const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, 390: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true },
+    320: { width: 320, height: 640, deviceScaleFactor: 1, mobile: true } };
+  const sized = (name, url, size, scheme) => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
+    await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await q.send('Emulation.setDeviceMetricsOverride', SIZES[size]);
+    if (size !== 'laptop') await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  } });
+  // Each page image drawn in what the selector names: its name as it shows, whether its picture has loaded, its width
+  // and height as drawn and as the image is, and the width of the words it stands in; and every image read.
+  const drawnImages = (p, scope) => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(scope + ' .page-image')})].map(f=>{const i=f.querySelector(':scope > img.image-thumb'),r=i?.getBoundingClientRect(),
+    w=f.parentElement,s=getComputedStyle(w),inner=w.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight);
+    return {name:f.querySelector(':scope > .page-image-name').textContent,shown:Boolean(i&&!i.hidden&&i.complete&&i.naturalWidth>0),width:r?Math.round(r.width):0,height:r?Math.round(r.height):0,
+      natural:i?i.naturalWidth:0,room:Math.floor(inner)}})`);
+  const imageReads = (p, from) => p.calls.slice(from).filter(call => call.url.endsWith('/api/media/read')).map(call => [call.payload?.media_id, call.payload?.source_ref?.kind, call.payload?.source_ref?.id]);
+  // An image at the size it reads at: as wide as it is, or as the words when it is wider, never a thumbnail.
+  const readingSize = (image, said) => {
+    assert.equal(image.width, Math.min(image.natural, image.room), `${said}: the image is as wide as it is, or as the words: ${JSON.stringify(image)}`);
+    assert.equal(image.height, Math.round(image.width * 300 / 480), `${said}: in proportion: ${JSON.stringify(image)}`);
+  };
+
+  await check('notebook card images the Reader shows a card\'s image at its reading size, read through the page; an image the page does not carry shows its name alone and reads nothing; a line that is words stays words; at 320, 390 and a laptop, light and dark', async () => {
+    const id = 'nb-card-reader', body = ELSEWHERE(id);
+    assert.equal((await control({ method: 'agent_page', operation_id: id, item_id: id, topic_id: 't1', title: 'Reader images', body, attachments: WIDE })).status, 'committed');
+    for (const size of ['laptop', 390, 320]) for (const scheme of ['light', 'dark']) {
+      const label = `${size}-${scheme}`;
+      const p = await sized(`nb-card-reader-${label}`, `/?topic=t1&page=${id}&revision=1`, size, scheme);
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Reader images'`), `${label}: the Reader shows the page`);
+      await until(async () => (await drawnImages(p, '#source-body')).some(image => image.shown), `${label}: the card's image shows in the Reader`);
+      const drawn = await drawnImages(p, '#source-body');
+      assert.deepEqual(drawn.map(image => [image.name, image.shown]), [['wide.png', true], ['gone.png · not on this page', false]], `${label}: the image, and the one not on the page by name`);
+      readingSize(drawn[0], label);
+      const words = await p.evaluate(`({text:document.querySelector('#source-body').textContent,code:[...document.querySelectorAll('#source-body code')].map(c=>c.textContent)})`);
+      assert.ok(!words.text.includes('![wide.png](') && !words.text.includes('![gone.png]('), `${label}: no image line shows as its markup: ${JSON.stringify(words.text)}`);
+      assert.deepEqual(words.code, [`![code.png](attachment:${id}-media-0)`], `${label}: the line in a code span stays words`);
+      assert.ok(words.text.includes('![web.png](https://example.invalid/web.png)'), `${label}: an image from the web stays words`);
+      assert.deepEqual(imageReads(p, 0), [[`${id}-media-0`, 'memory', id]], `${label}: the image is read through the page, and nothing is read for the one not on it`);
+      assert.equal(await sideways(p), false, `${label}: nothing scrolls sideways`);
+      await shot(p, `notebook-card-image-reader-${label}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('notebook card images the topic\'s Notebook card names a card\'s image after an image glyph, never its markup; a line that is words stays words', async () => {
+    // A topic of its own, so its Notebook holds this page among its first.
+    const id = 'nb-card-excerpt', body = ELSEWHERE(id), room = await control({ method: 'agent_topic', operation_id: id + '-topic', title: 'Excerpts', body: 'A topic with a page.', team: true });
+    assert.equal((await control({ method: 'agent_page', operation_id: id, item_id: id, topic_id: room.topic_id, title: 'Excerpt images', body, attachments: WIDE })).status, 'committed');
+    for (const size of ['laptop', 390]) for (const scheme of ['light', 'dark']) {
+      const label = `${size}-${scheme}`, CARD = `#memory-items .memory-card[data-id="${id}"]`;
+      const p = await sized(`nb-card-excerpt-${label}`, `/?topic=${room.topic_id}`, size, scheme);
+      await until(() => p.evaluate(`document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(CARD)}))`), `${label}: the topic's Notebook shows the page's card`);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(CARD + ' > span')}).textContent`),
+        `## Shown\n\nAn image from the page.\n🖼 wide.png\n\n## Gone\n\n🖼 gone.png\n\n## Words\n\n\`![code.png](attachment:${id}-media-0)\`\n![web.png](https://example.invalid/web.png)\n`,
+        `${label}: each image line reads as its name after the glyph, and the lines that are words stay words`);
+      await p.evaluate(`document.querySelector(${JSON.stringify(CARD)}).scrollIntoView({block:'center',behavior:'instant'})`);
+      assert.equal(await sideways(p), false, `${label}: nothing scrolls sideways`);
+      await shot(p, `notebook-card-image-excerpt-${label}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('notebook card images a page opened in place on its outcome\'s page shows a card\'s image at its reading size, read through the page, and an image it does not carry by its name alone', async () => {
+    const id = 'nb-card-in-place', body = ELSEWHERE(id);
+    assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'In place images', body, attachments: WIDE })).status, 'committed');
+    for (const size of ['laptop', 390]) for (const scheme of ['light', 'dark']) {
+      const label = `${size}-${scheme}`, BODY = '#page-here .page-here-body';
+      const p = await sized(`nb-card-in-place-${label}`, `/?workspace=w1&page=${id}&revision=1`, size, scheme);
+      await until(() => p.evaluate(`!document.querySelector('#page-here').hidden && Boolean(document.querySelector(${JSON.stringify(BODY)}))`), `${label}: the page opens in place`);
+      await until(async () => (await drawnImages(p, BODY)).some(image => image.shown), `${label}: the card's image shows in place`);
+      const drawn = await drawnImages(p, BODY);
+      assert.deepEqual(drawn.map(image => [image.name, image.shown]), [['wide.png', true], ['gone.png · not on this page', false]], `${label}: the image, and the one not on the page by name`);
+      readingSize(drawn[0], label);
+      const text = await p.evaluate(`document.querySelector(${JSON.stringify(BODY)}).textContent`);
+      assert.ok(!text.includes('![wide.png](') && !text.includes('![gone.png]('), `${label}: no image line shows as its markup: ${JSON.stringify(text)}`);
+      assert.ok(text.includes(`\`![code.png](attachment:${id}-media-0)\`\n![web.png](https://example.invalid/web.png)`), `${label}: the lines that are words stay words: ${JSON.stringify(text)}`);
+      assert.deepEqual(imageReads(p, 0), [[`${id}-media-0`, 'memory', id]], `${label}: the image is read through the page, and nothing is read for the one not on it`);
+      assert.equal(await sideways(p), false, `${label}: nothing scrolls sideways`);
+      await p.evaluate(`document.querySelector('#page-here').scrollIntoView({block:'start',behavior:'instant'})`);
+      await shot(p, `notebook-card-image-in-place-${label}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('notebook card images an ask about a card quotes its image by name after an image glyph, never its markup', async () => {
+    const id = 'nb-card-ask', ROOT = '#deck-page';
+    assert.equal((await control({ method: 'agent_page', operation_id: id, item_id: id, topic_id: 't1', title: 'Ask images',
+      body: `## Shown\n\nAn image from the page.\n![wide.png](attachment:${id}-media-0)\n\`![code.png](attachment:${id}-media-0)\`\n`, attachments: WIDE })).status, 'committed');
+    const p = await page(id, null, true, { url: `${facts.origin}/?cards=${id}` });
+    await until(() => p.evaluate(`document.body.dataset.ready==='true' && document.querySelectorAll('${ROOT} .deck-card .deck-ask').length===1`), 'the card offers its speech bubble');
+    await p.point(`${ROOT} .deck-card[data-index="0"] .deck-ask`);
+    await until(() => p.evaluate(`document.activeElement===document.querySelector('${ROOT} .deck-ask-field')`), 'the ask opens to write');
+    await p.send('Input.insertText', { text: 'What does the chart show?' });
+    assert.equal(await p.evaluate(`(()=>{const b=[...document.querySelectorAll('${ROOT} .deck-ask-line button')].find(b=>b.textContent==='Ask');if(b)b.dataset.askPress='';return Boolean(b);})()`), true, 'Ask shows');
+    await p.point(`${ROOT} .deck-ask-line [data-ask-press]`);
+    await until(() => p.calls.some(call => call.payload?.kind === 'message.post'), 'the ask is sent');
+    const asked = p.calls.find(call => call.payload?.kind === 'message.post').payload.args.body;
+    assert.ok(asked.startsWith(`What does the chart show?\n\n> **Shown**\n>\n> An image from the page.\n> 🖼 wide.png\n> \`![code.png](attachment:${id}-media-0)\`\n\n`), `the card is quoted, its image by name and the code span as words: ${JSON.stringify(asked)}`);
+    await until(async () => (await core(id)).body.includes('[Reply stack]('), 'the card keeps the link to its stack');
+    assert.ok((await core(id)).body.includes(`![wide.png](attachment:${id}-media-0)`), 'the card keeps its image line');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Each state of a card's image, at a phone's narrowest widths by touch and at a laptop's, light and dark, in the
   // composer where a page opens from its link: shown from Core; being written, with its × (a 44-point target on a
   // phone); uploading, from this device; a failed upload, its line and Retry; refused, the line on a row of its own

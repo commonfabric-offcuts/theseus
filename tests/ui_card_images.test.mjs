@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, imageLine, parseDeck } from '../web/deck.mjs';
+import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, imageLine, imageStandIns, lineImage, parseDeck } from '../web/deck.mjs';
 import { NotebookImages } from '../web/notebook-images.mjs';
 
 // Images in a Notebook card (item 321, docs/decks.md "Images in a card"): a line of a card's words that holds only
@@ -198,4 +198,16 @@ test('an image is put back only when × took it off: never one removed from the 
   assert.equal(await images.restore('elsewhere'), null);
   assert.deepEqual(w.value.attachments, [{ id: 'kept' }]);
   assert.equal(images.released.size, 0);
+});
+
+test('where only words show, an image line reads as the image\'s name after an image glyph, and every other line stays as written', () => {
+  const words = 'Some words.\n![chart.png](attachment:m-1)\n  ![  ](attachment:m-2)  \r\n`![code.png](attachment:m-1)`\nA line with ![inline](attachment:m-2) is words.\n![web.png](https://a.example/x.png)\n> ![quoted.png](attachment:m-1)\n```\n![fenced.png](attachment:m-1)\n```';
+  assert.equal(imageStandIns(words), 'Some words.\n🖼 chart.png\n🖼 Image\r\n`![code.png](attachment:m-1)`\nA line with ![inline](attachment:m-2) is words.\n![web.png](https://a.example/x.png)\n> ![quoted.png](attachment:m-1)\n```\n![fenced.png](attachment:m-1)\n```');
+  assert.deepEqual(lineImage('  ![chart.png](attachment:m-1) \r'), { name: 'chart.png', id: 'm-1' });
+  for (const line of ['`![code.png](attachment:m-1)`', '![web.png](https://a.example/x.png)', '> ![q](attachment:m-1)', '![a](attachment:m-1) and words']) assert.equal(lineImage(line), null, line);
+  // An excerpt cut inside an image line's address reads the same way; a line cut that could be any other is left as it is.
+  for (const cut of ['![chart.png](', '![chart.png](attach', '![chart.png](attachment:', '![chart.png](attachment:m-']) assert.equal(imageStandIns(`Words.\n${cut}`, { partial: true }), 'Words.\n🖼 chart.png', cut);
+  for (const cut of ['![chart.png](https://a.ex', '![chart.png](attachmenx', '![chart.p']) assert.equal(imageStandIns(`Words.\n${cut}`, { partial: true }), `Words.\n${cut}`, cut);
+  assert.equal(imageStandIns('Words.\n![chart.png](attach'), 'Words.\n![chart.png](attach', 'only an excerpt\'s last line may be cut');
+  assert.equal(imageStandIns('```\n![chart.png](attach', { partial: true }), '```\n![chart.png](attach', 'a cut line inside a fence is words');
 });
