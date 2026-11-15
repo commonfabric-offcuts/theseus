@@ -71,8 +71,8 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
   const said = p => text(p, '#team-invite .invite-state');
   const files = () => control({ method: 'sign_in_files' });
   const pressed = p => p.evaluate(`[...document.querySelectorAll('#team-invite .invite-harness .choice-chip')].map(c=>c.textContent+':'+c.getAttribute('aria-pressed'))`);
-  // The team as the panel draws it: one chip per member, named by its ID.
-  const teamIds = p => p.evaluate(`[...document.querySelectorAll('#team-people .chips > :not(.add-chip)')].map(c=>c.firstChild.textContent)`);
+  // The team as the panel draws it: one chip per member, by name.
+  const teamNames = p => p.evaluate(`[...document.querySelectorAll('#team-people .chips > :not(.add-chip)')].map(c=>c.firstChild.textContent)`);
   const phone = async (p, width, height) => {
     await p.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: true });
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
@@ -135,7 +135,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     // Core keeps the agent on the outcome's team, and the panel shows it.
     const members = (await view('workspace_members', { workspace_id: workspace })).items.map(item => [item.actor_id, item.kind, item.name]);
     assert.deepEqual(members.find(item => item[0] === 'release-scribe'), ['release-scribe', 'agent', 'Release scribe']);
-    await until(async () => (await teamIds(p)).includes('release-scribe'), 'the team shows the agent');
+    await until(async () => (await teamNames(p)).includes('Release scribe'), 'the team shows the agent');
     // The sign-in file: one, private to this user, binding the new agent.
     const written = await files();
     assert.equal(written.length, before + 1);
@@ -229,13 +229,17 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     assert.deepEqual(p.errors, []);
   });
 
-  await check('forms invite a member who does not organise the outcome is offered no invite', async () => {
+  await check('forms invite a member who does not organise the outcome is offered no invite, and is offered it once the outcome is handed to them', async () => {
     const workspace = await outcome('Invite, a member only', { team: [facts.agent], owner: facts.agent });
     const p = await open('invite-member', workspace);
-    await until(async () => (await teamIds(p)).length >= 2, 'the team shows');
+    await until(async () => (await teamNames(p)).length >= 2, 'the team shows');
     assert.deepEqual([await visible(p, '#team-invite'), await visible(p, '#invite-agent'), await visible(p, '#team-people .add-chip')], [false, false, false],
       'neither + Add nor + Invite agent for a member who does not organise the outcome');
     await shot(p, 'invite-member-only-1440');
+    // Handed back, the outcome is the person's to organise: the page learns it and offers the invite.
+    await control({ method: 'outcome_change', operation_id: 'invite-member-handed-back', sender: facts.agent, workspace_id: workspace, owner: facts.actor });
+    await until(() => visible(p, '#invite-agent'), 'the invite is offered once the person owns the outcome');
+    await openLine(p);
     assert.deepEqual(p.errors, []);
   });
 
@@ -278,7 +282,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
       await until(async () => (await said(p))?.startsWith('Quiet helper is on the team, but its sign-in file could not be written in '), 'the file not written is said');
       assert.ok((await said(p)).endsWith('Try again: the same invitation writes it, and nothing else is repeated. Try again'), await said(p));
       assert.equal(await focused(p), 'text-action invite-retry', 'the focus is on Try again');
-      await until(async () => (await teamIds(p)).includes('quiet-helper'), 'the agent is on the team already');
+      await until(async () => (await teamNames(p)).includes('Quiet helper'), 'the agent is on the team already');
       assert.equal(await visible(p, '#invite-prompt-text'), false, 'no prompt without its sign-in file');
       assert.equal((await files()).some(file => file.actor === 'quiet-helper'), false);
       await fits(p, 'not written, Try again');
