@@ -2456,6 +2456,26 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // A finger's tap lights a card. The first mouse move after it, with the pointer never placed, only places it: WebKit
+  // sends a mouse's move after a scroll that follows a tap, and it once took the light (and the bar) from the tapped
+  // card at random. A move after that is a pointer's own, and acts as one: over another card it lights it, over
+  // nothing it lets the light go.
+  await check('reading stacks a tap\'s light stays through the first mouse move after it, which only places the pointer; moves after it light another card or let the light go', async () => {
+    const topic = 'stack-tap-then-mouse';
+    const ids = await seed(topic, [['alone', { sender: other, join: true, addressees: [facts.actor], body: 'A message on its own.', read: true }],
+      ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Who has the spare key?', read: true }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'It hangs by the door.', read: true }]]);
+    const p = await open(topic, 'phone', topic, ids.root);
+    await light(p, 'phone', ids.one);
+    await away(p); await twoFrames(p);
+    assert.deepEqual([(await lit(p)).includes(ids.one), await bar(p) !== null], [true, true], 'the first mouse move after the tap leaves the tapped card lit, with its bar');
+    await centre(p, words(ids.alone)); await p.point(words(ids.alone), 'move');
+    await until(async () => (await lit(p)).includes(ids.alone) && !(await lit(p)).includes(ids.one) && await bar(p) !== null, 'the next move, over another card, lights it with its bar');
+    await away(p);
+    await until(async () => (await lit(p)).length === 0, 'and a move over nothing lets the light go');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // A reply lit under the pointer and then folded away in its stack has no
   // box for its bar to sit over: the light goes, and no bar is left lying
   // over the stack's fold line, where the pointer goes next to open it again.

@@ -273,7 +273,11 @@ their acts.
   covers a folded row's 👍 either: it sits above the row, or under it. Once the
   row has gone above the window, the bar scrolls away with its card, as any
   message's bar does. A lit reply that its stack folds away loses its light
-  and its bar, so no message bar is left over the stack's chevron.
+  and its bar, so no message bar is left over the stack's chevron. A card a
+  finger tapped keeps its light and bar while the page scrolls: the first
+  mouse move after a tap only places the pointer (WebKit sends one after a
+  scroll that follows a tap), and the moves after it light what they pass
+  over, or let the light go over nothing, as a pointer's moves do.
 - **One New line.** It goes under the lowest stack that holds the line's
   message or anything newer that is not the reader's own (`lineUnder`). It is
   never inside a stack, and nothing new sits below it. While the line's
@@ -558,6 +562,7 @@ twin without judging it, as the rule for that case is still open (item 430).
 | a swipe on a dossier's last visible message folds it in place; the title bar alone moves the dossier below More and back | in Chrome (a finger's drag), `tests/stack_native.mjs`, "reading stacks below More uses a real swipe …"; the trackpad, "reading stacks on a laptop two fingers swiped right on the trackpad …" |
 | the lit card's ring above the next card, a reply's and the first message's, read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, light and dark, `tests/stack_native.mjs`, "reading stacks the lit card's ring keeps its bottom side above the next card …" |
 | a fold line in a dossier under the pointer and open | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a fold line in a dossier answers the pointer …" |
+| a tap's light and bar through the first mouse move after it, and the moves after it lighting another card or letting the light go | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a tap's light stays through the first mouse move after it …" |
 | one line of a message: the author's words after a quote, colon and all, a quote alone, list and heading marks, an attachment alone, an empty message, a long line | `tests/ui_message_preview.test.mjs` |
 | on the page: folded rows, a dossier's name folded and not, and a message on its own show the author's own words on one line, at 320, 375 and 390 pixels and on a laptop; renaming starts from that name and Return unchanged names nothing | `tests/stack_native.mjs`, "reading stacks a folded message's row shows its author's own words …", in Chrome and Safari's engine |
 | an act's answer that lands after a 👍's reactions read put a new copy of the message in the page: x never refolds it and a second x is not refused, a star stays | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks x unfolds a folded message while its 👍's read is out …" and "reading stacks Star for me on a folded message while its 👍's read is out …" |

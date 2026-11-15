@@ -14104,6 +14104,21 @@
     "native": "reading",
     "case": "reading dossier look gives a saved fold"
    }
+  },
+  {
+   "item": 430,
+   "act": "The first mouse move after a finger's tap only places the pointer, so a tapped card keeps its light and bar",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "pointer.y === event.screenY : this.touch;",
+     "pointer.y === event.screenY : false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a tap's light stays through the first mouse move after it"
+   }
   }
  ]
 }

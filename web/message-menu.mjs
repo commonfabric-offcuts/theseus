@@ -74,7 +74,11 @@ export class MessageMenu {
       if (event.pointerType === 'touch') return;
       // WebKit also emits pointermove after a scroll with unchanged screen
       // coordinates. That event must not take selection from the keyboard.
-      const still = pointer && pointer.x === event.screenX && pointer.y === event.screenY;
+      // After a finger's press the pointer has no place yet, and the first
+      // mouse move only gives it one: WebKit may send a mouse's move after a
+      // scroll that follows a tap, and that move must not take a light the
+      // tap gave (docs/reply-stacks.md, "The bar").
+      const still = pointer ? pointer.x === event.screenX && pointer.y === event.screenY : this.touch;
       pointer = { x: event.screenX, y: event.screenY };
       // While the bar's ⋯ menu is open the light stays on its message.
       if (still || this.menuOpen()) return;
