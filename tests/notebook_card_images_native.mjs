@@ -346,10 +346,12 @@ export async function cardImageChecks({ check, page, until, control, view, facts
       const drawn = await drawnImages(p, '#source-body');
       assert.deepEqual(drawn.map(image => [image.name, image.shown]), [['wide.png', true], ['gone.png · not on this page', false]], `${label}: the image, and the one not on the page by name`);
       readingSize(drawn[0], label);
-      const words = await p.evaluate(`({text:document.querySelector('#source-body').textContent,code:[...document.querySelectorAll('#source-body code')].map(c=>c.textContent)})`);
+      const words = await p.evaluate(`({text:document.querySelector('#source-body').textContent,code:[...document.querySelectorAll('#source-body code')].map(c=>c.textContent),
+        web:[...document.querySelectorAll('#source-body a[href="https://example.invalid/web.png"]')].map(a=>a.textContent),pictures:document.querySelectorAll('#source-body img').length})`);
       assert.ok(!words.text.includes('![wide.png](') && !words.text.includes('![gone.png]('), `${label}: no image line shows as its markup: ${JSON.stringify(words.text)}`);
       assert.deepEqual(words.code, [`![code.png](attachment:${id}-media-0)`], `${label}: the line in a code span stays words`);
-      assert.ok(words.text.includes('![web.png](https://example.invalid/web.png)'), `${label}: an image from the web stays words`);
+      // An image from the web is words, as in any message: its name a link to its address, and no picture.
+      assert.deepEqual([words.text.includes('!web.png'), words.web, words.pictures], [true, ['web.png'], 1], `${label}: an image from the web stays words`);
       assert.deepEqual(imageReads(p, 0), [[`${id}-media-0`, 'memory', id]], `${label}: the image is read through the page, and nothing is read for the one not on it`);
       assert.equal(await sideways(p), false, `${label}: nothing scrolls sideways`);
       await shot(p, `notebook-card-image-reader-${label}`);
