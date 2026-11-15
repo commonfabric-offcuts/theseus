@@ -1971,6 +1971,11 @@
      "web/in-place-navigation.mjs",
      "    if (way.landing === 'page' && inRails(at)) at.blur();\n",
      ""
+    ],
+    [
+     "web/in-place-navigation.mjs",
+     "    this.moving = true;\n    this.drawer?.close();\n",
+     "    this.moving = true;\n"
     ]
    ],
    "check": {
