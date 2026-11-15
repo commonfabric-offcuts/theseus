@@ -13849,7 +13849,7 @@
   },
   {
    "item": 307,
-   "act": "A whispered reply never answers an ask an open owner-gated stage still needs",
+   "act": "A whispered reply never answers an ask an open owner-gated stage still needs, and tells nobody a wait moved",
    "break": [
     [
      "aim_next/topic_state.py",

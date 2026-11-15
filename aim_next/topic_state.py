@@ -11,7 +11,9 @@ where it stands, stay with the outcome's owner and the topic's creator.
 A topic waits on someone for either of two reasons, kept on one row per
 topic and person in topic_waiting: someone said so (`said`, the topic's
 state is waiting and names them), or a message asked them and they have not
-written in the topic since (`ask_message_id`, the oldest such ask). The row
+written in the topic since, nor answered that ask alone by their 👍 or by a
+whisper replying to it to whoever asked (`ask_message_id`, the oldest such
+ask). The row
 lives while either reason holds; its order time is the state's time while
 it is said, else the ask's.
 """

@@ -563,8 +563,11 @@ class StageThumbCase(test_pipeline_steering.PipelineCase):
         ask = self.post("@owner would you read 1?", addressees=["owner"], intent="ask")
         self.committed(self.command("pipeline.stage_enter", {"stage_id": "tony-reads", "left_outcome": "approved", "ask_message_id": ask},
                                     {"piece_id": piece}, actor="agent-a"))
+        told = lambda: self.sql("SELECT count(*) FROM changes WHERE scope_kind='actor' AND scope_id='owner' AND resource_kind='waiting'")[0][0]
+        before = told()
         self.post("Read it: looks right.", actor="owner", addressees=["agent-a"], whisper=True, reply_to=ask)
         self.assertEqual(self.sql("SELECT actor_id,ask_message_id FROM topic_waiting WHERE topic_id='t1'"), [("owner", ask)])
+        self.assertEqual(told(), before, "and the owner is not told a wait moved")
 
 
 if __name__ == "__main__":
