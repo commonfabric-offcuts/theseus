@@ -812,6 +812,9 @@ VIEW_PATHS = {
     "message_acts": "only acts on messages the reader may see: the whisper rule on each row's message in the query, and in its version",
     "stack_positions": "each message named through _acted_message, which applies visible(); its dossier's root, members, newest message and the "
                        "topic's newest act under the whisper rule, so a whisper never moves a position anyone outside it reads",
+    "stack_namer": "the message named through _acted_message, which applies visible(); its root walked up through parents each "
+                   "checked by visible(), and its name under the whisper rule; its namer found from replies on the record only, "
+                   "so a whisper never names one",
     "stars": "the reader's own stars on messages they may see: the whisper rule and READABLE in the query",
     "wakes": "on_record_wake_health for every reader but the agent",
     "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
@@ -870,7 +873,9 @@ MESSAGE_READS = {
                            "folds for them, checked by visible() before the fold is recorded; the acts and stars views, under the whisper rule; "
                            "a dossier's root, walked up from a message the reader sees through parents each checked by visible(); its "
                            "members, its newest message and the topic's newest message and act, each under VISIBLE, so a whisper "
-                           "someone is outside never moves a position or a sequence they read", 16),
+                           "someone is outside never moves a position or a sequence they read; a dossier's namer (item 479), from "
+                           "its root's outcome and the replies among its members on the record only, walked as no one, so a "
+                           "whisper never makes its author a namer", 18),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
