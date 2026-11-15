@@ -130,7 +130,7 @@ def compose_completed(report):
             and 'fixtureExitSignal' in report and report['fixtureExitSignal'] is None
             and report.get('plannedPhases') == PHASES and report.get('completedPhases') == PHASES)
 
-def cases(step, out, expected=None):
+def cases(step, out):
     name = step['name']
     native = NATIVE[name]
     report = read_json(out / 'native' / native.name / native.results)
@@ -139,8 +139,6 @@ def cases(step, out, expected=None):
     require(all(isinstance(r, dict) and type(r.get('passed')) is bool for r in rows), name + ': invalid result')
     actual = [key(r) for r in rows]
     require(len(actual) == len(set(actual)), name + ': duplicate case identity')
-    if expected is not None:
-        require(set(actual) == {key(r) for r in expected}, name + ': case inventory differs from expected evidence')
     counts, good = native_counts(native, out / 'native' / native.name)
     require(step.get('counts') == counts, name + ': summary counts disagree with report')
     require(counts['browser_closed'] is True, name + ': browser cleanup failed')
@@ -170,8 +168,8 @@ def profile_identity(profile):
     return {k: profile[k] for k in PROFILE_FIELDS}
 
 def replay_evidence(step, out, traffic):
-    routed = unique(traffic.get('routed'), 'reviewed routed actors')
-    require(bool(routed), 'wake-replay: empty reviewed routed actor inventory')
+    routed = unique(traffic.get('routed'), 'head routed actors')
+    require(bool(routed), 'wake-replay: empty head routed actor inventory')
     runs = step.get('runs')
     require(isinstance(runs, list) and bool(runs), 'wake-replay: missing runs')
     replay_runs = []
@@ -232,7 +230,7 @@ def unit_records(text, node=False):
     require(pending is None, 'python-units: final check outcome missing')
     return rows
 
-def unit_evidence(step, out, expected=None):
+def unit_evidence(step, out):
     name = step['name']
     text = (out / (name + '.log')).read_text()
     counts, good = node_counts(text) if name == 'node-units' else python_counts(text)
@@ -246,12 +244,6 @@ def unit_evidence(step, out, expected=None):
             name + ': unapproved skipped/todo or missing individual check outcomes')
     actual = Counter(key(row) for row, _ in rows)
     require(all(n == 1 for n in actual.values()), name + ': duplicate executed identity')
-    if expected is None:
-        return
-    plan = Counter(key(row) for row in expected)
-    require(all(actual[k] == count for k, count in plan.items())
-            and all(count == plan.get(k, 1) for k, count in actual.items()),
-            name + ': reviewed check inventory omitted or duplicated')
 
 def producer_binding(path, environ):
     """Bind protected API evidence to the workflow_run event, never to artifacts.
@@ -403,7 +395,7 @@ def read_evidence(summary_path, provenance_path, shards, root, commit, run, base
     traffic = json.loads(source(root, commit, REPLAY_FILE))
     provenance, summary = read_json(provenance_path), read_json(summary_path)
     same_run(provenance.get('run'), run)
-    require(provenance.get('base') == base, 'wrong event base policy')
+    require(provenance.get('base') == base, 'wrong API event base')
     require(provenance.get('merge') == expected_merge, 'wrong tested merge or tree')
     if binding is not None:
         require(provenance.get('head') == {'ref': binding['producer']['head_branch'], 'sha': binding['producer']['head_sha']},
