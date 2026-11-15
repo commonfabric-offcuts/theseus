@@ -2167,7 +2167,6 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // words a gap from each pill. At a narrow laptop (1024) the outline is beside the page, so only "Pipeline & pages"
   // shows, on the name's line; on a laptop both rails are beside the page and neither pill shows. Nothing scrolls sideways.
   await check('rail the header at 320, 375, 390, a narrow laptop and a laptop, light and dark, in each state of "☰ Outcomes" (nothing, a count, a count and the light, two digits with and without the light): "Pipeline & pages" goes under "☰ Outcomes" only when the two pills and one gap do not fit the row, otherwise the outcome\'s name gives up its room and the two share one line, and nothing scrolls sideways', async () => {
-    await control({ method: 'light_outcome', outcome: 'rail-head-o', title: 'Header outcome', topic: { id: 'rail-head-t', title: 'Header topic' } });
     const news = async (from, to) => { for (let n = from; n < to; n++) await control({ method: 'agent_message', operation_id: `rail-head-${n}`, body: `News ${n} for the header`, topic_id: 'rail-head-t' }); };
     const SIZE_HEAD = { ...SIZE_464, 1024: { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false } };
     const openHead = (name, size, theme) => page(name, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
@@ -2201,7 +2200,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         const p = await openHead(`rail-head-${state.replace(/\W+/g, '-')}-${size}-${theme}`, size, theme);
         // The count and the light on "☰ Outcomes" are painted at every width (it only shows on a phone), and on a
         // middle or phone width "Pipeline & pages" is in the header before the row is measured.
-        const seen = await until(async () => { const h = await header(p); return is(h) && (size === 'laptop' || h.pages) && h; }, `${at}: "☰ Outcomes" shows ${state}, and the header is drawn`);
+        let last = null;
+        const seen = await until(async () => { const h = last = await header(p); return is(h) && (size === 'laptop' || h.pages) && h; }, `${at}: "☰ Outcomes" shows ${state}, and the header is drawn`)
+          .catch(error => { throw Error(`${error.message} (last drawn: ${JSON.stringify(last)})`); });
         // A page wider than a phone's screen widens the layout viewport with it (innerWidth 321 at 320), so the screen's
         // width is the size the page was opened at.
         const drawn = JSON.stringify(seen), screen = SIZE_HEAD[size].width;
@@ -2240,6 +2241,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     };
     const PHONES = [320, 375, 390];
     await measure({ state: 'nothing', is: h => h.count === 0 && !h.light, sizes: PHONES, fitsAt320: true });
+    await control({ method: 'light_outcome', outcome: 'rail-head-o', title: 'Header outcome', topic: { id: 'rail-head-t', title: 'Header topic' } });
     await news(0, 3);
     await measure({ state: 'a count', is: h => h.count >= 1 && h.count <= 9 && !h.light, sizes: PHONES, fitsAt320: true });
     await control({ method: 'agent_message', operation_id: 'rail-head-ask', body: 'Which header do we keep?', topic_id: 'rail-head-t', addressees: [facts.actor], intent: 'ask' });
