@@ -1801,6 +1801,131 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await phone.close();
   });
 
+  // A card's words, pressed and read as the cases below press and read them (item 478): where some of its words are
+  // on screen, the middle of their first box; the pointer moved there, Shift held when modifiers is 8; those words
+  // selected, as a drag over them selects them; the words of the lit passage, or null; and the Reader's reply.
+  const wordsAt = (p, id, text) => p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(id))}),t=${JSON.stringify(text)},walker=document.createTreeWalker(w,4);let n;
+    while((n=walker.nextNode())&&!n.data.includes(t));if(!n)return null;const r=document.createRange();r.setStart(n,n.data.indexOf(t));r.setEnd(n,n.data.indexOf(t)+t.length);
+    const b=r.getClientRects()[0];return {x:b.left+b.width/2,y:b.top+b.height/2}})()`);
+  const moveTo = async (p, id, text, modifiers = 0) => { const at = await wordsAt(p, id, text); assert.ok(at, `${text} is drawn on ${id}`); await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, modifiers }); };
+  const selectOn = (p, id, text) => p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(id))}),t=${JSON.stringify(text)},walker=document.createTreeWalker(w,4);let n;
+    while((n=walker.nextNode())&&!n.data.includes(t));if(!n)return false;const r=document.createRange();r.setStart(n,n.data.indexOf(t));r.setEnd(n,n.data.indexOf(t)+t.length);
+    getSelection().removeAllRanges();getSelection().addRange(r);return getSelection().toString()===t})()`);
+  const shining = p => p.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return h&&h.size?[...h][0].toString():null})()`);
+  const replyOf = p => p.evaluate(`document.querySelector('#writing-body').value`);
+
+  // A lit passage promises the quote Return would make (docs/experience-guidelines.md, "Keys mean one thing in each
+  // place"): the focus moving where Return does something else, a control of the lit message (its ☆, the bar's 👍,
+  // Reply and ⋯) or writing, puts the light out, as it goes out in the Reader. Back on the card, where Return quotes,
+  // the pointer resting on the words lights a passage again, and Return quotes it.
+  await check('reading a card\'s lit passage goes out as the focus moves to a control of the message or to writing, where Return does something else', async () => {
+    const topic = 'reading-passage-focus';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    const on = card(ids.alone);
+    // Where the focus is: the card itself, or a control of the message (in its card or its bar) by its name.
+    const focus = () => p.evaluate(`(c=>{const e=document.activeElement,b=document.querySelector('${BAR}');return e===c?'card':c.contains(e)||b.contains(e)?(e.getAttribute('aria-label')||e.title||e.textContent):e&&e.matches('input,textarea,[contenteditable="true"]')?'writing':e?e.tagName.toLowerCase():null})(document.querySelector(${JSON.stringify(on)}))`);
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'lit passage');
+    await becomes(() => shining(p), said[1] + ' ', 'the passage under the pointer lights');
+    // The pointer moving onto the message gave it the keys' place: the focus is on the card, where Return quotes.
+    assert.equal(await focus(), 'card', 'the focus is on the card');
+    // Tab goes through the message's controls; at each, Return presses the control, and no passage is lit.
+    const stops = [];
+    for (let i = 1; i <= 4; i++) {
+      const was = await focus();
+      await p.key('Tab');
+      await until(async () => await focus() !== was, `Tab ${i} moves the focus`);
+      stops.push(await focus());
+      assert.ok(!['card', 'body', null].includes(stops.at(-1)), `Tab ${i} reaches a control of the message (${stops.join(', ')})`);
+      assert.equal(await shining(p), null, `at ${stops.at(-1)} (Tab ${i}), where Return presses the control and quotes nothing, no passage is lit`);
+    }
+    // Shift-Tab comes back to the card: the pointer resting on the words lights a passage there again, and Return quotes it.
+    for (let i = 0; i < 4 && await focus() !== 'card'; i++) {
+      const was = await focus();
+      await p.key('Tab', 8);
+      await until(async () => await focus() !== was, 'Shift-Tab moves the focus back');
+    }
+    assert.equal(await focus(), 'card', 'Shift-Tab comes back to the card');
+    await moveTo(p, ids.alone, 'Words after');
+    await becomes(() => shining(p), said[2], 'with the focus on the card, the passage under the pointer lights');
+    assert.equal(await focus(), 'card', 'and the focus stays on the card');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await replyOf(p), `> ${said[2]}\n\n`, 'Return on the card quotes the passage lit');
+    await closeReader(p, 'laptop');
+    // The focus moving into writing by the keys (⌘Return, a new message in this page's place) puts the light out too.
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'lit passage');
+    await becomes(() => shining(p), said[1] + ' ', 'a passage lights again');
+    assert.equal(await focus(), 'card', 'the focus is on the card');
+    await p.key('Enter', 4);
+    await until(async () => await focus() === 'writing', '⌘Return puts the cursor in writing');
+    assert.equal(await shining(p), null, 'with the cursor in writing, where Return makes a new line, no passage is lit');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Shift-click on a card lights from the passage lit first to the one under the pointer, as in the Reader, and opens
+  // nothing; the browser grows no selection of its own beside the light. Words selected on a card (dragged over) are
+  // what Shift grows the light from, giving way to it, and what Return quotes when they are there.
+  await check('reading Shift-click on a card grows the light and opens nothing; words selected on a card anchor Shift\'s light, and Return quotes exactly them', async () => {
+    const topic = 'reading-passage-shift';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const body = said.join(' ');
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    const on = card(ids.alone);
+    const collapsed = () => p.evaluate('getSelection().isCollapsed');
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shining(p), said[0] + ' ', 'the first passage lights');
+    // Off the words, on the author's line, the light stays; the Shift-click is then pressed where the last passage is.
+    await p.point(on + ' > .message-author', 'move');
+    assert.equal(await shining(p), said[0] + ' ', 'off the words the passage lit stays lit');
+    const at = await wordsAt(p, ids.alone, 'Words after');
+    const taps = await p.evaluate('window.taps');
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: 8 });
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: 8 });
+    await until(() => p.evaluate(`window.taps > ${taps}`), 'the Shift-click is heard');
+    await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    assert.equal(await shining(p), body, 'Shift-click lights from the passage lit first to the one under the pointer');
+    assert.equal(await readerOn(p), null, 'Shift-click opens nothing');
+    assert.equal(await collapsed(), true, 'and the browser grows no selection of its own beside the light');
+    await shot(p, 'reading-passage-shift-click');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await replyOf(p), `> ${body}\n\n`, 'Return quotes the passages the Shift-click lit');
+    await closeReader(p, 'laptop');
+    // Words dragged over in the middle passage, another passage lit: Shift grows the light from the passages the
+    // words touch, not from the passage lit, and the selection gives way to the light.
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shining(p), said[0] + ' ', 'the first passage lights again');
+    assert.equal(await selectOn(p, ids.alone, 'passage is these'), true, 'words in the middle passage selected');
+    await moveTo(p, ids.alone, 'Words after', 8);
+    await becomes(() => shining(p), `${said[1]} ${said[2]}`, 'moved with Shift held, the light grows from the passage the selected words are in, not from the one lit');
+    assert.equal(await collapsed(), true, 'the selection gives way to the light');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.ok((await replyOf(p)).endsWith(`> ${said[1]} ${said[2]}\n\n`), `Return quotes the passages lit from the selection: ${JSON.stringify(await replyOf(p))}`);
+    await closeReader(p, 'laptop');
+    // Words selected on a card with a passage lit: Return quotes exactly the words selected, not the passage.
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shining(p), said[0] + ' ', 'the first passage lights again');
+    assert.equal(await selectOn(p, ids.alone, 'passage is these'), true, 'words in the middle passage selected');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.ok((await replyOf(p)).endsWith(`\n\n> passage is these\n\n`), `Return quotes exactly the words selected, not the passage lit: ${JSON.stringify(await replyOf(p))}`);
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // Lighting a cut-off card reads its whole message ahead in the background lane, one read at a time with a short
   // queue. Show full is the person's own act: while that read ahead is slow (held in the server), Show full still
   // shows the whole message and does not wait behind it.

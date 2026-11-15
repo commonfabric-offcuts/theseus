@@ -1210,24 +1210,44 @@ async function run() {
     const held = await wordsAt(p, n);
     assert.ok(held.bottom <= held.room.bottom + 2 && held.top >= held.room.top - 2, `not scrolled, the quoted words stay in sight above the reply as it grows (words ${Math.round(held.top)}–${Math.round(held.bottom)}px, the room ${Math.round(held.room.top)}–${Math.round(held.room.bottom)}px; quoted ${JSON.stringify(quoted)}, then ${JSON.stringify(held)})`);
     await shot(p, 'quote-held-while-typing');
-    // The words scrolled below what shows: by a drag of the message's
+    // The message scrolled by dy (down when positive) by a drag of its
     // scrollbar where it has one. Safari's engine draws an overlay scrollbar
     // a headless pointer cannot hold; there the message is scrolled from
-    // outside the page's code, as a scrollbar's drag scrolls it.
-    const lift = held.room.bottom - held.top + 2 * held.lineHeight;
-    const bar = await p.evaluate(() => { const body = document.querySelector('#source-body'), box = body.getBoundingClientRect(), style = getComputedStyle(body);
-      return { width: body.offsetWidth - body.clientWidth - parseFloat(style.borderRightWidth) - parseFloat(style.borderLeftWidth), right: box.right - parseFloat(style.borderRightWidth), top: box.top, height: body.clientHeight, ratio: body.clientHeight / body.scrollHeight, scroll: body.scrollTop }; });
-    assert.ok(bar.scroll > lift, `the message is scrolled far enough to scroll back (${bar.scroll}px, ${Math.round(lift)}px wanted)`);
-    if (bar.width >= 6) {
-      const thumb = bar.top + (bar.scroll + bar.height / 2) * bar.ratio, x = bar.right - bar.width / 2;
-      await p.mouse.move(x, thumb); await p.mouse.down(); await p.mouse.move(x, thumb - lift * bar.ratio, { steps: 6 }); await p.mouse.up();
-    } else await p.evaluate(lift => { document.querySelector('#source-body').scrollTop -= lift; }, lift);
-    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // outside the page's code, as a scrollbar's drag scrolls it. Where the
+    // message was, and whether its scrollbar was dragged.
+    const drag = async dy => {
+      const bar = await p.evaluate(() => { const body = document.querySelector('#source-body'), box = body.getBoundingClientRect(), style = getComputedStyle(body);
+        return { width: body.offsetWidth - body.clientWidth - parseFloat(style.borderRightWidth) - parseFloat(style.borderLeftWidth), right: box.right - parseFloat(style.borderRightWidth), top: box.top, height: body.clientHeight, ratio: body.clientHeight / body.scrollHeight, scroll: body.scrollTop, end: body.scrollHeight - body.clientHeight }; });
+      assert.ok(dy < 0 ? bar.scroll > -dy : bar.end - bar.scroll > dy, `the message has room to scroll ${dy < 0 ? 'back' : 'on'} (at ${bar.scroll}px of ${bar.end}px, ${Math.round(Math.abs(dy))}px wanted)`);
+      if (bar.width >= 6) {
+        const thumb = bar.top + (bar.scroll + bar.height / 2) * bar.ratio, x = bar.right - bar.width / 2;
+        await p.mouse.move(x, thumb); await p.mouse.down(); await p.mouse.move(x, thumb + dy * bar.ratio, { steps: 6 }); await p.mouse.up();
+      } else await p.evaluate(dy => { document.querySelector('#source-body').scrollTop += dy; }, dy);
+      await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      return { from: bar.scroll, how: bar.width >= 6 ? 'the scrollbar\'s drag' : 'the scroll' };
+    };
+    // Reading on down past the words quoted, the person's scroll down lets
+    // them go: the reply growing again leaves the message where they put it,
+    // with the words above what shows.
+    const on = held.bottom - held.room.top + 2 * held.lineHeight;
+    const down = await drag(on);
+    const read = await wordsAt(p, n);
+    assert.ok(read.scroll > down.from + on / 2 && read.bottom < read.room.top, `${down.how} moved the message down, the words above what shows (${down.from} to ${read.scroll}; the words end at ${Math.round(read.bottom)}px, the room starts at ${Math.round(read.room.top)}px)`);
+    await growLine(p, 'A third thought.');
+    const readOn = await wordsAt(p, n);
+    assert.ok(Math.abs(readOn.scroll - read.scroll) <= 1, `after the person's scroll down, the reply changing size leaves the message where they put it, the words not pulled back (${read.scroll}, then ${readOn.scroll})`);
+    // Quoted again, the words are kept in sight again until the person
+    // scrolls back up past them, which lets them go as well.
+    await quoteAt(p, n);
+    const again = await wordsAt(p, n);
+    assert.ok(again.bottom <= again.room.bottom + 2 && again.top >= again.room.top - 2, `quoted again, the words show (${JSON.stringify(again)})`);
+    const lift = again.room.bottom - again.top + 2 * again.lineHeight;
+    const up = await drag(-lift);
     const scrolled = await wordsAt(p, n);
-    assert.ok(scrolled.scroll < bar.scroll - lift / 2 && scrolled.top > scrolled.room.bottom, `${bar.width >= 6 ? 'the scrollbar\'s drag' : 'the scroll'} moved the message, the words below what shows (${bar.scroll} to ${scrolled.scroll}; the words start at ${Math.round(scrolled.top)}px, the room ends at ${Math.round(scrolled.room.bottom)}px)`);
+    assert.ok(scrolled.scroll < up.from - lift / 2 && scrolled.top > scrolled.room.bottom, `${up.how} moved the message back, the words below what shows (${up.from} to ${scrolled.scroll}; the words start at ${Math.round(scrolled.top)}px, the room ends at ${Math.round(scrolled.room.bottom)}px)`);
     await dropLine(p);
     const after = await wordsAt(p, n);
-    assert.ok(Math.abs(after.scroll - scrolled.scroll) <= 1, `after the person's scroll, the reply changing size leaves the message where they put it (${scrolled.scroll}, then ${after.scroll})`);
+    assert.ok(Math.abs(after.scroll - scrolled.scroll) <= 1, `after the person's scroll back, the reply changing size leaves the message where they put it (${scrolled.scroll}, then ${after.scroll})`);
     await close(p);
   }
 
