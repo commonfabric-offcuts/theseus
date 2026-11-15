@@ -326,3 +326,23 @@ test('the Health page says it is reading again, never "everything is working", f
   await second;
   assert.match(texts(host).join(' '), /Everything is working/);
 });
+
+test('a release from a merged train says no release check ran here and what its judgment says, never that checks passed', () => {
+  const details = release => healthLines(answer({ release: { release: 76, commit: 'a'.repeat(40), deployed_ms: NOW - 5 * MIN, items: [481], source: 'deploy', ...release } }), { now: NOW })
+    .find(item => item.key === 'release').details;
+  // The view's answer for each record a deploy writes (aim_next/health.py): an ordinary train pending, then judged; a
+  // train judged before its merge.
+  assert.deepEqual(details({ check: null, train: { kind: 'ordinary', judgment: 'pending', succeeded: null, total: null } }),
+    ['It came from a merged train, so no release check ran here.', 'Its hosted judgment is still pending.', 'It shipped pipeline item 481.']);
+  assert.deepEqual(details({ check: null, train: { kind: 'ordinary', judgment: 'judged', succeeded: 1, total: 2 } }),
+    ['It came from a merged train, so no release check ran here.', 'Its hosted judgment: 1 of 2 runs and checks succeeded.', 'It shipped pipeline item 481.']);
+  assert.deepEqual(details({ check: null, train: { kind: 'judged-first', judgment: 'judged', succeeded: 3, total: 3 } }),
+    ['It came from a merged train judged before its merge, so no release check ran here.', 'That judgment: 3 of 3 runs and checks succeeded.', 'It shipped pipeline item 481.']);
+  // A check that kept no counts, as an older server's answer for a train's record has, says no summary was kept.
+  assert.deepEqual(details({ check: { finished_ms: null, commit: null, python: null, node: null, native: null } }),
+    ['No release check summary was kept for it.', 'It shipped pipeline item 481.']);
+  // The negative: a release check's record still says its counts passed, and a record with none says so.
+  assert.match(details({ check: { finished_ms: null, commit: null, python: 1106, node: 740, native: { pass: 208, total: 208 } } })[0],
+    /^Its release check: 1,106 Python, 740 Node and 208 of 208 browser checks passed\.$/);
+  assert.equal(details({ check: null })[0], 'No release check summary was kept for it.');
+});
