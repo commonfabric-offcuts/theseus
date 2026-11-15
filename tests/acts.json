@@ -15892,7 +15892,7 @@
   },
   {
    "item": 525,
-   "act": "Stepping back below version 42 is refused once anyone has been invited",
+   "act": "Stepping back below version 43 is refused once anyone has been invited",
    "break": [
     [
      "aim_next/invite.py",
@@ -15962,6 +15962,25 @@
    "check": {
     "native": "webkit-invite",
     "case": "forms invite after a sign-in file not written and a reload"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The invitations' step follows release 81's 42, so a store live at 42 gains agent_invitations once upgraded",
+   "break": [
+    [
+     "aim_next/migrations.py",
+     "(\"42\", \"43\", INVITATIONS_SCHEMA",
+     "(\"41\", \"42\", INVITATIONS_SCHEMA"
+    ],
+    [
+     "aim_next/store.py",
+     "SCHEMA_VERSION = \"43\"",
+     "SCHEMA_VERSION = \"42\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
    }
   }
  ]
