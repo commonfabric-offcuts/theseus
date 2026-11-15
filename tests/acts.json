@@ -13945,8 +13945,8 @@
    "break": [
     [
      "web/arrow-reach.mjs",
-     " && (sign > 0 ? box[lo] > from[lo] && box[hi] > from[hi] : box[hi] < from[hi] && box[lo] < from[lo]));",
-     ");"
+     "(sign > 0 ? box[lo] > from[lo] && box[hi] > from[hi] : box[hi] < from[hi] && box[lo] < from[lo]) ||",
+     "true ||"
     ]
    ],
    "check": {
