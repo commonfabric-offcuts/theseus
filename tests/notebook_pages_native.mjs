@@ -316,6 +316,14 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await shot(p, 'notebook-create-' + label);
       if (phone) await press('#new-message-sheet .notebook-sheet-close'); else await p.key('Escape');
       await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open`), 'the sheet closes');
+      if (!phone) {
+        // The title line that had the focus went as the page was made, so the browser has nothing to give the focus back
+        // to as the sheet closes: the sheet gives it to the pencil that opened the page, and the browser's close event,
+        // a frame later, leaves it there.
+        await p.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(r,50))))');
+        assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(button)}) || (document.activeElement?.id || document.activeElement?.tagName)`), true,
+          'closing the new page gives the focus back to the pencil that opened it');
+      }
       assert.deepEqual(p.errors, []); await p.close();
     }
   });

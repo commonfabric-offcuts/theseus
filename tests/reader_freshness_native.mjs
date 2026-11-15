@@ -197,6 +197,15 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await p.key('Enter'); await open('Fixture item 1','Fixture Notebook body 1'); await close(ids[2]);
     for (const type of ['keyDown','keyUp']) await p.send('Input.dispatchKeyEvent', {type,key:' ',code:'Space',windowsVirtualKeyCode:32,...(type==='keyDown'?{text:' '}: {})});
     await open('Fixture item 1','Fixture Notebook body 1'); await close(ids[2]);
+    // The browser's close event comes with its next frame, later still on a slow machine: a key that has moved the
+    // focus on by then keeps it where it went. Here the focus moves in the ✕ press itself, so it always comes first.
+    await p.key('Enter'); await open('Fixture item 1','Fixture Notebook body 1');
+    await p.evaluate(`(()=>{window.notebookClosed=false;document.addEventListener('close',()=>{notebookClosed=true},{capture:true,once:true});
+      document.querySelector('${sheet} .notebook-sheet-close').addEventListener('click',()=>document.querySelector(${JSON.stringify(card(ids[1]))}).focus(),{once:true});})()`);
+    await p.point(`${sheet} .notebook-sheet-close`);
+    await until(() => p.evaluate('notebookClosed'), 'the browser\'s close event');
+    assert.equal(await p.evaluate('document.activeElement.dataset.id'), ids[1], 'focus moved before the close event stays where it went');
+    await p.key('Tab'); assert.equal(await p.evaluate('document.activeElement.dataset.id'), ids[2]);
     await p.evaluate(`window.alignmentCard=document.querySelector(${JSON.stringify(card(ids[2]))})`);
     const revisedBody='A revised short preview, still aligned at the top.';
     assert.equal((await control({method:'memory_revise',operation_id:operation('alignment-redraw'),item_id:ids[2],expected_revision:1,title:'Revised short item',body:revisedBody})).status,'committed');
