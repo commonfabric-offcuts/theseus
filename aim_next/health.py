@@ -56,6 +56,7 @@ import uuid
 from .contract import Refusal
 from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 from .whispers import READ_BY
+from .releases import RECORDS as _RELEASE_RECORDS
 
 
 # Attempts that got through: a notice in the agent's chat, an earlier one leading there, the agent
@@ -360,9 +361,15 @@ def _iso_ms(text):
         return None
 
 
+# What a release check's measurements keep (tools/releases.py measurements()); a record with none of them ran no
+# release check that the page can speak for.
+CHECK_KEYS = ("release_check", "python_units", "node_units", "native")
+
+
 def _release_check(measurements):
-    """What the release check measured, as the page says it, or None when it kept no summary."""
-    if not isinstance(measurements, dict):
+    """What the release check measured, as the page says it, or None when it kept no summary: no measurements, or a
+    merged train's (items 481, 482), for which no release check ran here."""
+    if not isinstance(measurements, dict) or not any(key in measurements for key in CHECK_KEYS):
         return None
     check = measurements.get("release_check") or {}
     native = measurements.get("native") or {}
@@ -370,6 +377,21 @@ def _release_check(measurements):
             "python": (measurements.get("python_units") or {}).get("tests"),
             "node": (measurements.get("node_units") or {}).get("tests"),
             "native": {"pass": native.get("pass"), "total": native.get("total")} if native else None}
+
+
+def _release_train(measurements, attached):
+    """A release deployed from a merged train (items 481, 482), as the page says it: its kind, and its hosted judgment,
+    "pending" until one is attached, or "judged" with how many of its runs and checks succeeded; None for a release
+    that did not come from a train. attached: the judgment attached beside the record afterwards, if any."""
+    train = measurements.get("train") if isinstance(measurements, dict) else None
+    if not isinstance(train, dict):
+        return None
+    judgment = attached if train.get("judgment") == "pending" and attached is not None else train.get("judgment")
+    if not isinstance(judgment, dict):
+        return {"kind": train.get("kind"), "judgment": "pending", "succeeded": None, "total": None}
+    found = [entry for key in ("producer_runs", "verdict_checks") for entry in judgment.get(key) or [] if isinstance(entry, dict)]
+    return {"kind": train.get("kind"), "judgment": "judged", "total": len(found),
+            "succeeded": sum(1 for entry in found if entry.get("conclusion") == "success")}
 
 
 def machine_load():
@@ -838,12 +860,14 @@ class Health:
             execution = self._hosted_status(db, row["id"], actor, runner["live"])
             if execution is not None: item["execution"] = execution
             agents.append(item)
-        latest = db.execute("SELECT * FROM releases ORDER BY number DESC LIMIT 1").fetchone()
+        latest = db.execute(_RELEASE_RECORDS + " ORDER BY releases.number DESC LIMIT 1").fetchone()
         release = None
         if latest is not None:
+            measured = None if latest["measurements"] is None else json.loads(latest["measurements"])
+            attached = None if latest["hosted_judgment"] is None else json.loads(latest["hosted_judgment"])
             release = {"release": latest["number"], "commit": latest["commit_sha"], "deployed_ms": latest["deployed_ms"],
                        "items": json.loads(latest["items"]), "source": latest["source"],
-                       "check": _release_check(None if latest["measurements"] is None else json.loads(latest["measurements"]))}
+                       "check": _release_check(measured), "train": _release_train(measured, attached)}
         schema = db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()[0]
         return {"instance_id": self.instance_id, "read_ms": now, "commit_seq": self._commit_seq(db), "red": sorted(reds), "runner": runner, "agents": agents,
                 "failing_after": FAILING_AFTER, "release": release, "machine": (self._machine or machine_load)(), "schema_version": schema}

@@ -64,7 +64,7 @@ if "tools/wake_replay.py" in " ".join(args):
         "median": median, "wakes": 3, "lost": [1200] if lost else [], "delays": [median] * 3}}}))
     open(os.path.join(os.path.dirname(os.path.dirname(out)), "replay-order.txt"), "a").write(os.path.basename(out) + " " + args[args.index("--code") + 1] + "\n")
     sys.exit(1 if lost else 0)
-step = "deploy-refusals" if "DeployRefuses" in args else "python-units"
+step = "deploy-refusals" if any("DeployRefuses" in arg for arg in args) else "python-units"
 if os.environ.get("STUB_FAIL") == step:
     print("Ran 3 tests in 0.1s\n\nFAILED (failures=1)")
     sys.exit(1)
@@ -270,12 +270,50 @@ class ReleaseCheckMeasures(FakeCheckout):
         self.assertIn(release_check.DEPLOY_REFUSALS, release_check.REQUIRED)
         [step] = [s for s in summary["steps"] if s["name"] == release_check.DEPLOY_REFUSALS] or [None]
         self.assertIsNotNone(step, "the release check runs the deploy's refusals")
-        self.assertIn("DeployRefuses", step["argv"])
+        self.assertIn("test_tools_deploy.DeployRefuses", step["argv"])
         self.assertEqual(release_check.verify_summary(self.out / "summary.json", self.commit), ["deploy-refusals failed (exit 1)"])
         without = json.loads((self.out / "summary.json").read_text())
         without["steps"] = [s for s in without["steps"] if s["name"] != release_check.DEPLOY_REFUSALS]
         (self.out / "summary.json").write_text(json.dumps(without))
         self.assertIn("the release check did not run deploy-refusals", release_check.verify_summary(self.out / "summary.json", self.commit))
+
+    def test_the_deploys_refusals_step_runs_the_train_refusals_and_only_the_deploys_refusals(self):
+        # B9: the step the release check records is run here by unittest's own argument parser against this checkout's
+        # tests, collecting what it would run: every test of tests/test_tools_train.py and every DeployRefuses class of
+        # tests/test_tools_deploy.py, and nothing else (no full deploy, no other file's tests).
+        import test_tools_deploy
+        import test_tools_train
+        [step] = [s for s in self.run_check()["steps"] if s["name"] == release_check.DEPLOY_REFUSALS]
+        argv = list(step["argv"])
+        self.assertEqual(argv[1:4], ["-m", "unittest", "discover"])
+        argv[argv.index("-s") + 1] = str(ROOT / argv[argv.index("-s") + 1])
+
+        class Collected:
+            ids = []
+
+            def run(self, test):
+                for found in test:
+                    if isinstance(found, unittest.TestSuite):
+                        self.run(found)
+                    else:
+                        self.ids.append(found.id())
+                return unittest.TestResult()
+
+        collected = Collected()
+        unittest.main(module=None, argv=["unittest"] + argv[3:], testRunner=collected, exit=False)
+
+        def ids(module, keep=lambda name: True):
+            suite = unittest.TestLoader().loadTestsFromModule(module)
+            return {test.id() for group in suite for test in group if keep(test.id().split(".")[1])}
+        train = ids(test_tools_train)
+        refusals = ids(test_tools_deploy, lambda name: name.startswith("DeployRefuses"))
+        self.assertTrue(train and refusals)
+        self.assertTrue({"DeployRefusesTrain", "DeployRefusesJudgedFirst", "GuardedPaths"}
+                        <= {name.split(".")[1] for name in train})
+        self.assertEqual(sorted(set(collected.ids) - train - refusals), [], "the step runs nothing but these")
+        self.assertEqual(sorted(train - set(collected.ids)), [], "every test of tests/test_tools_train.py runs")
+        self.assertEqual(sorted(refusals - set(collected.ids)), [], "every DeployRefuses test of tests/test_tools_deploy.py runs")
+        self.assertEqual(len(collected.ids), len(set(collected.ids)), "each runs once")
 
     def test_the_wake_replay_runs_repeats_times_and_a_lost_wake_fails_it(self):
         summary = self.run_check(repeats=3)

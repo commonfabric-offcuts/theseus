@@ -170,10 +170,18 @@ export function healthLines(answer, { now, feed } = {}) {
   const release = answer.release;
   if (release) {
     const details = [];
-    const check = release.check;
-    if (check) {
-      const native = check.native ? `${count(check.native.pass)} of ${count(check.native.total)} browser` : null;
-      const parts = [check.python != null && `${count(check.python)} Python`, check.node != null && `${count(check.node)} Node`, native].filter(Boolean);
+    const check = release.check, train = release.train;
+    const native = check?.native ? `${count(check.native.pass)} of ${count(check.native.total)} browser` : null;
+    const parts = check ? [check.python != null && `${count(check.python)} Python`, check.node != null && `${count(check.node)} Node`, native].filter(Boolean) : [];
+    if (train) {
+      // A release from a merged train (items 481, 482): no release check ran here, so none is said to have passed.
+      const first = train.kind === 'judged-first';
+      details.push(`It came from a merged train${first ? ' judged before its merge' : ''}, so no release check ran here.`);
+      details.push(train.judgment === 'judged'
+        ? `${first ? 'That' : 'Its hosted'} judgment: ${count(train.succeeded)} of ${count(train.total)} runs and checks succeeded.`
+        : 'Its hosted judgment is still pending.');
+    } else if (parts.length) {
+      // Only counts a release check kept are said to have passed; a check with none of them said nothing.
       details.push(`Its release check${Number.isInteger(check.finished_ms) ? ` finished at ${datedTime(check.finished_ms)}` : ''}: ${list(parts)} checks passed.`);
     } else {
       details.push('No release check summary was kept for it.');
