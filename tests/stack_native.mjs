@@ -4938,15 +4938,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await until(async () => !await foldedRow(p, ids.short), 'laptop: the message reads whole again');
       } else assert.equal(await foldedRow(p, ids.short), false, 'phone: a tap on the folded row unfolded it, as before');
       assert.equal((await actsOf(topic, ids.short, other))?.folded ?? false, false, `${device}: nobody else's view changed`);
-      // A starred message offers no Fold.
-      await light(p, device, ids.starred);
+      // A starred message offers no Fold. A phone taps the middle of its words, clear of the bar over the message above.
+      const lightMiddle = async id => {
+        if (device !== 'phone') return light(p, device, id);
+        await centre(p, card(id)); await tap(p, words(id), 'centre');
+        await until(async () => (await lit(p)).includes(id) && await bar(p) !== null, `phone: ${id} lights, with its bar`);
+      };
+      await lightMiddle(ids.starred);
       assert.deepEqual((await barFacts(p)).map(b => b.act), ['thumb', 'reply', 'more'], `${device}: a starred message's bar has no Fold`);
       // Show full message, on the long message its card cuts off, and gone once it shows whole.
-      // Its words fill the card, so a phone taps their middle, clear of the bar still over the starred message.
-      if (device === 'phone') {
-        await centre(p, card(ids.long)); await tap(p, words(ids.long), 'centre');
-        await until(async () => (await lit(p)).includes(ids.long) && await bar(p) !== null, 'phone: the long message lights, with its bar');
-      } else await light(p, device, ids.long);
+      await lightMiddle(ids.long);
       await until(async () => (await barFacts(p))?.some(b => b.act === 'full'), `${device}: a cut-off message's bar offers Show full message`);
       f = await barFacts(p);
       assert.deepEqual([named('full').glyph, named('full').label, named('full').title], [true, 'Show full message', 'Show full message'], `${device}: Show full message is a named glyph`);
