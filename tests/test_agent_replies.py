@@ -48,16 +48,21 @@ class ReplyVerbCase(AgentVerbCase):
         args = ("--operation", "explicit-reply", "Done")
         self.assertEqual(self.run_cli("reply", first, *args)[0], 0)
         message = self.latest()[0]
-        before = self.records()
+        before = self.records_beside_exposures()
         self.assertEqual(self.run_cli("reply", first, *args)[0], 0)
         self.assertEqual(self.latest()[0], message)
         code, _, err = self.run_cli("reply", second, *args)
         self.assertEqual(code, 2)
         self.assertIn("OPERATION_PAYLOAD_MISMATCH", err)
-        self.assertEqual(self.records(), before)
+        self.assertEqual(self.records_beside_exposures(), before)
+        # Reading the target to find its topic hands its words (docs/message-edit.md), and that is all that was written.
+        self.assertEqual({first, second} & set(self.exposures()), {first, second})
 
     def test_busy_retry_keeps_exact_topic_target_body_and_intent(self):
         request = self.post("Request")
+        # The agent has read what it answers, so finding the target's topic records nothing and the send is what waits.
+        self.store.view("agent-a", "source", {"source_ref": {"kind": "message", "id": request}})
+        self.assertIn(request, self.exposures())
         blocker = sqlite3.connect(str(self.path), isolation_level=None)
         self.addCleanup(blocker.close)
         blocker.execute("BEGIN IMMEDIATE")
@@ -74,6 +79,22 @@ class ReplyVerbCase(AgentVerbCase):
         self.assertEqual(self.run_cli("retry", operation)[0], 0)
         self.assertEqual(self.latest()[3:], ("Which colour?", '["owner"]', request))
 
+    def test_a_busy_first_read_of_the_target_saves_and_sends_nothing_and_running_it_again_sends_it(self):
+        request = self.post("Request never read")
+        blocker = sqlite3.connect(str(self.path), isolation_level=None)
+        self.addCleanup(blocker.close)
+        blocker.execute("BEGIN IMMEDIATE")
+        code, _, err = self.run_cli("reply", request, "--tells", "owner", "Seen it")
+        self.assertEqual(code, 75)
+        self.assertIn("DATABASE_BUSY", err)
+        self.assertEqual(self.saved(), [])
+        blocker.rollback()
+        self.assertNotIn(request, self.exposures())
+        self.assertEqual(self.latest()[0], request)
+        self.assertEqual(self.run_cli("reply", request, "--tells", "owner", "Seen it")[0], 0)
+        self.assertEqual(self.latest()[3:], ("Seen it", '["owner"]', request))
+        self.assertIn(request, self.exposures())
+
     def test_missing_and_inaccessible_targets_send_nothing(self):
         for target, actor in (("m-missing", "agent-a"), (self.opening["id"], "outsider")):
             with self.subTest(target=target, actor=actor):
@@ -85,12 +106,13 @@ class ReplyVerbCase(AgentVerbCase):
 
     def test_whisper_target_never_becomes_public_or_uploads_an_attachment(self):
         private = self.post("Private request", whisper=True, addressees=["agent-a"])
-        before = self.records()
+        before = self.records_beside_exposures()
         code, _, err = self.run_cli("reply", private, "--tells", "owner", "--attach", "/missing/file.txt", "Private answer")
         self.assertEqual(code, 2)
         self.assertIn("WHISPER_STAYS_PRIVATE", err)
         self.assertIn("whisper", err)
-        self.assertEqual(self.records(), before)
+        self.assertEqual(self.records_beside_exposures(), before)
+        self.assertEqual(self.exposures(), {private: 1}, "reading the whisper handed it; nothing else was written")
         self.assertEqual(self.saved(), [])
 
     def test_reply_cannot_override_topic_or_target(self):

@@ -14,6 +14,7 @@ import zlib
 
 from .authority import AuthorityError
 from .contract import LIMITS, Refusal, _identifier, _revision
+from .message_edit import held_refusal
 
 
 MEDIA_SCHEMA = [
@@ -416,6 +417,9 @@ class Media:
         row = db.execute("SELECT * FROM media_intents WHERE id=?", (media_id,)).fetchone()
         if "source_ref" in args:
             source = self._source(db, actor, args["source_ref"])
+            if source.get("withheld") and source["source_ref"].get("kind") == "message":
+                # A message its author has open in Edit is held from agents, its attachments too (docs/message-edit.md).
+                raise held_refusal(source["source_ref"]["id"])
             allowed = any(ref.get("id") == media_id for ref in source["attachments"])
         else:
             allowed = row is not None and row["actor_id"] == actor

@@ -145,6 +145,33 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertNotIn("held:", self.ok("pipeline", "w1", "--section", "now"))
         self.assertEqual(self.ok("outcomes", actor="owner"), line % "waiting on you · 1 question")
 
+    def test_an_ask_its_author_has_open_in_edit_prints_held_in_the_listing_and_the_item_and_its_words_after(self):
+        # Item 452: every CLI printer of an excerpt or line prints "(held)" for a withheld entry.
+        self.ok("pipeline-on", "w1")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}]))
+        self.ok("stages", "w1", "--set", str(stages))
+        self.ok("add", "w1", "--title", "Build me", "--section", "now", "--size", "medium", "--note", "n", "-")
+        piece = self.ok("piece", "w1", "1", "--topic", "t1", "--stage", "build").split()[2]
+        # The ask about the item first: it is the one t1 waits on agent-a for.
+        about = self.ok("post", "t1", "--asks", "agent-a", "--subject", "item:1", "Which way for 1?", actor="owner").split()[1]
+        holds = self.ok("post", "t1", "--asks", "agent-a", "--blocks", "piece:" + piece, "Please restart fseventsd.", actor="owner").split()[1]
+        for message in (holds, about):
+            self.committed(self.command("message.edit_open", {"holder": "h-laptop"}, target={"message_id": message}))
+        for out in (self.ok("pipeline", "w1", "--section", "now"), self.ok("item", "w1", "1")):
+            self.assertIn("     held: waiting on agent-a — (held) (%s)\n" % holds, out)
+            self.assertRegex(out, r"\n     owner asked you [^\n]* in [^\n]*: \(held\)\n")
+            self.assertNotIn("fseventsd", out)
+            self.assertNotIn("Which way", out)
+        # A person is never held: the owner reads the words of the same lines.
+        self.assertIn("     held: waiting on agent-a — Please restart fseventsd. (%s)\n" % holds, self.ok("pipeline", "w1", "--section", "now", actor="owner"))
+        for message in (holds, about):
+            self.committed(self.command("message.edit_close", {"holder": "h-laptop"}, target={"message_id": message}))
+        out = self.ok("pipeline", "w1", "--section", "now")
+        self.assertIn("     held: waiting on agent-a — Please restart fseventsd. (%s)\n" % holds, out)
+        self.assertRegex(out, r"\n     owner asked you [^\n]* in [^\n]*: Which way for 1\?\n")
+        self.assertNotIn("(held)", out)
+
     def test_the_listing_prints_the_asks_that_hold_a_piece_newest_first(self):
         # Item 259: the one order every reader of blocking asks keeps; the clock moves on by hand, so newer is exact.
         clock = [1_800_000_000_000]

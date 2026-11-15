@@ -39,7 +39,8 @@ from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
 from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
 from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
-from .message_edit import MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED, MESSAGE_EDIT_UP
+from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
+                           MESSAGE_EDIT_UP)
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -167,6 +168,11 @@ STEPS = (
     # built again with every row, its seq and where the next goes on from. Stepping back is refused once any
     # message has been edited, since version 39 would show its first words.
     ("39", "40", MESSAGE_EDIT_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED),
+    # Version 41 keeps each message's edit session (its Core draft, and the hold on agents while it is open), what
+    # each agent was handed of a person's message, and the horizon below which every message counts as handed
+    # (docs/message-edit.md, slice 2). Stepping back is refused while any session is open, held or lapsed, since it
+    # carries the person's draft, or any delivery is held.
+    ("40", "41", EDIT_SESSION_UP, EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED),
 )
 
 

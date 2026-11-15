@@ -145,7 +145,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `new-outcome --title TITLE [--kind reach\|keep] [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. Without `--kind` it is an outcome to keep until its owner chooses on its page ([targets.md](targets.md#two-kinds-of-outcome)). |
 | `owner OUTCOME ACTOR` | Hands the outcome to ACTOR (`workspace.owner_set`, fenced on the outcome's version as read). Only its owner can, and only to someone already on its team; the former owner stays on the team, and the coordinator is unchanged. Prints `OUTCOME is now owned by ACTOR (was FORMER)`, or `OUTCOME is already owned by ACTOR` when nothing changed. The new owner and the coordinator, beside each topic's creator, change the team, rename and archive the outcome's topics, say where any of them stands and change who takes part; only the owner hands the outcome on, and the `wakes` notice goes to the owner ([openings.md](openings.md#workspaceowner_set)). |
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
-| `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). An edited message prints its latest words, with "(edited, revision N)" after its heading; the `source` view carries `revision` and `edited_ms` too. Acknowledges nothing. |
+| `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). An edited message prints its latest words, with "(edited, revision N)" after its heading; the `source` view carries `revision` and `edited_ms` too. A message its author has open in Edit prints "(held: its author is editing it)" in place of its words, and a `[waiting]` line on it prints "(held)"; the views carry `withheld: true` ([message-edit.md](message-edit.md#holding-a-message-while-it-is-edited)). Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. A correction (a person edited a message you were sent) prints as `correction "TITLE" #SEQ AUTHOR edited m-… to revision N: PREVIEW  [d-… in t-…]`, its preview the words of that revision ([message-edit.md](message-edit.md)). |
 | `reply MESSAGE [--asks A,B \| --tells A,B] [--part] [--go-ahead] [--subject KIND:REF,...] [--blocks piece:P\|release:N] [--operation ID] [--attach FILE]... TEXT\|-` | Reads that exact message through `source`, derives its topic and sends `message.post` with `reply_to=MESSAGE`. Use for progress, questions and completion in an existing stack; `post TOPIC` deliberately starts a new subject. Recipients remain explicit, and deliveries are not acknowledged. Accepts the same sending options as `post`, without a topic or reply-target override; `--part` applies only to an assigned outcome-conversation item. Missing/unreadable targets send nothing; delivery ids get a message-id diagnostic; whispers require `whisper`. With `--json`, a successful text-only reply prints two lines: the source view, then the post receipt. Attachment results, if any, appear between them. The source view alone is not proof of sending; check the exit status and receipt. See [agent-replies.md](agent-replies.md). |
 | `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P\|release:N] [--operation ID] [--attach FILE]... TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin, and each `--attach` sends a file with it (see [Attachments](#attachments)). With `--operation ID` it is sent under that operation id, so sending the same post again answers with the message already recorded, and different words under the same id are refused (`OPERATION_PAYLOAD_MISMATCH`), nothing sent. `--operation` takes no `--attach`, whose files upload afresh each run, so a repeat would never be the same post: the pair is refused (`INVALID_ARGUMENT`) before anything is uploaded. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
@@ -220,7 +220,15 @@ A correction arrives the same way, as a `correction` line. It is not a new
 ask, Tell or reply: read the message again, act on its latest words, then
 `ack` the correction's delivery id. Reading, `read-through` and `thumb` leave a
 correction pending; only its own `ack`, a newer correction of the same message,
-or losing the message settles it ([message-edit.md](message-edit.md)).
+or losing the message settles it ([message-edit.md](message-edit.md)). A
+correction comes only when you were shown the old words.
+
+A message its author has open in Edit is held from agents until they save or
+leave the edit: its delivery is not pending, so `inbox` leaves it out,
+`watch --once` waits on past it, `watch` prints
+`delivery held while its author edits it  [d-…]`, and `ack` of it is refused
+`MESSAGE_HELD` (not recorded). When the edit ends it arrives again as a
+delivery, with its latest words.
 
 ## Asking and telling
 
@@ -480,6 +488,8 @@ are absolute local times.
 - `post --asks A --blocks piece:P` (or `release:N`) names the piece or release
   an ask holds until it is answered (see [Asking and telling](#asking-and-telling));
   `pipeline` shows it under that piece as "held: waiting on A — first line".
+  While its author has the ask open in Edit, that line, and an "asked you"
+  line about an item, print "(held)" in place of its words.
 
 The import from the hand-written page is an operator act:
 `bin/aim-next-admin pipeline-import --profile P --seed S --as ACTOR`.

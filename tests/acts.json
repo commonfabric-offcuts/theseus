@@ -3156,36 +3156,6 @@
   },
   {
    "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
    "act": "An act's answer landing under a held press waits for the press to end, so nothing moves under the pointer",
    "break": [
     [
@@ -10376,12 +10346,12 @@
   },
   {
    "item": 228,
-   "act": "An edit sends each agent that can read the message, other than the editor, one correction",
+   "act": "An edit sends each agent that was handed the old words, other than the editor, one correction",
    "break": [
     [
      "aim_next/message_edit.py",
-     "delivery_id = self._queue_delivery(db, message[\"id\"], agent, message[\"topic_id\"], {\"correction\": None}, revision=number)\n            self._change(db, \"actor\", agent, \"delivery\", delivery_id, 1)",
-     "pass"
+     "        for agent in exposed:\n",
+     "        for agent in []:\n"
     ]
    ],
    "check": {
@@ -10423,11 +10393,11 @@
     [
      "aim_next/message_edit.py",
      "and self._actor_kind(db, reader) == \"agent\"]",
-     "]"
+     "] "
     ]
    ],
    "check": {
-    "python": "test_message_edit.py"
+    "python": "test_message_exposure.py"
    }
   },
   {
@@ -10507,7 +10477,7 @@
     [
      "aim_next/message_edit.py",
      "        for reader in readers:\n            self._change",
-     "        for reader in agents:\n            self._change"
+     "        for reader in reader_agents:\n            self._change"
     ]
    ],
    "check": {
@@ -10548,8 +10518,8 @@
    "break": [
     [
      "aim_next/conversation.py",
-     "substr(\" + words(\"p\") + \",1,120)",
-     "substr(p.body,1,120)"
+     "words(\"p\", chars=120) + \" AS reply_to_excerpt",
+     "\"substr(p.body,1,120)\" + \" AS reply_to_excerpt"
     ]
    ],
    "check": {
@@ -10576,8 +10546,8 @@
    "break": [
     [
      "aim_next/message_edit.py",
-     "        if reached is not None:\n",
-     "        if False:\n"
+     "        if reached:\n            # An edit writes only",
+     "        if False:\n            # An edit writes only"
     ]
    ],
    "check": {
@@ -10688,8 +10658,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "substr(\" + words(\"m\") + \",1,160) AS excerpt",
-     "substr(m.body,1,160) AS excerpt"
+     "words(\"m\", chars=160) + \" AS excerpt",
+     "\"substr(m.body,1,160)\" + \" AS excerpt"
     ]
    ],
    "check": {
@@ -10716,8 +10686,8 @@
    "break": [
     [
      "aim_next/blocking.py",
-     "\"waiting_on\": waiting, \"line\": first_line(current_words(db, row[\"id\"])[0])})",
-     "\"waiting_on\": waiting, \"line\": first_line(db.execute(\"SELECT body FROM messages WHERE id=?\", (row[\"id\"],)).fetchone()[0])})"
+     "\"waiting_on\": waiting, \"line\": current_words(db, row[\"id\"], shape=first_line)[0],",
+     "\"waiting_on\": waiting, \"line\": first_line(db.execute(\"SELECT body FROM messages WHERE id=?\", (row[\"id\"],)).fetchone()[0]),"
     ]
    ],
    "check": {
@@ -10982,8 +10952,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "if (receipt.status === 'retryable') { this.state = 'busy'; return receipt; }",
-     "if (receipt.status === 'retryable') { this.pending = null; this.state = 'busy'; return receipt; }"
+     "if (receipt.status === 'retryable') { this.state = 'busy'; this.settle(null); return receipt; }",
+     "if (receipt.status === 'retryable') { this.pending = null; this.state = 'busy'; this.settle(null); return receipt; }"
     ]
    ],
    "check": {
@@ -10996,8 +10966,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "if (code === 'REVISION_CONFLICT') {",
-     "if (false) {"
+     "    if (code === 'REVISION_CONFLICT') {\n      // Someone saved",
+     "    if (false) {\n      // Someone saved"
     ]
    ],
    "check": {
@@ -11038,8 +11008,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "    if (!this.dirty) { await this.end('unchanged'); return null; }\n    this.pending = this.envelope();",
-     "    this.pending = this.envelope();"
+     "    if (!this.dirty) { await this.end('unchanged'); return null; }\n    // A Save never waits on the debounce.",
+     "    // A Save never waits on the debounce."
     ]
    ],
    "check": {
@@ -11052,8 +11022,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "try { await this.serial; await this.store.delete(); }",
-     "try { await this.serial; }"
+     "try { await (row ? this.persist(row) : this.clearDevice()); } catch (error) { this.journalError = error.message; }\n    this.value = value;",
+     "try { await (row ? this.persist(row) : this.persist()); } catch (error) { this.journalError = error.message; }\n    this.value = value;"
     ]
    ],
    "check": {
@@ -11066,7 +11036,7 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "    if (this.pending) { this.state = 'uncertain'; return this.retry(); }\n",
+     "    if (this.pending) { this.resumed = true; this.state = 'uncertain'; return this.retry(); }\n",
      ""
     ]
    ],
@@ -11080,8 +11050,8 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "if (this.closed || this.sending || this.pending || this.readOnly",
-     "if (this.closed || this.sending || this.readOnly"
+     "if (this.closed || this.over || this.sending || this.pending || this.readOnly",
+     "if (this.closed || this.over || this.sending || this.readOnly"
     ]
    ],
    "check": {
@@ -11178,8 +11148,8 @@
    "break": [
     [
      "web/message-edit.mjs",
-     "|| w.readOnly || w.empty;",
-     "|| w.readOnly;"
+     "|| w.readOnly || w.empty || w.over;",
+     "|| w.readOnly || w.over;"
     ]
    ],
    "check": {
@@ -11294,8 +11264,8 @@
    "break": [
     [
      "aim_next/message_edit.py",
-     "body = _body(args[\"body\"])",
-     "body = args[\"body\"]"
+     "        body = _body(args[\"body\"])\n        holder = _identifier(args[\"holder\"], \"holder\") if \"holder\" in args else None\n",
+     "        body = args[\"body\"]\n        holder = _identifier(args[\"holder\"], \"holder\") if \"holder\" in args else None\n"
     ]
    ],
    "check": {
@@ -11488,7 +11458,7 @@
   },
   {
    "item": 228,
-   "act": "The edit mode says \"Not saved: too long\" at every width, the words kept",
+   "act": "At every width a too-long Save shows Saving… with the field read only while it is out, then its own answer: \"Not saved: too long\", every byte kept in a field that may be changed",
    "break": [
     [
      "web/message-edit-writing.mjs",
@@ -11550,8 +11520,8 @@
    "break": [
     [
      "aim_next/conversation.py",
-     "substr(\" + words(\"m\") + \",1,1024) AS body",
-     "substr(m.body,1,1024) AS body"
+     "\" + words(\"m\", plain=True) + \" AS body,\"",
+     "m.body AS body,\""
     ]
    ],
    "check": {
@@ -11695,6 +11665,1542 @@
    "check": {
     "native": "live",
     "case": "live the outcome Notebook pages are on the right rail"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A delivery queued while its message is held (another device's Save) is queued held",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "held = not settled and holding(db, message_id) and",
+     "held = False and"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A held delivery queued for an agent with no schedule row yet gives it one, so the release can hand it back",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "            db.execute(\"INSERT INTO recipient_schedule(recipient_id,enabled) SELECT id,enabled FROM actors WHERE id=? ON CONFLICT DO NOTHING\", (recipient,))\n        if settled or held:",
+     "            pass\n        if settled or held:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An ack of a held delivery is refused MESSAGE_HELD and records nothing",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "            if is_held(db, row[\"message_id\"], now):\n                raise held_refusal(row[\"message_id\"])",
+     "            if False:\n                raise held_refusal(row[\"message_id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An ack of a delivery whose hold lapsed releases the hold first, in the same commit",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "            self._release(db, row[\"message_id\"], now)\n            row = db.execute",
+     "            raise held_refusal(row[\"message_id\"])\n            row = db.execute"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The delivery view of a held delivery is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "        if row[\"state\"] == \"held\":\n            # Its message is open in Edit: the delivery",
+     "        if False:\n            # Its message is open in Edit: the delivery"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The runner sleeps until the earliest hold end of a held delivery, so a lapse is released",
+   "break": [
+    [
+     "aim_next/runner.py",
+     "        if end is not None:\n            end += LIMITS",
+     "        if False:\n            end += LIMITS"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A hold end counts toward the runner's wake only for an enabled agent it serves",
+   "break": [
+    [
+     "aim_next/runner.py",
+     "WHERE d.message_id=s.message_id AND d.state='held' AND recipient_schedule.enabled=1",
+     "WHERE d.message_id=s.message_id AND recipient_schedule.enabled=1"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "claim_wakes releases every lapsed hold before it claims",
+   "break": [
+    [
+     "aim_next/runner.py",
+     "released = self._release_lapsed(db, now) > 0",
+     "released = False"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A turn claimed while its delivery was held and handed after the release is a stale start",
+   "break": [
+    [
+     "aim_next/runner.py",
+     "stale_start = stale_start or (pending and db.execute(",
+     "stale_start = stale_start or (False and db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Opening Edit uncounts the message's pending agent deliveries, as an acknowledgment would",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "                self._eligibility_changed(db, row[\"recipient_id\"], -1)",
+     "                pass"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A person's deliveries are never held",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "WHERE d.message_id=? AND d.state='pending' AND a.kind='agent' ORDER BY d.seq",
+     "WHERE d.message_id=? AND d.state='pending' ORDER BY d.seq"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Release hands a held delivery back: handed_seq is cleared when it covers the row",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            db.execute(\"UPDATE recipient_schedule SET handed_seq=CASE WHEN handed_seq>=? THEN NULL ELSE handed_seq END,named_seq=NULL,retry_count=0,\"\n                       \"next_due_ms=CASE WHEN claim_token IS NOT NULL AND claim_until_ms>? THEN claim_until_ms ELSE ? END \"\n                       \"WHERE recipient_id=? AND pending_count>0\", (seq, now, now, recipient))",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Release makes the agent due now, or when its live claim ends",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "THEN claim_until_ms ELSE ? END",
+     "THEN claim_until_ms+1000 ELSE ? END"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Release writes a delivery change for each row, so watch prints it as it arrives",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            self._change(db, \"actor\", row[\"recipient_id\"], \"delivery\", row[\"id\"], 1)\n        for recipient, seq",
+     "        for recipient, seq"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Only the holder's Save ends the session; another device's Save leaves the message held",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "session[\"state\"] == \"open\" and session[\"holder\"] == holder",
+     "session[\"state\"] == \"open\""
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "edit_close by a device that does not hold the edit is EDIT_TAKEN and releases nothing",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        if session[\"holder\"] != holder:\n            # The other device still holds",
+     "        if False:\n            # The other device still holds"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "edit_draft keeps the draft in Core and renews the hold",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "\"UPDATE message_edit_sessions SET draft=?,base_revision=?,renewed_ms=?,revision=?,released_ms=NULL WHERE message_id=?\",\n                   (body, base, now, revision",
+     "\"UPDATE message_edit_sessions SET draft=?,base_revision=?,renewed_ms=renewed_ms+0*?,revision=?,released_ms=NULL WHERE message_id=?\",\n                   (body, base, now, revision"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "edit_draft after a released lapse holds the message again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        if session[\"released_ms\"] is not None:\n            self._hold(db, message[\"id\"])\n        self._session_change(db, message, revision)\n        return {\"message_id\": message[\"id\"], \"session_revision\": revision, \"renewed_ms\": now}",
+     "        self._session_change(db, message, revision)\n        return {\"message_id\": message[\"id\"], \"session_revision\": revision, \"renewed_ms\": now}"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A newer correction settles the agent's older held correction",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "                self._acknowledge(db, agent, row)\n            self._settle_held_corrections(db, agent, message[\"id\"])",
+     "                self._acknowledge(db, agent, row)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The source view of a held message, for an agent, carries withheld and no words",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "            held = withheld(row[\"id\"])",
+     "            held = False"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Release leaves a row of a closed group pending uncounted",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if row[\"active\"]:\n                db.execute(\"UPDATE delivery_groups SET pending_count=pending_count+1",
+     "            if True:\n                db.execute(\"UPDATE delivery_groups SET pending_count=pending_count+1"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A held correction of an agent that can no longer read the message is settled",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if row[0] not in reader_agents:\n                self._settle_held_corrections(db, row[0], message[\"id\"])",
+     "            if False:\n                self._settle_held_corrections(db, row[0], message[\"id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A topic page's words an agent is handed are recorded as handed",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "item[\"body\"] = mark(item[\"id\"], item[\"revision\"], cut)",
+     "item[\"body\"] = cut"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A reply's line hands the first words of the message it answers",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "words(\"p\", chars=120) + \" AS reply_to_excerpt",
+     "words(\"p\", chars=120, plain=True) + \" AS reply_to_excerpt"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The source view's words are recorded as handed",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        body, current, edited_ms = current_words(db, row[\"id\"])\n        quotes =",
+     "        body, current, edited_ms = current_words(db, row[\"id\"], plain=True)\n        quotes ="
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A stored quote of a message, returned in another message's source, hands the quoted message",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "excerpt=mark(source.get(\"id\"), number, quote.get(\"excerpt\"))",
+     "excerpt=quote.get(\"excerpt\")"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A star's excerpt hands its message's words",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "words(\"m\", chars=160)",
+     "words(\"m\", chars=160, plain=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A check ask's excerpt hands its message's words",
+   "break": [
+    [
+     "aim_next/checks.py",
+     "words(\"m\", chars=280)",
+     "words(\"m\", chars=280, plain=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The check account's line hands its message's words",
+   "break": [
+    [
+     "aim_next/checks.py",
+     "words(\"m\", chars=400)",
+     "words(\"m\", chars=400, plain=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An ask about an item, in the pipeline, hands its words",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "message_words(\"m\", chars=240)",
+     "message_words(\"m\", chars=240, plain=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A blocking line in attention hands its ask's words",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "\"by\": row[\"author_id\"], \"since_ms\": row[\"sent_ms\"], \"line\": current_words(db, row[\"id\"], shape=first_line)[0],",
+     "\"by\": row[\"author_id\"], \"since_ms\": row[\"sent_ms\"], \"line\": current_words(db, row[\"id\"], shape=first_line, plain=True)[0],"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A held ask's line in the pipeline's row hands its words",
+   "break": [
+    [
+     "aim_next/blocking.py",
+     "\"waiting_on\": waiting, \"line\": current_words(db, row[\"id\"], shape=first_line)[0],",
+     "\"waiting_on\": waiting, \"line\": current_words(db, row[\"id\"], shape=first_line, plain=True)[0],"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A conversation wait's excerpt hands its ask's words",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "\"excerpt\": mark(row[\"ask_id\"], row[\"revision\"], excerpt(row[\"body\"]))",
+     "\"excerpt\": excerpt(row[\"body\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A delivery's preview hands its message's words",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "(mark(row[\"message_id\"], message[\"revision\"], body[:256]), len(body) > 256,",
+     "(body[:256], len(body) > 256,"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A stored quote counts as handed only when its first line is in the answer that follows its message",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "                if head and head in text:",
+     "                if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Revision 1 of a message at or below the horizon records no exposure",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     " and not (highest[row[\"id\"]] == 1 and row[\"seq\"] <= horizon)]",
+     "]"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An agent reader that was never handed the old words gets no correction",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "exposed = [agent for agent in reader_agents if below or db.execute(",
+     "exposed = [agent for agent in reader_agents if True or db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Every agent reader of a message sent at or below the horizon counts as handed and is corrected",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "exposed = [agent for agent in reader_agents if below or db.execute(",
+     "exposed = [agent for agent in reader_agents if False or db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A read that grows no exposure writes nothing",
+   "break": [
+    [
+     "aim_next/store.py",
+     "        if not grows:\n            db.rollback()\n            return answer",
+     "        if False:\n            db.rollback()\n            return answer"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A read that grows an exposure runs again under BEGIN IMMEDIATE and commits its answer and its record together",
+   "break": [
+    [
+     "aim_next/store.py",
+     "        answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)\n        grows = message_edit.growing(db, actor, pairs)",
+     "        grows = message_edit.growing(db, actor, pairs)"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A held message's words are empty in an agent view",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    if current is not None and current.agent and message_id in current.held:\n        return \"\"",
+     "    if False:\n        return \"\""
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A held message reads withheld: true in an agent view",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    return current is not None and current.agent and message_id in current.held\n",
+     "    return False\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "topic_images leaves out a held message's images",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "                if withheld(row[\"id\"]):\n                    continue",
+     "                if False:\n                    continue"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "media of a held message is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/media.py",
+     "            if source.get(\"withheld\") and source[\"source_ref\"].get(\"kind\") == \"message\":",
+     "            if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A held message's topic item comes with no attachments",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "item[\"attachments\"] = [] if item[\"withheld\"] else json.loads(item[\"attachments\"])",
+     "item[\"attachments\"] = json.loads(item[\"attachments\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A reply to a held message has no reply_to_excerpt",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "            if item[\"reply_to_withheld\"]:\n                item[\"reply_to_excerpt\"] = None",
+     "            if False:\n                item[\"reply_to_excerpt\"] = None"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A stored quote of a held message has an empty excerpt and withheld: true",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "            elif withheld(source.get(\"id\")):\n                quotes.append(dict(quote, excerpt=\"\", withheld=True))",
+     "            elif False:\n                quotes.append(dict(quote, excerpt=\"\", withheld=True))"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A topic page cuts its preview from the plain words, never the marked ones",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "item[\"body\"] = mark(item[\"id\"], item[\"revision\"], cut)",
+     "item[\"body\"] = cut"
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A topic page reads its words plain and marks only the cut it returns",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "columns = (\"m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,\" + words(\"m\", plain=True) + \" AS body,\"",
+     "columns = (\"m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,\" + words(\"m\") + \" AS body,\""
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A conversation wait shapes its excerpt from the plain words",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "words(\"m\", plain=True) + \" AS body,\" + revision(\"m\")",
+     "words(\"m\") + \" AS body,\" + revision(\"m\")"
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A topic page's size bound measures the words, never the markers",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "encoded = len(_json(plain(item)).encode(\"utf-8\")) + 1",
+     "encoded = len(_json(item).encode(\"utf-8\")) + 1"
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A deliveries page's size bound measures the words, never the markers",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "if len(_json(plain(candidate)).encode(\"utf-8\")) > LIMITS[\"summary_utf8_bytes\"]:",
+     "if len(_json(candidate).encode(\"utf-8\")) > LIMITS[\"summary_utf8_bytes\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "No marker leaves the store in an answer",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            stripped = \"\".join(kept)\n",
+     "            stripped = item\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A cut or rewritten marker fails the view with a store error and returns nothing",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if leftover in stripped:\n",
+     "            if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A bounded page measures its answer without markers",
+   "break": [
+    [
+     "aim_next/contract.py",
+     "if len(_json(plain(response())).encode(\"utf-8\")) > LIMITS[\"summary_utf8_bytes\"]:",
+     "if len(_json(response()).encode(\"utf-8\")) > LIMITS[\"summary_utf8_bytes\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_message_marking.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "watch --once waits on past a held delivery to its release",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "        if error and error.get(\"code\") == \"MESSAGE_HELD\":\n            # Its author opened Edit on it: it arrives as a delivery once they save or leave the edit.\n            return False\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "watch prints a held delivery as held while its author edits it",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "            if error and error.get(\"code\") == \"MESSAGE_HELD\":\n                self.notice(",
+     "            if False:\n                self.notice("
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "read prints \"(held: its author is editing it)\" in place of a held message's words",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "        if item.get(\"withheld\"):\n            # Its author has it open in Edit",
+     "        if False:\n            # Its author has it open in Edit"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A [waiting] line on a held message prints (held)",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "held_words(wait, \"excerpt\")",
+     "wait[\"excerpt\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_message_edit.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Opening Edit takes the session in Core before the edit mode shows",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "async open() { await this.load(); await this.start(); return this.resume(); }",
+     "async open() { await this.load(); return this.resume(); }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The holder is on the device before edit_open leaves",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      this.holder = crypto.randomUUID();\n      await this.persist();\n",
+     "      this.holder = crypto.randomUUID();\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An Edit Core refuses opens nothing and says why",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (receipt.status !== 'committed') throw startFailure(",
+     "if (false) throw startFailure("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Device words other than Core's draft become the draft at once",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (deviceWords && !this.pending && this.value !== r.draft) this.flushDraft();",
+     "void deviceWords;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "With nothing unconfirmed on the device the field opens on Core's draft and its base",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "this.base = { revision: r.base_revision, body: r.base_words }; this.value = r.draft; this.kept = r.draft;",
+     "this.kept = r.draft;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Typing saves the draft in Core, debounced, on the session revision",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.live) this.scheduleDraft();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save with no answer goes again under its own operation",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "const sent = this.lostDraft ?? this.sessionEnvelope(",
+     "const sent = this.sessionEnvelope("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save answered EDIT_TAKEN shows the edit open on the other device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (code === 'EDIT_TAKEN') { this.goElsewhere(); return; }",
+     "if (false) { this.goElsewhere(); return; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save answered EDIT_CLOSED stops draft saves",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (code === 'EDIT_CLOSED') this.draftClosed = true;",
+     "if (code === 'EDIT_CLOSED') void 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Draft saves pause while the words are too long for Core",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.tooLong !== null && !this.lostDraft && bytes(this.value) >= this.tooLong) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save that meets REVISION_CONFLICT goes once more on the current session revision",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (!again && integer(current) && !quiet) { this.settle(null); return this.draftOnce(true); }",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Save waits for a draft save in flight until its request returns",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      await this.draftRequest;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A touch renews the hold once a quarter of it has passed, and not sooner",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (this.timers.now() - this.lastRenewal < this.holdMs / 4) return false;",
+     "if (this.timers.now() - this.lastRenewal < 0) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Every ending sends one edit_close",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (close && this.started && typeof this.holder === 'string') {\n      const operation",
+     "    if (false) {\n      const operation"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A close with no answer is sent again first by the next Edit",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.closing) {\n      const answer",
+     "    if (false) {\n      const answer"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A Save resumed from the device closes the session after it commits",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "close: this.resumed || !said ||",
+     "close: !said ||"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A holder's Save that Core closed sends no close",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "(result.session_closed === false && !this.elsewhere)",
+     "(!this.elsewhere)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Another device's session change shows the edit open on that device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (version > this.sessionRevision) this.goElsewhere();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A session change read while a command is out is compared once it answers",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    if (this.inFlight > 0 || this.unknown) { this.seen = Math.max(this.seen ?? 0, version); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Escape sends nothing to Core, not even a scheduled draft save",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    return this.started && !this.over && !this.closed && !this.elsewhere",
+     "    return this.started && !this.over && !this.elsewhere"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Edit here takes the edit back to this device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "    this.elsewhere = false; this.draftClosed = false; this.error = null;\n",
+     "    this.draftClosed = false; this.error = null;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Edit here shows only while another device holds the edit",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "this.here.hidden = !w.elsewhere || w.readOnly;",
+     "this.here.hidden = !w.readOnly;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The status reads Kept once Core confirmed the words",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "(w.confirmed ? SAY.confirmed : SAY.kept)",
+     "SAY.kept"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The status reads Open on your other device",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     ": w.elsewhere ? SAY.elsewhere",
+     ": false ? SAY.elsewhere"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A key, a press or the focus in the field renews the hold",
+   "break": [
+    [
+     "web/message-edit.mjs",
+     "for (const name of ['keydown', 'focus', 'pointerdown']) this.field.addEventListener(name, () => writing.touch());",
+     "void writing;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An actor-scope edit_session change asks the editing page to compare it",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "this.invalidate('edit_session:' + item.resource_id, item.version);",
+     "void item;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A close slow to answer turns Save and Cancel off at once",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "this.over = true; this.cancelDraft(); this.notify();",
+     "this.over = true; this.cancelDraft();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Words typed while a lost draft save was out go as the next draft save once it is resent",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "if (this.value !== this.kept && this.live && !this.timer) this.scheduleDraft();",
+     "void this.timer;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save's own edit_session change is never taken for another device",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      if (integer(revision) && revision > (this.sessionRevision ?? 0)) this.sessionRevision = revision;\n      this.kept = sent.args.body;",
+     "      this.kept = sent.args.body;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The edit mode paints only once Core opened the edit session",
+   "break": [
+    [
+     "web/app.mjs",
+     "try { await writing.load(); await writing.start(); }",
+     "try { await writing.load(); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit hold: Edit sends edit_open"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A page told its edit session moved learns another device took the edit",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true;",
+     "return true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit hold Edit here"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A session opened after the Reader moved on is closed again, once",
+   "break": [
+    [
+     "web/app.mjs",
+     "{ messageEdit = null; await writing.abandon(); writing.close(); return; }",
+     "{ messageEdit = null; writing.close(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit timing the Reader closed while edit_open is out"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An agent's opening.publish quoting a held message is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/openings.py",
+     "            if started[\"withheld\"]:\n                # An agent cannot start",
+     "            if False:\n                # An agent cannot start"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An agent's move on a because-word its author has open in Edit is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "for word in (row[\"id\"], parent):",
+     "for word in (parent,):"
+    ]
+   ],
+   "check": {
+    "python": "test_pipeline_go_ahead.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An agent's move on a word that replies to a held message is refused MESSAGE_HELD",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "for word in (row[\"id\"], parent):",
+     "for word in (row[\"id\"],):"
+    ]
+   ],
+   "check": {
+    "python": "test_pipeline_go_ahead.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A person moves on a word that is held in Edit",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        if actor_kind(db, actor) == \"agent\":\n            # An agent never moves on a word",
+     "        if True:\n            # An agent never moves on a word"
+    ]
+   ],
+   "check": {
+    "python": "test_pipeline_go_ahead.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An abandoned Edit keeps a Save not yet answered and words Core has not confirmed",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "const keep = Boolean(this.pending) || (this.dirty && this.value !== this.kept);",
+     "const keep = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The next Edit reads the writing kept beside a close that got no answer, and sends it after the close",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "      if (typeof held.value === 'string') {",
+     "      else if (typeof held.value === 'string') {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "The pipeline's held line of an ask held in Edit prints (held)",
+   "break": [
+    [
+     "aim_next/cli_outcome.py",
+     "_words(held, \"line\")",
+     "held[\"line\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_pipeline.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "An ask about an item, held in Edit, prints (held) in the pipeline",
+   "break": [
+    [
+     "aim_next/cli_outcome.py",
+     "_words(ask, \"excerpt\")[:120]",
+     "ask[\"excerpt\"][:120]"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_pipeline.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Only a person's message is recorded as handed, so an agent's read of an agent's words writes nothing",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if row[\"kind\"] == \"human\" and highest",
+     "if highest"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A new edit session's revision goes on from the last session's",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "revision, taken = (session[\"revision\"] + 1 if session else 1), False",
+     "revision, taken = 1, False"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Views show a lapsed message's words before any write releases it (held_ids reads the clock)",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "\"WHERE state='open' AND released_ms IS NULL AND renewed_ms>?\", (now - _hold_ms(),))}",
+     "\"WHERE state='open' AND released_ms IS NULL AND renewed_ms>?\", (0,))}"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A command's hold check reads the clock, so a lapsed message is not held (is_held)",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "(message_id, now - _hold_ms())).fetchone() is not None",
+     "(message_id, 0)).fetchone() is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A stored quote's head is its first non-empty line cut to 40 characters",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            return _collapsed(line)[:40]\n",
+     "            return _collapsed(excerpt)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_exposure.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Release hands work back only for rows in active groups",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "                lowest[row[\"recipient_id\"]] = min(row[\"seq\"], lowest.get(row[\"recipient_id\"], row[\"seq\"]))\n",
+     "                pass\n            lowest[row[\"recipient_id\"]] = min(row[\"seq\"], lowest.get(row[\"recipient_id\"], row[\"seq\"]))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save's answer, while a Save is pending or after it, changes nothing the person sees: the Save's own answer decides",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "let quiet = Boolean(this.pending);",
+     "let quiet = false;"
+    ],
+    [
+     "web/message-edit-writing.mjs",
+     "quiet ||= Boolean(this.pending) || this.over;",
+     "quiet ||= false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Pressing Save shows Saving… at once, before its envelope is kept on the device, whatever a draft save said before",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "this.pending = this.envelope(); this.state = 'saving'; this.error = null; this.notify();",
+     "this.pending = this.envelope();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
    }
   },
   {

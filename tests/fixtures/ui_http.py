@@ -897,8 +897,8 @@ def main():
                             {"item_id": request["item_id"], "owner_scope": {"kind": "topic", "id": request["topic_id"]}},
                             {"item_revision": 0}, sender="fixture-notebook-agent")
                     elif freshness and request["method"] == "agent_view":
-                        # What the fixture's agent is given by a view, as its CLI reads it.
-                        answer = store().view("fixture-notebook-agent", request["name"], request.get("args") or {})
+                        # What the fixture's agent (or {"actor": an agent}) is given by a view, as its CLI reads it.
+                        answer = store().view(request.get("actor", "fixture-notebook-agent"), request["name"], request.get("args") or {})
                     elif freshness and request["method"] == "outcome_change":
                         # Someone who organises an outcome changes its record, as the CLI
                         # does: {"owner": id} hands it on, {"member": id, "present": bool}
