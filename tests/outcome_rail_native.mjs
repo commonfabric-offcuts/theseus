@@ -1683,7 +1683,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const id = (await control({ method: 'agent_message', operation_id: 'rail-unstar-' + n, topic_id: 'rail-unstar-t', whole_topic: true, sender: 'person', body: `Unstar message ${n}.` })).result.message_id;
       await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: id, operation_id: 'rail-unstar-star-' + n, args: { starred: true } });
     }
-    const p = await open('rail-unstar', '/?topic=rail-unstar-t');
+    const p = await open('rail-unstar', '/?topic=rail-unstar-t', 'laptop', 'dark');
     await settled(p, 'the topic is up');
     const unstar = '#things .things-sec[data-key=starred] .things-unstar';
     const count = () => p.evaluate(`[...document.querySelectorAll('${unstar}')].filter(e=>e.checkVisibility()).length`);
@@ -1698,6 +1698,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const after = await seen();
     // Chrome focuses the button pressed, and the tree hands that focus to the Unstar left; WebKit gives a pressed button no focus.
     assert.deepEqual({ visible: after.visible, rails: after.rails }, { visible: false, rails: 0 }, `after a mouse Unstar nothing in the rails wears a ring: ${JSON.stringify(after)}`);
+    await shot(p, 'rail-unstar-no-ring-1280-dark');
     // The keys still ring: Tab and Shift-Tab come back to an Unstar wearing its ring, so the check above is no rail that rings nothing at all.
     if (after.unstar) {
       await p.key('Tab'); await p.key('Tab', 8);
@@ -1740,6 +1741,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await up('t1 is up again');
     await openDrawer('after back');
     await onReading('t1', 'after back');
+    await shot(p, 'rail-drawer-after-back-390-light');
     await closeDrawer('after back');
     // Forward, to topic A again: the drawer opens on its row, the page being read, with no ring, since no tap chose it this time.
     await p.evaluate('history.forward()');
