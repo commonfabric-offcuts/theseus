@@ -1027,6 +1027,10 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .message-edited{color:var(--muted)}
 /* What a card's message carries (item 127): small glyphs in the card's line beside its time, in the line's quiet color on every card face, light and dark. A mark, not a control: its words are its accessible name and tooltip. */
 .card-carries{white-space:nowrap;margin-left:.15rem}
+/* The star that follows the time (stack-look.css) shows only on a lit card, but always takes its place: on a line the marks fill, it stays with the time and its marks instead of wrapping to a line where it shows nothing. The line's own parts still wrap within them. */
+.message-author:has(> .message-time .card-carries){white-space:nowrap}
+.message-author:has(> .message-time .card-carries)>*{white-space:normal}
+.message-author .together{white-space:nowrap}
 .carry{display:inline-block;width:.95rem;height:.95rem;margin-left:.3rem;vertical-align:-.15rem;background-color:var(--muted);-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
 .carry-image{--carry:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.75' y='2.75' width='12.5' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.5' cy='6.5' r='1.1'/%3E%3Cpath d='M2.5 12l3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
 .carry-note{--carry:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.25 1.75h6.5l3 3v9.5h-9.5z'/%3E%3Cpath d='M9.75 1.75v3h3M5.5 8.25h5M5.5 11h3.5'/%3E%3C/svg%3E")}
