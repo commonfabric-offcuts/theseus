@@ -340,7 +340,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       const box=e=>{const r=e.getBoundingClientRect();return {x:r.left,y:r.top,r:r.right,b:r.bottom}},cross=(a,b)=>Math.min(a.r,b.r)-Math.max(a.x,b.x)>0.5&&Math.min(a.b,b.b)-Math.max(a.y,b.y)>0.5;
       const pencil=[...s.querySelectorAll('.notebook-create')].find(v),more=d.querySelector('.things-more'),sheet=document.getElementById('things').getBoundingClientRect();
       const parts=[s.querySelector(':scope > span'),pencil,s.querySelector('.sum')].filter(v).map(box);
-      return {rows:[...d.querySelectorAll('.things-list a.row')].length,sum:s.querySelector('.sum').textContent,more:v(more)?more.textContent:null,
+      const phone=matchMedia('(max-width: 760px)').matches;
+      return {rows:[...d.querySelectorAll('.things-list a.row')].length,short:[...d.querySelectorAll('.things-list a.row')].filter(a=>phone&&Math.round(a.getBoundingClientRect().height)<44).length,sum:s.querySelector('.sum').textContent,more:v(more)?more.textContent:null,
         quiet:d.querySelector('.things-quiet')?.textContent??null,pencil:pencil?[pencil.getAttribute('aria-label'),pencil.title]:null,
         overlaps:parts.flatMap((a,i)=>parts.slice(i+1).filter(b=>cross(a,b))).length,
         small:[pencil,v(more)?more:null].filter(Boolean).map(e=>e.getBoundingClientRect()).filter(r=>matchMedia('(max-width: 760px)').matches&&(Math.round(r.width)<44||Math.round(r.height)<44)).length,
@@ -359,8 +360,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       let p = await at('nb-rail-many-' + label, `/?conversation=${many}`);
       await wholeOutcome(p);
       await until(async () => (await section(p)).more === 'More pages', 'the section lists its first pages and More pages');
-      assert.deepEqual(await section(p), { rows: 20, sum: '20+', more: 'More pages', quiet: null, pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
-        `${label}: twenty pages, More pages, the pencil clear of the name and the count`);
+      assert.deepEqual(await section(p), { rows: 20, short: 0, sum: '20+', more: 'More pages', quiet: null, pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
+        `${label}: twenty pages, each a full touch target on a phone, More pages, the pencil clear of the name and the count`);
       for (const part of [ROWS, MORE]) assert.ok(await contrast(p, part) >= 4.5, `${label}: ${part} reads`);
       await p.evaluate(`document.querySelector(${JSON.stringify(MORE)}).scrollIntoView({block:'center',behavior:'instant'})`);
       await shot(p, 'notebook-rail-more-' + label);
@@ -386,7 +387,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       }
       // Every page, once More has brought them: the count says so and More has gone; a reload of the rail keeps them.
       await until(async () => (await section(p)).more === null, 'More goes once nothing is left');
-      assert.deepEqual(await section(p), { rows: all, sum: String(all), more: null, quiet: null, pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
+      assert.deepEqual(await section(p), { rows: all, short: 0, sum: String(all), more: null, quiet: null, pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
         `${label}: every page, and no More`);
       await control({ method: 'outcome_reference', operation_id: `nb-rail-late-${label}`, item_id: `nb-rail-late-${label}`, workspace_id: many, title: `Late page ${label}`, body: 'Late.' });
       await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].some(a=>a.textContent.startsWith('Late page ${label}'))`), 'a page added since shows, and the rest stay');
@@ -397,7 +398,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       p = await at('nb-rail-none-' + label, `/?conversation=${none}`);
       await wholeOutcome(p);
       await until(async () => (await section(p)).quiet === 'No pages yet.', 'the empty Notebook keeps its heading and its pencil');
-      assert.deepEqual(await section(p), { rows: 0, sum: '', more: null, quiet: 'No pages yet.', pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
+      assert.deepEqual(await section(p), { rows: 0, short: 0, sum: '', more: null, quiet: 'No pages yet.', pencil: ['New Notebook page', 'New Notebook page'], overlaps: 0, small: 0, inside: true, sideways: false, side: 0 },
         `${label}: the empty Notebook`);
       await shot(p, 'notebook-rail-empty-' + label);
       await aim(p, PENCIL);

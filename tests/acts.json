@@ -11679,7 +11679,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook at 390 wide"
+    "case": "notebook the right rail lists a whole outcome's Notebook"
    }
   },
   {
