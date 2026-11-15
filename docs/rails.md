@@ -277,11 +277,15 @@ move to another build is a load.
   "Theseus updated." with Reload, by the topic line and in the Reader or New
   message sheet when one is open, and puts back a back or forward that found
   the new build. Reload goes through the browser's own ask while the guard
-  holds, and the words are kept as a load keeps them.
+  holds, and the words are kept as a load keeps them: words Theseus has come
+  back in the box, and words kept on this device only are offered under
+  Review versions, as after any load.
 
 Native checks open a page on release 76 (`bb3a46da`), serve this build, move
 once, and Edit; they move on one build and on another at 320, 375 and 390 by
-touch and on a laptop; and they hold writing and press Reload.
+touch and on a laptop; they hold writing and press Reload, once Theseus has the
+words and while only this device has them; and they reload on one build with
+words on this device only.
 
 ## Known gaps
 

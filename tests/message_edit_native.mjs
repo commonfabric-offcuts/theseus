@@ -1102,13 +1102,17 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
     if (device === 'phone' && !await railOpen(p)) {
       await centre(p, '#rail-open');
-      await p.evaluate(`(window.railPresses = [], ['pointerdown', 'click'].forEach(type => addEventListener(type, e => window.railPresses.push(type + ':' + (e.target.id || e.target.className || e.target.tagName) + ':' + e.defaultPrevented), true)), true)`);
+      // Each press, where ☰ was then, and (in Chrome) each shift of the page's layout, with what moved: kept in a failure.
+      await p.evaluate(`(window.railPresses = [], window.railShifts = [], ['pointerdown', 'click'].forEach(type => addEventListener(type, e => window.railPresses.push(type + ':' + (e.target.id || e.target.className || e.target.tagName)
+        + ':' + e.defaultPrevented + '@' + Math.round(e.clientY) + ' ☰' + Math.round(document.querySelector('#rail-open').getBoundingClientRect().top) + ' scroll' + Math.round(scrollY)), true)),
+        (() => { try { new PerformanceObserver(list => { for (const shift of list.getEntries()) window.railShifts.push((shift.sources ?? []).map(s => (s.node?.id || s.node?.className || s.node?.nodeName) + ' ' + Math.round(s.previousRect.top) + '→' + Math.round(s.currentRect.top)).join(', ')); })
+          .observe({ type: 'layout-shift' }); } catch {} })(), true)`);
       await press(p, device, '#rail-open');
       // What the page was doing, if the drawer does not open: kept in the failure.
       await until(() => railOpen(p), 'phone: the drawer opens').catch(async error => {
         const state = await p.evaluate(`({ at: location.search, ready: document.body?.dataset.ready, expanded: document.querySelector('#rail-open')?.getAttribute('aria-expanded'),
           inert: document.querySelector('#main')?.inert, sheet: document.querySelector('#new-message-sheet')?.open, focus: document.activeElement?.id || document.activeElement?.tagName,
-          notice: document.querySelector('#topic-navigation-status')?.textContent, presses: window.railPresses, origin: performance.timeOrigin })`).catch(e => ({ unread: e.message }));
+          notice: document.querySelector('#topic-navigation-status')?.textContent, presses: window.railPresses, shifts: window.railShifts, origin: performance.timeOrigin })`).catch(e => ({ unread: e.message }));
         throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
       });
     }
