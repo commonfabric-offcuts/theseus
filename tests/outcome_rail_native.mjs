@@ -2571,7 +2571,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         const down = await walk(p, 'ArrowDown', 25);
         assert.ok(!down.includes('page'), `${size} ${name}: ↓ never loses the focus: ${down.join(' → ')}`);
         assert.ok(down.length > 1, `${size} ${name}: ↓ goes on from the first control: ${down.join(' → ')}`);
-        assert.ok(down.some(at => reaches.test(at)), `${size} ${name}: ↓ reaches what the page lists: ${down.join(' → ')}`);
+        if (!down.some(at => reaches.test(at))) assert.fail(`${size} ${name}: ↓ reaches what the page lists: ${down.join(' → ')}; it stopped on ${await p.evaluate(`(e=>{const r=e.getBoundingClientRect(),near=[...document.querySelectorAll('#main a[href],#main button')].filter(x=>x!==e&&x.checkVisibility()).map(x=>{const b=x.getBoundingClientRect();return [x.textContent.trim().slice(0,20),Math.round(b.top),Math.round(b.bottom),Math.round(b.left),Math.round(b.right),Boolean(x.closest('[inert]'))]}).filter(b=>b[2]>r.top-10);return JSON.stringify({html:e.outerHTML.slice(0,240),box:[Math.round(r.top),Math.round(r.bottom),Math.round(r.left),Math.round(r.right)],scrollY,inner:innerHeight,doc:document.documentElement.scrollHeight,below:near.slice(0,12)})})(document.activeElement)`)}`);
         if (size === 'laptop' || size === '320') {
           // From the first control ↓ lands on with nothing focused, the arrows reach every control on the page.
           const first = async () => { await p.evaluate("document.activeElement?.blur()"); await p.key('ArrowDown'); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
@@ -2707,6 +2707,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.ok(down.length > 1, '↓ goes on from the header: ' + down.join(' → '));
     // Every control in the Reader, its reply's + and 👍 and Send among them, by the arrows from its header.
     const readerClosure = async (q, size) => {
+      // A link in the message's words, as a message with one has: → from the words reaches it, ← comes back.
+      await q.evaluate("(b=>{const a=document.createElement('a');a.href='#arrow-link';a.id='arrow-link';a.textContent='a link in the words';b.prepend(a,' ')})(document.getElementById('source-body'))");
+      await q.evaluate("document.getElementById('source-body').focus()");
+      await q.key('ArrowRight');
+      assert.equal(await focusAt(q), 'dialog:arrow-link', size + ': → from the message\'s words reaches the link in them');
+      await q.key('ArrowLeft');
+      assert.equal(await focusAt(q), 'dialog:source-body', size + ': ← from the link comes back to the words');
       const readerFirst = async () => { await q.evaluate("document.getElementById('reader-parent').focus()"); return q.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
       const { missing, lost } = await arrowClosure(q, '#reader', readerFirst);
       assert.deepEqual(missing, [], size + ': the arrows reach every control in the Reader');

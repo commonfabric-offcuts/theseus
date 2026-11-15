@@ -166,6 +166,29 @@ function scrollsOn(el, way, view) {
   return true;
 }
 
+// A box the focus reads in, in the tab order with no role of its own, which
+// scrolls (a message's words in the Reader),
+// and holds controls of its own (the links in those words): → from it goes to
+// the first of them in sight, and ← from one with nothing more to its left in
+// the box comes back to the box. ↑ and ↓ from one go by the page, as anywhere.
+const readingBox = el => el?.getAttribute?.('tabindex') === '0' && !el.hasAttribute('role') && scrolling(el.ownerDocument.defaultView.getComputedStyle(el), true);
+function inOutOfBox(at, way, doc) {
+  if (way === 'right' && readingBox(at)) {
+    const first = controls(at).find(el => el !== at && inSight(el, doc));
+    if (!first) return false;
+    first.focus({ preventScroll: true }); revealSelection(first);
+    return true;
+  }
+  if (way !== 'left' || !at || at === doc.body) return false;
+  let box = at.parentElement;
+  while (box && box !== doc.body && !readingBox(box)) box = box.parentElement;
+  if (!box || box === doc.body) return false;
+  const left = nearest(at.getBoundingClientRect(), controls(box).filter(el => el !== at).map(el => ({ el, box: el.getBoundingClientRect() })), 'left');
+  if (left) return false;
+  box.focus({ preventScroll: true });
+  return true;
+}
+
 // A widget that keys its own arrows, or a control inside one; but a control
 // inside a tree's row (a pencil in a section's heading) is not the row, which
 // keys only itself (key-tree.mjs).
@@ -201,7 +224,7 @@ export function arrowReach(doc, { managed = () => false, region = () => null, be
     if (!way || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const at = doc.activeElement;
     if ((at?.closest?.(FIELD) && !leavesLine(at, way)) || owned(at) || managed(at, way)) return;
-    if (scrollsOn(at, way, view)) { event.preventDefault(); return; }
+    if (scrollsOn(at, way, view) || inOutOfBox(at, way, doc)) { event.preventDefault(); return; }
     // The page itself (or a pane itself: the feed, with no message to light) is nothing focused, within its region.
     const nothing = onNothing(at, doc), within = at && at !== doc.body ? region(at) : null;
     const moved = within ? reach(at, way, { within, doc }) || (!nothing && beyond(at, way)) : reach(nothing ? null : at, way, { doc });

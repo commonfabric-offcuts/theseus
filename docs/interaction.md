@@ -310,7 +310,9 @@ rule above. (`web/arrow-reach.mjs`)
 - **Reading is kept.** A focused box that can still scroll that way (a long
   message in the Reader) scrolls first, a third of what it shows at a time, the
   same in every browser; once at its end the arrows go on (at 390 ↓ through a
-  long message reaches the reply below it). While the next control that way is out
+  long message reaches the reply below it). From the message's words, → goes
+  to the first link in them in sight, and ← from a link with nothing more to
+  its left comes back to the words. While the next control that way is out
   of sight, the arrow scrolls toward it, a third of a window at a time, so the
   words between are read on the way; once it shows, the next press lands on
   it.

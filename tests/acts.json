@@ -14130,6 +14130,21 @@
     "native": "webkit-rail",
     "case": "rail arrows in Topic settings and the Reader"
    }
+  },
+  {
+   "item": 301,
+   "act": "From a box the focus reads in (a message's words in the Reader), → goes to the first link in it in sight, and ← from a link with nothing more to its left comes back to the box",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "    if (scrollsOn(at, way, view) || inOutOfBox(at, way, doc)) { event.preventDefault(); return; }",
+     "    if (scrollsOn(at, way, view)) { event.preventDefault(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
   }
  ]
 }
