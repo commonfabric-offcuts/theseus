@@ -2034,8 +2034,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const p = await open(topic, 'laptop', topic, ids.alone);
     const on = card(ids.alone);
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on + ' a.words-link[target="_blank"]')})?.getAttribute('href') === ${JSON.stringify(ELSEWHERE)}`), 'the card shows the link, to open in a new window');
-    // Each click as the window first hears it, kept to read once it is over: whether the page took it from the browser.
-    await p.evaluate(`(addEventListener('click',e=>{window.lastClick=e},true),true)`);
+    // Each click as the window first hears it, kept to read once it is over: whether the page took it from the browser;
+    // and whether the focus has been on the card's link.
+    await p.evaluate(`(addEventListener('click',e=>{window.lastClick=e},true),addEventListener('focusin',e=>{if(e.target.matches?.('a.words-link'))window.linkFocused=true},true),true)`);
     const shiftClick = async text => {
       const at = await wordsAt(p, ids.alone, text), taps = await p.evaluate('window.taps');
       assert.ok(at, `${text} is drawn on the card`);
@@ -2060,10 +2061,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.deepEqual(added.map(([, url]) => url), [ELSEWHERE], 'one new window, at the link\'s address');
     for (const [id] of added) await windows.close(id);
     await p.send('Page.bringToFront');
-    // The link grows no light. Where the click puts the focus on the link, Return there follows the link,
-    // and the light goes out as it does wherever Return quotes nothing; otherwise it stays as it was.
-    const onLink = await p.evaluate(`Boolean(document.activeElement?.matches('a.words-link'))`);
-    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light (the focus ${onLink ? 'on the link' : 'not on the link'})`);
+    // The link grows no light. Where the click put the focus on the link (Chrome's does), Return there follows the
+    // link, and the light went out as it does wherever Return quotes nothing; otherwise it stays as it was.
+    const onLink = await p.evaluate('window.linkFocused === true');
+    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light (the focus ${onLink ? 'went to the link' : 'never on the link'})`);
     assert.equal(await readerOn(p), null, 'and the card did not open');
     assert.deepEqual(p.errors, []);
     await p.close();
