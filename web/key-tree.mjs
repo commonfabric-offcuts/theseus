@@ -19,7 +19,9 @@ const shown = el => el.isConnected && (typeof el.checkVisibility === 'function' 
 export class KeyTree {
   // root: the element that is the tree. rows(): the rows on show, in order,
   // each { el, level, set, key, parent (a row's el, or null), expanded (true,
-  // false, or undefined for a row that does not open) }. act(action, row,
+  // false, or undefined for a row that does not open), and aside: true for a
+  // row never taken as the Tab stop for want of another (the outline's heading
+  // pencil) }. act(action, row,
   // rows): what the pane does for a key the tree does not answer itself. The
   // tree speaks through a polite status of its own (say). also: rows drawn
   // outside root (the outline's heading pencil), which the tree owns
@@ -94,7 +96,7 @@ export class KeyTree {
     const focused = this.doc.activeElement, before = this.current;
     const reading = rows.find(row => row.el.getAttribute('aria-current') === 'page');
     const kept = rows.find(row => row.key === this.currentKey);
-    const place = (!this.chosen && reading) || kept || rows.find(row => row.el === this.current) || reading || rows[0] || null;
+    const place = (!this.chosen && reading) || kept || rows.find(row => row.el === this.current) || reading || rows.find(row => !row.aside) || rows[0] || null;
     if (!place) return;
     this.visit(place, this.chosen && !kept);
     // The focus was on the row that went, or on the one standing in for it: it goes to the row in its place.
@@ -107,7 +109,7 @@ export class KeyTree {
   // given and one does, else on the row it was last on.
   focus(prefer = null) {
     this.refresh();
-    const rows = this.list(), row = (prefer && rows.find(prefer)) ?? rows.find(each => each.el === this.current) ?? rows[0];
+    const rows = this.list(), row = (prefer && rows.find(prefer)) ?? rows.find(each => each.el === this.current) ?? rows.find(each => !each.aside) ?? rows[0];
     if (!row) return false;
     this.visit(row); row.el.focus({ preventScroll: true }); revealSelection(row.el);
     return true;

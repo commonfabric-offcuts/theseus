@@ -399,7 +399,7 @@ export class OutlineRail {
   // outcome's pencil is a row too while it holds the focus or its title line.
   // A title line being typed in is writing, not a row.
   treeRows() {
-    const rows = [{ el: this.newOutcome, level: 1, set: this.list, key: 'new-outcome', parent: null, outcome: null }];
+    const rows = [{ el: this.newOutcome, level: 1, set: this.list, key: 'new-outcome', parent: null, outcome: null, aside: true }];
     for (const li of this.list.children) {
       const outcome = this.outcomes.get(li.dataset.workspaceId);
       if (!outcome || li.hidden) continue;

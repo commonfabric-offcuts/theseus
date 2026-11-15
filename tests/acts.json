@@ -11788,7 +11788,7 @@
    "break": [
     [
      "web/outline-rail.mjs",
-     "const rows = [{ el: this.newOutcome, level: 1, set: this.list, key: 'new-outcome', parent: null, outcome: null }];",
+     "const rows = [{ el: this.newOutcome, level: 1, set: this.list, key: 'new-outcome', parent: null, outcome: null, aside: true }];",
      "const rows = [];"
     ]
    ],
@@ -11840,6 +11840,21 @@
    "check": {
     "native": "rail",
     "case": "rail Tab from the logo block reaches the outline as one stop"
+   }
+  },
+  {
+   "item": 305,
+   "act": "With the place being read folded away, Tab into the outline lands on an outcome, never on the heading's pencil",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "|| reading || rows.find(row => !row.aside) || rows[0] || null;",
+     "|| reading || rows[0] || null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the pencil beside another outcome starts a topic there"
    }
   }
  ]
