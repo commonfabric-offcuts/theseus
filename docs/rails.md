@@ -42,7 +42,14 @@ while something in them is unread, and Done (N) and Archived (N) below.
   "New outcome"), with its tooltip. There is no + New topic row: the page's
   own New topic, pulled into the outline under the outcome being read, stays
   out of sight there, and stays on the outcome page and the pages with the
-  side rail.
+  side rail. Each title line has four states, at a phone's width as on a
+  laptop: open and empty; refused, when Return finds no title ("Type the
+  topic's title, then press Return."); busy, "Starting…" while its command is
+  on its way, when a second Return sends nothing more; and refused by the
+  server, in the server's words with the title kept as typed for Return
+  again. In every one the line sits under its row or heading, clear of it
+  and of its pencil, inside the rail or the open drawer, and Escape closes
+  it and gives the pencil the keys.
 
 - **Counts.** A folded outcome counts everything new inside it, and what was
   sent to the reader by name. An open outcome counts only its Conversation,

@@ -194,7 +194,9 @@ nothing scrolls sideways, and nothing depends on hover.
   an opening types adds a participant saves and sends by tap".
 - `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
   at 320, 375 and 390 the pencil beside the outcome in the open drawer always
-  shows, 44px, …", in both themes.
+  shows, 44px, …", in both themes; "rail each pencil's title line, at 320, 375
+  and 390 in the open drawer and on a laptop, …" draws each of its states
+  (open, refused, busy, refused by the server) at each width, in both themes.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).

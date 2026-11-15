@@ -11856,6 +11856,96 @@
     "native": "rail",
     "case": "the pencil beside another outcome starts a topic there"
    }
+  },
+  {
+   "item": 305,
+   "act": "The New outcome title line opens clear of the heading and its pencil, at a phone's width as on a laptop",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-heading-tools{display:flex;gap:.1rem;margin:-.5rem 0}",
+     ".ol-heading-tools{display:flex;gap:.1rem;margin:-.5rem 0 -1.25rem}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A second Return while a pencil's title line is starting sends nothing more",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "if (this.busy) return;",
+     "void 0;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil's title line says it is busy while its command is on its way",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "this.busy = true; this.input.setAttribute('aria-busy', 'true');",
+     "this.busy = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The server's refusal of a new topic keeps the title typed in the outcome's line",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const id = await starter.start(title);",
+     "line.input.value = ''; const id = await starter.start(title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The server's refusal of a new outcome keeps the title typed in the heading's line",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const id = await start.create(title);",
+     "line.input.value = ''; const id = await start.create(title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil's title line fits the open drawer at 320",
+   "break": [
+    [
+     "web/aim.css",
+     ".one-line input{width:100%;max-width:32rem;min-width:0;",
+     ".one-line input{width:100%;max-width:32rem;min-width:19rem;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
   }
  ]
 }
