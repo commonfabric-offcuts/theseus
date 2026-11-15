@@ -1121,6 +1121,55 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 465, the composer popped up: at rest it sits among the dossiers, and up over the page it leaves that place,
+  // which a holder of its height keeps (sheet-holder.mjs), so nothing behind the backdrop moves, whichever engine draws
+  // it (Chrome's scroll anchoring would hide a moved feed where Safari's engine shows it). By ✎ with the page at its top
+  // and by ⌘Return with a dossier below the composer near the window's top, on a laptop, and by a finger's ✎ at 390:
+  // every dossier and More stay where they were while it is up, and put back each is where it was, with the list no
+  // taller than before, nothing left holding a place.
+  await check('reading stacks the New message composer popped up by ✎ or ⌘Return leaves every dossier behind it where it was, and put back each is where it was', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-composer-still-' + device;
+      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The oldest dossier.', read: true }],
+        ['b', { sender: other, addressees: [facts.actor], body: 'The dossier put aside.', read: true }],
+        ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply in the dossier put aside.', read: true }],
+        ['c', { sender: other, addressees: [facts.actor], body: 'The newest dossier.', read: true }]]);
+      const newest = (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.b, operation_id: `${topic}-aside`, args: { through: newest } });
+      const p = await open(topic, device, topic, ids.c);
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages .stack-more'))`), `${device}: More drawn`);
+      await press(p, device, '#messages .stack-more');
+      const below = `#messages .reply-stack[data-stack="${ids.b}"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(below)})?.getClientRects().length)`), `${device}: the dossier below More shows, below the composer`);
+      // Room under the feed, so the dossier below the composer can be scrolled near the window's top.
+      await p.evaluate(`document.querySelector('#notebook').style.minHeight='2000px'`);
+      // Where each dossier, message and More of the feed is in the window, the page's scroll, and the list's height.
+      const where = () => p.evaluate(`(()=>{const list=document.querySelector('#messages');
+        const rows=[...list.children].filter(e=>e.getClientRects().length&&(e.matches('.reply-stack,.stack-more')||e.dataset.id));
+        return {scroll:scrollY,list:list.getBoundingClientRect().height,tops:Object.fromEntries(rows.map(e=>[e.dataset.stack??e.dataset.id??'More',e.getBoundingClientRect().top]))}})()`);
+      const moved = (from, to) => [['scroll', from.scroll, to.scroll], ['list', from.list, to.list],
+        ...Object.keys({ ...from.tops, ...to.tops }).map(key => [key, from.tops[key], to.tops[key]])].filter(([, x, y]) => !(Math.abs(x - y) <= 1));
+      const ways = device === 'phone' ? [['✎', 'top']] : [['✎', 'top'], ['⌘Return', 'scrolled']];
+      for (const [way, at] of ways) {
+        if (at === 'top') await p.evaluate('scrollTo(0, 0)');
+        else await p.evaluate(`(e=>scrollBy(0,e.getBoundingClientRect().top-150))(document.querySelector(${JSON.stringify(below)}))`);
+        const before = await where();
+        assert.deepEqual([ids.c, ids.a, 'More', ids.b].filter(key => !(key in before.tops)), [], `${device} ${way}: the feed shows c, a, More and b: ${JSON.stringify(before)}`);
+        if (way === '✎') await press(p, device, '#new-message');
+        else { await p.evaluate(`(()=>{document.activeElement?.blur();document.querySelector('#main').focus({preventScroll:true})})()`); await p.key('Enter', 4); }
+        await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device} ${way}: the composer is up, ready to type`);
+        const up = await where();
+        assert.deepEqual(moved(before, up), [], `${device} ${way}: with the composer up, nothing behind the backdrop moved: ${JSON.stringify({ before, up })}`);
+        await p.key('Escape');
+        await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open && document.querySelector('#new-message-sheet').nextElementSibling?.classList.contains('stack-more')`), `${device} ${way}: put back in its place, above More`);
+        const after = await where();
+        assert.deepEqual(moved(before, after), [], `${device} ${way}: put back, each is where it was, the list no taller: ${JSON.stringify({ before, after })}`);
+        observations.push({ name: 'composer popped, the feed still', engine, device, way, before, up, after });
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 465, where the feed is not drawn: a topic the reader can no longer read hides its messages, and the composer
   // that rests among them would go with them, and come up unseen. It rests at the page's end instead, where it shows,
   // its writing kept, put back first if it was up; ✎ brings it up where it shows. On a laptop and at 320, 375 and 390.
