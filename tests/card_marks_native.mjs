@@ -336,14 +336,15 @@ async function run() {
       assert.ok(starred.seen.parts.some(part => part.part === 'stack-new') && starred.seen.parts.some(part => part.part === 'stack-star'), 'the starred head is new and starred');
       const folded = await inTab('folded', 'new and folded');
       assert.ok(folded.seen.parts.some(part => part.part === 'stack-folded'), 'the folded head says Folded');
-      // Where there is room, a phone's tab shows the marks too: at 375 and 390 an image alone beside the whole name and
-      // New. At 320 the 22 characters of the name leave less room than a glyph, and the mark gives way before the name.
+      // Where there is room, a phone's tab shows the marks too: at 390 an image alone beside the whole name, New and the
+      // count. At 375 the count leaves less room than a glyph, and the mark gives way before it; at 320 the 22
+      // characters of the name give way to the count too, cut short (its whole name in its tooltip).
       const one = await inTab('one', 'an image alone');
-      assert.deepEqual(one.shown.map(mark => mark.kind), width >= 375 ? ['image'] : [], `the image alone shows whole where it fits (${one.seen.shape})`);
-      assert.equal(one.seen.who.cut, false, 'beside one mark, who began it reads whole');
+      assert.deepEqual(one.shown.map(mark => mark.kind), width >= 390 ? ['image'] : [], `the image alone shows whole where it fits (${one.seen.shape})`);
+      if (width >= 375) assert.equal(one.seen.who.cut, false, 'beside one mark, who began it reads whole');
       const bare = await inTab('bare', 'no marks');
       assert.equal(bare.seen.held, null, 'a head that carries nothing has no marks');
-      assert.equal(bare.seen.who.cut, false, 'with no marks, who began it reads whole beside New');
+      if (width >= 375) assert.equal(bare.seen.who.cut, false, 'with no marks, who began it reads whole beside New');
       if (width >= 760) {
         // On a laptop there is room: every mark shows, and the name reads whole.
         for (const { seen, shown } of [starred, folded]) {
