@@ -7,6 +7,7 @@ import { shell as host, listen } from './in-place-navigation.mjs';
 import { OutlineRail } from './outline-rail.mjs';
 import { ThingsRail } from './things-rail.mjs';
 import { panes, feedKey } from './panes.mjs';
+import { closesDrawer } from './rail-drawer.mjs';
 
 const storage = win => { try { return win.localStorage; } catch { return null; } };
 
@@ -15,10 +16,14 @@ export const shell = host;
 shell.extend((doc, win) => {
   const outline = doc.getElementById('outline'), things = doc.getElementById('things');
   if (outline) {
-    const rail = new OutlineRail({ host: outline, open: (target, title) => shell.open(target, title), read: (name, args, readClass) => shell.view(name, args, readClass), storage: storage(win) });
+    // A row whose press closes the phone's drawer cannot keep the focus: the drawer shows none of its rows then.
+    const rail = new OutlineRail({ host: outline, open: (target, title) => shell.open(target, title), read: (name, args, readClass) => shell.view(name, args, readClass), storage: storage(win),
+      holds: el => !(shell.drawer?.isOpen() && closesDrawer(el)) });
     shell.follow(rail);
     listen(doc, 'visibilitychange', () => rail.shown());
     panes.outline = rail;
+    // The phone's drawer opens on the outline's place (rail-drawer.mjs).
+    shell.drawerFocus = () => rail.opened();
   }
   if (things) {
     const rail = new ThingsRail({ host: things, backdrop: doc.getElementById('things-backdrop'), storage: storage(win) });

@@ -21,7 +21,7 @@ const matches = (e, selector) => selector.split(', ').some(one => {
   return SIMPLE[one](e);
 });
 
-function page({ current = 't2' } = {}) {
+function page({ current = 't2', place = null } = {}) {
   const doc = { activeElement: null, handlers: {}, addEventListener(name, fn) { this.handlers[name] = fn; } };
   class El {
     constructor(tag, { id = '', classes = [], attrs = {}, disabled = false } = {}) {
@@ -60,7 +60,7 @@ function page({ current = 't2' } = {}) {
   doc.getElementById = id => byId[id] ?? null;
   const phone = { matches: true, listeners: [], addEventListener(name, fn) { assert.equal(name, 'change'); this.listeners.push(fn); } };
   const win = { matchMedia: query => { assert.equal(query, '(max-width: 760px)'); return phone; } };
-  const drawer = railDrawer(doc, win);
+  const drawer = place ? railDrawer(doc, win, undefined, () => place({ topics })) : railDrawer(doc, win);
   const state = () => ({ open: rail.classList.contains('open'), backdrop: !backdrop.hidden, inert: main.inert, expanded: control.attrs['aria-expanded'] });
   // A tap bubbles from what was tapped to the rail and then to the document.
   const tap = target => { if (rail.contains(target)) rail.handlers.click({ target }); doc.handlers.click({ target }); };
@@ -80,6 +80,23 @@ test('the drawer starts closed, and "☰ Topics" opens it over the topic, on the
   assert.deepEqual(p.topics[1].scrolled, [{ block: 'center' }], 'the open topic is brought to the middle, so a lit topic beside it shows whole');
   p.press(p.control);
   assert.deepEqual(p.state(), SHUT, '"☰ Topics" again closes it');
+});
+
+// Inside a topic or a Conversation the outline says where the drawer opens:
+// the row its keys or a tap chose (item 462), which it focuses itself.
+test('where the rail puts the focus itself as the drawer opens, the drawer leaves it there and brings that row to the middle; where it puts none, the open topic', () => {
+  let chosen = null;
+  const p = page({ place: ({ topics }) => { if (chosen === null) return false; topics[chosen].focus({ preventScroll: true, focusVisible: true }); return true; } });
+  p.press(p.control);
+  assert.equal(p.doc.activeElement, p.topics[1], 'nothing chosen: the open topic, as before');
+  p.press(p.control);
+  chosen = 2;
+  p.press(p.control);
+  assert.deepEqual(p.state(), OPEN);
+  assert.equal(p.doc.activeElement, p.topics[2], 'the row the rail chose has the focus');
+  assert.deepEqual(p.topics[2].focusedWith, { preventScroll: true, focusVisible: true }, 'as the rail gave it: the drawer does not focus it again');
+  assert.deepEqual(p.topics[2].scrolled, [{ block: 'center' }], 'and it is brought to the middle');
+  assert.deepEqual(p.topics[1].scrolled, [{ block: 'center' }], 'the open topic is not scrolled to again');
 });
 
 test('with no open topic in it, the drawer opens on the first place it can go', () => {

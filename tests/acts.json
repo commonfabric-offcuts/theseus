@@ -1905,7 +1905,7 @@
   },
   {
    "item": 286,
-   "act": "A press on an outline row moves in place and puts the focus on the page reached, on its heading, so the next key rings nothing in the rails",
+   "act": "Back lands on the page reached, on its heading, so the next key rings nothing in the rails",
    "break": [
     [
      "web/in-place-navigation.mjs",
@@ -1915,7 +1915,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -1924,13 +1924,13 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';",
-     "    this.landing = 'page';"
+     "    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';",
+     "    this.landing = !popped && this.keptByPress(at) ? 'keys' : 'page';"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -1939,13 +1939,13 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';",
-     "    this.landing = this.by === 'keys' && inRails(at) ? 'keys' : 'page';"
+     "    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';",
+     "    this.landing = ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -1960,12 +1960,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
    "item": 286,
-   "act": "At 390 a tap on a row in the outline's drawer lands on the page's heading, not on ☰ Outcomes",
+   "act": "At 390 a tap on a row in the outline's drawer, which closes as the page moves, lands on the page's heading, not on ☰ Outcomes",
    "break": [
     [
      "web/in-place-navigation.mjs",
@@ -1975,7 +1975,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -1990,7 +1990,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -2005,7 +2005,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -2182,33 +2182,33 @@
    }
   },
   {
-   "item": 288,
-   "act": "A press on the row of the page being read lands the focus on the page's heading, so the next key rings nothing in the rails",
+   "item": 462,
+   "act": "A press on the row of the page being read keeps the keys on the row, wearing their ring",
    "break": [
     [
-     "web/app.mjs",
-     "  try { const moved = await pending; if (!moved) shell.stayed(); return moved; }",
-     "  try { return await pending; }"
+     "web/in-place-navigation.mjs",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer' && !this.keptByPress(this.doc.activeElement)) this.land(); }",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on the row of the page being read leaves no ring"
+    "case": "rail a press on the row of the page being read moves nothing and keeps the keys on the row"
    }
   },
   {
-   "item": 288,
-   "act": "A press on a rail row whose move the page refuses lands the focus on the page's heading, so the next key rings nothing in the rails",
+   "item": 462,
+   "act": "A press on an outline row whose move the page refuses keeps the keys on the row pressed, wearing their ring",
    "break": [
     [
-     "web/app.mjs",
-     "    if(serial!==topicNavigation.serial)return;\n    shell.stayed();\n",
-     "    if(serial!==topicNavigation.serial)return;\n"
+     "web/in-place-navigation.mjs",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer' && !this.keptByPress(this.doc.activeElement)) this.land(); }",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on a row whose move the page refuses leaves no ring"
+    "case": "rail a press on a row whose move the page refuses keeps the keys on the row pressed"
    }
   },
   {
@@ -6428,7 +6428,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "a press on an outline row puts the focus"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -11570,6 +11570,126 @@
    ],
    "check": {
     "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A click or a tap on an outline row selects it as the keys would: its place opens and the keys stay on the row, wearing their ring",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), true);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The row a press selects wears the keys' ring",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    el.focus({ preventScroll: true, focusVisible: true });",
+     "    el.focus({ preventScroll: true });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A press on an outline row that moves keeps the keys on the row, not on the heading of the page reached",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';",
+     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A press on the outline's own row being read, the outcome's name on its Conversation, keeps the keys on it",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer' && !this.keptByPress(this.doc.activeElement)) this.land(); }",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on the row of the page being read moves nothing and keeps the keys on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "At 390 the outline's drawer opens again on the row tapped, ringed",
+   "break": [
+    [
+     "web/rails.mjs",
+     "    shell.drawerFocus = () => rail.opened();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "At 390 a tap in the drawer, which closes as the page moves, makes the row the outline's place without the focus, so the focus goes to the page's heading",
+   "break": [
+    [
+     "web/rails.mjs",
+     "      holds: el => !(shell.drawer?.isOpen() && closesDrawer(el)) });",
+     "      holds: () => true });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "Waiting on you pressed opens the question in the Reader, and closing it gives the keys back to the row pressed, ringed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), true);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail outcome clicks toggle"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A press on what opens in the outline keeps its own way: New topic's title line has the focus, not the row pressed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    if (this.holds(row.el)) this.ring(row.el);",
+     "    if (this.holds(row.el)) setTimeout(() => this.ring(row.el));"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press in the outline on what opens there keeps its own way"
    }
   }
  ]

@@ -23,7 +23,9 @@
 // between the rows, Return opens one, ⌘→ ⌘← open and fold an outcome, → and
 // ← take the tree's steps and then move to the messages (panes.mjs); → on an
 // open outcome goes straight to the messages. ⌘Return starts a new message
-// in the row's topic, or in the outcome's Conversation.
+// in the row's topic, or in the outcome's Conversation. A click or a tap on a
+// row selects it as the keys do (item 462): the keys stay on it, ringed, as
+// its place opens.
 //
 // Which outcome is being read, which topic is open and whose list sits under
 // it come from the run of the page that is up, and from nothing before it.
@@ -117,14 +119,15 @@ export class OutlineRail {
   // host: the outline's element (the shell's). open(target, title): through
   // the page's guard (shell.open). read(name, args, readClass): a read for the
   // outline's own lists, through whichever run is up (shell.view).
-  // storage: localStorage, or null.
-  constructor({ host, open, read, storage = null, doc = host.ownerDocument }) {
+  // storage: localStorage, or null. holds(el): whether the row pressed can
+  // keep the focus (not one that closes the phone's drawer, rail-drawer.mjs).
+  constructor({ host, open, read, storage = null, doc = host.ownerDocument, holds = () => true }) {
     Object.assign(this, { host, open, read, storage, doc });
     this.handles = null; this.filter = null; this.outcomes = new Map(); this.unlisten = null; this.started = false;
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     this.reload = reloader(() => this.load());
     this.build();
-    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
+    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true, holds });
     // ⇧⌘→ and ⇧⌘← open and fold every outcome from anywhere in the outline:
     // its rows (the tree hears those), its chips, New outcome or its Keys.
     this.host.addEventListener('keydown', event => {
@@ -323,8 +326,8 @@ export class OutlineRail {
     // when they are open and opens them when folded (item 320), and that
     // choice holds through the move; Return, the keys' press, opens the
     // Conversation with its topics as before (⌘→ and ⌘← fold), and the outline
-    // tidies itself as on any arrival. The focus goes where any press in the
-    // outline puts it: the heading of the page reached, or of the page it stayed on.
+    // tidies itself as on any arrival. The keys stay on the name, as after any
+    // press on a row of the outline (key-tree.mjs, in-place-navigation.mjs).
     name.onclick = async event => {
       if (!plainClick(event)) return;
       event.preventDefault();
@@ -484,6 +487,8 @@ export class OutlineRail {
   // The keys come to the outline, on the row they were last on; coming back
   // from the messages (reading), on the row of the place being read.
   focus({ reading = false } = {}) { return this.tree.focus(reading ? row => row.el.getAttribute('aria-current') === 'page' : null); }
+  // The phone's drawer opens (rail-drawer.mjs): on the outline's own place, ringed once the person chose it.
+  opened() { return this.tree.show(); }
   // The outline's own topic lists for an outcome (TopicRail, as the side rail
   // drew them), made the first time they are wanted.
   ownRail(outcome) {

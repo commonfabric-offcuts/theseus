@@ -2452,7 +2452,7 @@ async function openDestination(target, title, from = null) {
   const notice=$('topic-navigation-status');showLine(notice,'');
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
   // A press on a rail row whose move went nowhere (the place being read, or a
-  // move the guard refused) leaves the row no focus to ring (in-place-navigation.mjs).
+  // move the guard refused) lands as a move does (in-place-navigation.mjs).
   try { const moved = await pending; if (!moved) shell.stayed(); return moved; }
   catch(error) {
     if(serial!==topicNavigation.serial)return;

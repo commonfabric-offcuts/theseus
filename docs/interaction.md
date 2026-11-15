@@ -173,7 +173,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   topics, Done (N) and Archived (N) and the topics of one open, More, + New
   topic and the Notebook's pages. Home and End go to the first and last.
   Return opens the row in place: a topic, or an outcome's Conversation with
-  its topics, folding every other outcome. ⌘→ opens the focused outcome (or
+  its topics, folding every other outcome. A click or a tap on a row opens it
+  too, and leaves the keys on it with their ring, so ↑ ↓ and → go on from there. ⌘→ opens the focused outcome (or
   a focused topic's outcome) and ⌘← folds it, with the keys on its row; →
   opens a folded outcome, and on an open one goes on into the messages, as
   on a topic (↓ reaches its topics); on Done (N) or Archived (N) → opens the
@@ -226,9 +227,17 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   Conversation, the right rail included, the page's own place. In writing
   it stays Send, and it never opens a second box.
 - **Where a move leaves the focus.** Return on a row keeps the keys on that
-  row, drawn again for the page reached. A press or a tap on a row in the
-  outline or the right rail, a link in a message, and back and forward land
-  as a load does: the focus is on the page reached, on its heading, which
+  row, drawn again for the page reached, and so does a click or a tap on a
+  row of the outline: the page opens and the row wears the keys' ring, so ↑
+  and ↓ go on from it and → goes into the messages. A press on such a row
+  whose move goes nowhere (the place already being read, or a move the guard
+  refuses) keeps the keys on it too. A press on a control inside a row keeps
+  its own way, and what a row opens itself (+ New topic's title line, the
+  Reader on a waiting question) has the focus as after Return on the row. On
+  a phone the drawer closes as the page moves, so the focus is on the page's
+  heading, and the drawer opens again on the row tapped, ringed. A press or a
+  tap on a row in the right rail, a link in a message, and back and forward
+  land as a load does: the focus is on the page reached, on its heading, which
   wears no ring, so the next key (one that scrolls, say) rings nothing in the
   rails. From there ↑ and ↓ light the messages and ← goes to the outline, as
   on a fresh page. A press on a row whose move goes nowhere (the place
@@ -360,10 +369,14 @@ The keys across the panes are pressed by `tests/outcome_rail_native.mjs`
 outline as a tree …", "rail ⇧⌘← and ⇧⌘→ fold and open every outcome …",
 "rail ⌘↑ ⌘↓ move an outcome, and a topic within its outcome, …" and "rail
 → and ← move between the outline, the messages and the right rail, …"; where
-a move leaves the focus: "rail a press on an outline row puts the focus on
-the page reached, …" and "rail a press on a right-rail row that moves in place
-puts the focus on the page reached, …", and "rail a press on the row of the
-page being read leaves no ring: …"; the steps the arrows take: "rail → on an
+a move leaves the focus: "rail a press on an outline row opens its place in
+place with the keys kept on the row, wearing their ring: …", "rail a press on
+the row of the page being read moves nothing and keeps the keys on the row,
+…", "rail a press on a row whose move the page refuses keeps the keys on the
+row pressed, …", "rail a press in the outline on what opens there keeps its
+own way: …", "rail outcome clicks toggle topics and waiting opens the exact
+unloaded question" and "rail a press on a right-rail row that moves in place
+puts the focus on the page reached, …"; the steps the arrows take: "rail → on an
 open outcome goes into the messages, …" and "rail in the right rail → and ←
 open and fold a section without ⌘: …"; the header's buttons: "rail ↑ from
 the top message reaches the buttons at the top of the feed, …", and the

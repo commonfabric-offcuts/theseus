@@ -1520,28 +1520,44 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'name:rail-ring-o', '← goes to the outline, on the Conversation being read');
     await until(async () => (await outline(p)).outcomes['rail-ring-o'].topics.some(row => row.id === 'rail-ring-t'), 'its topic shows under it');
-    await p.key('ArrowDown');
-    assert.equal(await keyedAt(p), 'topic:rail-ring-t');
-    await p.key('Enter');
-    await arrived(p, '?topic=rail-ring-t', 'Ring topic', 'Return on the topic opens it');
-    await settled(p, 'the topic is up again');
-    await until(async () => await keyedAt(p) === 'topic:rail-ring-t', 'the keys stay on the topic\'s row');
-    assert.equal((await keyTree(p)).ring, 'solid', 'with its ring');
+    const returnTo = async what => {
+      await p.key('ArrowDown');
+      assert.equal(await keyedAt(p), 'topic:rail-ring-t');
+      await p.key('Enter');
+      await arrived(p, '?topic=rail-ring-t', 'Ring topic', what);
+      await settled(p, 'the topic is up again');
+      await until(async () => await keyedAt(p) === 'topic:rail-ring-t', 'the keys stay on the topic\'s row');
+      assert.equal((await keyTree(p)).ring, 'solid', 'with its ring');
+    };
+    await returnTo('Return on the topic opens it');
     // Return on the outcome's row: its Conversation, the keys kept on its row.
     await p.key('ArrowUp');
     assert.equal(await keyedAt(p), 'name:rail-ring-o');
     await p.key('Enter');
     await arrived(p, '?conversation=rail-ring-o', null, 'Return on the outcome opens its Conversation');
     await until(async () => await keyedAt(p) === 'name:rail-ring-o', 'the keys stay on the outcome\'s row');
+    await returnTo('Return on the topic opens it again');
     assert.equal((await placeOf(p)).origin, start.origin, 'every move in place');
     // Back lands as a load does: the focus leaves the rail for the heading of the page reached, which wears no ring.
     await p.evaluate('history.back()');
-    await arrived(p, '?topic=rail-ring-t', 'Ring topic', 'back to the topic');
+    await arrived(p, '?conversation=rail-ring-o', null, 'back to the Conversation');
     assert.equal(await keyedAt(p), 'topic-title', 'back puts the focus on the heading, not the row the keys were on');
     assert.deepEqual(await rings(), { rails: [], heading: 'none' }, 'and nothing wears a ring');
     // A key that moves nothing (Escape) then rings nothing.
     await p.key('Escape');
     assert.deepEqual([await keyedAt(p), await rings()], ['topic-title', { rails: [], heading: 'none' }], 'after a key, still no ring in the rails or on the heading');
+    // ← from the heading takes the keys into the outline, on the place being read, with its ring.
+    await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'name:rail-ring-o', '← from the heading goes to the outline, on the Conversation\'s row');
+    assert.equal((await keyTree(p)).ring, 'solid', 'which wears the keys\' ring');
+    // Forward lands the same way; ↓ from the heading then lights a message, as on a fresh page, and rings nothing in the rails.
+    await p.evaluate('history.forward()');
+    await arrived(p, '?topic=rail-ring-t', 'Ring topic', 'forward to the topic');
+    assert.equal(await keyedAt(p), 'topic-title', 'forward puts the focus on the heading');
+    await settled(p, 'the topic is up once more');
+    await p.key('ArrowDown');
+    assert.match(await keyedAt(p), /^message:/, '↓ from the heading lights a message, as on a fresh page');
+    assert.deepEqual((await rings()).rails, [], 'and rings nothing in the rails');
     assert.deepEqual(p.errors, []); await p.close();
     // At 390 a tap on a row in the drawer opens its place and the drawer closes, as before: a closed drawer shows
     // none of its rows, so the focus is on the heading, not "☰ Outcomes". Opened again, it is on the row tapped, ringed.
