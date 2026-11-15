@@ -1162,8 +1162,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device} ${way}: the composer is up, ready to type`);
         const up = await where();
         assert.deepEqual(moved(before, up), [], `${device} ${way}: with the composer up, nothing behind the backdrop moved: ${JSON.stringify({ before, up })}`);
+        if (way === '✎') for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-composer-still-${device}-${theme}`); }
+        await dossierTheme(p, 'light');
         await p.key('Escape');
-        await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open && document.querySelector('#new-message-sheet').nextElementSibling?.classList.contains('stack-more')`), `${device} ${way}: put back in its place, above More`);
+        // Put back: the sheet's close, heard, folds the composer to its line and gives New message the focus.
+        await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open && document.querySelector('#inline-composer').dataset.compose === 'line' && document.activeElement?.id === 'new-message'
+          && document.querySelector('#new-message-sheet').nextElementSibling?.classList.contains('stack-more')`), `${device} ${way}: put back in its place, above More, folded to its line`);
         const after = await where();
         assert.deepEqual(moved(before, after), [], `${device} ${way}: put back, each is where it was, the list no taller: ${JSON.stringify({ before, after })}`);
         observations.push({ name: 'composer popped, the feed still', engine, device, way, before, up, after });

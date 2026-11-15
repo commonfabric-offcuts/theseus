@@ -1136,7 +1136,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       for(let t=walk.nextNode();t;t=walk.nextNode()){const r=document.createRange();r.selectNodeContents(t);for(const b of r.getClientRects())if(b.width>0)tops.push(b.top)}
       const lines=tops.sort((x,y)=>x-y).filter((top,i)=>!i||top-tops[i-1]>8).length;
       return {addOpen:!add.hidden&&a.height>0,addUnder:add.hidden||a.top>=pill.bottom-0.5,label:[label.top,label.bottom].map(Math.round),pill:[pill.top,pill.bottom].map(Math.round),
-        offset:Math.round((label.top+label.height/2)-(pill.top+pill.height/2)),lines,subHeight:Math.round(sub.getBoundingClientRect().height),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+        offset:Math.round((label.top+label.height/2)-(pill.top+pill.height/2)),lines,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
     for (const [device, width] of [['laptop', 1280], ['laptop', 1440], ['phone', 390]]) for (const theme of ['light', 'dark']) {
       const size = q => q.send('Emulation.setDeviceMetricsOverride', { width, height: device === 'phone' ? 844 : 900, deviceScaleFactor: 1, mobile: device === 'phone' });
       const p = await page(`header-add-open-${device}-${width}-${theme}`, null, true, { beforeNavigate: device === 'phone' ? both(phone, size, scheme(theme)) : both(size, scheme(theme)) });
@@ -1149,7 +1149,8 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       const open = await measure(p);
       assert.deepEqual([open.addOpen, open.addUnder, open.sideways], [true, true, false], `${width} ${theme}: the people to add show under the pills, nothing sideways: ${JSON.stringify(open)}`);
       assert.ok(Math.abs(open.offset) <= 2 && open.label[0] < open.pill[1], `${width} ${theme}: with "+ Add" open, the label stays beside the first pill, at the row's top: ${JSON.stringify({ closed, open })}`);
-      if (device === 'laptop') assert.deepEqual([open.lines, open.subHeight], [closed.lines, closed.subHeight], `${width} ${theme}: with "+ Add" open, the subtitle keeps its lines: ${JSON.stringify({ closed, open })}`);
+      // Its lines, not its box: the subtitle shares its row with the Team, and its box grows with the row.
+      if (device === 'laptop') assert.equal(open.lines, closed.lines, `${width} ${theme}: with "+ Add" open, the subtitle keeps its lines: ${JSON.stringify({ closed, open })}`);
       await shot(p, `header-add-open-${device}-${width}-${theme}`);
       assert.deepEqual(p.errors, []); await p.close();
     }
