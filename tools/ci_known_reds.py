@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import sysconfig
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -248,12 +249,7 @@ def unit_evidence(step, out):
     require(all(n == 1 for n in actual.values()), name + ': duplicate executed identity')
 
 def producer_binding(path, environ):
-    """Bind protected API evidence to the workflow_run event, never to artifacts.
-
-    The protected controller authenticates the API record and independently
-    rebuilds its expected merge tree. This consumer verifies that exact record
-    against the current controller context and all original producer evidence.
-    """
+    """Bind original PR or release-branch push evidence to the protected event."""
     record = read_json(path)
     event = read_json(environ.get('GITHUB_EVENT_PATH', ''))
     require(environ.get('GITHUB_EVENT_NAME') == 'workflow_run' and event.get('action') == 'completed',
@@ -262,40 +258,47 @@ def producer_binding(path, environ):
     expected = {'run_id': environ['GITHUB_RUN_ID'], 'run_attempt': environ['GITHUB_RUN_ATTEMPT'],
                 'workflow_sha': environ['GITHUB_WORKFLOW_SHA'], 'workflow_ref': environ['GITHUB_WORKFLOW_REF'],
                 'sha': environ['GITHUB_SHA'], 'repository': environ['GITHUB_REPOSITORY']}
-    require(all(str(controller.get(k)) == str(value) for k, value in expected.items()), 'wrong protected controller identity')
+    require(all(str(controller.get(k)) == str(v) for k,v in expected.items()), 'wrong protected controller identity')
     repository = expected['repository']
-    default = event['repository']['default_branch']
-    require(controller['workflow_ref'].startswith(repository + '/.github/workflows/')
-            and controller['workflow_ref'].endswith('@refs/heads/' + default), 'controller workflow is not on the default branch')
-    for field in ('workflow_sha', 'sha'):
-        require(isinstance(controller[field], str) and SHA.fullmatch(controller[field]), 'invalid controller source identity')
-    producer, pr, observed = record['producer'], record['producer']['pull_request'], event['workflow_run']
-    require(str(producer['run_id']) == str(observed['id'])
-            and str(producer['run_attempt']) == str(observed['run_attempt']), 'producer is not the triggering run/attempt')
-    require(int(producer['run_attempt']) == 1, 'protected controller refuses producer retries; request a fresh producer run')
-    require(producer['event'] == observed['event'] == 'pull_request', 'producer event is not pull_request')
-    require(producer['workflow_path'] == PRODUCER_WORKFLOW and producer['workflow_name'] == observed['name'],
-            'unexpected producer workflow identity')
-    if observed.get('path') is not None:
-        require(observed['path'] == producer['workflow_path'], 'producer workflow path differs from trigger')
-    require(producer['created_at'] == observed['created_at'] and producer['head_branch'] == observed['head_branch'],
-            'producer run metadata differs from trigger')
-    require(producer['head_sha'] == observed['head_sha'] == pr['head_sha'], 'producer PR head differs from API event')
-    prs = [row for row in observed.get('pull_requests', []) if row.get('number') == pr['number']]
-    require(len(prs) == 1 and prs[0]['head']['sha'] == pr['head_sha'] and prs[0]['base']['sha'] == pr['base_sha'],
-            'producer PR base/head is not authenticated by controller event')
-    require(producer['conclusion'] == observed['conclusion'] and producer['conclusion'] in ('success', 'failure'),
-            'producer is cancelled, incomplete or has an unauthenticated conclusion')
-    merge = record['merge']
-    for value in (pr['head_sha'], pr['base_sha'], merge['sha'], merge['tree'], merge['first_parent'], merge['second_parent']):
-        require(isinstance(value, str) and SHA.fullmatch(value), 'invalid producer source identity')
-    require(merge['first_parent'] == pr['base_sha'] and merge['second_parent'] == pr['head_sha'],
-            'merge parents differ from original API base/head; request a fresh producer run')
-    require(merge.get('fetched') == merge['sha'] and merge.get('rebuilt') == merge['tree'],
-            'producer merge lacks authenticated fetch/rebuilt-tree evidence')
-    run = {'id': int(producer['run_id']), 'attempt': int(producer['run_attempt']),
-           'workflow': producer['workflow_name'], 'event': producer['event'], 'repository': repository}
-    return run, {'ref': pr['base_ref'], 'sha': pr['base_sha']}, merge['sha'], record
+    require(controller['workflow_ref'].startswith(repository+'/.github/workflows/')
+            and controller['workflow_ref'].endswith('@refs/heads/'+event['repository']['default_branch']),
+            'controller workflow is not on the default branch')
+    for field in ('workflow_sha','sha'):
+        require(isinstance(controller[field],str) and SHA.fullmatch(controller[field]), 'invalid controller source identity')
+    p, observed, merge = record['producer'], event['workflow_run'], record['merge']
+    require(str(p['run_id']) == str(observed['id']) and str(p['run_attempt']) == str(observed['run_attempt']),
+            'producer is not the triggering run/attempt')
+    require(int(p['run_attempt']) == 1, 'protected controller refuses producer retries; request a fresh producer run')
+    require(p['event'] == observed['event'] and p['event'] in ('pull_request','push'), 'unsupported producer event')
+    require(p['workflow_path'] == PRODUCER_WORKFLOW and p['workflow_name'] == observed['name'], 'unexpected producer workflow identity')
+    require(observed.get('path',PRODUCER_WORKFLOW) == PRODUCER_WORKFLOW, 'producer workflow path differs from trigger')
+    require(p['head_repository'] == repository, 'producer head is in another repository')
+    require(p['created_at'] == observed['created_at'] and p['head_branch'] == observed['head_branch'], 'producer metadata differs from trigger')
+    require(p['head_sha'] == observed['head_sha'], 'producer head differs from API event')
+    require(p['conclusion'] == observed['conclusion'] and p['conclusion'] in ('success','failure'), 'producer is cancelled or incomplete')
+    if p['event'] == 'pull_request':
+        pr = p['pull_request']
+        prs = [r for r in observed.get('pull_requests',[]) if r.get('number') == pr['number']]
+        require(p['head_sha'] == pr['head_sha'] and len(prs) == 1 and prs[0]['head']['sha'] == pr['head_sha']
+                and prs[0]['base']['sha'] == pr['base_sha'], 'PR base/head is not authenticated by controller event')
+        base = {'ref':pr['base_ref'],'sha':pr['base_sha']}
+        require(merge['first_parent'] == base['sha'] and merge['second_parent'] == p['head_sha'], 'merge parents differ from API base/head')
+    else:
+        base = p['comparison_base']
+        approved = environ.get('APPROVED_BASES','release/live72,codex/aim-next,release/live73').split(',')
+        require(base['ref'] == p['head_branch'] and base['ref'] in approved, 'push is not on an approved comparison branch')
+        require(merge['sha'] == p['head_sha'] and merge['first_parent'] == base['sha'], 'push head/comparison first parent differs')
+    for value in (p['head_sha'],base['sha'],merge['sha'],merge['tree'],merge['first_parent']):
+        require(isinstance(value,str) and SHA.fullmatch(value), 'invalid producer source identity')
+    require(merge.get('second_parent') is None or isinstance(merge['second_parent'],str) and SHA.fullmatch(merge['second_parent']), 'invalid second parent')
+    require(merge.get('fetched') == merge['sha'] and merge.get('rebuilt') == merge['tree'], 'producer lacks authenticated fetched/tree evidence')
+    run = {'id':int(p['run_id']),'attempt':1,'workflow':p['workflow_name'],'event':p['event'],'repository':repository}
+    return run,base,merge['sha'],record
+
+
+def receipt_head(record):
+    p = record['producer']
+    return {'ref':('refs/heads/' if p['event'] == 'push' else '')+p['head_branch'],'sha':p['head_sha']}
 
 def same_run(actual, expected):
     require(isinstance(actual, dict), 'missing producer run receipt')
@@ -400,7 +403,7 @@ def read_evidence(summary_path, provenance_path, shards, root, commit, run, base
     require(provenance.get('base') == base, 'wrong API event base')
     require(provenance.get('merge') == expected_merge, 'wrong tested merge or tree')
     if binding is not None:
-        require(provenance.get('head') == {'ref': binding['producer']['head_branch'], 'sha': binding['producer']['head_sha']},
+        require(provenance.get('head') == receipt_head(binding),
                 'combined head differs from authenticated producer')
     require(provenance.get('checked') == {'commit': commit, 'tree_unchanged': True}, 'dirty combined source')
     require(unique(provenance['required'], 'provenance steps') == set(REQUIRED), 'incomplete provenance')
@@ -510,7 +513,9 @@ def producer_workflow(receipt, record, root, commit):
     data = receipt.get('run') or {}
     sha, ref = data.get('workflow_sha'), data.get('workflow_ref')
     require(sha in (commit, record['producer']['head_sha']), 'unbound producer workflow commit')
-    expected = '%s/%s@refs/pull/%s/merge' % (record['controller']['repository'], PRODUCER_WORKFLOW, record['producer']['pull_request']['number'])
+    p = record['producer']
+    suffix = 'refs/heads/'+p['head_branch'] if p['event'] == 'push' else 'refs/pull/%s/merge'%p['pull_request']['number']
+    expected = '%s/%s@%s' % (record['controller']['repository'], PRODUCER_WORKFLOW, suffix)
     require(ref == expected, 'unbound producer workflow reference')
     require(source(root, sha, PRODUCER_WORKFLOW) == source(root, commit, PRODUCER_WORKFLOW), 'producer workflow differs from judged tree')
 
@@ -637,16 +642,53 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
     tree = clean_checkout(candidate_root,commit,binding['merge']['tree'])
     clean_checkout(base_root,base['sha'])
     parents = git(candidate_root,'rev-list','--parents','-n','1',commit).decode().split()[1:]
-    require(parents == [base['sha'],binding['producer']['head_sha']], 'tested merge parents differ from API')
-    expected_merge = {'sha':commit,'tree':tree,'first_parent':parents[0],'second_parent':parents[1]}
+    require(parents == [p for p in (binding['merge']['first_parent'],binding['merge'].get('second_parent')) if p], 'tested parents differ from protected record')
+    expected_merge = {'sha':commit,'tree':tree,'first_parent':parents[0],'second_parent':parents[1] if len(parents)>1 else None}
     contained_evidence(Path(shards))
-    observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,base,expected_merge,binding)
+    raw_base = {'ref':None,'sha':None} if run['event'] == 'push' else base
+    observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding)
     known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'])
     failures, mutations = failure_records(observed,candidate_root,commit,run['id'])
     result = compare_failures(failures,known)
     require(not summary['passed'] or binding['producer']['conclusion'] == 'success', 'producer failed outside reported checks')
-    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=base_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='last-three-base-push-runs')
+    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=base_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='last-three-base-push-runs',train=train_identity(candidate_root,commit,binding))
     return result
+
+
+def loaded_modules():
+    """Actual non-stdlib source paths; stdlib is the interpreter, not a helper checkout."""
+    stdlib = Path(sysconfig.get_path('stdlib')).resolve()
+    files = {str(Path(__file__).resolve())}
+    for module in list(sys.modules.values()):
+        name = getattr(module,'__file__',None)
+        if not name or name.startswith('<'):
+            continue
+        path = Path(name).resolve()
+        try:
+            parts = path.relative_to(stdlib).parts
+            if not any(p in ('site-packages','dist-packages') for p in parts):
+                continue
+        except ValueError:
+            pass
+        files.add(str(path))
+    return sorted(files)
+
+
+def train_identity(root,commit,binding):
+    p = binding['producer']
+    body = git(root,'show','-s','--format=%B',commit).decode()
+    match = re.search(r'^Merge pull request #([1-9][0-9]*)\b',body,re.M)
+    number = p['pull_request']['number'] if p['event'] == 'pull_request' else int(match[1]) if match else None
+    base = binding['merge']['first_parent']
+    item_head = p['head_sha'] if p['event'] == 'pull_request' else binding['merge'].get('second_parent') or commit
+    messages = git(root,'log','--format=%B%x00',base+'..'+item_head).decode().split('\0')
+    items = set()
+    for message in messages:
+        trailers = subprocess.run(['git','interpret-trailers','--parse'],input=message,text=True,capture_output=True,check=True).stdout
+        for line in trailers.splitlines():
+            if line.startswith('Pipeline:'):
+                items.update(int(n) for n in re.findall(r'(?<![A-Za-z0-9])[1-9][0-9]*(?![A-Za-z0-9])',line.partition(':')[2]))
+    return {'pull_request':number,'items':sorted(items),'merge_commit':commit,'items_source':'Pipeline trailers in newly merged history'}
 
 
 def main(argv=None):
@@ -658,6 +700,7 @@ def main(argv=None):
         result = validate(args.summary,args.provenance,args.shards,args.base_checkout,args.candidate_checkout,args.producer,args.known_runs)
     except (Refused,OSError,ValueError,KeyError,TypeError,AttributeError,RecursionError) as error:
         result = {'passed':False,'refused':str(error),'runtime_code_paths':[str(Path(__file__).resolve())]}
+    result['loaded_modules'] = loaded_modules()
     args.out.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,sort_keys=True))
     return 0 if result['passed'] else 1
