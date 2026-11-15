@@ -1096,25 +1096,28 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   // A topic's row in the outline, and a move to it as the person makes one: a press, or on a phone a tap in the drawer.
   const outlineRow = id => `#outline a[data-topic-id="${id}"]`;
   const railOpen = p => p.evaluate(`document.querySelector('#rail').classList.contains('open')`);
+  // What the page was doing, kept in a failure of a move: where it is, the shell's state, every press and click it heard
+  // since the move began (with where ☰ was then) and, in Chrome, each shift of its layout, with what moved.
+  const moveState = p => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => ({ at: location.search, ready: document.body?.dataset.ready,
+    drawer: document.querySelector('#rail')?.classList.contains('open'), expanded: document.querySelector('#rail-open')?.getAttribute('aria-expanded'),
+    inert: document.querySelector('#main')?.inert, sheet: document.querySelector('#new-message-sheet')?.open, focus: document.activeElement?.id || document.activeElement?.tagName,
+    notices: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent), presses: window.movePresses, shifts: window.moveShifts,
+    shell: { moving: shell.moving, page: Boolean(shell.page), handles: Boolean(shell.handles), owed: Boolean(shell.owed), leaving: shell.leaving, build: shell.build } }))`)
+    .catch(e => ({ unread: e.message }));
+  const explained = (p, error) => moveState(p).then(state => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) }); });
   const moveTo = async (p, device, id) => {
     // The rails' reads settled first: what they bring (the outline's rows, the line under ☰ of what is new elsewhere) moves them.
     await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), `${device}: the rails are quiet`);
+    await p.evaluate(`(window.movePresses = [], window.moveShifts = [], ['pointerdown', 'pointerup', 'click'].forEach(type => addEventListener(type, e => window.movePresses.push(type + ':'
+      + (e.target.id || e.target.getAttribute?.('data-topic-id') || e.target.className || e.target.tagName) + ':' + e.defaultPrevented + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY)
+      + ' ☰' + Math.round(document.querySelector('#rail-open')?.getBoundingClientRect().top) + ' scroll' + Math.round(scrollY)), true)),
+      (() => { try { new PerformanceObserver(list => { for (const shift of list.getEntries()) window.moveShifts.push((shift.sources ?? []).map(s => (s.node?.id || s.node?.className || s.node?.nodeName) + ' ' + Math.round(s.previousRect.top) + '→' + Math.round(s.currentRect.top)).join(', ')); })
+        .observe({ type: 'layout-shift' }); } catch {} })(), true)`);
     // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
     if (device === 'phone' && !await railOpen(p)) {
       await centre(p, '#rail-open');
-      // Each press, where ☰ was then, and (in Chrome) each shift of the page's layout, with what moved: kept in a failure.
-      await p.evaluate(`(window.railPresses = [], window.railShifts = [], ['pointerdown', 'click'].forEach(type => addEventListener(type, e => window.railPresses.push(type + ':' + (e.target.id || e.target.className || e.target.tagName)
-        + ':' + e.defaultPrevented + '@' + Math.round(e.clientY) + ' ☰' + Math.round(document.querySelector('#rail-open').getBoundingClientRect().top) + ' scroll' + Math.round(scrollY)), true)),
-        (() => { try { new PerformanceObserver(list => { for (const shift of list.getEntries()) window.railShifts.push((shift.sources ?? []).map(s => (s.node?.id || s.node?.className || s.node?.nodeName) + ' ' + Math.round(s.previousRect.top) + '→' + Math.round(s.currentRect.top)).join(', ')); })
-          .observe({ type: 'layout-shift' }); } catch {} })(), true)`);
       await press(p, device, '#rail-open');
-      // What the page was doing, if the drawer does not open: kept in the failure.
-      await until(() => railOpen(p), 'phone: the drawer opens').catch(async error => {
-        const state = await p.evaluate(`({ at: location.search, ready: document.body?.dataset.ready, expanded: document.querySelector('#rail-open')?.getAttribute('aria-expanded'),
-          inert: document.querySelector('#main')?.inert, sheet: document.querySelector('#new-message-sheet')?.open, focus: document.activeElement?.id || document.activeElement?.tagName,
-          notice: document.querySelector('#topic-navigation-status')?.textContent, presses: window.railPresses, shifts: window.railShifts, origin: performance.timeOrigin })`).catch(e => ({ unread: e.message }));
-        throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
-      });
+      await until(() => railOpen(p), 'phone: the drawer opens').catch(error => explained(p, error));
     }
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(outlineRow(id))}))`), `the outline names ${id}`);
     await centre(p, outlineRow(id));
@@ -1123,7 +1126,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   // The page shows the topic, started: by a move in place or by a load.
   // A document being replaced answers nothing, and has not arrived.
   const arrived = (p, id, first) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + id)} && document.body?.dataset.ready === 'true'
-    && Boolean(document.querySelector(${JSON.stringify(card(first))}))`).catch(() => false), `the page shows ${id}`, 15000);
+    && Boolean(document.querySelector(${JSON.stringify(card(first))}))`).catch(() => false), `the page shows ${id}`, 15000).catch(error => explained(p, error));
   // The document this page was is gone: a load replaced it.
   const replaced = (p, what) => until(() => p.evaluate('window.sameDocument !== true').catch(() => false), what, 15000);
   // The build the page's modules came from (aim_next/web_build.py), and the one the server serves: null for none.
@@ -1269,11 +1272,11 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     if (engine === 'webkit') {
       const routes = [];
       await p.pw.route(facts.origin + '/api/build', route => { routes.push(route); });
-      return { out: () => until(() => routes.length > 0, 'the move reads the build'), release: async () => { for (const route of routes.splice(0)) await route.continue(); await p.pw.unroute(facts.origin + '/api/build'); } };
+      return { out: () => until(() => routes.length > 0, 'the move reads the build').catch(error => explained(p, error)), release: async () => { for (const route of routes.splice(0)) await route.continue(); await p.pw.unroute(facts.origin + '/api/build'); } };
     }
     const isBuild = event => event.request.url === facts.origin + '/api/build';
     p.intercept((payload, event) => isBuild(event));
-    return { out: () => until(() => p.held.some(h => isBuild(h.event)), 'the move reads the build'),
+    return { out: () => until(() => p.held.some(h => isBuild(h.event)), 'the move reads the build').catch(error => explained(p, error)),
       release: async () => { p.intercept(null); for (const h of p.held.filter(h => isBuild(h.event))) await p.send('Fetch.continueResponse', { requestId: h.event.requestId }); } };
   };
   // The page's device copy of writing held unwritten (journal.mjs) while window.holdJournal is true, so the writing is not yet safe.
