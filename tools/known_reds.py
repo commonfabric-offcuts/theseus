@@ -11,6 +11,9 @@ never as passes. docs/tools.md ("Known reds") is the contract.
 
 FILE: {"live_commit": FULL_SHA,
        "reds": [{"step": "native-…", "case": "…", "live_summary": "/abs/summary.json" | null, "why": "one line"}]}
+
+Item 482: a red's live_summary may instead name an owner's acceptance, which takes the cases it names exactly:
+{"owner_acceptance": true, "cases": [{"step": "native-…", "case": "…"}], "by": "who", "message": "m-…", "why": "…"}
 """
 
 import json
@@ -38,6 +41,8 @@ COMPOSE_PHASES = ["run:chromium", "run:webkit", "runAnswering:chromium", "runAns
 COMPOSE_END = ("fixtureExitCode", "fixtureExitSignal", "plannedPhases", "completedPhases", "harnessCompleted")
 # The merged base's policy of expected browser failures, which GitHub's classifier reads (docs/ci-known-reds.md).
 POLICY = ".github/check-baseline.json"
+# Item 482: an owner's acceptance of named cases, which a red's live_summary may name in place of a live summary.
+OWNER_KEYS = ("owner_acceptance", "cases", "by", "message", "why")
 WHY_LENGTH = 300
 
 
@@ -182,15 +187,34 @@ def candidate_failures(summary, out):
     return {step["name"]: ended_cases(out, step, "the candidate's") for step in failed}
 
 
+def owner_accepted(acceptance, red, said):
+    """Item 482: the owner's acceptance when it names red's step and case exactly, with who accepted it and in which
+    message; Refused otherwise."""
+    if set(acceptance) != set(OWNER_KEYS):
+        raise Refused("%s is an owner's acceptance, a JSON object with exactly %s" % (said, ", ".join(OWNER_KEYS)))
+    cases = acceptance["cases"]
+    if not isinstance(cases, list) or not all(isinstance(case, dict) and set(case) == {"step", "case"} for case in cases):
+        raise Refused("%s is an owner's acceptance whose cases are not each {step, case}" % said)
+    for key in ("by", "message"):
+        if not isinstance(acceptance[key], str) or not acceptance[key].strip():
+            raise Refused("%s is an owner's acceptance with no %s" % (said, key))
+    if {"step": red["step"], "case": red["case"]} not in cases:
+        raise Refused("%s is an owner's acceptance, but not of %s %r" % (said, red["step"], red["case"]))
+    return acceptance
+
+
 def live_cases(red, live_commit):
-    """The failed cases of red's step in its live summary, or Refused unless that summary is a release check of exactly
-    the live commit, its checkout unchanged, in which the step ran and ended as ended_cases requires."""
+    """(the failed cases of red's step in its live summary, None), or Refused unless that summary is a release check of
+    exactly the live commit, its checkout unchanged, in which the step ran and ended as ended_cases requires; or, for an
+    owner's acceptance that names red's step and case exactly (item 482), ([red's case], the acceptance)."""
     path = Path(red["live_summary"])
     said = "the live summary %s" % path
     try:
         summary = json.loads(path.read_text())
     except (OSError, ValueError) as error:
         raise Refused("%s cannot be read: %s" % (said, error))
+    if isinstance(summary, dict) and summary.get("owner_acceptance") is True:
+        return [red["case"]], owner_accepted(summary, red, said)
     if not isinstance(summary, dict) or summary.get("tool") != release_check.TOOL:
         raise Refused("%s is not a release-check summary" % said)
     if summary.get("commit") != live_commit:
@@ -203,7 +227,7 @@ def live_cases(red, live_commit):
     found = [step for step in steps if isinstance(step, dict) and step.get("name") == red["step"]]
     if len(found) != 1:
         raise Refused("%s did not run %s once" % (said, red["step"]))
-    return ended_cases(path.parent, found[0], "the live", before_end_record=True)
+    return ended_cases(path.parent, found[0], "the live", before_end_record=True), None
 
 
 def admitted(policy):
@@ -234,7 +258,7 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: {}):
     review}], not_needed: [{step, case}]}; accepted is empty only for a summary that passed."""
     known = load(path)
     listed = {(red["step"], red["case"]): red for red in known["reds"]}
-    taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": []}
+    taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": [], "acceptances": {}}
     if not unpassed:
         taken["not_needed"] = [{"step": step, "case": case} for step, case in listed]
         return taken
@@ -258,8 +282,11 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: {}):
                 raise Refused("%s %r is not admitted by %s at the deployed commit, and no live summary names it"
                               % (step, case, POLICY))
             else:
-                taken_by, review = "live", None
-                if case not in live_cases(red, known["live_commit"]):
+                failed, acceptance = live_cases(red, known["live_commit"])
+                taken_by, review = ("live", None) if acceptance is None else ("owner_acceptance", acceptance["message"])
+                if acceptance is not None:
+                    taken["acceptances"][red["live_summary"]] = {"by": acceptance["by"], "message": acceptance["message"]}
+                if case not in failed:
                     raise Refused("%s %r is not admitted by %s at the deployed commit, nor among the cases that failed in %s "
                                   "on the live commit" % (step, case, POLICY, red["live_summary"]))
             taken["accepted"].append({"step": step, "case": case, "live_summary": red["live_summary"],

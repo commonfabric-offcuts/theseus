@@ -12185,7 +12185,7 @@
    "break": [
     [
      "tools/known_reds.py",
-     "                if case not in live_cases(red, known[\"live_commit\"]):",
+     "                if case not in failed:",
      "                if False:"
     ]
    ],
@@ -12229,6 +12229,81 @@
      "tools/known_reds.py",
      "ended_cases(out, step, \"the candidate's\")",
      "ended_cases(out, step, \"the candidate's\", before_end_record=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "An owner's acceptance takes only a step and case it names exactly",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if {\"step\": red[\"step\"], \"case\": red[\"case\"]} not in cases:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "An owner's acceptance takes a case only with a non-empty by and message",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(acceptance[key], str) or not acceptance[key].strip():",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "An owner's acceptance is exactly owner_acceptance, cases, by, message and why, each case exactly a step and a case",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if set(acceptance) != set(OWNER_KEYS):",
+     "    if False:"
+    ],
+    [
+     "tools/known_reds.py",
+     "isinstance(case, dict) and set(case) == {\"step\", \"case\"} for case in cases",
+     "isinstance(case, dict) for case in cases"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "A red an owner's acceptance took is recorded as taken by it, the file named as its live summary",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "(\"owner_acceptance\", acceptance[\"message\"])",
+     "(\"live\", acceptance[\"message\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "The deploy's line says an owner's acceptance took the red, by whom and in which message",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        elif red[\"taken_by\"] == \"owner_acceptance\":",
+     "        elif False:"
     ]
    ],
    "check": {

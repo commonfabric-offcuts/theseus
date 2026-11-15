@@ -199,10 +199,20 @@ Without the flag nothing changes. With it, a summary that did not pass is taken 
 7. Each needed red is taken by one of these, tried in this order:
    - The merged base's policy admits it: `.github/check-baseline.json` at `SHA`, read from the live checkout's git, lists that step and case, matched by the case identity GitHub's classifier uses (`tools/ci_known_reds.py`: the name, phase, engine and expectedFailure from the case's row in the results file). A commit that keeps no policy admits nothing; a policy that cannot be read refuses.
    - Its `live_summary` is a release-check summary (full or `--only`) whose `commit` is `live_commit` and whose checkout did not change while it ran, in which the same step ran once, ended as in 5, and has that exact case among its failed cases. A composer run from before its harness wrote the end-of-run record (a `native.json` with none of `fixtureExitCode`, `fixtureExitSignal`, `plannedPhases`, `completedPhases` and `harnessCompleted`) counts when its `native.json` names the case failed and its browser closed; a run with any of those fields is read as in 5.
+   - Its `live_summary` is an owner's acceptance file (below).
 
 The summary must still describe exactly `SHA`: one of another commit, of a checkout that changed, or made with `--only` is refused as before, flag or not. A listed red the candidate did not fail is not needed; the deploy says so and goes on. With an outcome in the config its checks still read the summary as it is, failures included.
 
-The accepted reds (step, case, live summary, its commit, why, and `taken_by`: `policy` or `live`) are written into `00-release-check.json` under `known_reds`, beside `passed: false` and the failed steps, with the reds not needed; the refusal is written there too. They go into the release record's `measurements.known_reds` ([releases.md](releases.md#the-record)). The deploy prints one line per accepted red and per red not needed. `--dry-run` shows the same: what it would accept in `00-release-check.json` and the record in `02-release.json`; it exits 0 when the reds are taken.
+An owner's acceptance stands in for a live summary when the owner has taken a case on their word. It is a JSON object with exactly these keys:
+
+```json
+{"owner_acceptance": true, "cases": [{"step": "native-compose", "case": "the exact case name"}],
+ "by": "warp", "message": "m-…", "why": "…"}
+```
+
+It takes only a step and case it names exactly, in `cases` (each `{step, case}`), and only with a non-empty `by` and `message`; otherwise the deploy refuses. The record names the file as the red's `live_summary`, and the printed line says an owner's acceptance took it, by whom and in which message.
+
+The accepted reds (step, case, live summary, its commit, why, and `taken_by`: `policy`, `live` or `owner_acceptance`) are written into `00-release-check.json` under `known_reds`, beside `passed: false` and the failed steps, with the reds not needed; the refusal is written there too. They go into the release record's `measurements.known_reds` ([releases.md](releases.md#the-record)). The deploy prints one line per accepted red and per red not needed. `--dry-run` shows the same: what it would accept in `00-release-check.json` and the record in `02-release.json`; it exits 0 when the reds are taken.
 
 To make a live summary, run the release check of the live commit on a clean detached checkout of it, for just the steps you need:
 

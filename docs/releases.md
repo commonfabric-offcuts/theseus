@@ -65,7 +65,8 @@ failed in `native`:
 ```
 
 Each known red also says what took it in `taken_by`: `policy` (the release
-branch's policy admits it) or `live` (the live release's check failed it).
+branch's policy admits it), `live` (the live release's check failed it) or
+`owner_acceptance` (an owner's acceptance file, which `live_summary` names).
 `known_reds` is left out when there are none, so a record without it reads as
 before, and a reader that does not know it ignores it, as it does `skipped`.
 It sits inside `measurements`, which the store keeps as one JSON object of at

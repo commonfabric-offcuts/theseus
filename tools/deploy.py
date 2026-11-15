@@ -636,6 +636,10 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         if red["taken_by"] == "policy":
             print("known red: %s %r failed; %s at %s admits it (review %s): %s"
                   % (red["step"], red["case"], known_reds_check.POLICY, sha[:12], red["review"], red["why"]))
+        elif red["taken_by"] == "owner_acceptance":
+            acceptance = known["acceptances"][red["live_summary"]]
+            print("known red: %s %r failed; an owner's acceptance took it (%s, by %s in %s): %s"
+                  % (red["step"], red["case"], red["live_summary"], acceptance["by"], acceptance["message"], red["why"]))
         else:
             print("known red: %s %r failed, as it does on the live commit %s (%s): %s"
                   % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))

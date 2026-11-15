@@ -1682,6 +1682,63 @@ class DeployRefusesKnownRedsPolicy(KnownRedsFiles, DeployCase):
         self.refused_known(FakeHost(self.config), "the candidate's %s: its fixture exited None" % COMPOSE_STEP)
 
 
+class DeployRefusesKnownRedsOwnerAcceptance(KnownRedsFiles, DeployCase):
+    """Item 482, rule 3: a known red's live_summary may name an owner's acceptance, which takes only a step and case it
+    names exactly, with who accepted it and in which message."""
+
+    def setUp(self):
+        super().setUp()
+        self.known_setup()
+        self.acceptance = Path(self.tmp.name) / "acceptance.json"
+
+    def again(self):
+        self.tearDown()
+        self.setUp()
+
+    def accepted(self, **change):
+        written = dict({"owner_acceptance": True, "cases": [{"step": RED_STEP, "case": RED_CASE}], "by": "warp",
+                        "message": "m-accepted", "why": "taken on the owner's word"}, **change)
+        self.acceptance.write_text(json.dumps(written))
+        self.candidate_fails((RED_STEP, {}))
+        self.listing((RED_STEP, RED_CASE, self.acceptance))
+
+    def test_an_owners_acceptance_of_the_exact_case_takes_it_and_the_record_names_the_file(self):
+        self.accepted()
+        host = FakeHost(self.config)
+        with redirect_stdout(io.StringIO()) as out, mock.patch.object(deploy, "run", host), \
+                mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")):
+            try:
+                deploy.deploy(self.config, SHA, self.evidence, self.summary, True, known_reds=self.known)
+            except deploy.Refused as refusal:
+                self.fail("the deploy refused: %s" % refusal)
+        record = json.loads((self.evidence / "02-release.json").read_text())["record"]
+        self.assertEqual(record["measurements"]["known_reds"], [
+            {"step": RED_STEP, "case": RED_CASE, "live_summary": str(self.acceptance), "live_commit": HEAD,
+             "why": "fails on the live release too", "taken_by": "owner_acceptance"}])
+        self.assertIn("known red: %s %r failed; an owner's acceptance took it (%s, by warp in m-accepted)"
+                      % (RED_STEP, RED_CASE, self.acceptance), out.getvalue())
+
+    def test_an_owners_acceptance_takes_only_what_it_names_exactly_with_a_by_and_a_message(self):
+        for change, words in (({"cases": [{"step": RED_STEP, "case": RED_CASE.upper()}]}, "but not of %s %r" % (RED_STEP, RED_CASE)),
+                              ({"cases": [{"step": RED_STEP, "case": "a reply keeps its"}]}, "but not of"),
+                              ({"cases": [{"step": "native-journal", "case": RED_CASE}]}, "but not of"),
+                              ({"cases": []}, "but not of"),
+                              ({"cases": [{"step": RED_STEP, "case": RED_CASE, "engine": "webkit"}]}, "whose cases are not each {step, case}"),
+                              ({"by": ""}, "with no by"), ({"by": " "}, "with no by"), ({"message": ""}, "with no message"),
+                              ({"message": None}, "with no message"), ({"extra": 1}, "a JSON object with exactly")):
+            with self.subTest(change=change):
+                self.again()
+                self.accepted(**change)
+                refusal = self.refused(FakeHost(self.config), known_reds=self.known)
+                self.assertIn("the live summary %s is an owner's acceptance" % self.acceptance, refusal)
+                self.assertIn(words, refusal)
+                self.assertEqual(self.records(), ["00-release-check"])
+
+    def test_without_owner_acceptance_true_the_file_is_read_as_a_release_check_summary(self):
+        self.accepted(owner_acceptance=False)
+        self.assertIn("is not a release-check summary", self.refused(FakeHost(self.config), known_reds=self.known))
+
+
 class KnownRedsRecorded(KnownRedsFiles, Restarting):
     def setUp(self):
         super().setUp()
