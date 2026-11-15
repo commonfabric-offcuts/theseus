@@ -100,6 +100,8 @@ class TopicReadingCase(fixtures.ReaderCase):
 
     def test_a_persons_thumbs_up_a_message_to_nobody_or_to_someone_else_and_an_agents_whisper_end_no_wait(self):
         self.participation("other-reader", True)
+        # A message naming the reader before theirs is no reply to it.
+        self.post("Earlier, for you", actor="agent-b", addressees=["owner"], intent="tell")
         asked = self.post("Can you look?", actor="owner", addressees=["agent-a"], intent="ask")
         # A person's thumbs-up says they read it and understand (docs/thumbs.md); it is no reply.
         self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": asked}, expected={"thumb_revision": 0},
@@ -112,10 +114,7 @@ class TopicReadingCase(fixtures.ReaderCase):
                                               target={"topic_id": "t1"}))["message_id"]
         self.committed(self.command("message.post", {"body": "Just you too", "whisper": True, "addressees": ["owner"], "reply_to": whisper},
                                     target={"topic_id": "t1"}, actor="agent-a"))
-        self.assertIs(self.awaiting()[asked], True, "none of these is a reply to it")
-        # A message naming the reader before theirs is no reply to it either.
-        later = self.post("One more", actor="owner", addressees=["agent-a"], intent="ask")
-        self.assertIs(self.awaiting()[later], True, "nothing after it names the reader")
+        self.assertIs(self.awaiting()[asked], True, "none of these is a reply to it, nor agent-b's message to the reader before it")
 
     def test_a_message_from_before_this_release_never_waits_and_the_first_post_after_it_records_where_the_rule_begins(self):
         # Item 475's words, "after the reader posts" (codex #5267): nothing already in the store starts pulsing when this

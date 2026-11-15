@@ -13967,8 +13967,22 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "WHERE m.reply_to IN (%s) ",
-     "WHERE 0 AND m.reply_to IN (%s) "
+     "answered = {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to",
+     "answered = set() and {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The reader's own reply to their message is no reply to it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"AND m.author_id<>:actor AND %s\" % (",
+     "\"AND %s\" % ("
     ]
    ],
    "check": {
