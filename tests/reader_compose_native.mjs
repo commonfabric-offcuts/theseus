@@ -1163,8 +1163,11 @@ async function run() {
   // the reply opens, the message scrolled well down to them; its index.
   const nearReply = async p => {
     const n = await p.evaluate(() => [...document.querySelector('#source-body').children].findIndex(part => part.firstChild?.nodeType === Node.TEXT_NODE && part.getBoundingClientRect().top > document.querySelector('#reader-composer').getBoundingClientRect().top + 300));
+    // Wholly inside the message's room, 8px above its end: a line the room's
+    // edge cuts off when it is quoted stays cut off as it was (docs/reader.md).
     await p.evaluate(n => { const body = document.querySelector('#source-body'), text = body.children[n].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20);
-      body.scrollTop += range.getBoundingClientRect().bottom - (document.querySelector('#reader-composer').getBoundingClientRect().top - 8); }, n);
+      const end = Math.min(body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top);
+      body.scrollTop += range.getBoundingClientRect().bottom - (end - 8); }, n);
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     return n;
   };
