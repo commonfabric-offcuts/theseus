@@ -14,8 +14,6 @@
 
 // Where a tap goes somewhere: a link or a row.
 const GOES = 'a[href], .nav-item';
-// Whether a tap on el, in the open drawer, closes it.
-export const closesDrawer = el => Boolean(el?.closest?.(GOES));
 // What opens and closes it: "☰ Outcomes" at the top of the page, and on a
 // phone the line under it that says what is new elsewhere.
 const OPENS = '#rail-open, [data-opens-rail]';
@@ -49,7 +47,7 @@ export function railDrawer(doc = document, win = doc.defaultView, listen = (targ
   };
   listen(doc, 'click', event => { if (event.target?.closest?.(OPENS)) set(!isOpen()); });
   listen(backdrop, 'click', () => set(false, true));
-  listen(rail, 'click', event => { if (isOpen() && closesDrawer(event.target)) set(false); });
+  listen(rail, 'click', event => { if (isOpen() && event.target.closest?.(GOES)) set(false); });
   listen(doc, 'keydown', event => {
     if (event.key === 'Escape' && isOpen() && !event.defaultPrevented) { event.preventDefault(); set(false, true); }
   });

@@ -11649,21 +11649,6 @@
   },
   {
    "item": 462,
-   "act": "At 390 a tap in the drawer, which closes as the page moves, makes the row the outline's place without the focus, so the focus goes to the page's heading",
-   "break": [
-    [
-     "web/rails.mjs",
-     "      holds: el => !(shell.drawer?.isOpen() && closesDrawer(el)) });",
-     "      holds: () => true });"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
-   }
-  },
-  {
-   "item": 462,
    "act": "Waiting on you pressed opens the question in the Reader, and closing it gives the keys back to the row pressed, ringed",
    "break": [
     [

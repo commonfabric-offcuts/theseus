@@ -15,8 +15,7 @@
 // A pane may choose that a press on a row (a click or a tap) selects it as the
 // keys would (selectOnPress, the outline's, item 462): the row becomes the
 // pane's place and holds the focus with the keys' ring, so ↑ ↓ and → go on
-// from it; the row's own act then runs as it always did. While the pane
-// cannot hold the focus on the row (holds(el)), the row is only its place.
+// from it; the row's own act then runs as it always did.
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 
@@ -30,8 +29,8 @@ export class KeyTree {
   // false, or undefined for a row that does not open) }. act(action, row,
   // rows): what the pane does for a key the tree does not answer itself. The
   // tree speaks through a polite status of its own (say).
-  constructor({ root, rows, act = () => false, label = null, doc = root.ownerDocument, selectOnPress = false, holds = () => true }) {
-    Object.assign(this, { root, rows, act, doc, holds });
+  constructor({ root, rows, act = () => false, label = null, doc = root.ownerDocument, selectOnPress = false }) {
+    Object.assign(this, { root, rows, act, doc });
     this.current = null; this.currentKey = null; this.wanted = false; this.queued = false; this.chosen = false; this.placing = false;
     root.setAttribute('role', 'tree');
     if (label) root.setAttribute('aria-label', label);
@@ -115,10 +114,7 @@ export class KeyTree {
   pressed(event) {
     if (event.button !== 0 || event.detail === 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const row = this.rowOf(event.target.closest?.(CONTROLS));
-    if (!row) return;
-    // Where the pane cannot keep the focus on the row (holds(el): a row in the
-    // phone's drawer that closes it), the row is its place, to come back to.
-    if (this.holds(row.el)) this.ring(row.el); else { this.chosen = true; this.visit(row); }
+    if (row) this.ring(row.el);
   }
   // The focus on a row, wearing the keys' ring. A browser rings no focus a
   // press gave (Chrome's, on its mousedown), nor one a script gives while a

@@ -119,15 +119,14 @@ export class OutlineRail {
   // host: the outline's element (the shell's). open(target, title): through
   // the page's guard (shell.open). read(name, args, readClass): a read for the
   // outline's own lists, through whichever run is up (shell.view).
-  // storage: localStorage, or null. holds(el): whether the row pressed can
-  // keep the focus (not one that closes the phone's drawer, rail-drawer.mjs).
-  constructor({ host, open, read, storage = null, doc = host.ownerDocument, holds = () => true }) {
+  // storage: localStorage, or null.
+  constructor({ host, open, read, storage = null, doc = host.ownerDocument }) {
     Object.assign(this, { host, open, read, storage, doc });
     this.handles = null; this.filter = null; this.outcomes = new Map(); this.unlisten = null; this.started = false;
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     this.reload = reloader(() => this.load());
     this.build();
-    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true, holds });
+    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true });
     // ⇧⌘→ and ⇧⌘← open and fold every outcome from anywhere in the outline:
     // its rows (the tree hears those), its chips, New outcome or its Keys.
     this.host.addEventListener('keydown', event => {
