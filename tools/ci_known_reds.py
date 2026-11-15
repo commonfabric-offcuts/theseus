@@ -398,7 +398,7 @@ def _final_json(text):
     except ValueError:
         return None
 
-def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None):
+def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False):
     candidate_root = root
     traffic = json.loads(source(root, commit, REPLAY_FILE))
     provenance, summary = read_json(provenance_path), read_json(summary_path)
@@ -466,6 +466,9 @@ def read_evidence(summary_path, provenance_path, shards, root, commit, run, base
             if step['name'] in NATIVE:
                 observed.append((step['name'], cases(step, out), profile, raw['checkout']))
             else:
+                if history and step.get('passed') is False:
+                    nonbrowser_failure_evidence(step, out)
+                    continue
                 require(step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0,
                         step['name'] + ': non-browser failure cannot be excepted')
                 # Recompute unit/deploy verdicts from raw logs; a claimed green
@@ -480,6 +483,34 @@ def read_evidence(summary_path, provenance_path, shards, root, commit, run, base
             {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
     require(summary.get('passed') is all(s.get('passed') is True for s in combined), 'inconsistent raw aggregate verdict')
     return observed, summary
+
+def nonbrowser_failure_evidence(step, out):
+    """A base run's unrelated unit/replay red never becomes a train exemption.
+
+    Still verify that it is a complete raw failure, not a crashed/missing run.
+    Candidate non-browser checks continue to require a pass.
+    """
+    name = step['name']
+    require(type(step.get('exit')) is int and step['exit'] == 1, name + ': abnormal base failure exit')
+    if name in ('python-units', 'node-units', 'deploy-refusals'):
+        text = (out / (name+'.log')).read_text()
+        counts, good = node_counts(text) if name == 'node-units' else python_counts(text)
+        require(not good and counts == step.get('counts') and counts.get('tests',0) > 0, name + ': invalid base failure counts')
+        rows = unit_records(text, node=name == 'node-units')
+        require(len(rows) == counts['tests'], name + ': incomplete base unit log')
+        return
+    require(name == 'wake-replay', 'unknown non-browser base failure')
+    runs = step.get('runs')
+    require(isinstance(runs,list) and bool(runs), 'wake-replay: missing base runs')
+    replay_runs = []
+    for number, run in enumerate(runs, 1):
+        counts, good = replay_counts(out/'replay'/('candidate-%d'%number))
+        require(good and type(run.get('exit')) is int and run['exit'] in (0,1), 'wake-replay: incomplete base report')
+        require((out/('wake-replay-candidate-%d.log'%number)).is_file(), 'wake-replay: missing base log')
+        replay_runs.append(dict(run,counts=counts))
+    recalculated = replay_step(replay_runs,step.get('started_at'))
+    require(step.get('counts') == recalculated['counts'] and step.get('series') == recalculated['series'], 'wake-replay: base counts differ')
+
 
 def producer_workflow(receipt, record, root, commit):
     data = receipt.get('run') or {}
@@ -535,9 +566,9 @@ def compare_failures(failures, known):
                    and (old['step'], key(old['case']), old['fingerprint'], old['profile']) ==
                        (item['step'], key(item['case']), item['fingerprint'], item['profile'])]
         if matches:
-            expected.append(dict(item, base_shown=True, matched_base_runs=sorted({r['run_id'] for r in matches})))
+            expected.append(dict(item, base_shown=True, cleared=True, matched_base_runs=sorted({r['run_id'] for r in matches})))
         else:
-            unexpected.append(dict(item, base_shown=False, reason=item.get('fingerprint_problem') or 'not shown by recent base runs'))
+            unexpected.append(dict(item, base_shown=False, cleared=False, reason=item.get('fingerprint_problem') or 'not shown by recent base runs'))
     return {'passed': not unexpected, 'expected': expected, 'unexpected': unexpected, 'healed': []}
 
 
@@ -592,7 +623,7 @@ def known_base_failures(manifest_path, root, base, producer):
         require(required_artifacts <= names, 'known-run artifacts incomplete')
         require(all(type(a.get('id')) is int and a['id'] > 0 and type(a.get('size_in_bytes')) is int and a['size_in_bytes'] > 0 for a in artifacts), 'invalid known-run artifact identity')
         run = {'id':run_id,'attempt':1,'workflow':'Checks','event':'push','repository':producer['head_repository']}
-        observed, summary = read_evidence(folder/'release-check/summary.json', folder/'release-check/provenance.json', folder/'shards', root, sha, run, {'ref':None,'sha':None}, merge)
+        observed, summary = read_evidence(folder/'release-check/summary.json', folder/'release-check/provenance.json', folder/'shards', root, sha, run, {'ref':None,'sha':None}, merge, history=True)
         for shard in provenance['shards']:
             receipt = shard['receipt']
             require(receipt.get('head') == provenance['head'], 'known shard head differs from API')
