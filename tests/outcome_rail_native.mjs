@@ -2276,7 +2276,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       }
       assert.deepEqual(await sideNotebook(p), { parts: 0, words: 0 }, at + ': the side rail holds nothing of the outcome\'s Notebook');
       const width = await p.evaluate('[document.documentElement.scrollWidth, innerWidth]');
-      assert.ok(width[0] <= width[1], `${at}: no sideways scroll (${width})`);
+      const wide = await p.evaluate(`[...document.querySelectorAll('body *')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().right>innerWidth+0.5).map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return (e.id?'#'+e.id:e.tagName.toLowerCase()+'.'+String(e.className).trim().replace(/\\s+/g,'.'))+' L'+Math.round(r.left)+' R'+Math.round(r.right)+' W'+Math.round(r.width)+' pos:'+s.position+' tf:'+s.transform}).slice(0,25)`);
+      assert.ok(width[0] <= width[1], `${at}: no sideways scroll (${width}) ` + JSON.stringify(wide));
       if (['topic', 'conversation'].includes(kind)) {
         // The outcome's page is on the right rail instead: on the Conversation from the start, on a topic one tap away.
         if (phone) {
