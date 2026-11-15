@@ -14115,6 +14115,21 @@
    "check": {
     "node": "tests/ui_rail_drawer.test.mjs"
    }
+  },
+  {
+   "item": 301,
+   "act": "A focused box that can still scroll that way scrolls a third of what it shows at once, in every engine; at 390 ↓ through a long Reader message reaches the reply below",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  el.scrollBy(vertical ? { top: by, behavior: 'instant' } : { left: by, behavior: 'instant' });\n  return true;",
+     "  return true;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
   }
  ]
 }

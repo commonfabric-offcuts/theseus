@@ -18,8 +18,9 @@
 // Never in writing: in a field the arrows are the writing's, but for ↑ and ↓
 // in a one-line field, and any arrow in an empty field, with nowhere to go. A
 // focused box that can still scroll that way (a message's text in the Reader)
-// scrolls, and once at its end the arrows go on. A control that way but out of
-// sight is scrolled toward a step at a time, so the words between are read.
+// scrolls a third of what it shows, and once at its end the arrows go on. A
+// control that way but out of sight is scrolled toward a step at a time, so
+// the words between are read.
 // While a pop-up is open the arrows move only through it. With nothing
 // focused, ↓ goes to the first control in view from the top, ↑ to the last,
 // → to the first from the left and ← from the right.
@@ -153,10 +154,16 @@ export function reach(from, way, { within = null, doc = from?.ownerDocument ?? g
   return true;
 }
 
-// Whether a focused box can still scroll the way named, which it then does.
+// Whether a focused box can still scroll the way named; if so it scrolls a
+// third of what it shows at once, as a step toward a control does, the same in
+// every engine (WebKit scrolls no focused box for an arrow, Chrome smoothly).
 function scrollsOn(el, way, view) {
   if (!el?.isConnected || el === el.ownerDocument.body || el === el.ownerDocument.documentElement) return false;
-  return scrolling(view.getComputedStyle(el), way === 'up' || way === 'down') && room(el, way);
+  const vertical = way === 'up' || way === 'down';
+  if (!scrolling(view.getComputedStyle(el), vertical) || !room(el, way)) return false;
+  const by = (way === 'down' || way === 'right' ? 1 : -1) * Math.max(1, (vertical ? el.clientHeight : el.clientWidth) / 3);
+  el.scrollBy(vertical ? { top: by, behavior: 'instant' } : { left: by, behavior: 'instant' });
+  return true;
 }
 
 // A widget that keys its own arrows, or a control inside one; but a control
@@ -193,7 +200,8 @@ export function arrowReach(doc, { managed = () => false, region = () => null, be
     const way = WAYS[event.key];
     if (!way || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const at = doc.activeElement;
-    if ((at?.closest?.(FIELD) && !leavesLine(at, way)) || owned(at) || managed(at, way) || scrollsOn(at, way, view)) return;
+    if ((at?.closest?.(FIELD) && !leavesLine(at, way)) || owned(at) || managed(at, way)) return;
+    if (scrollsOn(at, way, view)) { event.preventDefault(); return; }
     // The page itself (or a pane itself: the feed, with no message to light) is nothing focused, within its region.
     const nothing = onNothing(at, doc), within = at && at !== doc.body ? region(at) : null;
     const moved = within ? reach(at, way, { within, doc }) || (!nothing && beyond(at, way)) : reach(nothing ? null : at, way, { doc });
