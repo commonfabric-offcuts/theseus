@@ -537,7 +537,9 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
             if name == "node-units":
                 return run_step(name, [node, "--test", "--test-reporter=tap"] + node_units(root), root, out, node_counts, "node --test")
             if name == DEPLOY_REFUSALS:
-                return run_step(name, [python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_tools_deploy.py", "-k", "DeployRefuses", "-v"],
+                # The deploy's refusals (its DeployRefuses classes) and every test of the train it may take instead.
+                return run_step(name, [python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_tools_*.py",
+                                       "-k", "test_tools_deploy.DeployRefuses", "-k", "test_tools_train.", "-v"],
                                 root, out, python_counts, "unittest")
             if name == WAKE_REPLAY:
                 began, runs, rerun = now(), [], []
