@@ -76,23 +76,27 @@ test('an act that moves nothing about where a dossier sits reports no position c
   assert.deepEqual(painted, ['acts'], 'Bring back on another device draws the stacks again');
 });
 // Item 426: the Reader's neighbours beyond the loaded page carry Core's place for their dossier, which another
-// device's Move below More or Bring back moves with no change to the topic. An acts read that reaches a later act asks
-// for them again, afresh, even when reading the places after it fails; one that reaches no later act, or is overtaken
-// (no longer current), asks for nothing, so neighbours already resolved stand.
-test('an acts read reaching a later act asks for the Reader\'s neighbours afresh, though reading the places fails; one at the same act or overtaken does not', async () => {
+// device's Move below More or Bring back moves with no change to the topic. The page's first acts read sets where it
+// stands and asks for nothing; one that reaches a later act asks for them again, afresh, even when reading the places
+// after it fails; one that reaches no later act, or is overtaken (no longer current), asks for nothing, so neighbours
+// already resolved stand.
+test('an acts read reaching a later act than the page has read asks for the Reader\'s neighbours afresh, though reading the places fails; the first, one at the same act or one overtaken does not', async () => {
   const asked = [];
   const views = new TopicViews({ instanceId:'i', topicId:'t', invalidate: (...args) => asked.push(args) });
   views.messages.set('a', { id:'a', seq:1, acts:{}, stack_position: position(4,1) });
   const acts = { instance_id:'i', topic_id:'t', version: 7, next_cursor: null, items: [] };
-  await views.readActs(7, async (name, args) => name === 'message_acts' ? acts : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4,7) })) }, () => true);
-  assert.deepEqual(asked, [['neighbors', 7, true]], 'an acts read with no change on the page still asks for the neighbours afresh');
-  await assert.rejects(views.readActs(8, async name => { if (name === 'message_acts') return { ...acts, version: 8 }; throw Object.assign(Error('Freshness read was superseded.'), { code: 'CLEANUP_DEFERRED' }); }, () => true), /superseded/);
-  assert.deepEqual(asked.at(-1), ['neighbors', 8, true], 'and when reading the places fails');
-  await views.readActs(8, async (name, args) => name === 'message_acts' ? { ...acts, version: 8 } : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4,8) })) }, () => true);
-  await views.readActs(5, async (name, args) => name === 'message_acts' ? { ...acts, version: 8 } : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4,8) })) }, () => true);
+  const places = v => async (name, args) => name === 'message_acts' ? { ...acts, version: v } : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4,v) })) };
+  await views.readActs(7, places(7), () => true);
+  assert.deepEqual(asked, [], 'the page\'s first acts read sets where it stands and asks for nothing');
+  await views.readActs(8, places(8), () => true);
+  assert.deepEqual(asked, [['neighbors', 8, true]], 'an acts read reaching a later act asks for the neighbours afresh, with no change on the page');
+  await assert.rejects(views.readActs(9, async name => { if (name === 'message_acts') return { ...acts, version: 9 }; throw Object.assign(Error('Freshness read was superseded.'), { code: 'CLEANUP_DEFERRED' }); }, () => true), /superseded/);
+  assert.deepEqual(asked.at(-1), ['neighbors', 9, true], 'and when reading the places fails');
+  await views.readActs(9, places(9), () => true);
+  await views.readActs(5, places(9), () => true);
   assert.equal(asked.length, 2, 'an acts read reaching no later act asks for nothing: the neighbours resolved stand');
   let current = true;
-  assert.equal(await views.readActs(9, async () => { current = false; return { ...acts, version: 9 }; }, () => current), false);
+  assert.equal(await views.readActs(10, async () => { current = false; return { ...acts, version: 10 }; }, () => current), false);
   assert.equal(asked.length, 2, 'a read overtaken asks for nothing');
 });
 test('acts read again are drawn though reading the places after them fails, and places learned before a failing page are drawn too', async () => {
