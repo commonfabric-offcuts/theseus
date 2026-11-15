@@ -391,7 +391,7 @@ export class Shell {
     this.moving = false;
     if (!this.guards.some(holds => holds())) { this.leave(popped ? null : routeHref(target)); return; }
     if (popped) this.refuse(popped);
-    try { this.page?.updated?.(() => this.leave()); } catch { /* the page says nothing more */ }
+    this.page?.updated?.(() => this.leave());
     const owed = this.owed; this.owed = null;
     if (owed) Promise.resolve().then(() => this.settle(owed));
   }

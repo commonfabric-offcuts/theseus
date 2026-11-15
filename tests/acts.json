@@ -1924,8 +1924,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';",
-     "    this.landing = 'page';"
+     "landing: !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page',",
+     "landing: 'page',"
     ]
    ],
    "check": {
@@ -1939,8 +1939,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';",
-     "    this.landing = this.by === 'keys' && inRails(at) ? 'keys' : 'page';"
+     "landing: !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page',",
+     "landing: this.by === 'keys' && inRails(at) ? 'keys' : 'page',"
     ]
    ],
    "check": {
@@ -1969,7 +1969,7 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    if (this.landing === 'page' && inRails(at)) at.blur();\n",
+     "    if (landing === 'page' && inRails(at)) at.blur();\n",
      ""
     ]
    ],
@@ -2321,8 +2321,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.writing = !popped && this.writeTo === routeKey(target);",
-     "    this.writing = false;"
+     "writing: !popped && this.writeTo === routeKey(target) }",
+     "writing: false }"
     ]
    ],
    "check": {
@@ -13803,6 +13803,107 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A module asked for under another build than the one the server serves is refused, never served from this build",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "if stamp != self.stamp or not name or name == \"index.html\":",
+     "if not name or name == \"index.html\":"
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A page opened before builds were stamped (release 76) loads afresh on its next move rather than run this build's app.mjs beside its own modules, and Edit opens",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "        if query and Path(name).suffix in MODULES:\n            return None\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page opened on release 76"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page names its entry under its build, with an import map sending an absolute module address to the same build",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "        index = index.replace(ENTRY, entry)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move that finds the server serving another build loads the place afresh on it, never in place, and on one build moves in place saying nothing",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "build === null || build === this.build ? this.proceed(way) : this.updated(way)",
+     "true ? this.proceed(way) : this.updated(way)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a move on one build stays in place"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move that finds another build while writing is not yet safe stays where it is and says Theseus updated with Reload, the words kept",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "if (!this.guards.some(holds => holds())) { this.leave(popped ? null : routeHref(target)); return; }",
+     "{ this.leave(popped ? null : routeHref(target)); return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a move that finds another build while writing"
+   }
+  },
+  {
+   "item": 523,
+   "act": "Theseus updated carries a Reload that reloads, said by the topic line and in the Reader or New message sheet that is open",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (near) showLine($(near), said()); else notice.scrollIntoView({ block: 'nearest' });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move reads the build the server serves before it moves, and a failed read lets the move go on",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (!response.ok) return null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
    }
   }
  ]
