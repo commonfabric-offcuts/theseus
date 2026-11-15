@@ -1098,12 +1098,14 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const moveTo = async (p, device, id) => {
     // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
     if (device === 'phone' && !await railOpen(p)) {
-      await centre(p, '#rail-open'); await press(p, device, '#rail-open');
+      await centre(p, '#rail-open');
+      await p.evaluate(`(window.railPresses = [], ['pointerdown', 'click'].forEach(type => addEventListener(type, e => window.railPresses.push(type + ':' + (e.target.id || e.target.className || e.target.tagName) + ':' + e.defaultPrevented), true)), true)`);
+      await press(p, device, '#rail-open');
       // What the page was doing, if the drawer does not open: kept in the failure.
       await until(() => railOpen(p), 'phone: the drawer opens').catch(async error => {
         const state = await p.evaluate(`({ at: location.search, ready: document.body?.dataset.ready, expanded: document.querySelector('#rail-open')?.getAttribute('aria-expanded'),
           inert: document.querySelector('#main')?.inert, sheet: document.querySelector('#new-message-sheet')?.open, focus: document.activeElement?.id || document.activeElement?.tagName,
-          notice: document.querySelector('#topic-navigation-status')?.textContent, origin: performance.timeOrigin })`).catch(e => ({ unread: e.message }));
+          notice: document.querySelector('#topic-navigation-status')?.textContent, presses: window.railPresses, origin: performance.timeOrigin })`).catch(e => ({ unread: e.message }));
         throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
       });
     }
@@ -1112,8 +1114,11 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     await press(p, device, outlineRow(id));
   };
   // The page shows the topic, started: by a move in place or by a load.
+  // A document being replaced answers nothing, and has not arrived.
   const arrived = (p, id, first) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + id)} && document.body?.dataset.ready === 'true'
-    && Boolean(document.querySelector(${JSON.stringify(card(first))}))`), `the page shows ${id}`, 15000);
+    && Boolean(document.querySelector(${JSON.stringify(card(first))}))`).catch(() => false), `the page shows ${id}`, 15000);
+  // The document this page was is gone: a load replaced it.
+  const replaced = (p, what) => until(() => p.evaluate('window.sameDocument !== true').catch(() => false), what, 15000);
   // The build the page's modules came from (aim_next/web_build.py), and the one the server serves: null for none.
   const pageBuild = p => p.evaluate(`(s => { const [, b, build] = s ? new URL(s.src).pathname.split('/') : []; return b === 'b' && build ? build : null; })(document.querySelector('script[type=module][src]'))`);
   const servedBuild = async () => { const r = await fetch(facts.origin + '/api/build'); return r.ok ? (await r.json()).build : null; };
@@ -1230,7 +1235,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await moveTo(p, device, topic);
         await arrived(p, topic, ids.mine);
         assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: on the new build the move is in place`);
-        assert.equal(await valueOf(p, '#inline-writing-body'), words, `${width}: the writing is kept`);
+        await until(async () => await valueOf(p, '#inline-writing-body') === words, `${width}: the writing is kept, as the page restores it`);
         await watchNotices(p);
         await menuOf(p, device, ids.mine); await choose(p, device, 'Edit');
         await until(() => p.evaluate(`document.querySelector('#reader').dataset.editing === 'true' || !document.querySelector('#reader-notice').hidden`), `${width}: Edit opens, or the Reader says why not`);
@@ -1308,10 +1313,11 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved')`), `${width}: the page says the words are saved`);
         const where = await p.evaluate(`['topic-navigation-status', 'inline-notice'].find(id => document.querySelector('#' + id + ' .updated-reload')?.getClientRects().length)`);
         await press(p, device, `#${where} .updated-reload`);
+        await replaced(p, `${width}: Reload loads the page`);
         await arrived(p, away, there.note);
         assert.equal(await p.evaluate('window.sameDocument === true'), false, `${width}: Reload loaded the page`);
         assert.equal(await pageBuild(p), await servedBuild(), `${width}: on the server's build`);
-        assert.equal(await valueOf(p, '#inline-writing-body'), words, `${width}: with the words`);
+        await until(async () => await valueOf(p, '#inline-writing-body') === words, `${width}: with the words, as the page restores them`);
         assert.equal(await moveNotice(p), '', `${width}: and nothing more to say`);
         assert.deepEqual(p.errors, []);
         await p.close();
@@ -1323,14 +1329,15 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
-  // Edit on the person's own message as they reach it: from its bar; once a reply heads it into a stack shown as its
-  // header alone (docs/reply-stacks.md), which has no bar, the stack's chevron opens it first.
+  // Edit on the person's own message as they reach it: from its bar. Once a reply heads it into a stack shown as its
+  // row alone (docs/reply-stacks.md), which has no bar, the person lights the row and presses it, which shows the
+  // message whole with its bar (tests/stack_native.mjs, "a head shown as one row has no bar").
   const editReached = async (p, device, id) => {
     const shown = () => p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
     if (!await shown()) {
-      const toggle = `#messages .reply-stack[data-stack="${id}"] > .stack-toggle`;
-      await centre(p, toggle); await press(p, device, toggle);
-      await until(shown, `${device}: the stack's chevron shows the message whole`);
+      await light(p, device, id);
+      await press(p, device, `${card(id)} .stack-who`);
+      await until(shown, `${device}: a press on the head's row shows it whole`);
     }
     await menuOf(p, device, id); await choose(p, device, 'Edit');
   };
