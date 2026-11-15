@@ -388,7 +388,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width];
       for (const width of widths) {
         if (width !== DEVICES[device].width) await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
-        await until(() => p.evaluate(`document.documentElement.clientWidth === ${width}`), `${device}: the window is ${width} wide`);
+        await until(() => p.evaluate(`innerWidth === ${width}`), `${device}: the window is ${width} wide`);
         for (const id of [ids.short, ids.long]) {
           await light(p, device, id);
           if (id === ids.long) await until(async () => (await barNow(p, id))?.buttons.some(b => b.act === 'full'), `${device} ${width}: the long ask's bar offers Show full message`);
