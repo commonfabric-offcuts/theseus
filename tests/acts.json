@@ -448,8 +448,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "index + (event.key === 'ArrowDown' ? 1 : -1)",
-     "index + (event.key === 'ArrowDown' ? -1 : 1)"
+     ": entries[index + step];",
+     ": entries[index - step];"
     ]
    ],
    "check": {
@@ -1999,8 +1999,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "onPage = pageItself(at, this.doc) || inList;",
-     "onPage = !at || at === this.doc.body || at.id === 'main' || inList;"
+     "onPage = pageItself(at, this.doc) || inList || onBar;",
+     "onPage = !at || at === this.doc.body || at.id === 'main' || inList || onBar;"
     ]
    ],
    "check": {
@@ -13803,6 +13803,154 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ above the outline's first row goes on up the side rail to New outcome, the chips and the logo block, and ↓ below its last row reaches Keys",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }",
+     "if (beyond) { event.preventDefault(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the outline"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ above the right rail's first section reaches its chips, Just this topic and All of this outcome",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }",
+     "if (beyond) { event.preventDefault(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↓ past the last message goes on down the page to the People row and the reply, and ↑ comes back",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (from && reach(from, step > 0 ? 'down' : 'up',",
+     "if (false && reach(from, step > 0 ? 'down' : 'up',"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↓ past the last message"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a message's bar ↑ and ↓ go on from its message as from the message itself",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "const onBar = this.bar.contains(at) && event.key !== 'Enter' && this.lit?.isConnected;",
+     "const onBar = false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a message's bar"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a page with no panes' keys an arrow with nothing focused lands on a control in view, and the arrows reach every control from it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const moved = within ? reach(at, way, { within, doc }) || beyond(at, way) : reach(nothing ? null : at, way, { doc });",
+     "const moved = within ? reach(at, way, { within, doc }) || beyond(at, way) : false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ and ↓ in a one-line field go on to the control that way, and the line keeps its words",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "if (at.tagName === 'INPUT') return ONE_LINE.has(at.type) && !at.list;",
+     "if (at.tagName === 'INPUT') return false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "In a pop-up the arrows move only among its own controls and never leave it for the page behind",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  if (modal.length) return modal.at(-1);\n  return at?.closest?.('dialog[open], [role=dialog]:not([hidden]), [role=menu]:not([hidden])') ?? doc.body;",
+     "  return doc.body;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
+   "act": "In a box with words in it every arrow is the writing's: the cursor moves and the focus stays",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "if ((at?.closest?.(FIELD) && !leavesLine(at, way)) ||",
+     "if (false ||"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in writing are the writing's"
+   }
+  },
+  {
+   "item": 301,
+   "act": "The nearest control that way is the one straight that way before one nearer but off to the side",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const value = gap + 2 * across(box) +",
+     "const value = gap + 0 * across(box) +"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_arrow_reach.test.mjs"
+   }
+  },
+  {
+   "item": 301,
+   "act": "What holds the focused control, or lies inside it reaching no further that way, is never that way",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     " && (sign > 0 ? box[lo] > from[lo] && box[hi] > from[hi] : box[hi] < from[hi] && box[lo] < from[lo]));",
+     "));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_arrow_reach.test.mjs"
    }
   }
  ]

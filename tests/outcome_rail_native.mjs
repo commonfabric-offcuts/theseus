@@ -2273,12 +2273,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const inView = p => p.evaluate(`(()=>{const e=document.activeElement;if(!e||e===document.body)return false;const b=e.getBoundingClientRect();return b.bottom>0&&b.top<innerHeight&&b.right>0&&b.left<innerWidth&&b.width>0})()`);
   // The topic is up with its messages drawn, at any width (the outline's own list waits for a laptop's rail).
   const topicUp = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && document.querySelectorAll('#messages [data-id]').length > 1`).catch(() => false), what);
-  // Presses the arrow up to n times while the focus keeps changing; every place it lands, in order.
+  // Where the page and the focus's scrolling boxes stand: an arrow that moves
+  // no focus while the next control is out of sight scrolls toward it instead.
+  const scrolled = p => p.evaluate(`(()=>{const at=[];for(let e=document.activeElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight||e.scrollWidth>e.clientWidth)at.push(Math.round(e.scrollTop)+','+Math.round(e.scrollLeft));return at.join(' ')+'|'+Math.round(scrollY)+','+Math.round(scrollX)})()`);
+  // Presses the arrow up to n times, until the focus stays (and nothing
+  // scrolled toward what lies on) or stop; the places the focus was.
   const walk = async (p, key, n = 30, stop = () => false) => {
     const seen = [await focusAt(p)];
     for (let step = 0; step < n; step++) {
+      const was = await scrolled(p);
       await p.key(key);
       const at = await focusAt(p);
+      if (at === seen.at(-1) && await scrolled(p) !== was) continue;
       if (at === seen.at(-1) || stop(at)) { if (at !== seen.at(-1)) seen.push(at); break; }
       seen.push(at);
     }
@@ -2315,8 +2321,15 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
         const ok = await p.evaluate(`(e=>{if(!e||!e.isConnected||(e.matches('textarea,[contenteditable]')&&(e.value??e.textContent)!=='')||e.matches('select'))return false;e.focus();return document.activeElement===e})(document.querySelector('[data-arrow-node="${node.id}"]'))`);
         if (!ok) continue;
-        await p.key(key);
-        edges.push({ from: node.id, key, to: await landed() });
+        // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
+        let to = node.id;
+        for (let n = 0; n < 12 && to === node.id; n++) {
+          const was = await scrolled(p);
+          await p.key(key);
+          to = await landed();
+          if (to === node.id && await scrolled(p) === was) break;
+        }
+        edges.push({ from: node.id, key, to });
       }
     }
     const reached = new Set(), queue = [start];
@@ -2432,9 +2445,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowUp');
     const chip = await focusAt(p);
     assert.match(chip, /^things:(Just this topic|All of this outcome)$/, `↑ above the first section (${top}) reaches the rail's chips, not ${chip}`);
-    await p.key(chip === 'things:Just this topic' ? 'ArrowRight' : 'ArrowLeft');
-    assert.match(await focusAt(p), /^things:(Just this topic|All of this outcome)$/, '← or → moves to the other chip');
-    assert.notEqual(await focusAt(p), chip);
+    // To the other chip by the arrow pointing at it: beside it, or below it where the rail is too narrow for both in a row.
+    const toward = await p.evaluate(`(()=>{const [a,b]=[...document.querySelectorAll('#things .things-scope .chip')].map(e=>e.getBoundingClientRect()),me=document.activeElement.getBoundingClientRect(),other=Math.abs(me.left-a.left)<1&&Math.abs(me.top-a.top)<1?b:a;
+      return Math.abs(other.top-me.top)<2?(other.left>me.left?'ArrowRight':'ArrowLeft'):(other.top>me.top?'ArrowDown':'ArrowUp')})()`);
+    await p.key(toward);
+    assert.match(await focusAt(p), /^things:(Just this topic|All of this outcome)$/, `${toward} moves to the other chip`);
+    assert.notEqual(await focusAt(p), chip, `${toward} moves to the other chip`);
     const down = await walk(p, 'ArrowDown', 6, at => at.startsWith('things:row:'));
     assert.ok(!down.includes('page'), 'never lost: ' + down.join(' → '));
     assert.ok((await focusAt(p)).startsWith('things:row:'), '↓ comes back to the sections: ' + down.join(' → '));
