@@ -375,13 +375,14 @@ def skip_basis(config, sha):
 
 def policy_reds(config, sha):
     """Item 481: the reds the merged base's policy (.github/check-baseline.json at SHA) admits, read from the live
-    checkout's git; none when SHA keeps no policy. A read that fails is refused, not taken as no policy."""
+    checkout's git and matched as GitHub's classifier matches them (known_reds.Admissions); None when SHA keeps no
+    policy. A read that fails, or a policy that classifier would not load, is refused, not taken as no policy."""
     listed = run(["git", "-C", str(config.live), "ls-tree", "--name-only", sha, "--", known_reds_check.POLICY])
     if listed.returncode != 0:
         raise known_reds_check.Refused("whether %s keeps %s could not be read (exit %s): %s" % (
             sha[:12], known_reds_check.POLICY, listed.returncode, listed.stderr.strip()[:300]))
     if not listed.stdout.strip():
-        return {}
+        return None
     shown = run(["git", "-C", str(config.live), "show", "%s:%s" % (sha, known_reds_check.POLICY)])
     try:
         policy = json.loads(shown.stdout) if shown.returncode == 0 else None
@@ -390,7 +391,7 @@ def policy_reds(config, sha):
     if policy is None:
         raise known_reds_check.Refused("%s at %s could not be read (exit %s): %s" % (
             known_reds_check.POLICY, sha[:12], shown.returncode, (shown.stderr or shown.stdout).strip()[:300]))
-    return known_reds_check.admitted(policy)
+    return known_reds_check.Admissions(policy, config.live, sha)
 
 
 def live_head(config):

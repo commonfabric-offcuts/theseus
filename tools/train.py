@@ -29,14 +29,17 @@ JUDGMENT_FIELDS = ("producer_runs", "verdict_checks", "audit")
 KINDS = ("ordinary", "judged-first")
 SHA = re.compile(r"[0-9a-f]{40}")
 # What an ordinary train may not change, so that no train judges the code that judges it after the merge: the deploy
-# tool (and the known-reds matcher it reads), the controller (.github/: the workflows and the policy they read) and
-# the service's data migrations, every schema step of which is a row of aim_next/migrations.py's STEPS.
+# tool with every tools/ module it loads (the known-reds matcher, GitHub's classifier it reuses and that classifier's
+# input-read audit, the outcome checks), the files GitHub's classifier requires to equal the event base ("validator
+# differs from event base"), the controller (.github/: the workflows and the policy they read) and the service's data
+# migrations, every schema step of which is a row of aim_next/migrations.py's STEPS. tests/test_tools_train.py derives
+# the first two from the code itself, so a module either starts loading is guarded here or that test fails.
 DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
-               "tools/ci_known_reds.py")
+               "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json")
 CONTROLLER = ".github/"
 MIGRATIONS = ("aim_next/migrations.py",)
-# GitHub's REST API paths for one workflow run and one check run.
-RUN_PATH, CHECK_PATH = "repos/%s/actions/runs/%d", "repos/%s/check-runs/%d"
+# GitHub's REST API paths for one workflow run, one check run and one pull request.
+RUN_PATH, CHECK_PATH, PULL_PATH = "repos/%s/actions/runs/%d", "repos/%s/check-runs/%d", "repos/%s/pulls/%d"
 # What the record keeps of each run and check GitHub lists.
 LISTED = ("id", "name", "head_sha", "status", "conclusion")
 
@@ -168,6 +171,36 @@ def listed(github, repository, kind, number):
     return dict({key: found.get(key) for key in LISTED}, kind=kind)
 
 
+def parents_of(git, commit):
+    return _ask(git, "the parents of %s" % commit[:12], "rev-list", "--parents", "-n", "1", commit).split()[1:]
+
+
+def pull_merge(git, github, repository, number, merge, release_branch):
+    """Refused unless merge is pull request number's own merge commit: a merge (two parents) whose second parent is
+    the pull request's head, which GitHub's pulls/N names as merged into release_branch with merge as its
+    merge_commit_sha. A commit that only says so in its message, or the branch's tip copied in, is not."""
+    parents = parents_of(git, merge)
+    if len(parents) != 2:
+        raise Refused("%s has %d parent%s, so it is not PR #%d's merge commit, which merges the pull request's head into "
+                      "%s" % (merge, len(parents), "" if len(parents) == 1 else "s", number, release_branch))
+    path = PULL_PATH % (repository, number)
+    try:
+        pull = github.get(path)
+    except Unreadable as error:
+        raise Refused("PR #%d could not be read: %s" % (number, error))
+    if not isinstance(pull, dict) or pull.get("number") != number:
+        raise Refused("GitHub's answer for %s is not PR #%d" % (path, number))
+    if pull.get("merged") is not True or pull.get("merge_commit_sha") != merge:
+        raise Refused("GitHub names %r as PR #%d's merge commit (merged %r), not %s"
+                      % (pull.get("merge_commit_sha"), number, pull.get("merged"), merge))
+    base, head = (pull.get("base") or {}).get("ref"), (pull.get("head") or {}).get("sha")
+    if base != release_branch:
+        raise Refused("PR #%d was merged into %r, not %s" % (number, base, release_branch))
+    if head != parents[1]:
+        raise Refused("PR #%d's head is %r, not %s, the merge commit's second parent" % (number, head, parents[1]))
+    return parents
+
+
 def judged(github, repository, judgment):
     """Each run and check of a judgment as GitHub lists it, every one completed, its conclusion as it is."""
     runs = [listed(github, repository, "run", number) for number in judgment["producer_runs"]]
@@ -213,6 +246,7 @@ def judge(path, sha, live, release_branch, repository, git, github):
     tree = tree_of(git, merge)
     if tree != train["merged_tree"]:
         raise Refused("the merge commit's tree is %s, not the merged_tree %s" % (tree, train["merged_tree"]))
+    pull_merge(git, github, repository, train["pr"], merge, release_branch)
     hosted = None
     if train["hosted_run"] is not None:
         hosted = listed(github, repository, "run", train["hosted_run"])
@@ -245,7 +279,7 @@ def before_merge(git, github, repository, judgment, merge, tree):
     if len(heads) != 1:
         raise Refused("the judgment's runs and checks name %s as their heads, not one commit" % ", ".join(heads))
     head = heads[0]
-    parents = _ask(git, "the parents of %s" % merge[:12], "rev-list", "--parents", "-n", "1", merge).split()[1:]
+    parents = parents_of(git, merge)
     if head not in parents:
         raise Refused("the judgment's runs and checks name %s as their head, which is not a parent of the merge commit %s"
                       % (head, merge))

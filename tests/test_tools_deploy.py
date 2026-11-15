@@ -1580,19 +1580,97 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
         self.assertEqual(called.call_args[0][-1], self.known)
 
 
-def admission(step, case, engine=None, review="m-admitted"):
-    """One red of .github/check-baseline.json, as GitHub's classifier reads its case identity."""
-    return {"step": step, "case": {"name": case, "phase": None, "engine": engine, "expectedFailure": False}, "owner": "fable",
-            "why": "fails on the hosted runners too", "review": review}
+# The candidate's checkout as its summary names it, and a failure of RED_CASE as a harness reports it: its message, its
+# values, then its stack through two test sources, which GitHub's classifier reads as the failure's fingerprint.
+CHECKOUT = "/verified"
+ERROR = ("AssertionError [ERR_ASSERTION]: value\n\n2 !== 3\n\n"
+         "    at helper (/verified/tests/reader_inline_native.mjs:2:1)\n"
+         "    at check (/verified/tests/reader_persistence_native.mjs:3:1)")
+STANDIN = b"// stand-in source\nassert.equal(actual, expected);\nawait helper();\n"
 
 
-def policy(*reds):
-    return {"version": 1, "reds": list(reds)}
+class PolicyRepository:
+    """Item 481, rule 2: a real git repository at the live checkout's path holding the test sources GitHub's classifier
+    (tools/ci_known_reds.py) reads at the policy's source commit and at the deployed commit, and a policy that
+    classifier's own load_policy() takes. The deploy reads the policy file through `run`, as FakeHost serves it."""
+
+    def policy_setup(self):
+        from tools import ci_known_reds as ci
+        self.ci = ci
+        self.repo = self.config.live
+        self.repo.mkdir(parents=True)
+        self.git_in("init", "-q")
+        self.paths = set(release_check.harnesses()) | {
+            "tests/reader_inline_native.mjs", "tools/ci_known_reds.py", "tools/known_reds.py", "tools/release_check.py",
+            "tests/test_example.py", "tests/fixtures/at_names.json", "docs/tools.md", "tools/ci_input_reads.py",
+            "tools/ci-input-reads.json", ci.PRODUCER_WORKFLOW}
+        for path in self.paths:
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((ci.ROOT / path).read_bytes() if path.startswith("tools/") or path in (
+                release_check.REPLAY_FILE, "tests/fixtures/at_names.json")
+                else b"# stand-in source\nassert actual == expected\n" if path.endswith(".py")
+                else b"name: Checks\n" if path == ci.PRODUCER_WORKFLOW else STANDIN)
+        self.source_commit = self.committed("inventory sources")
+        (self.repo / "application.txt").write_text("the candidate's change\n")
+        # The deployed commit: the reviewed sources unchanged, and a change of its own.
+        self.sha = self.committed("candidate")
+
+    def git_in(self, *args):
+        done = subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@example.com",
+                               "-c", "commit.gpgsign=false"] + list(args), capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout.strip()
+
+    def committed(self, message):
+        self.git_in("add", "-A")
+        self.git_in("commit", "-q", "-m", message)
+        return self.git_in("rev-parse", "HEAD")
+
+    def admission(self, step=RED_STEP, case=RED_CASE, error=ERROR, review="m-admitted", **identity):
+        """One red of .github/check-baseline.json as GitHub's classifier takes it: the case's identity and the
+        fingerprint of the failure the review read."""
+        profile = {"runner_os": "macOS", "runner_arch": "ARM64", "image_os": "macos-26", "image_version": "v1",
+                   "scroll_bars": "Always", "reduce_motion": False, "cpus": 3, "chrome": "156", "node": "26",
+                   "python": "3.9", "playwright": "1.63"}
+        completion = ({"browserClosed": True, "harnessCompleted": True, "fixtureExitCode": 0, "fixtureExitSignal": None,
+                       "plannedPhases": COMPOSE_PHASES, "completedPhases": COMPOSE_PHASES}
+                      if known_reds.NATIVE[step].harness == release_check.COMPOSE
+                      else {"browserClosed": True, "fixtureExitCode": 0, "ended": True})
+        return {"step": step, "case": self.ci.identity(dict({"name": case}, **identity)), "owner": "fable",
+                "why": "fails on the hosted runners too", "review": review, "observed_profile": profile,
+                "target_profile": profile, "source_commit": self.source_commit, "evidence_sha256": "a" * 64,
+                "fingerprint": self.ci.fingerprint(error, CHECKOUT, self.repo, self.source_commit), "completion": completion}
+
+    def policy(self, *reds):
+        """The policy file: every reviewed source's hash, every step's inventory (each admitted case in it), the reds."""
+        inventory = {name: [self.ci.identity({"name": RED_CASE})] for name in known_reds.NATIVE}
+        for red in reds:
+            if red["case"] not in inventory[red["step"]]:
+                inventory[red["step"]].append(red["case"])
+        inventory.update({name: [self.ci.identity({"name": "test_one (example.Example)"})]
+                          for name in ("python-units", "deploy-refusals")})
+        inventory["node-units"] = [self.ci.identity({"name": "one"})]
+        return {"version": 1, "source_commit": self.source_commit,
+                "source_hashes": {path: self.ci.blob(self.ci.source(self.repo, self.source_commit, path)) for path in self.paths},
+                "required": list(release_check.REQUIRED), "inventory": inventory, "reds": list(reds)}
+
+    def fails(self, step=RED_STEP, error=ERROR, **identity):
+        """The candidate's summary of the deployed commit, checked out at CHECKOUT, failing RED_CASE of step with error."""
+        self.candidate_fails((step, dict(cases=[{"name": "the rail keeps its colours", "passed": True},
+                                                dict({"name": RED_CASE, "passed": False, "error": error}, **identity)])),
+                             commit=self.sha, checkout=CHECKOUT)
+        self.listing((step, RED_CASE, None))
+
+    def host(self, *reds, policy=None):
+        """The live host, the deployed commit keeping the policy of reds (or policy as given)."""
+        return FakeHost(self.config, policy=self.policy(*reds) if policy is None else policy, at=self.sha, line=(HEAD, self.sha))
 
 
-class DeployRefusesKnownRedsPolicy(KnownRedsFiles, DeployCase):
-    """Item 481, rule 2: a failed case is known when the merged base's policy admits it, or when live's last release
-    check failed it, whatever that run's record format."""
+class DeployRefusesKnownRedsPolicy(PolicyRepository, KnownRedsFiles, DeployCase):
+    """Item 481, rule 2: a failed case is known when the merged base's policy admits it, matched as GitHub's classifier
+    matches it (the case's identity and its failure's fingerprint), or when live's last release check failed it,
+    whatever that run's record format."""
 
     # The composer's end-of-run record, which a live run from before it lacks entirely.
     END = {"plannedPhases": COMPOSE_PHASES, "completedPhases": COMPOSE_PHASES, "harnessCompleted": True, "fixtureExitSignal": None}
@@ -1601,6 +1679,7 @@ class DeployRefusesKnownRedsPolicy(KnownRedsFiles, DeployCase):
     def setUp(self):
         super().setUp()
         self.known_setup()
+        self.policy_setup()
 
     def again(self):
         self.tearDown()
@@ -1609,55 +1688,109 @@ class DeployRefusesKnownRedsPolicy(KnownRedsFiles, DeployCase):
     def evidence_of(self, name):
         return json.loads((self.evidence / (name + ".json")).read_text())
 
-    def refused_known(self, host, words):
-        refusal = self.refused(host, known_reds=self.known)
+    def refused_known(self, host, words, sha=SHA):
+        refusal = self.refused(host, sha=sha, known_reds=self.known)
         self.assertIn("known reds: ", refusal)
         self.assertIn(words, refusal)
         self.assertEqual(self.records(), ["00-release-check"])
         self.assertEqual(self.kills, [])
         return refusal
 
-    def test_a_case_the_merged_base_policy_admits_is_a_known_red_without_a_live_summary(self):
-        self.candidate_fails((RED_STEP, {}))
-        self.listing((RED_STEP, RED_CASE, None))
-        host = FakeHost(self.config, policy=policy(admission(RED_STEP, RED_CASE)))
+    def refused_known_at(self, host, words):
+        """Refused for the deployed commit of the policy's repository."""
+        return self.refused_known(host, words, sha=self.sha)
+
+    def taken(self, host):
+        """The deploy's dry run of the deployed commit, which must not refuse; its output."""
         with redirect_stdout(io.StringIO()) as out, mock.patch.object(deploy, "run", host), \
                 mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")):
             try:
-                deploy.deploy(self.config, SHA, self.evidence, self.summary, True, known_reds=self.known)
+                deploy.deploy(self.config, self.sha, self.evidence, self.summary, True, known_reds=self.known)
             except deploy.Refused as refusal:
                 self.fail("the deploy refused: %s" % refusal)
+        return out.getvalue()
+
+    def test_a_case_the_merged_base_policy_admits_is_a_known_red_without_a_live_summary(self):
+        self.fails()
+        host = self.host(self.admission())
+        out = self.taken(host)
         [taken] = self.evidence_of("00-release-check")["known_reds"]["accepted"]
         self.assertEqual((taken["taken_by"], taken["review"], taken["live_summary"]), ("policy", "m-admitted", None))
         self.assertEqual(self.evidence_of("02-release")["record"]["measurements"]["known_reds"], [
             {"step": RED_STEP, "case": RED_CASE, "live_summary": None, "live_commit": HEAD, "why": "fails on the live release too",
              "taken_by": "policy"}])
-        self.assertIn("known red: %s %r failed; %s at %s admits it (review m-admitted)" % (RED_STEP, RED_CASE, POLICY, SHA[:12]),
-                      out.getvalue())
-        self.assertIn(["git", "-C", str(self.config.live), "show", "%s:%s" % (SHA, POLICY)], host.calls, "read at the deployed commit")
+        self.assertIn("known red: %s %r failed; %s at %s admits it (review m-admitted)" % (RED_STEP, RED_CASE, POLICY, self.sha[:12]),
+                      out)
+        self.assertIn(["git", "-C", str(self.config.live), "show", "%s:%s" % (self.sha, POLICY)], host.calls, "read at the deployed commit")
 
     def test_the_policy_admits_a_case_only_by_its_exact_identity(self):
-        # The negative: another engine's case of the same name, or another step's, is another case.
-        for red in (admission(RED_STEP, RED_CASE, engine="webkit"), admission("native-journal", RED_CASE),
-                    admission(RED_STEP, RED_CASE + " ")):
-            with self.subTest(red=red):
+        # The negative: another engine's, phase's or step's case of the same name, a mutation's row, or a name that
+        # differs by a space, is another case, as GitHub's classifier keys it.
+        for red, row in ((dict(engine="webkit"), {}), (dict(phase="run:webkit"), {}), ({}, dict(engine="webkit")),
+                         ({}, dict(phase="run:webkit")), ({}, dict(expectedFailure=True, mutationCaught=False)),
+                         (dict(step="native-journal"), {}), (dict(case=RED_CASE + " "), {})):
+            with self.subTest(red=red, row=row):
                 self.again()
-                self.candidate_fails((RED_STEP, {}))
-                self.listing((RED_STEP, RED_CASE, None))
-                self.refused_known(FakeHost(self.config, policy=policy(red)), "%s %r is not admitted by %s at the deployed commit, "
+                self.fails(**row)
+                self.refused_known_at(self.host(self.admission(**red)), "%s %r is not admitted by %s at the deployed commit, "
                                    "and no live summary names it" % (RED_STEP, RED_CASE, POLICY))
+
+    def test_a_case_whose_phase_and_engine_the_policy_names_is_admitted(self):
+        # The positive beside the identity negative: the same phase and engine, as the real policy's reader and WebKit
+        # rows name them.
+        self.fails(phase="run:webkit", engine="webkit")
+        self.taken(self.host(self.admission(phase="run:webkit", engine="webkit")))
+        [taken] = self.evidence_of("00-release-check")["known_reds"]["accepted"]
+        self.assertEqual(taken["taken_by"], "policy")
+
+    def test_an_admitted_case_that_fails_for_another_reason_is_refused(self):
+        # GitHub's classifier calls each of these "different assertion, values or source chain": another value, another
+        # assertion message, another call site, and a failure with no test source in its stack.
+        other_values = ERROR.replace("2 !== 3", "2 !== 4")
+        other_message = ERROR.replace("value", "every control is 44px")
+        other_site = ERROR.replace("reader_inline_native.mjs:2:1", "reader_inline_native.mjs:3:1")
+        for error in (other_values, other_message, other_site, "AssertionError: 2 !== 3"):
+            with self.subTest(error=error):
+                self.again()
+                self.fails(error=error)
+                self.refused_known_at(self.host(self.admission()), "%s %r: %s at the deployed commit admits it, but not this "
+                                   "failure (different assertion, values or source chain)" % (RED_STEP, RED_CASE, POLICY))
+
+    def test_an_admitted_case_whose_test_source_changed_at_the_deployed_commit_is_refused(self):
+        # The same message and line numbers, but the assertion the stack names was rewritten at the deployed commit.
+        (self.repo / "tests/reader_inline_native.mjs").write_bytes(STANDIN.replace(b"assert.equal", b"assert.notEqual"))
+        self.sha = self.committed("the assertion changed")
+        self.fails()
+        self.refused_known_at(self.host(self.admission()), "but not this failure (different assertion, values or source chain)")
+
+    def test_a_policy_github_would_not_load_admits_nothing_and_refuses(self):
+        # GitHub's classifier refuses each of these before it matches a case, so the deploy does too.
+        def changed(**fields):
+            found = self.policy(self.admission())
+            found.update(fields)
+            return found
+        # Each policy is made in the repository of its own case, which again() makes anew.
+        for policy, words in ((lambda: changed(version=2), "unsupported baseline schema"),
+                              (lambda: changed(source_hashes={path: "0" * 40 for path in self.paths}), "inventory source hash differs"),
+                              (lambda: changed(inventory={}), "incomplete reviewed check inventory"),
+                              (lambda: {"version": 1, "reds": [self.admission()]}, "invalid baseline fields")):
+            with self.subTest(words):
+                self.again()
+                self.fails()
+                self.refused_known_at(self.host(policy=policy()), "%s at %s is not a policy GitHub's classifier takes (%s"
+                                      % (POLICY, self.sha[:12], words))
+
+    def test_a_policy_that_cannot_be_read_refuses_rather_than_admitting_nothing(self):
+        self.fails()
+        self.refused_known_at(self.host(policy="unreadable"), "%s at %s could not be read" % (POLICY, self.sha[:12]))
 
     def test_a_case_neither_the_policy_admits_nor_the_live_summary_failed_is_refused(self):
         self.candidate_fails((RED_STEP, {}))
         path = self.live_summary("live-check", (RED_STEP, dict(failed=("a whisper keeps its colour",))))
         self.listing((RED_STEP, RED_CASE, path))
-        self.refused_known(FakeHost(self.config, policy=policy(admission(RED_STEP, "a whisper keeps its colour"))),
+        self.refused_known(FakeHost(self.config, policy=self.policy(self.admission(case="a whisper keeps its colour"))),
                            "%s %r is not admitted by %s at the deployed commit, nor among the cases that failed in %s on the "
                            "live commit" % (RED_STEP, RED_CASE, POLICY, path))
-
-    def test_a_policy_that_cannot_be_read_refuses_rather_than_admitting_nothing(self):
-        self.red_on_both()
-        self.refused_known(FakeHost(self.config, policy="unreadable"), "%s at %s could not be read" % (POLICY, SHA[:12]))
 
     def test_a_live_compose_run_from_before_its_end_record_counts_when_it_names_the_case_failed_and_closed(self):
         self.candidate_fails((COMPOSE_STEP, dict(more=self.END)))

@@ -230,31 +230,42 @@ def live_cases(red, live_commit):
     return ended_cases(path.parent, found[0], "the live", before_end_record=True), None
 
 
-def admitted(policy):
-    """{(step, case identity): the admission's review} of a policy file's reds, matched as GitHub's classifier matches
-    them (tools/ci_known_reds.py key()), or Refused when the policy names no reds a case can be matched against."""
-    from tools import ci_known_reds
-    reds = policy.get("reds") if isinstance(policy, dict) else None
-    if not isinstance(reds, list):
-        raise Refused("%s lists no reds" % POLICY)
-    found = {}
-    for red in reds:
+class Admissions:
+    """The reds a policy file admits, read and matched exactly as GitHub's classifier reads and matches them
+    (tools/ci_known_reds.py): the policy is one its load_policy() takes, read against root's git; a failed case is
+    admitted only when its identity (key(): name, phase, engine, expectedFailure) is an admission's and the fingerprint
+    of its failure (its assertion, values and test-source chain, read at commit) is that admission's. The one thing not
+    compared is the runner profile: a local release check does not run on GitHub's runners."""
+
+    def __init__(self, policy, root, commit):
+        from tools import ci_known_reds
+        self.ci, self.root, self.commit = ci_known_reds, root, commit
         try:
-            if not isinstance(red, dict) or red.get("step") not in NATIVE:
-                raise ci_known_reds.Refused("no browser step")
-            found[(red["step"], ci_known_reds.key(red.get("case")))] = red.get("review")
-        except ci_known_reds.Refused as error:
-            raise Refused("%s admits a red that names no browser case (%s): %r" % (POLICY, error, red))
-    return found
+            ci_known_reds.load_policy(policy, root)
+        except (ci_known_reds.Refused, KeyError, TypeError, AttributeError, ValueError) as error:
+            # A malformed field the classifier would crash on is no more a policy it takes than one it refuses.
+            raise Refused("%s at %s is not a policy GitHub's classifier takes (%s)" % (POLICY, commit[:12], error))
+        self.reds = {(red["step"], ci_known_reds.key(red["case"])): red for red in policy["reds"]}
+
+    def match(self, step, row, checkout):
+        """(the admission's review, None) when the policy admits this failure of step; (None, why not) otherwise."""
+        red = self.reds.get((step, self.ci.key(row)))
+        if red is None:
+            return None, None
+        try:
+            same = self.ci.fingerprint(row.get("error"), checkout, self.root, self.commit) == red["fingerprint"]
+        except self.ci.Refused:
+            same = False
+        return (red["review"], None) if same else (None, "different assertion, values or source chain")
 
 
-def judge(path, summary_path, unpassed, live_head, policy=lambda: {}):
+def judge(path, summary_path, unpassed, live_head, policy=lambda: None):
     """What the known reds accept of a summary that judge_summary found describes the commit, or Refused naming the
     first condition that fails.
 
     unpassed: judge_summary's reasons the run did not pass; [] takes every listed red as not needed. live_head(): the
-    live checkout's HEAD, as the deploy reads it. policy(): admitted() of POLICY at the deployed commit, or Refused when
-    it cannot be read. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
+    live checkout's HEAD, as the deploy reads it. policy(): the Admissions of POLICY at the deployed commit, None when
+    that commit keeps none, or Refused when it cannot be read or is not a policy GitHub's classifier takes. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
     review}], not_needed: [{step, case}]}; accepted is empty only for a summary that passed."""
     known = load(path)
     listed = {(red["step"], red["case"]): red for red in known["reds"]}
@@ -272,12 +283,16 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda: {}):
         for case in failures[step]:
             if (step, case) not in listed:
                 raise Refused("%s failed %r, which the known reds do not list" % (step, case))
-    from tools import ci_known_reds
+    checkout = summary.get("checkout")
     for step in sorted(failures):
         for case, row in failures[step].items():
-            red, pair = listed[(step, case)], (step, ci_known_reds.key(row))
-            if pair in admits:
-                taken_by, review = "policy", admits[pair]
+            red = listed[(step, case)]
+            review, differs = admits.match(step, row, checkout) if admits is not None else (None, None)
+            if review is not None:
+                taken_by = "policy"
+            elif differs is not None and red["live_summary"] is None:
+                raise Refused("%s %r: %s at the deployed commit admits it, but not this failure (%s)"
+                              % (step, case, POLICY, differs))
             elif red["live_summary"] is None:
                 raise Refused("%s %r is not admitted by %s at the deployed commit, and no live summary names it"
                               % (step, case, POLICY))

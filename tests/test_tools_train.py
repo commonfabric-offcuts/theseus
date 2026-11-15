@@ -4,6 +4,7 @@ from __future__ import annotations
 train"). Each fact the train names is read again from a real git repository with an origin, and from GitHub through a
 typed stand-in for `gh api`; nothing here replaces the standard library."""
 
+import ast
 import io
 import json
 from pathlib import Path
@@ -22,8 +23,10 @@ BRANCH, REPOSITORY, PR = "release/live73", "offcuts/theseus", 31
 class FakeGitHub:
     """GitHub's REST answers from a table, by API path; a path it lacks is a read that failed, as gh's exit would be."""
 
-    def __init__(self, runs=(), checks=()):
+    def __init__(self, runs=(), checks=(), pulls=()):
         self.answers = {}
+        for found in pulls:
+            self.answers["repos/%s/pulls/%d" % (REPOSITORY, found["number"])] = found
         for found in runs:
             self.answers["repos/%s/actions/runs/%d" % (REPOSITORY, found["id"])] = found
         for found in checks:
@@ -39,6 +42,12 @@ class FakeGitHub:
 
 def listed(number, head, conclusion="success", status="completed", name="Checks"):
     return {"id": number, "name": name, "head_sha": head, "status": status, "conclusion": conclusion, "html_url": "https://x"}
+
+
+def pulled(merged, base, head, number=PR, merged_flag=True):
+    """GitHub's pulls/N answer, the fields the deploy reads among others it ignores."""
+    return {"number": number, "state": "closed", "merged": merged_flag, "merge_commit_sha": merged, "base": {"ref": base, "sha": "f" * 40},
+            "head": {"ref": "item-481", "sha": head}, "html_url": "https://x"}
 
 
 class Repositories:
@@ -96,7 +105,13 @@ class Repositories:
         if push:
             self.git(self.work, "push", "-q", "origin", "HEAD:refs/heads/" + onto)
         self.git(self.live, "fetch", "-q", "origin")
+        # GitHub's pulls/N for the pull request this merge closed, as it answers once the merge lands.
+        self.pull = pulled(merged, onto, head)
         return merged
+
+    def hub(self, runs=(), checks=(), pull=None):
+        """GitHub answering for runs, checks and the pull request the last merge closed (or pull)."""
+        return FakeGitHub(runs, checks, pulls=[pull or self.pull])
 
     def has(self, ref):
         return subprocess.run(["git", "-C", str(self.work), "rev-parse", "--verify", "-q", ref], capture_output=True).returncode == 0
@@ -136,18 +151,18 @@ class TrainCase(Repositories, deploys.DeployCase):
         # The live instance records release 19 at the live commit.
         return GitHost(self.config, **dict({"releases": (deploys.page(deploys.release(19, self.L)), 0)}, **more))
 
-    def trained(self, host, train, sha, github, dry=True):
+    def trained(self, host, train, sha, github, dry=True, known_reds=None):
         with redirect_stdout(io.StringIO()) as out:
             with mock.patch.object(deploy, "run", host), \
                     mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")):
-                deploy.deploy(self.config, sha, self.evidence, None, dry, train=train, github=github)
+                deploy.deploy(self.config, sha, self.evidence, None, dry, train=train, github=github, known_reds=known_reds)
         return out.getvalue()
 
-    def refused_train(self, train, sha, github, words):
+    def refused_train(self, train, sha, github, words, known_reds=None):
         """Refused at 00-train, naming words, before any process is listed or anything is stopped."""
         host = self.host()
         try:
-            self.trained(host, train, sha, github)
+            self.trained(host, train, sha, github, known_reds=known_reds)
         except deploy.Refused as refusal:
             self.assertIn("train: ", str(refusal))
             self.assertIn(words, str(refusal))
@@ -171,7 +186,7 @@ class DeployRefusesTrain(TrainCase):
         self.merged = self.merge(self.head)
 
     def test_an_ordinary_merged_train_is_planned_with_its_judgment_pending_and_no_local_check(self):
-        out = self.trained(self.host(), self.train(self.merged, [self.head]), self.merged, FakeGitHub())
+        out = self.trained(self.host(), self.train(self.merged, [self.head]), self.merged, self.hub())
         self.assertIn("train: PR #31 (ordinary), merge commit %s on origin's %s; the hosted judgment is pending (PR #31)"
                       % (self.merged[:12], BRANCH), out)
         self.assertEqual(self.records(), ["00-plan", "00-train", "01-live", "02-checkout", "02-release"])
@@ -184,7 +199,7 @@ class DeployRefusesTrain(TrainCase):
         self.assertEqual(set(record["measurements"]), {"train"}, "no count claims a local release check ran")
 
     def test_the_hosted_run_is_named_once_github_lists_it_and_must_be_of_the_merge_commit(self):
-        github = FakeGitHub(runs=[listed(77, self.merged, conclusion=None, status="in_progress"), listed(78, self.head)])
+        github = self.hub(runs=[listed(77, self.merged, conclusion=None, status="in_progress"), listed(78, self.head)])
         self.trained(self.host(), self.train(self.merged, [self.head], hosted_run=77), self.merged, github)
         hosted = self.evidence_of("02-release")["record"]["measurements"]["train"]["hosted_run"]
         self.assertEqual((hosted["id"], hosted["head_sha"], hosted["status"]), (77, self.merged, "in_progress"),
@@ -199,32 +214,32 @@ class DeployRefusesTrain(TrainCase):
             path.unlink()
 
     def test_a_deploy_of_anything_but_the_merge_commit_is_refused(self):
-        self.refused_train(self.train(self.merged, [self.head]), self.head, FakeGitHub(),
+        self.refused_train(self.train(self.merged, [self.head]), self.head, self.hub(),
                            "the deploy was asked for %s, but the train's merge commit is %s" % (self.head, self.merged))
 
     def test_a_merge_commit_that_is_not_on_the_release_branch_is_refused(self):
         other = self.branch("item-482", self.L, [("aim_next/other.py", "# item 482\n")])
         aside = self.merge(other, onto="release/another")
-        self.refused_train(self.train(aside, [other]), aside, FakeGitHub(),
+        self.refused_train(self.train(aside, [other]), aside, self.hub(),
                            "the merge commit %s is not on origin's %s" % (aside, BRANCH))
         # Merged but never pushed: the live checkout's origin does not have it on the branch either.
         self.again()
         unpushed = self.merge(self.branch("item-483", self.merged, [("aim_next/three.py", "# 483\n")]), push=False)
-        self.refused_train(self.train(unpushed, [self.head]), unpushed, FakeGitHub(), "could not be read")
+        self.refused_train(self.train(unpushed, [self.head]), unpushed, self.hub(), "could not be read")
 
     def test_an_approved_head_the_merge_commit_does_not_contain_is_refused(self):
         stray = self.branch("item-484", self.L, [("aim_next/stray.py", "# never merged\n")])
         self.git(self.live, "fetch", "-q", str(self.work), "item-484")
-        self.refused_train(self.train(self.merged, [self.head, stray]), self.merged, FakeGitHub(),
+        self.refused_train(self.train(self.merged, [self.head, stray]), self.merged, self.hub(),
                            "item 482's approved head %s is not in the merge commit %s" % (stray, self.merged))
 
     def test_a_merged_tree_that_is_not_the_merge_commits_is_refused(self):
-        self.refused_train(self.train(self.merged, [self.head], merged_tree=self.tree(self.L)), self.merged, FakeGitHub(),
+        self.refused_train(self.train(self.merged, [self.head], merged_tree=self.tree(self.L)), self.merged, self.hub(),
                            "the merge commit's tree is %s, not the merged_tree %s" % (self.tree(self.merged), self.tree(self.L)))
 
     def test_a_read_that_fails_refuses(self):
-        for config, github, words in (({"release_branch": "release/nowhere"}, FakeGitHub(), "origin's release/nowhere could not be read (git rev-parse"),
-                                      ({"release_branch": BRANCH}, FakeGitHub(), "the run 79 could not be read: gh api repos/%s/actions/runs/79 exited 1" % REPOSITORY)):
+        for config, github, words in (({"release_branch": "release/nowhere"}, self.hub(), "origin's release/nowhere could not be read (git rev-parse"),
+                                      ({"release_branch": BRANCH}, self.hub(), "the run 79 could not be read: gh api repos/%s/actions/runs/79 exited 1" % REPOSITORY)):
             with self.subTest(words):
                 self.again()
                 self.raw.update(config)
@@ -234,14 +249,14 @@ class DeployRefusesTrain(TrainCase):
         self.again()
         # A merge commit git does not have is a failed read, not an answer.
         missing = "e" * 40
-        self.refused_train(self.train(self.merged, [self.head], merge_commit=missing, merged_tree=missing), missing, FakeGitHub(),
+        self.refused_train(self.train(self.merged, [self.head], merge_commit=missing, merged_tree=missing), missing, self.hub(),
                            "could not be read")
 
     def judged(self, git=None):
         """train.judge of the merged train against the live checkout's HEAD, with git run in the live checkout, or git."""
         live = self.git(self.live, "rev-parse", "HEAD")
         return deploy.train_check.judge(self.train(self.merged, [self.head]), self.merged, live, BRANCH, REPOSITORY,
-                                        git or self.live_git, FakeGitHub())
+                                        git or self.live_git, self.hub())
 
     def live_git(self, *args):
         return subprocess.run(["git", "-C", str(self.live)] + list(args), capture_output=True, text=True)
@@ -261,7 +276,8 @@ class DeployRefusesTrain(TrainCase):
 
     def test_an_ordinary_train_that_changes_the_deploy_the_controller_or_a_migration_is_refused(self):
         for number, path in enumerate(("tools/deploy.py", ".github/workflows/checks.yml", "aim_next/migrations.py",
-                                       "tools/known_reds.py", "tools/train.py")):
+                                       "tools/known_reds.py", "tools/train.py", "tools/ci_input_reads.py",
+                                       "tools/ci-input-reads.json", "tools/checks.py")):
             with self.subTest(path):
                 self.again()
                 # The live checkout is at the branch's tip, so the train changes that one path from it.
@@ -269,7 +285,7 @@ class DeployRefusesTrain(TrainCase):
                 self.git(self.live, "merge", "-q", "--ff-only", tip)
                 head = self.branch("guarded-%d" % number, tip, [(path, "# changed by %s\n" % path)])
                 merged = self.merge(head)
-                self.refused_train(self.train(merged, [head]), merged, FakeGitHub(),
+                self.refused_train(self.train(merged, [head]), merged, self.hub(),
                                    "an ordinary train cannot change %s: " % path)
 
     def test_an_ordinary_train_that_changes_only_other_paths_is_not_refused_for_them(self):
@@ -279,14 +295,112 @@ class DeployRefusesTrain(TrainCase):
         head = self.branch("ordinary", tip, [("aim_next/releases.py", "# changed\n"), ("tests/test_tools_deploy.py", "# t\n"),
                                               ("docs/tools.md", "# d\n"), ("tools/native.py", "# n\n")])
         merged = self.merge(head)
-        self.trained(self.host(releases=(deploys.page(deploys.release(19, tip)), 0)), self.train(merged, [head]), merged, FakeGitHub())
+        self.trained(self.host(releases=(deploys.page(deploys.release(19, tip)), 0)), self.train(merged, [head]), merged, self.hub())
         self.assertEqual(self.evidence_of("00-train")["guarded_changes"], [])
 
     def test_a_train_needs_the_release_branch_and_repository_and_no_local_known_reds(self):
-        del self.raw["release_branch"]
+        # A train has no local release check, so neither an outcome's measurement nor --known-reds, each of which reads
+        # one, goes with it.
+        self.refused_train(self.train(self.merged, [self.head]), self.merged, self.hub(),
+                           "--known-reds stands for cases of a local release check's summary, not a merged train",
+                           known_reds=Path(self.tmp.name) / "known-reds.json")
+        self.again()
+        self.raw.update(outcome="w1", reporter_profile="agent.profile.json")
         self.config_path.write_text(json.dumps(self.raw))
         self.config = deploy.load_config(self.config_path)
-        self.refused_train(self.train(self.merged, [self.head]), self.merged, FakeGitHub(), "names no release_branch and repository")
+        self.refused_train(self.train(self.merged, [self.head]), self.merged, self.hub(),
+                           "measuring w1 reads a release check's summary, which a merged train does not have")
+        self.again()
+        for key in ("outcome", "reporter_profile", "release_branch"):
+            del self.raw[key]
+        self.config_path.write_text(json.dumps(self.raw))
+        self.config = deploy.load_config(self.config_path)
+        self.refused_train(self.train(self.merged, [self.head]), self.merged, self.hub(), "names no release_branch and repository")
+
+    def test_a_commit_that_is_not_the_pull_requests_own_merge_commit_is_refused(self):
+        # A one-parent commit on top of the merge with the merge's message, adding a file nobody reviewed, on origin's
+        # branch: what the train's record says of it holds in git, but it is not PR #31's merge.
+        self.git(self.work, "checkout", "-q", "merging")
+        self.write("aim_next/unreviewed.py", "# nobody reviewed this\n")
+        self.git(self.work, "commit", "-q", "-m", "Merge pull request #%d\n\nPipeline: 481" % PR)
+        lookalike = self.git(self.work, "rev-parse", "HEAD")
+        self.git(self.work, "push", "-q", "origin", "HEAD:refs/heads/" + BRANCH)
+        self.git(self.live, "fetch", "-q", "origin")
+        real = pulled(self.merged, BRANCH, self.head)
+        self.refused_train(self.train(lookalike, [self.head]), lookalike, self.hub(pull=real),
+                           "%s has 1 parent, so it is not PR #%d's merge commit" % (lookalike, PR))
+        # The branch's tip copied in after another pull request merged: a real merge, but not this pull request's.
+        self.again()
+        later_head = self.branch("item-482", lookalike, [("aim_next/later.py", "# 482\n")])
+        later = self.merge(later_head)
+        self.refused_train(self.train(later, [self.head]), later, self.hub(pull=real),
+                           "GitHub names %r as PR #%d's merge commit (merged True), not %s" % (self.merged, PR, later))
+        # The merge commit GitHub names, but a pull request it says is not merged, merged elsewhere, or of another head.
+        for pull, words in ((pulled(later, BRANCH, later_head, merged_flag=False), "(merged False), not %s" % later),
+                            (pulled(later, "release/another", later_head), "PR #%d was merged into 'release/another', not %s" % (PR, BRANCH)),
+                            (pulled(later, BRANCH, self.head), "PR #%d's head is %r, not %s, the merge commit's second parent" % (PR, self.head, later_head))):
+            with self.subTest(words):
+                self.again()
+                self.refused_train(self.train(later, [self.head]), later, self.hub(pull=pull), words)
+        # An answer at pulls/31 that is another pull request's.
+        self.again()
+        github = self.hub(pull=pulled(later, BRANCH, later_head))
+        github.answers["repos/%s/pulls/%d" % (REPOSITORY, PR)] = pulled(later, BRANCH, later_head, number=PR + 1)
+        self.refused_train(self.train(later, [self.head]), later, github, "is not PR #%d" % PR)
+        # GitHub could not be read: not an answer.
+        self.again()
+        self.refused_train(self.train(later, [self.head]), later, FakeGitHub(), "PR #%d could not be read: gh api repos/%s/pulls/%d exited 1"
+                           % (PR, REPOSITORY, PR))
+
+    def test_an_ordinary_train_over_an_undeployed_train_that_changed_the_deploy_is_refused(self):
+        # A judged-first train changed tools/deploy.py and merged, but was never deployed; an ordinary train merges after
+        # it. Deploying the ordinary train's merge ships the deploy change too, so its paths are read from the live commit.
+        deploying = self.branch("deploy-change", self.merged, [("tools/deploy.py", "# the deploy, changed\n")])
+        self.merge(deploying)
+        after = self.branch("after", "origin/" + BRANCH, [("aim_next/after.py", "# after\n")])
+        merged = self.merge(after)
+        self.refused_train(self.train(merged, [after]), merged, self.hub(), "an ordinary train cannot change tools/deploy.py: ")
+        self.assertEqual(self.git(self.work, "diff", "--name-only", merged + "^1", merged), "aim_next/after.py",
+                         "the train's own merge changes only its own path")
+
+    def test_an_ordinary_train_with_a_judgment_of_its_merge_commit_records_it_and_one_of_another_commit_is_refused(self):
+        judgment = {"producer_runs": [101], "verdict_checks": [201], "audit": "m-audit"}
+        github = self.hub(runs=[listed(101, self.merged)], checks=[listed(201, self.merged, conclusion="failure", name="Verdict")])
+        out = self.trained(self.host(), self.train(self.merged, [self.head], judgment=judgment), self.merged, github)
+        recorded = self.evidence_of("02-release")["record"]["measurements"]["train"]["judgment"]
+        self.assertEqual((recorded["head"], recorded["audit"]), (self.merged, "m-audit"))
+        self.assertEqual([(found["kind"], found["id"], found["head_sha"], found["conclusion"])
+                          for found in recorded["producer_runs"] + recorded["verdict_checks"]],
+                         [("run", 101, self.merged, "success"), ("check", 201, self.merged, "failure")])
+        self.assertIn("judged at %s: run 101 success, check 201 failure (audit m-audit)" % self.merged[:12], out)
+        # The negative: a judgment of the live commit, or of the pull request's head, is not the merge commit's.
+        for other in (self.L, self.head):
+            with self.subTest(other=other):
+                self.again()
+                github = self.hub(runs=[listed(101, other)], checks=[listed(201, other)])
+                self.refused_train(self.train(self.merged, [self.head], judgment=judgment), self.merged, github,
+                                   "the run 101 (Checks) names %s as its head, not %s, the merge commit" % (other, self.merged))
+
+    def test_a_live_checkout_that_moves_after_the_train_was_read_stops_the_deploy_before_anything_stops(self):
+        # The live HEAD moves on to the pull request's head while the live processes are listed: still a fast-forward
+        # to the merge commit, but not the commit the train's changes were read from.
+        moved = self.head
+        live = self.live
+
+        class Moving(GitHost):
+            def __call__(self, argv, **kw):
+                if argv[:2] == ["ps", "-axo"]:
+                    subprocess.run(["git", "-C", str(live), "checkout", "-q", "--detach", moved], check=True, capture_output=True)
+                return GitHost.__call__(self, argv, **kw)
+        host = Moving(self.config, releases=(deploys.page(deploys.release(19, self.L)), 0))
+        try:
+            self.trained(host, self.train(self.merged, [self.head]), self.merged, self.hub())
+        except deploy.Refused as refusal:
+            self.assertIn("the live checkout is at %s now, not %s, which the train's changes were read from; nothing was stopped"
+                          % (moved, self.L), str(refusal))
+        else:
+            self.fail("the deploy went on from a live checkout that moved")
+        self.assertEqual((self.kills, self.records()), ([], ["00-plan", "00-train", "01-live", "02-checkout"]))
 
     def test_main_takes_a_train_in_place_of_a_release_check(self):
         with redirect_stderr(io.StringIO()) as err:
@@ -308,7 +422,7 @@ class DeployRefusesJudgedFirst(TrainCase):
         self.head = self.branch("deploy-change", self.L, [("tools/deploy.py", "# the deploy, changed\n")])
         self.merged = self.merge(self.head)
         self.judgment = {"producer_runs": [101], "verdict_checks": [201, 202], "audit": "m-audit"}
-        self.github = FakeGitHub(runs=[listed(101, self.head)],
+        self.github = self.hub(runs=[listed(101, self.head)],
                                  checks=[listed(201, self.head, conclusion="failure", name="App"), listed(202, self.head, name="Verdict")])
 
     def test_a_judged_first_train_with_its_completed_judgment_is_planned_with_each_conclusion_as_it_is(self):
@@ -330,21 +444,23 @@ class DeployRefusesJudgedFirst(TrainCase):
         later = self.branch("later", self.L, [("README", "Theseus, later\n")])
         self.git(self.work, "push", "-q", "origin", "%s:refs/heads/%s" % (later, BRANCH), "--force")
         merged = self.merge(self.head)
-        self.refused_train(self.train(merged, [self.head], kind="judged-first", judgment=self.judgment), merged, self.github,
+        github = self.hub(runs=[listed(101, self.head)], checks=[listed(201, self.head, conclusion="failure", name="App"),
+                                                                  listed(202, self.head, name="Verdict")])
+        self.refused_train(self.train(merged, [self.head], kind="judged-first", judgment=self.judgment), merged, github,
                            "the judged parent %s has the tree %s, not the merge commit's %s" % (self.head, self.tree(self.head), self.tree(merged)))
 
     def test_a_run_or_check_naming_another_head_is_refused(self):
         # The merge commit itself is no judgment before the merge.
-        github = FakeGitHub(runs=[listed(101, self.merged)], checks=[listed(201, self.merged), listed(202, self.merged)])
+        github = self.hub(runs=[listed(101, self.merged)], checks=[listed(201, self.merged), listed(202, self.merged)])
         self.refused_train(self.train(self.merged, [self.head], kind="judged-first", judgment=self.judgment), self.merged, github,
                            "which is not a parent of the merge commit %s" % self.merged)
         self.again()
-        github = FakeGitHub(runs=[listed(101, self.head)], checks=[listed(201, self.head), listed(202, self.merged)])
+        github = self.hub(runs=[listed(101, self.head)], checks=[listed(201, self.head), listed(202, self.merged)])
         self.refused_train(self.train(self.merged, [self.head], kind="judged-first", judgment=self.judgment), self.merged, github,
                            "not one commit")
 
     def test_a_judgment_still_running_is_refused(self):
-        github = FakeGitHub(runs=[listed(101, self.head, conclusion=None, status="in_progress")],
+        github = self.hub(runs=[listed(101, self.head, conclusion=None, status="in_progress")],
                             checks=[listed(201, self.head), listed(202, self.head)])
         self.refused_train(self.train(self.merged, [self.head], kind="judged-first", judgment=self.judgment), self.merged, github,
                            "the run 101 (Checks) is in_progress, not completed")
@@ -352,6 +468,56 @@ class DeployRefusesJudgedFirst(TrainCase):
     def again(self):
         for path in self.evidence.glob("*.json"):
             path.unlink()
+
+
+class GuardedPaths(unittest.TestCase):
+    """What an ordinary train may not change holds every tools/ module the deploy loads, however deeply (GitHub's
+    classifier, which the known-reds matcher reuses, among them), and every file that classifier requires to equal the
+    event base. Both are read from the code itself, so a module the deploy starts loading is guarded or this fails."""
+
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def imports(self, path):
+        """The tools/ modules path imports, at its top or inside a function."""
+        found = set()
+        for node in ast.walk(ast.parse((self.ROOT / path).read_text())):
+            if isinstance(node, ast.ImportFrom) and node.module == "tools":
+                found |= {"tools/%s.py" % alias.name for alias in node.names}
+            elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("tools."):
+                found.add(node.module.replace(".", "/") + ".py")
+            elif isinstance(node, ast.Import):
+                found |= {alias.name.replace(".", "/") + ".py" for alias in node.names if alias.name.startswith("tools.")}
+        return found
+
+    def loaded(self, start):
+        seen, todo = set(), [start]
+        while todo:
+            path = todo.pop()
+            if path not in seen:
+                seen.add(path)
+                todo.extend(self.imports(path))
+        return seen
+
+    def pinned(self):
+        """The files tools/ci_known_reds.py compares with the event base: the loop that says "validator differs"."""
+        for node in ast.walk(ast.parse((self.ROOT / "tools/ci_known_reds.py").read_text())):
+            if (isinstance(node, ast.For) and isinstance(node.iter, ast.Tuple)
+                    and "validator differs from event base" in ast.dump(node)):
+                return {element.value for element in node.iter.elts}
+        self.fail("tools/ci_known_reds.py compares no files with the event base")
+
+    def test_every_module_the_deploy_loads_and_every_file_github_pins_is_guarded(self):
+        loaded, pinned = self.loaded("tools/deploy.py"), self.pinned()
+        # What the reading itself must find, so an empty read cannot pass: the matcher the deploy loads through
+        # known_reds, and the data file GitHub's classifier pins without importing it.
+        self.assertTrue({"tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/checks.py"} <= loaded, loaded)
+        self.assertIn("tools/ci-input-reads.json", pinned)
+        self.assertEqual(sorted(path for path in loaded | pinned if not deploy.train_check.guarded([path])), [])
+
+    def test_the_service_its_tests_and_docs_are_not_guarded(self):
+        # The negative: an ordinary train changes these.
+        self.assertEqual(deploy.train_check.guarded(["aim_next/releases.py", "aim_next/admin.py", "tools/native.py",
+                                                     "tests/test_tools_deploy.py", "docs/tools.md", "web/health.mjs"]), [])
 
 
 class TrainDeployed(Repositories, deploys.Restarting):
@@ -393,7 +559,7 @@ class TrainDeployed(Repositories, deploys.Restarting):
         train = self.train(self.merged, [self.head])
         with mock.patch.object(deploy, "run", host), mock.patch.object(deploy, "start", start), redirect_stdout(io.StringIO()):
             try:
-                deploy.deploy(self.config, self.merged, self.evidence, None, False, train=train, github=FakeGitHub())
+                deploy.deploy(self.config, self.merged, self.evidence, None, False, train=train, github=self.hub())
             except deploy.Refused as refusal:
                 self.fail("the deploy refused: %s" % refusal)
         self.assertEqual(self.git(self.live, "rev-parse", "HEAD"), self.merged, "the live checkout is at the merge commit")
