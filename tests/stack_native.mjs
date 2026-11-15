@@ -5125,10 +5125,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   await check('reading stacks below More: a link followed while the page holds an older place for the dossier than Core keeps it drawn where it sits once the page reads Core\'s place, and a later move on another device still takes it below More', async () => {
     const topic = 'below-more-link-race';
     // Before the page's own code: its reads of the views named in window.held wait unsent, as on a slow connection,
-    // until window.letHeld() sends them. Reading where a dossier sits (stack_positions) is never held.
-    const init = `window.held=new Set();window.heldWaiting=[];window.letHeld=()=>{window.held.clear();for(const go of window.heldWaiting.splice(0))go()};
+    // until window.letHeld() sends them. Reading where a dossier sits (stack_positions) is never held. window.answered:
+    // how many answers to each view's reads the page has had, counted once each answer's words are read.
+    const init = `window.held=new Set();window.heldWaiting=[];window.answered={};window.letHeld=()=>{window.held.clear();for(const go of window.heldWaiting.splice(0))go()};
       {const sent=window.fetch;window.fetch=function(input,init){let b=null;try{b=JSON.parse(init&&init.body)}catch{}
-        if(b&&b.name&&window.held.has(b.name))return new Promise(go=>window.heldWaiting.push(go)).then(()=>sent.call(this,input,init));return sent.call(this,input,init)}}`;
+        const count=answer=>{if(b&&b.name)answer.clone().text().then(()=>{window.answered[b.name]=(window.answered[b.name]||0)+1},()=>{});return answer};
+        if(b&&b.name&&window.held.has(b.name))return new Promise(go=>window.heldWaiting.push(go)).then(()=>sent.call(this,input,init)).then(count);return sent.call(this,input,init).then(count)}}`;
     const { p, drawn, newest, below, elsewhere, more, ids } = await linkedAside(topic, 'laptop', { follow: false, init });
     // The page reads neither the acts nor the topic: it does not hear of what another device does.
     await p.evaluate(`['message_acts','topic_messages','topic','topic_unread','reactions'].forEach(name=>window.held.add(name))`);
@@ -5143,8 +5145,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => (await readerOn(p))?.startsWith('A reply to B'), 'the link opens B1 in the Reader');
     await closeReader(p, 'laptop');
     await becomes(drawn, true, 'the link draws B where it sits');
+    const [acts, before] = await p.evaluate('[window.answered.message_acts || 0, window.answered.stack_positions || 0]');
     await p.evaluate('window.letHeld()');
-    await until(() => p.evaluate('window.fetchesOut === 0 && window.heldWaiting.length === 0'), 'the page reads what it missed');
+    // The page reads the acts it missed, then where each dossier sits, and draws what that read says.
+    await until(() => p.evaluate(`(window.answered.message_acts || 0) > ${acts} && (window.answered.stack_positions || 0) > ${before} && window.fetchesOut === 0 && window.heldWaiting.length === 0`), 'the page reads what it missed, and where the dossiers sit');
     await twoFrames(p);
     assert.equal(await drawn(), true, `having read the moves it missed, the page keeps B drawn where the link drew it (More: ${JSON.stringify(await more())})`);
     // A move after the link was followed is a new place: B goes below the closed More.
