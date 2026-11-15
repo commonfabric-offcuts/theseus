@@ -1341,6 +1341,50 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
+  // Saves of the topic's writing to Theseus held unsent while window.holdDrafts is true (the page's fetch, as it leaves).
+  const holdDrafts = p => p.evaluate(`(() => { window.holdDrafts = true; window.draftsHeld = 0; const send = window.fetch;
+    window.fetch = function (input, init) { let body = null; try { body = JSON.parse(init?.body ?? 'null'); } catch {}
+      if (window.holdDrafts && body?.kind === 'draft.save') { window.draftsHeld += 1; return new Promise(() => {}); } return send.call(this, input, init); }; return true; })()`);
+
+  await check('reading edit build Reload pressed once the words are kept on this device, before Theseus has them, loads the new build with the words', async () => {
+    const next = anotherBuild();
+    try {
+      const { topic, away, there } = await twoTopics('edit-build-device');
+      const p = await open('edit-build-device', 'laptop', away, there.note, EDIT_FAULTS);
+      await holdJournal(p);
+      await restartOn(next, p);
+      await p.evaluate('(window.sameDocument = true)');
+      const read = await holdBuildRead(p);
+      await moveTo(p, 'laptop', topic);
+      await read.out();
+      const words = 'Written as Theseus updated, kept on this device only.';
+      await p.evaluate('window.holdJournal = true');
+      await holdDrafts(p);
+      await into(p, 'laptop', '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+      await until(() => p.evaluate('window.journalHeld.length > 0'), 'the device copy is out');
+      await read.release();
+      await until(async () => (await moveNotice(p)).startsWith('Theseus updated.'), 'the page says Theseus updated');
+      await letJournal(p);
+      await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), 'the device keeps the words');
+      await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved on this device')`), 'the page says the words are on this device');
+      assert.ok(await p.evaluate('window.draftsHeld > 0'), 'and Theseus has not had them');
+      await p.point('#topic-navigation-status .updated-reload');
+      await replaced(p, 'Reload loads the page');
+      await arrived(p, away, there.note);
+      assert.equal(await pageBuild(p), await servedBuild(), 'on the server\'s build');
+      await until(async () => await valueOf(p, '#inline-writing-body') === words, 'with the words, from this device').catch(async error => {
+        const state = await p.evaluate(`({ value: document.querySelector('#inline-writing-body').value, saved: document.querySelector('#inline-save-state').textContent,
+          notice: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent) })`).catch(e => ({ unread: e.message }));
+        throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
+      });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
   // Edit on the person's own message as they reach it: from its bar. Once a reply heads it into a stack shown as its
   // row alone (docs/reply-stacks.md), which has no bar, the person lights the row and presses it, which shows the
   // message whole with its bar (tests/stack_native.mjs, "a head shown as one row has no bar").
