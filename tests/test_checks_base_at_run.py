@@ -63,17 +63,20 @@ class ChecksBaseAtRunCase(unittest.TestCase):
                        capture_output=True, text=True, check=True)
         return json.loads((folder / 'run.json').read_text())
 
-    def combine(self, change=None):
+    def combine(self, change=None, event='pull_request', each_change=None):
         shards = self.root / 'shards'
         for i, name in enumerate(('python-units', 'node-units')):
             folder = shards / ('check-%d' % i)
-            receipt = self.receipt(folder, name)
+            receipt = self.receipt(folder, name, event=event)
+            if each_change:
+                each_change(receipt)
             if change and i == 1:
                 change(receipt)
+            if each_change or (change and i == 1):
                 (folder / 'run.json').write_text(json.dumps(receipt))
         out = self.root / 'release-check'
         out.mkdir()
-        env = dict(self.env, PLAN_SHARDS=json.dumps([{'steps': 'python-units'}, {'steps': 'node-units'}]))
+        env = dict(self.env, GITHUB_EVENT_NAME=event, PLAN_SHARDS=json.dumps([{'steps': 'python-units'}, {'steps': 'node-units'}]))
         result = subprocess.run([sys.executable, '-I', '-S', '-c', script("Fold the shards' summaries into one"),
                                  str(shards), str(out / 'summary.json')], cwd=self.repo, env=env, capture_output=True, text=True)
         return result, out
@@ -100,6 +103,41 @@ class ChecksBaseAtRunCase(unittest.TestCase):
         result, _ = self.combine(lambda r: r['base_at_run'].update(sha=self.event_base))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('different git-read bases', result.stderr)
+
+    def test_new_push_preserves_explicit_null_in_every_receipt(self):
+        result, out = self.combine(event='push')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        provenance = json.loads((out / 'provenance.json').read_text())
+        self.assertIn('base_at_run', provenance)
+        self.assertIsNone(provenance['base_at_run'])
+        self.assertTrue(all('base_at_run' in e['receipt'] and e['receipt']['base_at_run'] is None
+                            for e in provenance['shards']))
+
+    def test_all_legacy_push_preserves_absence(self):
+        result, out = self.combine(event='push', each_change=lambda r: r.pop('base_at_run'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        provenance = json.loads((out / 'provenance.json').read_text())
+        self.assertNotIn('base_at_run', provenance)
+        self.assertTrue(all('base_at_run' not in e['receipt'] for e in provenance['shards']))
+
+    def test_absent_and_null_push_receipts_do_not_mix(self):
+        result, _ = self.combine(event='push', change=lambda r: r.pop('base_at_run'))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('mix legacy', result.stderr)
+
+    def test_pr_receipt_requires_git_first_parent(self):
+        self.git('checkout', '-q', self.event_base)
+        with self.assertRaises(subprocess.CalledProcessError) as raised:
+            self.receipt(self.root / 'root-commit')
+        self.assertIn('no Git first-parent commit id', raised.exception.stderr)
+
+    def test_combiner_refuses_two_missing_pr_parent_values(self):
+        def remove_parent(receipt):
+            receipt['merge']['first_parent'] = None
+            receipt['base_at_run']['sha'] = None
+        result, _ = self.combine(each_change=remove_parent)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('no Git first-parent commit id', result.stderr)
 
 
 if __name__ == '__main__':

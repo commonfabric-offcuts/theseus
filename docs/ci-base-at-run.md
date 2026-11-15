@@ -5,6 +5,10 @@ it, a PR shard records `base_at_run: {ref, sha}`, where `sha` is `HEAD^1` read
 from Git in that shard's tested checkout. This is the base used to build the
 merge, which can be newer than the PR event's base. Push receipts use null.
 The combined provenance carries that same value and refuses disagreeing shards.
+Key presence is part of the format: new push receipts explicitly carry null
+in every shard and in combined provenance. An all-legacy replay preserves
+absence throughout. Mixing absence and null refuses. PR observations require
+an actual forty-hex-digit Git first parent before they can be written.
 
 This receipt is data, not authorization. The protected controller fetches the
 exact tested merge, verifies its head, parents and tree, rebuilds the merge, and
