@@ -84,6 +84,9 @@ the card. They are drawn in the line's quiet color (`--muted`), which every
 card face sets for light and dark, and held to the time (`.together`), so a
 line that wraps keeps them beside it; a message from before times were kept
 shows them after its name (`carriesOf` and `paintAuthor`, `web/marks.mjs`).
+A message that heads a reply stack shows them on the stack's head row too,
+beside who started it, since that row stands for the message while its card
+is folded into it (docs/reply-stacks.md, "The head").
 
 They follow the person's writing as Core keeps it: a note saved in the
 Reader, or a reply saved there or on another device, marks the card once its

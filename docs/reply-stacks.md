@@ -210,7 +210,9 @@ their acts.
   the messages. Its accessible label describes the current state and next
   action; `aria-expanded` is false only on a quiet agent dossier's header alone.
 - **The head.** The first message is one compact row: its short name, ✎,
-  who began the stack, "New" when the message itself is new, ★ if starred,
+  who began the stack and the marks of what that message carries (an image,
+  the reader's own note and saved reply, docs/topic-reading.md), "New" when
+  the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. On a phone the
   count, who replied and what is new sit on a second short line. The short name is the
   one someone typed for the dossier, or else the first message's line (One line
