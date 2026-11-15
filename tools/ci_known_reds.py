@@ -283,7 +283,13 @@ def producer_binding(path, environ):
         prs = [r for r in observed.get('pull_requests',[]) if r.get('number') == pr['number']]
         require(p['head_sha'] == pr['head_sha'] and len(prs) == 1 and prs[0]['head']['sha'] == pr['head_sha']
                 and prs[0]['base']['sha'] == pr['base_sha'], 'PR base/head is not authenticated by controller event')
+        tested_base = record.get('tested_base')
         base = {'ref':pr['base_ref'],'sha':pr['base_sha']}
+        if tested_base is not None:
+            require(isinstance(tested_base, dict) and tested_base.get('ref') == pr['base_ref'], 'wrong tested base branch')
+            require(all(isinstance(tested_base.get(k), str) and SHA.fullmatch(tested_base[k]) for k in ('sha','branch_head')),
+                    'invalid authenticated tested base')
+            base = {'ref':tested_base['ref'],'sha':tested_base['sha']}
         require(merge['first_parent'] == base['sha'] and merge['second_parent'] == p['head_sha'], 'merge parents differ from API base/head')
     else:
         base = p['comparison_base']
@@ -552,6 +558,10 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     if binding is not None:
         require(provenance.get('head') == receipt_head(binding),
                 'combined head differs from authenticated producer')
+        if 'base_at_run' in provenance:
+            expected_base_at_run = ({'ref':binding['producer']['pull_request']['base_ref'], 'sha':expected_merge['first_parent']}
+                                    if run['event'] == 'pull_request' else None)
+            require(provenance['base_at_run'] == expected_base_at_run, 'combined git-read base differs from tested merge')
     require(provenance.get('checked') == {'commit': commit, 'tree_unchanged': True}, 'dirty combined source')
     require(unique(provenance['required'], 'provenance steps') == set(REQUIRED), 'incomplete provenance')
     require(summary.get('tool') == TOOL and summary.get('commit') == commit, 'wrong combined source')
@@ -579,6 +589,9 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
         same_run(receipt.get('run'), run)
         if binding is not None:
             require(receipt.get('head') == provenance['head'], 'shard head differs from authenticated producer')
+            require(('base_at_run' in receipt) == ('base_at_run' in provenance), 'inconsistent git-read base receipt format')
+            if 'base_at_run' in receipt:
+                require(receipt['base_at_run'] == provenance['base_at_run'], 'shard git-read base differs from combined provenance')
             producer_workflow(receipt, binding, candidate_root, commit)
         require(receipt.get('base') == base and receipt.get('merge') == expected_merge, 'stale shard source or base')
         require(receipt.get('summary_sha256') == hashlib.sha256((out / 'summary.json').read_bytes()).hexdigest(),
@@ -781,6 +794,13 @@ def known_base_failures(manifest_path, root, base, producer):
     return known, records
 
 
+def tested_base_reached(root, base, binding):
+    if binding.get('tested_base') is not None:
+        require(subprocess.run(['git','-C',str(root),'merge-base','--is-ancestor',base['sha'],
+                                binding['tested_base']['branch_head']], capture_output=True).returncode == 0,
+                'tested base was not reached by authenticated base branch')
+
+
 def validate(summary_path, provenance_path, shards, base_root, candidate_root, producer_path, known_runs, environ=None):
     environ = os.environ if environ is None else environ
     run, base, commit, binding = producer_binding(producer_path, environ)
@@ -788,11 +808,13 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
     require((ROOT/'tools/ci_known_reds.py').read_bytes() == source(ROOT,controller_commit,'tools/ci_known_reds.py'), 'validator is not controller commit code')
     tree = clean_checkout(candidate_root,commit,binding['merge']['tree'])
     clean_checkout(base_root,base['sha'])
+    tested_base_reached(candidate_root, base, binding)
     parents = git(candidate_root,'rev-list','--parents','-n','1',commit).decode().split()[1:]
     require(parents == [p for p in (binding['merge']['first_parent'],binding['merge'].get('second_parent')) if p], 'tested parents differ from protected record')
     expected_merge = {'sha':commit,'tree':tree,'first_parent':parents[0],'second_parent':parents[1] if len(parents)>1 else None}
     contained_evidence(Path(shards))
-    raw_base = {'ref':None,'sha':None} if run['event'] == 'push' else base
+    raw_base = ({'ref':None,'sha':None} if run['event'] == 'push' else
+                {'ref':binding['producer']['pull_request']['base_ref'], 'sha':binding['producer']['pull_request']['base_sha']})
     observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding)
     known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'])
     failures, mutations = failure_records(observed,candidate_root,commit,run['id'])
