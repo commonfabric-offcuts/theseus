@@ -705,7 +705,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
   });
 
   await check('freshness F4 incoming changes preserve selection writing and a held native picker', async () => {
-    const p = await page('freshness-native', null, true); await p.open(1);
+    const p = await page('freshness-native', null, true);
+    // The Reader is as tall as the window and up to 72rem wide (item 400), so
+    // in a 1440 by 900 window the fixture's source fits it whole; a window
+    // 600 high leaves the source less room than it needs, so it scrolls.
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 600, deviceScaleFactor: 1, mobile: false });
+    await p.open(1);
     await replace(p, 'Exact private writing remains');
     await p.point('#source-body span:first-child'); await p.key('Enter');
     assert.match(await field(p), /> Source 1 exact passage/);
