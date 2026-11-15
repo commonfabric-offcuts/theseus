@@ -323,12 +323,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const said = p => p.evaluate(`document.getElementById('stack-said')?.textContent ?? ''`);
   const alertColour = p => p.evaluate(`(()=>{const s=document.createElement('span');s.style.color='var(--alert)';document.body.append(s);const c=getComputedStyle(s).color;s.remove();return c})()`);
   const focusedOn = p => p.evaluate(`document.activeElement?.closest?.('[data-id]')?.dataset.id ?? null`);
-  // A right click (two fingers' click on a trackpad) on target, where a person opens a message's menu with no bar.
-  // In Safari's engine Playwright's own secondary click, as tests/fence_copy_native.mjs makes it.
+  // A right click (two fingers' click on a trackpad) on a card, where a person opens a message's menu with no bar:
+  // in its corner, clear of its words, as Safari's engine selects the word a right click lands on, and the page leaves
+  // a right click on selected words to the browser's own menu.
   const rightClick = async (p, selector) => {
     await centre(p, selector);
-    if (p.pw) { await p.pw.locator(selector).click({ button: 'right', position: { x: 8, y: 8 } }); return; }
-    const b = await p.box(selector), x = b.x + Math.min(12, b.width / 2), y = b.y + b.height / 2;
+    const b = await p.box(selector), x = b.x + 8, y = b.y + 8;
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
     await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
@@ -337,7 +337,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // on a laptop its menu is the right click's.
   const menuOf = async (p, device, id) => {
     await light(p, device, id);
-    if (device !== 'phone' && await bar(p) === null) await rightClick(p, card(id) + ' > .message-folded > .folded-author');
+    if (device !== 'phone' && await bar(p) === null) await rightClick(p, card(id));
     else await press(p, device, '.message-bar [data-act=more]');
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: ⋯ opens the menu`);
     return p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
@@ -3051,7 +3051,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await centre(p, card(ids.three));
     await p.point(card(ids.three) + ' > .message-folded > .folded-author', 'move');
     await until(async () => (await lit(p)).includes(ids.three) && await bar(p) === null, 'the pointer lights the folded row, with no bar in a dossier (item 471)');
-    await rightClick(p, card(ids.three) + ' > .message-folded > .folded-author');
+    await rightClick(p, card(ids.three));
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'a right click opens the folded message\'s menu');
     const offered = await p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
     assert.ok(offered.includes('Unfold') && !offered.includes('Fold'), `a folded message offers Unfold: ${offered}`);
