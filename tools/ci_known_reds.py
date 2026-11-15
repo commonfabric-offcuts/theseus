@@ -471,6 +471,25 @@ def source_catalog(root, commit):
     return {'NATIVE_STEPS':steps,'NATIVE':native,'REQUIRED':required,'COMPOSE':named('COMPOSE') if 'COMPOSE' in definitions else 'tests/reader_compose_native.mjs','REPLAY_FILE':named('REPLAY_FILE') if 'REPLAY_FILE' in definitions else None}
 
 
+def history_missing_steps(summary_path, root, commit):
+    """Only a well-formed, source-bound combined receipt can disclose omitted steps.
+
+    Used by the selector after archive digest verification. This does not judge
+    passing evidence; admitted histories still undergo full read_evidence checks.
+    Candidate evidence never takes this drop path.
+    """
+    require(isinstance(commit, str) and SHA.fullmatch(commit), 'invalid history source')
+    summary = read_json(summary_path)
+    required = set(source_catalog(root, commit)['REQUIRED'])
+    require(summary.get('tool') == TOOL and summary.get('commit') == commit,
+            'wrong history combined source')
+    require(unique(summary['required'], 'history required steps') == required,
+            'history summary plan differs from source')
+    names = unique([step['name'] for step in summary['steps']], 'history combined steps')
+    require(names <= required, 'history summary has unknown steps')
+    return sorted(required - names)
+
+
 @contextmanager
 def catalog_context(root,commit):
     catalog = source_catalog(root,commit)
