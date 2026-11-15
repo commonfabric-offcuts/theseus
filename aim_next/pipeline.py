@@ -239,6 +239,13 @@ class Pipeline:
             raise Refusal("PIPELINE_OFF", "This outcome's pipeline is off")
         return row
 
+    def _build_topics(self, db, workspace_id):
+        """The outcome's Build topics (item 297): every topic a piece of its pipeline is built in, a release's among them,
+        while its pipeline is on; none while it is off or there is none, since then there is no pipeline to show them in."""
+        if not db.execute("SELECT 1 FROM pipelines WHERE workspace_id=? AND enabled=1", (workspace_id,)).fetchone():
+            return set()
+        return {row[0] for row in db.execute("SELECT DISTINCT topic_id FROM pipeline_pieces WHERE workspace_id=?", (workspace_id,))}
+
     def _steerer(self, db, actor, workspace_id, coordinator=True):
         """The workspace, when the actor is its owner (or, with coordinator, its coordinator)."""
         workspace = self._workspace(db, actor, workspace_id)

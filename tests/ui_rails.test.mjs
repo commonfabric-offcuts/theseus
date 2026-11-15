@@ -400,3 +400,46 @@ test('right rail sections stay open until folded, per viewer', () => {
   folds.set('images', false);
   assert.deepEqual([new SectionFolds(storage, 's').isOpen('images'), new SectionFolds(storage, 's').isOpen('prs')], [false, true]);
 });
+
+// ---- Build topics show once, in the right rail (item 297) ----
+test('an outcome\'s Build topics are listed apart from the outline\'s: its open list asks Core without them, and keeps none of them, the open topic among them', async () => {
+  const { TopicPages, listArgs, TOPIC_LISTS } = await import('../web/topic-navigation.mjs');
+  assert.deepEqual(listArgs('active', true), { build: false }, 'the outline\'s open list asks for the topics that are not Build topics');
+  assert.deepEqual([listArgs('active'), listArgs('done', true), listArgs('archived', true)], [TOPIC_LISTS.active, TOPIC_LISTS.done, TOPIC_LISTS.archived],
+    'a list with no right rail beside it is as before, and the done and archived lists hold Build topics as any');
+  const topic = (id, activity, more = {}) => ({ id, workspace_id: 'w1', title: id, activity_ms: activity, state: 'active', archived: false, ...more });
+  const answer = items => ({ instance_id: 'i', items, next_cursor: null, groups: { done: 0, archived: 0 } });
+  // Read apart, the open topic being a Build topic: the outline does not put it back among the others.
+  const building = topic('t-build', 50, { build: true });
+  const apart = new TopicPages('i', 'w1', building, 'active', true);
+  apart.accept(answer([topic('t2', 40, { build: false })]));
+  assert.deepEqual(apart.items.map(item => item.id), ['t2'], 'a Build topic being read is not drawn in the outline');
+  assert.throws(() => new TopicPages('i', 'w1', null, 'active', true).accept(answer([building])), /could not be confirmed/, 'a list read apart that holds a Build topic is refused, not drawn');
+  // Done, a Build topic is in the done list as any topic is.
+  const done = new TopicPages('i', 'w1', { ...building, state: 'done' }, 'done', true);
+  done.accept(answer([]));
+  assert.deepEqual(done.items.map(item => item.id), ['t-build'], 'Done, the Build topic folds into the Done group');
+  // Not read apart (an outcome page, or a pipeline page, with no right rail): unchanged.
+  const plain = new TopicPages('i', 'w1', building);
+  plain.accept(answer([topic('t2', 40, { build: false })]));
+  assert.deepEqual(plain.items.map(item => item.id), ['t-build', 't2'], 'without the right rail beside it, the list is as before');
+  const notBuild = new TopicPages('i', 'w1', topic('t3', 60, { build: false }), 'active', true);
+  notBuild.accept(answer([topic('t2', 40, { build: false })]));
+  assert.deepEqual(notBuild.items.map(item => item.id), ['t3', 't2'], 'a topic being read that is no Build topic is drawn in the outline');
+});
+
+test('the right rail shows each Build topic once: each piece in Now with its topic\'s row, then those Ready for review, then the rest', async () => {
+  const { buildRows } = await import('../web/things-rail.mjs');
+  const piece = (topic, stage) => ({ topic: { id: topic, title: 'Piece in ' + topic }, items: [1], stage: { name: stage, entered_ms: 5 } });
+  const builds = [{ id: 't-now', title: 'Now topic', state: 'active', unread: 3 }, { id: 't-review', title: 'Review topic', state: 'review' },
+    { id: 't-aside', title: 'Set aside', state: 'active' }, { id: 't-wait', title: 'Waiting topic', state: 'waiting' }];
+  const rows = buildRows([piece('t-now', 'Build'), piece('t-gone', 'Review')], builds);
+  assert.deepEqual(rows.now.map(row => [row.topic, row.stage, row.item?.unread ?? null]), [['t-now', 'Build', 3], ['t-gone', 'Review', null]],
+    'each piece in Now with its stage, and its topic\'s row where Core listed it');
+  assert.deepEqual(rows.review.map(row => row.topic), ['t-review'], 'Ready for review apart');
+  assert.deepEqual(rows.other.map(row => row.topic), ['t-aside', 't-wait'], 'and the rest, in Core\'s order');
+  const all = [...rows.now, ...rows.review, ...rows.other].map(row => row.topic);
+  assert.equal(new Set(all).size, all.length, 'no Build topic shows twice');
+  assert.deepEqual(buildRows([], []), { now: [], review: [], other: [] }, 'an outcome with no Build topics shows none');
+  assert.deepEqual(buildRows(undefined, undefined), { now: [], review: [], other: [] });
+});

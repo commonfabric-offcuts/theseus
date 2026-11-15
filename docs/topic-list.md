@@ -49,12 +49,24 @@ said, and for a reader outside a person's whisper that reopened the topic
 
 ## `workspace_topics`
 
-- `args`: `{workspace_id, cursor, limit, archived, done}`. `archived` and
-  `done` are optional booleans, default false, and may not both be true.
+- `args`: `{workspace_id, cursor, limit, archived, done, build}`. `archived`
+  and `done` are optional booleans, default false, and may not both be true.
 - With neither, it lists the outcome's topics that are neither done nor
   archived. With `done: true`, the done ones that are not archived. With
   `archived: true`, every archived topic, done or not: the ones not done
   first, then the done ones.
+- An outcome's Build topics (item 297) are the topics a piece of its pipeline
+  is built in, a release's among them, while its pipeline is on; while it is
+  off, or there is none, it has none. `build`, an optional boolean, splits the
+  open list: `build: true` lists only the Build topics neither done nor
+  archived, and `build: false` the open topics without them, each in the same
+  order with the same cursors. It is refused with `done` or `archived`
+  (`INVALID_ARGUMENT`): a Build topic done or archived is in that list as any
+  topic is. Every item, in every list, says `build: true` or `false`, and so
+  does the `topic` view's topic. The web app's outline asks with `build:
+  false` and the right rail with `build: true` (docs/rails.md); the CLI asks
+  without it. Finding the Build topics reads the outcome's pieces, which the
+  page's cost then follows as well as its own size.
 - Each list is ordered by `activity_ms`, latest first, and then by topic id,
   descending, so topics with the same time keep one order.
 - `next_cursor` is the position of the page's last topic, written
@@ -82,6 +94,9 @@ topic is not shown. N is the server's count from the latest list read. A closed
 line's list is not read; an open one is read again with the rest after each
 commit. Whether each line is open is kept for the person on this browser
 (`localStorage`, per instance and person); without storage each starts closed.
+In the outline beside a topic or a Conversation, an outcome's Build topics are
+not among its open topics, since the right rail shows them; Done, one is in
+the Done line as any topic is (docs/rails.md).
 
 Once the reader has moved topics with ⌘↑ and ⌘↓, each list shows them in
 the reader's own order, which every list read carries (`order`), and a topic

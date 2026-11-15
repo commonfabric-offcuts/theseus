@@ -768,11 +768,16 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         limit = args.get("limit", LIMITS["page_default"])
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= LIMITS["page_max"]:
             raise Refusal("INVALID_ARGUMENT", "Invalid page size")
-        archived, done = args.get("archived", False), args.get("done", False)
-        if not isinstance(archived, bool) or not isinstance(done, bool):
-            raise Refusal("INVALID_ARGUMENT", "Archived and done are true or false")
+        archived, done, build = args.get("archived", False), args.get("done", False), args.get("build")
+        if not isinstance(archived, bool) or not isinstance(done, bool) or not isinstance(build, (bool, type(None))):
+            raise Refusal("INVALID_ARGUMENT", "Archived, done and build are true or false")
         if archived and done:
             raise Refusal("INVALID_ARGUMENT", "Archived topics are listed together, done or not; ask for archived alone")
+        if build is not None and (archived or done):
+            raise Refusal("INVALID_ARGUMENT", "Build topics are listed apart only among the open topics; a done or archived one is in its own list")
+        # The outcome's Build topics (item 297): build true lists only them among the open topics, build false the rest.
+        builds = self._build_topics(db, workspace["id"])
+        apart = "" if build is None else " AND t.id %sIN (SELECT value FROM json_each(?))" % ("" if build else "NOT ")
         # An empty cursor, as for the other lists, is the start.
         after = order_position(args["cursor"]) if args.get("cursor", "") != "" else None
         rows = []
@@ -786,9 +791,10 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                                "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=?" + (
                                    # The open list leaves out the conversation, which has its own row; it is
                                    # never Done or archived unless its outcome is reached, and then it is listed there.
-                                   " AND t.kind='topic'" if not archived and not flag else "") + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
+                                   " AND t.kind='topic'" if not archived and not flag else "") + apart + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
                                " ORDER BY t.activity_ms DESC,t.id DESC LIMIT ?",
-                               (workspace["id"], int(archived), flag) + (after[1:] if keyset else ()) + (limit + 1 - len(rows),)).fetchall()
+                               (workspace["id"], int(archived), flag) + ((json.dumps(sorted(builds)),) if apart else ()) + (after[1:] if keyset else ())
+                               + (limit + 1 - len(rows),)).fetchall()
             if len(rows) > limit:
                 break
         # A topic names the message that reopened or started it only to a reader who may see it (whispers.py).
@@ -801,6 +807,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             item["archived"] = bool(item["archived"])
             item["waiting_on"], item["asks"] = waits[item["id"]]
             item["work"] = work[item["id"]]
+            item["build"] = item["id"] in builds
         last = items[-1] if items else None
         # How many topics the folded lists hold, each counted in its own stretch of the index.
         groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1",

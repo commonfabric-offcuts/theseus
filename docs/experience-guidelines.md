@@ -62,6 +62,10 @@ and the writing. Focus stays visible and follows what the person did.
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
 - `tests/fence_copy_native.mjs` (`native-fence-copy`) checks keyboard activation on the copy glyph and its feed card in Chromium and WebKit.
+- `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
+  the keys reach a Build topic from the right rail: ↓ to its row, Return opens
+  it in place and the keys stay on its row, …" (item 297: an outcome's Build
+  topics are the right rail's, never the outline's too, [rails.md](rails.md)).
 - Touch: see "A phone by touch" below.
 
 ## Dismiss without losing work

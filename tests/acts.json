@@ -13804,6 +13804,193 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 297,
+   "act": "Core lists an outcome's Build topics apart: build true gives only them among the open topics, build false the rest, in pages that skip them",
+   "break": [
+    [
+     "aim_next/store.py",
+     "apart = \"\" if build is None else \" AND t.id %sIN (SELECT value FROM json_each(?))\" % (\"\" if build else \"NOT \")",
+     "apart = \"\""
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic a piece is built in is a Build topic only while the outcome's pipeline is on",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "\"SELECT 1 FROM pipelines WHERE workspace_id=? AND enabled=1\", (workspace_id,)",
+     "\"SELECT 1 FROM pipelines WHERE workspace_id=?\", (workspace_id,)"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The topic view says whether the topic is a Build topic",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "build=topic[\"id\"] in self._build_topics(db, topic[\"workspace_id\"]))",
+     "build=False)"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Build topics are listed apart only among the open topics; asked with done or archived, the list is refused",
+   "break": [
+    [
+     "aim_next/store.py",
+     "        if build is not None and (archived or done):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The outline's open list asks Core for an outcome's topics without its Build topics",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "export const listArgs = (list, apart = false) => list === 'active' && apart ? { build: false } : TOPIC_LISTS[list];",
+     "export const listArgs = (list, apart = false) => TOPIC_LISTS[list];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic being read is not put back among the outline's topics",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "here = current && listOf(current, this.apart) === this.list;",
+     "here = current && listOf(current) === this.list;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic marked Done is in the outline's Done group as any topic is",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "const listOf = (item, apart = false) => item.archived === true ? 'archived' : item.state === 'done' ? 'done' : apart && item.build === true ? 'build' : 'active';",
+     "const listOf = (item, apart = false) => apart && item.build === true ? 'build' : item.archived === true ? 'archived' : item.state === 'done' ? 'done' : 'active';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail groups the Build topics Ready for review apart from the rest, each once",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "return { now, review: rest.filter(row => row.item.state === 'review'), other: rest.filter(row => row.item.state !== 'review') };",
+     "return { now, review: [], other: rest };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic's row in the right rail carries its unread count, the sent-by-name badge, Waiting on you and its state mark",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (row.item) paintMarks(link, row.item, reader);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The outline beside a topic of an outcome with a pipeline lists none of its Build topics",
+   "break": [
+    [
+     "web/app.mjs",
+     "pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic, 'active', true),",
+     "pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic),"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Another outcome's topics opened in the outline for a look list none of its Build topics",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,",
+     "this.currentTopicIn(outcome.id)), ...outcome.parts,"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "On a phone each Build topic's row in the right rail is at least 44px to touch",
+   "break": [
+    [
+     "web/rails.css",
+     "{.pipe-builds .things-list a.row{min-height:2.75rem;padding-block:.6rem}}",
+     "{.pipe-builds .things-list a.row{min-height:0;padding-block:.1rem}}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail marks the Build topic being read, and Return on its row keeps the keys there",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (row.topic === here) link.setAttribute('aria-current', 'page');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the keys reach a Build topic from the right rail"
+   }
   }
  ]
 }

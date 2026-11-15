@@ -30,6 +30,21 @@ unread counts, the work ring, Waiting on you and Ready for review, bold titles
 while something in them is unread, and Done (N) and Archived (N) below.
 Each outcome ends with + New topic.
 
+An outcome's Build topics show once, in the right rail (item 297). On an
+outcome whose pipeline is on, a topic some piece is built in (a release's
+among them) is a Build topic, and the outline lists it not: it is a row of the
+right rail's Pipeline section instead, from when the piece starts until the
+topic is Done, when it folds into the outline's Done (N) as any topic does. An
+archived one is under Archived (N). Reopened, it is the right rail's again.
+Core says which topics they are (`workspace_topics`, `build`;
+docs/topic-list.md), so the outline asks for its topics without them and the
+right rail for them alone. While the pipeline is off, or on an outcome with
+none, no topic is a Build topic and the outline lists every topic as before.
+The topic being read is a Build topic when Core says so, and is then marked in
+the right rail, not the outline. Pages that keep the side rail they had (the
+outcome's own page, its pipeline) list every topic, since they have no right
+rail.
+
 - **Counts.** A folded outcome counts everything new inside it, and what was
   sent to the reader by name. An open outcome counts only its Conversation,
   because each topic under it shows its own count. Both counts come from the
@@ -91,7 +106,19 @@ says so in one quiet line.
   A press lands on the message, opening its stack; Unstar beside each takes
   the star off (docs/reply-stacks.md).
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
-  from the `pipeline` view.
+  from the `pipeline` view, and the outcome's Build topics, each once: under
+  Now each piece being built, its row its topic's; then Ready for review, the
+  Build topics that are, until someone marks them Done; then Other Build
+  topics (a piece set aside, finished or held, a topic reopened). Each row
+  carries what the outline's row would: the unread count, marked when part of
+  it was sent to the reader by name, where it stands (Waiting on you, Ready
+  for review…), the work ring, and the mark of the topic being read; one that
+  waits on the reader opens at the question, as in the outline. The Build
+  topics show on a topic as on its Conversation, since they stand in for the
+  outline's rows; Live and Next are the outcome's alone. It lists 20 Build
+  topics, and More topics brings 20 more. The keys reach each row like any
+  other in the rail, and Return on one opens its topic in place with the keys
+  staying on its row.
 - **Waiting for…** is the Now and Next items the reader raised, at their
   stage, and the reader's Conversation posts nobody has taken up yet.
 - **Notebook pages** come from `memory_items`: the topic's own pages on a

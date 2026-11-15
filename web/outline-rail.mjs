@@ -6,7 +6,8 @@
 // the count of everything new inside it; open, its own row counts only its
 // Conversation, since each topic shows its own. The topic rows are today's
 // (TopicRail): unread counts, the work ring, Waiting on you and Ready for
-// review, Done (N) and Archived (N), in the server's order. Each outcome ends
+// review, Done (N) and Archived (N), in the server's order; an outcome's Build
+// topics not yet Done are the right rail's, never listed here too (item 297). Each outcome ends
 // with + New topic. At the top, "N new" and "N waiting on you" add it all up,
 // and a press on one shows only those.
 //
@@ -489,7 +490,8 @@ export class OutlineRail {
   // drew them), made the first time they are wanted.
   ownRail(outcome) {
     outcome.rail ??= new TopicRail({ reader: this.bootstrap.actor, pageMax: this.pageMax,
-      pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id)), ...outcome.parts,
+      // An outcome's Build topics are the right rail's (item 297): its open list here leaves them out.
+      pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
       read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });
     return outcome.rail;
