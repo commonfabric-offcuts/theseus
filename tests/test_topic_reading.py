@@ -6,7 +6,9 @@ The fixture outcome w1 is owned by owner, with agent-a and agent-b on its
 team; its topic t1 has owner and agent-a taking part.
 """
 
+import sqlite3
 import unittest
+from unittest import mock
 
 import reader_fixture as fixtures
 
@@ -107,7 +109,6 @@ class TopicReadingCase(fixtures.ReaderCase):
         # A person's thumbs-up says they read it and understand (docs/thumbs.md); it is no reply.
         self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": asked}, expected={"thumb_revision": 0},
                                     actor="other-reader"))
-        self.post("Something for everyone", actor="agent-b")
         self.post("For agent-a only", actor="agent-b", addressees=["agent-a"], intent="tell")
         # The reader's whisper to agent-a, and agent-a's whispered answer to it, by name to the reader: it answers the
         # whisper, not the message on the record.
@@ -115,7 +116,34 @@ class TopicReadingCase(fixtures.ReaderCase):
                                               target={"topic_id": "t1"}))["message_id"]
         self.committed(self.command("message.post", {"body": "Just you too", "whisper": True, "addressees": ["owner"], "reply_to": whisper},
                                     target={"topic_id": "t1"}, actor="agent-a"))
+        # A message to everyone after the whispers, so the reads reach past them.
+        self.post("Something for everyone", actor="agent-b")
         self.assertIs(self.awaiting()[asked], True, "none of these is a reply to it, nor agent-b's message to the reader before it")
+
+    def test_reading_whether_a_message_waits_does_no_more_work_as_the_topic_grows_after_it(self):
+        # Reads are scoped and paged: messages after the page, here the reader's own naming themselves, as
+        # test_stepping_correction grows them, add no work to reading whether a message on the page waits.
+        self.post("Earlier, from agent-a", actor="agent-a")
+        asked = self.post("Can you look?", actor="owner", addressees=["agent-a"], intent="ask")
+        seq = self.sql("SELECT seq FROM messages WHERE id=?", (asked,))[0][0]
+        def work():
+            original, steps = sqlite3.connect, [0]
+            def connect(*args, **kwargs):
+                db = original(*args, **kwargs)
+                db.set_progress_handler(lambda: steps.__setitem__(0, steps[0] + 1) or 0, 1)
+                return db
+            with mock.patch.object(sqlite3, "connect", connect):
+                view = self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "cursor": seq + 1, "limit": 1})
+            self.assertEqual([(item["id"], item["awaiting_reply"]) for item in view["items"]], [(asked, True)], view)
+            return steps[0]
+        before = work()
+        with sqlite3.connect(str(self.path)) as db:
+            for index in range(3000):
+                row = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
+                                 "VALUES (?,'t1','owner','Later','[]','[]','[\"owner\"]',?)", ("later-%s" % index, "later-op-%s" % index)).lastrowid
+                db.execute("INSERT INTO message_addressees VALUES ('t1','owner',?)", (row,))
+        grown = work()
+        self.assertLess(grown, before + 300, (before, grown))
 
     def test_a_message_from_before_this_release_never_waits_and_the_first_post_after_it_records_where_the_rule_begins(self):
         # Item 475's words, "after the reader posts" (codex #5267): nothing already in the store starts pulsing when this
