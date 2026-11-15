@@ -18,6 +18,7 @@ import { AttemptError } from '../web/api.mjs';
 import { MessageEditWriting, mayEdit, revisionOf, wasEdited } from '../web/message-edit-writing.mjs';
 import { MessageEdit, SAY } from '../web/message-edit.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
+import { isDeepStrictEqual } from 'node:util';
 
 const copy = structuredClone;
 const INSTANCE = 'i1';
@@ -641,6 +642,176 @@ test('Save waits only for a draft save in flight until that request returns, nev
   assert.equal(w.state, 'saved'); assert.equal(core.session.state, 'saved', 'the holder\'s Save closed the session');
   await timers.advance(5000);
   assert.deepEqual(core.kinds, ['edit_open', 'edit_draft', 'edit'], 'the debounced save never goes after the Save, nor any close');
+});
+
+// While a Save is pending its own answer decides what the person sees: a draft save's answer, whatever it is and
+// whenever it comes, never paints over Saving… or the busy state's Try again, and a settled refusal leaves the
+// field editable. With no Save pending, a draft's answer shows as before.
+const LONG = 'x'.repeat(DRAFT_LIMIT + 5);
+const shownOf = view => ({ state: view.host.dataset.state, status: view.status.textContent, readOnly: view.field.readOnly, save: view.save.disabled,
+  cancel: view.cancel.disabled, retry: !view.retry.hidden, here: !view.here.hidden, value: view.field.value });
+const SAVING_SHOWN = { state: 'saving', status: SAY.saving, readOnly: true, save: true, cancel: true, retry: false, here: false, value: LONG };
+const TOO_LONG_SHOWN = { state: 'refused', status: 'Not saved: too long', readOnly: false, save: false, cancel: false, retry: false, here: false, value: LONG };
+// Each answer a draft save can get, given to the held request: refused (too long, read-only, taken, closed), stale,
+// accepted, busy, and none at all.
+const DRAFT_ANSWERS = {
+  'refused too long': (core, env, resolve) => resolve(core.refuse(env, 'BODY_TOO_LARGE', true)),
+  'refused read-only': (core, env, resolve) => resolve(core.refuse(env, 'FORBIDDEN', true)),
+  'refused taken': (core, env, resolve) => resolve(core.refuse(env, 'EDIT_TAKEN', false)),
+  'refused closed': (core, env, resolve) => resolve(core.refuse(env, 'EDIT_CLOSED', false)),
+  'stale': (core, env, resolve) => resolve(core.refuse(env, 'REVISION_CONFLICT', true, { current_versions: { session_revision: core.sessionRevision + 1 } })),
+  'accepted': (core, env, resolve) => resolve(core.receipt(env, 'committed', true, { result: { message_id: 'm1', session_revision: core.sessionRevision, renewed_ms: 2 } })),
+  'busy': (core, env, resolve) => resolve(core.receipt(env, 'retryable', false, { error: { code: 'DATABASE_BUSY', message: 'busy', retryable: true } })),
+  'failed': (core, env, resolve, reject) => reject(new AttemptError('Connection interrupted.', 0, null)),
+};
+// The next command of a kind waits for the test: answer(fn) gives it fn's answer.
+function holdNext(core, kind) {
+  const held = { answer: null, sent: null };
+  core.nextOf[kind] = env => new Promise((resolve, reject) => { held.sent = env; held.answer = how => how(core, env, resolve, reject); });
+  return held;
+}
+const tooLongSave = (core, env, resolve) => resolve(core.refuse(env, 'BODY_TOO_LARGE', true));
+// Every paint of the view from now on, as the person would see it.
+function paints(view, w) {
+  const seen = [], paint = w.changed;
+  w.changed = writing => { paint(writing); seen.push(shownOf(view)); };
+  return seen;
+}
+// From Save on, only the two consistent pairs show, in the Save's own order: Saving… with the field read only, then
+// its answer, Not saved: too long with the field editable; nothing in between, and never back.
+function savingThenTooLong(seen) {
+  const kinds = seen.map(shown => (isDeepStrictEqual(shown, SAVING_SHOWN) ? 'saving' : isDeepStrictEqual(shown, TOO_LONG_SHOWN) ? 'too long' : shown));
+  const order = kinds.filter((kind, i) => kind !== kinds[i - 1]);
+  assert.deepEqual(order, ['saving', 'too long'], 'each paint from Save on is Saving… until the Save\'s answer, then Not saved: too long');
+}
+
+test('a draft save answered while the Save is out changes nothing the person sees; the Save\'s own answer decides', async t => {
+  for (const [name, answer] of Object.entries(DRAFT_ANSWERS)) {
+    await t.test(name, async () => {
+      const doc = miniDocument();
+      const { w, core, timers } = await opened();
+      const view = new MessageEdit({ host: doc.createElement('div'), writing: w, doc });
+      const draft = holdNext(core, 'message.edit_draft');
+      view.field.value = LONG; view.field.listeners.input();
+      await timers.advance(450);
+      assert.equal(draft.sent?.args.body, LONG, 'the draft save is out');
+      const save = holdNext(core, 'message.edit');
+      const seen = paints(view, w);
+      const saving = view.save.onclick(); await settle();
+      assert.deepEqual(shownOf(view), SAVING_SHOWN, 'Save pressed: Saving…, the field reads only');
+      draft.answer(answer); await settle();
+      assert.deepEqual(shownOf(view), SAVING_SHOWN, `the draft ${name} while the Save is out: still Saving…, nothing says Not saved`);
+      assert.equal(save.sent?.args.body, LONG, 'the Save went once the draft request returned');
+      assert.deepEqual(shownOf(view), SAVING_SHOWN, 'and stays Saving… while the Save is held');
+      save.answer(tooLongSave); await saving; await settle();
+      assert.deepEqual(shownOf(view), TOO_LONG_SHOWN, 'the Save\'s refusal: Not saved: too long, the field editable');
+      assert.equal(w.readOnly, false); assert.equal(w.pending, null);
+      assert.equal(core.of('message.edit_draft').length, 1, 'no draft save went after Save was pressed: the Save carries the words');
+      savingThenTooLong(seen);
+    });
+  }
+});
+
+test('a Save pressed after a draft was refused shows Saving… at once, while its envelope is still being kept on the device', async () => {
+  const doc = miniDocument();
+  const { w, core, store, timers } = await opened();
+  const view = new MessageEdit({ host: doc.createElement('div'), writing: w, doc });
+  view.field.value = LONG; view.field.listeners.input();
+  await timers.advance(450);
+  assert.deepEqual(shownOf(view), TOO_LONG_SHOWN, 'the draft refused before the tap: Not saved: too long, editable');
+  let release = null;
+  const put = store.put;
+  store.put = value => new Promise(done => { release = () => { store.put = put; done(put(value)); }; });
+  const save = holdNext(core, 'message.edit');
+  const seen = paints(view, w);
+  const saving = view.save.onclick(); await settle();
+  assert.equal(typeof release, 'function', 'the frozen envelope is still being kept on the device');
+  assert.equal(save.sent, null, 'nothing has left');
+  assert.deepEqual(shownOf(view), SAVING_SHOWN, 'Save pressed: Saving… at once, whatever the draft said; never read-only under Not saved');
+  release(); await settle();
+  assert.deepEqual(shownOf(view), SAVING_SHOWN, 'the Save out: Saving…');
+  save.answer(tooLongSave); await saving; await settle();
+  assert.deepEqual(shownOf(view), TOO_LONG_SHOWN, 'the Save\'s refusal: Not saved: too long, the field editable');
+  savingThenTooLong(seen);
+});
+
+test('a draft save sent while a busy Save waits for Try again, refused, leaves busy and Try again as they were', async () => {
+  const doc = miniDocument();
+  const { w, core, timers } = await opened();
+  const view = new MessageEdit({ host: doc.createElement('div'), writing: w, doc });
+  core.nextOf['message.edit_draft'] = 'busy';
+  view.field.value = LONG; view.field.listeners.input();
+  await timers.advance(450);
+  core.nextOf['message.edit'] = 'busy';
+  await view.save.onclick(); await settle();
+  const busy = { state: 'busy', status: SAY.busy, readOnly: true, save: true, cancel: false, retry: true, here: false, value: LONG };
+  assert.deepEqual(shownOf(view), busy, 'busy: Try again');
+  const draft = holdNext(core, 'message.edit_draft');
+  await timers.advance(30000);
+  assert.equal(w.touch(), true, 'a touch renews the hold with a draft save'); await settle();
+  assert.ok(draft.sent, 'the renewal is out');
+  draft.answer(DRAFT_ANSWERS['refused too long']); await settle();
+  assert.deepEqual(shownOf(view), busy, 'the renewal refused: still busy, Try again offered');
+});
+
+test('a draft save sent while a Save waited for Try again, answered after Try again found the Save refused, leaves the refusal shown', async () => {
+  const doc = miniDocument();
+  const { w, core, timers } = await opened();
+  const view = new MessageEdit({ host: doc.createElement('div'), writing: w, doc });
+  core.nextOf['message.edit_draft'] = 'busy';
+  view.field.value = LONG; view.field.listeners.input();
+  await timers.advance(450);
+  // Core records the Save's refusal and its answer is lost: uncertain.
+  core.nextOf['message.edit'] = env => {
+    core.ops.set(env.operation_id, { fingerprint: JSON.stringify(env), receipt: core.refuse(env, 'BODY_TOO_LARGE', true) });
+    throw new AttemptError('Connection interrupted.', 0, null);
+  };
+  await view.save.onclick(); await settle();
+  assert.equal(view.status.textContent, SAY.uncertain);
+  const draft = holdNext(core, 'message.edit_draft');
+  await timers.advance(30000);
+  assert.equal(w.touch(), true); await settle();
+  assert.ok(draft.sent, 'a renewal went while the Save waited for Try again');
+  const retried = view.retry.onclick(); await settle();
+  assert.deepEqual(shownOf(view), TOO_LONG_SHOWN, 'Try again: Core recorded the Save refused, too long');
+  draft.answer(DRAFT_ANSWERS.accepted); await settle(); await retried;
+  assert.deepEqual(shownOf(view), TOO_LONG_SHOWN, 'the renewal accepted afterwards: the Save\'s refusal still shows');
+});
+
+test('a draft save answered after Cancel ended the edit leaves it ended', async () => {
+  const ended = [];
+  const doc = miniDocument();
+  const { w, core, timers } = await opened();
+  new MessageEdit({ host: doc.createElement('div'), writing: w, done: state => ended.push(state), doc });
+  const draft = holdNext(core, 'message.edit_draft');
+  w.edit(LONG); await timers.advance(450);
+  assert.ok(draft.sent, 'the draft save is out');
+  assert.equal(await w.cancel(), true); await settle();
+  assert.equal(w.state, 'cancelled'); assert.deepEqual(ended, ['cancelled']);
+  draft.answer(DRAFT_ANSWERS['refused too long']); await settle();
+  assert.equal(w.state, 'cancelled', 'the late refusal does not reopen the ended edit'); assert.equal(w.error, null);
+});
+
+test('with no Save out, a draft save\'s answer shows as it did: too long, read-only, taken', async () => {
+  const doc = miniDocument();
+  const long = await opened();
+  const longView = new MessageEdit({ host: doc.createElement('div'), writing: long.w, doc });
+  longView.field.value = LONG; longView.field.listeners.input();
+  await long.timers.advance(450);
+  assert.deepEqual(shownOf(longView), TOO_LONG_SHOWN, 'too long: Not saved: too long, the field editable');
+  const forbidden = await opened();
+  const forbiddenView = new MessageEdit({ host: doc.createElement('div'), writing: forbidden.w, doc });
+  forbidden.core.nextOf['message.edit_draft'] = env => forbidden.core.refuse(env, 'FORBIDDEN', true);
+  forbiddenView.field.value = 'Late words'; forbiddenView.field.listeners.input();
+  await forbidden.timers.advance(450);
+  assert.equal(forbiddenView.status.textContent, 'Not saved: Core says FORBIDDEN');
+  assert.equal(forbiddenView.field.readOnly, true, 'read-only: the field reads only'); assert.equal(forbiddenView.save.disabled, true);
+  const taken = await opened();
+  const takenView = new MessageEdit({ host: doc.createElement('div'), writing: taken.w, doc });
+  taken.core.nextOf['message.edit_draft'] = env => taken.core.refuse(env, 'EDIT_TAKEN', false);
+  takenView.field.value = 'Words here'; takenView.field.listeners.input();
+  await taken.timers.advance(450);
+  assert.equal(takenView.status.textContent, SAY.elsewhere); assert.equal(takenView.here.hidden, false, 'taken: Edit here');
 });
 
 test('renewal: a touch 30 s after Core last renewed sends one draft save at once; one sooner sends none; one with a save scheduled sends one', async () => {

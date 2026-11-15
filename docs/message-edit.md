@@ -384,14 +384,17 @@ unconfirmed and become the draft.
   after the first, one at a time, on the session revision Core last gave.
   One with no answer goes again under its own operation. `EDIT_CLOSED` stops
   them; `BODY_TOO_LARGE` pauses them until the words are shorter; a refusal
-  that will not change makes the edit read-only.
+  that will not change makes the edit read-only. While a Save is pending,
+  and once the edit has ended, a draft save's answer changes nothing the
+  person sees, whatever it is: the Save's own answer decides.
 - **The hold.** Each draft save renews Core's hold on the message. A key, a
   press or the focus in the field renews it once a quarter of `edit_hold_ms`
   has passed since Core last did; no timer runs, so a field left alone
   lapses.
 - **Save** sends the whole request with the holder, kept on the device before
-  it is sent, after any draft save already out returns. The holder's Save
-  ends the session in Core.
+  it is sent, after any draft save already out returns. A draft save not
+  yet sent is cancelled; one already out is waited for, and its answer is not
+  shown. The holder's Save ends the session in Core.
 - **Every other ending** (Cancel, words equal to the base, Use saved) sends
   one `message.edit_close` and clears the device row. A close with no answer
   keeps only the holder and that close's operation on the device; the next
@@ -420,7 +423,10 @@ What the edit mode shows (`web/message-edit.mjs`):
   Core confirms the words, then "Kept".
 - **empty**: Save is off while a message with no images is blank; if Core still
   answers `EMPTY_MESSAGE`, the words stay.
-- **saving**: the field reads only, and "Saving…"; Save and Cancel wait.
+- **saving**: from the moment Save is pressed, whatever a draft save said
+  before, the field reads only, and "Saving…"; Save and Cancel wait. Once
+  the Save is answered, a refusal leaves the field editable unless Core will
+  not take an edit of this message from this person now.
 - **saved**: the new words show with "Edited", the device copy is cleared, and
   the focus goes back.
 - **conflict**: "This message was edited elsewhere" over the saved words, with

@@ -11458,7 +11458,7 @@
   },
   {
    "item": 228,
-   "act": "The edit mode says \"Not saved: too long\" at every width, the words kept",
+   "act": "At every width a too-long Save shows Saving… with the field read only while it is out, then its own answer: \"Not saved: too long\", every byte kept in a field that may be changed",
    "break": [
     [
      "web/message-edit-writing.mjs",
@@ -12639,7 +12639,7 @@
    "break": [
     [
      "web/message-edit-writing.mjs",
-     "if (!again && integer(current)) { this.settle(null); return this.draftOnce(true); }",
+     "if (!again && integer(current) && !quiet) { this.settle(null); return this.draftOnce(true); }",
      ""
     ]
    ],
@@ -13138,6 +13138,39 @@
    ],
    "check": {
     "python": "test_message_hold.py"
+   }
+  },
+  {
+   "item": 452,
+   "act": "A draft save's answer, while a Save is pending or after it, changes nothing the person sees: the Save's own answer decides",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "let quiet = Boolean(this.pending);",
+     "let quiet = false;"
+    ],
+    [
+     "web/message-edit-writing.mjs",
+     "quiet ||= Boolean(this.pending) || this.over;",
+     "quiet ||= false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
+   }
+  },
+  {
+   "item": 452,
+   "act": "Pressing Save shows Saving… at once, before its envelope is kept on the device, whatever a draft save said before",
+   "break": [
+    [
+     "web/message-edit-writing.mjs",
+     "this.pending = this.envelope(); this.state = 'saving'; this.error = null; this.notify();",
+     "this.pending = this.envelope();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_edit.test.mjs"
    }
   },
   {

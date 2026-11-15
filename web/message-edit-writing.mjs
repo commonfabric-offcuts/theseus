@@ -230,6 +230,9 @@ export class MessageEditWriting {
     // One whose answer was lost goes again under its own operation, and Core answers with what it recorded.
     const sent = this.lostDraft ?? this.sessionEnvelope('message.edit_draft', { session_revision: this.sessionRevision },
       { holder: this.holder, body: this.value, base_revision: this.base.revision });
+    // quiet: a Save was pending when this went or when it answered, or the edit ended: the Save's own answer decides
+    // what the person sees, so this answer keeps only what Core confirmed of the session and changes nothing shown.
+    let quiet = Boolean(this.pending);
     this.lostDraft = null; this.inFlight++;
     const request = this.api.command(copy(sent));
     this.draftRequest = request.then(() => {}, () => {});
@@ -240,29 +243,30 @@ export class MessageEditWriting {
     if (receipt && !this.exact(receipt, sent)) { this.lostDraft = sent; this.unknown = true; receipt = null; }
     if (receipt?.status === 'retryable') { this.lostDraft = sent; this.unknown = false; receipt = null; }
     if (!receipt) { this.settle(null); this.notify(); return; }
-    this.unknown = false;
+    this.unknown = false; quiet ||= Boolean(this.pending) || this.over;
     let revision = null;
     if (receipt.status === 'committed') {
       revision = receipt.result?.session_revision ?? null;
       // Taken at once, before the device write below: this save's own edit_session change may be read meanwhile.
       if (integer(revision) && revision > (this.sessionRevision ?? 0)) this.sessionRevision = revision;
       this.kept = sent.args.body; this.lastRenewal = this.timers.now(); this.tooLong = null;
-      if (this.state === 'refused' && !this.readOnly && !this.pending) { this.state = 'editing'; this.error = null; }
+      if (this.state === 'refused' && !this.readOnly && !quiet) { this.state = 'editing'; this.error = null; }
       await this.persist().catch(() => {});
       // A resend carried the words of its first send: words typed since go as the next draft save.
       if (this.value !== this.kept && this.live && !this.timer) this.scheduleDraft();
     } else {
       const code = receipt.error?.code;
-      if (code === 'EDIT_TAKEN') { this.goElsewhere(); return; }
       if (code === 'EDIT_CLOSED') this.draftClosed = true;
-      else if (code === 'BODY_TOO_LARGE') { this.tooLong = bytes(sent.args.body); this.state = 'refused'; this.error = 'Not saved: too long'; }
-      else if (READ_ONLY.has(code)) { this.readOnly = true; this.state = 'refused'; this.error = `Not saved: ${receipt.error?.message ?? 'Theseus refused the edit.'}`; }
       else if (code === 'REVISION_CONFLICT') {
-        // Only this holder can have written (another meets EDIT_TAKEN first): the same words go once more.
+        // Only this holder can have written (another meets EDIT_TAKEN first): the same words go once more, unless a
+        // Save carries them.
         const current = receipt.error?.current_versions?.session_revision;
         if (integer(current)) this.sessionRevision = current;
-        if (!again && integer(current)) { this.settle(null); return this.draftOnce(true); }
-      }
+        if (!again && integer(current) && !quiet) { this.settle(null); return this.draftOnce(true); }
+      } else if (quiet) { /* the Save's answer, or the ending, stands */ }
+      else if (code === 'EDIT_TAKEN') { this.goElsewhere(); return; }
+      else if (code === 'BODY_TOO_LARGE') { this.tooLong = bytes(sent.args.body); this.state = 'refused'; this.error = 'Not saved: too long'; }
+      else if (READ_ONLY.has(code)) { this.readOnly = true; this.state = 'refused'; this.error = `Not saved: ${receipt.error?.message ?? 'Theseus refused the edit.'}`; }
     }
     this.settle(revision);
     this.notify();
@@ -315,7 +319,8 @@ export class MessageEditWriting {
     if (!this.dirty) { await this.end('unchanged'); return null; }
     // A Save never waits on the debounce.
     this.cancelDraft();
-    this.pending = this.envelope();
+    // From here the Save's own answer decides what shows: Saving… at once, whatever a draft save said before.
+    this.pending = this.envelope(); this.state = 'saving'; this.error = null; this.notify();
     // The whole frozen envelope is on the device before any request leaves.
     try { await this.persist(); }
     catch (error) { this.pending = null; this.state = 'editing'; this.error = `Not saved: this device could not keep the edit (${error.message}).`; this.notify(); return null; }

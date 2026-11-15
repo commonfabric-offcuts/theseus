@@ -537,11 +537,20 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       await replaceWords(p, '');
       await until(async () => await off(p, 'save') === true, 'empty: Save is off');
       await laid(p, device, 'empty');
-      // Too long: Core refuses it, recorded; the words stay in the field, and Save stays on for changed words.
+      // Too long: Core refuses it, recorded; the words stay in the field, and Save stays on for changed words. A draft
+      // save of the same words may be refused before the tap or while the Save is out; what shows follows the Save
+      // alone. Held, it is Saving… with the field read only; once answered, its own refusal, the field editable.
       const long = 'x'.repeat(1048577);
       await p.evaluate(`(f=>{f.value='x'.repeat(1048577);f.dispatchEvent(new Event('input',{bubbles:true}))})(document.querySelector('${FIELD}'))`);
+      await p.evaluate('window.holdEdit = true');
       await saveBy(p, device);
-      await until(async () => await state(p) === 'refused', 'too long: refused');
+      await until(() => p.evaluate(`Boolean(window.letOf['message.edit'])`), 'too long: the Save is out, held');
+      assert.equal(await state(p), 'saving', 'too long: while the Save is out, it is saving');
+      assert.equal(await status(p), 'Saving…', 'too long: while the Save is out, Saving…');
+      assert.equal(await p.evaluate(`document.querySelector('${FIELD}').readOnly`), true, 'too long: while the Save is out, the field reads only');
+      const editsBefore = await p.evaluate('window.edits');
+      await p.evaluate('window.letEdit()');
+      await until(async () => await p.evaluate('window.edits') === editsBefore + 1 && await state(p) === 'refused', 'too long: the Save answered, refused');
       assert.equal(await status(p), 'Not saved: too long');
       assert.equal((await valueOf(p, FIELD)).length, long.length, 'too long: the words stay in the field');
       assert.equal(await p.evaluate(`document.querySelector('${FIELD}').readOnly`), false, 'too long: the words may be changed');
