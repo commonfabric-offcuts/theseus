@@ -416,8 +416,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await keyed(), 'root', `${device}: the agents' dossier is at the top of the feed`);
       for (let n = 0; n < 8 && await keyed() !== 'new-message'; n++) await p.key(await inHeader() ? 'ArrowRight' : 'ArrowUp');
       assert.equal(await keyed(), 'new-message', `${device}: the keys are on New message, among the header's buttons`);
+      // ↑ on the header's top row goes on to what lies above it, if anything (item 301): on a phone the header wraps,
+      // and "Pipeline & pages" stands above New message; on a laptop nothing does, and the keys stay.
+      const above = await p.evaluate(`(e=>{const b=e.getBoundingClientRect();return [...document.querySelectorAll('#main > .topic-header button')].some(x=>x!==e&&x.checkVisibility()&&(c=>c.bottom<=b.top+1&&c.left<b.right&&c.right>b.left)(x.getBoundingClientRect()))})(document.activeElement)`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'new-message', `${device}: ↑ on the header's buttons, the top row, moves nothing`);
+      if (above) {
+        assert.equal(await p.evaluate(`(e=>Boolean(e.closest('#main > .topic-header'))&&e.getBoundingClientRect().bottom<=document.getElementById('new-message').getBoundingClientRect().top+1)(document.activeElement)`), true, `${device}: ↑ on New message goes on to the header's button above it, not ${await keyed()}`);
+        await p.evaluate("document.getElementById('new-message').focus()");
+      } else assert.equal(await keyed(), 'new-message', `${device}: ↑ on the header's buttons, the top row, with nothing above, moves nothing`);
       await p.key('Tab');
       assert.equal(await keyed(), 'chip', `${device}: Tab from New message reaches Show agent coordination`);
       await shot(p, 'coordination-keys-' + device);
@@ -535,7 +541,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await p.evaluate(`document.getElementById('messages').contains(document.activeElement)`), true, 'laptop: → from the outline comes back into the feed');
         await keyTo(p, ids.root); await p.key('ArrowUp');
         assert.equal(await keyed(), 'read-it', 'laptop: ↑ from there finds Read it again, the filter the keys were last on');
-      } else assert.equal(await keyed(), 'read-it', 'phone: ← past Read it moves nothing, the outline being behind ☰');
+      } else {
+        // The outline is behind ☰: the keys never open it; ← goes on to the nearest control that way in the feed (item 301).
+        const at = await keyed();
+        assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('#main'))&&!document.getElementById('rail').classList.contains('open')&&document.getElementById('rail-open')?.getAttribute('aria-expanded')!=='true'`), true, `phone: ← past Read it stays in the feed, never opening the outline, on ${at}`);
+        await p.evaluate("document.getElementById('read-mark').focus()");
+      }
       await p.key('ArrowRight'); await p.key('ArrowRight');
       if (rail) {
         assert.equal(await keyed(), 'things', `${device}: → past the chip, the row's last, goes to the right rail`);
