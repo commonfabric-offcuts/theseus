@@ -2,13 +2,14 @@
 
 A topic reads like an inbox: newest on top, each message answered in the
 Reader. This page says how each card shows where the person stands with it
-(pipeline items 31, 102, 103 and 11). Nothing here changes a record; Core says
-two more facts per message, and the page shows them.
+(pipeline items 31, 102, 103, 11 and 475). Nothing here changes a record; Core
+says three more facts per message, and the page shows them.
 
 ## What Core says
 
-`topic_messages` items carry two fields, read for the page's own messages
-only (`aim_next/topic_reading.py`), through indexes keyed by message:
+`topic_messages` items carry three fields, read for the page's own messages
+only, through indexes keyed by message. The first two come from
+`aim_next/topic_reading.py`:
 
 - `unread`: true while the message waits in one of the reader's unread groups,
   the same deliveries the counts and the New line read. The reader's own
@@ -18,7 +19,55 @@ only (`aim_next/topic_reading.py`), through indexes keyed by message:
   null. A reply is in its parent's topic, and the reader always sees their own
   messages, whispers included, so it never names a message they cannot read.
 
+The third, from `aim_next/stacks.py` (`awaiting_fields`), once each message
+is placed in its dossier:
+
+- `awaiting_reply`: true on a message of the reader's own, on the record (not
+  a whisper), in a topic that is not an outcome's conversation, that an agent
+  received, while no message by anyone else that the reader can see follows
+  it in its dossier. An agent received it when Core delivered its first
+  revision to an agent: one it was addressed to, or one taking part and
+  switched on when it was sent (the deliveries `message.send` and
+  `message.post` write). False on every other message, the reader's own
+  included. It is read from the messages and deliveries as they stand, never
+  stored, so a reload, another device and the CLI all read the same.
+
 No table, command or schema step.
+
+## Waiting for a reply (475)
+
+After the person posts, their message shows the Conversation's three quiet
+dots (docs/conversation.md: the same element, `waitingDots` in
+`web/outcome-conversation.mjs`, pulsing in turn in the card's own ink and
+still under reduced motion), at the foot of the card, until the first reply
+from anyone else, a person or an agent. Named "Waiting for a reply" for a
+screen reader and the pointer; they are a mark, not a control.
+
+- A reply is a message by someone else in the same dossier, after the
+  person's message: a reply to it, to a reply under it, or anywhere in a
+  stack joined to it. A message someone else starts as a new subject is no
+  reply, and nor is the person's own next message, which waits in its turn.
+- Never on a whisper.
+- Not at all when no agent receives the message: with nobody named and no
+  agent taking part, or only people named in a topic no agent takes part in.
+- Not in an outcome's conversation, where each item already shows its own
+  dots until something settles it.
+
+Core says it (`awaiting_reply`, above), so a reload keeps it and nothing on
+the page decides it. A message arriving while the page is open ends the
+dots at once by the same rule (`learnAnswered`, `web/card-reading.mjs`):
+written by someone else, after the waiting message, in its dossier (its
+`stack_position.root_id`). A message folded to one line shows only that
+line, without its dots.
+
+Checks: `tests/test_topic_reading.py` (Core: addressee, taking part, whisper,
+conversation, a person's reply, the reader's own reply, a message outside the
+dossier, and nothing stored by reading it), `tests/ui_card_reading.test.mjs`
+(the page's rule and the dots), and `tests/topic_reading_native.mjs`
+(`native-reading`, `native-webkit-reading`): "reading dots after the person
+posts to an agent …", "reading dots never show where no agent receives the
+message …" and "reading dots on a waiting message sit inside its card …"
+(320, 375 and 390 wide and a laptop, light and dark).
 
 ## Read cards (31)
 

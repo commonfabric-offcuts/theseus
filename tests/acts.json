@@ -13804,6 +13804,120 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 475,
+   "act": "The reader's message waits for a reply only when an agent received it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if item[\"id\"] not in received:\n            continue\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A reply by anyone else after it in its dossier ends the wait, and nothing else does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "others[root] is None or others[root] < item[\"seq\"]",
+     "others[root] is None"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A whisper never waits for a reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "item[\"author_id\"] == actor and not item.get(\"whisper\")]",
+     "item[\"author_id\"] == actor]"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "In an outcome's conversation the item's own dots stand alone",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "if own and topic[\"kind\"] != \"conversation\":",
+     "if own:"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The page draws the Conversation's three dots on a message Core says waits, and none on any other",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.awaiting_reply !== true) { row?.remove(); return; }",
+     "if (item.awaiting_reply === undefined) { row?.remove(); return; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving ends the dots only when someone else wrote it, after the waiting message, in its dossier",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.author_id !== viewer && typeof root === 'string'",
+     "if (typeof root === 'string'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a reply arriving ends the dots at once, without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "  learnAnswered(views.messages, bootstrap.actor);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots after the person posts"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page the dots show on the reader's message after they post",
+   "break": [
+    [
+     "web/app.mjs",
+     "    paintAwaiting(card, item);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots after the person posts"
+   }
   }
  ]
 }
