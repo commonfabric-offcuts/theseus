@@ -14169,6 +14169,21 @@
     "native": "reading",
     "case": "a link followed while the page holds an older place"
    }
+  },
+  {
+   "item": 426,
+   "act": "A dossier below More that someone joins into one above it reads there, above More, and Split back out puts it below again",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "if (joined?.into) return has(joined.into) ? { id: joined.into, joined } : null;",
+     "if (joined?.into) return null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "joined by someone else into one above it"
+   }
   }
  ]
 }
