@@ -373,8 +373,14 @@ export class Shell {
     // is asked meanwhile waits for it, as it waits for a run on its way. The
     // drawer closes as the move begins, so the page shows meanwhile, and its
     // notice shows if the page stays (updated).
+    // Meanwhile the page is between places, not up on the place the address
+    // may already name (a back): it is not ready (data-ready) until the run
+    // of that place is, or until it stays.
     this.moving = true;
     this.drawer?.close();
+    const body = this.doc?.body;
+    way.ready = body?.dataset.ready;
+    if (body) delete body.dataset.ready;
     this.served().then(build => (build === null || build === this.build ? this.proceed(way) : this.updated(way)));
     return true;
   }
@@ -389,10 +395,11 @@ export class Shell {
   // here is not yet safe (a guard holds), the page stays where it is and says
   // so (page.updated, "Theseus updated" with Reload), so no words are left
   // behind; a back or forward puts the address back.
-  updated({ target, popped }) {
+  updated({ target, popped, ready }) {
     this.moving = false;
     if (!this.guards.some(holds => holds())) { this.leave(popped ? null : routeHref(target)); return; }
     if (popped) this.refuse(popped);
+    if (ready !== undefined) this.doc.body.dataset.ready = ready;
     this.page?.updated?.(() => this.leave());
     const owed = this.owed; this.owed = null;
     if (owed) Promise.resolve().then(() => this.settle(owed));

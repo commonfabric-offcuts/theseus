@@ -267,8 +267,10 @@ move to another build is a load.
   for with a query outside a build: the run of a page opened before builds
   were stamped. A module asked for plainly outside a build is still the file
   as it stands, for a document that is not a page.
-- Before a move, the shell reads the served build. On the document's own build
-  the move goes in place. If the read fails, the move goes on, and the refusal
+- Before a move, the shell reads the served build. Meanwhile the phone's
+  drawer closes and the page is not ready (`data-ready`), since a back has
+  already changed the address. On the document's own build the move goes in
+  place. If the read fails, the move goes on, and the refusal
   above is what stops a run of another build. On another build the place is
   loaded (`shell.leave`), so the new release's modules load together. While a
   guard holds (writing not yet safe), the page stays instead. It says

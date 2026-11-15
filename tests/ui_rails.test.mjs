@@ -285,6 +285,14 @@ test('a move on this document\'s own build reads the served build first and move
   await unread.answer(null);
   assert.deepEqual([blind.moves.length, blind.win.order], [1, []], 'a build that could not be read: the move goes on, its import naming this build');
 
+  // The page is not ready while the server answers: the address a back reached is not yet the page shown.
+  const shown = answerable(), between = shellAt('?topic=t1', { build: 'A', served: shown.served });
+  between.shell.doc = { body: { dataset: { ready: 'true' } }, activeElement: null };
+  between.shell.go({ kind: 'topic', id: 't2' });
+  assert.equal(between.shell.doc.body.dataset.ready, undefined, 'not ready while the read is out');
+  await shown.answer('A');
+  assert.equal(between.shell.doc.body.dataset.ready, undefined, 'and not until the run of the place reached says so');
+
   const none = shellAt('?topic=t1', { served: () => assert.fail('a document with no build reads none') });
   none.shell.go({ kind: 'topic', id: 't2' });
   assert.deepEqual([none.moves.length, none.h.entries], [1, ['?topic=t2']], 'with no build of its own, the move is made at once');
@@ -292,6 +300,7 @@ test('a move on this document\'s own build reads the served build first and move
 
 test('a move that finds another build while writing is not yet safe stays where it is and says so, Reload asks the browser\'s guard, and a back is put back', async () => {
   const read = answerable(), held = shellAt('?topic=t1', { build: 'A', served: read.served });
+  held.shell.doc = { body: { dataset: { ready: 'true' } }, activeElement: null };
   let holds = false, reloads = [];
   held.shell.page.updated = reload => reloads.push(reload);
   held.shell.guard(() => holds);
@@ -306,6 +315,7 @@ test('a move that finds another build while writing is not yet safe stays where 
   await read.answer('B');
   assert.equal(await chosen, true);
   assert.deepEqual([held.moves, held.win.order, reloads.length, held.shell.moving], [[], [], 2, false], 'it stays too, and says so again');
+  assert.equal(held.shell.doc.body.dataset.ready, 'true', 'and the page is ready again where it stays');
   reloads[0]();
   assert.deepEqual(held.win.order, ['reload'], 'Reload loads with no departure while the guard holds: the browser asks the person first');
   holds = false;
