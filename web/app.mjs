@@ -61,7 +61,7 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
@@ -1413,14 +1413,18 @@ async function messageEdited(key, version, read, current) {
 }
 // Each card whose marks of the person's own note and saved reply changed
 // (TopicViews.takeYours): its author line, then what the page puts back on
-// that line as it is drawn afresh (the reply arrow, the bar), and the stacks,
-// whose head rows show their first message's marks.
+// that line as it is drawn afresh (the reply arrow, the bar), and the row of
+// the stack it heads, which shows its marks (paintHeadCarries).
 function repaintYours(ids) {
   for (const id of ids) {
     const item = views.messages.get(id), entry = messageEntries.get(id);
-    if (item && entry) paintCardAuthor(cardIn(entry).querySelector(':scope > .message-author'), item);
+    if (!item || !entry) continue;
+    const card = cardIn(entry);
+    paintCardAuthor(card.querySelector(':scope > .message-author'), item);
+    paintHeadCarries(card, item);
   }
-  paintCardReading(); stackMessages(); menu?.paint();
+  // The reply arrow goes back into each line painted again; the stacks are not arranged again, so the New line stays where it is.
+  paintCardReading(); menu?.paint();
 }
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
 // message's words, its excerpt cue, its folded line and its author line's

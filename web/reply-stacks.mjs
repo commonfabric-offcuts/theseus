@@ -347,6 +347,17 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   return head;
 }
 
+// The marks alone on the row of the stack a message heads, when only what that message
+// carries changed (item 127): the row's other parts, the stacks' order and the New line
+// stay as they are, so nothing is arranged again. A card heading no stack has no row.
+export function paintHeadCarries(card, item, doc = card.ownerDocument) {
+  const row = headRows.get(card), who = row?.parentNode === card ? row.querySelector(':scope > .stack-who') : null;
+  if (!who) return;
+  row.querySelector(':scope > .card-carries')?.remove();
+  const carried = carriesNode(doc, carriesOf(item));
+  if (carried) who.after(carried);
+}
+
 // A message that no longer heads a stack is a card again.
 function unhead(entry) {
   const card = cardIn(entry);

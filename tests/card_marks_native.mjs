@@ -227,6 +227,14 @@ async function run() {
     await p.keyboard.press('Escape');
     await until(p, () => !document.querySelector('#reader').open, 'the Reader closed');
     assert.deepEqual(await marksOf(m.plain), ['note']);
+    // A reply saved, then emptied, on another device moves the head row's marks as it stands, without the stacks arranged again.
+    const headRow = kinds => until(p, ([selector, want]) => [...document.querySelectorAll(selector + ' > .stack-head > .card-carries > .carry')].map(mark => mark.className.replace('carry carry-', '')).join() === want,
+      `the head row shows ${kinds.join(', ') || 'no mark'}`, [card(m.plain), kinds.join()]);
+    const write = (name, body) => control({ method: 'private_writing', operation_id: `marks-${engine}-head-${name}`, topic_id: `marks-${engine}`, kind: 'draft', message_id: m.plain, body });
+    await write('saved', 'Another reply, begun on my phone.');
+    await headRow(['note', 'reply']);
+    await write('emptied', '');
+    await headRow(['note']);
     assert.deepEqual(p.errors, []);
     await picture(p, 'reader-saved-and-sent');
   });

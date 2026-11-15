@@ -13975,6 +13975,21 @@
     "native": "card-marks",
     "case": "a note and a reply saved in the Reader"
    }
+  },
+  {
+   "item": 127,
+   "act": "A note or reply saved or emptied on another device moves the marks on the row of the stack its message heads",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (carried) who.after(carried);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "a note and a reply saved in the Reader"
+   }
   }
  ]
 }
