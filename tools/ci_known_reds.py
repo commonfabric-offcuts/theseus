@@ -477,6 +477,18 @@ def source_catalog(root, commit):
     return {'NATIVE_STEPS':steps,'NATIVE':native,'REQUIRED':required,'COMPOSE':named('COMPOSE') if 'COMPOSE' in definitions else 'tests/reader_compose_native.mjs','REPLAY_FILE':named('REPLAY_FILE') if 'REPLAY_FILE' in definitions else None}
 
 
+def base_at_run_format(provenance, receipts, expected):
+    """Presence is part of the format: absent legacy observations never become null."""
+    observed = 'base_at_run' in provenance
+    if observed:
+        require(provenance['base_at_run'] == expected, 'combined git-read base differs from tested merge')
+    for receipt in receipts:
+        require(isinstance(receipt, dict), 'invalid git-read base receipt')
+        require(('base_at_run' in receipt) == observed, 'inconsistent git-read base receipt format')
+        if observed:
+            require(receipt['base_at_run'] == expected, 'shard git-read base differs from combined provenance')
+
+
 def history_missing_steps(summary_path, provenance_path, root, api, base_ref, repository):
     """Only a well-formed, source-bound combined receipt can disclose omitted steps.
 
@@ -523,6 +535,7 @@ def history_missing_steps(summary_path, provenance_path, root, api, base_ref, re
             'unknown history shard artifact')
     require(unique(summary.get('combined_from'), 'history combined artifacts') ==
             {name+'/summary.json' for name in artifacts}, 'history combined artifact inventory differs')
+    base_at_run_format(provenance, [entry.get('receipt') for entry in entries], None)
     for entry in entries:
         receipt = entry.get('receipt')
         require(not entry.get('refused') and isinstance(receipt, dict), 'invalid history shard receipt')
@@ -558,10 +571,6 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     if binding is not None:
         require(provenance.get('head') == receipt_head(binding),
                 'combined head differs from authenticated producer')
-        if 'base_at_run' in provenance:
-            expected_base_at_run = ({'ref':binding['producer']['pull_request']['base_ref'], 'sha':expected_merge['first_parent']}
-                                    if run['event'] == 'pull_request' else None)
-            require(provenance['base_at_run'] == expected_base_at_run, 'combined git-read base differs from tested merge')
     require(provenance.get('checked') == {'commit': commit, 'tree_unchanged': True}, 'dirty combined source')
     require(unique(provenance['required'], 'provenance steps') == set(REQUIRED), 'incomplete provenance')
     require(summary.get('tool') == TOOL and summary.get('commit') == commit, 'wrong combined source')
@@ -575,6 +584,8 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     require(Counter(s for shard in plan for s in shard) == Counter(REQUIRED), 'incomplete or duplicated shard plan')
     entries = provenance['shards']
     require(len(entries) == len(plan), 'missing shard provenance')
+    base_at_run_format(provenance, [entry.get('receipt') for entry in entries],
+                       {'ref':base['ref'], 'sha':expected_merge['first_parent']} if run['event'] == 'pull_request' else None)
     artifacts = [s['artifact'] for s in entries]
     require(unique(artifacts, 'shard artifacts') == {'check-%d' % i for i in range(len(plan))}, 'unexpected artifact set')
     require(unique(summary.get('combined_from'), 'combined artifact summaries') ==
@@ -589,9 +600,6 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
         same_run(receipt.get('run'), run)
         if binding is not None:
             require(receipt.get('head') == provenance['head'], 'shard head differs from authenticated producer')
-            require(('base_at_run' in receipt) == ('base_at_run' in provenance), 'inconsistent git-read base receipt format')
-            if 'base_at_run' in receipt:
-                require(receipt['base_at_run'] == provenance['base_at_run'], 'shard git-read base differs from combined provenance')
             producer_workflow(receipt, binding, candidate_root, commit)
         require(receipt.get('base') == base and receipt.get('merge') == expected_merge, 'stale shard source or base')
         require(receipt.get('summary_sha256') == hashlib.sha256((out / 'summary.json').read_bytes()).hexdigest(),
