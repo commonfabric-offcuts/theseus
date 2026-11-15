@@ -3706,9 +3706,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.deepEqual(await actsSent(p, sent), [], `${at}: opening the row, and showing messages whole, sends nothing`);
         assert.equal(await p.evaluate(`document.querySelector('#messages .stack-more')?.isConnected ?? false`), false, `${at}: nothing went below More`);
         // A reload: the row is closed again, and the order, the name and the fold are as Core holds them.
+        // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+        const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
         await p.send('Page.reload');
-        await until(() => p.evaluate(`document.body.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), `${at}: the page is drawn again`);
-        assert.deepEqual(await stacks(p, ids), order, `${at}: after a reload the stacks keep their order`);
+        await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(card(ids.r14))}))`).catch(() => false), `${at}: the page loads again, a new document`);
+        await becomes(() => stacks(p, ids), order, `${at}: after a reload the stacks keep their order`);
         await dossierOpen(p, device, ids.root);
         await becomes(() => earlierLook(p, ids), { fold: 'open', button: '8 earlier messages', messages: closedLook }, `${at}: after a reload, open, the row is closed again`);
         assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root) + ' .stack-name')}).textContent`), 'Cabin week', `${at}: the dossier keeps its name`);
