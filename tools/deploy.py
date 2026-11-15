@@ -373,6 +373,26 @@ def skip_basis(config, sha):
     return live, release_check.seen(config.live, sha, release_check.changed_paths(config.live, live, sha, git), git)
 
 
+def policy_reds(config, sha):
+    """Item 481: the reds the merged base's policy (.github/check-baseline.json at SHA) admits, read from the live
+    checkout's git; none when SHA keeps no policy. A read that fails is refused, not taken as no policy."""
+    listed = run(["git", "-C", str(config.live), "ls-tree", "--name-only", sha, "--", known_reds_check.POLICY])
+    if listed.returncode != 0:
+        raise known_reds_check.Refused("whether %s keeps %s could not be read (exit %s): %s" % (
+            sha[:12], known_reds_check.POLICY, listed.returncode, listed.stderr.strip()[:300]))
+    if not listed.stdout.strip():
+        return {}
+    shown = run(["git", "-C", str(config.live), "show", "%s:%s" % (sha, known_reds_check.POLICY)])
+    try:
+        policy = json.loads(shown.stdout) if shown.returncode == 0 else None
+    except ValueError:
+        policy = None
+    if policy is None:
+        raise known_reds_check.Refused("%s at %s could not be read (exit %s): %s" % (
+            known_reds_check.POLICY, sha[:12], shown.returncode, (shown.stderr or shown.stdout).strip()[:300]))
+    return known_reds_check.admitted(policy)
+
+
 def live_head(config):
     """The live checkout's HEAD, which the known reds must have been read beside."""
     head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"])
@@ -599,7 +619,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     known = None
     if known_reds is not None and not foreign:
         try:
-            known = known_reds_check.judge(known_reds, summary, unpassed, lambda: live_head(config))
+            known = known_reds_check.judge(known_reds, summary, unpassed, lambda: live_head(config),
+                                           lambda: policy_reds(config, sha))
         except known_reds_check.Refused as refusal:
             known = {"file": str(known_reds), "refused": str(refusal)}
     if trained is None:
@@ -612,8 +633,12 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         raise Refused("known reds: %s; nothing was stopped" % known["refused"])
     accepted = known["accepted"] if known is not None else []
     for red in accepted:
-        print("known red: %s %r failed, as it does on the live commit %s (%s): %s"
-              % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
+        if red["taken_by"] == "policy":
+            print("known red: %s %r failed; %s at %s admits it (review %s): %s"
+                  % (red["step"], red["case"], known_reds_check.POLICY, sha[:12], red["review"], red["why"]))
+        else:
+            print("known red: %s %r failed, as it does on the live commit %s (%s): %s"
+                  % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
     for red in (known or {}).get("not_needed") or []:
         print("known red not needed: %s %r did not fail" % (red["step"], red["case"]))
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)

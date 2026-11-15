@@ -91,7 +91,8 @@ def measurements(summary, known_reds=()):
                        "total": sum(step["total"] for step in native.values()), "steps": native},
             # Item 166: a release whose check skipped the browser modes and the replay says so beside their empty counts.
             **({"skipped": {key: summary["skipped"].get(key) for key in ("live", "why")}} if isinstance(summary.get("skipped"), dict) else {}),
-            **({"known_reds": [{key: red[key] for key in ("step", "case", "live_summary", "live_commit", "why")} for red in known_reds]}
+            **({"known_reds": [{key: red[key] for key in ("step", "case", "live_summary", "live_commit", "why", "taken_by")}
+                                for red in known_reds]}
                if known_reds else {})}
 
 

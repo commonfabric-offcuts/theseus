@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-"""Item 178: browser cases a release check failed that the live version already fails.
+"""Item 178: browser cases a release check failed that are already known to fail.
 
 tools/deploy.py --known-reds FILE takes a release-check summary that did not pass only when every failure in it is a
-browser case FILE lists, and a release-check summary of the live commit shows that same case failing in a run of the
-same step that ended as it should. Nothing is run again: both runs are read from the evidence each summary keeps
-beside it. The cases stay failures: the deploy records them as known reds, never as passes. docs/tools.md
-("Known reds") is the contract.
+browser case FILE lists, and each is known (item 481): the merged base's policy admits it (.github/check-baseline.json
+at the deployed commit, matched as tools/ci_known_reds.py matches a case), or a release-check summary of the live commit
+shows that same case failing in a run of the same step that ended as it should. Nothing is run again: both runs are
+read from the evidence each summary keeps beside it. The cases stay failures: the deploy records them as known reds,
+never as passes. docs/tools.md ("Known reds") is the contract.
 
 FILE: {"live_commit": FULL_SHA,
-       "reds": [{"step": "native-…", "case": "…", "live_summary": "/abs/summary.json", "why": "one line"}]}
+       "reds": [{"step": "native-…", "case": "…", "live_summary": "/abs/summary.json" | null, "why": "one line"}]}
 """
 
 import json
@@ -32,6 +33,11 @@ END_LINE = "AssertionError [ERR_ASSERTION]: see native.json for exact failing as
 # completed; and its fixture's exit, held from launch, was code 0 with no signal.
 COMPOSE_PHASES = ["run:chromium", "run:webkit", "runAnswering:chromium", "runAnswering:webkit",
                   "runSending:chromium", "runSending:webkit"]
+# The composer's end-of-run record. A live run from before the harness wrote it has none of these fields; one with any of
+# them is read as a run that writes it.
+COMPOSE_END = ("fixtureExitCode", "fixtureExitSignal", "plannedPhases", "completedPhases", "harnessCompleted")
+# The merged base's policy of expected browser failures, which GitHub's classifier reads (docs/ci-known-reds.md).
+POLICY = ".github/check-baseline.json"
 WHY_LENGTH = 300
 
 
@@ -62,8 +68,10 @@ def load(path):
             raise Refused("a known red names %r; only a browser step (native-…) can have known reds" % (red["step"],))
         if not isinstance(red["case"], str) or not red["case"]:
             raise Refused("a known red of %s names no case" % red["step"])
-        if not isinstance(red["live_summary"], str) or not Path(red["live_summary"]).is_absolute():
-            raise Refused("the live_summary of %s %r is an absolute path" % (red["step"], red["case"]))
+        if red["live_summary"] is not None and (not isinstance(red["live_summary"], str)
+                                                or not Path(red["live_summary"]).is_absolute()):
+            raise Refused("the live_summary of %s %r is an absolute path, or null for a red the policy admits"
+                          % (red["step"], red["case"]))
         why = red["why"]
         if not isinstance(why, str) or not why.strip() or "\n" in why or "\r" in why or len(why) > WHY_LENGTH:
             raise Refused("the why of %s %r is one line of at most %d characters" % (red["step"], red["case"], WHY_LENGTH))
@@ -85,9 +93,11 @@ def _final_json(text):
         return None
 
 
-def ended_cases(out, result, whose):
-    """The failed cases of one native step's run, read from the evidence release_check left in out (the summary's
-    folder), or Refused when that run cannot show its harness ran to the end with only those cases failed.
+def ended_cases(out, result, whose, before_end_record=False):
+    """{name: its row in the results file} for each failed case of one native step's run, read from the evidence
+    release_check left in out (the summary's folder), or Refused when that run cannot show its harness ran to the end
+    with only those cases failed. before_end_record: a composer run from before its harness wrote the end-of-run record
+    (none of COMPOSE_END) counts once its browser closed and it names the case failed (item 481, live runs only).
 
     result is the summary's entry for the step. Its harness must have exited as a run that ended on failed cases does,
     left a readable results file the summary's counts were read from, closed its browser, had its fixture exit as that
@@ -113,7 +123,8 @@ def ended_cases(out, result, whose):
     if not counts["browser_closed"]:
         raise Refused("%s: the browser did not close" % said)
     if step.harness == release_check.COMPOSE:
-        _compose_ended(report, said)
+        if not (before_end_record and not any(field in report for field in COMPOSE_END)):
+            _compose_ended(report, said)
         ended = True
     elif step.results == "results.json":
         # tests/reader_native.mjs serves its page itself, so it has no fixture process; its last act prints its results.
@@ -132,7 +143,7 @@ def ended_cases(out, result, whose):
     for case in failed:
         if not isinstance(case, str) or not case or names.count(case) != 1:
             raise Refused("%s: the failed case %r is not named once among its cases" % (said, case))
-    return failed
+    return {case: results[names.index(case)] for case in failed}
 
 
 def _compose_ended(report, said):
@@ -192,16 +203,35 @@ def live_cases(red, live_commit):
     found = [step for step in steps if isinstance(step, dict) and step.get("name") == red["step"]]
     if len(found) != 1:
         raise Refused("%s did not run %s once" % (said, red["step"]))
-    return ended_cases(path.parent, found[0], "the live")
+    return ended_cases(path.parent, found[0], "the live", before_end_record=True)
 
 
-def judge(path, summary_path, unpassed, live_head):
+def admitted(policy):
+    """{(step, case identity): the admission's review} of a policy file's reds, matched as GitHub's classifier matches
+    them (tools/ci_known_reds.py key()), or Refused when the policy names no reds a case can be matched against."""
+    from tools import ci_known_reds
+    reds = policy.get("reds") if isinstance(policy, dict) else None
+    if not isinstance(reds, list):
+        raise Refused("%s lists no reds" % POLICY)
+    found = {}
+    for red in reds:
+        try:
+            if not isinstance(red, dict) or red.get("step") not in NATIVE:
+                raise ci_known_reds.Refused("no browser step")
+            found[(red["step"], ci_known_reds.key(red.get("case")))] = red.get("review")
+        except ci_known_reds.Refused as error:
+            raise Refused("%s admits a red that names no browser case (%s): %r" % (POLICY, error, red))
+    return found
+
+
+def judge(path, summary_path, unpassed, live_head, policy=lambda: {}):
     """What the known reds accept of a summary that judge_summary found describes the commit, or Refused naming the
     first condition that fails.
 
     unpassed: judge_summary's reasons the run did not pass; [] takes every listed red as not needed. live_head(): the
-    live checkout's HEAD, as the deploy reads it. Returns {file, live_commit, accepted: [{step, case, live_summary,
-    live_commit, why}], not_needed: [{step, case}]}; accepted is empty only for a summary that passed."""
+    live checkout's HEAD, as the deploy reads it. policy(): admitted() of POLICY at the deployed commit, or Refused when
+    it cannot be read. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
+    review}], not_needed: [{step, case}]}; accepted is empty only for a summary that passed."""
     known = load(path)
     listed = {(red["step"], red["case"]): red for red in known["reds"]}
     taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": []}
@@ -211,18 +241,29 @@ def judge(path, summary_path, unpassed, live_head):
     head = live_head()
     if known["live_commit"] != head:
         raise Refused("the known reds were read beside %s, but %s is live" % (known["live_commit"], head))
+    admits = policy()
     summary = json.loads(Path(summary_path).read_text())
     failures = candidate_failures(summary, Path(summary_path).parent)
     for step in sorted(failures):
         for case in failures[step]:
             if (step, case) not in listed:
                 raise Refused("%s failed %r, which the known reds do not list" % (step, case))
+    from tools import ci_known_reds
     for step in sorted(failures):
-        for case in failures[step]:
-            red = listed[(step, case)]
-            if case not in live_cases(red, known["live_commit"]):
-                raise Refused("%s %r is not among the cases that failed in %s on the live commit" % (step, case, red["live_summary"]))
+        for case, row in failures[step].items():
+            red, pair = listed[(step, case)], (step, ci_known_reds.key(row))
+            if pair in admits:
+                taken_by, review = "policy", admits[pair]
+            elif red["live_summary"] is None:
+                raise Refused("%s %r is not admitted by %s at the deployed commit, and no live summary names it"
+                              % (step, case, POLICY))
+            else:
+                taken_by, review = "live", None
+                if case not in live_cases(red, known["live_commit"]):
+                    raise Refused("%s %r is not admitted by %s at the deployed commit, nor among the cases that failed in %s "
+                                  "on the live commit" % (step, case, POLICY, red["live_summary"]))
             taken["accepted"].append({"step": step, "case": case, "live_summary": red["live_summary"],
-                                      "live_commit": known["live_commit"], "why": red["why"]})
+                                      "live_commit": known["live_commit"], "why": red["why"], "taken_by": taken_by,
+                                      "review": review})
     taken["not_needed"] = [{"step": step, "case": case} for step, case in listed if case not in failures.get(step, ())]
     return taken

@@ -12150,6 +12150,90 @@
    "check": {
     "python": "test_releases.py"
    }
+  },
+  {
+   "item": 481,
+   "act": "A failed case the merged base's policy admits is a known red, recorded as taken by the policy",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            if pair in admits:",
+     "            if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The policy admits a case only by its exact identity: step, name, phase, engine and expectedFailure",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            found[(red[\"step\"], ci_known_reds.key(red.get(\"case\")))] = red.get(\"review\")",
+     "            found[(red[\"step\"], ci_known_reds.key({\"name\": red[\"case\"][\"name\"]}))] = red.get(\"review\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A failed case neither the policy admits nor the live summary failed is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "                if case not in live_cases(red, known[\"live_commit\"]):",
+     "                if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A policy that cannot be read refuses rather than admitting nothing",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    if policy is None:\n        raise known_reds_check.Refused(",
+     "    if False:\n        raise known_reds_check.Refused("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A live compose run from before its end-of-run record counts when it names the case failed and its browser closed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not (before_end_record and not any(field in report for field in COMPOSE_END)):",
+     "        if True:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The candidate's own compose run still needs its end-of-run record",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "ended_cases(out, step, \"the candidate's\")",
+     "ended_cases(out, step, \"the candidate's\", before_end_record=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
   }
  ]
 }
