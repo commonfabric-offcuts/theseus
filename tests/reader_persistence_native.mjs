@@ -258,14 +258,34 @@ try {
           if(!e.getClientRects().length){const t=s.querySelector(':scope > .stack-toggle');t.scrollIntoView({block:'center'});return 'fold'}
           const h=e.classList.contains('stack-head-card')?e:e.querySelector(':scope > .stack-head-card');
           if(h&&s.dataset.headOpen==='false'){h.scrollIntoView({block:'center'});return 'head'}return null})()`);
+        // An open dossier of more than seven shows its earlier messages behind one row (item 476): a press on that
+        // row shows them as rows, and a press on a message's row shows it whole, as a person reaches it.
+        const stack = `#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')})`, row = `${stack} > .stack-replies > .stack-earlier`;
+        const rowShows = () => evaluate(`(b=>Boolean(b&&b.getClientRects().length))(document.querySelector(${JSON.stringify(row)}))`);
+        const openEarlier = async () => {
+          await evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+          await point(row);
+          await until(async () => !await rowShows(), `${selector}: the earlier-messages row opens`);
+        };
         if (way === 'fold') {
-          for (let step = 0; step < 2 && !await evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`); step++) {
-          await point(`#messages .reply-stack:has(${selector.replace(/^#messages\s+/, '')}) > .stack-toggle`);
-        }
+          for (let step = 0; step < 3 && !await evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`); step++) {
+            if (await rowShows()) await openEarlier();
+            else await point(`${stack} > .stack-toggle`);
+          }
           await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).getClientRects().length > 0`), `${selector} shows once its stack opens`);
         } else if (way === 'head') {
-          await point(`${selector} .stack-head .stack-who`);
+          // Open with the first message among the earlier ones, its tab shows alone: the row shows it, not the tab.
+          if (!await rowShows()) await point(`${selector} .stack-head .stack-who`);
+          await until(async () => await evaluate(`document.querySelector(${JSON.stringify(selector)}).closest('.reply-stack').dataset.headOpen === 'true'`) || await rowShows(), `${selector} shows its full message or its dossier's earlier-messages row`);
+          if (await rowShows()) await openEarlier();
           await until(() => evaluate(`document.querySelector(${JSON.stringify(selector)}).closest('.reply-stack').dataset.headOpen === 'true'`), `${selector} shows its full message`);
+        }
+        // A message shown as an earlier message's row shows whole at a press on that row.
+        const earlierRow = `${selector}.message-card[data-earlier=true] > .message-earlier, ${selector} .message-card[data-earlier=true] > .message-earlier`;
+        if (await evaluate(`Boolean(document.querySelector(${JSON.stringify(earlierRow)}))`)) {
+          await evaluate(`document.querySelector(${JSON.stringify(earlierRow)}).scrollIntoView({block:'center'})`);
+          await point(earlierRow);
+          await until(() => evaluate(`!document.querySelector(${JSON.stringify(earlierRow)})`), `${selector} shows whole from its earlier message's row`);
         }
       };
       const connectedPage = { targetId, send, evaluate, close, box, point, key, unfold, calls, held, errors, events, network, responses,
