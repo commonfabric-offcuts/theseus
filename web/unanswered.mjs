@@ -53,10 +53,11 @@ export function placeNewLine(list, seq, doc = document, loadOlder, sent = null, 
   const found = children.filter(child => ['new', 'older'].includes(child.dataset?.line));
   const cards = children.filter(child => !found.includes(child));
   const card = seq ? cards.find(child => Number(child.dataset?.seq) === seq) : null;
-  // The oldest loaded message, wherever it is drawn, and More, which ends the run the line waits at the bottom of.
-  const oldest = cards.reduce(oldestIn, Infinity);
+  // More ends the run the line waits at the bottom of, and the oldest card is the last of that run: what follows
+  // More is the dossiers put below it, each where its newest message sits.
   const more = cards.find(child => child.classList?.contains('stack-more')) ?? null;
-  const further = Boolean(seq && !card && seq < oldest);
+  const oldest = (more ? cards.slice(0, cards.indexOf(more)) : cards).at(-1);
+  const further = Boolean(seq && !card && oldest && seq < Number(oldest.dataset.seq));
   if (further && loadOlder !== null && typeof loadOlder !== 'function') throw Error('A New line for a message further back needs what loads the older messages.');
   const kind = card ? 'new' : further && loadOlder ? 'older' : null;
   let line = found.find(child => child.dataset.line === kind) ?? null;
@@ -78,13 +79,6 @@ export function placeNewLine(list, seq, doc = document, loadOlder, sent = null, 
   return line;
 }
 
-// The lowest seq of a loaded message at or inside node, or low if lower: a card carries its own; a dossier holds
-// cards.
-function oldestIn(low, node) {
-  if (typeof node !== 'object' || !node) return low;
-  const own = node.dataset?.seq === undefined ? low : Math.min(low, Number(node.dataset.seq));
-  return [...(node.children ?? [])].reduce(oldestIn, own);
-}
 
 // The line's words: its label, then when its message was sent; its title
 // keeps the date. Painted again only when they would change.

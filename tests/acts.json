@@ -14138,12 +14138,12 @@
   },
   {
    "item": 426,
-   "act": "A message loaded inside a dossier counts among what is loaded for the New line",
+   "act": "The New line for an older message measures what is further back from the last card above More, not from a dossier below it",
    "break": [
     [
      "web/unanswered.mjs",
-     "  return [...(node.children ?? [])].reduce(oldestIn, own);",
-     "  return own;"
+     "const oldest = (more ? cards.slice(0, cards.indexOf(more)) : cards).at(-1);",
+     "const oldest = cards.at(-1);"
     ]
    ],
    "check": {
