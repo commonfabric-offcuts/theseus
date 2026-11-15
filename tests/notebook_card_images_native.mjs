@@ -35,9 +35,12 @@ export async function cardImageChecks({ check, page, until, control, view, facts
   // A paste of these files into what the selector names, as the page receives one; whether the page took the event.
   const paste = (p, selector, files) => p.evaluate(`(()=>{${MAKE}const d=new DataTransfer();for(const s of ${JSON.stringify(files)})d.items.add(make(s));
     const e=new ClipboardEvent('paste',{clipboardData:d,bubbles:true,cancelable:true});document.querySelector(${JSON.stringify(selector)}).dispatchEvent(e);return e.defaultPrevented;})()`);
-  // A drag of these files over what the selector names and a drop there; whether the page took each event.
+  // A drag of these files over what the selector names and a drop there; whether the page took each event. An engine
+  // whose DragEvent leaves out the DataTransfer it is given (the init dictionary's dataTransfer) has it set on the
+  // event, so both engines hand the page the same files.
   const drop = (p, selector, files) => p.evaluate(`(()=>{${MAKE}const d=new DataTransfer();for(const s of ${JSON.stringify(files)})d.items.add(make(s));
-    const t=document.querySelector(${JSON.stringify(selector)}),fire=kind=>{const e=new DragEvent(kind,{dataTransfer:d,bubbles:true,cancelable:true});t.dispatchEvent(e);return e.defaultPrevented;};
+    const t=document.querySelector(${JSON.stringify(selector)}),fire=kind=>{const e=new DragEvent(kind,{dataTransfer:d,bubbles:true,cancelable:true});
+      if(e.dataTransfer!==d)Object.defineProperty(e,'dataTransfer',{value:d});t.dispatchEvent(e);return e.defaultPrevented;};
     return [fire('dragenter'),fire('dragover'),fire('drop')];})()`);
   // Each image a card (or the card box) shows: its name as written for screen readers, whether its picture has loaded,
   // whether it stands inside its card, and its × when it has one.
