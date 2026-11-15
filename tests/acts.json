@@ -11664,12 +11664,12 @@
   },
   {
    "item": 462,
-   "act": "A press on what opens in the outline keeps its own way: New topic's title line has the focus, not the row pressed",
+   "act": "A press on what opens in the outline keeps its own way: the row is selected before the control's own act, so New topic's title line has the focus, not the row pressed",
    "break": [
     [
      "web/key-tree.mjs",
-     "    if (row) this.ring(row.el);",
-     "    if (row) setTimeout(() => this.ring(row.el));"
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), true);",
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), false);"
     ]
    ],
    "check": {

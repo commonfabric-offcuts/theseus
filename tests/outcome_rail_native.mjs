@@ -1922,21 +1922,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(() => p.evaluate(`document.activeElement?.id==='new-topic-title' && Boolean(document.activeElement.closest('#outline'))`), 'New topic opens its title line in the outline, the focus in it');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('#new-topic-title') && document.activeElement?.id==='new-topic'`), 'Escape closes the line and gives New topic the focus');
-    // A row pressed, then a message: the message takes the pointer's place, and nothing in the rails wears a ring.
-    // The outline may still be reading and drawing again after the line closed, and bringing New topic into view:
-    // the row is pressed once that is done and the row is in view.
-    const t1 = '#outline a[data-topic-id="t1"]';
-    await settled(p, 'the outline has drawn what it read');
-    await until(() => p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector('${t1}'))`), 'the topic\'s row is in view');
-    await press(p, t1);
-    await pressedRow(p, 'topic:t1', 'the topic being read');
-    const shownMessage = await p.evaluate(`[...document.querySelectorAll('#messages .message-card[data-id] > .message-preview')].find(el => el.getClientRects().length && el.getBoundingClientRect().height > 0)?.parentElement.dataset.id ?? null`);
-    assert.ok(shownMessage, 'a message is shown to press');
-    await press(p, `#messages .message-card[data-id="${shownMessage}"] > .message-preview`);
-    await until(() => p.evaluate(`!document.activeElement?.closest('#rail, #things')`), 'the focus leaves the outline');
-    assert.equal((await pressRing(p)).rails, 0, 'nothing in the rails wears a ring');
-    if (await readerOpen(p)) { await p.key('Escape'); await until(async () => !await readerOpen(p), 'Escape closes the Reader'); }
     assert.deepEqual(p.errors, []); await p.close();
+    // A row pressed, then a message: the message takes the pointer's place, and nothing in the rails wears a ring.
+    // On a fresh page, so New topic, at the foot of a long outline, leaves it scrolled nowhere in particular.
+    const q = await open('rail-press-own-row', '/?topic=t1');
+    await settled(q, 'the topic is up again');
+    await press(q, '#outline a[data-topic-id="t1"]');
+    await pressedRow(q, 'topic:t1', 'the topic being read');
+    const shownMessage = await q.evaluate(`[...document.querySelectorAll('#messages .message-card[data-id] > .message-preview')].find(el => el.getClientRects().length && el.getBoundingClientRect().height > 0)?.parentElement.dataset.id ?? null`);
+    assert.ok(shownMessage, 'a message is shown to press');
+    await press(q, `#messages .message-card[data-id="${shownMessage}"] > .message-preview`);
+    await until(() => q.evaluate(`!document.activeElement?.closest('#rail, #things')`), 'the focus leaves the outline');
+    assert.equal((await pressRing(q)).rails, 0, 'nothing in the rails wears a ring');
+    if (await readerOpen(q)) { await q.key('Escape'); await until(async () => !await readerOpen(q), 'Escape closes the Reader'); }
+    assert.deepEqual(q.errors, []); await q.close();
   });
 
   // Items 148 and 320 come last: their outcomes, and the questions left waiting in them,
