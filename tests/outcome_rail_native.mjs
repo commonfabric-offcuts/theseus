@@ -2410,4 +2410,180 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => await keyedAt(p) === 'things:pipeline:?topic=rb-now', 'the keys stay on its row');
     assert.deepEqual(p.errors, []); await p.close();
   });
+
+  // What is new in a Build topic is counted where the person can reach it
+  // (docs/rails.md, "Counts" and "Chips"): the outline has no row for one, so
+  // an open outcome's row counts its Build topics with its Conversation, a
+  // press on that row opens the Conversation beside the right rail that lists
+  // them, and on a phone "Pipeline & pages" carries the count to the sheet.
+  // Each count is read from Core as it stands when the case runs.
+  const buildNews = async (operation, n) => {
+    for (let at = 0; at < n; ++at) await control({ method: 'agent_message', operation_id: `rail-build-news-${operation}-${at}`, sender: BUILD_AGENT, topic_id: 'rb-now', whole_topic: true, body: `News ${operation} ${at}` });
+  };
+  // Core's counts: what is new in each outcome's open Build topics, and in its Conversation.
+  const buildCounts = async id => {
+    const item = (await view('workspaces', {})).items.find(each => each.id === id);
+    const conversation = (await view('conversation', { workspace_id: id })).conversation;
+    return { build: item.build.unread, conversation: conversation?.unread ?? 0 };
+  };
+  // "Pipeline & pages" as drawn: its badge, its name for a screen reader, its size and its edge.
+  const thingsButton = p => p.evaluate(`(()=>{const b=document.getElementById('things-open');if(!b)return null;const badge=b.querySelector('.unread-count'),box=b.getBoundingClientRect();
+    return {shown:b.checkVisibility(),badge:badge&&badge.checkVisibility()?Number(badge.textContent):0,label:b.getAttribute('aria-label'),height:Math.round(box.height),right:Math.round(box.right),
+      width:innerWidth,scroll:document.documentElement.scrollWidth,sum:document.querySelector('#things .things-sec[data-key=pipeline] > summary .sum')?.textContent??null}})()`);
+
+  await check('rail "N new" pressed from another outcome\'s topic counts a Build topic\'s new messages on its outcome\'s row, and a press on that row reaches them in its right rail', async () => {
+    await buildOutcome();
+    await buildNews('chip', 3);
+    const p = await openAt('rail-build-chip', '/?topic=t1', 'laptop', 'light');
+    await settled(p, 'another outcome\'s topic is up');
+    await until(() => p.evaluate(`!document.getElementById('outline-only-new').disabled`), 'something is new');
+    await p.point('#outline-only-new');
+    const want = await buildCounts('rail-build-o');
+    assert.ok(want.build >= 3, `Core counts the Build topic's new messages apart (${JSON.stringify(want)})`);
+    const shown = await until(async () => { const now = await outline(p); return now.outcomes['rail-build-o']?.open && now.outcomes['rail-build-o'].count === want.build + want.conversation && now; },
+      `"N new" shows the outcome open, its row counting its Conversation and its Build topics (${JSON.stringify(want)})`);
+    assert.ok(!shown.outcomes['rail-build-o'].topics.some(row => row.id.startsWith('rb-') && row.id !== 'rb-plain'), 'and still no Build topic among its rows');
+    // Another outcome shown open counts its Conversation alone, its Build topics having nothing new.
+    for (const [id, row] of Object.entries(shown.outcomes)) {
+      if (id === 'rail-build-o' || !row.open) continue;
+      const other = await buildCounts(id);
+      assert.equal(row.count, other.conversation + other.build, `${id}: its row counts its Conversation and its Build topics, once each (${JSON.stringify(other)})`);
+    }
+    const spoken = await p.evaluate(`document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name .sr-only')?.textContent ?? ''`);
+    assert.match(spoken, /its Build topics$/, 'a screen reader hears where they are: ' + spoken);
+    await shot(p, 'rail-build-chip');
+    await p.point('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name');
+    await arrived(p, '?conversation=rail-build-o', null, 'a press on the row opens its Conversation');
+    await settled(p, 'the Conversation is up');
+    const there = await until(async () => { const now = await buildRail(p); return now.rows.find(row => row.id === 'rb-now')?.unread >= 3 && now; }, 'beside it, the right rail lists the Build topic with its new messages');
+    assert.equal(there.rows.reduce((sum, row) => sum + row.unread, 0), want.build, 'the right rail\'s rows hold every one the row counted');
+    assert.equal((await thingsButton(p)).sum, `${there.groups.includes('Now') ? 1 : 0} in Now · ${want.build} new`, 'folded, the Pipeline section would still say what is new');
+    await shot(p, 'rail-build-chip-arrived');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('rail on a phone, on a Build topic\'s outcome, the drawer\'s outcome row counts its Build topics\' new messages and "Pipeline & pages" carries them to their rows; at 320 375 390, light and dark', async () => {
+    await buildOutcome();
+    await buildNews('phone', 2);
+    const want = await buildCounts('rail-build-o');
+    assert.ok(want.build >= 2, JSON.stringify(want));
+    for (const size of [390, 375, 320]) for (const theme of ['light', 'dark']) {
+      const at = `${size} ${theme}`;
+      const p = await openAt(`rail-build-phone-${size}-${theme}`, '/?conversation=rail-build-o', size, theme);
+      await settled(p, at + ': the Conversation is up');
+      const button = await until(async () => { const now = await thingsButton(p); return now?.badge === want.build && now; }, at + ': "Pipeline & pages" carries the Build topics\' count');
+      assert.equal(button.label, `Pipeline & pages, ${want.build} new in Build topics`, at + ': and says so to a screen reader');
+      assert.ok(button.height >= 44 && button.right <= button.width && button.scroll <= button.width, `${at}: it is 44px to touch, inside the page, with no sideways scroll (${JSON.stringify(button)})`);
+      await shot(p, `rail-build-phone-${size}-${theme}`);
+      await tap(p, '#rail-open');
+      await until(async () => (await drawer(p)).open, at + ': the drawer opens');
+      const row = await until(async () => { const now = (await outline(p)).outcomes['rail-build-o']; return now?.open && now.count === want.build + want.conversation && now; }, at + ': the outcome\'s row counts its Build topics with its Conversation');
+      assert.ok(!row.topics.some(each => ['rb-now', 'rb-review', 'rb-wait'].includes(each.id)), at + ': and lists none of them');
+      await shot(p, `rail-build-phone-drawer-${size}-${theme}`);
+      await p.key('Escape');
+      await until(async () => !(await drawer(p)).open, at + ': Escape closes the drawer');
+      await tap(p, '#things-open');
+      await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open')"), at + ': "Pipeline & pages" opens the right rail');
+      await settledMotion(p);
+      const rail = await until(async () => { const now = await buildRail(p); return !now.busy && now.rows.length === 3 && now; }, at + ': the sheet lists the Build topics');
+      assert.equal(rail.rows.reduce((sum, each) => sum + each.unread, 0), want.build, at + ': its rows hold what the button counted');
+      assert.match((await thingsButton(p)).sum, new RegExp(` · ${want.build} new$`), at + ': and the Pipeline section says it');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Where no Build topic holds anything new, "Pipeline & pages" carries no count.
+    const quiet = await openAt('rail-build-phone-quiet', '/?conversation=w1', 390, 'light');
+    await settled(quiet, 'another outcome\'s Conversation is up');
+    assert.equal((await buildCounts('w1')).build, 0);
+    await until(async () => (await outline(quiet)).outcomes.w1?.open, 'the outline has read the outcomes');
+    const none = await thingsButton(quiet);
+    assert.deepEqual([none.badge, none.label], [0, null], 'no count, and no words for one');
+    assert.deepEqual(quiet.errors, []); await quiet.close();
+  });
+
+  // More topics (docs/rails.md, Pipeline): an outcome with more Build topics
+  // than a page, each piece done, so every one is among Other Build topics.
+  const MANY = 23;
+  let manyMade = null;
+  const manyOutcome = () => (manyMade ??= (async () => {
+    const pipe = (operation, kind, target, args) => control({ method: 'pipeline', kind, operation_id: 'rail-many-' + operation, target, workspace_id: 'rail-many-o', args });
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: 'rail-many-o', title: 'Many Build topics', team: [BUILD_AGENT] }] });
+    await control({ method: 'navigation_topics', topics: Array.from({ length: MANY }, (_, n) => ({ id: `rm-${String(n).padStart(2, '0')}`, title: `Built ${n}`, workspace_id: 'rail-many-o' })) });
+    await pipe('on', 'pipeline.configure', { workspace_id: 'rail-many-o' }, { enabled: true });
+    await pipe('stages', 'pipeline.stages_set', { workspace_id: 'rail-many-o' }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    for (let n = 0; n < MANY; ++n) {
+      const topic = `rm-${String(n).padStart(2, '0')}`;
+      const { result: { number } } = await pipe('item-' + topic, 'pipeline.item_add', { workspace_id: 'rail-many-o' }, { title: 'Item for ' + topic, section: 'now', size: 'small', sources: [{ note: 'the check' }] });
+      const { result: { piece_id } } = await pipe('start-' + topic, 'pipeline.piece_start', { workspace_id: 'rail-many-o' }, { numbers: [number], topic_id: topic, stage_id: 'build' });
+      await pipe('finish-' + topic, 'pipeline.piece_finish', { piece_id }, {});
+    }
+  })());
+  const moreTopics = p => p.evaluate(`(()=>{const b=[...document.querySelectorAll('#things .things-sec[data-key=pipeline] .things-more')].find(e=>e.checkVisibility());
+    return b?{text:b.textContent,height:Math.round(b.getBoundingClientRect().height)}:null})()`);
+
+  await check('rail More topics in the right rail brings 20 more Build topics, and Return on it hands the keys to the first one it brought; a tap on a phone brings them too', async () => {
+    await manyOutcome();
+    const order = (await view('workspace_topics', { workspace_id: 'rail-many-o', build: true, limit: MANY })).items.map(item => item.id);
+    assert.equal(order.length, MANY, 'Core lists every Build topic');
+    const p = await openAt('rail-many-keys', '/?conversation=rail-many-o', 'laptop', 'light');
+    await settled(p, 'the Conversation is up');
+    const first = await until(async () => { const now = await buildRail(p); return !now.busy && now.rows.length === 20 && now; }, 'the right rail lists the first 20 Build topics');
+    assert.deepEqual(first.rows.map(row => row.id), order.slice(0, 20), 'in Core\'s order');
+    assert.equal((await moreTopics(p))?.text, 'More topics', 'and offers More topics');
+    await p.key('ArrowRight');
+    assert.match(await keyedAt(p), /^things:/, '→ from the page goes to the right rail');
+    await p.key('Home');
+    const rows = await p.evaluate("[...document.querySelectorAll('#things [role=treeitem]')].filter(e=>e.checkVisibility()).length");
+    for (let n = 0; n < rows && await keyedAt(p) !== 'things:pipeline:More topics'; ++n) await p.key('ArrowDown');
+    assert.equal(await keyedAt(p), 'things:pipeline:More topics', '↓ reaches More topics');
+    await p.key('Enter');
+    const all = await until(async () => { const now = await buildRail(p); return now.rows.length === MANY && now; }, 'Return brings the rest');
+    assert.deepEqual(all.rows.map(row => row.id), order, 'every Build topic, once, in Core\'s order');
+    await until(async () => await keyedAt(p) === `things:pipeline:?topic=${order[20]}`, 'the keys are on the first row it brought');
+    assert.equal(await moreTopics(p), null, 'and with none left, no More topics');
+    await shot(p, 'rail-many-more');
+    assert.deepEqual(p.errors, []); await p.close();
+    // On a phone, by touch.
+    const t = await openAt('rail-many-tap', '/?conversation=rail-many-o', 320, 'dark');
+    await settled(t, '320: the Conversation is up');
+    await tap(t, '#things-open');
+    await until(() => t.evaluate("document.documentElement.hasAttribute('data-things-open')"), '320: the right rail opens');
+    await settledMotion(t);
+    await until(async () => (await buildRail(t)).rows.length === 20, '320: the first 20');
+    const more = await moreTopics(t);
+    assert.ok(more && more.height >= 44, `320: More topics is 44px to touch (${JSON.stringify(more)})`);
+    await t.evaluate("document.querySelector('#things .things-sec[data-key=pipeline] .things-more').scrollIntoView({block:'center'})");
+    await tap(t, '#things .things-sec[data-key=pipeline] .things-more');
+    await until(async () => (await buildRail(t)).rows.length === MANY, '320: a tap brings the rest');
+    await shot(t, 'rail-many-more-320-dark');
+    assert.deepEqual(t.errors, []); await t.close();
+    // An outcome with fewer Build topics than a page offers no More topics.
+    await buildOutcome();
+    const few = await openAt('rail-many-few', '/?conversation=rail-build-o', 'laptop', 'light');
+    await settled(few, 'the outcome with three Build topics is up');
+    await until(async () => (await buildRail(few)).rows.length === 3, 'its three Build topics');
+    assert.equal(await moreTopics(few), null, 'no More topics');
+    assert.deepEqual(few.errors, []); await few.close();
+  });
+
+  await check('rail a Build topic waiting on the reader opens at the question from its row in the right rail, and one waiting on nobody opens at the topic', async () => {
+    await buildOutcome();
+    const listed = (await view('workspace_topics', { workspace_id: 'rail-build-o', build: true, limit: 10 })).items;
+    const ask = listed.find(item => item.id === 'rb-wait').asks.find(each => each.actor_id === facts.actor)?.message_id;
+    assert.ok(ask, 'Core says rb-wait waits on the reader\'s answer');
+    const p = await openAt('rail-build-question', '/?conversation=rail-build-o', 'laptop', 'light');
+    await settled(p, 'the Conversation is up');
+    await until(async () => (await buildRail(p)).rows.length === 3, 'the right rail lists the Build topics');
+    const hrefs = Object.fromEntries(await p.evaluate(`[...document.querySelectorAll('#things .things-sec[data-key=pipeline] .pipe-builds a.row')].map(a=>{const q=new URLSearchParams(a.getAttribute('href'));return [q.get('topic'),q.get('message')]})`));
+    assert.deepEqual(hrefs, { 'rb-now': null, 'rb-review': null, 'rb-wait': ask }, 'the row waiting on the reader names the question; the others name none');
+    await p.point('#things .pipe-builds a.row[href*="topic=rb-wait"]');
+    const reader = await until(async () => { const seen = await p.evaluate(`(r=>({open:r.open,text:r.textContent,topic:new URL(location.href).searchParams.get('topic')}))(document.querySelector('#reader'))`); return seen.open && seen.topic === 'rb-wait' && seen; }, 'a press opens the topic with the question in the Reader');
+    assert.match(reader.text, /Which one should ship first\?/, 'the question itself');
+    await shot(p, 'rail-build-question');
+    await p.key('Escape');
+    await until(() => p.evaluate(`!document.querySelector('#reader').open`), 'Escape closes the Reader');
+    await p.point('#things .pipe-builds a.row[href*="topic=rb-review"]');
+    await arrived(p, '?topic=rb-review', 'Built and live', 'a row waiting on nobody opens its topic');
+    assert.equal(await p.evaluate(`document.querySelector('#reader').open`), false, 'with no Reader over it');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
 }

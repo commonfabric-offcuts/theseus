@@ -67,6 +67,9 @@ said, and for a reader outside a person's whisper that reopened the topic
   false` and the right rail with `build: true` (docs/rails.md); the CLI asks
   without it. Finding the Build topics reads the outcome's pieces, which the
   page's cost then follows as well as its own size.
+- Asked with `build: true`, the answer also carries `builds: {unread,
+  addressed}`: what all the outcome's open Build topics hold for the reader,
+  not only the page's, so the right rail's Pipeline heading counts them.
 - Each list is ordered by `activity_ms`, latest first, and then by topic id,
   descending, so topics with the same time keep one order.
 - `next_cursor` is the position of the page's last topic, written

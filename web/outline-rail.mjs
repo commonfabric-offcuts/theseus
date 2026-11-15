@@ -3,8 +3,9 @@
 // so what is new anywhere shows at a glance. An outcome's row is its light,
 // its name and where it stands, and the whole row opens its Conversation and
 // its topics (Opened tidies every other away); folded, it carries
-// the count of everything new inside it; open, its own row counts only its
-// Conversation, since each topic shows its own. The topic rows are today's
+// the count of everything new inside it; open, its own row counts its
+// Conversation and its Build topics (the right rail's), since each topic row
+// under it shows its own. The topic rows are today's
 // (TopicRail): unread counts, the work ring, Waiting on you and Ready for
 // review, Done (N) and Archived (N), in the server's order; an outcome's Build
 // topics not yet Done are the right rail's, never listed here too (item 297). Each outcome ends
@@ -46,11 +47,17 @@ const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
 export const asksIn = item => item?.light?.light === 'waiting' && item.light.short?.kind === 'asks' ? count(item.light.short.count) : 0;
 // What an outcome's row counts: folded, everything new inside it, the part
-// sent by name and its questions; open, only its Conversation's, since each
-// topic row shows its own.
+// sent by name and its questions; open, what has no row of its own under it:
+// its Conversation's, and its Build topics', which the right rail lists in
+// place of the outline (item 297; Core counts them apart, item.build). Each
+// topic row under it shows its own.
 export function rowCount(item, { open = false, conversation = null } = {}) {
   if (!open) return { unread: count(item?.unread), addressed: count(item?.addressed) };
-  return { unread: count(conversation?.unread), addressed: count(conversation?.addressed) };
+  return { unread: count(conversation?.unread) + count(item?.build?.unread), addressed: count(conversation?.addressed) + count(item?.build?.addressed) };
+}
+// The words a screen reader hears after an open outcome's count: where what it counts is.
+export function countedWhere(item, conversation) {
+  return [count(conversation?.unread) ? 'its Conversation' : '', count(item?.build?.unread) ? 'its Build topics' : ''].filter(Boolean).join(' and ');
 }
 // Everything new and every question waiting, across every outcome listed.
 export function totals(items) {
@@ -603,13 +610,13 @@ export class OutlineRail {
       const counted = rowCount(item, { open, conversation: outcome.conversation });
       // Open, the row stands for its Conversation as the side rail's row did: its work ring, and Waiting on you.
       const own = open && outcome.conversation ? { waiting: waitsOnReader(outcome.conversation, this.handles?.bootstrap.actor).length > 0, work: Boolean(outcome.conversation.work?.observed) } : null;
-      const said = JSON.stringify([item.title, item.title_truncated, counted, item.light, open, own]);
+      const said = JSON.stringify([item.title, item.title_truncated, counted, open && countedWhere(item, outcome.conversation), item.light, open, own]);
       if (outcome.said !== said) {
         outcome.said = said;
         outcome.title.textContent = item.title + (item.title_truncated ? '…' : '');
         paintUnread(outcome.title, { ...counted, unread: counted.unread });
         const spoken = outcome.title.querySelector('.sr-only');
-        if (spoken && open && counted.unread) spoken.textContent += ' in its Conversation';
+        if (spoken && open && counted.unread) spoken.textContent += ' in ' + countedWhere(item, outcome.conversation);
         if (item.provisional) outcome.standing.replaceChildren(); else paintRowLight(outcome.standing, item.light);
         // The light leads the name; its words stay on the line under it.
         const lamp = outcome.standing.querySelector('.outcome-light');
@@ -659,6 +666,16 @@ export class OutlineRail {
       }
       badge.textContent = String(sum.fresh); badge.hidden = !sum.fresh; lamp.hidden = !sum.waiting;
       control.setAttribute('aria-label', ['Outcomes', sum.fresh ? `${sum.fresh} new` : '', sum.waiting ? `${sum.waiting} waiting on you` : ''].filter(Boolean).join(', '));
+    }
+    // "Pipeline & pages" (the right rail's, things-rail.mjs) carries what is new in
+    // the outcome's Build topics, which only the right rail lists (item 297).
+    const things = doc.getElementById('things-open');
+    if (things) {
+      const fresh = count(items.find(item => item.id === this.here)?.build?.unread);
+      let badge = things.querySelector('.unread-count');
+      if (!badge) { badge = element(doc, 'span', { className: 'unread-count' }); badge.setAttribute('aria-hidden', 'true'); things.append(badge); }
+      badge.textContent = String(fresh); badge.hidden = !fresh;
+      if (fresh) things.setAttribute('aria-label', `Pipeline & pages, ${fresh} new in Build topics`); else things.removeAttribute('aria-label');
     }
     const line = doc.getElementById('outline-elsewhere');
     if (line) {

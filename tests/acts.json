@@ -13991,6 +13991,180 @@
     "native": "rail",
     "case": "the keys reach a Build topic from the right rail"
    }
+  },
+  {
+   "item": 297,
+   "act": "The outcomes list counts what is new in an outcome's open Build topics apart, for its row in the outline",
+   "break": [
+    [
+     "aim_next/store.py",
+     "build = self._build_counts(counts, self._open_build_topics(db, row[\"id\"]))",
+     "build = {\"unread\": 0, \"addressed\": 0}"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic marked Done adds nothing to the Build topics' count",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "AND state!='done'",
+     "AND 1"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Build topics list counts what is new in all of them, not only its page",
+   "break": [
+    [
+     "aim_next/store.py",
+     "answer[\"builds\"] = self._build_counts(self._unread(db, actor, topics=sorted(open_builds)), open_builds)",
+     "answer[\"builds\"] = self._build_counts(self._unread(db, actor, topics=[item[\"id\"] for item in items]), open_builds)"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "An open outcome's row counts its Build topics with its Conversation",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "return { unread: count(conversation?.unread) + count(item?.build?.unread), addressed: count(conversation?.addressed) + count(item?.build?.addressed) };",
+     "return { unread: count(conversation?.unread), addressed: count(conversation?.addressed) };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "\"N new\" pressed from another outcome shows a Build topic's new messages on its outcome's row, and the row leads to them",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "return { unread: count(conversation?.unread) + count(item?.build?.unread), addressed: count(conversation?.addressed) + count(item?.build?.addressed) };",
+     "return { unread: count(conversation?.unread), addressed: count(conversation?.addressed) };"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic's new messages on its outcome's row"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A screen reader hears that an open outcome's count is in its Build topics",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "count(item?.build?.unread) ? 'its Build topics' : ''",
+     "''"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "On a phone, \"Pipeline & pages\" carries what is new in the outcome's Build topics",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "badge.textContent = String(fresh); badge.hidden = !fresh;",
+     "badge.textContent = String(fresh); badge.hidden = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "on a phone, on a Build topic's outcome, the drawer"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Pipeline heading says what is new in the Build topics, folded or not",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "items.fresh ? `${items.fresh} new` : ''",
+     "''"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic's new messages on its outcome's row"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail reads the Build topics a page at a time, as many as the person asked for",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "build: true, limit: Math.max(1, Math.min(most, want - items.length)), cursor });",
+     "build: true, limit: most, cursor });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "More topics in the right rail brings 20 more Build topics",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (items.more) {\n",
+     "      if (false) {\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "More topics in the right rail brings 20 more"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Return on More topics hands the keys to the first Build topic it brought",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) builtFrom.focus();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "More topics in the right rail brings 20 more"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic waiting on the reader opens at the question from its right-rail row",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "...(row.item && questionOf(row.item, reader) ? { message: questionOf(row.item, reader) } : {}) }, row.title);",
+     "}, row.title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic waiting on the reader opens at the question"
+   }
   }
  ]
 }

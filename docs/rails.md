@@ -46,13 +46,20 @@ outcome's own page, its pipeline) list every topic, since they have no right
 rail.
 
 - **Counts.** A folded outcome counts everything new inside it, and what was
-  sent to the reader by name. An open outcome counts only its Conversation,
-  because each topic under it shows its own count. Both counts come from the
-  `workspaces` and `conversation` views and change as the live feed
-  announces each commit.
+  sent to the reader by name. An open outcome counts what has no row under
+  it: its Conversation, and its Build topics, which the right rail lists in
+  place of the outline. Each topic under it shows its own count. A screen
+  reader hears where the count is ("in its Conversation and its Build
+  topics"). The counts come from the `workspaces` view (its `build` part
+  counts the open Build topics apart, docs/workspaces-query.md) and the
+  `conversation` view, and change as the live feed announces each commit. A
+  press on the outcome's row opens its Conversation, beside the right rail
+  that lists those Build topics with their counts; on a phone and at middle
+  widths "Pipeline & pages" carries their count to it.
 - **Chips.** "N new" and "N waiting on you" at the top add up every outcome
   listed. Pressing one shows only the outcomes, and in them only the topics,
-  that hold what it counts. Pressing it again shows everything.
+  that hold what it counts; what is new in an outcome's Build topics is on
+  its row, as above. Pressing it again shows everything.
 - **Open and folded.** The outline tidies itself. Outcomes are folded, with
   their counts and Waiting on you rolled up into their rows, but for the one
   being read, whose topics show. Arriving anywhere, by a press on a row,
@@ -115,10 +122,14 @@ says so in one quiet line.
   for review…), the work ring, and the mark of the topic being read; one that
   waits on the reader opens at the question, as in the outline. The Build
   topics show on a topic as on its Conversation, since they stand in for the
-  outline's rows; Live and Next are the outcome's alone. It lists 20 Build
-  topics, and More topics brings 20 more. The keys reach each row like any
-  other in the rail, and Return on one opens its topic in place with the keys
-  staying on its row.
+  outline's rows; Live and Next are the outcome's alone. Its heading says
+  how many messages in all the Build topics are new to the reader ("1 in Now
+  · 3 new", from `workspace_topics`' `builds`), so a folded section still
+  shows it. It lists 20 Build topics, and More topics brings 20 more; Return
+  on More topics hands the keys to the first topic it brought. The keys reach
+  each row like any other in the rail, and Return on one opens its topic in
+  place with the keys staying on its row. Below 1181px, "Pipeline & pages"
+  carries the same count.
 - **Waiting for…** is the Now and Next items the reader raised, at their
   stage, and the reader's Conversation posts nobody has taken up yet.
 - **Notebook pages** come from `memory_items`: the topic's own pages on a

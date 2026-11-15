@@ -246,6 +246,20 @@ class Pipeline:
             return set()
         return {row[0] for row in db.execute("SELECT DISTINCT topic_id FROM pipeline_pieces WHERE workspace_id=?", (workspace_id,))}
 
+    def _open_build_topics(self, db, workspace_id):
+        """The outcome's Build topics the right rail lists (item 297): the ones neither Done nor archived, the Conversation
+        never among them, since it has its own row. The outline shows none of them, so their counts are told apart."""
+        builds = self._build_topics(db, workspace_id)
+        if not builds:
+            return set()
+        return {row[0] for row in db.execute("SELECT id FROM topics WHERE id IN (SELECT value FROM json_each(?)) AND kind='topic' AND archived=0 "
+                                             "AND state!='done'", (json.dumps(sorted(builds)),))}
+
+    def _build_counts(self, counts, builds):
+        """{unread, addressed} summed over the Build topics given, from _unread's {topic_id: [unread, addressed, workspace_id]}."""
+        found = [counts[topic] for topic in builds if topic in counts]
+        return {"unread": sum(entry[0] for entry in found), "addressed": sum(entry[1] for entry in found)}
+
     def _steerer(self, db, actor, workspace_id, coordinator=True):
         """The workspace, when the actor is its owner (or, with coordinator, its coordinator)."""
         workspace = self._workspace(db, actor, workspace_id)

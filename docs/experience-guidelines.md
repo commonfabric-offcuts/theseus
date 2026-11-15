@@ -197,6 +197,12 @@ nothing scrolls sideways, and nothing depends on hover.
   paging workspace denial retry and narrow touch targets".
 - `tests/reader_openings_native.mjs` (`native-openings`): "openings 390px touch
   an opening types adds a participant saves and sends by tap".
+- `tests/outcome_rail_native.mjs` (`native-rail`): "rail on a phone, on a Build
+  topic's outcome, the drawer's outcome row counts its Build topics' new
+  messages and "Pipeline & pages" carries them to their rows; …" and "rail More
+  topics in the right rail brings 20 more Build topics, …", at 320, 375 and
+  390 in both themes: what is new where the outline has no row is counted on a
+  control a finger can reach ([rails.md](rails.md), "Counts").
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).

@@ -419,20 +419,22 @@ export class ThingsRail {
     if (now.pipeline === null) return null;
     const next = await view('pipeline', { workspace_id: workspace, section: 'next', limit: 20 });
     // A pipeline that is on has Build topics (item 297); Core lists none for one that is off.
-    const builds = now.pipeline?.enabled ? await this.readBuilds(view, workspace) : { items: [], next: null };
+    const builds = now.pipeline?.enabled ? await this.readBuilds(view, workspace) : { items: [], next: null, fresh: 0 };
     return { now, next, builds };
   }
   // The outcome's Build topics not Done, from the first, as many as the
   // person has asked for (BUILD_PAGE, and as many again for each More topics),
-  // in Core's pages and order; next says whether there are more.
+  // in Core's pages and order; next says whether there are more, and fresh
+  // how many messages in all of them are new to the reader (Core's builds).
   async readBuilds(view, workspace) {
     const items = [], want = this.buildWant, most = this.handles?.pageMax ?? BUILD_PAGE;
-    let cursor = '';
+    let cursor = '', fresh = 0;
     do {
       const answer = await view('workspace_topics', { workspace_id: workspace, build: true, limit: Math.max(1, Math.min(most, want - items.length)), cursor });
       items.push(...(answer.items ?? [])); cursor = answer.next_cursor ?? null;
+      fresh = Number.isSafeInteger(answer.builds?.unread) && answer.builds.unread > 0 ? answer.builds.unread : 0;
     } while (cursor !== null && items.length < want);
-    return { items, next: cursor };
+    return { items, next: cursor, fresh };
   }
   // Each section's words, drawn only when they change, so the pointer's hover
   // and focus stay where they were. A section takes its kept fold as it
@@ -488,7 +490,7 @@ export class ThingsRail {
     const pieceTopic = new Map();
     for (const piece of now.pieces ?? []) for (const number of piece.items ?? []) pieceTopic.set(number, piece.topic?.id ?? null);
     const withTopic = item => ({ ...item, pieceTopic: pieceTopic.get(item.number) ?? null });
-    return { live: now.facts?.live ?? null, rows: buildRows(now.pieces, builds?.items, titles), more: (builds?.next ?? null) !== null, builds: builds?.items ?? [],
+    return { live: now.facts?.live ?? null, rows: buildRows(now.pieces, builds?.items, titles), more: (builds?.next ?? null) !== null, builds: builds?.items ?? [], fresh: builds?.fresh ?? 0,
       now: (now.items ?? []).map(withTopic), next: (next.items ?? []).map(withTopic), title: now.pipeline?.title ?? 'Pipeline' };
   }
   // The pipeline, and in it the outcome's Build topics (item 297): the outline
@@ -502,7 +504,8 @@ export class ThingsRail {
     const marks = row => row.item ? [row.item.title, row.item.unread, row.item.addressed, row.item.state, row.item.waiting_on, row.item.asks, row.item.state_note, row.item.work] : null;
     const said = rows => rows.map(row => [row.title, row.topic, row.stage ?? null, row.since ?? null, marks(row), row.topic === here]);
     const key = JSON.stringify(['pipe', items.live, said(now), said(review), said(other), items.more, next.map(item => [item.number, item.title])]);
-    const sum = found.byTopic ? (now.find(row => row.topic === here)?.stage ?? '') : `${now.length} in Now`;
+    // Folded, the section still says what is new in its Build topics, which no other list shows.
+    const sum = [found.byTopic ? (now.find(row => row.topic === here)?.stage ?? '') : `${now.length} in Now`, items.fresh ? `${items.fresh} new` : ''].filter(Boolean).join(' · ');
     // A Build topic's row: its title and what the outline's row would carry after it, then the line under it.
     const topicRow = (row, sub = null) => {
       if (!row.topic) return element(doc, 'span', { className: 'row' }, row.title, sub);

@@ -620,7 +620,8 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                                    "WHERE m.actor_id=?", (actor,)).fetchone()[0]
 
         totals = {}
-        for unread, addressed, workspace_id in self._unread(db, actor, workspaces=[row["id"] for row in rows[:limit]]).values():
+        counts = self._unread(db, actor, workspaces=[row["id"] for row in rows[:limit]])
+        for unread, addressed, workspace_id in counts.values():
             total = totals.setdefault(workspace_id, [0, 0])
             total[0] += unread
             total[1] += addressed
@@ -628,13 +629,16 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         def item(row):
             title, truncated = _prefix(row["title_prefix"])
             unread, addressed = totals.get(row["id"], (0, 0))
+            # The part of them in its open Build topics (item 297), which the outline shows on the outcome's row, since
+            # the right rail, not the outline, lists those topics.
+            build = self._build_counts(counts, self._open_build_topics(db, row["id"]))
             # Where the outcome stands for this reader (item 86, docs/outcome-light.md).
             facts = self._kind_facts(db, row)
             # Its conversation, so a press on it can open that (null for one made before version 28 and not yet started).
             conversation = self._conversation_of(db, row["id"])
             return {"id": row["id"], "owner_id": row["owner_id"], "title": title, "conversation_id": conversation["id"] if conversation else None,
                     "title_truncated": truncated, "version": row["version"],
-                    "unread": unread, "addressed": addressed, "kind": facts["kind"],
+                    "unread": unread, "addressed": addressed, "build": build, "kind": facts["kind"],
                     "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
                     "light": self._outcome_stands(db, actor, row)["light"]}
         # The person's own order of their outcomes, on every page (outline_order.py).
@@ -814,8 +818,13 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                                      (workspace["id"],)).fetchone()[0],
                   "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1",
                                          (workspace["id"],)).fetchone()[0]}
-        return {"instance_id": self.instance_id, "items": items, "groups": groups,
-                "next_cursor": order_cursor(last["state"] == "done", last["activity_ms"], last["id"]) if len(rows) > limit else None,
-                # The person's own order of this outcome's topics, on every page (outline_order.py).
-                "order": self._outline_order(db, actor, workspace["id"]),
-                "relevant_versions": {"workspace": workspace["version"]}}
+        answer = {"instance_id": self.instance_id, "items": items, "groups": groups,
+                  "next_cursor": order_cursor(last["state"] == "done", last["activity_ms"], last["id"]) if len(rows) > limit else None,
+                  # The person's own order of this outcome's topics, on every page (outline_order.py).
+                  "order": self._outline_order(db, actor, workspace["id"]),
+                  "relevant_versions": {"workspace": workspace["version"]}}
+        if build:
+            # What all the open Build topics hold for the reader, not only this page's, for the count the right rail's Pipeline shows.
+            open_builds = self._open_build_topics(db, workspace["id"])
+            answer["builds"] = self._build_counts(self._unread(db, actor, topics=sorted(open_builds)), open_builds)
+        return answer

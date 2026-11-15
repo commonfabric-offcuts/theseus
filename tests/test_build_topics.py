@@ -99,6 +99,41 @@ class BuildTopicsCase(PipelineCase):
                 # Refused for what build may be, not as an argument the view does not know.
                 self.assertIn("build", answer["error"]["message"].lower(), answer)
 
+    def build_count(self, actor="owner"):
+        items = self.store.view(actor, "workspaces", {})["items"]
+        return next(item for item in items if item["id"] == "w1")["build"]
+
+    def test_the_outcomes_list_and_the_build_list_count_what_is_new_in_the_open_build_topics_apart(self):
+        # The outline shows no Build topic's row (docs/rails.md, "Counts"), so the outcome's item says what they hold.
+        self.topic("t2", "Plain talk")
+        self.topic("t3", "Built too")
+        self.add("Now 2", section="now", size="small")
+        self.committed(self.start(numbers=(1,), topic="t1"))
+        self.committed(self.start(numbers=(2,), topic="t3"))
+        self.post("Built the first part", topic="t1")
+        self.post("This one is for you", topic="t1", addressees=["owner"], intent="tell")
+        self.post("Built the other part", topic="t3")
+        self.post("Plain words", topic="t2")
+        item = next(item for item in self.store.view("owner", "workspaces", {})["items"] if item["id"] == "w1")
+        self.assertEqual(item["build"], {"unread": 3, "addressed": 1}, "the Build topics' three, one sent by name")
+        self.assertGreaterEqual(item["unread"], 4, "the outcome's own count holds them all, the plain topic's too")
+        # The right rail's list carries the same, for all the open Build topics, not only its page.
+        answer = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True, "limit": 1})
+        self.assertEqual((len(answer["items"]), answer["builds"]), (1, {"unread": 3, "addressed": 1}))
+        self.assertNotIn("builds", self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": False}), "the outline's list counts its own rows")
+        # Each reader their own: agent-b was sent nothing.
+        self.assertEqual(self.build_count("agent-b")["addressed"], 0)
+        # Done, the topic is in the outline's Done list, and its messages are no Build topic's.
+        self.say("t1", state="done")
+        self.assertEqual(self.build_count(), {"unread": 1, "addressed": 0}, "only the other Build topic's")
+        self.say("t1", state="active")
+        self.assertEqual(self.build_count(), {"unread": 3, "addressed": 1}, "reopened, they are again")
+        self.committed(self.on(enabled=False))
+        self.assertEqual(self.build_count(), {"unread": 0, "addressed": 0}, "off, no topic is a Build topic")
+        self.committed(self.on())
+        self.say("t1", archived=True)
+        self.assertEqual(self.build_count(), {"unread": 1, "addressed": 0}, "archived, it is under Archived")
+
     def test_an_outcome_without_a_pipeline_lists_its_topics_as_before(self):
         self.committed(self.start(numbers=(1,), topic="t1"))
         self.committed(self.on(enabled=False))
