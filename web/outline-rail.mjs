@@ -23,7 +23,9 @@
 // between the rows, Return opens one, ⌘→ ⌘← open and fold an outcome, → and
 // ← take the tree's steps and then move to the messages (panes.mjs); → on an
 // open outcome goes straight to the messages. ⌘Return starts a new message
-// in the row's topic, or in the outcome's Conversation.
+// in the row's topic, or in the outcome's Conversation. A click or a tap on a
+// row selects it as the keys do (item 462): the keys stay on it, ringed, as
+// its place opens.
 //
 // Which outcome is being read, which topic is open and whose list sits under
 // it come from the run of the page that is up, and from nothing before it.
@@ -124,7 +126,7 @@ export class OutlineRail {
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     this.reload = reloader(() => this.load());
     this.build();
-    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
+    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true });
     // ⇧⌘→ and ⇧⌘← open and fold every outcome from anywhere in the outline:
     // its rows (the tree hears those), its chips, New outcome or its Keys.
     this.host.addEventListener('keydown', event => {
@@ -323,8 +325,8 @@ export class OutlineRail {
     // when they are open and opens them when folded (item 320), and that
     // choice holds through the move; Return, the keys' press, opens the
     // Conversation with its topics as before (⌘→ and ⌘← fold), and the outline
-    // tidies itself as on any arrival. The focus goes where any press in the
-    // outline puts it: the heading of the page reached, or of the page it stayed on.
+    // tidies itself as on any arrival. The keys stay on the name, as after any
+    // press on a row of the outline (key-tree.mjs, in-place-navigation.mjs).
     name.onclick = async event => {
       if (!plainClick(event)) return;
       event.preventDefault();
@@ -340,8 +342,11 @@ export class OutlineRail {
     return outcome;
   }
   async openQuestion(outcome) {
-    if (outcome.waiting.disabled) return;
-    outcome.waiting.disabled = true;
+    // One read at a time. A busy flag, not disabled: disabling the button would
+    // take the focus off it, and the Reader the question opens in gives the
+    // focus back to what had it (item 462: the keys stay on the row pressed).
+    if (outcome.asking) return;
+    outcome.asking = true;
     const run = this.run;
     try {
       const answer = await this.read('outcome_light', {workspace_id:outcome.id}, 'foreground');
@@ -355,7 +360,7 @@ export class OutlineRail {
       await this.open(questionTarget(ask), ask.title);
     } catch (error) {
       this.message.textContent = readFailure(error).message; this.message.hidden = false;
-    } finally { outcome.waiting.disabled = false; }
+    } finally { outcome.asking = false; }
   }
   // Opens or folds one outcome from the keys, until the next place tidies it (Opened).
   setOpen(outcome, open) {
@@ -485,6 +490,12 @@ export class OutlineRail {
   // The keys come to the outline, on the row they were last on; coming back
   // from the messages (reading), on the row of the place being read.
   focus({ reading = false } = {}) { return this.tree.focus(reading ? row => row.el.getAttribute('aria-current') === 'page' : null); }
+  // The phone's drawer opens (rail-drawer.mjs): on the outline's own place, ringed while the person's choice stands.
+  drawerOpened() { return this.tree.show(); }
+  // A move begins (in-place-navigation.mjs): one begun from elsewhere than the
+  // outline (from: what a press was on, the focus for a key, null for back and
+  // forward) leaves the row chosen there no longer the person's last choice.
+  leaving(from) { if (!this.host.contains(from)) this.tree.away(); }
   // The outline's own topic lists for an outcome (TopicRail, as the side rail
   // drew them), made the first time they are wanted.
   ownRail(outcome) {

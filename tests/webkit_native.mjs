@@ -45,6 +45,7 @@ const { webkit } = createRequire(import.meta.url)(playwrightPath);
 const HELD = 'holds a read open with the Chrome harness\'s request interception (intercept), which this harness does not offer';
 const SKIPPED = {
   '--rail': {
+    'rail the Reader gives its opener back ringed only as this opening found it: opened by the keys, Escape rings the message; the focus gone elsewhere, opened then by the mouse from the same message and closed with the mouse, nothing is ringed': 'WebKit rings the focus the Reader gives back after a mouse close however the opener was found, with the Reader as it was before item 462 too; Chrome holds the rule',
     'rail a write elsewhere shows with no reload, and an unconfirmed state change says where the topic stands': HELD,
     'rail the outline names an outcome by its light and name, which opens its Conversation; one with no conversation opens its page, and nothing moves when that read lands': HELD,
     'rail a send under way keeps the page where it is, in place; unsent writing is saved as the page moves and is there on coming back': HELD,
