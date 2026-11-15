@@ -14816,6 +14816,280 @@
     "native": "health",
     "case": "release from a merged train"
    }
+  },
+  {
+   "item": 483,
+   "act": "A screenshot that gets no answer, from a page that stopped answering, fails its case at its own bound instead of holding the step until the job is cancelled",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "const timer = timers.set(",
+     "const timer = method === 'Page.captureScreenshot' ? undefined : timers.set("
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A browser command that gets no answer fails naming its method, the page it was sent to and its bound",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "reject(Error(`CDP timed out: ${method}${where}, no answer in ${seconds(bound)}`));",
+     "reject(Error(`CDP timed out: ${method}`));"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A fixture control or a view read from the fixture's server that gets no answer fails its case at its bound, naming it",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "    timer = timers.set(() => { onTimeout();",
+     "    timer = undefined && timers.set(() => { onTimeout();"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case's start, with its time, is on the step's log before the case runs, so a run cancelled mid-case shows which case was running and since when",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "started: name => { const started = now().toISOString(); out(JSON.stringify({ case: name, started }) + '\\n'); return started; },",
+     "started: name => now().toISOString(),"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case's result line, written after its cleanup, gives when it started and when it finished",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "finished: (result, started) => out(JSON.stringify({ ...result, started, finished: now().toISOString() }) + '\\n'),",
+     "finished: result => out(JSON.stringify(result) + '\\n'),"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "In the navigation step, a real page that stops answering fails its call naming the page, at the bound, and is still closed so the cases after it run",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "    pageNames.set(sessionId, suffix);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness a page that stops answering"
+   }
+  },
+  {
+   "item": 483,
+   "act": "In the navigation step's harness, each case's start line is written before the case runs: a running case finds its own start line the last line written",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "const started = stamp.started(name);",
+     "const started = new Date().toISOString();"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness case lines"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The harness writes each case's result line after its cleanup, its final result with when it started and finished; the release check fails a step whose log lacks it",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "stamp.finished(results.at(-1), started);",
+     "process.stdout.write(JSON.stringify(results.at(-1)) + '\\n');"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness case lines"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The release check fails a persistence step whose log does not hold each case's start line and its timed result line, in order",
+   "break": [
+    [
+     "tools/release_check.py",
+     "lines = case_lines(log, results) if log is not None and step.harness == PERSISTENCE else []",
+     "lines = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case line goes to the step's log as it is kept, written at once",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "const out = line => { write(line); written.push(line); };",
+     "const out = line => { written.push(line); };"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A page that will not close at the end of a case is named, and the pages after it are still closed and the next case runs",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "for (const targetId of pages) await tidy(`closing page ${pageNames.get(targetId) ?? targetId}`, () => cdp('Target.closeTarget', { targetId }));",
+     "for (const targetId of pages) await cdp('Target.closeTarget', { targetId });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness cleanup refused"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A browser context that will not close at the end of a case is named, and the next case runs",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "await tidy(\"disposing the case's browser context\", () => cdp('Target.disposeBrowserContext', { browserContextId }));",
+     "await cdp('Target.disposeBrowserContext', { browserContextId });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness cleanup refused"
+   }
+  },
+  {
+   "item": 483,
+   "act": "What a case's cleanup could not close is on that case's record, failing it unless the case arranged it",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "      results[results.length - 1] = cleanupVerdict(results.at(-1), unclosed, cleanupRefuses);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness cleanup refused"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A cleanup refusal no case arranged fails the case, naming what would not close",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "if (!unexpected.length && !missing.length)",
+     "if (!missing.length)"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The harness's fixture controls go through the bound: one the fixture leaves unanswered fails its case by name at the bound",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "}), `fixture control ${data.method}`, { onTimeout: () => requests.delete(id) });",
+     "}), `fixture control ${data.method}`, { ms: 2147483647, onTimeout: () => requests.delete(id) });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness a fixture control and a view"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The harness's views read from the fixture's server go through the bound: one whose read is held fails its case by name at the bound",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "`view ${name}`, { onTimeout: () => abort.abort() });",
+     "`view ${name}`, { ms: 2147483647, onTimeout: () => abort.abort() });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness a fixture control and a view"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A wait outside the browser takes the bound in force when it is made",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "{ ms = fixtureBound.ms, timers = clock,",
+     "{ ms = FIXTURE_BOUND_MS, timers = clock,"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Chrome's exit after Browser.close has its bound at the end of a run, and the fixture is still closed",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "await step('Chrome exiting', () => bounded(browser.exit, 'Chrome exiting after Browser.close', { timers }));",
+     "await step('Chrome exiting', () => browser.exit);"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The fixture's exit once its input ends has its bound, and a fixture that does not exit is stopped by its handle",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "const exitCode = await step('the fixture exiting', () => bounded(fixture.exit, 'the fixture exiting once its input ended', { timers }));",
+     "const exitCode = await step('the fixture exiting', () => fixture.exit);"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
   }
  ]
 }
