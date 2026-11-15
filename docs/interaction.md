@@ -275,8 +275,9 @@ rule above. (`web/arrow-reach.mjs`)
   below its last row reaches Keys. ↑ above the right rail's first section
   reaches its name, "Just this topic" and "All of this outcome". ↓ past the
   last message goes on down the page: More messages, the People row, the
-  Notebook and the reply; ↑ from there comes back to the last message. Back
-  into a tree the arrows land on its one stop, the row the keys were last on.
+  Notebook and the reply; ↑ from there comes back to the last message. Into a
+  tree from beside it (a pencil in a section's heading, the chips above it)
+  the arrows land on the row nearest that way, which becomes its stop.
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
   message above or below, as from the message.
 - **In a pane, off its keys.** On the logo block, the chips, Keys, the right
@@ -295,7 +296,8 @@ rule above. (`web/arrow-reach.mjs`)
   message in the Reader) scrolls first. While the next control that way is out
   of sight and the page can still scroll, the arrow scrolls the page, as it
   always has, so the words between are read on the way; once it shows, the
-  next press lands on it.
+  next press lands on it. From a field, whose arrows scroll nothing, the press
+  goes straight to it.
 - **Never in writing.** In a field the arrows are the writing's, as everywhere
   above, but for ↑ and ↓ in a one-line field (a title, a name, a pipeline's
   "Add an item…"), which has no line above or below its own, and in a box with

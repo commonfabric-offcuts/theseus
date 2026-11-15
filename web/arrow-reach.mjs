@@ -54,8 +54,11 @@ export function nearest(from, candidates, way) {
 }
 
 const shown = el => el.isConnected && (typeof el.checkVisibility === 'function' ? el.checkVisibility({ visibilityProperty: true }) : el.getClientRects().length > 0);
+// A tree's rows are one Tab stop (key-tree.mjs), but every row it shows is a
+// place an arrow from beside the tree can land; the row it lands on becomes
+// the stop.
 function usable(el) {
-  if (el.tabIndex < 0 || el.disabled || el.closest('[inert], [aria-hidden="true"]') || !shown(el)) return false;
+  if ((el.tabIndex < 0 && el.getAttribute('role') !== 'treeitem') || el.disabled || el.closest('[inert], [aria-hidden="true"]') || !shown(el)) return false;
   const box = el.getBoundingClientRect();
   return box.width > 0 && box.height > 0;
 }
@@ -118,7 +121,9 @@ export function reach(from, way, { within = null, doc = from?.ownerDocument ?? g
   const nothing = onNothing(from, doc), scope = within ?? layerOf(doc, nothing ? null : from);
   const list = controls(scope).filter(el => nothing || (el !== from && !el.contains(from) && !from.contains(el)));
   const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list.map(el => ({ el, box: el.getBoundingClientRect() })), way);
-  if (!next || (!inSight(next, doc) && canScroll(nothing ? null : from, way, doc))) return false;
+  // Out of sight while the page can still scroll toward it, the press scrolls
+  // instead; from a field, whose arrows scroll nothing, it goes there.
+  if (!next || (!inSight(next, doc) && !from?.matches?.(FIELD) && canScroll(nothing ? null : from, way, doc))) return false;
   next.focus({ preventScroll: true });
   revealSelection(next);
   return true;

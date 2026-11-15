@@ -2276,15 +2276,31 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // Where the page and the focus's scrolling boxes stand: an arrow that moves
   // no focus while the next control is out of sight scrolls toward it instead.
   const scrolled = p => p.evaluate(`(()=>{const at=[];for(let e=document.activeElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight||e.scrollWidth>e.clientWidth)at.push(Math.round(e.scrollTop)+','+Math.round(e.scrollLeft));return at.join(' ')+'|'+Math.round(scrollY)+','+Math.round(scrollX)})()`);
-  // Presses the arrow up to n times, until the focus stays (and nothing
-  // scrolled toward what lies on) or stop; the places the focus was.
+  // Whether the focus's scrolling boxes, or the page, can still scroll the
+  // way the arrow points: a press that moves no focus then scrolls, as the
+  // browser's own arrow does, and its scroll may still be under way.
+  const roomThatWay = (p, key) => p.evaluate(`((key)=>{const down=key==='ArrowDown'||key==='ArrowRight',v=key==='ArrowDown'||key==='ArrowUp';
+    const room=e=>v?(down?e.scrollTop+e.clientHeight<e.scrollHeight-1:e.scrollTop>0):(down?e.scrollLeft+e.clientWidth<e.scrollWidth-1:e.scrollLeft>0);
+    for(let e=document.activeElement?.parentElement;e&&e!==document.body&&e!==document.documentElement;e=e.parentElement){const o=getComputedStyle(e)[v?'overflowY':'overflowX'];if((o==='auto'||o==='scroll')&&room(e))return true}
+    return room(document.scrollingElement)})(${JSON.stringify(key)})`);
+  // One press: where the focus lands. A press that moves no focus while
+  // there is still room that way must scroll toward what lies on, and the
+  // step waits for that scroll; with no room left it is the end.
+  const arrowPress = async (p, key, was) => {
+    const room = await roomThatWay(p, key), before = await scrolled(p);
+    await p.key(key);
+    const at = await focusAt(p);
+    if (at !== was || !room) return { at, scrolled: false };
+    await until(async () => await scrolled(p) !== before, `${key} on ${was}, with the next control out of sight, scrolls toward it`);
+    return { at, scrolled: true };
+  };
+  // Presses the arrow up to n times, until the focus stays at the end of what
+  // can scroll, or stop; the places the focus was.
   const walk = async (p, key, n = 30, stop = () => false) => {
     const seen = [await focusAt(p)];
     for (let step = 0; step < n; step++) {
-      const was = await scrolled(p);
-      await p.key(key);
-      const at = await focusAt(p);
-      if (at === seen.at(-1) && await scrolled(p) !== was) continue;
+      const { at, scrolled: on } = await arrowPress(p, key, seen.at(-1));
+      if (on) continue;
       if (at === seen.at(-1) || stop(at)) { if (at !== seen.at(-1)) seen.push(at); break; }
       seen.push(at);
     }
@@ -2324,10 +2340,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
         let to = node.id;
         for (let n = 0; n < 12 && to === node.id; n++) {
-          const was = await scrolled(p);
-          await p.key(key);
+          const step = await arrowPress(p, key, await focusAt(p));
           to = await landed();
-          if (to === node.id && await scrolled(p) === was) break;
+          if (!step.scrolled) break;
         }
         edges.push({ from: node.id, key, to });
       }
@@ -2369,6 +2384,30 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         assert.deepEqual(missing, [], 'the arrows reach every control in the side rail from the outline');
         assert.deepEqual(lost, [], 'and no arrow there loses the focus to the page');
       }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('rail arrows on a phone, in the side rail\'s drawer, ↑ above the outline\'s first row goes on up to New outcome and the logo block, and the arrows reach every control in the drawer and never the page behind, at 390, 375 and 320', async () => {
+    for (const size of ['390', '375', '320']) {
+      const p = await arrowsAt('rail-arrows-drawer-' + size, '/?topic=t1', size, size === '390' ? 'dark' : 'light');
+      await topicUp(p, size + ': the topic is up');
+      await p.evaluate("document.getElementById('rail-open').focus()");
+      await p.key('Enter');
+      await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it');
+      await until(() => p.evaluate("Boolean(document.querySelector('#outline [role=treeitem][tabindex=\"0\"]')?.checkVisibility())"), size + ': the outline shows in the drawer');
+      await p.evaluate("document.querySelector('#outline [role=treeitem][tabindex=\"0\"]').focus()");
+      await p.key('Home');
+      const up = await walk(p, 'ArrowUp');
+      assert.ok(!up.includes('page'), `${size}: no arrow loses the focus: ${up.join(' → ')}`);
+      assert.equal(up[1], 'rail:outline-new-outcome', `${size}: ↑ above the first row is New outcome: ${up.join(' → ')}`);
+      assert.ok(up.every(at => at.startsWith('rail:')), `${size}: the arrows stay in the drawer: ${up.join(' → ')}`);
+      if (size === '390') await shot(p, 'rail-arrows-drawer-390-dark');
+      const { missing, lost, count } = await arrowClosure(p, '#rail', 'tree');
+      assert.ok(count > 5, `${size}: the drawer has its controls (${count})`);
+      assert.deepEqual(missing, [], `${size}: the arrows reach every control in the drawer`);
+      assert.deepEqual(lost, [], `${size}: and none loses the focus to the page`);
+      assert.match(await focusAt(p), /^rail:/, `${size}: the focus is still in the drawer`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
