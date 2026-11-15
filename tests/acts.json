@@ -14200,12 +14200,54 @@
   },
   {
    "item": 525,
-   "act": "Only the person who invited the agent, in the outcome they invited it to, gets it back: the coordinator or another outcome is refused",
+   "act": "Only the person who invited the agent gets it back: the coordinator typing its name in the same outcome is refused",
    "break": [
     [
      "aim_next/invite.py",
-     "(agent, workspace, actor)).fetchone()",
-     "(agent, workspace, actor)).fetchone() or db.execute(\"SELECT 1 FROM agent_invitations WHERE agent_id=?\", (agent,)).fetchone()"
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=? AND inviter_id=?\",\n                         (agent, workspace, actor))",
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=?\",\n                         (agent, workspace))"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The agent is given back only in the outcome it was invited to: its inviter typing its name in another outcome whose team it is on is refused",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=? AND inviter_id=?\",\n                         (agent, workspace, actor))",
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND inviter_id=?\",\n                         (agent, actor))"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A disabled agent is not given back, though it is still on the team",
+   "break": [
+    [
+     "aim_next/invite.py",
+     " or not holders[0][\"enabled\"]:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An agent is not given back when someone else has its name too",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if len(holders) != 1 or holders[0]",
+     "if holders[0]"
     ]
    ],
    "check": {
@@ -14274,8 +14316,50 @@
    "break": [
     [
      "aim_next/invite.py",
-     "re.findall(r\"[a-z0-9]+\", _unaccented(_unaccented(name).casefold()))",
-     "re.findall(r\"[a-z0-9]+\", name.lower())"
+     "\"\".join(_spelled(c) for c in _unaccented(name))",
+     "name.lower()"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A Latin letter Unicode leaves whole is written as its letter in the ID, never dropped: Søren is soren, Łukasz lukasz, Æsir aesir",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "letter.lower() if re.fullmatch(r\"[A-Z]{1,2}\", letter) else \" \"",
+     "\" \""
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A few Latin letters are written with a spelling of their own in the ID: Þór is thor, Guðrún gudrun",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return SPELLED.get(letter) or (",
+     "return ("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "ß and its capital are ss in the ID",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "\"SHARP S\": \"ss\", ",
+     ""
     ]
    ],
    "check": {
@@ -14388,6 +14472,62 @@
      "aim_next/invite.py",
      "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
      "return MINE if (held.actor_id, held.db_path, held.instance_id) == (agent, store.path, store.instance_id) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file in the agent's place that binds another actor, the coordinator's own whole and valid file too, is someone else's, on a first invitation and on a retry of either kind",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.db_path, held.instance_id, held.binding) == (store.path, store.instance_id, store.binding) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A link in the agent's place, to nowhere or to a cut-short copy, is kept and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if not path.exists() and not path.is_symlink():",
+     "if not path.exists():"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A file others can read in the agent's place is kept, though it begins like this agent's sign-in, and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     " or info.st_mode & 0o077:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A pipe or a folder in the agent's place is kept and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if not stat.S_ISREG(info.st_mode) or info.st_uid",
+     "if info.st_uid"
     ]
    ],
    "check": {

@@ -179,11 +179,17 @@ def _begins(path, whole):
         fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
         return False
-    with os.fdopen(fd, "rb") as source:
-        info = os.fstat(source.fileno())
+    try:
+        # Looked at before it is read: a folder cannot be opened as a file, and a pipe has no beginning to compare.
+        info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
             return False
-        part = source.read(len(whole))
+        with os.fdopen(fd, "rb") as source:
+            fd = None
+            part = source.read(len(whole))
+    finally:
+        if fd is not None:
+            os.close(fd)
     return len(part) < len(whole) and whole.startswith(part)
 
 

@@ -12,7 +12,7 @@ import unittest
 
 from aim_next import Store
 from aim_next.invite import invite
-from aim_next.profile import load_profile, write_profile
+from aim_next.profile import load_profile, profile_bytes, write_profile
 from aim_next.serve import server_for_profile
 from aim_next.server import create_server
 import test_store as fixtures
@@ -397,6 +397,36 @@ class SignIn(InviteCase):
             self.assertEqual(path.read_bytes(), whole)
             self.assertEqual(load_profile(path).actor_id, "release-scribe")
         self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(1,)], "Core recorded it once")
+
+    def test_only_a_private_regular_file_can_be_a_cut_short_sign_in_and_anything_else_in_its_place_is_kept(self):
+        # Each holds, or leads to, the start of this agent's own sign-in, yet none is a private regular file in the agent's
+        # place: a readable copy, a pipe, a folder, a link to nowhere and a link to a private cut-short copy elsewhere.
+        # The agent is not registered yet, so write_profile would refuse; these are the bytes it writes once it is.
+        whole = profile_bytes(self.path, "test-instance", "release-scribe", self.binding)
+        path = self.folder / "release-scribe.profile.json"
+        aside = Path(tempfile.mkdtemp(dir=self.temp.name)) / "cut.json"
+        aside.write_bytes(whole[:10])
+        aside.chmod(0o600)
+
+        def readable():
+            path.write_bytes(whole[:10])
+            path.chmod(0o644)
+
+        for kind, place in (("readable", readable), ("pipe", lambda: os.mkfifo(str(path), 0o600)),
+                            ("folder", lambda: path.mkdir(mode=0o700)),
+                            ("link to nowhere", lambda: path.symlink_to(self.folder / "nowhere.json")),
+                            ("link to a cut-short copy", lambda: path.symlink_to(aside))):
+            with self.subTest(kind=kind):
+                if path.is_dir() and not path.is_symlink():
+                    path.rmdir()
+                elif os.path.lexists(str(path)):
+                    path.unlink()
+                place()
+                before = (self.state(), os.lstat(str(path)))
+                self.refused(self.invite(), "SIGN_IN_TAKEN", recorded=False)
+                self.assertEqual((self.state(), os.lstat(str(path))), before)
+                self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(0,)])
+        self.assertEqual(aside.read_bytes(), whole[:10])
 
     def test_a_file_that_begins_like_someone_elses_sign_in_is_kept_and_never_taken_over(self):
         # The start of a sign-in for the same ID in another instance: not this agent's, whatever its name.

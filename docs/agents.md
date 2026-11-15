@@ -270,16 +270,22 @@ the invitation as one act, `workspace.agent_invite`:
 - Only the outcome's owner or its coordinator may take it, whatever a page
   shows: anyone else, a member too, is refused `FORBIDDEN` ("Only the
   outcome's owner or its coordinator can invite an agent to it.").
-- The agent's ID comes from its name: its letters and digits, lower case,
-  in words joined by hyphens ("Release scribe" is `release-scribe`). Accents
-  are taken off first, in Unicode's compatibility form (NFKD), so "Zoë" is
-  `zoe` and "Ça va" is `ca-va`; a plain name keeps the ID it always had. An
+- The agent's ID comes from its name: its Latin letters and digits, lower
+  case, in words joined by hyphens ("Release scribe" is `release-scribe`).
+  Accents are taken off first, in Unicode's compatibility form (NFKD), so
+  "Zoë" is `zoe` and "Ça va" is `ca-va`. A Latin letter that form leaves
+  whole is written as the letter its Unicode name says it is made from:
+  "Søren" is `soren`, "Łukasz" `lukasz`, "Đorđe" `dorde`, "Yılmaz" `yilmaz`,
+  "Æsir" `aesir` and "Œuvre" `oeuvre`; a few have a spelling of their own
+  (þ is th, ð d, ŋ ng, ß ss, ə e), so "Þór" is `thor` and "Straße"
+  `strasse`. Letters of other scripts are not part of an ID. A plain name
+  keeps the ID it always had. An
   ID longer than 40 characters keeps its first 31 characters (less a hyphen
   at the end) and ends with a hyphen and the first 8 hexadecimal digits of the
   whole ID's SHA-256 digest, so two long names that differ only past the cut
   get IDs of their own. The
-  name is kept with its spaces collapsed. A name that has no letter or digit
-  for an ID is refused `NAME_UNUSABLE`, an empty one `NAME_REQUIRED`, and one
+  name is kept with its spaces collapsed. A name that has no Latin letter or
+  digit for an ID is refused `NAME_UNUSABLE`, an empty one `NAME_REQUIRED`, and one
   longer than 60 characters `NAME_TOO_LONG`.
 - A name or ID someone already has (any actor, ignoring case) is refused
   `NAME_TAKEN`, naming whoever has it, and a free name to choose instead
@@ -287,14 +293,15 @@ the invitation as one act, `workspace.agent_invite`:
   such as Release-Scribe! 2." for "Release-Scribe!"). The page keeps the
   name, selected, to be changed in place.
 - The same name typed again by the person whose invitation registered the
-  agent, in the same outcome, while the agent is still on its team, gives
-  that agent back: a new request (a reload, another outcome and back, or
+  agent, in the outcome it was invited to, while the agent is still on that
+  team and enabled and no one else has its name, gives that agent back: a new request (a reload, another outcome and back, or
   another device forgets the first one) is committed with the agent as
   recorded, and nothing is registered or added again, so the outcome's
   version stands and no change is written. Its result carries this request's
   `harness`, for the prompt. Anyone else typing the name (the coordinator
-  too), the same person in another outcome, or after the agent has left the
-  team, is refused `NAME_TAKEN`. Core keeps who invited each agent into which
+  too), the same person in another outcome (even one whose team the
+  agent is on), or after the agent has left the team or been disabled, is refused
+  `NAME_TAKEN`. Core keeps who invited each agent into which
   outcome in `agent_invitations` (schema version 42); an agent registered
   before it was invited by no one it knows of.
 - A team already at its limit (128 members, its owner included) refuses a new
@@ -324,9 +331,13 @@ browser refuses, the page says so and selects the prompt.
 
 - A refused invitation writes no file.
 - A file already in the new agent's place that is someone else's is never
-  overwritten or adopted: one that binds another actor, another instance,
-  another database or another authority, or holds anything but this agent's
-  own sign-in. The server refuses before asking Core, unrecorded,
+  overwritten or adopted: one that binds another actor (the coordinator's
+  own sign-in file too, whole and valid here), another instance, another
+  database or another authority; one that holds anything but this agent's
+  own sign-in; and anything in its place that is not a private regular file
+  of this user's (a file others can read, a pipe, a folder, or a link,
+  wherever it leads). A retry of either kind, the same request or the same
+  name typed again, is refused the same way. The server refuses before asking Core, unrecorded,
   `SIGN_IN_TAKEN`. A server started without a sign-in folder refuses every
   invitation, `NO_SIGN_IN_FOLDER`.
 - An answer that never came keeps the exact request, and the next Return
