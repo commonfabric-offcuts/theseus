@@ -132,7 +132,9 @@ between two feed pages (topics and Conversations) goes like this:
 
 1. The page's guard (`TopicNavigation.openTarget`) decides first, as it does
    for a load. Unsent writing that cannot be kept stops the move. A send under
-   way stops it with the same words as before.
+   way stops it with the same words as before. Where the move waits (it reads
+   the served build first, below), the guard's last look is asked again just
+   before it is made.
 2. The address changes with `pushState`. Each entry the page makes carries
    its place in the page's history (`aimPlace`).
 3. The old run ends as an unload ends a page. Its `pagehide` listeners run,
@@ -278,17 +280,29 @@ move to another build is a load.
   reload opens it on the new build.
 - Before a move, the shell reads the served build. Meanwhile the phone's
   drawer closes and the page is not ready (`data-ready`), since a back has
-  already changed the address. On the document's own build the move goes in
-  place. If the read fails, the move goes on, and the refusal
-  above is what stops a run of another build. On another build the place is
-  loaded (`shell.leave`), so the new release's modules load together. While a
-  guard holds (writing not yet safe), the page stays instead. It says
-  "Theseus updated." with Reload, by the topic line and in the Reader or New
-  message sheet when one is open, and puts back a back or forward that found
-  the new build. Reload goes through the browser's own ask while the guard
-  holds, and the words are kept as a load keeps them: words Theseus has come
-  back in the box, and words kept on this device only are offered under
-  Review versions, as after any load.
+  already changed the address. The page stays up meanwhile, so the person
+  can write on. The page's guard therefore hands the move its last look
+  (`still`, from `TopicNavigation.openTarget`), and the shell asks it again
+  once the build is read, just before the move (`shell.decide`). The look is
+  the guard's own last check: no send under way, the same writing in the
+  same boxes with nothing typed since, images attached, and nothing unsafe.
+  On the document's own build the move goes in place while the look stands.
+  If the read fails, the move goes the same way, and the refusal above is
+  what stops a run of another build. If what the guard cleared has changed,
+  for example words typed while the read was out, kept on this device yet or
+  not, the page stays where it is and says why, as a refused move does: "Keep
+  this page open until your writing and selected images are safely saved,
+  then choose the topic again.", by the topic line and in the Reader or New
+  message sheet when one is open. A back or forward is put back. A move that
+  a newer choice took over stays without a word. On another build the place
+  is loaded (`shell.leave`), so the new release's modules load together.
+  While a guard holds (writing not yet safe), or what the guard cleared has
+  changed, the page stays instead. It says "Theseus updated." with Reload, in
+  the same places, and puts back a back or forward that found the new build.
+  Reload goes through the browser's own ask while the guard holds, and the
+  words are kept as a load keeps them: words Theseus has come back in the
+  box, and words kept on this device only are offered under Review versions,
+  as after any load.
 
 Native checks open a page on release 76 (`bb3a46da`), serve this build, move
 once, and Edit; they move on one build and on another at 320, 375 and 390 by
@@ -297,7 +311,13 @@ old one; they hold writing and press Reload, once Theseus has the words and
 while only this device has them; they go back while writing in the open Reader
 and in the New message sheet, at the same widths, and find the address put back
 and Theseus updated said there; and they reload on one build with words on this
-device only.
+device only. On one build they type while a move reads the build, after a row
+and after a back with the cursor left in the composer, with the device's copy
+of the words kept and with it still being written. Each time they find the
+page where it was, saying why, with the words in their box and no run asked
+for, at 320, 375 and 390 by touch and on a laptop. Chosen again once the words
+are safe, the move goes in place. On another build, words typed meanwhile and
+kept on this device keep the page too, saying Theseus updated.
 
 ## Known gaps
 

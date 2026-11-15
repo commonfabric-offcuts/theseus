@@ -77,7 +77,7 @@ import { showLine, lineText } from './lines.mjs';
 let retired = null, notebookSheet = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); },
-  updated: reload => updatedNotice(reload) });
+  updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedLine(() => why); } });
 const node = (tag, text, className) => {
   const element = document.createElement(tag); if (text !== undefined) element.textContent = text;
   if (className) element.className = className; return element;
@@ -2069,7 +2069,7 @@ async function initialize() {
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
   topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
-    navigateTarget: target => { marks.leave(); if (!shell.go(target)) shell.leave(routeHref(target)); } });
+    navigateTarget: (target, still) => { marks.leave(); if (!shell.go(target, still)) shell.leave(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics.
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic),
@@ -2460,7 +2460,7 @@ async function openDestination(target, title, from = null) {
   }
   // A page whose start failed has no navigation; leave it for the destination.
   if (!topicNavigation) { shell.leave(routeHref(target)); return; }
-  const notice=$('topic-navigation-status');showLine(notice,'');
+  showLine($('topic-navigation-status'),'');
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
   // A press on a rail row whose move went nowhere (the place being read, or a
   // move the guard refused) leaves the row no focus to ring (in-place-navigation.mjs).
@@ -2468,22 +2468,23 @@ async function openDestination(target, title, from = null) {
   catch(error) {
     if(serial!==topicNavigation.serial)return;
     shell.stayed();
-    showLine(notice,error);
-    // Said where the person is looking: the Reader or the New message sheet,
-    // open over the page, covers the rail's notice, so it says why it stayed too.
-    const near=$('reader').open?'reader-notice':$('new-message-sheet').open?'inline-notice':null;
-    if(near)showLine($(near),error);else notice.scrollIntoView({block:'nearest'});
+    stayedLine(() => error);
   }
 }
-// A move found Theseus updated while writing here was not yet safe (in-place-navigation.mjs,
-// updated): the page stays, and says so where a refused move says why, with Reload,
-// which goes through the browser's own guard, so words not yet kept are asked about first.
-function updatedNotice(reload) {
-  const said = () => { const again = node('button', 'Reload'); again.type = 'button'; again.className = 'updated-reload'; again.title = 'Reload Theseus'; again.onclick = reload; return ['Theseus updated.', again]; };
+// Why the page stayed, said by the topic line, and where the person is looking:
+// the Reader or the New message sheet, open over the page, covers the rail's
+// notice, so it says it too. what(): the line, made afresh for each place.
+function stayedLine(what) {
   const notice = $('topic-navigation-status');
-  showLine(notice, said());
+  showLine(notice, what());
   const near = $('reader').open ? 'reader-notice' : $('new-message-sheet').open ? 'inline-notice' : null;
-  if (near) showLine($(near), said()); else notice.scrollIntoView({ block: 'nearest' });
+  if (near) showLine($(near), what()); else notice.scrollIntoView({ block: 'nearest' });
+}
+// A move found Theseus updated while writing here was not yet safe, or changed as the move waited
+// (in-place-navigation.mjs, updated): the page stays, and says so where a refused move says why, with
+// Reload, which goes through the browser's own guard, so words not yet kept are asked about first.
+function updatedNotice(reload) {
+  stayedLine(() => { const again = node('button', 'Reload'); again.type = 'button'; again.className = 'updated-reload'; again.title = 'Reload Theseus'; again.onclick = reload; return ['Theseus updated.', again]; });
 }
 // painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).
 // opens: what a press on an outcome opens, its page ('workspace') or its Conversation ('conversation').

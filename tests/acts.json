@@ -13853,8 +13853,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "build === null || build === this.build ? this.proceed(way) : this.updated(way)",
-     "true ? this.proceed(way) : this.updated(way)"
+     "if (build !== null && build !== this.build) { this.updated(way, why); return; }",
+     "if (false) { this.updated(way, why); return; }"
     ]
    ],
    "check": {
@@ -13868,13 +13868,12 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "if (!this.guards.some(holds => holds())) { this.leave(popped ? null : routeHref(target)); return; }",
-     "{ this.leave(popped ? null : routeHref(target)); return; }"
+     "if (!why && !this.guards.some(holds => holds())) {",
+     "if (!why) {"
     ]
    ],
    "check": {
-    "native": "reading",
-    "case": "reading edit build a move that finds another build while writing"
+    "node": "tests/ui_rails.test.mjs"
    }
   },
   {
@@ -13883,7 +13882,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (near) showLine($(near), said()); else notice.scrollIntoView({ block: 'nearest' });\n",
+     "  if (near) showLine($(near), what()); else notice.scrollIntoView({ block: 'nearest' });\n",
      ""
     ]
    ],
@@ -13946,6 +13945,92 @@
    "check": {
     "native": "reading",
     "case": "reading edit build a back that finds another build"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page's guard hands the move its last look (still), which refuses new typing, a replaced owner, unprotected work, a send or an unready image that come after it, and gives way to a newer choice",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      navigate(still); return true;\n",
+     "      navigate(); return true;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "On the document's own build, a move whose writing changed while it read the build stays where it is and says why, the words in their box, after a row and after a back, whether the device has kept the words or not",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (!why) { this.proceed(way); return; }\n",
+     "    { this.proceed(way); return; }\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build on one build, words typed while a move reads"
+   }
+  },
+  {
+   "item": 523,
+   "act": "On another build, words typed while the move read the build keep the page where it is with Theseus updated, even once the device has kept them and no guard holds",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "if (!why && !this.guards.some(holds => holds())) {",
+     "if (!this.guards.some(holds => holds())) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build words typed while a move reads the build and kept"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move a newer choice has taken the place of stays without a word once the build is read",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    try { if (!way.still()) { this.stay(way); return; } } catch (error) { why = error; }\n",
+     "    try { way.still(); } catch (error) { why = error; }\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move asked before the run is up carries the guard's last look, asked once the build is read",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "this.go(owed.go, owed.still)",
+     "this.go(owed.go)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move refused once the build is read says why by the topic line and in the open Reader or New message sheet, as a refused move does",
+   "break": [
+    [
+     "web/app.mjs",
+     "refused: why => { shell.stayed(); stayedLine(() => why); }",
+     "refused: () => {}"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
    }
   }
  ]
