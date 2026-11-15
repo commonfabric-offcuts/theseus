@@ -1464,7 +1464,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // The keys on the row pressed (as keyedAt names it), wearing their ring, and nothing else in the rails ringed.
   const pressedRow = async (p, row, what) => {
     try { await until(async () => await keyedAt(p) === row, what + ': the keys are on the row pressed'); }
-    catch (error) { throw Error(`${error.message}: they are on ${await keyedAt(p)}; tree ${JSON.stringify(await keyTree(p))}; drawer ${JSON.stringify(await drawer(p))}; page errors ${JSON.stringify(p.errors)}`); }
+    catch (error) { throw Error(`${error.message}: they are on ${await keyedAt(p)}; inert ${await p.evaluate("[...document.querySelectorAll('[inert]')].map(e=>e.id||e.className||e.tagName).join(',')")}; tree ${JSON.stringify(await keyTree(p))}; drawer ${JSON.stringify(await drawer(p))}; page errors ${JSON.stringify(p.errors)}`); }
     assert.deepEqual(await pressRing(p), { visible: true, ring: 'solid', rails: 1 }, what + ': it wears the keys\' ring, and nothing else in the rails does');
   };
   // From the row the keys are on, ↓ (↑ on the last row) goes on to another row of the outline, and the other arrow comes back.
@@ -1610,6 +1610,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await arrived(p, '?topic=rail-width-t', 'Width topic', what + ': the topic tapped opens');
         await until(async () => !(await drawer(p)).open, what + ': the drawer closes');
         await until(async () => await keyedAt(p) === 'topic-title', what + ': the focus is on the page\'s heading, not on a row the closed drawer hides');
+        // The drawer opens again once the page reached is up: while the move holds the outline inert, nothing in it takes the focus.
+        await until(() => p.evaluate("document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading') && !document.querySelector('#outline')?.closest('[inert]')"), what + ': the page reached is up, the outline no longer inert');
         await tap(p, '#rail-open');
         await until(async () => (await drawer(p)).open, what + ': "☰ Outcomes" opens the drawer again');
       }
@@ -1921,7 +1923,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('#new-topic-title') && document.activeElement?.id==='new-topic'`), 'Escape closes the line and gives New topic the focus');
     // A row pressed, then a message: the message takes the pointer's place, and nothing in the rails wears a ring.
-    await press(p, '#outline a[data-topic-id="t1"]');
+    // The outline may still be bringing New topic into view: the row is pressed once it is in view.
+    const t1 = '#outline a[data-topic-id="t1"]';
+    await until(() => p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector('${t1}'))`), 'the topic\'s row is in view');
+    await press(p, t1);
     await pressedRow(p, 'topic:t1', 'the topic being read');
     const shownMessage = await p.evaluate(`[...document.querySelectorAll('#messages .message-card[data-id] > .message-preview')].find(el => el.getClientRects().length && el.getBoundingClientRect().height > 0)?.parentElement.dataset.id ?? null`);
     assert.ok(shownMessage, 'a message is shown to press');
