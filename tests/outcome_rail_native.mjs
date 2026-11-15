@@ -1679,32 +1679,40 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // (above), and a mouse press in the right rail rings nothing, before or after.
   await check('rail a mouse press in the right rail rings nothing, nor once its section draws again: Unstar on one of two starred messages leaves no ring on the Unstar drawn after it', async () => {
     await control({ method: 'navigation_topics', topics: [{ id: 'rail-unstar-t', title: 'Unstar topic' }] });
+    const starred = [];
     for (const n of [1, 2]) {
       const id = (await control({ method: 'agent_message', operation_id: 'rail-unstar-' + n, topic_id: 'rail-unstar-t', whole_topic: true, sender: 'person', body: `Unstar message ${n}.` })).result.message_id;
+      starred.push(id);
       await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: id, operation_id: 'rail-unstar-star-' + n, args: { starred: true } });
     }
-    const p = await open('rail-unstar', '/?topic=rail-unstar-t', 'laptop', 'dark');
-    await settled(p, 'the topic is up');
-    const unstar = '#things .things-sec[data-key=starred] .things-unstar';
-    const count = () => p.evaluate(`[...document.querySelectorAll('${unstar}')].filter(e=>e.checkVisibility()).length`);
-    await until(async () => await count() === 2, 'the right rail lists both stars, each with its Unstar');
-    // Where the focus is, whether it wears a ring, and how many things in the rails do.
-    const seen = () => p.evaluate(`(()=>{const e=document.activeElement;
-      return {unstar:Boolean(e?.matches?.('${unstar}')),visible:Boolean(e&&e!==document.body&&e.matches(':focus-visible')),rails:document.querySelectorAll('#rail :focus-visible, #things :focus-visible').length}})()`);
-    await p.evaluate(`document.querySelector('${unstar}').scrollIntoView({block:'center'})`);
-    await p.point(unstar);
-    // The section draws again with the one star left; the tree puts back, in the same task, any focus that went with the first Unstar.
-    await until(async () => await count() === 1, 'Unstar takes the first star off, and the section draws again');
-    const after = await seen();
-    // Chrome focuses the button pressed, and the tree hands that focus to the Unstar left; WebKit gives a pressed button no focus.
-    assert.deepEqual({ visible: after.visible, rails: after.rails }, { visible: false, rails: 0 }, `after a mouse Unstar nothing in the rails wears a ring: ${JSON.stringify(after)}`);
-    await shot(p, 'rail-unstar-no-ring-1280-dark');
-    // The keys still ring: Tab and Shift-Tab come back to an Unstar wearing its ring, so the check above is no rail that rings nothing at all.
-    if (after.unstar) {
-      await p.key('Tab'); await p.key('Tab', 8);
-      assert.deepEqual(await seen(), { unstar: true, visible: true, rails: 1 }, 'the keys bring the ring back to the Unstar');
+    // The stars are this case's own: whatever state they are left in, both come off before it ends, so no later
+    // case finds a Starred section above the right rail's others (the Home case lands on the first section).
+    try {
+      const p = await open('rail-unstar', '/?topic=rail-unstar-t', 'laptop', 'dark');
+      await settled(p, 'the topic is up');
+      const unstar = '#things .things-sec[data-key=starred] .things-unstar';
+      const count = () => p.evaluate(`[...document.querySelectorAll('${unstar}')].filter(e=>e.checkVisibility()).length`);
+      await until(async () => await count() === 2, 'the right rail lists both stars, each with its Unstar');
+      // Where the focus is, whether it wears a ring, and how many things in the rails do.
+      const seen = () => p.evaluate(`(()=>{const e=document.activeElement;
+        return {unstar:Boolean(e?.matches?.('${unstar}')),visible:Boolean(e&&e!==document.body&&e.matches(':focus-visible')),rails:document.querySelectorAll('#rail :focus-visible, #things :focus-visible').length}})()`);
+      await p.evaluate(`document.querySelector('${unstar}').scrollIntoView({block:'center'})`);
+      await p.point(unstar);
+      // The section draws again with the one star left; the tree puts back, in the same task, any focus that went with the first Unstar.
+      await until(async () => await count() === 1, 'Unstar takes the first star off, and the section draws again');
+      const after = await seen();
+      // Chrome focuses the button pressed, and the tree hands that focus to the Unstar left; WebKit gives a pressed button no focus.
+      assert.deepEqual({ visible: after.visible, rails: after.rails }, { visible: false, rails: 0 }, `after a mouse Unstar nothing in the rails wears a ring: ${JSON.stringify(after)}`);
+      await shot(p, 'rail-unstar-no-ring-1280-dark');
+      // The keys still ring: Tab and Shift-Tab come back to an Unstar wearing its ring, so the check above is no rail that rings nothing at all.
+      if (after.unstar) {
+        await p.key('Tab'); await p.key('Tab', 8);
+        assert.deepEqual(await seen(), { unstar: true, visible: true, rails: 1 }, 'the keys bring the ring back to the Unstar');
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    } finally {
+      for (const [n, id] of starred.entries()) await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: id, operation_id: 'rail-unstar-unstar-' + (n + 1), args: { starred: false } });
     }
-    assert.deepEqual(p.errors, []); await p.close();
   });
 
   // The phone's drawer opens on the row a tap chose only while that tap is the
