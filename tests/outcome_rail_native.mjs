@@ -2586,6 +2586,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await shot(p, 'rail-build-question');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('#reader').open`), 'Escape closes the Reader');
+    // The move to the topic redrew the right rail for it: its rows are pressed once they are drawn for the topic now up.
+    let drawn = null;
+    await until(async () => { drawn = await buildRail(p); return !drawn.busy && drawn.rows.find(row => row.id === 'rb-wait')?.current === 'page' && drawn.rows.some(row => row.id === 'rb-review'); },
+      'the right rail lists the Build topics again for the topic now up, its row marked')
+      .catch(error => { throw Error(`${error.message} (${JSON.stringify({ rows: drawn?.rows.map(row => [row.id, row.current]), groups: drawn?.groups, busy: drawn?.busy })})`); });
     await p.point('#things .pipe-builds a.row[href*="topic=rb-review"]');
     await arrived(p, '?topic=rb-review', 'Built and live', 'a row waiting on nobody opens its topic');
     assert.equal(await p.evaluate(`document.querySelector('#reader').open`), false, 'with no Reader over it');
