@@ -1764,8 +1764,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   });
 
   // The Reader gives the focus back wearing the ring its opener wore as that
-  // opening found it: one the keys opened, and then the mouse, from the same message.
-  await check('rail the Reader gives its opener back ringed only as this opening found it: opened by the keys, Escape rings the message; opened then by the mouse from the same message and closed with the mouse, nothing is ringed', async () => {
+  // opening found it: one the keys opened, and then the mouse, from the same
+  // message, after the focus had gone elsewhere, so the press rang nothing.
+  await check('rail the Reader gives its opener back ringed only as this opening found it: opened by the keys, Escape rings the message; the focus gone elsewhere, opened then by the mouse from the same message and closed with the mouse, nothing is ringed', async () => {
     const p = await open('rail-reader-ring', '/?topic=t1');
     await settled(p, 'the topic is up');
     await until(() => p.evaluate("document.querySelectorAll('#messages [data-id]').length > 1"), 'the messages are drawn');
@@ -1784,9 +1785,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => !await readerOpen(), 'Escape closes the Reader');
     await until(async () => await keyedAt(p) === message, 'the keys are back on the message');
     assert.equal(await focusVisible(), true, 'opened and closed by the keys, the message wears their ring');
-    // The mouse: a press on the same message opens the Reader, and ✕ pressed closes it.
+    // The mouse: the focus goes elsewhere (a press on the page's heading), then a
+    // press on the same message opens the Reader, and ✕ pressed closes it.
     const opener = await p.evaluate(`(()=>{const e=document.activeElement;e.dataset.ringProbe='opener';return e.tagName})()`);
     assert.ok(opener, 'the message the keys are on is marked to press');
+    await p.point('#topic-title');
+    await until(async () => await keyedAt(p) !== message, 'a press on the heading takes the focus off the message');
     await p.point('[data-ring-probe=opener]');
     await until(readerOpen, 'a press on the message opens the Reader');
     await p.point('#reader-close');
