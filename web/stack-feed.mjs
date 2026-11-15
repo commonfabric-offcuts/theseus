@@ -128,13 +128,14 @@ export class StackFeed {
       let stack_position = item.stack_position;
       for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
         if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null };
+        if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
       }
       return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position } : item;
     } };
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
-      more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text) => this.rename(stack, text), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
+      more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
@@ -256,7 +257,9 @@ export class StackFeed {
     // 👍's reactions, a page of messages) can have put a new copy of it in the page (item 433).
     for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);
     if (kind === 'message.star') this.starsChanged();
-    if (kind === 'stack.aside') await this.refreshPositions();
+    // What places a dossier and names it is read again after an act that changes them: a join or a split moves
+    // messages to another dossier, whose positions they carry from then on (item 470).
+    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join') await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
@@ -322,12 +325,20 @@ export class StackFeed {
     const input = renameInput(this.list, stack.id);
     input?.focus(); input?.select?.();
   }
-  rename(stack, text) {
-    const item = this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
-    const name = String(text ?? '').replace(/\s+/g, ' ').trim();
+  // A name is the dossier's: it goes on its first message, loaded or not
+  // (item 470), fenced on the name Core holds there. A page whose Core sends no
+  // positions names the head it shows. edited: the person typed in the field;
+  // one left untouched records nothing, so it never puts back a name another
+  // gave the dossier while it was open. The first line shown stands without a
+  // name only where it is the first message's.
+  rename(stack, text, { edited = true } = {}) {
+    const item = this.rootOf(stack)?.item ?? this.messages().get(stack.id) ?? stack.head, typed = this.actsOf(item.id, item).name?.text ?? '';
+    // A name is one line, its spaces made single, as Core keeps it.
+    const single = words => String(words ?? '').replace(/\s+/g, ' ').trim(), name = single(text);
     this.arrange();
-    // Unchanged, or the line it is named by already (messagePreview): nothing to record.
-    if (name === typed || !typed && name === messagePreview(item)) { this.focusOn(stack.id); return; }
+    // Unchanged, or the line its head row shows (headOf's preview of the head,
+    // messagePreview) where that head is the first message: nothing to record.
+    if (!edited || name === typed || !typed && name === messagePreview(stack.head) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
     this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);
@@ -424,14 +435,25 @@ export class StackFeed {
     const item = this.messages().get(id);
     if (item) this.setFold(item, false);
   }
-  setAside(stack, below, { undoable = true, restoreThrough } = {}) {
+  // A dossier's first message, as Core last said where it is, and the
+  // dossier's position: the loaded message, else one standing in for it that
+  // holds what the position says of its aside and its name. Null where Core
+  // sent no position.
+  rootOf(stack) {
     const root = positionOf(stack)?.root_id;
     const current = this.state.stacks.find(each => positionOf(each)?.root_id === root) ?? stack;
     const position = positionOf(current);
-    if (!position) return false;
+    if (!position) return null;
     if (!this.messages().has(root) && !this.standIns.has(root)) this.standIns.set(root, { id: root, acts: {} });
     const item = this.messages().get(root) ?? this.standIns.get(root);
-    item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision });
+    item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision,
+      ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}) });
+    return { item, position };
+  }
+  setAside(stack, below, { undoable = true, restoreThrough } = {}) {
+    const found = this.rootOf(stack);
+    if (!found) return false;
+    const { item, position } = found, root = item.id;
     // Below More through the newest message of the dossier the page has seen.
     const through = restoreThrough !== undefined ? restoreThrough : below ? [...this.messages().values()]
       .reduce((newest, each) => (each.stack_position?.root_id === root ? Math.max(newest, each.seq) : newest), position.at.messages) : null;

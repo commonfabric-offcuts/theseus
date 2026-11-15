@@ -177,12 +177,13 @@ test('another topic\'s message steps as Core has it: this page\'s Only new and M
 // another place, and the dossier is drawn as Core then holds it.
 test('a dossier drawn where it sits for a link stays there only while Core holds it at the same place', () => {
   const at = (revision, below = true, acts = 1, messages = 1) => ({ root_id: 'b', below, through: below ? 4 : null, aside_revision: revision, at: { acts, messages } });
-  const stackAt = position => ordered(gather([message('b', { stack_position: position }), message('b1', { reply_to: 'b', stack_position: position })]))[0];
+  const stackAt = (position, acts = {}) => ordered(gather([message('b', { acts, stack_position: position }), message('b1', { reply_to: 'b', stack_position: position })]))[0];
   const linked = placeOf(at(1)), here = item => (item.id === 'b1' ? linked : null);
   assert.equal(drawnBelow(stackAt(at(1))), true, 'put aside, with nothing drawn where it sits: below More');
   assert.equal(drawnBelow(stackAt(at(1)), here), false, 'the link draws it where it sits');
   assert.equal(drawnBelow(stackAt(at(1, true, 7, 3)), here), false, 'acts on other messages and new messages read since leave it where the link drew it');
   assert.equal(drawnBelow(stackAt(at(2, false, 8)), here), false, 'brought back on another device: above More');
   assert.equal(drawnBelow(stackAt(at(3, true, 9)), here), true, 'moved below More again on another device: below More, the link\'s place gone by');
-  assert.equal(drawnBelow(stackAt({ ...at(1), root_id: 'a' }), here), true, 'joined into another dossier put aside: below More, as that dossier is');
+  // Joined into a dossier the page has not loaded, it heads its stack here and reads that dossier's position (item 470).
+  assert.equal(drawnBelow(stackAt({ ...at(1), root_id: 'a' }, { joined: { into: 'a', by: 'agent-a', at_ms: 1 } }), here), true, 'joined into another dossier put aside: below More, as that dossier is');
 });
