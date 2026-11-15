@@ -1,6 +1,7 @@
 # Notebook pages and what changed since you read them
 
-An outcome's Notebook pages sit beside its topics. A page someone has read
+An outcome's Notebook pages are on the right rail of its topics and its
+Conversation, and on its own page after its topics. A page someone has read
 and that has been revised since is marked changed for them, the way a topic
 with unread messages carries a count, until they open it again, and opening
 it then shows what changed since the revision they last read.
@@ -50,22 +51,33 @@ page look changed again.
   `0 < read_revision < revision`. A page never read is not marked: the light
   is for what changed under someone, not for everything they have not read.
 
-## The sidebar
+## On the right rail
 
-On a topic's page the sidebar lists the outcome's Notebook pages under the
-heading Outcome Notebook, below its topics (named for the outcome, so it is
-not taken for the topic's own Notebook in the page beside it): one row per page, by title, as tall as
-a topic row and in the same column, opening the page in the composer over the
-feed ([decks.md](decks.md#where-it-opens)). On a
-phone the rows scroll sideways, as topics do. An empty outcome Notebook keeps its heading and, for someone who may write it, its creation pencil. A Notebook
-the reader cannot list shows no section; a read that fails
-says so above the rows and keeps what was shown. The list is read again
-after every commit the live feed names, as the topics are.
+The side rail lists no Notebook (item 464): its outline holds the outcomes and
+their topics, nothing else. On a topic's page and on an outcome's
+Conversation, the right rail's Notebook section lists the pages
+([rails.md](rails.md#the-right-rail)): on a Conversation the outcome's, on a
+topic the topic's own, and the outcome's once "All of this outcome" is
+pressed. One row per page, by title, opening the page in the composer over the
+feed ([decks.md](decks.md#where-it-opens)); on a phone, where the rail is a
+sheet from the bottom, each row is a full touch target. The section lists the
+first 20 pages, its count saying "20+" while there are more, and More pages
+brings 20 more each time; the rail reads that many again from then on, and
+More pressed from the keys hands the focus to the first page it brought. An
+empty Notebook keeps its heading and, for someone who may write it, its
+pencil, with the line No pages yet. A Notebook the reader cannot list shows no
+section; a read that fails says so under the sections and keeps what was
+shown. The rail reads again after every commit the live feed names.
+
+A Notebook page shown in the Reader on a topic's page that the topic's own
+changes do not cover (an outcome's page, or a page of the topic's not loaded)
+is read where it stands after every commit (`memory_current`), so the Reader
+offers a revision made since (Open revision N).
 
 ## The changed light
 
 A page the reader read before and that was revised since wears the number
-of its new revisions in the sidebar, in the same badge a topic's unread
+of its new revisions on the right rail and on the outcome's page, in the same badge a topic's unread
 count wears, and screen readers hear ", changed since you read it, N new
 revisions". A page never read, or read as it stands, wears nothing.
 
@@ -132,8 +144,9 @@ to another source by the time the earlier revision arrives is left alone.
 
 ## On the outcome's own page
 
-An outcome's page lists its topics in the page itself rather than the
-sidebar, so its Notebook pages are listed right after them, as cards like
+An outcome's page lists its topics in the page itself rather than a rail, so
+its Notebook pages are listed right after them, under the heading Outcome
+Notebook (named for the outcome, so it is not taken for a topic's own), as cards like
 the topics', with the same light. A row opens its page in the composer over
 this page, as anywhere ([decks.md](decks.md#where-it-opens)), and ✕ gives the
 focus back to the row. A link to a page at a revision opens it in place below
@@ -160,10 +173,12 @@ Core: `tests/test_memory_reads.py` and the 19→20 step in
 `ui_page_reads`, `ui_page_changes`, `ui_page_here`, `ui_reader_changes`,
 `ui_topic_notebook_light` and the wiring cases in `ui_inline_wiring`. In the browser: the `notebook` mode of
 `tests/reader_persistence_native.mjs` (`tests/notebook_pages_native.mjs`):
-the light coming on live and going out on opening, in the sidebar and in
+the light coming on live and going out on opening, on the right rail and in
 the topic's own Notebook, the changes in the composer and none of them on the
 page opened next, 390 wide in light and dark with contrast measured, the outcome
-page, and a page's link opening the page as it stands in the composer and at a
+page, the right rail's Notebook in each of its states (twenty pages and More,
+every page, empty with its pencil and its title line) at 320, 375, 390 and a
+laptop in light and dark, and a page's link opening the page as it stands in the composer and at a
 revision in the Reader and in place, from the address and from a message, with
 the Reader's ⋯ copying both links and editing the page. The composer itself:
 `tests/notebook_sheet_native.mjs` ([decks.md](decks.md#where-it-opens)).
@@ -178,7 +193,9 @@ mark); in Chrome and WebKit, laptop and phone, the cases "the pencil and writing
 show only to someone Core lets write", "a writer marks a page a draft" and "a
 draft page in a reached outcome reads as a draft" (the Draft mark without its
 toggle, To read, an image without Remove, and in place no Edit page) in
-`tests/notebook_pages_native.mjs`; and the composer's head standing clear at
+`tests/notebook_pages_native.mjs`; the side rail holding no Notebook on any
+page, and the outline's keys stepping from an outcome's last row to the next
+outcome, in the `rail` mode's `tests/outcome_rail_native.mjs`; and the composer's head standing clear at
 every width from 320 to 1024 in `tests/notebook_sheet_native.mjs`.
 
 ## A draft page
@@ -216,12 +233,13 @@ the page opened in place on its outcome's page, name its revision
 
 ## Start a page (296)
 
-A pencil beside a Notebook heading opens a single title line in place: the
-outcome's beside Outcome Notebook in the outline, a topic's beside the
-Notebook section of the right rail, which then shows for the topic even before
-it has a page (its one line says No pages yet) and opens if it was folded. The
-rail shows the topic's pencil only while it lists that topic's own pages, not
-the whole outcome's. Either pencil shows only to someone Core lets write that
+A pencil beside a Notebook heading opens a single title line in place: beside
+the Notebook section of the right rail, which then shows even before the
+Notebook has a page (its one line says No pages yet) and opens if it was
+folded, and beside Outcome Notebook on the outcome's own page. The side rail
+has none (item 464). The right rail shows the topic's pencil while it lists
+that topic's own pages, and the outcome's while it lists the whole outcome's,
+on a Conversation or with "All of this outcome". Each pencil shows only to someone Core lets write that
 Notebook (its `reader_may_write`): a teammate who reads a topic without taking
 part in it has none, and a topic's owner who has stepped out of it keeps
 theirs. Return
@@ -230,7 +248,7 @@ with item revision zero, then opens it in the composer over the page, in Cards
 with the first card ready to write.
 Escape or a press outside closes the line. The author, owner scope and item
 identity come from the bound page; there is no implicit fallback to another
-Notebook. The outcome heading remains visible when its Notebook is empty.
+Notebook. The section remains visible when its Notebook is empty.
 
 An uncertain create retains its exact operation and item identity for Return
 to retry, including its original title. Changing that title first does not

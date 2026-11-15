@@ -1102,37 +1102,39 @@ export async function liveChecks({ check, page, until, control, observations, or
   const pageTitle = "(row => { const title = row.cloneNode(true); title.querySelectorAll('.unread-count, .sr-only').forEach(light => light.remove()); return title.textContent; })";
   // Last, because it adds to the outcome's Notebook, which every later topic
   // page would list.
-  await check('live the outcome Notebook pages sit in the sidebar beside the topics, open whole in the composer, and in the Reader at a revision follow a revision', async () => {
+  await check('live the outcome Notebook pages are on the right rail and never in the side rail, show there live, open whole in the composer, and in the Reader at a revision follow a revision', async () => {
     const p = await page('live-outcome-references', null, true);
     await settled(p);
-    const rows = () => p.evaluate(`[...document.querySelectorAll('#outcome-references-list .reference')].map(${pageTitle})`);
-    assert.equal(await p.evaluate("document.querySelector('#outcome-references').hidden"), false, 'an empty outcome Notebook keeps its creation heading');
-    await until(() => p.evaluate("(()=>{const h=document.querySelector('#notebook-heading'),b=document.querySelector('#outcome-references .notebook-create');return !!h?.getClientRects().length&&!!b?.getClientRects().length&&!b.disabled})()"),
-      'the empty Notebook shows its heading and available creation pencil in the outline');
+    const RAIL = '#things .things-sec[data-key="notebook"]', ROW = `${RAIL} a.row[href$="page=live-outcome-reference"]`, chip = '#things .things-scope .chip:last-child';
+    const rows = () => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(RAIL + ' .things-list a.row')})].map(${pageTitle})`);
+    // Item 464: the side rail holds nothing of the outcome's Notebook, its pencil included.
+    assert.deepEqual(await p.evaluate("[document.querySelectorAll('#rail #outcome-references, #rail .notebook-create, #rail .reference').length, document.querySelector('#outcome-references').hidden]"), [0, true],
+      'the side rail lists no Notebook and has no pencil');
+    // All of this outcome: an empty outcome Notebook keeps its heading and, for someone who may write it, its pencil.
+    await until(() => p.evaluate("document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true' && !document.querySelector('#things .things-scope').hidden"), 'the right rail has read');
+    await p.point(chip);
+    await until(() => p.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(RAIL)}),b=[...d.querySelectorAll('summary .notebook-create')].find(e=>e.checkVisibility());
+      return document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')==='true'&&d.querySelector('.things-quiet')?.textContent==='No pages yet.'&&Boolean(b)&&!b.disabled})()`),
+      'the empty Notebook shows its heading and available pencil on the right rail');
     assert.deepEqual(await rows(), [], 'an empty Notebook has no page rows');
     await control({ method: 'outcome_reference', operation_id: 'live-outcome-reference', item_id: 'live-outcome-reference',
       title: 'Architecture', body: 'The outcome passage every topic stands on.' });
-    await until(() => p.evaluate("!!document.querySelector('#outcome-references-list .reference[data-id=live-outcome-reference]')?.getClientRects().length"), 'the new Notebook page appears without a reload');
-    assert.equal(await p.evaluate("document.querySelector('.rail').contains(document.querySelector('#outcome-references'))"), true, 'the pages are in the sidebar');
+    await until(() => p.evaluate(`!!document.querySelector(${JSON.stringify(ROW)})?.getClientRects().length`), 'the new Notebook page appears without a reload');
     assert.deepEqual(await rows(), ['Architecture']);
-    // A page's row is a row like a topic's: as tall, and in the same column.
-    const boxes = await p.evaluate("(()=>{const t=document.querySelector('#topics .nav-item').getBoundingClientRect(),r=document.querySelector('#outcome-references-list .reference').getBoundingClientRect();return {topic:[t.left,t.height],page:[r.left,r.height]}})()");
-    assert.equal(boxes.page[0], boxes.topic[0], 'pages line up with topics');
-    assert.ok(boxes.page[1] >= 44, 'a page row is a full touch target: ' + boxes.page[1]);
-    // Below the topics the earlier checks left, in the sidebar's own scroll.
-    await p.evaluate("document.querySelector('#outcome-references-list .reference').scrollIntoView({block:'center'})");
-    await p.point('#outcome-references-list .reference');
+    assert.equal(await p.evaluate("document.querySelectorAll('#rail #outcome-references, #rail .notebook-create, #rail .reference').length"), 0, 'and still nothing in the side rail');
+    await p.evaluate(`document.querySelector(${JSON.stringify(ROW)}).scrollIntoView({block:'center'})`);
+    await p.point(ROW);
     // As it stands, in the composer over the feed (docs/decks.md).
     await until(() => p.evaluate("document.querySelector('#new-message-sheet.notebook-mode')?.open && document.querySelector('#new-message-sheet .notebook-sheet-page:not([hidden])')?.textContent.includes('The outcome passage every topic stands on.')"), 'the composer shows the item whole');
     await p.point('#new-message-sheet .notebook-sheet-close');
     await until(() => p.evaluate("!document.querySelector('#new-message-sheet').open"), 'the composer closes');
-    // At a revision, from its link, in the Reader.
+    // At a revision, from its link, in the Reader. The topic's changes do not cover the outcome's Notebook, so a
+    // revision made since reaches the Reader by the page reading the page it shows on each commit.
     await p.send('Page.navigate', { url: `${origin}/?topic=${facts.topic_id}&page=live-outcome-reference&revision=1` });
     await until(() => p.evaluate("document.body?.dataset.ready === 'true' && document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('The outcome passage every topic stands on.')"), 'the Reader shows the item whole at its revision');
     await settled(p);
     await control({ method: 'memory_revise', operation_id: 'live-outcome-reference-revise', item_id: 'live-outcome-reference',
       expected_revision: 1, title: 'Architecture, revised', body: 'The revised outcome passage.' });
-    await until(async () => JSON.stringify(await rows()) === JSON.stringify(['Architecture, revised']), 'the row shows the revision');
     await until(() => p.evaluate("!document.querySelector('#revision-offer').hidden && document.querySelector('#open-revision').textContent === 'Open revision 2'"), 'the Reader offers the revision');
     await p.point('#open-revision');
     await until(() => p.evaluate("document.querySelector('#source-body').textContent.includes('The revised outcome passage.')"), 'the revision opens');
@@ -1145,19 +1147,18 @@ export async function liveChecks({ check, page, until, control, observations, or
     const p = await page('live-notebook-revision', null, true);
     await settled(p);
     const url = await p.evaluate('location.href');
-    const id = 'live-release-pipeline', row = `#outcome-references-list .reference[data-id="${id}"]`;
+    const id = 'live-release-pipeline';
     const ref = revision => ({ kind: 'memory', id, revision });
     const saved = async revision => (await view('editor_state', { source_ref: ref(revision), topic_id: facts.topic_id })).draft;
     const revise = (expected, title, body) => control({ method: 'memory_revise', operation_id: `live-notebook-revision-${expected}`, item_id: id,
       expected_revision: expected, title, body });
     const has = (selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
     // The Reader shows a Notebook page at a revision, from the page's link to it (as it stands it opens in the
-    // composer, docs/decks.md); the row in the outline has the revision's title.
+    // composer, docs/decks.md), with the revision's title.
     const open = async (title, revision) => {
       await p.send('Page.navigate', { url: `${origin}/?topic=${facts.topic_id}&page=${id}&revision=${revision}` });
       await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'the page is read again');
-      await until(() => p.evaluate(`(row => row?.getClientRects().length > 0 && ${pageTitle}(row))(document.querySelector(${JSON.stringify(row)})) === ${JSON.stringify(title)}`), `the outcome Notebook shows ${title}`);
-      await until(() => p.evaluate("document.querySelector('#reader').open"), 'the Reader opens the page');
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent === ${JSON.stringify(title)}`), `the Reader opens the page, ${title}`);
       await settled(p);
     };
     const close = async () => { await p.point('#reader-close'); await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes'); };

@@ -156,7 +156,7 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* Done and archived topics fold into a line each at the bottom of the topic list; their rows (.topic-list) share every #topics rule. */.topic-group{margin-top:.4rem}.topic-group>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;padding:0 .65rem;color:var(--muted);font-size:.85rem}
 /* An outcome's Notebook pages sit in the sidebar beside its topics, each a row like a topic's. */
 #outcome-references{margin-top:2rem}#outcome-references-list .nav-item{min-height:44px;padding:.55rem .65rem;border:1px solid transparent;border-radius:.5rem;background:transparent;color:var(--accent);overflow-wrap:anywhere;font-size:.9rem;white-space:normal}#outcome-references-list .nav-item:hover{background:var(--soft)}
-@media(max-width:760px){#outcome-references{margin-top:.8rem}#outcome-references-list{display:flex;overflow:auto;gap:.35rem;padding:.25rem;scroll-padding:.25rem}#outcome-references-list .nav-item{flex:0 0 auto;max-width:15rem;width:auto;margin:0}}
+@media(max-width:760px){#outcome-references{margin-top:.8rem}}
 /* What changed in a Notebook page since the reader last read it, above the page: added words marked, removed ones struck through. */
 .source-changes{margin:0 0 .6rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);min-width:0}.source-changes summary{cursor:pointer;padding:.45rem .7rem;font-size:.85rem;font-weight:600}#source-changes-body{max-height:min(16rem,22dvh);overflow:auto}#source-changes-body,.page-here .source-changes>div{padding:0 .7rem .6rem;overflow-wrap:anywhere}.changes-summary{color:var(--muted);font-size:.8rem;margin:0 0 .35rem}.changes-text{white-space:pre-wrap;line-height:1.6}.changes-added{background:var(--soft);color:var(--ink);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px;border-radius:.15rem}.changes-removed{color:var(--muted);text-decoration:line-through}.changes-gap{color:var(--muted)}
 /* On an outcome's page its Notebook pages are listed as its topics are, and one opens in place below them. */
@@ -689,8 +689,8 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .rail:not(.open)>:not(.notice){display:none!important}
 .rail:not(.open)>.notice:not([hidden]){margin:.6rem 1rem 0}
 .rail.open{position:fixed;inset:0 auto 0 0;z-index:25;width:min(22rem,86vw);overflow-y:auto;overscroll-behavior:contain;background:var(--paper);border-right:1px solid var(--line);border-bottom:0;padding:max(.8rem,env(safe-area-inset-top)) 1rem max(1rem,env(safe-area-inset-bottom));box-shadow:0 6px 24px rgb(0 0 0 / .25)}
-.rail.open #topics,.rail.open .topic-list,.rail.open #outcome-references-list,.rail.open #pipeline-links{display:block;overflow:visible;padding:0}
-.rail.open #topics a.nav-item,.rail.open .topic-list a.nav-item,.rail.open #outcome-references-list .nav-item,.rail.open #pipeline-links a.nav-item{display:block;width:100%;max-width:none;margin:.2rem 0}
+.rail.open #topics,.rail.open .topic-list,.rail.open #pipeline-links{display:block;overflow:visible;padding:0}
+.rail.open #topics a.nav-item,.rail.open .topic-list a.nav-item,.rail.open #pipeline-links a.nav-item{display:block;width:100%;max-width:none;margin:.2rem 0}
 .rail-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:24;background:rgb(0 0 0 / .4)}
 body:has(.rail.open){overflow:hidden}
 }

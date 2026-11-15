@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 // A Notebook page in the composer over the feed (item 396, docs/decks.md "Where it opens"), in the real browser
 // against the real server, at a laptop's width with a pointer and keys and at a phone's with touch: a page opened
-// from the outline, the topic's own Notebook, the right rail, the outcome's page and a link as it stands brings up
+// from the right rail's whole outcome, the topic's own Notebook, the right rail's topic, the outcome's page and a link as it stands brings up
 // the New message sheet with the page in it; a card being written survives ✕, a press outside and Escape, and the
 // feed's place and focus come back; keys and a wheel never move the feed behind; a card's reply stack opens in the
 // Reader and its way back brings the page back as it was, from the same topic and from another; opening another
@@ -57,13 +57,24 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     assert.equal(answer.status, 'committed', JSON.stringify(answer));
     return id;
   };
-  const card = id => `#memory-items .memory-card[data-id="${id}"]`, row = id => `#outcome-references-list .reference[data-id="${id}"]`;
-  // A page listed in the topic's Notebook or the outcome's, pressing More as a reader would while the list
-  // holds only its first pages (the checks before these leave many). A row or More counts once it shows: the
-  // outline's section comes into view after its list and its More are drawn.
+  // A page in the topic's own Notebook, in the outcome's on its own page, and in the outcome's on the right rail (its
+  // Notebook section with All of this outcome; the side rail lists no Notebook, item 464).
+  const RAIL_NOTEBOOK = '#things .things-sec[data-key="notebook"]';
+  const card = id => `#memory-items .memory-card[data-id="${id}"]`, row = id => `#outcome-references-list .reference[data-id="${id}"]`, railRow = id => `${RAIL_NOTEBOOK} a.row[href$="page=${id}"]`;
+  // The right rail shows the whole outcome's things: All of this outcome, once the rail has read.
+  const wholeOutcome = async p => {
+    const chip = '#things .things-scope .chip:last-child';
+    await until(() => p.evaluate(`document.body.dataset.ready==='true' && !document.querySelector('#things .things-scope').hidden && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'`), 'the right rail has read');
+    // The rail scrolls in itself, and a row pressed before may have taken its chips out of view.
+    await p.evaluate(`document.querySelector(${JSON.stringify(chip)}).scrollIntoView({block:'nearest',behavior:'instant'})`);
+    await p.point(chip);
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)}).getAttribute('aria-pressed')==='true' && document.querySelector('#things .things-sections').getAttribute('aria-busy')!=='true'`), 'the right rail shows the whole outcome');
+  };
+  // A page listed in the topic's Notebook, the outcome's page or the right rail, pressing More as a reader would while
+  // the list holds only its first pages (the checks before these leave many). A row or More counts once it shows.
   const listed = async (p, selector, said) => {
-    const more = selector.startsWith('#memory-items') ? '#more-memory' : '#more-references';
-    const look = () => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(more)});const shown=e=>Boolean(e&&e.getClientRects().length);return {here:shown(document.querySelector(${JSON.stringify(selector)})),more:shown(b)&&!b.disabled&&b.getAttribute('aria-disabled')!=='true',rows:document.querySelector(${JSON.stringify(selector)}.split(' ')[0])?.children.length??0}})()`);
+    const [more, rows] = selector.startsWith('#memory-items') ? ['#more-memory', '#memory-items > *'] : selector.startsWith('#things') ? [`${RAIL_NOTEBOOK} .things-more`, `${RAIL_NOTEBOOK} .things-list a.row`] : ['#more-references', '#outcome-references-list > *'];
+    const look = () => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(more)});const shown=e=>Boolean(e&&e.getClientRects().length);return {here:shown(document.querySelector(${JSON.stringify(selector)})),more:shown(b)&&!b.disabled&&b.getAttribute('aria-disabled')!=='true',rows:document.querySelectorAll(${JSON.stringify(rows)}).length}})()`);
     for (;;) {
       const now = await until(async () => { const at = await look(); return at.here || at.more ? at : null; }, said);
       if (now.here) return;
@@ -185,13 +196,14 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     return { step, kept, steps };
   };
 
-  await check('notebook in the composer: a page opened from the outline, the topic\'s Notebook, the right rail and the outcome\'s page comes up in the New message sheet over the feed, with its title, Text and Cards, Full page and ✕, at a laptop\'s width and a phone\'s', async () => {
+  await check('notebook in the composer: a page opened from the right rail\'s whole outcome, the topic\'s Notebook, the right rail and the outcome\'s page comes up in the New message sheet over the feed, with its title, Text and Cards, Full page and ✕, at a laptop\'s width and a phone\'s', async () => {
     const plan = await outcomePage('sheet-entry-plan', 'Sheet plan', cardsBody);
     const notes = await topicPage('Sheet notes', '## First\n\nThe topic\'s own page.\n\n## Second\n\nMore.\n');
     let p = await page('notebook-sheet-entries', null, true);
-    // The outline's Outcome Notebook.
-    await listed(p, row(plan), 'the outline lists the page');
-    await press(p, row(plan));
+    // The right rail's Notebook, with All of this outcome: the outcome's pages (the side rail lists none, item 464).
+    await wholeOutcome(p);
+    await listed(p, railRow(plan), 'the right rail lists the outcome\'s page');
+    await press(p, railRow(plan));
     await opened(p, 'Sheet plan', ['Plan', 'Steps', 'Notes']);
     const head = await p.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(SHEET)}),q=s=>d.querySelector(s),keys=q('.notebook-sheet-page:not([hidden]) .deck-keys>span:not([style*="hidden"])');
       return {full:[q('.notebook-sheet-full').getAttribute('href'),q('.notebook-sheet-full').getAttribute('aria-label'),q('.notebook-sheet-full').title],
@@ -214,6 +226,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await shot(p, 'notebook-sheet-cards');
     await p.point(`${SHEET} .notebook-sheet-close`);
     await closed(p);
+    await p.evaluate(`document.querySelector('#things .things-scope .chip:first-child').scrollIntoView({block:'nearest',behavior:'instant'})`);
+    await p.point('#things .things-scope .chip:first-child');
+    await until(() => p.evaluate(`document.querySelector('#things .things-scope .chip:first-child').getAttribute('aria-pressed')==='true'`), 'Just this topic');
     // The topic's own Notebook.
     await listed(p, card(notes), 'the topic\'s Notebook lists its page');
     await press(p, card(notes));
@@ -565,11 +580,12 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     const there = (await control({ method: 'agent_message', operation_id: 'notebook-sheet-stack-there', topic_id: conversation, whole_topic: true, sender: 'person', body: 'The stack about the ask, in the Conversation.' })).result.message_id;
     const asks = await outcomePage('sheet-stack-asks', 'Sheet asks', `## Ask\n\nWhat next?\n\n${stack(conversation, there)}\n\n## Draft\n\nWords.\n`);
     p = await page('notebook-sheet-stack-there', null, true, laptop);
-    await listed(p, row(asks), 'the outline lists the page');
-    await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(row(asks))}).scrollIntoView({block:'center'});scrollTo(0,Math.min(300,document.documentElement.scrollHeight-innerHeight));return true})()`);
+    await wholeOutcome(p);
+    await listed(p, railRow(asks), 'the right rail lists the page');
+    await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(railRow(asks))}).scrollIntoView({block:'center'});scrollTo(0,Math.min(300,document.documentElement.scrollHeight-innerHeight));return true})()`);
     at = await scrolled(p);
     assert.ok(at > 0, 'the feed is scrolled down');
-    await p.point(row(asks));
+    await p.point(railRow(asks));
     await opened(p, 'Sheet asks', ['Ask', 'Draft']);
     await writeIn(p, 'Draft', ' Unsent.');
     await p.point(`${await cardOf(p, 'Ask')} a.deck-bubble`);
@@ -683,8 +699,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await writeIn(p, 'Notes', ' Left open.');
     await p.point(`${SHEET} .notebook-sheet-close`);
     await closed(p);
-    await listed(p, row(second), 'the outline lists the second page');
-    await press(p, row(second));
+    await wholeOutcome(p);
+    await listed(p, railRow(second), 'the right rail lists the second page');
+    await press(p, railRow(second));
     await opened(p, 'Sheet second', ['Other']);
     assert.equal((await state(p)).pages, 1, 'the second page replaces the first in the sheet');
     await saved(first, 'Dan reviews. Left open.', 'the first page\'s unfinished card goes on to Core');
