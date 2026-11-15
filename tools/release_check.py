@@ -52,7 +52,9 @@ WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", 
 COMPOSE = "tests/reader_compose_native.mjs"
 # The harnesses that load playwright-core, and so are handed its directory.
 FENCE_COPY = "tests/fence_copy_native.mjs"
-PLAYWRIGHT_HARNESSES = (WEBKIT, COMPOSE, FENCE_COPY)
+# A card's marks of an image, the person's note and their saved reply, in both engines (item 127, docs/topic-reading.md).
+CARD_MARKS = "tests/card_marks_native.mjs"
+PLAYWRIGHT_HARNESSES = (WEBKIT, COMPOSE, FENCE_COPY, CARD_MARKS)
 # Every mode of every native entry point. tests/test_tools_release_check.py
 # reads the harnesses and fails when a mode or an entry point is missing here.
 NATIVE_STEPS = tuple(
@@ -66,7 +68,8 @@ NATIVE_STEPS = tuple(
     # The same checks in Safari's engine, and the phone check page (docs/device-evidence.md).
     + [NativeStep("webkit-" + mode, WEBKIT, ("--" + mode,), "native.json") for mode in WEBKIT_MODES]
     + [NativeStep("compose", COMPOSE, (), "native.json"),
-       NativeStep("fence-copy", FENCE_COPY, (), "native.json")])
+       NativeStep("fence-copy", FENCE_COPY, (), "native.json"),
+       NativeStep("card-marks", CARD_MARKS, (), "native.json")])
 UNIT_STEPS = ("python-units", "node-units")
 DEPLOY_REFUSALS = "deploy-refusals"
 WAKE_REPLAY = "wake-replay"

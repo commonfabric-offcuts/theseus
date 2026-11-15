@@ -976,6 +976,27 @@ def main():
                             "workspace_id": current["workspace_id"], "topic_id": current["topic_id"], "title": request["title"],
                             "participants": current["participants"], "body": current["body"], "attachments": current["attachments"]},
                             {"opening_id": request["opening_id"]}, {"opening_revision": current["revision"]})
+                    elif freshness and request["method"] == "private_writing":
+                        # A private note or a saved reply on a message, as its writer's page, CLI or another
+                        # device saves it, at the revision it stands at: the person's own ("sender": "person",
+                        # the default) or another reader's, who with "join": true takes part in the topic first.
+                        sender = actor if request.get("sender", "person") == "person" else request["sender"]
+                        ref, topic_id, prefix = {"kind": "message", "id": request["message_id"]}, request.get("topic_id", "t1"), request["operation_id"]
+                        if request.get("join"):
+                            revision = store().view(actor, "topic", {"topic_id": topic_id})["topic"]["version"]
+                            command("participation.set", prefix + "-join", {"actor_id": sender, "present": True},
+                                    {"topic_id": topic_id}, {"topic_revision": revision})
+                        current = store().view(sender, "editor_state", {"source_ref": ref, "topic_id": topic_id})
+                        assert not current.get("error"), current
+                        if request["kind"] == "note":
+                            note = current["note"] or {"id": prefix + "-note", "revision": 0}
+                            answer = command("note.save", prefix, {"source_ref": ref, "body": request["body"]},
+                                             {"note_id": note["id"]}, {"note_revision": note["revision"]}, sender=sender)
+                        else:
+                            draft = current["draft"] or {"id": prefix + "-draft", "generation": prefix + "-generation", "revision": 0}
+                            answer = command("draft.save", prefix, {"source_ref": ref, "topic_id": topic_id, "generation": draft["generation"],
+                                                                    "body": request["body"]},
+                                             {"draft_id": draft["id"]}, {"draft_revision": draft["revision"]}, sender=sender)
                     elif freshness and request["method"] == "topic_state":
                         # The person sets where a topic stands, as the state form does,
                         # after adding any participants it is to wait on.
