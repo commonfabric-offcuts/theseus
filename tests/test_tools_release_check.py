@@ -686,6 +686,45 @@ class Parsers(unittest.TestCase):
                 self.assertEqual(release_check.native_counts(reader, evidence)[1], expected, results)
 
 
+    def test_a_persistence_step_passes_only_when_its_log_holds_each_case_s_two_lines(self):
+        # tests/native-calls.mjs stamps: a start line before each case runs, its result with both times after cleanup.
+        persistence = release_check.NATIVE_STEPS[0]
+        self.assertEqual(persistence.harness, release_check.PERSISTENCE)
+        reader = [s for s in release_check.NATIVE_STEPS if s.harness != release_check.PERSISTENCE][0]
+        results = [{"name": "a", "passed": True}, {"name": "b", "passed": True, "cleanupRefused": ["closing page ghost: x"]}]
+        start = lambda name, at: json.dumps({"case": name, "started": at})
+        end = lambda result, at, done: json.dumps(dict(result, started=at, finished=done))
+        good = [start("a", "2026-11-15T01:00:00.000Z"), end(results[0], "2026-11-15T01:00:00.000Z", "2026-11-15T01:00:04.000Z"),
+                "a line of the harness's own that is not a case's", start("b", "2026-11-15T01:00:04.000Z"),
+                end(results[1], "2026-11-15T01:00:04.000Z", "2026-11-15T01:00:05.000Z")]
+        logs = {
+            "no start lines (the base harness)": [json.dumps(results[0]), json.dumps(results[1])],
+            "a start line but the base result line": [good[0], json.dumps(results[0])] + good[3:],
+            "a result line written before cleanup, without what cleanup added": good[:3] + [good[3], end({"name": "b", "passed": True}, "2026-11-15T01:00:04.000Z", "2026-11-15T01:00:05.000Z")],
+            "a case that crashed out after its result was kept": good[:4],
+            "a result line naming another start": good[:3] + [good[3], end(results[1], "2026-11-15T01:00:00.000Z", "2026-11-15T01:00:05.000Z")],
+            "finished before it started": good[:4] + [end(results[1], "2026-11-15T01:00:04.000Z", "2026-11-15T01:00:03.000Z")],
+            "a start the results file does not hold": good + [start("c", "2026-11-15T01:00:05.000Z")],
+            "cases out of order": good[3:] + good[:2],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            (evidence / "native.json").write_text(json.dumps({"browserClosed": True, "results": results}))
+            self.assertEqual(release_check.native_counts(persistence, evidence, "\n".join(good) + "\n"),
+                             ({"tests": 2, "pass": 2, "fail": 0, "failed": [], "browser_closed": True}, True))
+            self.assertTrue(release_check.native_counts(persistence, evidence)[1], "without its log, the results file alone")
+            for why, log in logs.items():
+                with self.subTest(why):
+                    counts, passed = release_check.native_counts(persistence, evidence, "\n".join(log) + "\n")
+                    self.assertFalse(passed)
+                    self.assertEqual(len(counts["case_lines"]), 1, counts)
+            counts, _ = release_check.native_counts(persistence, evidence, "\n".join(logs["no start lines (the base harness)"]))
+            self.assertEqual(counts["case_lines"], ["case 'a': no start line in the step's log where it began (found %s)" % json.dumps(results[0])])
+            # Another harness writes no case lines, and is not held to them.
+            (evidence / reader.results).write_text(json.dumps({"browserClosed": True, "closed": True, "results": [{"name": "a", "passed": True}]}))
+            self.assertTrue(release_check.native_counts(reader, evidence, "")[1])
+
+
 class Environment(unittest.TestCase):
     def test_world_writable_ancestor(self):
         modes = {"/a/b/c": 0o40755, "/a/b": 0o40777, "/a": 0o40755, "/": 0o40755}

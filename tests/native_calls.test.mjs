@@ -172,3 +172,105 @@ test('a run cancelled mid-case leaves that case started on the record, with no r
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('a wait outside the browser takes the bound in force when it is made; lowering it for one call leaves the rest at their minute', async () => {
+  const clock = standInClock();
+  const before = watch(calls.bounded(new Promise(() => {}), 'view before', { timers: clock }));
+  calls.fixtureBound.ms = 3000;
+  const lowered = watch(calls.bounded(new Promise(() => {}), 'fixture control unanswered', { timers: clock }));
+  calls.fixtureBound.ms = calls.FIXTURE_BOUND_MS;
+  const after = watch(calls.bounded(new Promise(() => {}), 'view after', { timers: clock }));
+  assert.deepEqual([...clock.armed.values()].map(bound => bound.ms), [calls.FIXTURE_BOUND_MS, 3000, calls.FIXTURE_BOUND_MS]);
+  clock.fire([...clock.armed.keys()][1]);
+  await settle();
+  assert.deepEqual([before.state, lowered.state, after.state], ['pending', 'rejected', 'pending']);
+  assert.equal(lowered.error.message, 'Timed out: fixture control unanswered, no answer in 3 s');
+});
+
+test("what each case wrote is kept in order, the same lines the log has, so a running case finds its own start line last", () => {
+  const lines = [];
+  const stamp = calls.stamps({ write: line => lines.push(line), now: () => new Date(0) });
+  stamp.finished({ name: 'before', passed: true }, stamp.started('before'));
+  stamp.started('running');
+  assert.deepEqual(stamp.written, lines);
+  assert.deepEqual(JSON.parse(stamp.written.at(-1)), { case: 'running', started: '1970-01-01T00:00:00.000Z' });
+});
+
+test('a page or context that will not close fails its case by name, unless the case arranged that refusal', () => {
+  const ghost = 'closing page ghost-page: {"code":-32602,"message":"No target with given id found"}';
+  const context = "disposing the case's browser context: {\"code\":-32602,\"message\":\"Failed to find context with id ghost\"}";
+  const passed = { name: 'c', passed: true };
+  assert.equal(calls.cleanupVerdict(passed, []), passed, 'a cleanup that closes everything changes nothing');
+  assert.deepEqual(calls.cleanupVerdict(passed, [ghost, context]),
+    { name: 'c', passed: false, instrumentError: `cleanup: ${ghost}; ${context}` }, 'a refusal no one arranged fails the case, naming it');
+  assert.deepEqual(calls.cleanupVerdict({ name: 'c', passed: false, instrumentError: 'trace' }, [ghost]),
+    { name: 'c', passed: false, instrumentError: `trace\ncleanup: ${ghost}` }, 'beside what already failed it');
+  assert.deepEqual(calls.cleanupVerdict(passed, [ghost, context], [/^closing page ghost-page: /, /^disposing the case's browser context: /]),
+    { name: 'c', passed: true, cleanupRefused: [ghost, context] }, 'refusals the case arranged are kept on its record');
+  assert.deepEqual(calls.cleanupVerdict(passed, [ghost, context], [/^closing page ghost-page: /]),
+    { name: 'c', passed: false, instrumentError: `cleanup: ${context}` }, 'one it did not arrange still fails it');
+  assert.deepEqual(calls.cleanupVerdict(passed, [], [/^closing page ghost-page: /]),
+    { name: 'c', passed: false, instrumentError: 'cleanup: no refusal matching /^closing page ghost-page: / came' }, 'an arranged refusal that never came fails it');
+});
+
+function standInEnd({ chromeExits = true, fixtureExits = true, closes = true } = {}) {
+  const done = [];
+  let fixtureRunning = true, exitChrome, exitFixture;
+  const browser = {
+    close: async () => { done.push('Browser.close'); if (!closes) throw Error('CDP timed out: Browser.close, no answer in 10 s'); if (chromeExits) exitChrome(0); },
+    exit: new Promise(resolve => { exitChrome = resolve; }),
+    disconnect: () => done.push('disconnect'),
+  };
+  const fixture = {
+    health: async () => { done.push('health'); return { fatal: [] }; },
+    end: () => { done.push('end'); if (fixtureExits) { fixtureRunning = false; exitFixture(0); } },
+    exit: new Promise(resolve => { exitFixture = resolve; }),
+    running: () => fixtureRunning,
+    stop: () => done.push('stop'),
+  };
+  return { done, browser, fixture };
+}
+
+test('the end of a run closes the browser and the fixture and waits for both to exit, stopping nothing that exited', async () => {
+  const clock = standInClock(), { done, browser, fixture } = standInEnd();
+  const end = watch(calls.closeAll({ browser, fixture, timers: clock }));
+  await settle(); await settle();
+  assert.equal(end.state, 'resolved');
+  assert.deepEqual(end.value, { failed: [], health: { fatal: [] }, exitCode: 0 });
+  assert.deepEqual(done, ['Browser.close', 'disconnect', 'health', 'end']);
+  assert.equal(clock.armed.size, 0, 'no bound is left armed');
+});
+
+test("a Chrome that does not exit after Browser.close is named at its bound, and the fixture is still closed", async () => {
+  const clock = standInClock(), { done, browser, fixture } = standInEnd({ chromeExits: false });
+  const end = watch(calls.closeAll({ browser, fixture, timers: clock }));
+  await settle();
+  assert.equal(end.state, 'pending', 'nothing fails before the bound');
+  const [[timer, bound]] = clock.armed;
+  assert.equal(bound.ms, calls.FIXTURE_BOUND_MS, "Chrome's exit has its bound");
+  clock.fire(timer);
+  await settle(); await settle();
+  assert.equal(end.state, 'resolved');
+  assert.deepEqual(end.value.failed, ['Chrome exiting: Timed out: Chrome exiting after Browser.close, no answer in 60 s']);
+  assert.deepEqual(done, ['Browser.close', 'disconnect', 'health', 'end'], 'the rest of the teardown still runs');
+});
+
+test('a fixture that does not exit once its input ends is named at its bound and stopped by its handle', async () => {
+  const clock = standInClock(), { done, browser, fixture } = standInEnd({ fixtureExits: false, closes: false });
+  const end = watch(calls.closeAll({ browser, fixture, timers: clock }));
+  await settle();
+  const [[timer]] = clock.armed;
+  clock.fire(timer);
+  await settle();
+  assert.equal(end.state, 'pending');
+  const [[fixtureTimer, bound]] = clock.armed;
+  assert.equal(bound.ms, calls.FIXTURE_BOUND_MS, "the fixture's exit has its bound");
+  clock.fire(fixtureTimer);
+  await settle(); await settle();
+  assert.equal(end.state, 'resolved');
+  assert.deepEqual(end.value.failed, ['Browser.close: CDP timed out: Browser.close, no answer in 10 s',
+    'Chrome exiting: Timed out: Chrome exiting after Browser.close, no answer in 60 s',
+    'the fixture exiting: Timed out: the fixture exiting once its input ended, no answer in 60 s']);
+  assert.equal(end.value.exitCode, undefined, 'its exit stays unknown');
+  assert.deepEqual(done, ['Browser.close', 'disconnect', 'health', 'end', 'stop']);
+});

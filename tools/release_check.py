@@ -220,8 +220,36 @@ def node_counts(text):
     return counts, passed
 
 
-def native_counts(step, evidence):
-    """Counts from the harness's own results file; a missing or unreadable file is a failure."""
+def case_lines(log, results):
+    """Reasons a step's log does not hold the persistence harness's two lines for each case in results, in their order
+    and nothing besides: {"case", "started"} when the case started, then its result as the results file has it, with
+    the same "started" and a "finished" no earlier (tests/native-calls.mjs stamps). Empty when it does."""
+    lines = []
+    for text in log.splitlines():
+        try:
+            line = json.loads(text) if text.startswith("{") else None
+        except ValueError:
+            continue
+        if isinstance(line, dict) and (set(line) == {"case", "started"} or {"name", "passed"} <= set(line)):
+            lines.append(line)
+    for number, result in enumerate(results):
+        name = result.get("name")
+        start, end = (lines[2 * number:2 * number + 2] + [None, None])[:2]
+        if start is None or set(start) != {"case", "started"} or start["case"] != name:
+            return ["case %r: no start line in the step's log where it began (found %s)" % (name, json.dumps(start))]
+        if (end is None or "case" in end or {key: value for key, value in end.items() if key not in ("started", "finished")} != result
+                or end.get("started") != start["started"] or not isinstance(end.get("finished"), str)
+                or end["finished"] < start["started"]):
+            return ["case %r: its result line in the step's log is not its result with when it started and finished "
+                    "(found %s)" % (name, json.dumps(end)[:300])]
+    if len(lines) > 2 * len(results):
+        return ["the step's log has a case line the results file does not: %s" % json.dumps(lines[2 * len(results)])[:300]]
+    return []
+
+
+def native_counts(step, evidence, log=None):
+    """Counts from the harness's own results file; a missing or unreadable file is a failure. With the step's log, a
+    persistence step also fails when the log does not hold each case's two lines (case_lines)."""
     path = evidence / step.results
     try:
         report = json.loads(path.read_text())
@@ -237,7 +265,10 @@ def native_counts(step, evidence):
     failed = [r.get("name") for r in results if r not in good]
     counts = {"tests": len(results), "pass": len(good), "fail": len(failed), "failed": failed,
               "browser_closed": closed}
-    return counts, bool(results) and not failed and closed
+    lines = case_lines(log, results) if log is not None and step.harness == PERSISTENCE else []
+    if lines:
+        counts["case_lines"] = lines
+    return counts, bool(results) and not failed and closed and not lines
 
 
 def run_step(name, argv, root, out, judge, tool, log_name=None, playwright=None):
@@ -553,7 +584,7 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
             evidence = out / "native" / step.name
             evidence.mkdir(parents=True)
             return run_step(name, [node, step.harness, chrome, str(evidence)] + list(step.flags),
-                            root, out, lambda text: native_counts(step, evidence), step.harness,
+                            root, out, lambda text: native_counts(step, evidence, text), step.harness,
                             playwright=playwright if step.harness in PLAYWRIGHT_HARNESSES else None)
         base_steps, steps = [], []
         if reporter is not None:

@@ -34,7 +34,7 @@ import { readingChecks } from './topic_reading_native.mjs';
 import { navigationChecks } from './reader_navigation_native.mjs';
 import { departureChecks, assertDepartureTrace } from './reader_departure_native.mjs';
 import { ReleaseRule } from './release-rule.mjs';
-import { protocol, bounded, stamps, CALL_BOUND_MS } from './native-calls.mjs';
+import { protocol, bounded, stamps, cleanupVerdict, closeAll, fixtureBound, CALL_BOUND_MS, FIXTURE_BOUND_MS } from './native-calls.mjs';
 import { FELL } from './press-fell.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -363,7 +363,9 @@ try {
     })()`);
     return { targetId, send, evaluate, close };
   };
-  const check = async (name, action) => {
+  // cleanupRefuses: the refusals a case arranges in its own cleanup, a pattern
+  // each (cleanupVerdict in native-calls.mjs); any other refusal fails it.
+  const check = async (name, action, { cleanupRefuses = [] } = {}) => {
     if (mode === '--colors' && !name.startsWith('colors ')) return;
     if (mode === '--asks' && !name.startsWith('asks ')) return;
     if (mode === '--whispers' && !name.startsWith('whispers ')) return;
@@ -443,7 +445,7 @@ try {
       pages.clear(); listeners.clear(); pageNames.clear();
       freshnessPages.clear(); connectedPages.clear();
       if (recoveryContext) { const browserContextId = recoveryContext; recoveryContext = null; await tidy("disposing the case's browser context", () => cdp('Target.disposeBrowserContext', { browserContextId })); }
-      if (unclosed.length) { const result = results.at(-1); result.passed = false; result.instrumentError = [result.instrumentError, `cleanup: ${unclosed.join('; ')}`].filter(Boolean).join('\n'); }
+      results[results.length - 1] = cleanupVerdict(results.at(-1), unclosed, cleanupRefuses);
       timing.cleanupEnded = Date.now(); phases.cases.push(timing);
     }
     stamp.finished(results.at(-1), started);
@@ -756,6 +758,83 @@ try {
         const waited = Date.now() - asked;
         observations.push({ name: 'a page that stops answering', waited, busy: await busy });
         assert.ok(waited >= CALL_BOUND_MS - 100 && waited < CALL_BOUND_MS + 5000, `failed at its bound, not before and not long after: ${waited} ms`);
+      });
+      // Each case is on the step's log as started before it runs: when its
+      // action begins, its own start line is the last line the harness wrote,
+      // and the line before it is the result of the case before, with both of
+      // that case's times (stamps in native-calls.mjs; the release check reads
+      // both lines of every case from the step's log).
+      const linesCase = 'navigation harness case lines: a case is on the log as started before it runs';
+      await check(linesCase, async () => {
+        const own = JSON.parse(stamp.written.at(-1));
+        assert.deepEqual(Object.keys(own), ['case', 'started'], 'the last line written is a start line');
+        assert.equal(own.case, linesCase, 'and it is this case’s own');
+        const since = Date.now() - Date.parse(own.started);
+        assert.ok(since >= 0 && since < 60000, `it says when the case started: ${own.started}`);
+        if (results.length) {
+          const before = JSON.parse(stamp.written.at(-2));
+          assert.equal(before.name, results.at(-1).name, 'the line before it is the result of the case before');
+          assert.ok(Date.parse(before.started) <= Date.parse(before.finished) && Date.parse(before.finished) <= Date.parse(own.started), 'with when that case started and finished, before this one started');
+        }
+      });
+      // A page and a context that will not close at the end of a case: each
+      // is named, the rest of the cleanup goes on, and the next case runs.
+      // These refusals are arranged, so the case names them (cleanupRefuses);
+      // a refusal no case arranged fails its case (cleanupVerdict's unit).
+      const refusedCase = 'navigation harness cleanup refused: a page and a context that will not close are named and the rest is closed';
+      let unclosable = null;
+      await check(refusedCase, async () => {
+        // A target and a context the browser does not know, each refused when
+        // closed; the ghost page comes first, so a refusal must not stop the
+        // pages after it.
+        pages.add('harness-ghost-target'); pageNames.set('harness-ghost-target', 'ghost-page');
+        const p = await page('closed-after-a-ghost');
+        unclosable = { page: p.targetId, context: recoveryContext };
+        recoveryContext = 'harness-ghost-context';
+      }, { cleanupRefuses: [/^closing page ghost-page: \{.*\}$/, /^disposing the case's browser context: \{.*\}$/] });
+      await check('navigation harness cleanup refused: the case after it runs and finds both refusals on its record', async () => {
+        assert.ok(unclosable, 'the case before it ran');
+        const before = results.at(-1);
+        assert.equal(before.name, refusedCase);
+        assert.equal(before.passed, true, 'its refusals were the ones it arranged');
+        assert.equal(before.cleanupRefused?.length, 2, `both refusals are on its record: ${JSON.stringify(before)}`);
+        assert.match(before.cleanupRefused[0], /^closing page ghost-page: .*No target/);
+        assert.match(before.cleanupRefused[1], /^disposing the case's browser context: /);
+        const { targetInfos } = await cdp('Target.getTargets');
+        assert.equal(targetInfos.some(target => target.targetId === unclosable.page), false, 'the page after the ghost was closed');
+        // The real context that case was given is still the harness's to dispose.
+        if (unclosable.context) await cdp('Target.disposeBrowserContext', { browserContextId: unclosable.context });
+      });
+      // A fixture control and a view read from the fixture's server that get
+      // no answer fail at their bound, by name, through this harness's own
+      // control() and view(). The bound is lowered for that one call only
+      // (fixtureBound in native-calls.mjs), so the case takes seconds.
+      await check('navigation harness a fixture control and a view that get no answer fail by name at their bound', async () => {
+        const lowered = 3000;
+        const atBound = async (call, what) => {
+          fixtureBound.ms = lowered;
+          let pending;
+          try { pending = call(); } finally { fixtureBound.ms = FIXTURE_BOUND_MS; }
+          const asked = Date.now();
+          // A call with no bound never fails; this one says so instead of holding the case.
+          const error = await bounded(pending.then(() => null, error => error), `${what} failing at its bound`, { ms: lowered + 10000 });
+          const waited = Date.now() - asked;
+          assert.equal(error?.message, `Timed out: ${what}, no answer in ${lowered / 1000} s`);
+          assert.ok(waited >= lowered - 100 && waited < lowered + 5000, `failed at its bound, not before and not long after: ${waited} ms`);
+          return waited;
+        };
+        // The fixture leaves this control unanswered (tests/fixtures/ui_http.py).
+        const waitedControl = await atBound(() => control({ method: 'unanswered' }), 'fixture control unanswered');
+        assert.equal(requests.size, 0, 'the unanswered control is no longer waited on');
+        // The fixture holds this view's read until it is released.
+        const { next: after } = await control({ method: 'admission_events' });
+        await control({ method: 'read_hold', hold_id: 'harness-unanswered-view', name: 'workspaces', phase: 'callback', timeout_ms: 15000 });
+        const waitedView = await atBound(() => view('workspaces', { limit: 100 }), 'view workspaces');
+        await control({ method: 'read_release', hold_id: 'harness-unanswered-view' });
+        const { events } = await control({ method: 'admission_events', after });
+        assert.ok(events.some(event => event.event === 'hold-enter' && event.hold_id === 'harness-unanswered-view'), 'the view really was held');
+        assert.ok(Array.isArray((await view('workspaces', { limit: 100 })).items), 'the next view is answered');
+        observations.push({ name: 'a fixture control and a view that get no answer', waitedControl, waitedView });
       });
       await navigationChecks({ check, page, until, root, evidencePath, facts, view, control, replace, field, shot, observations });
       await departureChecks({ check, page, until, facts, view, control, shot, observations });
@@ -1647,19 +1726,15 @@ try {
   }
 } finally {
   // Each step of the teardown has its bound, and one that fails is recorded
-  // and the rest still run, so native.json is always written.
-  const teardown = [];
-  const tidy = async (what, act) => { try { await act(); } catch (error) { teardown.push(`${what}: ${error.message}`); } };
-  if (cdp && socket?.readyState === WebSocket.OPEN) {
-    await tidy('Browser.close', () => cdp('Browser.close'));
-    await tidy('Chrome exiting', () => bounded(chromeExit, 'Chrome exiting after Browser.close'));
-    socket.close();
-  }
-  if (liveUpdatesFixture && fixture.exitCode === null) await tidy('final fixture health', async () => { finalHealth = await control({ method: 'admission_events' }); });
-  fixture.stdin.end();
-  await tidy('the fixture exiting', async () => { fixtureExitCode = await bounded(fixtureExit, 'the fixture exiting once its input ended'); });
-  // A fixture that does not exit is this harness's own child: it is stopped by its handle, and its exit stays unknown.
-  if (fixture.exitCode === null && fixture.signalCode === null) fixture.kill('SIGTERM');
+  // and the rest still run, so native.json is always written (closeAll in
+  // native-calls.mjs). A fixture that does not exit is this harness's own
+  // child: it is stopped by its handle, and its exit stays unknown.
+  const closed = await closeAll({
+    browser: cdp && socket?.readyState === WebSocket.OPEN ? { close: () => cdp('Browser.close'), exit: chromeExit, disconnect: () => socket.close() } : null,
+    fixture: { health: liveUpdatesFixture ? async () => fixture.exitCode === null ? control({ method: 'admission_events' }) : undefined : null,
+      end: () => fixture.stdin.end(), exit: fixtureExit, running: () => fixture.exitCode === null && fixture.signalCode === null, stop: () => fixture.kill('SIGTERM') },
+  });
+  const teardown = closed.failed; finalHealth = closed.health; fixtureExitCode = closed.exitCode;
   // Every origin/key here belongs to this unique disposable profile; no keys
   // or prefixes are ever removed from a person's browser.
   if (!chrome || chrome.exitCode !== null) {

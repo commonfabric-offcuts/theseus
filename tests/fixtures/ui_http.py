@@ -1146,6 +1146,10 @@ def main():
                         finally:
                             os.close(fd)
                         answer = store().view(actor, "capabilities", {})
+                    elif request["method"] == "unanswered":
+                        # A control left unanswered, as a lost one would be:
+                        # the harness's bound fails it (tests/native-calls.mjs).
+                        continue
                     else:
                         raise ValueError("Unknown private fixture control")
                     print(json.dumps({"id": request["id"], "answer": answer}), flush=True)
