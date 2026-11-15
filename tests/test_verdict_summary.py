@@ -60,6 +60,18 @@ class VerdictSummaryCase(unittest.TestCase):
         self.assertIn('Train: pull request #36, reverts 398/399', result['output']['summary'])
         self.assertNotIn('Train (git-only', result['output']['summary'])
 
+    def test_items_never_claim_shipment_on_passed_or_refused_pr_or_push(self):
+        for event in ('pull_request', 'push'):
+            for passed in (True, False):
+                with self.subTest(event=event, passed=passed):
+                    result = self.render({'passed': passed, 'train': {'pull_request': 34, 'items': [452],
+                                         'display_items': ['452'], 'merge_commit': 'tested-merge',
+                                         'items_source': 'Pipeline trailers in newly merged history'}},
+                                         None, refusals='' if passed else 'validator: not green\n', event=event)
+                    self.assertEqual(result['conclusion'], 'success' if passed else 'failure')
+                    self.assertIn('Items: 452; merge commit tested-merge', result['output']['summary'])
+                    self.assertNotIn('shipped', result['output']['summary'].lower())
+
     def test_missing_git_reading_is_explicit(self):
         result = self.render({'passed': False}, None)
         self.assertEqual(result['conclusion'], 'failure')
