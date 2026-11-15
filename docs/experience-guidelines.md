@@ -148,10 +148,14 @@ content needs: a title line is about a sentence wide, and a few sentences about
 - `tests/pipeline_native.mjs` (`native-pipeline`, `native-webkit-pipeline`):
   "pipeline turning it on is one tap from the outcome page, and one line and
   Return adds an item whose words and size are set in place".
-- `tests/team_invite_native.mjs` (`native-forms`): "forms invite an agent from
-  the Team panel: a name, Codex, Return; …", and each of its states measured at
-  320, 375 and 390 pixels by touch and on a laptop, in light and dark ("forms
-  invite on a phone by touch the line and the prompt fit …").
+- `tests/team_invite_native.mjs` (`native-forms`, `native-webkit-invite`):
+  "forms invite an agent from the Team panel: a name, Codex, Return; …", and
+  each of its states measured at 320, 375 and 390 pixels by touch and on a
+  laptop, in light and dark ("forms invite on a phone by touch the line and
+  the prompt fit …"); after a reload, or a lost answer and another outcome,
+  the same name typed again gives back the same agent ("forms invite after a
+  sign-in file not written and a reload …", "forms invite after a lost answer
+  and a move to another outcome and back …").
 
 ## No coloured left edges
 

@@ -12,6 +12,11 @@
 // too, and Try again sends it once more: Core answers with its recorded
 // receipt, and only the file is written. A refusal is said in plain words with
 // the name kept and selected, so a taken name is changed in place.
+//
+// The request lives only as long as the page (item 525): after a reload, or a
+// move to another outcome, the same name typed again is a new request, and Core
+// gives back the agent the first one put on the team, so the server writes its
+// sign-in file then.
 
 const copy = structuredClone;
 const element = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };

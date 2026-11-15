@@ -323,6 +323,85 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     }
   });
 
+  // The page keeps an invitation only while it is open (item 525): after a reload, or a move to another outcome, the
+  // same name typed again is a new request, and Core gives back the agent the first one put on the team.
+  const reload = async p => {
+    const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+    await p.send('Page.reload', {});
+    await until(() => quiet(p, `document.body.dataset.ready === 'true' && (window.documentOrigin??=performance.timeOrigin) !== ${loaded}`), 'the page loads again');
+    await until(() => visible(p, '#invite-agent'), 'the invite is offered again');
+  };
+  // Waits for what became of an invitation: its prompt, or words that are not Inviting….
+  const answered = p => until(async () => await visible(p, '#invite-prompt-text') || !['', 'Inviting…', null].includes(await said(p)), 'the invitation is answered');
+  const given = async (p, name, id, sent, first) => {
+    assert.equal(await said(p), '', 'nothing refused');
+    assert.equal(await visible(p, '#invite-prompt-text'), true, 'the prompt shows');
+    const [request, ...more] = invites(p, sent);
+    assert.deepEqual(more, [], 'one invitation');
+    assert.notEqual(request.operation_id, first.operation_id, 'a new request: the page kept nothing');
+    assert.equal(await text(p, '#team-invite .invite-said'), `${name} is on the team. Paste this into Claude Code:`);
+    assert.ok((await text(p, '#invite-prompt-text')).includes(`You are ${name}, an agent in Theseus`));
+    assert.deepEqual((await files()).filter(file => file.actor === id).map(file => [file.name, file.mode, file.regular, file.mine]),
+      [[`${id}.profile.json`, '0o600', true, true]], 'its one sign-in file, private');
+    assert.deepEqual((await view('actors', { kind: 'agent' })).items.filter(item => item.id === id).map(item => item.name), [name], 'registered once');
+    assert.equal((await view('workspace_members', { workspace_id: first.target.workspace_id })).items.filter(item => item.actor_id === id).length, 1, 'on the team once');
+    await until(async () => (await teamNames(p)).filter(n => n === name).length === 1, 'the team shows it once');
+  };
+
+  await check('forms invite after a sign-in file not written and a reload, the same name typed again gives back the same agent and writes its file', async () => {
+    const workspace = await outcome('Invite, typed again after a reload');
+    const p = await open('invite-retyped-reload', workspace);
+    await openLine(p); await type(p, 'Late scribe');
+    const before = p.calls.length;
+    await control({ method: 'sign_in_folder', writable: false });
+    try {
+      await p.key('Enter');
+      await until(async () => (await said(p))?.startsWith('Late scribe is on the team, but its sign-in file could not be written in '), 'the file not written is said');
+    } finally {
+      await control({ method: 'sign_in_folder', writable: true });
+    }
+    const [first] = invites(p, before);
+    assert.equal((await files()).some(file => file.actor === 'late-scribe'), false, 'no sign-in file yet');
+    await reload(p);
+    assert.equal(await visible(p, '#invite-prompt-text'), false);
+    const sent = p.calls.length;
+    await openLine(p); await type(p, 'Late scribe'); await p.key('Enter');
+    await answered(p);
+    await given(p, 'Late scribe', 'late-scribe', sent, first);
+    await fits(p, 'given back after a reload');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('forms invite after a lost answer and a move to another outcome and back, the same name typed again gives back the same agent with its file', async () => {
+    const workspace = await outcome('Invite, typed again after a lost answer');
+    const elsewhere = await outcome('Invite, somewhere else');
+    const p = await open('invite-retyped-moved', workspace);
+    await openLine(p); await type(p, 'Night scribe');
+    let hold = true;
+    p.intercept(payload => payload?.kind === 'workspace.agent_invite' && hold && !(hold = false));
+    const before = p.calls.length;
+    await p.key('Enter');
+    await until(() => p.held.some(entry => entry.payload?.kind === 'workspace.agent_invite'), 'the answer is held');
+    await p.fail(p.held.splice(0, 1)[0]);
+    await until(async () => (await said(p))?.startsWith('Not confirmed: '), 'the lost answer is said');
+    p.intercept(null);
+    const [first] = invites(p, before);
+    const written = (await files()).filter(file => file.actor === 'night-scribe');
+    assert.equal(written.length, 1, 'Core took it and its file was written; only the answer was lost');
+    for (const place of [elsewhere, workspace]) {
+      const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+      await p.send('Page.navigate', { url: `${facts.origin}/?workspace=${place}` });
+      await until(() => quiet(p, `document.body.dataset.ready === 'true' && (window.documentOrigin??=performance.timeOrigin) !== ${loaded}`), `the outcome ${place} opens`);
+      await until(() => visible(p, '#invite-agent'), `the invite is offered on ${place}`);
+    }
+    const sent = p.calls.length;
+    await openLine(p); await type(p, 'Night scribe'); await p.key('Enter');
+    await answered(p);
+    await given(p, 'Night scribe', 'night-scribe', sent, first);
+    assert.deepEqual((await files()).filter(file => file.actor === 'night-scribe'), written, 'the file written then is kept as it is');
+    assert.deepEqual(p.errors, []);
+  });
+
   await check('forms invite on a phone by touch the line and the prompt fit at 320, 375 and 390 and on a laptop, in light and dark', async () => {
     const workspace = await outcome('Invite on a phone, with a title long enough to wrap on the narrowest screen');
     const p = await open('invite-phone', workspace);

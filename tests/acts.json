@@ -13839,8 +13839,8 @@
    "break": [
     [
      "aim_next/invite.py",
-     "        if _taken(db, name, agent):",
-     "        if False:"
+     "        if holders:\n            other = _free(db, name)",
+     "        if False:\n            other = _free(db, name)"
     ]
    ],
    "check": {
@@ -13867,8 +13867,8 @@
    "break": [
     [
      "aim_next/invite.py",
-     "if agent and _binds(sign_in_path(folder, agent), store, agent) is False:",
-     "if agent and _binds(sign_in_path(folder, agent), store, agent) is None and False:"
+     "if agent and _held(sign_in_path(folder, agent), store, agent) == OTHER:",
+     "if False:"
     ]
    ],
    "check": {
@@ -14182,6 +14182,290 @@
    "check": {
     "native": "forms",
     "case": "forms invite on a phone by touch"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The inviter typing the same name again in the same outcome gets the same agent back from Core, as a new request, and nothing is registered or added again",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Only the person who invited the agent, in the outcome they invited it to, gets it back: the coordinator or another outcome is refused",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "(agent, workspace, actor)).fetchone()",
+     "(agent, workspace, actor)).fetchone() or db.execute(\"SELECT 1 FROM agent_invitations WHERE agent_id=?\", (agent,)).fetchone()"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An agent no longer on the outcome's team is not given back",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return holders[0] if invited and member else None",
+     "return holders[0] if invited else None"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Core records who invited each agent into which outcome",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        db.execute(\"INSERT INTO agent_invitations VALUES (?,?,?)\", (agent, workspace[\"id\"], actor))\n",
+     "        None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Long names that share their first forty letters get IDs of their own, and a taken one gets a suggestion that is free after the cut",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "    if len(whole) <= ID_MAX:\n        return whole\n",
+     "    if True:\n        return whole[:ID_MAX].strip(\"-\")\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A refusal names whoever has the name or its ID, not the words typed",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "                holders[0][\"name\"], \", such as %s\"",
+     "                name, \", such as %s\""
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Accents are taken off before the ID is made, so Zoë is zoe and Ça va is ca-va",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "re.findall(r\"[a-z0-9]+\", _unaccented(_unaccented(name).casefold()))",
+     "re.findall(r\"[a-z0-9]+\", name.lower())"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file cut short for this agent is written whole by the next attempt",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if held == CUT_SHORT:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file cut short for this agent does not stop its retry before Core is asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return CUT_SHORT if _begins(path, profile_bytes(store.path, store.instance_id, agent, store.binding)) else OTHER",
+     "return OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A file that begins like someone else's sign-in is never taken over",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return len(part) < len(whole) and whole.startswith(part)",
+     "return len(part) < len(whole)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A full team refuses a new agent in plain words, and one place short takes it",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "(workspace[\"id\"],)).fetchone()[0] >= LIMITS[\"workspace_members\"]:",
+     "(workspace[\"id\"],)).fetchone()[0] > LIMITS[\"workspace_members\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A full team refuses a new agent at all",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if db.execute(\"SELECT count(*) FROM workspace_members WHERE workspace_id=?\", (workspace[\"id\"],)).fetchone()[0] >= LIMITS",
+     "        if False and db.execute(\"SELECT count(*) FROM workspace_members WHERE workspace_id=?\", (workspace[\"id\"],)).fetchone()[0] >= LIMITS"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file for the same ID with another database is someone else's",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.actor_id, held.instance_id, held.binding) == (agent, store.instance_id, store.binding) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file for the same ID in another instance is someone else's",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.actor_id, held.db_path, held.binding) == (agent, store.path, store.binding) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file for the same ID under another authority is someone else's",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id) == (agent, store.path, store.instance_id) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Stepping back below version 42 is refused once anyone has been invited",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "INVITATIONS_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM agent_invitations)\"",
+     "INVITATIONS_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "After a sign-in file not written and a reload, the same name typed again on the page gives back the same agent and writes its file",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite after a sign-in file not written and a reload"
+   }
+  },
+  {
+   "item": 525,
+   "act": "After a lost answer and a move to another outcome, the same name typed again on the page gives back the same agent",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite after a lost answer and a move to another outcome"
+   }
+  },
+  {
+   "item": 525,
+   "act": "In Safari's engine, Return in the name line invites and the prompt shows",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (event.key === 'Enter') { event.preventDefault(); if (!event.repeat) this.go(); }",
+     "if (event.key === 'Enter') { event.preventDefault(); }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-invite",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 525,
+   "act": "In Safari's engine, the same name typed again after a reload gives back the same agent",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "native": "webkit-invite",
+    "case": "forms invite after a sign-in file not written and a reload"
    }
   }
  ]

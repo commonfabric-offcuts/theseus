@@ -813,7 +813,7 @@ class NativeCoverage(unittest.TestCase):
         # page, the topic page's acts and how its cards read (each with its phone layouts), the
         # phone check page and the New line staying.
         steps = {step.name: step for step in release_check.NATIVE_STEPS}
-        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading"))
+        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite"))
         for mode in release_check.WEBKIT_MODES:
             self.assertEqual((steps["webkit-" + mode].harness, steps["webkit-" + mode].flags), (release_check.WEBKIT, ("--" + mode,)))
             self.assertIn("native-webkit-" + mode, release_check.REQUIRED)

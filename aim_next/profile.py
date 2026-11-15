@@ -131,14 +131,18 @@ def _read(path):
             os.close(fd)
 
 
+def profile_bytes(db_path, instance_id, actor_id, binding):
+    """The exact bytes write_profile writes for this binding, given its resolved database path."""
+    value = dict(binding, v=2, instance_id=instance_id, actor_id=actor_id, db_path=str(db_path))
+    return (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+
+
 def write_profile(path, db_path, instance_id, actor_id, *, binding):
     """Establish a new binding only; existing profiles are never overwritten."""
     if not isinstance(binding, dict) or set(binding) != BINDING_FIELDS:
         raise ProfileError("Provide the exact explicit authority binding returned by initialization or activation")
-    value = dict(binding, v=2, instance_id=instance_id, actor_id=actor_id, db_path=str(db_path))
-    profile = _validated(value)
-    value["db_path"] = str(profile.db_path)
-    payload = (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    profile = _validated(dict(binding, v=2, instance_id=instance_id, actor_id=actor_id, db_path=str(db_path)))
+    payload = profile_bytes(profile.db_path, instance_id, actor_id, binding)
     destination = Path(path)
     fd = None
     try:

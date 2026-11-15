@@ -117,6 +117,10 @@ SCHEMA_BEFORE_EDIT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BE
 # edit's, so the layout before it is version 40's, read from a fresh instance of release 72's code (ee7e51e6).
 BEFORE_SESSION, SESSION_VERSION = EDIT_VERSION, str(int(EDIT_VERSION) + 1)
 SCHEMA_BEFORE_SESSION = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_SESSION)).read_text().splitlines()
+# The step that keeps who invited each agent into which outcome (item 525) follows the sessions', so the layout before
+# it is version 41's, read from a fresh instance of 324's approved code (63bb2df1).
+BEFORE_INVITES, INVITES_VERSION = SESSION_VERSION, str(int(SESSION_VERSION) + 1)
+SCHEMA_BEFORE_INVITES = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_INVITES)).read_text().splitlines()
 DELIVERIES_BEFORE_EDIT = ("CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), "
                           "recipient_id TEXT NOT NULL REFERENCES actors(id), group_id INTEGER NOT NULL REFERENCES delivery_groups(id), "
                           "state TEXT NOT NULL DEFAULT 'pending', topic_id TEXT, UNIQUE(message_id,recipient_id))")
@@ -144,6 +148,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The invitations' version keeps who invited each agent into which outcome: before it, no one is known to have.
+        db.execute("DROP TABLE agent_invitations")
+        if version == BEFORE_INVITES:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The session's version keeps each message's edit session, what each agent was handed of a person's message,
         # and the horizon: before it, none of them exists.
         db.execute("DROP TABLE message_edit_sessions")
@@ -1921,9 +1930,10 @@ def everything(path):
 def horizon_taken(upgraded, stored):
     """Takes the session step's horizon out of an upgraded store's rows: the one row a step up writes, the last
     message sequence the older version had (0 with none), so every agent reader of those messages counts as handed
-    them (docs/message-edit.md, "What counts as handed")."""
+    them (docs/message-edit.md, "What counts as handed"). The invitations' step after it adds a table and no row."""
     sequences = [row[0] for row in stored.get("messages", [])]
     assert upgraded.pop("message_edit_horizon") == [(max(sequences, default=0),)], "the horizon is the last message"
+    assert upgraded.pop("agent_invitations") == [], "no one is known to have invited an agent before version 42"
     return upgraded
 
 
@@ -1948,7 +1958,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
                      (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37),
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
-                     (BEFORE_SESSION, SCHEMA_BEFORE_SESSION))
+                     (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_INVITES, SCHEMA_BEFORE_INVITES))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3547,7 +3557,7 @@ class EditStepCase(MigrationCase):
         after = everything(self.path)
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr),
                          "every delivery keeps its seq and id, at revision 1")
-        for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon"):
+        for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon", "agent_invitations"):
             after.pop(table)
         self.assertEqual({k: v for k, v in after.items() if k != "metadata"}, {k: v for k, v in stored.items() if k != "metadata"},
                          "every reason and sqlite_sequence's place for the deliveries are kept")
@@ -3592,6 +3602,10 @@ class SessionStepCase(MigrationCase):
 
     VERSION, FIXTURE = BEFORE_SESSION, SCHEMA_BEFORE_SESSION
 
+    def upgrade(self):
+        # The step itself, to its own version; the invitations' step after it has a case of its own.
+        return migrate(self.path, "test-instance", self.binding, SESSION_VERSION)
+
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, BEFORE_SESSION)
 
@@ -3603,9 +3617,11 @@ class SessionStepCase(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
-    def test_the_step_follows_the_edits_and_the_head_is_its_version(self):
-        self.assertIn((BEFORE_SESSION, SESSION_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, SESSION_VERSION)
+    def test_the_step_follows_the_edits_and_comes_just_before_the_invitations(self):
+        steps = [step[:2] for step in migrations.STEPS]
+        self.assertIn((BEFORE_SESSION, SESSION_VERSION), steps)
+        self.assertEqual(steps[steps.index((BEFORE_SESSION, SESSION_VERSION)) + 1], (SESSION_VERSION, INVITES_VERSION),
+                         "40->41 is the step before 41->42")
 
     def test_upgrade_keeps_every_row_sets_the_horizon_and_matches_a_fresh_instance(self):
         stored = everything(self.path)
@@ -3613,7 +3629,8 @@ class SessionStepCase(MigrationCase):
         self.assertGreater(top, 0)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_SESSION,
                                           "schema_version": SESSION_VERSION, "migrated": True})
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        fresh_schema(self.temp.name)
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_INVITES), "tables, indexes and triggers match a fresh instance of version 41")
         self.assertFalse([sql for sql in schema(self.path) if "marked_words" in sql], "no schema object names the SQL function")
         after = everything(self.path)
         self.assertEqual(after.pop("message_edit_horizon"), [(top,)], "the horizon is the last message at the upgrade")
@@ -3693,6 +3710,53 @@ class SessionStepCase(MigrationCase):
         self.assertEqual(self.sql("SELECT seq FROM message_edit_horizon"), self.sql("SELECT max(seq) FROM messages"),
                          "every message before the second upgrade counts as handed: over-correcting, never missing one")
 
+class InviteStepCase(MigrationCase):
+    """An instance at the sessions' version (41): the invitations' step (41->42) keeps every row, matches a fresh
+    instance, knows of no invitation before it, and steps back only while no one has been invited from an outcome's
+    page (item 525, docs/agents.md "Inviting an agent")."""
+
+    VERSION, FIXTURE = BEFORE_INVITES, SCHEMA_BEFORE_INVITES
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_INVITES)
+
+    def invite(self, name):
+        version = self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
+        receipt = self.command("workspace.agent_invite", {"name": name, "harness": "codex"}, {"workspace_id": "w1"}, {"workspace_revision": version})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_follows_the_sessions_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_INVITES, INVITES_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, INVITES_VERSION)
+
+    def test_upgrade_keeps_every_row_knows_no_invitation_and_matches_a_fresh_instance(self):
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_INVITES,
+                                          "schema_version": INVITES_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        after = everything(self.path)
+        self.assertEqual(after.pop("agent_invitations"), [], "no agent is known to have been invited before the step")
+        self.assertEqual(after, stored, "every row of every table is kept")
+
+    def test_step_back_is_refused_once_an_agent_is_invited_and_restores_the_layout_while_none_is(self):
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"], "nothing invited yet")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_INVITES))
+        self.assertEqual(everything(self.path), stored)
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.invite("Late scribe")
+        self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations"), [("late-scribe", "w1", "owner")])
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], INVITES_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -3755,6 +3819,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(EditStepCase, _name, None)
     if _name.startswith("test_") and _name not in SessionStepCase.__dict__:
         setattr(SessionStepCase, _name, None)
+    if _name.startswith("test_") and _name not in InviteStepCase.__dict__:
+        setattr(InviteStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

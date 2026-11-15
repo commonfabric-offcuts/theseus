@@ -41,6 +41,7 @@ from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
                            MESSAGE_EDIT_UP)
+from .invite import INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -173,6 +174,10 @@ STEPS = (
     # (docs/message-edit.md, slice 2). Stepping back is refused while any session is open, held or lapsed, since it
     # carries the person's draft, or any delivery is held.
     ("40", "41", EDIT_SESSION_UP, EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED),
+    # Version 42 keeps who invited each agent into which outcome from its page (docs/agents.md, "Inviting an agent"),
+    # so the same person typing the same name there again gets that agent back. Agents registered before it were
+    # invited by no one it knows of. Stepping back is refused once anyone has been invited, since 41 cannot say by whom.
+    ("41", "42", INVITATIONS_SCHEMA, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
 )
 
 
