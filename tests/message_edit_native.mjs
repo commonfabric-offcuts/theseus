@@ -118,11 +118,12 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     return { revision: item.revision, body: item.body, edited: Number.isSafeInteger(item.edited_ms) };
   };
   // A command of the person's from somewhere else (another device), through Core.
-  const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
-  const boot = async () => (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
+  // Read at each command: a restarted server (the build cases' deploys) hands out a new session.
+  const headers = () => ({ Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' });
+  const boot = async () => (await fetch(facts.origin + '/api/bootstrap', { headers: headers() })).json();
   const elsewhere = async (kind, id, expected, args, operation) => {
     const b = await boot();
-    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: b.instance_id,
+    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers: headers(), body: JSON.stringify({ v: 1, instance_id: b.instance_id,
       operation_id: operation, kind, target: { message_id: id },
       expected: { authority: { authority_id: b.authority.authority_id, authority_epoch: b.authority.authority_epoch }, ...expected }, args }) })).json();
     assert.equal(receipt.status, 'committed', `${kind} elsewhere commits: ` + JSON.stringify(receipt.error ?? null));
@@ -1155,11 +1156,16 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   const filesOf = revision => new Map(execFileSync('git', ['ls-tree', '-r', '--name-only', revision, 'web'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n')
     .map(file => ['/' + file.slice('web/'.length), execFileSync('git', ['show', `${revision}:${file}`], { cwd: ROOT })]));
   // A deploy: the server stops and starts again on web (another build's files), or on the checkout's own.
-  const restartOn = async (web = null) => {
+  // p, a page open meanwhile: it hears the server go, and reaches it again (its live feed up, its words of not
+  // reaching Theseus gone) before the person acts, so no line leaves the page under a finger on its way down.
+  const contactOf = p => p.evaluate(`import('/api.mjs').then(({ contact }) => ({ live: contact.live, unreached: Boolean(document.querySelector('[data-unreached]')) }))`).catch(() => null);
+  const restartOn = async (web = null, p = null) => {
     await control({ method: 'server_stop' });
+    if (p) await until(async () => (await contactOf(p))?.live === false, 'the page hears the server go');
     const restarted = await control({ method: 'server_start', ...(web ? { web } : {}) });
     assert.equal(restarted.origin, facts.origin, 'the server is back at the same address');
     facts.token = restarted.token;
+    if (p) await until(async () => { const c = await contactOf(p); return c?.live === true && !c.unreached; }, 'the page reaches the server again', 15000);
   };
   // Another build of the page: the checkout's files with one module changed.
   const anotherBuild = () => {
@@ -1222,7 +1228,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         if (await p.evaluate(`document.querySelector('#new-message-sheet').open`)) await press(p, device, '#new-message-close');
         await p.evaluate('document.activeElement?.blur()');
         // Each width's page opened on the build the server served; the deploy is to the other one.
-        onNext = !onNext; await restartOn(onNext ? next : null);
+        onNext = !onNext; await restartOn(onNext ? next : null, p);
         await moveTo(p, device, away);
         await arrived(p, away, there.note);
         const served = await servedBuild();
@@ -1281,7 +1287,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         const p = await open(`edit-build-held-${width}`, device, away, there.note, EDIT_FAULTS);
         await sized(p, device, width);
         await holdJournal(p);
-        onNext = !onNext; await restartOn(onNext ? next : null);
+        onNext = !onNext; await restartOn(onNext ? next : null, p);
         await p.evaluate('(window.sameDocument = true)');
         const read = await holdBuildRead(p);
         await moveTo(p, device, topic);
@@ -1317,7 +1323,11 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await arrived(p, away, there.note);
         assert.equal(await p.evaluate('window.sameDocument === true'), false, `${width}: Reload loaded the page`);
         assert.equal(await pageBuild(p), await servedBuild(), `${width}: on the server's build`);
-        await until(async () => await valueOf(p, '#inline-writing-body') === words, `${width}: with the words, as the page restores them`);
+        await until(async () => await valueOf(p, '#inline-writing-body') === words, `${width}: with the words, as the page restores them`).catch(async error => {
+          const state = await p.evaluate(`({ value: document.querySelector('#inline-writing-body').value, saved: document.querySelector('#inline-save-state').textContent,
+            notice: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent), build: document.querySelector('script[type=module][src]')?.src })`).catch(e => ({ unread: e.message }));
+          throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
+        });
         assert.equal(await moveNotice(p), '', `${width}: and nothing more to say`);
         assert.deepEqual(p.errors, []);
         await p.close();

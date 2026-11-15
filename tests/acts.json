@@ -13905,6 +13905,34 @@
    "check": {
     "node": "tests/ui_rails.test.mjs"
    }
+  },
+  {
+   "item": 523,
+   "act": "On a phone the drawer closes as a move begins, before the build is read, so the page and any Theseus updated notice show",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    this.moving = true;\n    this.drawer?.close();\n",
+     "    this.moving = true;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "While a move reads the build the page is not ready, since a back has already changed the address, and it is ready again where it stays",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (body) delete body.dataset.ready;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
   }
  ]
 }
