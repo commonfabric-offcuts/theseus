@@ -263,7 +263,10 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     assert.equal(await p.evaluate(`document.querySelector('#invite-agent-name').value`), 'Patient helper', 'the name is kept');
     await p.key('Enter');
     await until(() => visible(p, '#invite-prompt-text'), 'the prompt shows');
-    const [first, second] = invites(p, sent);
+    // Every request has its answer by now: the held one and the one Return sent again, so the second Return
+    // pressed while the first was out sent nothing (a request still on its way is not seen when that is pressed).
+    const [first, second, ...more] = invites(p, sent);
+    assert.deepEqual(more, [], 'the Return pressed while the invitation was out sent nothing');
     assert.deepEqual(second, first, 'the very same invitation');
     const written = (await files()).filter(file => file.actor === 'patient-helper');
     assert.deepEqual(written.map(file => file.mode), ['0o600'], 'one sign-in file');
