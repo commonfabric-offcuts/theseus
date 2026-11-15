@@ -1191,6 +1191,15 @@ async function run() {
   // grows; a scroll the person makes, however made, lets them go, so the
   // reply's next change of size leaves the message where they put it.
   await check('stacked: quoting: one who has not scrolled keeps the quoted words in sight as the reply grows, and a scroll the person makes, a scrollbar\'s drag among them, lets them go', async () => {
+    // Headless Chrome hides scrollbars unless told not to; this case's Chrome
+    // shows them, so the message's own scrollbar is there to drag.
+    const barred = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true, ignoreDefaultArgs: ['--hide-scrollbars'] }) : null;
+    const usual = browser;
+    if (barred) browser = barred;
+    try { await scrollLetsGo(); }
+    finally { browser = usual; if (barred) { for (const context of barred.contexts()) contexts.delete(context); await barred.close(); } }
+  });
+  async function scrollLetsGo() {
     const p = await page('stacked', 'light', '/?topic=compose-wrap');
     await open(p, wrap, 'A plan in one item');
     const n = await nearReply(p);
@@ -1220,7 +1229,7 @@ async function run() {
     const after = await wordsAt(p, n);
     assert.ok(Math.abs(after.scroll - scrolled.scroll) <= 1, `after the person's scroll, the reply changing size leaves the message where they put it (${scrolled.scroll}, then ${after.scroll})`);
     await close(p);
-  });
+  }
 
   // The browser's own pull of a message scrolled to its end, as its room
   // grows there (a phone's keyboard going down), is no scroll of the
