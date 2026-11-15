@@ -401,8 +401,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const p = await open(topic, device, topic, ids.plain);
       const filter = '#agent-coordination-show button', dossier = `#messages .reply-stack[data-stack="${ids.root}"]`;
       const names = Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]));
-      // Where the keys are: the chip, a dossier's chevron, a message by its seeded name, or another control by its id.
-      const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';
+      // Where the keys are: the chip, a dossier's chevron, a message by its seeded name, the Team's "+ Add" (the
+      // header's last button, item 465), or another control by its id.
+      const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';if(e?.matches?.('#participants .add-chip'))return 'add';
         if(e?.matches?.('.stack-toggle'))return 'chevron:'+(n[e.closest('.reply-stack').dataset.stack]??'?');
         const m=e?.closest?.('#messages [data-id]');if(m)return n[m.dataset.id]??'another message';return e?.id||e?.tagName||'none'})()`);
       const shownDossier = () => p.evaluate(`(s=>Boolean(s?.getClientRects().length))(document.querySelector(${JSON.stringify(dossier)}))`);
@@ -411,29 +412,29 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         `${device}: the agents' dossier shows, and Show agent coordination over the feed`);
       const inHeader = () => p.evaluate(`Boolean(document.querySelector('#main > .topic-header')?.contains(document.activeElement))`);
       // The keys reach the chip as a person's do: up from the top of the feed to the header's buttons, along them to
-      // New message, and Tab on.
+      // the last, the Team's "+ Add", and Tab on.
       await keyTo(p, ids.root);
       assert.equal(await keyed(), 'root', `${device}: the agents' dossier is at the top of the feed`);
-      for (let n = 0; n < 8 && await keyed() !== 'new-message'; n++) await p.key(await inHeader() ? 'ArrowRight' : 'ArrowUp');
-      assert.equal(await keyed(), 'new-message', `${device}: the keys are on New message, among the header's buttons`);
+      for (let n = 0; n < 16 && await keyed() !== 'add'; n++) await p.key(await inHeader() ? 'ArrowRight' : 'ArrowUp');
+      assert.equal(await keyed(), 'add', `${device}: the keys are on "+ Add", the header's last button`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'new-message', `${device}: ↑ on the header's buttons, the top row, moves nothing`);
+      assert.equal(await keyed(), 'add', `${device}: ↑ on the header's buttons, the top row, moves nothing`);
       await p.key('Tab');
-      assert.equal(await keyed(), 'chip', `${device}: Tab from New message reaches Show agent coordination`);
+      assert.equal(await keyed(), 'chip', `${device}: Tab from "+ Add" reaches Show agent coordination`);
       await shot(p, 'coordination-keys-' + device);
-      // Up from the chip: the header's buttons, at New message, the one the keys were last on there; never the chip again.
+      // Up from the chip: the header's buttons, at "+ Add", the one the keys were last on there; never the chip again.
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'new-message', `${device}: ↑ from Show agent coordination goes up to New message, the header's button the keys were last on`);
+      assert.equal(await keyed(), 'add', `${device}: ↑ from Show agent coordination goes up to "+ Add", the header's button the keys were last on`);
       await p.key('ArrowDown');
-      assert.equal(await keyed(), 'chip', `${device}: ↓ from New message comes down to the row of filters, onto the chip`);
+      assert.equal(await keyed(), 'chip', `${device}: ↓ from "+ Add" comes down to the row of filters, onto the chip`);
       await p.key('ArrowDown');
       assert.equal(await keyed(), 'root', `${device}: and ↓ from it into the feed`);
       await p.key('ArrowUp');
       assert.equal(await keyed(), 'chip', `${device}: ↑ from the top of the feed reaches the row of filters just above it`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'new-message', `${device}: and ↑ again the header's buttons, at New message`);
+      assert.equal(await keyed(), 'add', `${device}: and ↑ again the header's buttons, at "+ Add"`);
       await p.key('ArrowDown');
-      assert.equal(await keyed(), 'chip', `${device}: ↓ from New message comes back down to the chip`);
+      assert.equal(await keyed(), 'chip', `${device}: ↓ from "+ Add" comes back down to the chip`);
       // On: ↓ goes on to the top of the feed, and ↑ comes back; the keys never stay on the chip.
       await p.key('ArrowDown');
       assert.equal(await keyed(), 'root', `${device}: ↓ from Show agent coordination moves the keys on to the dossier at the top of the feed`);
@@ -504,7 +505,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // seeded name, or another control by its id.
       const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';
         if(e?.id==='read-mark')return 'read-it';if(e?.closest?.('#outline'))return 'outline';if(e?.closest?.('#things'))return 'things';
-        if(e?.closest?.('#main > .topic-header'))return 'header:'+(e.id||e.textContent.trim());
+        if(e?.matches?.('#participants .add-chip'))return 'header:add';if(e?.closest?.('#main > .topic-header'))return 'header:'+(e.id||e.textContent.trim());
         if(e?.matches?.('.stack-toggle'))return 'chevron:'+(n[e.closest('.reply-stack').dataset.stack]??'?');
         const m=e?.closest?.('#messages [data-id]');if(m)return n[m.dataset.id]??'another message';return e?.id||e?.tagName||'none'})()`);
       const marked = () => p.evaluate(`!document.getElementById('topic-marks').hidden`);
@@ -550,16 +551,17 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await keyed(), 'read-it', `${device}: ← to Read it`);
       await p.key('ArrowUp');
       assert.match(await keyed(), /^header:/, `${device}: ↑ from Read it goes up to the header's buttons`);
-      for (let n = 0; n < 6 && await keyed() !== 'header:new-message'; n++) await p.key('ArrowRight');
-      assert.equal(await keyed(), 'header:new-message', `${device}: → along the header's buttons reaches New message`);
+      // The header's buttons end with the Team's "+ Add" (item 465).
+      for (let n = 0; n < 16 && await keyed() !== 'header:add'; n++) await p.key('ArrowRight');
+      assert.equal(await keyed(), 'header:add', `${device}: → along the header's buttons reaches the Team's "+ Add"`);
       await p.key('ArrowDown');
-      assert.equal(await keyed(), 'read-it', `${device}: ↓ from New message comes down to Read it, the filter the keys were last on`);
+      assert.equal(await keyed(), 'read-it', `${device}: ↓ from "+ Add" comes down to Read it, the filter the keys were last on`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'header:new-message', `${device}: ↑ goes back up to New message`);
-      // The header's buttons end at their own row: → from New message goes on to the right rail, never to a filter.
+      assert.equal(await keyed(), 'header:add', `${device}: ↑ goes back up to "+ Add"`);
+      // The header's buttons end at their own row: → from "+ Add" goes on to the right rail, never to a filter.
       await p.key('ArrowRight');
-      assert.equal(await keyed(), rail ? 'things' : 'header:new-message',
-        `${device}: → from New message, the header's last, goes ${rail ? 'to the right rail' : 'nowhere, the right rail taking no keys'}, not on to a filter`);
+      assert.equal(await keyed(), rail ? 'things' : 'header:add',
+        `${device}: → from "+ Add", the header's last, goes ${rail ? 'to the right rail' : 'nowhere, the right rail taking no keys'}, not on to a filter`);
       // No arrow pressed a filter: no Reader opened, the mark is still there, and the agents' dossier still shows.
       assert.equal(await readerOn(p), null, `${device}: no arrow on Read it opened the Reader`);
       assert.equal(await marked(), true, `${device}: and the mark is still there`);
