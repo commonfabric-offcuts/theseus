@@ -3905,7 +3905,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
 
   // Item 472: a message the reader placed on its own is a section with no title bar, so a swipe over it is a swipe over a
   // message, as anywhere: right folds it in place, for the reader alone, and it stays where it was placed, above More;
-  // left unfolds it. Two fingers on a laptop's trackpad in both engines, and a finger on a phone in Chrome.
+  // left unfolds it. Two fingers on a laptop's trackpad in both engines, and a finger on a phone in Chrome; the swipe
+  // left comes on a new document, as in the trackpad case.
   await check('reading stacks a message placed on its own folds in place under a swipe right and unfolds under a swipe left, and never goes below More (item 472)', async () => {
     const topic = 'stack-placed-swipe';
     const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
@@ -3925,7 +3926,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const ways = [['laptop', (p, way) => trackpad(p, card(ids.placed), way > 0 ? SWIPE_RIGHT : SWIPE_RIGHT.map(([x, y]) => [-x, y]))]];
     if (engine === 'chrome') ways.push(['phone', (p, way) => drag(p, card(ids.placed), way)]);
     for (const [device, swipe] of ways) {
-      const p = await open(`${topic}-${device}`, device, topic, ids.placed, HEARD_WHEELS);
+      let p = await open(`${topic}-${device}`, device, topic, ids.placed, HEARD_WHEELS);
       await becomes(() => state(p), { single: 'true', shown: true, row: false, more: false }, `${device}: the placed message is a section of its own, with no title bar, above no More`);
       await swipe(p, 1);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: every act sent is answered`);
@@ -3933,6 +3934,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(() => state(p), { single: 'true', shown: true, row: true, more: false }, `${device}: it is its row, where it was placed, and nothing went below More`);
       assert.equal((await actsOf(topic, ids.placed, other))?.folded ?? false, false, `${device}: another reader's view of it is unchanged`);
       await shot(p, `stack-placed-swipe-${device}`);
+      // A new document is a new gesture, as the trackpad case reloads before its swipe left: the fold is read from Core.
+      await p.close(); p = await open(`${topic}-${device}-reload`, device, topic, ids.placed, HEARD_WHEELS);
+      await becomes(() => state(p), { single: 'true', shown: true, row: true, more: false }, `${device}: after a reload it is still its row, where it was placed`);
       await swipe(p, -1);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: every act sent is answered`);
       assert.deepEqual(await core(), { folded: false, aside: null, placed: 'number' }, `${device}: a swipe left unfolds it in Core, still placed`);
