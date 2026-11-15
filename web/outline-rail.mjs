@@ -343,8 +343,11 @@ export class OutlineRail {
     return outcome;
   }
   async openQuestion(outcome) {
-    if (outcome.waiting.disabled) return;
-    outcome.waiting.disabled = true;
+    // One read at a time. A busy flag, not disabled: disabling the button would
+    // take the focus off it, and the Reader the question opens in gives the
+    // focus back to what had it (item 462: the keys stay on the row pressed).
+    if (outcome.asking) return;
+    outcome.asking = true;
     const run = this.run;
     try {
       const answer = await this.read('outcome_light', {workspace_id:outcome.id}, 'foreground');
@@ -358,7 +361,7 @@ export class OutlineRail {
       await this.open(questionTarget(ask), ask.title);
     } catch (error) {
       this.message.textContent = readFailure(error).message; this.message.hidden = false;
-    } finally { outcome.waiting.disabled = false; }
+    } finally { outcome.asking = false; }
   }
   // Opens or folds one outcome from the keys, until the next place tidies it (Opened).
   setOpen(outcome, open) {

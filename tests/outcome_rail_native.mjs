@@ -1521,6 +1521,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await keyedAt(p), 'name:rail-ring-o', '← goes to the outline, on the Conversation being read');
     await until(async () => (await outline(p)).outcomes['rail-ring-o'].topics.some(row => row.id === 'rail-ring-t'), 'its topic shows under it');
     const returnTo = async what => {
+      await until(async () => (await keyTree(p)).rows.includes('topic:rail-ring-t'), what + ': its topic is drawn under it');
       await p.key('ArrowDown');
       assert.equal(await keyedAt(p), 'topic:rail-ring-t');
       await p.key('Enter');
@@ -1835,6 +1836,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await press(c, '.ol-outcome[data-workspace-id="w1"] .ol-name');
     await pressedRow(c, 'name:w1', 'the Conversation being read');
     assert.deepEqual([(await placeOf(c)).origin, (await placeOf(c)).search], [conversation.origin, '?conversation=w1'], 'nothing moved');
+    // Folded, its row is the outline's only one: → opens it again, the keys still on it, and ↑ ↓ go on from there.
+    await c.key('ArrowRight');
+    await until(async () => (await keyTree(c)).rows.length > 1, '→ opens the outcome pressed, its topics under it');
+    assert.equal(await keyedAt(c), 'name:w1', 'the keys still on its row');
     await stepsFrom(c, 'name:w1', 'the Conversation being read');
     assert.deepEqual(c.errors, []); await c.close();
   });
@@ -1878,7 +1883,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     // A row pressed, then a message: the message takes the pointer's place, and nothing in the rails wears a ring.
     await press(p, '#outline a[data-topic-id="t1"]');
     await pressedRow(p, 'topic:t1', 'the topic being read');
-    await press(p, '#messages .message-card[data-id] > .message-preview');
+    const shownMessage = await p.evaluate(`[...document.querySelectorAll('#messages .message-card[data-id] > .message-preview')].find(el => el.getClientRects().length && el.getBoundingClientRect().height > 0)?.parentElement.dataset.id ?? null`);
+    assert.ok(shownMessage, 'a message is shown to press');
+    await press(p, `#messages .message-card[data-id="${shownMessage}"] > .message-preview`);
     await until(() => p.evaluate(`!document.activeElement?.closest('#rail, #things')`), 'the focus leaves the outline');
     assert.equal((await pressRing(p)).rails, 0, 'nothing in the rails wears a ring');
     if (await readerOpen(p)) { await p.key('Escape'); await until(async () => !await readerOpen(p), 'Escape closes the Reader'); }

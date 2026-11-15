@@ -11691,6 +11691,26 @@
     "native": "rail",
     "case": "rail a press in the outline on what opens there keeps its own way"
    }
+  },
+  {
+   "item": 462,
+   "act": "Waiting on you keeps the focus while it reads which question to open, so the Reader gives it back to the row pressed",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "    outcome.asking = true;",
+     "    outcome.asking = true; outcome.waiting.disabled = true;"
+    ],
+    [
+     "web/outline-rail.mjs",
+     "    } finally { outcome.asking = false; }",
+     "    } finally { outcome.asking = false; outcome.waiting.disabled = false; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail outcome clicks toggle"
+   }
   }
  ]
 }
