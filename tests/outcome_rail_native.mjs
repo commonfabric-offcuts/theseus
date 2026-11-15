@@ -2158,6 +2158,74 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     if (SIZE_464[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
   } });
 
+  // The header's pills, with the total of what is new and the waiting light on "☰ Outcomes" (item 516). On a phone the
+  // header row holds "☰ Outcomes", the outcome's name and "Pipeline & pages". The name gives up its room first, down to
+  // none; only where even then the two pills do not fit on one line (320, with both the count and the light) does
+  // "Pipeline & pages" go under, whole and inside the screen. At 375 and 390 they share the line, the name clipped
+  // between them. At a narrow laptop (1024) the outline is beside the page, so only "Pipeline & pages" shows, on the
+  // name's line; on a laptop both rails are beside the page and neither pill shows. Nothing scrolls sideways.
+  await check('rail the header at 320, 375, 390, a narrow laptop and a laptop, light and dark, with the count and the light on "☰ Outcomes": at 320 "Pipeline & pages" goes under it, at 375 and 390 the outcome\'s name gives up its room and the two share one line, and nothing scrolls sideways', async () => {
+    await control({ method: 'light_outcome', outcome: 'rail-head-o', title: 'Header outcome', topic: { id: 'rail-head-t', title: 'Header topic' } });
+    for (let n = 0; n < 10; n++) await control({ method: 'agent_message', operation_id: `rail-head-${n}`, body: `News ${n} for the header`, topic_id: 'rail-head-t' });
+    await control({ method: 'agent_message', operation_id: 'rail-head-ask', body: 'Which header do we keep?', topic_id: 'rail-head-t', addressees: [facts.actor], intent: 'ask' });
+    const SIZE_HEAD = { ...SIZE_464, 1024: { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false } };
+    const openHead = (name, size, theme) => page(name, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+      await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+      await q.send('Emulation.setDeviceMetricsOverride', SIZE_HEAD[size]);
+      if (SIZE_HEAD[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    } });
+    // Each part of the header row as drawn, or null where it takes no room: its box, whether its content is wider
+    // than its box (clipped), and how many lines its words take (text boxes whose middles are within 8px are a line).
+    const header = p => p.evaluate(`(()=>{const el=id=>document.getElementById(id),c=el('rail-open');
+      const lines=e=>{const mids=[];const walk=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);for(let n=walk.nextNode();n;n=walk.nextNode()){
+        if(!n.textContent.trim())continue;const r=document.createRange();r.selectNodeContents(n);for(const b of r.getClientRects())if(b.width>0)mids.push(b.top+b.height/2);}
+        mids.sort((a,b)=>a-b);return mids.filter((m,i)=>i===0||m-mids[i-1]>8).length;};
+      const part=e=>{if(!e||!e.getClientRects().length)return null;const b=e.getBoundingClientRect();
+        return {left:Math.round(b.left),right:Math.round(b.right),top:Math.round(b.top),bottom:Math.round(b.bottom),mid:Math.round(b.top+b.height/2),
+          width:Math.round(b.width),half:b.height/2,clipped:e.scrollWidth>e.clientWidth+1,lines:lines(e)};};
+      return {count:Number(c.querySelector('.unread-count:not([hidden])')?.textContent??0),light:Boolean(c.querySelector('.outcome-light:not([hidden])')),
+        outcomes:part(c),pages:part(el('things-open')),name:part(el('workspace-name')),scroll:document.documentElement.scrollWidth,width:innerWidth};})()`);
+    const sameLine = (a, b) => Math.abs(a.mid - b.mid) < Math.min(a.half, b.half);
+    for (const size of [320, 375, 390, 1024, 'laptop']) for (const theme of ['light', 'dark']) {
+      const at = `${size} ${theme}`, phone = SIZE_HEAD[size].mobile;
+      const p = await openHead(`rail-head-${size}-${theme}`, size, theme);
+      // The count and the light on "☰ Outcomes" are painted at every width (it only shows on a phone), and on a
+      // middle or phone width "Pipeline & pages" is in the header before the row is measured.
+      const seen = await until(async () => { const h = await header(p); return h.count >= 10 && h.light && (size === 'laptop' || h.pages) && h; }, `${at}: "☰ Outcomes" carries a count of ten or more and the light, and the header is drawn`);
+      // A page wider than a phone's screen widens the layout viewport with it (innerWidth 321 at 320), so the screen's
+      // width is the size the page was opened at.
+      const drawn = JSON.stringify(seen), screen = SIZE_HEAD[size].width;
+      assert.ok(seen.scroll <= screen && seen.width <= screen, `${at}: no sideways scroll (${seen.scroll}, ${seen.width}, ${screen})`);
+      assert.ok(seen.name && seen.name.width > 0, `${at}: the outcome's name keeps a place in the header (${drawn})`);
+      if (phone) {
+        const { outcomes, pages, name } = seen;
+        assert.ok(outcomes && pages, `${at}: both pills show (${drawn})`);
+        for (const [pill, what] of [[outcomes, '"☰ Outcomes"'], [pages, '"Pipeline & pages"']]) {
+          assert.ok(pill.left >= 0 && pill.right <= screen, `${at}: ${what} is inside the screen (${drawn})`);
+          assert.ok(!pill.clipped && pill.lines === 1, `${at}: ${what} is whole, on one line of its own words (${drawn})`);
+        }
+        assert.ok(sameLine(name, outcomes), `${at}: the outcome's name stays on the line of "☰ Outcomes" (${drawn})`);
+        if (size === 320) {
+          assert.ok(pages.top >= outcomes.bottom, `${at}: "Pipeline & pages" goes under "☰ Outcomes" (${drawn})`);
+        } else {
+          assert.ok(sameLine(pages, outcomes), `${at}: "Pipeline & pages" shares the line of "☰ Outcomes" (${drawn})`);
+          assert.ok(name.clipped && name.right <= pages.left, `${at}: the outcome's name gives up its room, between the two pills (${drawn})`);
+        }
+      } else if (size === 1024) {
+        assert.equal(seen.outcomes, null, `${at}: no "☰ Outcomes" with the outline beside the page (${drawn})`);
+        assert.ok(seen.pages.right <= screen && !seen.pages.clipped && seen.pages.lines === 1 && sameLine(seen.pages, seen.name), `${at}: "Pipeline & pages" is whole on the name's line (${drawn})`);
+        assert.equal(seen.name.clipped, false, `${at}: with room, the outcome's name is whole (${drawn})`);
+      } else {
+        assert.deepEqual([seen.outcomes, seen.pages], [null, null], `${at}: neither pill with both rails beside the page (${drawn})`);
+        assert.equal(seen.name.clipped, false, `${at}: the outcome's name is whole (${drawn})`);
+      }
+      await shot(p, `rail-head-${size}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // The ask answered, so the checks after this one start with no light it lit.
+    await control({ method: 'agent_message', operation_id: 'rail-head-answer', sender: 'person', topic_id: 'rail-head-t', whole_topic: true, body: 'This one.' });
+  });
+
   await check('rail the side rail shows no Outcome Notebook on a topic, a Conversation, a pipeline page or the outcome\'s page, with pages or none, at 320 375 390 and a laptop, light and dark', async () => {
     await notebookOutcomes();
     await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-nb-pipeline', target: { workspace_id: 'rail-nb-o' }, workspace_id: 'rail-nb-o', args: { enabled: true } });
