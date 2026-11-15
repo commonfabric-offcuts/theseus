@@ -2310,7 +2310,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const y = await p.evaluate("(f=>{const y=scrollY;f.focus({preventScroll:true});f.select();return y})(document.getElementById('inline-writing-body'))");
     await p.key('Backspace');
     await until(() => p.evaluate("document.getElementById('inline-writing-body').value===''"), label + ': the reply is empty');
-    await p.evaluate(`document.activeElement?.blur();scrollTo(0,${y})`);
+    await p.evaluate(`(document.activeElement?.blur(), scrollTo(0, ${y}))`);
   };
   // A closure's start: the stop of the tree in scope (its row the keys are on, else its first shown).
   const treeStart = (p, scope) => () => p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('${scope} [role=treeitem]')].filter(e=>e.checkVisibility()))`);
@@ -2707,7 +2707,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await readerClosure(p, 'laptop');
     assert.deepEqual(p.errors, []); await p.close();
     const phone = await arrowsAt('rail-arrows-reader-390', '/?topic=t1', '390');
-    await settled(phone, '390: the topic is up');
+    await topicUp(phone, '390: the topic is up');
     await phone.evaluate("document.activeElement?.blur()");
     await phone.key('ArrowDown');
     for (let n = 0; n < 4 && await phone.evaluate("Boolean(document.activeElement?.matches?.('.stack-head-card') && document.activeElement.closest('.reply-stack')?.dataset.headOpen === 'false')"); ++n) await phone.key('ArrowDown');
